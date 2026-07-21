@@ -722,7 +722,7 @@
     @request-open-slide="$emit('request-open-slide')" @parking-updated="handleParkingUpdate" />
 
   <v-dialog v-model="fullscreenViewerDialog" fullscreen hide-overlay>
-    <v-card color="black" class="fullscreen-viewer" :class="{ 'measuring': measureActive }">
+    <v-card class="fullscreen-viewer" :class="{ 'measuring': measureActive }">
       <!-- 縮放外層容器 (接收 wheel / drag 事件) -->
       <div class="fullscreen-zoom-wrapper" ref="zoomWrapperRef" @wheel.prevent="onViewerWheel"
         @mousedown="onViewerMouseDown" @dblclick="onViewerDblClick" :style="{ cursor: viewerCursor }">
@@ -3256,7 +3256,7 @@ onUnmounted(() => {
 .main-carousel-image {
   height: 40vh;
   min-height: 250px;
-  background-color: #212121;
+  background-color: #e8eaed; /* 淺灰白：讓白底圖片與背景有區隔 */
 }
 
 .small-thumbnails-strip {
@@ -3547,6 +3547,11 @@ onUnmounted(() => {
 /* ============================================================ */
 /* ===== 圖片縮放平移 (Zoom & Pan) 樣式 ===== */
 /* ============================================================ */
+
+/* 全螢幕檢視器背景：淺灰白（非純白，讓白底圖片邊界可辨識） */
+.fullscreen-viewer {
+  background-color: #e8eaed !important;
+}
 
 /* 縮放外層容器 */
 .fullscreen-zoom-wrapper {
