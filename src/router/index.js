@@ -517,6 +517,17 @@ const routes = [
   },
 
   {
+    path: '/booking-test',
+    name: 'BookingTest',
+    component: () => import('@/views/BookingTestPage.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredRoles: ['超級管理員'],
+      title: 'BookingPage 功能測試'
+    }
+  },
+
+  {
     path: '/special-report-upload/:projectId',
     name: 'SpecialReportUpload',
     component: () => import('@/views/SpecialReportUpload.vue'),

@@ -140,6 +140,16 @@ const allButtons = ref([
     permissionArgs: ['系統管理員', '超級管理員'],
     nav: { name: 'AdminToolsCenter' }
   },
+
+  // 預約頁功能測試（僅超級管理員）
+  {
+    id: 'bookingTest',
+    text: '預約頁測試',
+    icon: inspectionCalenderIcon,
+    permissionType: 'system',
+    permissionArgs: ['超級管理員'],
+    nav: { name: 'BookingTest' }
+  },
 ]);
 
 const visibleButtons = ref([]);

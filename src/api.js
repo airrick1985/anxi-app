@@ -2793,6 +2793,28 @@ export const saveBooking = async (payload) => {
 };
 
 /**
+ * [BookingPage 功能測試頁專用] 清除測試預約資料
+ * 只會刪除 isTest 標記的測試預約單，並順便清除過期的確認 Token。
+ * @param {string} projectId 建案 ID
+ */
+export const cleanupTestBookings = async (projectId) => {
+  if (!projectId) {
+    return { status: 'error', message: '缺少 projectId。' };
+  }
+  try {
+    const result = await bookingApiRouter({
+      action: 'cleanupTestBookings',
+      // testKey 與 devBypass 相同的內部鑰匙機制：必須等於 projectId
+      data: { projectId, testKey: projectId }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("API cleanupTestBookings 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+};
+
+/**
  * [API] 呼叫後端，為預約確認步驟產生一個有時效性的 Token (V2: 呼叫 bookingApi 路由)
  * @param {object} payload - 包含 { projectId, unitId, bookingType }
  */

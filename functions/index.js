@@ -13833,6 +13833,9 @@ exports.bookingApi = onCall({
         return await _handleSaveBooking(data);
       case 'cancelBooking':
         return await _handleCancelBooking(data);
+      case 'cleanupTestBookings':
+        // BookingPage 功能測試頁專用：清除 isTest 標記的測試預約
+        return await _handleCleanupTestBookings(data);
 
       // --- 授權書流程 ---
       case 'uploadAuthLetter':
@@ -14449,6 +14452,10 @@ async function _handleSaveBooking(data) {
   // 內部代填模式：devBypass 必須等於 projectId 才視為有效，通過則繞過已預約檢查（等同可重複預約）
   const isDevBypass = !!(devBypass && projectId && devBypass === projectId);
   if (isDevBypass) console.log(`[${functionName}] DEV BYPASS active: skipping duplicate-booking check.`);
+  // 系統測試模式（BookingPage 功能測試頁）：僅在 devBypass 有效時生效；
+  // 信件只寄給預約人本人（不 CC 副本收件人），預約單標記 isTest 供 cleanupTestBookings 事後清除
+  const isTestMode = !!(isDevBypass && bookingData && bookingData.isTest === true);
+  if (isTestMode) console.log(`[${functionName}] TEST MODE active: no CC, appointment flagged isTest.`);
 
   if (!projectId || !bookingData) {
     throw new HttpsError("invalid-argument", "缺少 projectId 或 bookingData。");
@@ -14684,6 +14691,7 @@ async function _handleSaveBooking(data) {
         batchCode: batchCode,    // 新增：記錄此預約所屬的批次代號（用於 isolated 模式的名額查詢）
         batchId: batchId,        // 新增：記錄此預約所屬的批次文件 ID
         source: 'bookingPage',   // 新增：標註此筆預約為「前台預約頁」建立（與後台 'admin' 區隔）
+        ...(isTestMode ? { isTest: true } : {}),
       };
       transaction.set(appointmentRef, newAppointmentData);
       return { bookingCode, newAppointmentData };
@@ -14706,7 +14714,6 @@ async function _handleSaveBooking(data) {
       const itemSettings = projectData.pageSettingsByItem?.[bookingType];
       const itemIntro = itemSettings?.intro;
       const globalIntro = projectData.intro;
-
 
 
       //  取得結束語 (優先順序: 項目設定 > 全域公告 > 全域Email配置)
@@ -14750,7 +14757,7 @@ async function _handleSaveBooking(data) {
     });
 
 
-    const subject = `【${projectName}】預約成功通知 (${newAppointmentData.unitId})`;
+    const subject = `${isTestMode ? '【系統測試】' : ''}【${projectName}】預約成功通知 (${newAppointmentData.unitId})`;
     const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
     const bookingLinkHtml = `
             <p style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eeeeee; font-size: 14px; color: #555;">
@@ -14842,7 +14849,8 @@ async function _handleSaveBooking(data) {
         `;
 
 
-    const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
+    // 測試模式：不 CC 副本收件人，信件只寄給預約人本人（測試頁會填超級管理員自己的 Email）
+    const ccRecipients = isTestMode ? [] : await getCcRecipients(projectId, "驗屋系統信件副本");
     await mailTransport.sendMail({
       to: newAppointmentData.bookerEmail,
       cc: ccRecipients,
@@ -14894,6 +14902,8 @@ async function _handleCancelBooking(data) {
     const docToCancel = snapshot.docs[0];
     const bookingData = docToCancel.data();
     const unitId = bookingData.unitId;
+    // 系統測試模式的預約單（BookingPage 功能測試頁建立）：取消信只寄給預約人本人，不 CC 副本收件人
+    const isTestMode = bookingData.isTest === true;
 
     await db.runTransaction(async (transaction) => {
       transaction.update(docToCancel.ref, {
@@ -14941,7 +14951,7 @@ async function _handleCancelBooking(data) {
         auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
       });
 
-      const subject = `【${projectName}】預約取消成功通知 (${bookingData.unitId})`;
+      const subject = `${isTestMode ? '【系統測試】' : ''}【${projectName}】預約取消成功通知 (${bookingData.unitId})`;
       const bookingUrl = `https://anxismart.com/#/booking/${projectId}`;
 
       //  【風格更新處】
@@ -15004,7 +15014,7 @@ async function _handleCancelBooking(data) {
 </div>
             `;
 
-      const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
+      const ccRecipients = isTestMode ? [] : await getCcRecipients(projectId, "驗屋系統信件副本"); // 測試模式不 CC 副本收件人
       await mailTransport.sendMail({
         to: bookingData.bookerEmail,
         cc: ccRecipients,
@@ -15026,6 +15036,60 @@ async function _handleCancelBooking(data) {
   }
 }
 
+
+/**
+ * [內部函式] 清除測試預約資料（BookingPage 功能測試頁專用）
+ * 只會刪除 isTest == true 的預約單（saveBooking 測試模式建立），並更新受影響戶別的摘要；
+ * 另順便清除該建案已過期的預約確認 Token。
+ * testKey 必須等於 projectId（與 devBypass 相同的內部鑰匙機制）。
+ */
+async function _handleCleanupTestBookings(data) {
+  const { projectId, testKey } = data || {};
+  const functionName = `_handleCleanupTestBookings (Project: ${projectId})`;
+
+  if (!projectId || testKey !== projectId) {
+    throw new HttpsError('permission-denied', '無效的測試資料清理請求。');
+  }
+
+  const db = new Firestore({ databaseId: 'anxi-app' });
+  try {
+    const snapshot = await db.collection('appointments')
+      .where('projectId', '==', projectId)
+      .where('isTest', '==', true)
+      .get();
+
+    const unitIds = new Set();
+    for (const doc of snapshot.docs) {
+      const unitId = doc.data().unitId;
+      if (unitId) unitIds.add(unitId);
+      await doc.ref.delete();
+    }
+    for (const unitId of unitIds) {
+      await updateHouseholdSummary(db, projectId, unitId);
+    }
+
+    // 順便清除該建案已過期的預約確認 Token（正常流程只會在 saveBooking 時清）
+    let deletedExpiredTokens = 0;
+    const tokenSnapshot = await db.collection('bookingConfirmTokens')
+      .where('projectId', '==', projectId)
+      .get();
+    const now = new Date();
+    for (const tokenDoc of tokenSnapshot.docs) {
+      const tokenData = tokenDoc.data();
+      if (tokenData.expiresAt && tokenData.expiresAt.toDate() < now) {
+        await tokenDoc.ref.delete();
+        deletedExpiredTokens++;
+      }
+    }
+
+    console.log(`[${functionName}] 已刪除 ${snapshot.size} 筆測試預約、${deletedExpiredTokens} 筆過期 Token。`);
+    return { status: 'success', data: { deletedAppointments: snapshot.size, deletedExpiredTokens } };
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', `清除測試資料時發生錯誤: ${error.message}`);
+  }
+}
 
 /**
  * [內部函式] 處理驗屋授權書的上傳 (Firebase 版)
