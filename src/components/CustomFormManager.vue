@@ -122,6 +122,7 @@
       <CustomFormResponses
         v-if="responsesDialog"
         :projectId="projectId"
+        :projectName="projectName"
         :form="viewingForm"
         @close="closeResponses"
       />

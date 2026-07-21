@@ -102,6 +102,19 @@
                 </v-icon>
               </template>
             </v-tooltip>
+            <v-tooltip text="匯出文件（PDF / Word）">
+              <template v-slot:activator="{ props }">
+                <v-icon
+                  v-bind="props"
+                  size="small"
+                  color="deep-purple"
+                  class="cursor-pointer"
+                  @click.stop="openExportDialog(item)"
+                >
+                  mdi-file-export-outline
+                </v-icon>
+              </template>
+            </v-tooltip>
             <v-btn
               v-if="!showDeleted"
               icon="mdi-delete"
@@ -215,6 +228,17 @@
                   >
                     匯出
                   </v-btn>
+                  <v-btn
+                    color="deep-purple"
+                    variant="text"
+                    icon="mdi-file-export-outline"
+                    size="small"
+                    @click.stop="openExportDialog(item)"
+                    class="action-btn"
+                    title="匯出文件（PDF / Word）"
+                  >
+                    文件
+                  </v-btn>
                 </div>
               </v-form>
             </div>
@@ -223,6 +247,15 @@
       </v-data-table>
     </div>
 
+    <!-- 文件匯出對話框（PDF / Word 模板） -->
+    <FormExportDialog
+      v-if="exportDialogOpen"
+      v-model="exportDialogOpen"
+      :project-id="projectId"
+      :project-name="projectName"
+      :form="form"
+      :item="exportDialogItem"
+    />
 
   </v-card>
 </template>
@@ -238,7 +271,17 @@ import FormRenderItem from '@/components/FormRenderItem.vue';
 const props = defineProps<{
   projectId: string;
   form: any;
+  projectName?: string;
 }>();
+
+// 文件匯出（PDF / Word 模板）
+const FormExportDialog = defineAsyncComponent(() => import('@/components/FormExportDialog.vue'));
+const exportDialogOpen = ref(false);
+const exportDialogItem = ref<any>(null);
+const openExportDialog = (item: any) => {
+  exportDialogItem.value = item;
+  exportDialogOpen.value = true;
+};
 
 defineEmits(['close']);
 
