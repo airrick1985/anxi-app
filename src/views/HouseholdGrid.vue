@@ -2869,6 +2869,23 @@ const exportToExcel = () => {
   }
   ws['!freeze'] = { ySplit: 2 };
 
+  // 5-1. 電話欄位設為「文字格式」，避免使用者用 Excel 開檔／編輯時把開頭 0 去掉
+  const phoneHeaderNames = ['買方電話', '受託人電話'];
+  const phoneColIndexes = chineseHeaders
+    .map((h, i) => (phoneHeaderNames.includes(h) ? i : -1))
+    .filter(i => i !== -1);
+  for (const C of phoneColIndexes) {
+    // 資料列從第 3 列（索引 2）開始（第 1 列警語、第 2 列標頭）
+    for (let R = 2; R <= range.e.r; ++R) {
+      const address = XLSX.utils.encode_cell({ r: R, c: C });
+      const cell = ws[address];
+      if (!cell || cell.v === null || cell.v === undefined || cell.v === '') continue;
+      cell.t = 's';           // 強制為文字型
+      cell.v = String(cell.v);
+      cell.z = '@';           // 儲存格數值格式設為文字，Excel 才會保留開頭 0
+    }
+  }
+
   // 6. 產生並下載檔案
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '戶別資料總表');
@@ -2942,6 +2959,23 @@ const handleFileChange = () => {
                 const upperVal = val.toUpperCase().trim();
                 if (upperVal === 'TRUE') val = true;
                 if (upperVal === 'FALSE') val = false;
+              }
+            }
+
+            // 電話欄位救援：Excel 常把開頭 0 的電話當成數字，導致前導 0 被去掉。
+            // 台灣電話號碼皆為 0 開頭，且只會掉最前面那一個 0，故對「純數字」的電話補回一個 0。
+            if (key === 'buyerPhone' || key === 'agentPhone') {
+              if (typeof val === 'number' && Number.isFinite(val)) {
+                // 數字型 → Excel 已去掉開頭 0，補回
+                val = '0' + String(val);
+              } else if (typeof val === 'string') {
+                const trimmed = val.trim();
+                // 純數字字串但沒有 0 開頭（例如被當數字貼上）也補回；其餘（含分隔符、已 0 開頭）保持原樣
+                if (/^\d+$/.test(trimmed) && !trimmed.startsWith('0')) {
+                  val = '0' + trimmed;
+                } else {
+                  val = trimmed;
+                }
               }
             }
 
