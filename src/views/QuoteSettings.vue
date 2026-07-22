@@ -183,7 +183,8 @@
               :show-package-deal="showPackageDealColumns"
               :is-loading="loading"
               :all-parking-data="parkingStore.parkingData || []"
-              :project-id="projectId" 
+              :project-id="projectId"
+              :all-sales-images="projectSalesImages"
               @remove="quoteStore.removeItem(item.internalId)"
               
             />
@@ -985,6 +986,19 @@ function goBack() {
 function openQuoteEditor() {
   isQuoteEditorDialogVisible.value = true;
 }
+
+// ✅ [新增] 建案銷控圖片：供 QuoteItem 點擊戶別開啟圖片燈箱（salesDataStore 已快取，重複呼叫不會重載）
+const projectSalesImages = computed(() => salesDataStore.getProjectData(projectId.value).images || []);
+
+async function ensureSalesImagesLoaded() {
+  try {
+    await salesDataStore.loadProjectData(projectId.value);
+  } catch (e) {
+    console.error('[QuoteSettings] 載入銷控圖片失敗:', e);
+  }
+}
+onMounted(ensureSalesImagesLoaded);
+watch(projectId, (newId) => { if (newId) ensureSalesImagesLoaded(); });
 
 // ✅ [新增] 走「列印報價」進入（?pick=1）且報價單為空 → 開戶別選擇彈窗
 async function maybeOpenPickerOnEntry() {

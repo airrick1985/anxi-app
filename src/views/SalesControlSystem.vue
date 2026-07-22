@@ -295,7 +295,34 @@
     <v-card variant="outlined" class="bg-white pa-3">
       <v-row dense>
         <v-col cols="12" sm="6" md="3">
-          <v-text-field v-model="filters.unitId" label="搜尋戶別" prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details clearable></v-text-field>
+          <v-select
+            v-model="filters.buildings"
+            :items="buildingOptions"
+            label="棟別 (多選)"
+            multiple
+            chips
+            closable-chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            clearable
+            :menu-props="{ maxHeight: 320 }"
+          ></v-select>
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-select
+            v-model="filters.floors"
+            :items="floorOptions"
+            label="樓層 (多選)"
+            multiple
+            chips
+            closable-chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            clearable
+            :menu-props="{ maxHeight: 320 }"
+          ></v-select>
         </v-col>
         <v-col cols="12" sm="6" md="3">
            <div class="d-flex align-center gap-2">
@@ -1445,7 +1472,8 @@ const filters = reactive({
   // --- ✅ [新增] 全域關鍵字搜尋（跨所有欄位，空白分隔為 AND） ---
   keyword: '',
   // --- 共用欄位 ---
-  unitId: '',
+  buildings: [], // ✅ 棟別 (多選勾選)
+  floors: [],    // ✅ 樓層 (多選勾選)
   areaMin: null,
   areaMax: null,
   totalPriceMin: null,
@@ -1493,11 +1521,37 @@ const personnelOptions = computed(() => {
   );
 });
 
+// ✅ [新增] 棟別篩選選項：取目前分類（住家/店面、報價模式是否隱藏已售）下所有棟別
+const buildingOptions = computed(() => {
+  const names = new Set();
+  (tableItems.value || []).forEach(u => {
+    if (u.building !== null && u.building !== undefined && u.building !== '') names.add(String(u.building));
+  });
+  return Array.from(names).sort((a, b) =>
+    a.localeCompare(b, 'zh-Hant', { numeric: true, sensitivity: 'base' })
+  );
+});
+
+// ✅ [新增] 樓層篩選選項：同上，由高樓層往低排序
+const floorOptions = computed(() => {
+  const floors = new Set();
+  (tableItems.value || []).forEach(u => {
+    if (u.floor !== null && u.floor !== undefined && u.floor !== '') floors.add(String(u.floor));
+  });
+  return Array.from(floors).sort((a, b) => {
+    const na = parseInt(a, 10);
+    const nb = parseInt(b, 10);
+    if (!isNaN(na) && !isNaN(nb) && na !== nb) return nb - na;
+    return b.localeCompare(a, 'zh-Hant', { numeric: true, sensitivity: 'base' });
+  });
+});
+
 // 3. 修改 activeFilterCount (加入新欄位計數)
 const activeFilterCount = computed(() => {
   let count = 0;
   if (filters.keyword && filters.keyword.trim()) count++;
-  if (filters.unitId) count++;
+  if (filters.buildings && filters.buildings.length > 0) count++;
+  if (filters.floors && filters.floors.length > 0) count++;
   if (filters.areaMin || filters.areaMax) count++;
   if (filters.totalPriceMin || filters.totalPriceMax) count++;
   if (filters.unitPriceMin || filters.unitPriceMax) count++;
@@ -1521,7 +1575,8 @@ const activeFilterCount = computed(() => {
 // 4. 修改 clearFilters (重置新欄位)
 const clearFilters = () => {
   filters.keyword = '';
- filters.unitId = '';
+  filters.buildings = [];
+  filters.floors = [];
   filters.areaMin = null; filters.areaMax = null;
   filters.totalPriceMin = null; filters.totalPriceMax = null;
   filters.unitPriceMin = null; filters.unitPriceMax = null;
@@ -1578,8 +1633,15 @@ const filteredTableItems = computed(() => {
     }
 
     // --- 基礎篩選 (共用) ---
-    // 1. 戶別搜尋
-    if (filters.unitId && !item.unitId.toLowerCase().includes(filters.unitId.toLowerCase())) return false;
+    // 1. 棟別 (多選勾選)
+    if (filters.buildings && filters.buildings.length > 0) {
+      if (!filters.buildings.includes(String(item.building))) return false;
+    }
+
+    // 1-1. 樓層 (多選勾選)
+    if (filters.floors && filters.floors.length > 0) {
+      if (!filters.floors.includes(String(item.floor))) return false;
+    }
 
     // 2. 面積範圍
     const area = Number(item.area_house_ping) || 0;

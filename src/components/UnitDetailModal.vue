@@ -105,6 +105,23 @@
                       persistent-hint></v-text-field>
                   </v-col>
 
+                  <v-col cols="12" md="3" v-if="editingData.area_terrace_ping > 0">
+                    <v-text-field v-model="editingData.price_list_house_only" label="房屋表價(不含露臺)" suffix="萬"
+                      type="number" variant="outlined" :bg-color="!isPriceEditable ? '#f5f5f5' : 'white'"
+                      class="input-price-list" :readonly="!isPriceEditable"
+                      :rules="[val => val >= 0 || '金額不可小於 0']"
+                      :hint="`單價: ${editingListHouseOnlyUnitPrice} 萬/坪`" persistent-hint></v-text-field>
+                  </v-col>
+
+                  <v-col cols="12" md="3" v-if="editingData.area_terrace_ping > 0">
+                    <v-text-field v-model="editingData.price_list_terrace" label="露臺表價" suffix="萬" type="number"
+                      variant="outlined" :bg-color="!isPriceEditable ? '#f5f5f5' : 'white'" class="input-price-list"
+                      :readonly="!isPriceEditable"
+                      :rules="[val => val >= 0 || '金額不可小於 0']"
+                      :hint="`露臺 ${formatNumber(editingData.area_terrace_ping, 2)} 坪 · 單價: ${editingListTerraceUnitPrice} 萬/坪`"
+                      persistent-hint></v-text-field>
+                  </v-col>
+
                   <v-col cols="12" md="3" v-if="viewMode === 'sales'">
                     <v-text-field v-model="editingData.price_floor_house_total" label="房屋底價" suffix="萬" type="number"
                       variant="outlined" :bg-color="!isPriceEditable ? '#f5f5f5' : 'white'" class="input-price-floor"
@@ -989,6 +1006,22 @@ const editingListUnitPrice = computed(() => {
   return area > 0 ? (price / area).toFixed(2) : '0.00';
 });
 
+// ✅ 編輯模式即時計算 - 房屋(不含露臺)表價單價
+const editingListHouseOnlyUnitPrice = computed(() => {
+  if (!editingData.value) return '0.00';
+  const price = Number(editingData.value.price_list_house_only) || 0;
+  const area = Number(editingData.value.area_house_ping) || 0;
+  return area > 0 ? (price / area).toFixed(2) : '0.00';
+});
+
+// ✅ 編輯模式即時計算 - 露臺表價單價
+const editingListTerraceUnitPrice = computed(() => {
+  if (!editingData.value) return '0.00';
+  const price = Number(editingData.value.price_list_terrace) || 0;
+  const area = Number(editingData.value.area_terrace_ping) || 0;
+  return area > 0 ? (price / area).toFixed(2) : '0.00';
+});
+
 // ✅ [新增] 編輯模式即時計算 - 底價單價
 const editingFloorUnitPrice = computed(() => {
   if (!editingData.value) return '0.00';
@@ -1681,6 +1714,14 @@ async function executeSaveChanges() {
     }
 
     const data = editingData.value;
+
+    // ✅ 露臺表價異動時同步重算「露臺單價(表價)」，避免銷控表欄位殘留舊值
+    const terracePing = Number(data.area_terrace_ping) || 0;
+    if (terracePing > 0) {
+      const terraceListPrice = Number(data.price_list_terrace) || 0;
+      data.price_list_terrace_unit = Number((terraceListPrice / terracePing).toFixed(2));
+    }
+
     const payload = {
       projectName: props.projectName,
       projectId: props.projectId,

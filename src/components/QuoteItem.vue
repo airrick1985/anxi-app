@@ -2,7 +2,15 @@
   <div>
     <div v-if="isMobile" class="quote-item-mobile">
       <div class="d-flex justify-space-between align-center mb-2">
-       <span class="text-h6 font-weight-bold text-primary">{{ item.unitId }}</span>
+       <span
+         class="text-h6 font-weight-bold text-primary"
+         :class="{ 'unit-id-clickable': hasHouseholdImages }"
+         :title="hasHouseholdImages ? '點擊檢視戶別圖片' : ''"
+         @click="openImageLightbox"
+       >
+         {{ item.unitId }}
+         <v-icon v-if="hasHouseholdImages" size="small" class="ml-1">mdi-image-multiple-outline</v-icon>
+       </span>
         <v-btn
           color="red"
           variant="flat"
@@ -113,7 +121,15 @@
     </div>
 
     <div v-else class="quote-item-row">
-      <div class="item-cell flex-1 text-h6 font-weight-bold text-primary">{{ item.unitId }}</div>
+      <div
+        class="item-cell flex-1 text-h6 font-weight-bold text-primary"
+        :class="{ 'unit-id-clickable': hasHouseholdImages }"
+        :title="hasHouseholdImages ? '點擊檢視戶別圖片' : ''"
+        @click="openImageLightbox"
+      >
+        {{ item.unitId }}
+        <v-icon v-if="hasHouseholdImages" size="small" class="ml-1">mdi-image-multiple-outline</v-icon>
+      </div>
    
    <div class="item-cell flex-1 text-body-2 text-grey-darken-2">
         {{ item.unitDetails.propertyType || item.unitDetails.layout || '-' }}
@@ -499,6 +515,13 @@
       :project-id="props.projectId" @request-open-slide="emit('request-open-slide')"
     />
 
+    <!-- ✅ [新增] 戶別圖片燈箱（含放大燈箱） -->
+    <UnitImageLightbox
+      v-model="isImageLightboxVisible"
+      :images="householdImages"
+      :title="item.unitId"
+    />
+
     <!-- ✅ [新增] 議價調整對話框 -->
     <v-dialog v-model="isNegotiationDialogVisible" max-width="500">
       <v-card>
@@ -649,6 +672,7 @@ import { useQuoteStore } from '@/store/quoteStore';
 import { useDisplay } from 'vuetify';
 import PaymentDetails from './PaymentDetails.vue';
 import ParkingEditModal from './ParkingEditModal.vue';
+import UnitImageLightbox from './UnitImageLightbox.vue';
 import { useProjectStore } from '@/store/projectStore';
 
 const props = defineProps({
@@ -659,7 +683,8 @@ const props = defineProps({
   showPackageDeal: { type: Boolean, default: true },
   isLoading: { type: Boolean, default: false },
   allParkingData: { type: Array, default: () => [] },
-  projectId: { type: String, required: true } // ✓ 新增：接收 projectId
+  projectId: { type: String, required: true }, // ✓ 新增：接收 projectId
+  allSalesImages: { type: Array, default: () => [] } // ✅ [新增] 建案全部銷控圖片，用於戶別圖片燈箱
 });
 
 const emit = defineEmits(['remove', 'request-open-slide']);
@@ -671,6 +696,21 @@ const isPaymentDetailsVisible = ref(false);
 
 // 車位選擇相關狀態
 const isParkingModalOpen = ref(false);
+
+// ✅ [新增] 戶別圖片燈箱：以戶別的 salesImages(圖片名稱) 對應建案圖片庫
+const isImageLightboxVisible = ref(false);
+const householdImages = computed(() => {
+  const names = props.item?.unitDetails?.salesImages;
+  if (!Array.isArray(names) || names.length === 0) return [];
+  const imageMap = new Map((props.allSalesImages || []).map(img => [img.imageName, img]));
+  return names.map(name => imageMap.get(name)).filter(img => img && img.downloadURL);
+});
+const hasHouseholdImages = computed(() => householdImages.value.length > 0);
+
+function openImageLightbox() {
+  if (!hasHouseholdImages.value) return;
+  isImageLightboxVisible.value = true;
+}
 
 // ✅ [新增] 議價調整相關狀態
 const isNegotiationDialogVisible = ref(false);
@@ -1861,6 +1901,17 @@ watch(isNegotiationDialogVisible, (isVisible) => {
 </script>
 
 <style scoped>
+/* ✅ [新增] 有圖片的戶別：可點擊開啟燈箱 */
+.unit-id-clickable {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  transition: opacity 0.15s;
+}
+.unit-id-clickable:hover {
+  opacity: 0.7;
+}
+
 /* Styles remain the same */
 .quote-item-row { display: flex; align-items: center; width: 100%; padding: 8px 0; border-bottom: 1px solid #eee; }
 .item-cell { padding: 0 8px; display: flex; align-items: center; justify-content: center; text-align: center; }
