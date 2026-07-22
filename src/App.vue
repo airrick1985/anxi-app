@@ -3,18 +3,8 @@
     <router-view />
   </component>
 
-  <v-overlay
-    :model-value="isUpdating"
-    class="align-center justify-center"
-    persistent
-  >
-    <v-progress-circular
-      color="white"
-      indeterminate
-      size="64"
-    ></v-progress-circular>
-    <div class="text-center mt-4" style="color: white;">更新中，請稍後...(重新整理頁面)</div>
-  </v-overlay>
+  <!-- ✅ [新增] 版本強制更新對話框：useVersionCheck 偵測到新版本（前景）時開啟 -->
+  <UpdateDialog :model-value="needUpdate" :latest-version="latestVersion" />
 
   <v-dialog
     v-model="sessionErrorDialog"
@@ -63,9 +53,10 @@ import { useUserStore } from '@/store/user';
 import { db } from '@/firebase'; 
 import { doc, onSnapshot } from 'firebase/firestore'; 
 import { useToast } from 'vue-toastification'; 
-import DefaultLayout from './layouts/DefaultLayout.vue'; 
-import { useRegisterSW } from 'virtual:pwa-register/vue';
+import DefaultLayout from './layouts/DefaultLayout.vue';
 import SystemBugReport from '@/components/SystemBugReport.vue';
+import UpdateDialog from '@/components/UpdateDialog.vue';
+import { useVersionCheck } from '@/composables/useVersionCheck';
 
 // ✓ 步驟二：建立 router 實例
 const router = useRouter(); // <--- 新增此行
@@ -74,7 +65,10 @@ const projectStore = useProjectStore();
 const userStore = useUserStore(); 
 const toast = useToast(); 
 
-const isUpdating = ref(false);
+// ✅ [新增] 版本檢查器：每 5 分鐘 + 分頁回前景時比對線上版本，
+// 背景分頁靜默更新、前景跳強制更新對話框（UpdateDialog）
+const { needUpdate, latestVersion } = useVersionCheck();
+
 // ✅ [新增] 控制錯誤 Dialog 的變數
 const sessionErrorDialog = ref(false);
 
@@ -100,29 +94,8 @@ const layoutComponent = computed(() => {
   return DefaultLayout;
 });
 
-const { needRefresh, updateServiceWorker } = useRegisterSW({
-  onRegistered(r) {
-    console.log(`Service Worker registered: ${r}`);
-    if (r) {
-      // 頁面載入即 check 一次新版本（否則要等 interval 或瀏覽器自行判斷）
-      r.update();
-      setInterval(() => {
-        r.update();
-      }, 60 * 60 * 1000);
-    }
-  },
-  onRegisterError(error) {
-    console.error('Service Worker registration error:', error);
-  },
-});
-
-watch(needRefresh, (newValue) => {
-  if (newValue) {
-    console.log('New content available, forcing update.');
-    isUpdating.value = true;
-    updateServiceWorker();
-  }
-});
+// PWA 已停用：原本的 useRegisterSW / needRefresh 邏輯（stub no-op、永不觸發）已移除，
+// 版本更新改由上方 useVersionCheck 負責。
 
 // ✓ 步驟三：修改 onMounted 函式
 onMounted(() => {

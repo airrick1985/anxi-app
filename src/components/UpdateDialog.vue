@@ -1,6 +1,8 @@
 <!-- src/components/UpdateDialog.vue -->
+<!-- ✅ [改版] 原本綁 PWA useRegisterSW（已停用、永不觸發），改為 props 驅動：
+     由 App.vue 的 useVersionCheck 偵測新版本後開啟。persistent + 無關閉鈕 = 強制更新。 -->
 <template>
-    <v-dialog v-model="show" persistent max-width="400">
+    <v-dialog :model-value="modelValue" persistent max-width="400">
       <v-card>
         <v-card-title>新版本已推出</v-card-title>
         <v-card-text>
@@ -30,7 +32,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn color="primary" @click="refreshApp">請重新整理頁面</v-btn>
+          <v-btn color="primary" variant="elevated" prepend-icon="mdi-refresh" @click="refreshApp">立即更新</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -38,14 +40,17 @@
   
   <script setup>
   import { ref, watch } from 'vue';
-  import { useRegisterSW } from 'virtual:pwa-register/vue';
-  
-  const show = ref(false);
+  import { forceReloadToLatest } from '@/composables/useVersionCheck';
+
+  const props = defineProps({
+    modelValue: { type: Boolean, default: false },
+    // 偵測到的新版本號（release-notes.json 抓不到時的備援顯示）
+    latestVersion: { type: String, default: '' },
+  });
+
   // 【關鍵修改】初始化 release 物件以匹配新的 JSON 結構
   const release = ref({ version: '', date: '', categories: {}, rawNotes: [] });
-  
-  const { needRefresh, updateServiceWorker } = useRegisterSW();
-  
+
   const fetchReleaseNotes = async () => {
     try {
       // 為了確保每次都獲取最新檔案，加入時間戳
@@ -57,7 +62,7 @@
       
       // 【關鍵修改】直接將獲取的資料賦值給 release.value
       release.value = {
-        version: data.version || '新版本',
+        version: data.version || props.latestVersion || '新版本',
         date: data.date || '',
         categories: data.categories || {},
         rawNotes: Array.isArray(data.rawNotes) && data.rawNotes.length > 0 
@@ -69,7 +74,7 @@
       console.error('載入 release-notes.json 失敗', e);
       // 【關鍵修改】提供更完整的備用資訊，包括版本號
       release.value = {
-        version: '新版本',
+        version: props.latestVersion || '新版本',
         date: '',
         categories: {}, // 清空分類
         rawNotes: ['有新版本可用，請點擊下方按鈕更新！'] // 顯示通用提示
@@ -77,15 +82,14 @@
     }
   };
   
-  const refreshApp = async () => {
-    await updateServiceWorker(true);
+  const refreshApp = () => {
+    // 帶時間戳 query 重新載入，突破 index.html 的 HTTP 快取
+    forceReloadToLatest();
   };
-  
-  watch(needRefresh, (isNeeded) => {
-    if (isNeeded) {
-      fetchReleaseNotes();
-      show.value = true;
-    }
+
+  // 對話框開啟時抓取更新內容
+  watch(() => props.modelValue, (isOpen) => {
+    if (isOpen) fetchReleaseNotes();
   });
   </script>
   
