@@ -13,7 +13,9 @@
     </div>
     
     <!-- 內層捲動區：只有畫布會捲動，功能按鈕釘在外層四角不受影響 -->
-    <div class="canvas-scroll-area">
+    <div class="canvas-scroll-area" @mousedown="onMarqueeStart">
+    <!-- 包裹層以「縮放後的實際尺寸」佔位，捲動範圍與視覺一致，縮小時自動置中 -->
+    <div class="canvas-zoom-wrapper" :style="zoomWrapperStyle">
     <div
       class="parking-canvas-area"
       ref="canvasAreaRef"
@@ -40,7 +42,8 @@
         :draggable="!previewMode && !spot.locked"
         :resizable="!previewMode && !spot.locked"
         :rotatable="!previewMode && !spot.locked"
-        :is-conflict-check="false" 
+        :is-conflict-check="false"
+        :scale-ratio="canvasScale"
         @activated="handleSpotActivated(spot)"
         @deactivated="handleSpotDeactivated"    
         @dragging="(x, y) => handleTransform(spot.id, { x, y }, 'dragging')"
@@ -52,10 +55,10 @@
         :snap="true"
         :snapTolerance="5"
         >
-        <div 
-          class="spot-content" 
+        <div
+          class="spot-content"
           :style="getSpotStyle(spot)"
-          :class="{ 'clickable-spot': previewMode && spot.parkingData }"
+          :class="{ 'clickable-spot': previewMode && spot.parkingData, 'multi-selected': multiSelectedIds.length > 1 && multiSelectedIds.includes(spot.id) }"
           @click.stop="handleSpotClick(spot)"
         >
           <span 
@@ -67,6 +70,14 @@
           </span>
         </div>
       </vue-drag-resize-rotate>
+
+      <!-- 框選範圍指示框 -->
+      <div
+        v-if="marqueeRect"
+        class="marquee-box"
+        :style="{ left: marqueeRect.x + 'px', top: marqueeRect.y + 'px', width: marqueeRect.w + 'px', height: marqueeRect.h + 'px' }"
+      ></div>
+    </div>
     </div>
     </div>
 
@@ -179,7 +190,7 @@
       @mousedown="onPropertiesPanelDragStart"
     >
       <div class="panel-header" style="cursor: move;">
-        <h4 style="margin: 0; pointer-events: none;">車位屬性</h4>
+        <h4 style="margin: 0; pointer-events: none;">車位屬性{{ multiSelectedIds.length > 1 ? `（已選 ${multiSelectedIds.length} 個）` : '' }}</h4>
         <button @click="closePropertiesPanel" class="btn-close">
           <svg-icon type="mdi" :path="mdiClose"></svg-icon>
         </button>
@@ -246,7 +257,7 @@
         </div>
         <div class="panel-actions">
           <button @click="deleteSelectedSpot" class="btn btn-danger btn-sm">
-            <svg-icon type="mdi" :path="mdiTrashCanOutline" class="icon"></svg-icon> 刪除車位
+            <svg-icon type="mdi" :path="mdiTrashCanOutline" class="icon"></svg-icon> 刪除車位{{ multiSelectedIds.length > 1 ? `（${multiSelectedIds.length} 個）` : '' }}
           </button>
         </div>
       </div>
@@ -536,18 +547,35 @@ export default {
     const canvasAreaRef = ref(null)
     const containerRef = ref(null) 
     const canvasScale = ref(1) 
-    const canvasAreaStyle = computed(() => ({ 
+    const canvasAreaStyle = computed(() => ({
       width: `${canvasWidth.value}px`,
       height: `${canvasHeight.value}px`,
       transform: `scale(${canvasScale.value})`,
-      transformOrigin: 'top left', 
+      transformOrigin: 'top left',
+    }));
+    // 包裹層以縮放後尺寸佔位，讓捲動範圍與視覺一致
+    const zoomWrapperStyle = computed(() => ({
+      width: `${canvasWidth.value * canvasScale.value}px`,
+      height: `${canvasHeight.value * canvasScale.value}px`,
     }));
 
     // 車位狀態 ref
-    const spotLayouts = ref([]) 
-    const selectedSpotId = ref(null) 
-    const selectedSpot = ref(null) 
-    const spotProperties = ref({}) 
+    const spotLayouts = ref([])
+    const selectedSpotId = ref(null)
+    const selectedSpot = ref(null)
+    const spotProperties = ref({})
+
+    // 多選狀態：multiSelectedIds 含主選取（selectedSpotId）在內的所有選取車位
+    const multiSelectedIds = ref([])
+    const isShiftDown = ref(false)
+
+    // 框選（滑鼠圈選）狀態
+    const marqueeRect = ref(null)
+    let marqueeStartX = 0
+    let marqueeStartY = 0
+    let marqueeBaseIds = []
+    let marqueeMoved = false
+    let marqueeActive = false
 
     // 背景圖/匯入 ref
     const bgImageUrl = ref(null) 
@@ -605,11 +633,12 @@ export default {
 
     // Methods
     const fitToScreen = () => {
-      if (!containerRef.value || !canvasWidth.value) return;
+      if (!containerRef.value || !canvasWidth.value || !canvasHeight.value) return;
       const containerW = containerRef.value.clientWidth - 40;
-      // 「最適」與載入預設縮放：符合寬度（超出的高度以捲動瀏覽）
-      const scale = containerW / canvasWidth.value;
-      canvasScale.value = parseFloat(scale.toFixed(2));
+      const containerH = containerRef.value.clientHeight - 40;
+      // 「最適」與載入預設縮放：同時符合視窗寬度與高度，整張底圖完整顯示（自適應瀏覽器高度）
+      const scale = Math.min(containerW / canvasWidth.value, containerH / canvasHeight.value);
+      canvasScale.value = Math.max(0.05, parseFloat(scale.toFixed(2)));
     };
 
     const onPropertiesPanelDragStart = (e) => {
@@ -669,13 +698,26 @@ export default {
     };
 
     const handleKeyDown = (event) => {
+      if (event.key === 'Shift') isShiftDown.value = true;
       if (showDetailModal.value && event.key === 'Escape') {
         closeDetailModal();
         return;
       }
-      if (!selectedSpotId.value) return;
-      const spot = spotLayouts.value.find(s => s.id === selectedSpotId.value);
-      if (!spot) return;
+      // 在輸入框內打字時不觸發畫布快捷鍵
+      const tag = event.target && event.target.tagName;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+      if (event.key === 'Escape') {
+        clearSelection();
+        return;
+      }
+      if (event.key === 'Delete' && !props.previewMode) {
+        if (multiSelectedIds.value.length > 0 || selectedSpotId.value) deleteSelectedSpot();
+        return;
+      }
+      const ids = multiSelectedIds.value.length > 0
+        ? multiSelectedIds.value
+        : (selectedSpotId.value ? [selectedSpotId.value] : []);
+      if (ids.length === 0) return;
       const nudgeAmount = event.shiftKey ? 10 : 1;
       let dx = 0, dy = 0;
       switch (event.key) {
@@ -683,17 +725,27 @@ export default {
         case 'ArrowDown': dy = nudgeAmount; break;
         case 'ArrowLeft': dx = -nudgeAmount; break;
         case 'ArrowRight': dx = nudgeAmount; break;
-        default: return; 
+        default: return;
       }
       event.preventDefault();
-      spot.x = Math.round(spot.x + dx);
-      spot.y = Math.round(spot.y + dy);
-      if (spotProperties.value) {
-        spotProperties.value.x = spot.x;
-        spotProperties.value.y = spot.y;
+      spotLayouts.value.forEach(s => {
+        if (ids.includes(s.id) && !s.locked) {
+          s.x = Math.round(s.x + dx);
+          s.y = Math.round(s.y + dy);
+        }
+      });
+      const primary = spotLayouts.value.find(s => s.id === selectedSpotId.value);
+      if (primary && spotProperties.value) {
+        spotProperties.value.x = primary.x;
+        spotProperties.value.y = primary.y;
       }
       emit('spots-changed');
     };
+
+    const handleKeyUp = (event) => {
+      if (event.key === 'Shift') isShiftDown.value = false;
+    };
+    const handleWindowBlur = () => { isShiftDown.value = false; };
 
     const zoomStep = 0.1;
     const maxZoom = 2.0;
@@ -846,24 +898,168 @@ export default {
       return fields.filter(f => f.value);
     }
     
+    const clearSelection = () => {
+      multiSelectedIds.value = [];
+      selectedSpotId.value = null;
+      selectedSpot.value = null;
+    };
+
     const handleSpotActivated = (spot) => {
       if (props.previewMode) return;
-      selectedSpotId.value = spot.id; 
+      if (isShiftDown.value) {
+        // Shift+點選：切換加入/移出多選
+        if (multiSelectedIds.value.includes(spot.id)) {
+          multiSelectedIds.value = multiSelectedIds.value.filter(id => id !== spot.id);
+          if (selectedSpotId.value === spot.id) {
+            const lastId = multiSelectedIds.value[multiSelectedIds.value.length - 1] || null;
+            selectedSpotId.value = lastId;
+            const last = spotLayouts.value.find(s => s.id === lastId);
+            if (last) selectSpot(last);
+            else selectedSpot.value = null;
+          }
+          return;
+        }
+        multiSelectedIds.value = [...multiSelectedIds.value, spot.id];
+      } else if (!multiSelectedIds.value.includes(spot.id)) {
+        // 點選已在多選中的車位保留群組（可整組拖曳）；點選群組外車位則收合為單選
+        multiSelectedIds.value = [spot.id];
+      }
+      selectedSpotId.value = spot.id;
       selectSpot(spot);
     };
 
-    const handleTransform = (spotId, payload, eventType) => { 
+    const handleSpotDeactivated = () => {
+      // 選取的清除交由空白處 mousedown（onMarqueeStart）處理，
+      // 這裡不動作，避免 Shift 多選/框選過程中選取被清掉
+    };
+
+    // 取得旋轉後的軸對齊外框，供框選碰撞判定
+    const getSpotBBox = (spot) => {
+      const rad = ((spot.rotation || 0) * Math.PI) / 180;
+      const cx = spot.x + spot.width / 2;
+      const cy = spot.y + spot.height / 2;
+      const hw = Math.abs(Math.cos(rad)) * spot.width / 2 + Math.abs(Math.sin(rad)) * spot.height / 2;
+      const hh = Math.abs(Math.sin(rad)) * spot.width / 2 + Math.abs(Math.cos(rad)) * spot.height / 2;
+      return { x: cx - hw, y: cy - hh, w: hw * 2, h: hh * 2 };
+    };
+
+    const getMarqueeHits = (rect) => {
+      return spotLayouts.value
+        .filter(spot => {
+          const b = getSpotBBox(spot);
+          return b.x < rect.x + rect.w && b.x + b.w > rect.x && b.y < rect.y + rect.h && b.y + b.h > rect.y;
+        })
+        .map(spot => spot.id);
+    };
+
+    const toCanvasPoint = (e) => {
+      const rect = canvasAreaRef.value.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left) / canvasScale.value,
+        y: (e.clientY - rect.top) / canvasScale.value,
+      };
+    };
+
+    const onMarqueeStart = (e) => {
+      if (props.previewMode || e.button !== 0) return;
+      // 點在車位上交給拖曳套件處理
+      if (e.target.closest('.parking-spot-item')) return;
+      // 點在捲動條上不啟動框選
+      if (e.target.classList.contains('canvas-scroll-area') &&
+          (e.offsetX > e.target.clientWidth || e.offsetY > e.target.clientHeight)) return;
+      if (!canvasAreaRef.value) return;
+
+      marqueeActive = true;
+      marqueeMoved = false;
+      const p = toCanvasPoint(e);
+      marqueeStartX = p.x;
+      marqueeStartY = p.y;
+      // Shift 框選為累加模式；否則先清空現有選取
+      marqueeBaseIds = isShiftDown.value ? [...multiSelectedIds.value] : [];
+      if (!isShiftDown.value) clearSelection();
+
+      document.addEventListener('mousemove', onMarqueeMove);
+      document.addEventListener('mouseup', onMarqueeEnd);
+      e.preventDefault();
+    };
+
+    const onMarqueeMove = (e) => {
+      if (!marqueeActive || !canvasAreaRef.value) return;
+      const p = toCanvasPoint(e);
+      const rect = {
+        x: Math.min(marqueeStartX, p.x),
+        y: Math.min(marqueeStartY, p.y),
+        w: Math.abs(p.x - marqueeStartX),
+        h: Math.abs(p.y - marqueeStartY),
+      };
+      // 位移門檻，避免單純點擊誤判為框選
+      if (rect.w * canvasScale.value < 4 && rect.h * canvasScale.value < 4 && !marqueeMoved) return;
+      marqueeMoved = true;
+      marqueeRect.value = rect;
+      // 框選過程即時預覽選取結果
+      const hits = getMarqueeHits(rect);
+      multiSelectedIds.value = [...new Set([...marqueeBaseIds, ...hits])];
+    };
+
+    const onMarqueeEnd = () => {
+      document.removeEventListener('mousemove', onMarqueeMove);
+      document.removeEventListener('mouseup', onMarqueeEnd);
+      if (!marqueeActive) return;
+      marqueeActive = false;
+
+      if (marqueeMoved && marqueeRect.value) {
+        const ids = multiSelectedIds.value;
+        if (ids.length > 0) {
+          // 以最後一個命中的車位作為主選取（顯示控制點與屬性面板）
+          const lastId = ids[ids.length - 1];
+          const last = spotLayouts.value.find(s => s.id === lastId);
+          if (last) {
+            selectedSpotId.value = last.id;
+            selectSpot(last);
+          }
+        }
+      }
+      marqueeRect.value = null;
+    };
+
+    // 群組同步：拖曳時其餘選取車位跟著位移；縮放/旋轉時套用相同尺寸與角度
+    const syncGroupTransform = (spot, eventType, dx, dy) => {
+      if (multiSelectedIds.value.length <= 1 || !multiSelectedIds.value.includes(spot.id)) return;
+      spotLayouts.value.forEach(s => {
+        if (s.id === spot.id || !multiSelectedIds.value.includes(s.id) || s.locked) return;
+        if ((eventType === 'dragging' || eventType === 'dragstop') && (dx || dy)) {
+          s.x = Math.round(s.x + dx);
+          s.y = Math.round(s.y + dy);
+        }
+        if (eventType === 'resizing' || eventType === 'resizestop') {
+          s.width = spot.width;
+          s.height = spot.height;
+        }
+        if (eventType === 'rotating' || eventType === 'rotatestop') {
+          s.rotation = spot.rotation;
+        }
+      });
+    };
+
+    const applyTransformPayload = (spot, payload, eventType) => {
       const { x, y, w, h, r } = payload;
+      const dx = x !== undefined ? Math.round(x) - spot.x : 0;
+      const dy = y !== undefined ? Math.round(y) - spot.y : 0;
+      if (x !== undefined) spot.x = Math.round(x);
+      if (y !== undefined) spot.y = Math.round(y);
+      if (w !== undefined) spot.width = Math.round(w);
+      if (h !== undefined) spot.height = Math.round(h);
+      if (r !== undefined) spot.rotation = Math.round(r);
+      syncGroupTransform(spot, eventType, dx, dy);
+    };
+
+    const handleTransform = (spotId, payload, eventType) => {
       const spot = spotLayouts.value.find(s => s.id === spotId);
       if (spot) {
-        if (x !== undefined) spot.x = Math.round(x);
-        if (y !== undefined) spot.y = Math.round(y);
-        if (w !== undefined) spot.width = Math.round(w);
-        if (h !== undefined) spot.height = Math.round(h);
-        if (r !== undefined) spot.rotation = Math.round(r);
+        applyTransformPayload(spot, payload, eventType);
         if (selectedSpotId.value !== spotId) {
-            selectedSpotId.value = spot.id; 
-            selectSpot(spot); 
+            selectedSpotId.value = spot.id;
+            selectSpot(spot);
         }
         if (eventType === 'dragging') { spotProperties.value.x = spot.x; spotProperties.value.y = spot.y; }
         if (eventType === 'resizing') { spotProperties.value.width = spot.width; spotProperties.value.height = spot.height; spotProperties.value.x = spot.x; spotProperties.value.y = spot.y; }
@@ -871,15 +1067,10 @@ export default {
       }
     };
 
-    const handleTransformStop = (spotId, payload) => {
-      const { x, y, w, h, r } = payload; 
+    const handleTransformStop = (spotId, payload, eventType) => {
       const spot = spotLayouts.value.find(s => s.id === spotId);
       if (spot) {
-        if (x !== undefined) spot.x = Math.round(x);
-        if (y !== undefined) spot.y = Math.round(y);
-        if (w !== undefined) spot.width = Math.round(w);
-        if (h !== undefined) spot.height = Math.round(h);
-        if (r !== undefined) spot.rotation = Math.round(r);
+        applyTransformPayload(spot, payload, eventType);
         emit('spots-changed');
       }
     };
@@ -901,15 +1092,29 @@ export default {
         case 'height': spot.height = Number(value); break;
         case 'rotation': spot.rotation = Number(value); break;
       }
+      // 多選時，寬/高/旋轉輸入同步套用到所有選取車位
+      if (['width', 'height', 'rotation'].includes(property) && multiSelectedIds.value.length > 1) {
+        const key = property === 'rotation' ? 'rotation' : property;
+        spotLayouts.value.forEach(s => {
+          if (s.id !== spot.id && multiSelectedIds.value.includes(s.id) && !s.locked) {
+            s[key] = Number(value);
+          }
+        });
+      }
       spotProperties.value[property] = value;
       emit('spots-changed');
     };
 
     const deleteSelectedSpot = () => {
-      if (!selectedSpot.value) return;
-      if (confirm('確定要刪除此車位嗎？')) {
-        const index = spotLayouts.value.findIndex(s => s.id === selectedSpot.value.id);
-        if (index > -1) { spotLayouts.value.splice(index, 1); selectedSpot.value = null; selectedSpotId.value = null; emit('spots-changed'); }
+      const ids = multiSelectedIds.value.length > 0
+        ? multiSelectedIds.value
+        : (selectedSpot.value ? [selectedSpot.value.id] : []);
+      if (ids.length === 0) return;
+      const msg = ids.length > 1 ? `確定要刪除選取的 ${ids.length} 個車位嗎？` : '確定要刪除此車位嗎？';
+      if (confirm(msg)) {
+        spotLayouts.value = spotLayouts.value.filter(s => !ids.includes(s.id));
+        clearSelection();
+        emit('spots-changed');
       }
     }
     
@@ -966,24 +1171,32 @@ export default {
       }
       fitToScreen();
       window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keyup', handleKeyUp);
+      window.addEventListener('blur', handleWindowBlur);
     });
 
     onUnmounted(() => {
       if (resizeObserver) resizeObserver.disconnect();
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
       document.removeEventListener('mousemove', onPropertiesPanelDragMove);
       document.removeEventListener('mouseup', onPropertiesPanelDragEnd);
+      document.removeEventListener('mousemove', onMarqueeMove);
+      document.removeEventListener('mouseup', onMarqueeEnd);
     });
-    
+
     watch(() => props.floorPlan.id, () => {
       spotLayouts.value = []; bgImageUrl.value = null; canvasScale.value = 1; isCanvasLoading.value = true;
-      loadFloorData(); 
+      clearSelection();
+      loadFloorData();
     })
     
     watch(() => props.projectId, (newVal, oldVal) => { if (newVal !== oldVal) fetchAvailableFloors(); })
 
     return {
-      containerRef, canvasAreaRef, canvasAreaStyle, bgImageUrl, bgImageStyles, spotLayouts, selectedSpot, selectedSpotId, spotProperties, importDialog, loading, importing, previewParkings, totalParkingCount, displayMode: computed(() => props.displayMode), floorPlan: computed(() => props.floorPlan), previewMode: computed(() => props.previewMode), contextMode: computed(() => props.contextMode),
+      containerRef, canvasAreaRef, canvasAreaStyle, zoomWrapperStyle, bgImageUrl, bgImageStyles, spotLayouts, selectedSpot, selectedSpotId, spotProperties, importDialog, loading, importing, previewParkings, totalParkingCount, displayMode: computed(() => props.displayMode), floorPlan: computed(() => props.floorPlan), previewMode: computed(() => props.previewMode), contextMode: computed(() => props.contextMode),
+      multiSelectedIds, marqueeRect, onMarqueeStart, handleSpotDeactivated,
       getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, zoomIn, zoomOut, isCanvasLoading, propertiesPanelStyle, onPropertiesPanelDragStart,
       showDetailModal, selectedDetailSpot, handleSpotClick, closeDetailModal, getDetailStatusStyle,
       formatSalespersons,
@@ -1010,6 +1223,16 @@ export default {
   display: flex;
   justify-content: flex-start;
   align-items: flex-start;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* 以縮放後的實際尺寸佔位：捲動範圍與視覺一致；
+   margin: auto 在空間足夠時置中、內容超出時自動歸零維持可捲動 */
+.canvas-zoom-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  margin: auto;
 }
 
 :deep(.parking-spot-item) {
@@ -1017,12 +1240,13 @@ export default {
 }
 
 .parking-canvas-area {
-  position: relative; 
+  position: absolute;
+  top: 0;
+  left: 0;
   background-color: #ffffff;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   border: 1px solid #d9d9d9;
-  flex-shrink: 0; 
-  margin: 20px; 
+  flex-shrink: 0;
 }
 
 .background-image {
@@ -1039,10 +1263,24 @@ export default {
   image-rendering: crisp-edges;
 }
 
+.marquee-box {
+  position: absolute;
+  border: 1.5px dashed #007bff;
+  background: rgba(0, 123, 255, 0.08);
+  z-index: 50;
+  pointer-events: none;
+}
+
+.spot-content.multi-selected {
+  outline: 2px dashed #007bff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.15);
+}
+
 .spot-content {
   width: 100%;
   height: 100%;
-  border: 2px solid; 
+  border: 2px solid;
   background-color: #fff; 
   color: #000; 
   display: flex;
