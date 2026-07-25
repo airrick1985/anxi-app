@@ -90,6 +90,20 @@
     </template>
   </v-tooltip>
 
+  <!-- ✅ [新增] 建案簡介網址（報價單 QR Code）：僅銷控管理權限人員可見 -->
+  <v-tooltip v-if="canEditQuoteRemark" text="建案簡介網址（報價單 QR Code）" location="bottom">
+    <template v-slot:activator="{ props }">
+      <v-btn
+        v-bind="props"
+        icon="mdi-qrcode"
+        color="blue-grey-darken-2"
+        variant="tonal"
+        class="mr-4"
+        @click="isIntroUrlDialogVisible = true"
+      ></v-btn>
+    </template>
+  </v-tooltip>
+
   <v-btn
     color="primary"
     variant="tonal"
@@ -320,6 +334,13 @@
       :project-id="projectId"
     />
 
+    <!-- ✅ [新增] 建案簡介網址設定（銷控管理權限）：供列印報價單產生 QR Code -->
+    <QuoteIntroUrlDialog
+      v-model="isIntroUrlDialogVisible"
+      :project-id="projectId"
+      :project-name="projectName"
+    />
+
     <v-dialog v-model="pdfResultDialog" max-width="600px" persistent>
       <v-card>
         <v-card-title class="d-flex justify-space-between align-center">
@@ -463,6 +484,7 @@ import QuoteUnitPickerDialog from '@/components/QuoteUnitPickerDialog.vue';
 import QuotePrintDialog from '@/components/QuotePrintDialog.vue';
 import QuoteRemarkEditorDialog from '@/components/QuoteRemarkEditorDialog.vue';
 import QuotePackageLimitDialog from '@/components/QuotePackageLimitDialog.vue';
+import QuoteIntroUrlDialog from '@/components/QuoteIntroUrlDialog.vue';
 import { useSalesDataStore } from '@/store/salesDataStore';
 
 // ✅ [停用] 舊版「列印報價單」按鈕開關：暫時隱藏，只保留「列印報價單(含期款)」。
@@ -544,6 +566,9 @@ const isRemarkEditorVisible = ref(false);
 
 // ✅ [新增] 配套總價上限設定對話框
 const isPackageLimitDialogVisible = ref(false);
+
+// ✅ [新增] 建案簡介網址（報價單 QR Code）設定對話框
+const isIntroUrlDialogVisible = ref(false);
 
 // ✅ [新增] 報價單備註編輯權限：系統/超級管理員或具該案「銷控系統」權限（與活動訊息管理相同標準）
 const canEditQuoteRemark = computed(() => {

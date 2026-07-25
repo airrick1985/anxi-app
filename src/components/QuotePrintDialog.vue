@@ -127,6 +127,16 @@
             color="teal-darken-1"
             density="compact"
             hide-details
+            :class="{ 'mr-8': hasIntroQr }"
+          ></v-switch>
+          <!-- ✅ [新增] 建案簡介 QR Code：僅在該建案已設定簡介網址時出現 -->
+          <v-switch
+            v-if="hasIntroQr"
+            v-model="optShowQr"
+            label="建案簡介 QR Code"
+            color="teal-darken-1"
+            density="compact"
+            hide-details
           ></v-switch>
         </div>
         <div class="d-flex align-center ga-3 mt-2">
@@ -200,7 +210,9 @@
 import { ref, computed, watch } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useQuoteStore } from '@/store/quoteStore';
+import { useProjectStore } from '@/store/projectStore';
 import { fetchQuoteRemark } from '@/api';
+import { generateQrDataUrl } from '@/utils/quoteQrCode';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -213,6 +225,7 @@ const emit = defineEmits(['update:modelValue']);
 
 const toast = useToast();
 const quoteStore = useQuoteStore();
+const projectStore = useProjectStore();
 
 const show = computed({
   get: () => props.modelValue,
@@ -223,8 +236,27 @@ const show = computed({
 const optShowNegotiation = ref(true); // 顯示議價資訊（原價/優惠額），預設開啟
 const optShowNotes = ref(true);        // 列印期款說明（applyNote）
 const optShowApproval = ref(true);     // ✅ [新增] 主管簽核／用印欄，預設開啟
+const optShowQr = ref(true);           // ✅ [新增] 建案簡介 QR Code（僅在有設定網址時可切換）
 const optQuoteDate = ref('');          // 報價日期（可自訂）
 const optValidUntil = ref('');         // 有效期限（選填）
+
+// --- 建案簡介 QR Code（網址由銷控權限人員於「報價單設定」維護；未設定則整塊不渲染） ---
+const introQrDataUrl = ref('');
+const hasIntroQr = computed(() => !!introQrDataUrl.value);
+
+// 讀取該建案的簡介網址並產生中央帶建案名稱的 QR Code；失敗或未設定時一律不印
+async function loadIntroQr() {
+  introQrDataUrl.value = '';
+  try {
+    const data = await projectStore.fetchProjectSettings(props.projectId);
+    const url = String(data?.quoteIntroUrl || '').trim();
+    if (!url) return;
+    introQrDataUrl.value = await generateQrDataUrl(url, props.projectName, { size: 512 });
+  } catch (e) {
+    console.error('[QuotePrintDialog] 建案簡介 QR Code 產生失敗:', e);
+    introQrDataUrl.value = '';
+  }
+}
 
 // --- 報價單備註（渲染於每戶報價單最下方；每次開啟對話框時重新載入） ---
 const remarkHtml = ref('');
@@ -280,10 +312,12 @@ watch(show, (visible) => {
     .map(i => i.internalId);
   optShowNegotiation.value = true;
   optShowApproval.value = true;
+  optShowQr.value = true;
   optQuoteDate.value = isoTodayTW();
   optValidUntil.value = '';
   isRemarkExpanded.value = false;
   loadRemark();
+  loadIntroQr();
 });
 
 const isAllSelected = computed(() =>
@@ -365,7 +399,7 @@ function renderPayBlock(block, accent, title, totalLabel, totalValue, isFull = f
 }
 
 // --- 單一戶別 → 一頁 A4 ---
-function renderSheet(item, pageIndex, pageTotal) {
+function renderSheet(item) {
   const id = item.internalId;
   const ud = item.unitDetails || {};
   const type = ud.propertyType || ud.layout || '-';
@@ -507,6 +541,14 @@ function renderSheet(item, pageIndex, pageTotal) {
 
   const validText = optValidUntil.value ? `　有效期限至：${fmtDate(optValidUntil.value)}` : '';
 
+  // ✅ [新增] 建案簡介 QR Code：未設定網址（或關閉選項）時完全不渲染，頁尾維持原本版面
+  const showQr = optShowQr.value && !!introQrDataUrl.value;
+  const qrBlock = showQr ? `
+      <div class="foot-qr">
+        <img src="${introQrDataUrl.value}" alt="建案簡介 QR Code">
+        <span class="qr-cap">掃描看建案簡介</span>
+      </div>` : '';
+
   return `
   <div class="sheet">
    <div class="inner">
@@ -540,8 +582,7 @@ function renderSheet(item, pageIndex, pageTotal) {
     ${approvalBlock}
 
     <footer class="foot">
-      <div class="foot-person">銷售顧問：<b>${esc(props.personnelName || '—')}</b>　聯絡電話：<b>${esc(props.personnelPhone || '—')}</b></div>
-      <div class="foot-meta">第 ${pageIndex + 1} 頁／共 ${pageTotal} 頁</div>
+      <div class="foot-person">銷售顧問：<b>${esc(props.personnelName || '—')}</b>　聯絡電話：<b>${esc(props.personnelPhone || '—')}</b></div>${qrBlock}
     </footer>
    </div>
   </div>`;
@@ -696,12 +737,20 @@ const SHEET_CSS = `
   }
   .foot {
     margin-top: auto; padding-top: 3mm; border-top: 1px solid #cfd8dc;
-    display: flex; justify-content: space-between; align-items: baseline;
+    display: flex; justify-content: space-between; align-items: center; gap: 4mm;
     font-size: 8.5pt; color: #78909c;
   }
-  .foot .foot-person { font-size: 11pt; color: #263238; }
+  .foot .foot-person { flex: 1; font-size: 11pt; color: #263238; }
   .foot .foot-person b { font-weight: 700; color: #1a3c6e; }
-  .foot .foot-meta { white-space: nowrap; }
+  /* ✅ [新增] 建案簡介 QR Code（右下角）；未設定網址時此區塊不輸出，不佔版面 */
+  .foot-qr {
+    flex-shrink: 0;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .foot-qr img { width: 20mm; height: 20mm; display: block; }
+  .foot-qr .qr-cap {
+    margin-top: .6mm; font-size: 7.5pt; color: #546e7a; white-space: nowrap; letter-spacing: .2pt;
+  }
 
   /* ✅ 階梯式壓縮第一段：緊湊模式（間距與字級小幅收斂） */
   .sheet.compact .head { padding: 3.5mm 6mm; }
@@ -723,6 +772,8 @@ const SHEET_CSS = `
   .sheet.compact .approval { margin-top: 2.5mm; min-height: 18mm; }
   .sheet.compact .approval .ap-label { font-size: 9pt; }
   .sheet.compact .ap-warn { margin-top: 1mm; font-size: 8.5pt; }
+  .sheet.compact .foot-qr img { width: 17mm; height: 17mm; }
+  .sheet.compact .foot-qr .qr-cap { font-size: 7pt; }
 
   @page { size: A4 portrait; margin: 0; }
   @media print {
@@ -736,7 +787,7 @@ function handlePrint() {
   const items = quoteStore.items.filter(i => selectedIds.value.includes(i.internalId));
   if (items.length === 0) return;
 
-  const sheets = items.map((item, idx) => renderSheet(item, idx, items.length)).join('\n');
+  const sheets = items.map(item => renderSheet(item)).join('\n');
   const html = `<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
