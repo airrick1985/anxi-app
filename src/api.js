@@ -8474,6 +8474,23 @@ export const softDeleteCustomer = async (projectId, docId, salesName, operatorPh
 };
 
 /**
+ * [API] 硬刪除客戶資料（永久從資料庫刪除整份文件）
+ * 防呆：confirmDocId 須與 docId 完全相符，且該客戶須已冷刪除
+ */
+export const hardDeleteCustomer = async (projectId, docId, confirmDocId, operatorPhone) => {
+  try {
+    const result = await customerApiRouter({
+      action: 'hardDeleteCustomer',
+      data: { projectId, docId, confirmDocId, operatorPhone }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] hardDeleteCustomer 失敗:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
  * [API] 復原已冷刪除的客戶資料
  */
 export const restoreCustomer = async (projectId, docId, salesName) => {

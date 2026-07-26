@@ -18460,6 +18460,10 @@ exports.customerApi = onCall({
       case 'restoreCustomer':
         return await _handleRestoreCustomer(data, db);
 
+      // ✅ [新增] 硬刪除客戶（永久刪除文件，需輸入文件 ID 防呆確認）
+      case 'hardDeleteCustomer':
+        return await _handleHardDeleteCustomer(data, db);
+
       // ✅ [新增] 參考建案功能
       case 'updateLinkedProjects':
         return await _handleUpdateLinkedProjects(data, db);
@@ -18507,6 +18511,52 @@ async function _handleSoftDeleteCustomer(data, db) {
     console.error(`[${functionName}] 錯誤:`, error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError('internal', `刪除客戶資料失敗: ${error.message}`);
+  }
+}
+
+/**
+ * [內部函式] 硬刪除客戶資料（永久從資料庫刪除整份文件）
+ * 防呆機制：
+ *   1. 前端須輸入完整文件 ID（confirmDocId），伺服器端再次核對
+ *   2. 僅允許刪除「已冷刪除」的客戶（deletedSales 非空），避免誤刪使用中的客資
+ * 注意：文件刪除後 onVipGuestWriteSheetSync 會自動觸發，綁定的 Google Sheet 也會同步移除
+ */
+async function _handleHardDeleteCustomer(data, db) {
+  const { projectId, docId, confirmDocId, operatorPhone } = data;
+  const functionName = '_handleHardDeleteCustomer';
+
+  if (!projectId || !docId || !confirmDocId) {
+    throw new HttpsError('invalid-argument', '缺少 projectId, docId 或 confirmDocId 參數。');
+  }
+
+  // 防呆 1：伺服器端核對輸入的文件 ID（前端已檢查，這裡二次防護）
+  if (String(confirmDocId).trim() !== String(docId)) {
+    throw new HttpsError('failed-precondition', '確認文件 ID 不相符，已取消刪除。');
+  }
+
+  try {
+    const docRef = db.collection('vipGuests').doc(docId);
+    const docSnap = await docRef.get();
+    if (!docSnap.exists) {
+      throw new HttpsError('not-found', '找不到指定的客戶資料。');
+    }
+
+    const docData = docSnap.data();
+
+    // 防呆 2：僅允許刪除已冷刪除的客戶
+    const deletedSales = Array.isArray(docData.deletedSales) ? docData.deletedSales : [];
+    if (deletedSales.length === 0) {
+      throw new HttpsError('failed-precondition', '此客戶尚未冷刪除，請先執行冷刪除後再永久刪除。');
+    }
+
+    await docRef.delete();
+
+    console.log(`[${functionName}] 客戶 ${docId} 已永久刪除。操作人: ${operatorPhone || '未知'}, 建案: ${projectId}, 客戶: ${docData.latestName || ''} (${docData.phone || ''})`);
+    return { status: 'success', message: '客戶資料已永久刪除' };
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', `永久刪除客戶資料失敗: ${error.message}`);
   }
 }
 
@@ -23287,7 +23337,8 @@ exports.listGoogleSheets = onCall({
     const credentials = await auth.getCredentials();
     const agentEmail = credentials.client_email;
 
-    return { status: 'success', sheetNames, agentEmail };
+    // ✅ 回傳解析後的 spreadsheetId，供前端儲存自動同步綁定（避免存到完整 URL）
+    return { status: 'success', sheetNames, agentEmail, spreadsheetId };
   } catch (error) {
     console.error('[listGoogleSheets] Error:', error);
     throw new HttpsError('internal', `無法讀取 Sheet: ${error.message}`);
@@ -23661,10 +23712,155 @@ function _formatValue(val) {
   return String(val);
 }
 
+// Sheet 同步：一律以文字寫入的欄位（電話、身分證、使用者代碼等識別碼，不會拿來做數值運算）
+const SHEET_TEXT_FIELDS = new Set([
+  'buyerPhone', 'buyerPhone2', 'phone', 'phoneNumber', 'contactPhone', 'mobile', 'tel',
+  'buyerIdNumber', 'idNumber', 'referrerPhone',
+  'salespersonUserKey', 'userKey', 'operatorUserKey'
+]);
+
+/**
+ * [Helper] 將值轉成可安全寫入 Sheet 的儲存格內容
+ * Why: 寫入用 valueInputOption='USER_ENTERED'，Sheets 會把 "0912345678" 解析成數字
+ *      而吃掉開頭的 0。前置單引號是 Sheets 的「強制文字」轉義，本身不會顯示，
+ *      也不會出現在讀回的值裡，因此可安全用於電話 / 身分證 / 編號類欄位。
+ * @param {string} key 欄位 key（用於判斷是否為文字型欄位）
+ * @param {*} val 原始值
+ */
+function _toSheetCellValue(key, val) {
+  if (val === undefined || val === null) return '';
+
+  let str;
+  if (key === 'salesperson' || key === 'salespersonUserKey') {
+    // 銷售人員（複選）：陣列以逗號分隔，避免輸出成 JSON 字串
+    // 仍要往下走文字保護：單一 userKey（如 0912345678）會被 Sheets 當數字吃掉開頭的 0
+    str = formatSalespersons(val, ',', '');
+  } else if (typeof val === 'object') {
+    return JSON.stringify(val);
+  } else {
+    str = String(val);
+  }
+
+  if (str === '') return '';
+
+  // 1) 電話 / 身分證等欄位一律當文字
+  if (SHEET_TEXT_FIELDS.has(key)) return `'${str}`;
+  // 2) 其他欄位若是 0 開頭的號碼（含 -、空白、括號）或 +886 格式，也保留原樣
+  if (/^0[\d\-\s()]*$/.test(str) || /^\+\d[\d\-\s()]*$/.test(str)) return `'${str}`;
+  // 3) 以 = 或 + 開頭的字串會被當成公式，強制轉文字
+  if (str.startsWith('=') || str.startsWith('+')) return `'${str}`;
+
+  return str;
+}
+
 async function _getSheetIdByName(sheets, spreadsheetId, sheetName) {
   const res = await sheets.spreadsheets.get({ spreadsheetId });
   const sheet = res.data.sheets.find(s => s.properties.title === sheetName);
   return sheet ? sheet.properties.sheetId : null;
+}
+
+// 地址合併欄：一律排在 Sheet 所有欄位的最後
+const SHEET_TRAILING_FIELDS = ['buyerMailingAddressFull', 'buyerPermanentAddressFull'];
+
+/**
+ * [Helper] 組合完整地址：縣市 + 區域 + 詳細 → 「新竹市東區光復路一號」
+ * Why: 地址在 Firestore 是拆三段存的，同步到 Sheet 時使用者要的是一欄完整地址。
+ *      若使用者把完整地址直接打在「詳細地址」，則不再重複串接前綴。
+ */
+function _composeAddress(city, district, detail) {
+  const norm = (v) => String(v ?? '').trim();
+  // 台/臺 視為同字，僅用於比對，輸出保留原文
+  const key = (v) => norm(v).replace(/臺/g, '台');
+
+  const cityText = norm(city);
+  const districtText = norm(district);
+  const detailText = norm(detail);
+
+  if (!detailText) return `${cityText}${districtText}`;
+
+  // 詳細地址已包含縣市或區域前綴時，直接採用詳細地址
+  const detailKey = key(detailText);
+  if (cityText && detailKey.startsWith(key(cityText))) return detailText;
+  if (districtText && detailKey.startsWith(key(districtText))) return `${cityText}${detailText}`;
+
+  return `${cityText}${districtText}${detailText}`;
+}
+
+/**
+ * [Helper] 組出車位成交明細字串
+ * 格式：編號(類型/形式/尺寸) 底價X/成交Y，多筆以「、」分隔
+ * Why: Sheet 上原本只有車位編號與金額加總，看不出個別車位賣多少。
+ *      車位物件同時可能有英文（salesParkings 原始欄位）與中文（前端 enrich 別名）兩套 key，兩者都要相容。
+ * @param {Array} parkingArr 戶別文件的「持有車位」陣列
+ */
+function _formatParkingTransactionDetails(parkingArr) {
+  if (!Array.isArray(parkingArr) || parkingArr.length === 0) return '';
+
+  const pick = (p, ...keys) => {
+    for (const k of keys) {
+      const v = p[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+    }
+    return '';
+  };
+  const priceText = (p, ...keys) => {
+    const raw = pick(p, ...keys);
+    if (raw === '') return '-';
+    const num = Number(raw);
+    return Number.isFinite(num) ? String(num) : raw;
+  };
+
+  return parkingArr
+    .filter(p => p && typeof p === 'object')
+    .map(p => {
+      const spotId = pick(p, 'spotId', '車位編號') || '(未編號)';
+      const attrs = [
+        pick(p, 'type', '車位類型', '類型'),
+        pick(p, 'type2', '車位形式'),
+        pick(p, 'size', '車位尺寸', '坪數')
+      ].filter(Boolean).join('/');
+      const floor = priceText(p, 'price_floor', '車位底價', '底價');
+      const trans = priceText(p, 'price_transaction', '車位成交價');
+
+      return `${spotId}${attrs ? `(${attrs})` : ''} 底價${floor}/成交${trans}`;
+    })
+    .join('、');
+}
+
+/**
+ * [Helper] 將地址合併欄寫入扁平化後的資料
+ */
+function _applyAddressFullFields(flat, source) {
+  flat['buyerMailingAddressFull'] = _composeAddress(
+    source.buyerMailingAddressCity,
+    source.buyerMailingAddressDistrict,
+    source.buyerMailingAddressDetail
+  );
+  flat['buyerPermanentAddressFull'] = _composeAddress(
+    source.buyerPermanentAddressCity,
+    source.buyerPermanentAddressDistrict,
+    source.buyerPermanentAddressDetail
+  );
+}
+
+/**
+ * [Helper] 組出 Sheet 欄位順序：固定欄 → 對照表欄 → 動態欄 → 地址合併欄（永遠在最後）
+ */
+function _buildSheetHeaderKeys(displayNames, rows) {
+  const headers = ['_id', 'updatedAt'].concat(
+    // _id / updatedAt 已固定在前兩欄，對照表若也定義了就不重複輸出
+    Object.keys(displayNames).filter(
+      k => !SHEET_TRAILING_FIELDS.includes(k) && k !== '_id' && k !== 'updatedAt'
+    )
+  );
+
+  const allRowKeys = new Set();
+  rows.forEach(r => Object.keys(r).forEach(k => allRowKeys.add(k)));
+  const extraKeys = Array.from(allRowKeys).filter(
+    k => !headers.includes(k) && !SHEET_TRAILING_FIELDS.includes(k) && k !== '_id' && k !== 'updatedAt'
+  );
+
+  return headers.concat(extraKeys, SHEET_TRAILING_FIELDS);
 }
 
 // =================================================================
@@ -23712,6 +23908,7 @@ const salesFieldDisplayNames = {
   unit_price_transaction: '成交單價',
   total_transaction: '成交總價(含車)',
   parking_trans_total: '車位成交總價',
+  parking_transaction_details: '車位成交明細',
   price_diff: '溢差價',
 
   // 買方資訊
@@ -23728,7 +23925,65 @@ const salesFieldDisplayNames = {
   // 其他
   salesperson: '銷售人員',
   contractType: '合約方式',
-  remarks: '備註'
+  remarks: '備註',
+
+  // 地址（分欄）
+  buyerMailingAddressCity: '通訊地址_縣市',
+  buyerMailingAddressDistrict: '通訊地址_區域',
+  buyerMailingAddressDetail: '通訊地址_詳細',
+  buyerPermanentAddressCity: '戶籍地址_縣市',
+  buyerPermanentAddressDistrict: '戶籍地址_區域',
+  buyerPermanentAddressDetail: '戶籍地址_詳細',
+
+  // 地址（合併欄，由 _buildSheetHeaderKeys 排到最後）
+  buyerMailingAddressFull: '通訊地址',
+  buyerPermanentAddressFull: '戶籍地址'
+};
+
+// 退戶資料欄位顯示名稱定義（全量同步與異動監聽器共用，避免兩邊反查不一致）
+const cancelledFieldDisplayNames = {
+  unitId: '戶別',
+  building: '棟別',
+  floor: '樓層',
+  layout: '格局',
+  propertyType: '物業類型',
+  area_house_ping: '房屋坪數',
+  area_terrace_ping: '露臺坪數',
+  common_area_ratio: '公設比',
+  price_list_house_total: '房屋總表價',
+  price_transaction_house: '房屋成交價',
+  price_transaction_total: '成交總價(含車)',
+  parking_trans_total: '車位成交總價',
+  parking_transaction_details: '車位成交明細',
+  buyerName: '買方姓名',
+  buyerPhone: '買方電話',
+  buyerIdNumber: '身分證字號',
+  buyerEmail: '買方Email',
+  isFirstTimeBuyer: '首購',
+  payment_deposit_date: '小訂日期',
+  payment_complete_date: '補足日期',
+  payment_contract_date: '簽約日期',
+  salesperson: '銷售人員',
+  referrerName: '介紹人',
+  cancellationDate: '退戶日期',
+  cancelReasons: '退戶原因',
+  operatorName: '操作人員',
+  contractType: '合約方式',
+  remarks: '備註',
+  status: '銷控狀態',
+  updatedAt: '更新時間',
+
+  // 地址（分欄）
+  buyerMailingAddressCity: '通訊地址_縣市',
+  buyerMailingAddressDistrict: '通訊地址_區域',
+  buyerMailingAddressDetail: '通訊地址_詳細',
+  buyerPermanentAddressCity: '戶籍地址_縣市',
+  buyerPermanentAddressDistrict: '戶籍地址_區域',
+  buyerPermanentAddressDetail: '戶籍地址_詳細',
+
+  // 地址（合併欄，由 _buildSheetHeaderKeys 排到最後）
+  buyerMailingAddressFull: '通訊地址',
+  buyerPermanentAddressFull: '戶籍地址'
 };
 
 // ✅ START: Sync Failure Notification Functions
@@ -24019,19 +24274,8 @@ exports.syncSalesHouseholdsToSheet = onCall({
     // 2. Flatten Data
     const rows = households.map(h => _flattenSalesHouseholdForSheet(h));
 
-    // 3. Prepare Headers
-    let headers = ['_id', 'updatedAt'];
-
-    // 加入 salesFieldDisplayNames 定義的欄位 (顯示中文)
-    const displayKeys = Object.keys(salesFieldDisplayNames);
-    headers = headers.concat(displayKeys);
-
-    // 找出 rows 中有但 headers 沒定義的 keys (動態欄位)
-    const allRowKeys = new Set();
-    rows.forEach(r => Object.keys(r).forEach(k => allRowKeys.add(k)));
-    const extraKeys = Array.from(allRowKeys).filter(k => !headers.includes(k) && k !== '_id' && k !== 'updatedAt');
-
-    headers = headers.concat(extraKeys);
+    // 3. Prepare Headers（固定欄 → 對照表欄 → 動態欄 → 地址合併欄）
+    const headers = _buildSheetHeaderKeys(salesFieldDisplayNames, rows);
 
     // 建立 Header Row (中文名稱)
     const headerRow = headers.map(key => {
@@ -24043,16 +24287,7 @@ exports.syncSalesHouseholdsToSheet = onCall({
     // 4. Transform Rows to Array relative to Headers
     const values = [headerRow];
     rows.forEach(row => {
-      const rowData = headers.map(key => {
-        let val = row[key];
-        if (val === undefined || val === null) return '';
-        // 銷售人員（複選）：陣列以逗號分隔，避免輸出成 JSON 字串
-        if (key === 'salesperson' || key === 'salespersonUserKey') {
-          return formatSalespersons(val, ',', '');
-        }
-        if (typeof val === 'object') return JSON.stringify(val);
-        return String(val);
-      });
+      const rowData = headers.map(key => _toSheetCellValue(key, row[key]));
       values.push(rowData);
     });
 
@@ -24205,9 +24440,9 @@ exports.onSalesHouseholdWrite = onDocumentWritten({
 
         // Reverse lookup: Header Label -> Key
         const key = Object.keys(salesFieldDisplayNames).find(k => salesFieldDisplayNames[k] === headerLabel);
-        if (key) return _formatValue(flattened[key]);
+        if (key) return _toSheetCellValue(key, flattened[key]);
 
-        return _formatValue(flattened[headerLabel]);
+        return _toSheetCellValue(headerLabel, flattened[headerLabel]);
       });
 
       if (rowIndex > -1) {
@@ -24299,6 +24534,9 @@ function _flattenSalesHouseholdForSheet(h) {
   flat['salesperson'] = formatSalespersons(h.salesperson, ',', '');
   flat['salespersonUserKey'] = formatSalespersons(h.salespersonUserKey, ',', '');
 
+  // 地址合併欄：縣市 + 區域 + 詳細
+  _applyAddressFullFields(flat, h);
+
   // 衍生欄位即時計算（與前端 SalesControlSystem.vue computed 邏輯一致）
   // Why: 這些欄位不應儲存在 Firestore，避免與原始欄位不同步；改由同步時計算
   const parkingArr = Array.isArray(h['持有車位']) ? h['持有車位'] : [];
@@ -24315,6 +24553,7 @@ function _flattenSalesHouseholdForSheet(h) {
 
   flat['parking_floor_total'] = parkingFloorTotal || null;
   flat['parking_trans_total'] = parkingTransTotal || null;
+  flat['parking_transaction_details'] = _formatParkingTransactionDetails(parkingArr);
   flat['total_transaction'] = (houseTrans + parkingTransTotal) || null;
   flat['total_floor'] = (houseFloor + parkingFloorTotal) || null;
   flat['price_diff'] = houseTrans > 0 ? (houseTrans + parkingTransTotal) - (houseFloor + parkingFloorTotal) : null;
@@ -24369,6 +24608,9 @@ function _flattenCancelledPurchaseForSheet(doc) {
   flat['salesperson'] = formatSalespersons(doc.salesperson, ',', '');
   flat['salespersonUserKey'] = formatSalespersons(doc.salespersonUserKey, ',', '');
 
+  // 地址合併欄：縣市 + 區域 + 詳細
+  _applyAddressFullFields(flat, doc);
+
   // 處理首購 Boolean
   if (typeof doc.isFirstTimeBuyer === 'boolean') {
     flat['isFirstTimeBuyer'] = doc.isFirstTimeBuyer ? '是' : '否';
@@ -24392,6 +24634,11 @@ function _flattenCancelledPurchaseForSheet(doc) {
     const parking = doc.parkingData[0];
     flat['parkingSpotId'] = parking.spotId || '';
   }
+
+  // 車位成交明細：優先用「持有車位」，退戶備份的 parkingData 為 fallback
+  flat['parking_transaction_details'] = _formatParkingTransactionDetails(
+    Array.isArray(doc['持有車位']) && doc['持有車位'].length > 0 ? doc['持有車位'] : doc.parkingData
+  );
 
   // 持有車位：陣列僅取「車位編號」，以「、」串接（與銷控資料同步一致）
   if (Array.isArray(doc['持有車位'])) {
@@ -24445,49 +24692,10 @@ exports.syncCancelledPurchasesToSheet = onCall({
     // 2. 扁平化資料
     const rows = docs.map(d => _flattenCancelledPurchaseForSheet(d));
 
-    // 3. 定義欄位對照表
-    const cancelledFieldDisplayNames = {
-      unitId: '戶別',
-      building: '棟別',
-      floor: '樓層',
-      layout: '格局',
-      propertyType: '物業類型',
-      area_house_ping: '房屋坪數',
-      area_terrace_ping: '露臺坪數',
-      common_area_ratio: '公設比',
-      price_list_house_total: '房屋總表價',
-      price_transaction_house: '房屋成交價',
-      price_transaction_total: '成交總價(含車)',
-      parking_trans_total: '車位成交總價',
-      buyerName: '買方姓名',
-      buyerPhone: '買方電話',
-      buyerIdNumber: '身分證字號',
-      buyerEmail: '買方Email',
-      isFirstTimeBuyer: '首購',
-      payment_deposit_date: '小訂日期',
-      payment_complete_date: '補足日期',
-      payment_contract_date: '簽約日期',
-      salesperson: '銷售人員',
-      referrerName: '介紹人',
-      cancellationDate: '退戶日期',
-      cancelReasons: '退戶原因',
-      operatorName: '操作人員',
-      contractType: '合約方式',
-      remarks: '備註',
-      status: '銷控狀態',
-      updatedAt: '更新時間'
-    };
+    // 3. 欄位對照表（module scope 的 cancelledFieldDisplayNames，與監聽器共用）
 
-    // 4. 準備 Headers
-    let headers = ['_id', 'updatedAt'];
-    const displayKeys = Object.keys(cancelledFieldDisplayNames);
-    headers = headers.concat(displayKeys);
-
-    // 找出 rows 中有但 headers 沒定義的 keys (動態欄位)
-    const allRowKeys = new Set();
-    rows.forEach(r => Object.keys(r).forEach(k => allRowKeys.add(k)));
-    const extraKeys = Array.from(allRowKeys).filter(k => !headers.includes(k) && k !== '_id' && k !== 'updatedAt');
-    headers = headers.concat(extraKeys);
+    // 4. 準備 Headers（固定欄 → 對照表欄 → 動態欄 → 地址合併欄）
+    const headers = _buildSheetHeaderKeys(cancelledFieldDisplayNames, rows);
 
     // 建立 Header Row (中文名稱)
     const headerRow = headers.map(key => {
@@ -24499,16 +24707,7 @@ exports.syncCancelledPurchasesToSheet = onCall({
     // 5. 轉換 Rows
     const values = [headerRow];
     rows.forEach(row => {
-      const rowData = headers.map(key => {
-        let val = row[key];
-        if (val === undefined || val === null) return '';
-        // 銷售人員（複選）：陣列以逗號分隔，避免輸出成 JSON 字串
-        if (key === 'salesperson' || key === 'salespersonUserKey') {
-          return formatSalespersons(val, ',', '');
-        }
-        if (typeof val === 'object') return JSON.stringify(val);
-        return String(val);
-      });
+      const rowData = headers.map(key => _toSheetCellValue(key, row[key]));
       values.push(rowData);
     });
 
@@ -24653,16 +24852,18 @@ exports.onCancelledPurchasesWrite = onDocumentWritten({
 
       const headerRow = headerResp.data.values?.[0] || [];
       const rowData = headerRow.map(header => {
-        // 從中文 header 反向查找英文 key
+        // 從中文 header 反向查找英文 key（header 是中文顯示名稱，直接當 key 會查無資料）
         let key = header;
         if (header === '系統編號 (勿動)') key = '_id';
-        if (header === '更新時間') key = 'updatedAt';
+        else if (header === '更新時間') key = 'updatedAt';
+        else {
+          const matched = Object.keys(cancelledFieldDisplayNames)
+            .find(k => cancelledFieldDisplayNames[k] === header);
+          if (matched) key = matched;
+        }
 
-        // 與 syncCancelledPurchasesToSheet 一致：陣列/物件序列化，避免 Sheets API 拒收
-        const val = flattened[key];
-        if (val === undefined || val === null) return '';
-        if (typeof val === 'object') return JSON.stringify(val);
-        return String(val);
+        // 與 syncCancelledPurchasesToSheet 一致：走同一套儲存格格式化
+        return _toSheetCellValue(key, flattened[key]);
       });
 
       if (rowIndex > -1) {
@@ -24703,6 +24904,308 @@ exports.onCancelledPurchasesWrite = onDocumentWritten({
   }
 });
 // ✅ END: Cancelled Purchases Sync
+
+// =================================================================
+// [Feature] 聯絡名單 (leads) / 客資資料 (vipGuests) 自動全量同步到 Google Sheet
+// 模式：資料異動 → 觸發器防抖 → 全量覆蓋寫入綁定的工作表
+// 綁定設定存在 projects/{projectId}：
+//   聯絡名單：leadsSheetId + leadsSheetTabName
+//   客資資料：customerSheetId + customerSheetTabName
+// （由前端同步對話框勾選「啟用自動同步」時寫入）
+// =================================================================
+
+// 防抖（debounce）等待時間：批次匯入等連續寫入時，只由「最後一筆異動」執行全量同步
+const SHEET_AUTOSYNC_DEBOUNCE_MS = 8000;
+
+/**
+ * [Helper] 防抖後執行全量同步
+ * Why: 全量同步是「清空 + 重寫整個工作表」，Excel 批次匯入一次寫入數百筆時，
+ *      若每筆異動都各自全量同步，會打爆 Sheets API 配額。
+ *      做法：每次觸發先在狀態文件蓋上自己的 token，睡 8 秒後回頭檢查——
+ *      若 token 已被更晚的異動覆蓋就放棄（由較晚者負責），確保一波寫入只同步一次。
+ * @returns {boolean} 是否實際執行了同步
+ */
+async function _debounceThenSyncSheet(db, stateKey, syncFn) {
+  const stateRef = db.collection('sheetAutoSyncState').doc(stateKey);
+  const myToken = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  await stateRef.set({
+    token: myToken,
+    requestedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  await new Promise(resolve => setTimeout(resolve, SHEET_AUTOSYNC_DEBOUNCE_MS));
+
+  const snap = await stateRef.get();
+  if (snap.exists && snap.data().token !== myToken) {
+    return false; // 之後還有新異動，交給較晚的觸發統一同步
+  }
+
+  await syncFn();
+  await stateRef.set({
+    lastSyncAt: FieldValue.serverTimestamp(),
+    lastError: null
+  }, { merge: true });
+  return true;
+}
+
+/**
+ * [Helper] 全量覆蓋寫入工作表（清空 → 從 A1 重寫）
+ * 使用與 onSalesHouseholdWrite 相同的 Service Account 憑證
+ * （同步對話框顯示的 agentEmail 即此帳號，使用者已共用編輯權限）
+ */
+async function _writeFullSheetValues(spreadsheetId, sheetName, values) {
+  const sheets = await _getSalesSyncGoogleSheetClient();
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId,
+    range: `'${sheetName}'!A:ZZZ`
+  });
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `'${sheetName}'!A1`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values }
+  });
+}
+
+/**
+ * [Helper] 台灣時間 (Asia/Taipei) 格式化：yyyy/MM/dd HH:mm:ss
+ * 與前端 LeadDistribution.vue formatDateTime 輸出一致
+ */
+function _formatTaipeiDateTime(ts) {
+  if (!ts) return '-';
+  const date = ts.toDate ? ts.toDate() : new Date(ts);
+  if (isNaN(date.getTime())) return '-';
+  return date.toLocaleString('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+}
+
+// 聯絡名單工作表欄位（與前端 getLeadsExportData 完全一致）
+const LEADS_SHEET_HEADERS = [
+  '建檔日期', '填表日期', '分配銷售', '客戶姓名', '客戶電話',
+  '名單來源', '預算', '聯絡狀況', '不考慮原因', '名單狀態'
+];
+
+/**
+ * [Helper] 聯絡名單全量同步：查詢該建案所有未刪除名單 → 全量覆蓋寫入
+ * 查詢條件與前端 LeadDistribution.vue onSnapshot 一致（複合索引已存在）
+ */
+async function _syncLeadsToSheetFull(db, projectId, spreadsheetId, sheetName) {
+  const snap = await db.collection('leads')
+    .where('projectId', '==', projectId)
+    .where('isDeleted', '==', false)
+    .orderBy('createdAt', 'desc')
+    .get();
+
+  const values = [LEADS_SHEET_HEADERS];
+  snap.forEach(d => {
+    const l = d.data();
+    values.push([
+      _formatTaipeiDateTime(l.createdAt),
+      l.date || '',
+      l.assignedName || '',
+      l.name || '',
+      _toSheetCellValue('phone', l.phone || ''), // 電話強制文字，保留開頭的 0
+      l.source || '',
+      l.budget || '',
+      l.status || '未處理',
+      l.reason || '',
+      l.statusText || ''
+    ]);
+  });
+
+  await _writeFullSheetValues(spreadsheetId, sheetName, values);
+  return values.length - 1;
+}
+
+// 客資資料工作表欄位（與前端 CustomerManagement.vue getSimpleExportData 完全一致）
+const CUSTOMER_SHEET_HEADERS = [
+  'UID', '順序', '日期', '新客/回訪', '銷售人員', '客戶姓名', '來人（位）',
+  '年齡', '性別', '職業', '動機', '媒體', '區域',
+  '洽談時間', '行動電話', '未買原因', '洽談紀錄'
+];
+
+/**
+ * [Helper] 洽談時間：最後一筆 log 的持續分鐘數（與前端 calculateLogDuration 一致）
+ */
+function _calcInteractionLogDuration(startTime, endTime) {
+  if (!startTime || !endTime) return '';
+  try {
+    const [sH, sM] = startTime.split(':').map(Number);
+    const [eH, eM] = endTime.split(':').map(Number);
+    const diff = (eH * 60 + eM) - (sH * 60 + sM);
+    return diff > 0 ? `${diff} 分鐘` : '';
+  } catch (e) { return ''; }
+}
+
+/**
+ * [Helper] 客資資料全量同步：每筆「現場介紹」洽談紀錄展平為一列
+ * Why: 自動同步為「全量」——不套用前端手動匯出的日期區間與銷售人員篩選，
+ *      展平邏輯（新客/回訪判定、profile 取值、排序）與前端 getSimpleExportData 一致。
+ */
+async function _syncVipCustomersToSheetFull(db, projectId, spreadsheetId, sheetName) {
+  // 與 _handleFetchFullCustomersForExport 相同：含參考建案（allProjectIds）
+  const snap = await db.collection('vipGuests')
+    .where('allProjectIds', 'array-contains', projectId)
+    .get();
+
+  const rows = [];
+  snap.forEach(doc => {
+    const item = doc.data();
+    const logs = Array.isArray(item.interactionLogs) ? item.interactionLogs : [];
+    const p = item.profile || {};
+    const getP = (key) => Array.isArray(p[key]) ? p[key][p[key].length - 1] : (p[key] || '');
+
+    // 依日期升冪排序，用以判定新客/回訪順序
+    const onSiteLogs = logs
+      .filter(l => l && l.tags && l.tags.interactionType === '現場介紹' && l.date)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    onSiteLogs.forEach((log, idx) => {
+      rows.push({
+        'UID': doc.id || '',
+        '日期': log.date ? log.date.replace(/-/g, '/') : '',
+        '新客/回訪': idx === 0 ? '新客' : '回訪',
+        '銷售人員': item.latestSalesName || '',
+        '客戶姓名': item.latestName || '',
+        '來人（位）': log.tags?.visitors || '',
+        '年齡': getP('年齡'),
+        '性別': getP('性別'),
+        '職業': getP('職業'),
+        '動機': Array.isArray(p['購屋動機']) ? p['購屋動機'].join(',') : '',
+        '媒體': Array.isArray(p['從何得知本建案']) ? p['從何得知本建案'].join(',') : '',
+        '區域': getP('居住城市'),
+        '洽談時間': _calcInteractionLogDuration(log.startTime, log.endTime),
+        '行動電話': item.phone || '',
+        '未買原因': Array.isArray(log.tags?.noPurchaseReason)
+          ? log.tags.noPurchaseReason.join(',')
+          : (log.tags?.noPurchaseReason || ''),
+        '洽談紀錄': log.content || ''
+      });
+    });
+  });
+
+  // 依日期遞減排序 (最新在上)，再編入順序
+  rows.sort((a, b) => (b['日期'] || '').localeCompare(a['日期'] || ''));
+
+  const values = [CUSTOMER_SHEET_HEADERS];
+  rows.forEach((r, index) => {
+    values.push([
+      r['UID'], index + 1, r['日期'], r['新客/回訪'], r['銷售人員'], r['客戶姓名'], r['來人（位）'],
+      r['年齡'], r['性別'], r['職業'], r['動機'], r['媒體'], r['區域'],
+      r['洽談時間'], _toSheetCellValue('phone', r['行動電話']), r['未買原因'], r['洽談紀錄']
+    ]);
+  });
+
+  await _writeFullSheetValues(spreadsheetId, sheetName, values);
+  return values.length - 1;
+}
+
+/**
+ * [Trigger] 聯絡名單異動 → 自動全量同步到 Google Sheet
+ * 涵蓋：新增/匯入名單、分配銷售、聯絡回報（狀態/原因寫回 lead 文件）、軟刪除
+ */
+exports.onLeadWriteSheetSync = onDocumentWritten({
+  document: 'leads/{leadId}',
+  database: 'anxi-app',
+  region: 'asia-east1',
+  memory: '512MiB',
+  timeoutSeconds: 120
+}, async (event) => {
+  const functionName = 'onLeadWriteSheetSync';
+  const newData = event.data?.after?.data();
+  const oldData = event.data?.before?.data();
+  const projectId = newData?.projectId || oldData?.projectId;
+  if (!projectId) return;
+
+  const db = new Firestore({ databaseId: 'anxi-app' });
+
+  try {
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    if (!projectDoc.exists) return;
+
+    const { leadsSheetId, leadsSheetTabName } = projectDoc.data();
+    if (!leadsSheetId || !leadsSheetTabName) return; // 未啟用自動同步
+
+    const synced = await _debounceThenSyncSheet(db, `leads_${projectId}`, async () => {
+      const count = await _syncLeadsToSheetFull(db, projectId, leadsSheetId, leadsSheetTabName);
+      console.log(`[${functionName}] 全量同步完成: ${projectId} → ${count} 筆`);
+    });
+
+    if (!synced) {
+      console.log(`[${functionName}] 偵測到後續異動，本次略過（由較晚的觸發統一同步）`);
+    }
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    await db.collection('sheetAutoSyncState').doc(`leads_${projectId}`).set({
+      lastError: String(error.message || error),
+      lastErrorAt: FieldValue.serverTimestamp()
+    }, { merge: true }).catch(() => {});
+  }
+});
+
+/**
+ * [Trigger] 客資資料 (vipGuests) 異動 → 自動全量同步到 Google Sheet
+ * 涵蓋：貴賓表單填寫、洽談紀錄新增/修改/刪除、批次匯入、冷刪除/還原
+ * 注意：客戶可能透過參考建案關聯多個 projectId，須對每個有綁定的建案各自同步
+ */
+exports.onVipGuestWriteSheetSync = onDocumentWritten({
+  document: 'vipGuests/{docId}',
+  database: 'anxi-app',
+  region: 'asia-east1',
+  memory: '512MiB',
+  timeoutSeconds: 180
+}, async (event) => {
+  const functionName = 'onVipGuestWriteSheetSync';
+  const newData = event.data?.after?.data();
+  const oldData = event.data?.before?.data();
+
+  // 收集異動前後所有相關建案（含參考建案）
+  const projectIds = new Set([
+    ...(Array.isArray(newData?.allProjectIds) ? newData.allProjectIds : []),
+    ...(Array.isArray(oldData?.allProjectIds) ? oldData.allProjectIds : [])
+  ]);
+  if (newData?.projectId) projectIds.add(newData.projectId);
+  if (oldData?.projectId) projectIds.add(oldData.projectId);
+  if (projectIds.size === 0) return;
+
+  const db = new Firestore({ databaseId: 'anxi-app' });
+
+  // 各建案獨立防抖 + 同步，彼此平行執行
+  await Promise.all([...projectIds].map(async (projectId) => {
+    try {
+      const projectDoc = await db.collection('projects').doc(projectId).get();
+      if (!projectDoc.exists) return;
+
+      const { customerSheetId, customerSheetTabName } = projectDoc.data();
+      if (!customerSheetId || !customerSheetTabName) return; // 未啟用自動同步
+
+      const synced = await _debounceThenSyncSheet(db, `customers_${projectId}`, async () => {
+        const count = await _syncVipCustomersToSheetFull(db, projectId, customerSheetId, customerSheetTabName);
+        console.log(`[${functionName}] 全量同步完成: ${projectId} → ${count} 筆`);
+      });
+
+      if (!synced) {
+        console.log(`[${functionName}] ${projectId} 偵測到後續異動，本次略過`);
+      }
+    } catch (error) {
+      console.error(`[${functionName}] ${projectId} 錯誤:`, error);
+      await db.collection('sheetAutoSyncState').doc(`customers_${projectId}`).set({
+        lastError: String(error.message || error),
+        lastErrorAt: FieldValue.serverTimestamp()
+      }, { merge: true }).catch(() => {});
+    }
+  }));
+});
+// ✅ END: 聯絡名單 / 客資資料 自動全量同步
 
 // =================================================================
 // 4. [Feature] Appointments Google Sheet Sync

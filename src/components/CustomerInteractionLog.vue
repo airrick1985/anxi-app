@@ -15,11 +15,19 @@
                     class="mr-2">
                     取消關聯
                 </v-btn>
-                <v-btn v-else-if="guestData.isDeleted && canEdit" color="success" size="small" variant="flat"
-                    prepend-icon="mdi-restore" @click="handleRestoreCustomer" :loading="isRestoringCustomer"
-                    class="mr-2">
-                    復原客戶
-                </v-btn>
+                <template v-else-if="guestData.isDeleted && canEdit">
+                    <v-btn color="success" size="small" variant="flat"
+                        prepend-icon="mdi-restore" @click="handleRestoreCustomer" :loading="isRestoringCustomer"
+                        class="mr-2">
+                        復原客戶
+                    </v-btn>
+                    <!-- ✅ 硬刪除：僅冷刪除狀態下顯示，需輸入文件 ID 確認 -->
+                    <v-btn color="red-darken-3" size="small" variant="outlined"
+                        prepend-icon="mdi-delete-forever" @click="openHardDeleteDialog"
+                        class="mr-2">
+                        永久刪除
+                    </v-btn>
+                </template>
                 <v-btn v-else-if="canEdit" color="error" size="small" variant="outlined" prepend-icon="mdi-delete"
                     @click="handleDeleteCustomer" :loading="isDeletingCustomer" class="mr-2">
                     刪除客戶
@@ -946,6 +954,60 @@
             </v-card-actions>
         </v-card>
     </v-dialog>
+
+    <!-- ✅ 硬刪除確認對話框：需輸入文件 ID 防呆 -->
+    <v-dialog v-model="hardDeleteDialog.show" max-width="500" persistent>
+        <v-card class="rounded-lg">
+            <v-toolbar color="red-darken-3" density="compact">
+                <v-icon start class="ml-4">mdi-delete-forever</v-icon>
+                <v-toolbar-title class="text-subtitle-1 font-weight-bold">永久刪除客戶資料</v-toolbar-title>
+            </v-toolbar>
+            <v-card-text class="pt-4">
+                <v-alert type="error" variant="tonal" density="compact" class="mb-4" icon="mdi-alert-octagon">
+                    此操作將把 <strong>{{ guestData.latestName || '此客戶' }}</strong> 的整份文件
+                    （含基本資料與<strong>所有洽談紀錄</strong>）從資料庫<strong>永久刪除，無法復原</strong>！
+                </v-alert>
+
+                <div class="text-caption text-grey-darken-1 mb-1">文件 ID（點擊右側按鈕複製）</div>
+                <v-text-field
+                    :model-value="props.docId"
+                    readonly
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    class="mb-4 font-monospace"
+                    @click:append-inner="copyDocId"
+                >
+                    <template v-slot:append-inner>
+                        <v-btn icon="mdi-content-copy" size="small" variant="text" color="primary"
+                            @click.stop="copyDocId"></v-btn>
+                    </template>
+                </v-text-field>
+
+                <v-text-field
+                    v-model="hardDeleteDialog.confirmText"
+                    label="請輸入上方文件 ID 以確認刪除"
+                    variant="outlined"
+                    density="compact"
+                    color="red-darken-3"
+                    autocomplete="off"
+                    :error="hardDeleteDialog.confirmText.length > 0 && !isHardDeleteConfirmMatch"
+                    :error-messages="hardDeleteDialog.confirmText.length > 0 && !isHardDeleteConfirmMatch ? '與文件 ID 不相符' : []"
+                ></v-text-field>
+            </v-card-text>
+            <v-divider></v-divider>
+            <v-card-actions class="pa-4">
+                <v-spacer></v-spacer>
+                <v-btn color="grey-darken-1" variant="text" @click="hardDeleteDialog.show = false"
+                    :disabled="isHardDeleting">取消</v-btn>
+                <v-btn color="red-darken-3" variant="elevated" prepend-icon="mdi-delete-forever"
+                    :disabled="!isHardDeleteConfirmMatch" :loading="isHardDeleting"
+                    @click="executeHardDelete">
+                    永久刪除
+                </v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
 </template>
 
 <script setup>
@@ -961,6 +1023,7 @@ import {
     optimizeInteractionLog,
     softDeleteCustomer,
     restoreCustomer,
+    hardDeleteCustomer,
     updateLinkedProjects,
     unlinkProject,
     getUsersWithSystemPermission
@@ -1505,6 +1568,66 @@ const handleDeleteCustomer = async () => {
         toast.error(`刪除失敗: ${error.message}`);
     } finally {
         isDeletingCustomer.value = false;
+    }
+};
+
+// --- 客戶硬刪除（永久刪除）邏輯 ---
+const isHardDeleting = ref(false);
+const hardDeleteDialog = ref({
+    show: false,
+    confirmText: ''
+});
+
+// 防呆：輸入的文字須與文件 ID 完全相符才可按下刪除
+const isHardDeleteConfirmMatch = computed(() =>
+    hardDeleteDialog.value.confirmText.trim() === String(props.docId || '')
+);
+
+const openHardDeleteDialog = () => {
+    hardDeleteDialog.value = { show: true, confirmText: '' };
+};
+
+// 複製文件 ID 到剪貼簿（含舊瀏覽器 fallback）
+const copyDocId = async () => {
+    const id = String(props.docId || '');
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(id);
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = id;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        toast.success('已複製文件 ID');
+    } catch (e) {
+        toast.error('複製失敗，請手動選取複製');
+    }
+};
+
+const executeHardDelete = async () => {
+    if (!isHardDeleteConfirmMatch.value) return;
+
+    isHardDeleting.value = true;
+    try {
+        await hardDeleteCustomer(
+            props.projectId,
+            props.docId,
+            hardDeleteDialog.value.confirmText.trim(),
+            userStore.user?.key
+        );
+
+        toast.success('客戶資料已永久刪除');
+        hardDeleteDialog.value.show = false;
+        emit('data-updated');
+        // 文件已不存在，關閉整個客資詳情視窗
+        emit('update:show', false);
+    } catch (error) {
+        toast.error(`永久刪除失敗: ${error.message}`);
+    } finally {
+        isHardDeleting.value = false;
     }
 };
 

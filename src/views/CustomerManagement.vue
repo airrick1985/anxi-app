@@ -568,14 +568,17 @@
 
         <v-divider class="my-4"></v-divider>
 
-        <div class="d-flex align-center mt-4">
+        <!-- ✅ 日期未選擇時預設下載/同步全部資料，按鈕不再 disabled -->
+        <div class="text-caption text-grey-darken-1 mb-2">
+          未選擇日期時，預設下載 / 同步<strong>全部資料</strong>。
+        </div>
+        <div class="d-flex align-center mt-2">
           <v-btn
             color="success"
             size="large"
             prepend-icon="mdi-download"
             :loading="isSimpleExporting"
             @click="executeSimpleExport"
-            :disabled="!exportFilters.startDate || !exportFilters.endDate"
             class="mr-4"
           >
             下載客資報表
@@ -587,7 +590,6 @@
             prepend-icon="mdi-google-spreadsheet"
             :loading="isSyncingToGoogle || googleSheetForm.isLoadingSheets"
             @click="openSyncDialog"
-            :disabled="!exportFilters.startDate || !exportFilters.endDate"
           >
             同步到 Google Sheet
           </v-btn>
@@ -664,6 +666,18 @@
                 color="primary"
                 class="mt-2"
               ></v-checkbox>
+
+              <v-checkbox
+                v-model="googleSheetForm.enableAutoSync"
+                label="啟用自動同步 (客資異動後自動全量更新此工作表)"
+                density="compact"
+                hide-details
+                color="success"
+                class="mt-1"
+              ></v-checkbox>
+              <div v-if="googleSheetForm.enableAutoSync" class="text-caption text-grey-darken-1 ml-10">
+                自動同步為「全量資料」，不套用上方的日期區間與銷售人員篩選。
+              </div>
             </v-window-item>
           </v-window>
         </v-card-text>
@@ -1711,9 +1725,10 @@ import * as XLSX from 'xlsx-js-style';
 import { format } from 'date-fns';
 const LeadDistribution = defineAsyncComponent(() => import('@/views/LeadDistribution.vue'));
 const ViewingReservationCalendar = defineAsyncComponent(() => import('@/views/ViewingReservationCalendar.vue'));
-import { 
-  collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, 
-  serverTimestamp, orderBy, limit, startAfter, getDoc // ✅ 新增 doc, updateDoc, getDoc
+import {
+  collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc,
+  serverTimestamp, orderBy, limit, startAfter, getDoc, // ✅ 新增 doc, updateDoc, getDoc
+  deleteField // ✅ 自動同步綁定解除用
 } from "firebase/firestore";
 import { 
   getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject 
@@ -3140,7 +3155,11 @@ const executeSimpleExport = async () => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(exportRows);
     XLSX.utils.book_append_sheet(wb, ws, "客資資料");
-    const fileName = `${projectName.value}_客資資料_${exportFilters.value.startDate}_${exportFilters.value.endDate}.xlsx`;
+    // ✅ 未選日期時檔名標示「全部」
+    const dateTag = (exportFilters.value.startDate && exportFilters.value.endDate)
+      ? `${exportFilters.value.startDate}_${exportFilters.value.endDate}`
+      : (exportFilters.value.startDate || exportFilters.value.endDate || '全部');
+    const fileName = `${projectName.value}_客資資料_${dateTag}.xlsx`;
     XLSX.writeFile(wb, fileName);
 
   } catch (err) {
@@ -3160,16 +3179,20 @@ const googleSheetForm = reactive({
   sheetNames: [],
   isLoadingSheets: false,
   agentEmail: '',
+  spreadsheetId: '',
   step: 1,
-  rememberUrl: true // ✅ 新增：控制是否記住網址
+  rememberUrl: true, // ✅ 新增：控制是否記住網址
+  enableAutoSync: true // ✅ 新增：客資異動後自動全量同步
 });
 
+// ✅ 從網址/ID 解析出純 spreadsheetId（後端綁定需存 ID，不能存完整 URL）
+const parseSpreadsheetId = (input) => {
+  const m = String(input || '').match(/\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : String(input || '').trim();
+};
+
 const openSyncDialog = async () => {
-  if (!exportFilters.value.startDate || !exportFilters.value.endDate) {
-    alert('請先選擇起訖日期');
-    return;
-  }
-  
+  // ✅ 日期未選擇時預設同步全部資料，不再強制起訖日期
   googleSheetForm.url = '';
   
   // 嘗試從專案設定 (Firestore) 讀取上次使用的 URL
@@ -3258,7 +3281,22 @@ const executeGoogleSync = async () => {
       values: values
     });
 
-    alert('同步成功！');
+    // ✅ 4. 儲存/解除自動同步綁定（成功同步後才綁定，確保工作表可寫入）
+    //    綁定後 Cloud Functions (onVipGuestWriteSheetSync) 會在客資異動時自動「全量」同步
+    //    （自動同步不套用日期區間與銷售人員篩選）
+    try {
+      const binding = googleSheetForm.enableAutoSync
+        ? {
+            customerSheetId: parseSpreadsheetId(googleSheetForm.spreadsheetId || googleSheetForm.url),
+            customerSheetTabName: googleSheetForm.sheetName
+          }
+        : { customerSheetId: deleteField(), customerSheetTabName: deleteField() };
+      await updateDoc(doc(db, 'projects', props.projectId), binding);
+    } catch (e) {
+      console.error('儲存自動同步設定失敗:', e);
+    }
+
+    alert(`同步成功！${googleSheetForm.enableAutoSync ? '\n已啟用自動同步：之後客資異動將以「全量資料」自動更新此工作表（不受日期篩選影響）' : ''}`);
     googleSheetDialog.value = false;
 
   } catch (error) {

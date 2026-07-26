@@ -250,7 +250,7 @@
             class="font-weight-bold w-100 text-truncate"
             size="small"
           >
-            <span class="text-truncate">下載聯絡狀況 EXCEL</span>
+            <span class="text-truncate">下載聯絡狀況 EXCEL (全部 {{ exportScopeLeads.length }} 筆)</span>
           </v-btn>
         </v-col>
 
@@ -333,6 +333,7 @@
                 icon="mdi-alert"
               >
                 <strong>警告：</strong> 點擊同步後，該工作表 ({{ googleSheetForm.sheetName || '未選擇' }}) 的現有資料將被<strong>清除並覆蓋</strong>。
+                <div class="mt-1">本次為<strong>全量同步 (共 {{ exportScopeLeads.length }} 筆)</strong>，不受畫面篩選條件影響。</div>
               </v-alert>
 
               <v-checkbox
@@ -342,6 +343,15 @@
                 hide-details
                 color="primary"
                 class="mt-2"
+              ></v-checkbox>
+
+              <v-checkbox
+                v-model="googleSheetForm.enableAutoSync"
+                label="啟用自動同步 (名單異動後自動全量更新此工作表)"
+                density="compact"
+                hide-details
+                color="success"
+                class="mt-1"
               ></v-checkbox>
             </v-window-item>
           </v-window>
@@ -1577,11 +1587,12 @@ import {
   orderBy,
   limit,
   deleteDoc,  
-  doc,        
-  updateDoc,  
-  getDoc,    
+  doc,
+  updateDoc,
+  getDoc,
   collectionGroup,
-  onSnapshot // ✅ 補回
+  onSnapshot, // ✅ 補回
+  deleteField // ✅ 自動同步綁定解除用
 } from 'firebase/firestore';
 
 import { checkLeadDuplicates, batchImportAndAssignLeadsAPI,
@@ -3347,10 +3358,18 @@ const barOptions = {
 // ✓ [打勾] 在 script setup 內加入此變數宣告
 const isLeadsExporting = ref(false);
 
+// ✅ 全量匯出/同步範圍：不受畫面篩選（關鍵字/狀態/來源/日期等）影響，
+//    僅保留權限過濾 — 銷售個人端只能匯出自己被分配的名單，避免資料外洩
+const exportScopeLeads = computed(() => {
+  if (isReceptionist.value || isAdmin.value) return allLeads.value;
+  if (!userUid.value) return [];
+  return allLeads.value.filter(l => l.assignedTo === userUid.value);
+});
+
 // ✓ [打勾] 修正：專用於「聯絡名單」的匯出函數
-// ✓ 共用資料準備邏輯
+// ✓ 共用資料準備邏輯（全量：以 exportScopeLeads 為資料來源）
 const getLeadsExportData = () => {
-  return filteredLeads.value.map((item) => {
+  return exportScopeLeads.value.map((item) => {
     return {
       '建檔日期': formatDateTime(item.createdAt), // ✓ [共用] 格式化 YYYY/MM/DD HH:mm:ss
       '填表日期': item.date || '',                // ✓ [原始字串] 如 2026/01/02
@@ -3367,8 +3386,8 @@ const getLeadsExportData = () => {
 };
 
 const executeLeadsExport = async () => {
-  if (filteredLeads.value.length === 0) {
-    return alert('目前列表無資料可供匯出');
+  if (exportScopeLeads.value.length === 0) {
+    return alert('目前無資料可供匯出');
   }
 
   isLeadsExporting.value = true;
@@ -3449,8 +3468,15 @@ const googleSheetForm = reactive({
   agentEmail: '',
   spreadsheetId: '', // Store ID
   step: 1,
-  rememberUrl: true // ✅ 新增：控制是否記住網址
+  rememberUrl: true, // ✅ 新增：控制是否記住網址
+  enableAutoSync: true // ✅ 新增：名單異動後自動全量同步
 });
+
+// ✅ 從網址/ID 解析出純 spreadsheetId（後端綁定需存 ID，不能存完整 URL）
+const parseSpreadsheetId = (input) => {
+  const m = String(input || '').match(/\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : String(input || '').trim();
+};
 
 const openSyncDialog = async () => {
   // ✅ 移除：允許即使沒資料也能打開對話框設定網址
@@ -3503,16 +3529,16 @@ const executeGoogleSync = async () => {
   
   isSyncingToGoogle.value = true;
   try {
-    // 1. 準備資料
+    // 1. 準備資料（✅ 全量：不受畫面篩選影響）
     console.log('[Debug] allLeads:', allLeads.value.length);
-    console.log('[Debug] filteredLeads:', filteredLeads.value.length);
-    
+    console.log('[Debug] exportScopeLeads:', exportScopeLeads.value.length);
+
     const exportRows = getLeadsExportData();
     console.log('[Debug] exportRows:', exportRows.length);
-    
+
     // ✅ 新增：檢查是否有資料
     if (exportRows.length === 0) {
-      alert('目前列表無資料可供同步 (但網址設定已保留)'); // 提示用戶
+      alert('目前無資料可供同步 (但網址設定已保留)'); // 提示用戶
       // 如果用戶勾選了儲存，即使沒資料同步，也可以順便存網址 (看需求，這裡假設沒資料就不執行寫入 Google Sheet，但可以更新設定)
       // 為了邏輯簡單，這裡如果沒資料就不往下執行 exportToGoogleSheet
     }
@@ -3552,7 +3578,21 @@ const executeGoogleSync = async () => {
       values: values
     });
 
-    alert('同步成功！');
+    // ✅ 4. 儲存/解除自動同步綁定（成功同步後才綁定，確保工作表可寫入）
+    //    綁定後 Cloud Functions (onLeadWriteSheetSync) 會在名單異動時自動全量同步
+    try {
+      const binding = googleSheetForm.enableAutoSync
+        ? {
+            leadsSheetId: parseSpreadsheetId(googleSheetForm.spreadsheetId || googleSheetForm.url),
+            leadsSheetTabName: googleSheetForm.sheetName
+          }
+        : { leadsSheetId: deleteField(), leadsSheetTabName: deleteField() };
+      await updateDoc(doc(db, 'projects', props.projectId), binding);
+    } catch (e) {
+      console.error('儲存自動同步設定失敗:', e);
+    }
+
+    alert(`同步成功！已全量同步 ${exportRows.length} 筆名單${googleSheetForm.enableAutoSync ? '\n已啟用自動同步：之後名單異動將自動更新此工作表' : ''}`);
     googleSheetDialog.value = false;
 
   } catch (error) {
