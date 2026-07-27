@@ -2815,6 +2815,27 @@ export const cleanupTestBookings = async (projectId) => {
 };
 
 /**
+ * [API] BookingPage 功能測試頁專用：清除授權書簽署流程的測試資料
+ * @param {string} projectId - 建案 ID
+ * @param {string[]} driveFileIds - 測試中上傳的 Drive 檔案 ID（後端會確認檔名含「系統測試」才刪除）
+ */
+export const cleanupTestAuthSessions = async (projectId, driveFileIds = []) => {
+  if (!projectId) {
+    return { status: 'error', message: '缺少 projectId。' };
+  }
+  try {
+    const result = await bookingApiRouter({
+      action: 'cleanupTestAuthSessions',
+      data: { projectId, testKey: projectId, driveFileIds }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("API cleanupTestAuthSessions 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+};
+
+/**
  * [API] 呼叫後端，為預約確認步驟產生一個有時效性的 Token (V2: 呼叫 bookingApi 路由)
  * @param {object} payload - 包含 { projectId, unitId, bookingType }
  */

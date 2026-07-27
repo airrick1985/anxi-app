@@ -151,10 +151,10 @@
                 {{ results[node.id].message || node.desc }}
               </v-list-item-subtitle>
 
-              <!-- 寫入流程子步驟 -->
-              <div v-if="node.id === 'fullFlow' && flowSteps.length" class="mt-2">
+              <!-- 寫入/授權流程子步驟 -->
+              <div v-if="subStepsFor(node.id).length" class="mt-2">
                 <div
-                  v-for="step in flowSteps"
+                  v-for="step in subStepsFor(node.id)"
                   :key="step.label"
                   class="d-flex align-center text-caption py-1"
                 >
@@ -185,6 +185,8 @@
       <v-alert type="info" variant="tonal" density="compact" class="mt-4 text-caption">
         說明：「驗證碼驗證（正向）」使用系統內部通行鑰匙（建案 ID）測試，不需真實身分證號；「完整預約寫入流程」會實際建立一筆標記為測試的預約
         → 寄出【系統測試】預約成功信（僅給上方 Email）→ 取消（寄出【系統測試】取消信）→ 從資料庫刪除該筆測試資料並更新戶別摘要。
+        「授權書簽署全流程」會發起一筆標記為測試的簽署邀請（【系統測試】邀請信僅寄上方 Email）→ 模擬受託人開啟簽署頁 → 上傳測試授權書圖檔 →
+        完成簽署（【系統測試】完成信僅寄上方 Email、不寄副本收件人、不寫入戶別正式資料）→ 刪除測試簽署資料與測試圖檔。
         若測試中斷留下殘料，可按「清除殘留測試資料」。
       </v-alert>
     </template>
@@ -206,6 +208,11 @@ import {
   saveBooking,
   cancelBooking,
   cleanupTestBookings,
+  initiateAuthSigningProcess,
+  getAuthSigningSession,
+  markAuthSessionComplete,
+  uploadAuthLetter,
+  cleanupTestAuthSessions,
 } from '@/api';
 
 const userStore = useUserStore();
@@ -285,11 +292,20 @@ const nodes = [
   { id: 'slots', name: '可預約時段 (getAvailableSlots)', desc: '以內部模式讀取可預約日期與時段。' },
   { id: 'token', name: '確認憑證 (initiateBookingConfirmation)', desc: '產生 5 分鐘時效的預約確認 Token。' },
   { id: 'fullFlow', name: '完整預約寫入流程（建立→查詢→取消→清除）', desc: '實際走一次 saveBooking／cancelBooking，測試信僅寄給上方 Email，資料自動清除。' },
+  { id: 'authFlow', name: '授權書簽署全流程（發起→簽署→完成→清除）', desc: '實際走一次驗屋授權書流程：邀請信與完成信僅寄給上方 Email、不寄副本收件人，不寫入戶別正式資料，測試資料自動清除。' },
 ];
 
 const makeResult = () => ({ status: 'idle', ms: null, message: '' });
 const results = reactive(Object.fromEntries(nodes.map(n => [n.id, makeResult()])));
 const flowSteps = ref([]);
+const authFlowSteps = ref([]);
+
+// 依節點取對應的子步驟列表（供模板顯示）
+const subStepsFor = (id) => {
+  if (id === 'fullFlow') return flowSteps.value;
+  if (id === 'authFlow') return authFlowSteps.value;
+  return [];
+};
 
 const isRunningAll = ref(false);
 const isCleaning = ref(false);
@@ -331,6 +347,7 @@ const onProjectChange = async () => {
   selectedUnit.value = null;
   paramsError.value = '';
   flowSteps.value = [];
+  authFlowSteps.value = [];
   nodes.forEach(n => Object.assign(results[n.id], makeResult()));
   if (!selectedProjectId.value) return;
 
@@ -547,6 +564,105 @@ const runners = {
       throw e;
     }
   },
+
+  async authFlow() {
+    authFlowSteps.value = [];
+    const step = (label) => {
+      const s = reactive({ label, status: 'running', message: '' });
+      authFlowSteps.value.push(s);
+      return s;
+    };
+    const pid = selectedProjectId.value;
+    // 1x1 透明 PNG，作為測試用簽名與授權書圖檔
+    const TEST_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    let driveFileId = null;
+
+    try {
+      // a. 發起簽署邀請（isTest：session 標記測試、邀請信僅寄測試 Email、回傳 token 供後續步驟）
+      let s = step('發起簽署邀請 (initiateAuthSigningProcess) 並寄出【系統測試】邀請信');
+      const initRes = await initiateAuthSigningProcess({
+        projectId: pid,
+        unitId: selectedUnit.value,
+        formData: {
+          委託人姓名: '系統功能測試-委託人',
+          委託人電話: '0900000000',
+          委託人身分證: pid,
+          委託人戶籍地: '系統測試地址',
+          委託人Email: testEmail.value,
+          受託人姓名: '系統功能測試-受託人',
+          受託人Email: testEmail.value,
+          受託人身分證: pid,
+          受託人戶籍地: '系統測試地址',
+          受託人電話: '0900000000',
+          受託人關係: '其他',
+          受託人關係其他: '系統測試',
+        },
+        delegatorSignature: TEST_PNG,
+        isTest: true,
+      });
+      if (initRes.status !== 'success' || !initRes.token) throw new Error(initRes.message || '未取得測試簽署 Token。');
+      const token = initRes.token;
+      s.status = 'pass';
+      s.message = `邀請信已寄至 ${testEmail.value}（Token ${token.slice(0, 8)}…）`;
+
+      // b. 模擬受託人開啟簽署頁
+      s = step('讀取簽署階段資料 (getAuthSigningSession)');
+      const sessionRes = await getAuthSigningSession({ token });
+      if (sessionRes.status !== 'success') throw new Error(sessionRes.message || '讀取簽署資料失敗。');
+      if (sessionRes.data?.formData?.受託人姓名 !== '系統功能測試-受託人') throw new Error('簽署資料與發起內容不一致。');
+      s.status = 'pass';
+      s.message = `受託人可正常開啟簽署頁（建案：${sessionRes.data.projectName}）。`;
+
+      // c. 上傳測試授權書（模擬受託人簽署後產生的最終文件；檔名含「系統測試」供後端安全刪除）
+      s = step('上傳測試授權書圖檔 (uploadAuthLetter)');
+      let finalUrl = 'https://anxismart.com/#/booking-test';
+      const uploadRes = await uploadAuthLetter(TEST_PNG, '【系統測試】驗屋授權書-請勿使用.png', pid, selectedUnit.value);
+      if (uploadRes.status === 'success') {
+        finalUrl = uploadRes.url;
+        driveFileId = uploadRes.id;
+        s.status = 'pass';
+        s.message = '測試圖檔已上傳至該戶別文件資料夾（流程結束時自動刪除）。';
+      } else {
+        s.status = 'skip';
+        s.message = `上傳未執行（${uploadRes.message || '戶別未設定文件資料夾'}），改用替代連結繼續流程。`;
+      }
+
+      // d. 完成簽署（isTest session：不寫入 households、完成信僅寄測試 Email、不 CC）
+      s = step('完成簽署 (completeAuthSigningProcess) 並寄出【系統測試】完成信');
+      const completeRes = await markAuthSessionComplete({ token, finalUrl });
+      if (completeRes.status !== 'success') throw new Error(completeRes.message || '完成簽署失敗。');
+      s.status = 'pass';
+      s.message = `完成信已寄至 ${testEmail.value}；測試模式未寫入戶別正式資料。`;
+
+      // e. 清除測試資料
+      s = step('刪除測試資料 (cleanupTestAuthSessions)');
+      const cleanRes = await cleanupTestAuthSessions(pid, driveFileId ? [driveFileId] : []);
+      if (cleanRes.status !== 'success') throw new Error(cleanRes.message || '清除失敗。');
+      driveFileId = null;
+      s.status = 'pass';
+      s.message = `已刪除 ${cleanRes.data?.deletedSessions ?? 0} 筆測試簽署資料、${cleanRes.data?.deletedDriveFiles ?? 0} 個測試圖檔。`;
+
+      return `全流程通過：發起、簽署頁讀取、完成、清除皆正常，兩封【系統測試】信已寄至 ${testEmail.value}。`;
+    } catch (e) {
+      const running = authFlowSteps.value.find(st => st.status === 'running');
+      if (running) {
+        running.status = 'fail';
+        running.message = e.message;
+      }
+      // 無論在哪一步失敗，都嘗試把測試資料清乾淨
+      try {
+        const cleanRes = await cleanupTestAuthSessions(pid, driveFileId ? [driveFileId] : []);
+        const s = step('失敗後自動清理');
+        s.status = cleanRes.status === 'success' ? 'pass' : 'fail';
+        s.message = cleanRes.status === 'success'
+          ? `已刪除 ${cleanRes.data?.deletedSessions ?? 0} 筆測試簽署資料、${cleanRes.data?.deletedDriveFiles ?? 0} 個測試圖檔。`
+          : (cleanRes.message || '清理失敗，請按「清除殘留測試資料」。');
+      } catch (cleanupErr) {
+        console.error('授權測試失敗後清理錯誤:', cleanupErr);
+      }
+      throw e;
+    }
+  },
 };
 
 async function runNode(id) {
@@ -577,6 +693,7 @@ async function runNode(id) {
 
 const runSingle = async (id) => {
   if (id === 'fullFlow') flowSteps.value = [];
+  if (id === 'authFlow') authFlowSteps.value = [];
   await runNode(id);
 };
 
@@ -584,6 +701,7 @@ const runAllTests = async () => {
   if (!canRun.value) return;
   isRunningAll.value = true;
   flowSteps.value = [];
+  authFlowSteps.value = [];
   nodes.forEach(n => Object.assign(results[n.id], makeResult()));
   try {
     for (const node of nodes) {
@@ -599,10 +717,11 @@ const runCleanupOnly = async () => {
   isCleaning.value = true;
   try {
     const res = await cleanupTestBookings(selectedProjectId.value);
-    if (res.status === 'success') {
-      alert(`清理完成：刪除 ${res.data?.deletedAppointments ?? 0} 筆測試預約、${res.data?.deletedExpiredTokens ?? 0} 筆過期 Token。`);
+    const authRes = await cleanupTestAuthSessions(selectedProjectId.value);
+    if (res.status === 'success' && authRes.status === 'success') {
+      alert(`清理完成：刪除 ${res.data?.deletedAppointments ?? 0} 筆測試預約、${res.data?.deletedExpiredTokens ?? 0} 筆過期 Token、${authRes.data?.deletedSessions ?? 0} 筆測試簽署資料。`);
     } else {
-      alert(`清理失敗：${res.message || '未知錯誤'}`);
+      alert(`清理失敗：${res.message || authRes.message || '未知錯誤'}`);
     }
   } finally {
     isCleaning.value = false;

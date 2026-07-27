@@ -7554,27 +7554,30 @@ exports.completeAuthSigningProcess = onCall({
       });
 
       // 2. 更新戶別資料 (households) 中的授權書連結欄位
-      const householdDocId = `${sessionData.projectId}_${sessionData.unitId}`;
-      const householdRef = db.collection("households").doc(householdDocId);
-      //  使用 arrayUnion 將新文件加入陣列，而不是覆蓋
-      const _today = new Date().toISOString().slice(0, 10);
-      const _fd = sessionData.formData || {};
-      const _relationship = _fd.受託人關係 === '其他'
-        ? (_fd.受託人關係其他 || '其他')
-        : (_fd.受託人關係 || '');
-      transaction.update(householdRef, {
-        authorizationLetterUrl: admin.firestore.FieldValue.arrayUnion({
-          name: `${sessionData.unitId}驗屋授權書-${_today}`,
-          url: finalUrl,
-          // 受託人資訊（用於 HouseholdGrid 顯示）
-          agentName: _fd.受託人姓名 || '',
-          agentPhone: _fd.受託人電話 || '',
-          agentRelationship: _relationship,
-          principalName: _fd.委託人姓名 || '',
-          principalPhone: _fd.委託人電話 || '',
-          signedAt: _today
-        })
-      });
+      //    功能測試模式 (isTest) 跳過：不寫入正式戶別資料
+      if (sessionData.isTest !== true) {
+        const householdDocId = `${sessionData.projectId}_${sessionData.unitId}`;
+        const householdRef = db.collection("households").doc(householdDocId);
+        //  使用 arrayUnion 將新文件加入陣列，而不是覆蓋
+        const _today = new Date().toISOString().slice(0, 10);
+        const _fd = sessionData.formData || {};
+        const _relationship = _fd.受託人關係 === '其他'
+          ? (_fd.受託人關係其他 || '其他')
+          : (_fd.受託人關係 || '');
+        transaction.update(householdRef, {
+          authorizationLetterUrl: admin.firestore.FieldValue.arrayUnion({
+            name: `${sessionData.unitId}驗屋授權書-${_today}`,
+            url: finalUrl,
+            // 受託人資訊（用於 HouseholdGrid 顯示）
+            agentName: _fd.受託人姓名 || '',
+            agentPhone: _fd.受託人電話 || '',
+            agentRelationship: _relationship,
+            principalName: _fd.委託人姓名 || '',
+            principalPhone: _fd.委託人電話 || '',
+            signedAt: _today
+          })
+        });
+      }
     });
 
     //  START: 新增寄送 Email 通知邏輯
@@ -7583,7 +7586,10 @@ exports.completeAuthSigningProcess = onCall({
         const projectDoc = await db.collection('projects').doc(sessionData.projectId).get();
         const projectName = projectDoc.exists ? projectDoc.data().name : sessionData.projectId;
 
-        const ccRecipients = await getCcRecipients(sessionData.projectId, "驗屋系統信件副本");
+        // 功能測試模式：不寄副本收件人（收件人本來就只有測試信箱）
+        const ccRecipients = sessionData.isTest === true
+          ? []
+          : await getCcRecipients(sessionData.projectId, "驗屋系統信件副本");
         const toRecipients = [
           sessionData.formData.委託人Email,
           sessionData.formData.受託人Email
@@ -7595,7 +7601,7 @@ exports.completeAuthSigningProcess = onCall({
             auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
           });
 
-          const subject = `【${projectName}】驗屋授權書已完成簽署通知 (戶別: ${sessionData.unitId})`;
+          const subject = `${sessionData.isTest === true ? '【系統測試】' : ''}【${projectName}】驗屋授權書已完成簽署通知 (戶別: ${sessionData.unitId})`;
           const htmlBody = `
             <div style="font-family: Arial, sans-serif; line-height: 1.6; background-color: #f4f4f7; padding: 20px;">
               <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
@@ -7688,6 +7694,7 @@ exports.backfillAuthLetterAgentInfo = onCall({
     const sessionByUrl = new Map();
     sessionSnap.forEach(doc => {
       const s = doc.data();
+      if (s?.isTest === true) return; // 排除功能測試 session
       const url = s?.finalDocumentUrl;
       if (url && typeof url === 'string') {
         sessionByUrl.set(url, s);
@@ -13843,6 +13850,9 @@ exports.bookingApi = onCall({
         return await _handleUploadAuthLetter(data);
       case 'initiateAuthSigningProcess':
         return await _handleInitiateAuthSigningProcess(data);
+      case 'cleanupTestAuthSessions':
+        // BookingPage 功能測試頁專用：清除授權書簽署流程的測試資料
+        return await _handleCleanupTestAuthSessions(data);
 
       // --- 報告上傳流程 ---
       case 'verifyUploadPrerequisites':
@@ -15093,6 +15103,60 @@ async function _handleCleanupTestBookings(data) {
 }
 
 /**
+ * [內部函式] BookingPage 功能測試頁專用：清除授權書簽署流程的測試資料
+ * 刪除該建案 isTest 標記的 authLetterSessions；driveFileIds 中檔名含「系統測試」的 Drive 檔案一併刪除
+ */
+async function _handleCleanupTestAuthSessions(data) {
+  const { projectId, testKey, driveFileIds } = data || {};
+  const functionName = `_handleCleanupTestAuthSessions (Project: ${projectId})`;
+
+  if (!projectId || testKey !== projectId) {
+    throw new HttpsError('permission-denied', '無效的測試資料清理請求。');
+  }
+
+  const db = new Firestore({ databaseId: 'anxi-app' });
+  try {
+    const snapshot = await db.collection('authLetterSessions')
+      .where('projectId', '==', projectId)
+      .where('isTest', '==', true)
+      .get();
+    for (const doc of snapshot.docs) {
+      await doc.ref.delete();
+    }
+
+    // 刪除 Drive 上的測試授權書檔案（先確認檔名含「系統測試」才刪，避免誤刪正式文件）
+    let deletedDriveFiles = 0;
+    if (Array.isArray(driveFileIds) && driveFileIds.length > 0) {
+      const oauth2Client = new google.auth.OAuth2(
+        process.env.DRIVE_CLIENT_ID,
+        process.env.DRIVE_CLIENT_SECRET,
+        'https://developers.google.com/oauthplayground'
+      );
+      oauth2Client.setCredentials({ refresh_token: process.env.DRIVE_REFRESH_TOKEN });
+      const drive = google.drive({ version: 'v3', auth: oauth2Client });
+      for (const fileId of driveFileIds) {
+        try {
+          const file = await drive.files.get({ fileId, fields: 'id, name' });
+          if ((file.data.name || '').includes('系統測試')) {
+            await drive.files.delete({ fileId });
+            deletedDriveFiles++;
+          }
+        } catch (e) {
+          console.warn(`[${functionName}] 刪除 Drive 測試檔 ${fileId} 失敗:`, e.message);
+        }
+      }
+    }
+
+    console.log(`[${functionName}] 已刪除 ${snapshot.size} 筆測試簽署 session、${deletedDriveFiles} 個 Drive 測試檔。`);
+    return { status: 'success', data: { deletedSessions: snapshot.size, deletedDriveFiles } };
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', `清除授權書測試資料時發生錯誤: ${error.message}`);
+  }
+}
+
+/**
  * [內部函式] 處理驗屋授權書的上傳 (Firebase 版)
  */
 async function _handleUploadAuthLetter(data) {
@@ -15449,7 +15513,7 @@ async function _handleHandleDirectReportUpload(data) {
  * [內部函式] 發起授權書簽署流程 (委託人發起)
  */
 async function _handleInitiateAuthSigningProcess(data) {
-  const { projectId, unitId, formData, delegatorSignature } = data;
+  const { projectId, unitId, formData, delegatorSignature, isTest } = data;
   const functionName = `_handleInitiateAuthSigningProcess`;
 
   if (!projectId || !unitId || !formData || !delegatorSignature) {
@@ -15468,6 +15532,8 @@ async function _handleInitiateAuthSigningProcess(data) {
       status: 'pending',
       createdAt: Timestamp.fromDate(now),
       expiresAt: Timestamp.fromDate(expiresAt),
+      // 功能測試模式：session 標記 isTest 供 completeAuthSigningProcess 跳過正式資料寫入、cleanup 清除
+      ...(isTest === true ? { isTest: true } : {}),
     });
     const projectDoc = await db.collection('projects').doc(projectId).get();
     const projectName = projectDoc.exists ? projectDoc.data().name : projectId;
@@ -15499,11 +15565,14 @@ async function _handleInitiateAuthSigningProcess(data) {
     await mailTransport.sendMail({
       from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
       to: formData.受託人Email,
-      subject: `【重要】${projectName} 驗屋授權書簽署邀請`,
+      subject: `${isTest === true ? '【系統測試】' : ''}【重要】${projectName} 驗屋授權書簽署邀請`,
       html: emailBodyHtml,
     });
-    console.log(`[${functionName}] 已成功為 ${unitId} 寄送簽署邀請至受託人 ${formData.受託人Email}`);
-    return { status: "success", message: "邀請已寄出" };
+    console.log(`[${functionName}] 已成功為 ${unitId} 寄送簽署邀請至受託人 ${formData.受託人Email}${isTest === true ? '（測試模式）' : ''}`);
+    // 測試模式回傳 token，讓功能測試頁能接續模擬受託人簽署流程；正式流程不回傳（簽署連結只在受託人信中）
+    return isTest === true
+      ? { status: "success", message: "邀請已寄出", token }
+      : { status: "success", message: "邀請已寄出" };
   } catch (error) {
     console.error(`[${functionName}] 發生錯誤:`, error);
     throw new HttpsError("internal", `發起簽署流程時發生錯誤: ${error.message}`);
