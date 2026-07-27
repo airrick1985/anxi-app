@@ -21,7 +21,7 @@
           <v-col cols="12" md="6">
             <v-text-field
               v-model="searchPhone"
-              label="輸入姓名、手機或建案名稱篩選"
+              label="輸入姓名、手機、公司或建案名稱篩選"
               variant="outlined"
               hide-details
               prepend-inner-icon="mdi-magnify"
@@ -30,6 +30,10 @@
             </v-text-field>
           </v-col>
           <v-col cols="12" md="6" class="d-flex justify-end align-center">
+            <v-btn v-if="canBatchGrant" color="teal-darken-1" class="mr-2" @click="openBatchGrantDialog">
+              <v-icon left>mdi-account-multiple-plus</v-icon>
+              批次授權
+            </v-btn>
             <v-btn color="primary" @click="openCreateDialog()">
               <v-icon left>mdi-plus</v-icon>
               新增人員
@@ -789,7 +793,192 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
- 
+
+    <!-- 批次授權對話框 -->
+    <v-dialog
+      v-model="batchDialogVisible"
+      persistent
+      :max-width="isMobile ? '100%' : '900px'"
+      :fullscreen="isMobile"
+      scrollable
+    >
+      <v-card>
+        <v-card-title class="bg-teal-darken-1 text-white d-flex align-center">
+          <v-icon start>mdi-account-multiple-plus</v-icon>
+          <span class="text-h6">批次授權</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="closeBatchDialog" :disabled="batchSaving"></v-btn>
+        </v-card-title>
+
+        <v-card-text class="pa-4">
+          <!-- 執行結果 -->
+          <div v-if="batchResult">
+            <v-alert v-if="batchResult.granted.length > 0" type="success" variant="tonal" class="mb-3">
+              <div class="font-weight-bold mb-1">成功授權 {{ batchResult.granted.length }} 人</div>
+              <div v-for="g in batchResult.granted" :key="g.name" class="text-caption">
+                {{ g.name }}：{{ g.systems.join('、') }}
+              </div>
+            </v-alert>
+            <v-alert v-if="batchResult.unchanged.length > 0" type="info" variant="tonal" class="mb-3">
+              <div class="font-weight-bold mb-1">{{ batchResult.unchanged.length }} 人已具備所選權限，未變更</div>
+              <div class="text-caption">{{ batchResult.unchanged.join('、') }}</div>
+            </v-alert>
+            <v-alert v-if="Object.keys(batchResult.quotaSkipped).length > 0" type="warning" variant="tonal" class="mb-3">
+              <div class="font-weight-bold mb-1">以下權限因名額不足，部分人員未授予</div>
+              <div v-for="(names, sys) in batchResult.quotaSkipped" :key="sys" class="text-caption">
+                {{ sys }}：{{ names.join('、') }}
+              </div>
+            </v-alert>
+            <v-alert v-if="batchResult.failed.length > 0" type="error" variant="tonal" class="mb-3">
+              <div class="font-weight-bold mb-1">{{ batchResult.failed.length }} 人授權失敗</div>
+              <div v-for="f in batchResult.failed" :key="f.name" class="text-caption">
+                {{ f.name }}：{{ f.message }}
+              </div>
+            </v-alert>
+          </div>
+
+          <!-- 設定畫面 -->
+          <div v-else>
+            <!-- 步驟一：選擇建案 -->
+            <div class="text-subtitle-1 font-weight-bold mb-2">
+              <v-icon size="small" color="teal-darken-1" class="mr-1">mdi-numeric-1-circle</v-icon>
+              選擇建案
+            </div>
+            <v-select
+              v-model="batchProject"
+              :items="batchGrantableProjects"
+              label="建案"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+              class="mb-4"
+              :disabled="batchSaving"
+            ></v-select>
+
+            <!-- 步驟二：選擇權限 -->
+            <div class="text-subtitle-1 font-weight-bold mb-2">
+              <v-icon size="small" color="teal-darken-1" class="mr-1">mdi-numeric-2-circle</v-icon>
+              選擇要授予的權限
+              <span v-if="batchSelectedSystems.length > 0" class="text-caption text-teal-darken-1">（已選 {{ batchSelectedSystems.length }} 項）</span>
+            </div>
+            <div v-if="!batchProject" class="text-grey text-body-2 mb-4 ml-7">請先選擇建案</div>
+            <div v-else class="batch-section-container mb-4">
+              <div v-for="group in batchGroupedSystems" :key="group.id" class="mb-3">
+                <div class="d-flex align-center mb-1">
+                  <v-icon :color="group.color" size="small" class="mr-2">{{ group.icon }}</v-icon>
+                  <span class="text-subtitle-2 font-weight-bold" :style="{ color: group.color }">{{ group.label }}</span>
+                  <v-divider class="ml-3 flex-grow-1"></v-divider>
+                </div>
+                <v-row dense>
+                  <v-col v-for="system in group.items" :key="system" cols="12" sm="6" md="4">
+                    <v-checkbox
+                      v-model="batchSelectedSystems"
+                      :value="system"
+                      :label="system"
+                      hide-details
+                      density="compact"
+                      :disabled="batchSaving"
+                    ></v-checkbox>
+                    <div v-if="getQuotaLimit(system, batchProject) > 0" class="batch-quota-hint">
+                      名額 {{ getQuotaUsed(system, batchProject) }}/{{ getQuotaLimit(system, batchProject) }} 人
+                    </div>
+                  </v-col>
+                </v-row>
+              </div>
+            </div>
+
+            <v-divider class="my-4"></v-divider>
+
+            <!-- 步驟三：勾選人員 -->
+            <div class="text-subtitle-1 font-weight-bold mb-2">
+              <v-icon size="small" color="teal-darken-1" class="mr-1">mdi-numeric-3-circle</v-icon>
+              勾選被授權的人員
+              <span v-if="batchSelectedUsers.length > 0" class="text-caption text-teal-darken-1">（已選 {{ batchSelectedUsers.length }} 人）</span>
+            </div>
+            <div class="d-flex align-center mb-2 flex-wrap ga-2">
+              <v-text-field
+                v-model="batchUserSearch"
+                label="搜尋姓名或手機"
+                variant="outlined"
+                density="compact"
+                hide-details
+                prepend-inner-icon="mdi-magnify"
+                clearable
+                style="max-width: 260px;"
+                :disabled="batchSaving"
+              ></v-text-field>
+              <v-select
+                v-model="batchCompanyFilter"
+                :items="batchCompanyOptions"
+                label="依公司篩選"
+                variant="outlined"
+                density="compact"
+                hide-details
+                prepend-inner-icon="mdi-domain"
+                clearable
+                style="max-width: 260px;"
+                :disabled="batchSaving"
+              ></v-select>
+              <v-btn size="small" variant="tonal" @click="selectAllBatchUsers" :disabled="batchSaving">全選</v-btn>
+              <v-btn size="small" variant="tonal" @click="batchSelectedUsers = []" :disabled="batchSaving">清除</v-btn>
+            </div>
+            <div class="batch-user-list">
+              <div
+                v-for="u in batchUserList"
+                :key="u.phone"
+                class="d-flex align-center px-2 batch-user-row"
+              >
+                <v-checkbox
+                  v-model="batchSelectedUsers"
+                  :value="u.phone"
+                  hide-details
+                  density="compact"
+                  :disabled="!!u.disabledReason || batchSaving"
+                >
+                  <template v-slot:label>
+                    <span class="mr-2">{{ u.name }}</span>
+                    <span class="text-caption text-grey mr-2">{{ u.phone }}</span>
+                    <span v-if="u.companyName" class="text-caption text-blue-grey">{{ u.companyName }}</span>
+                  </template>
+                </v-checkbox>
+                <v-spacer></v-spacer>
+                <v-chip v-if="u.disabledReason" size="x-small" color="grey" label class="ml-1">{{ u.disabledReason }}</v-chip>
+                <v-chip v-else-if="u.hasAll" size="x-small" color="green" label class="ml-1">已具備所選權限</v-chip>
+                <v-chip v-else-if="batchSelectedSystems.length > 0 && u.ownedCount > 0" size="x-small" color="blue-grey" label class="ml-1">
+                  已有 {{ u.ownedCount }}/{{ batchSelectedSystems.length }} 項
+                </v-chip>
+              </div>
+              <div v-if="batchUserList.length === 0" class="text-center text-grey py-4">找不到符合條件的人員</div>
+            </div>
+
+            <div v-if="batchSaving" class="text-center mt-4">
+              <v-progress-circular indeterminate color="teal-darken-1" size="24" class="mr-2"></v-progress-circular>
+              <span class="text-body-2">{{ batchProgress }}</span>
+            </div>
+          </div>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4 bg-grey-lighten-5">
+          <v-spacer></v-spacer>
+          <template v-if="!batchResult">
+            <v-btn color="grey-darken-1" variant="text" @click="closeBatchDialog" :disabled="batchSaving">取消</v-btn>
+            <v-btn
+              color="teal-darken-1"
+              variant="flat"
+              size="large"
+              :loading="batchSaving"
+              :disabled="!batchProject || batchSelectedSystems.length === 0 || batchSelectedUsers.length === 0"
+              @click="handleBatchGrant"
+            >
+              批次授權（{{ batchSelectedUsers.length }} 人）
+            </v-btn>
+          </template>
+          <v-btn v-else color="teal-darken-1" variant="flat" @click="closeBatchDialog">完成</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- 郵件發送對話框 -->
     <v-dialog v-model="emailDialogVisible" max-width="800px" persistent>
       <v-card>
@@ -1035,6 +1224,17 @@ const phoneValidationSuccess = ref('');
 const panels = ref([]);
 const projectSearchQuery = ref('');
 
+// --- 批次授權相關 State ---
+const batchDialogVisible = ref(false);
+const batchSaving = ref(false);
+const batchProject = ref(null);
+const batchSelectedSystems = ref([]);
+const batchSelectedUsers = ref([]);
+const batchUserSearch = ref('');
+const batchCompanyFilter = ref(null);
+const batchProgress = ref('');
+const batchResult = ref(null);
+
 // --- Role Management State ---
 // const roles = ref([]); // 由 store 取代
 const selectedRoleIndex = ref(null);
@@ -1202,6 +1402,7 @@ const filteredUsers = computed(() => {
     user.name.toLowerCase().includes(lowerQuery) ||
     user.phone.includes(lowerQuery) ||
     (user.email && user.email.toLowerCase().includes(lowerQuery)) || // 確保 email 存在
+    (user.companyName && user.companyName.toLowerCase().includes(lowerQuery)) ||
     user.projectsText.toLowerCase().includes(lowerQuery)
   );
 });
@@ -1458,6 +1659,7 @@ const availableRolesForAssignment = computed(() => {
 const displayFields = ref([
   { key: 'phone', label: '手機號碼' },
   { key: 'email', label: 'Email' },
+  { key: 'companyName', label: '公司' },
   { key: 'lineId', label: 'LINE綁定', type: 'chip', options: { trueColor: 'green', falseColor: 'grey', trueText: '已綁定', falseText: '未綁定' } },
   { key: 'projects', label: '所屬建案', type: 'projects' },
   { key: 'roles', label: '角色' },
@@ -1467,10 +1669,11 @@ const displayFields = ref([
 // --- START: 修改 tableHeaders (步驟 4) ---
 const tableHeaders = computed(() => {
   const headers = [
-    { title: '姓名', align: 'start', key: 'name', width: '15%' },
-    { title: '手機號碼', key: 'phone', width: '15%' },
-    { title: 'Email', key: 'email', width: '20%' },
-    { title: 'LINE綁定', key: 'lineId', sortable: false, align: 'center', width: '10%' },
+    { title: '姓名', align: 'start', key: 'name', width: '12%' },
+    { title: '手機號碼', key: 'phone', width: '12%' },
+    { title: 'Email', key: 'email', width: '16%' },
+    { title: '公司', key: 'companyName', width: '12%' },
+    { title: 'LINE綁定', key: 'lineId', sortable: false, align: 'center', width: '8%' },
     { title: '所屬建案', key: 'projects', sortable: false, width: '20%' },
   ];
   if (canViewAndEditRoles.value) {
@@ -2041,6 +2244,227 @@ const handlePermissionToggle = (systemFuncName, projectName, newValue) => {
   permissionMatrix.value[systemFuncName][projectName] = true;
 };
 
+// --- 批次授權邏輯 ---
+
+// 可使用批次授權的條件：permissions 欄位可寫，且至少有一個可授權的建案
+const canBatchGrant = computed(() => {
+  if (getFieldPermission('permissions') !== 'RU') return false;
+  return batchGrantableProjects.value.length > 0;
+});
+
+// 可批次授權的建案：超管/系管為全部管理建案；一般管理員僅限自己在該建案有「人員管理」權限者
+const batchGrantableProjects = computed(() => {
+  if (isGodModeAdmin.value) return managedProjects.value;
+  return managedProjects.value.filter(p => adminStore.adminScope[p]?.includes('人員管理'));
+});
+
+// 所選建案下可授予的權限：一般管理員不能授予自己沒有的權限
+const batchGrantableSystems = computed(() => {
+  if (!batchProject.value) return [];
+  if (isGodModeAdmin.value) return allFunctionNames.value;
+  return (adminStore.adminScope[batchProject.value] || []).slice().sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+});
+
+const batchGroupedSystems = computed(() => {
+  const groups = permissionCategories.map(cat => ({ ...cat, items: [] }));
+  const otherGroup = { id: 'other', label: '其他功能', icon: 'mdi-dots-horizontal', color: 'grey-darken-1', items: [] };
+  batchGrantableSystems.value.forEach(funcName => {
+    const group = groups.find(g => g.keywords.some(k => funcName.includes(k)));
+    (group || otherGroup).items.push(funcName);
+  });
+  const result = groups.filter(g => g.items.length > 0);
+  if (otherGroup.items.length > 0) result.push(otherGroup);
+  return result;
+});
+
+// 公司篩選選項：從人員名單彙整不重複的公司名稱；'__none__' 代表未設定公司者
+const batchCompanyOptions = computed(() => {
+  const companies = new Set();
+  let hasEmpty = false;
+  usersWithProjectData.value.forEach(u => {
+    if (u.companyName) companies.add(u.companyName);
+    else hasEmpty = true;
+  });
+  const options = Array.from(companies)
+    .sort((a, b) => a.localeCompare(b, 'zh-Hant'))
+    .map(c => ({ title: c, value: c }));
+  if (hasEmpty) options.push({ title: '（未設定公司）', value: '__none__' });
+  return options;
+});
+
+const batchUserList = computed(() => {
+  const projectId = projectStore.nameToIdMap[batchProject.value];
+  const q = batchUserSearch.value?.toLowerCase().trim();
+  let list = usersWithProjectData.value;
+  if (batchCompanyFilter.value) {
+    list = batchCompanyFilter.value === '__none__'
+      ? list.filter(u => !u.companyName)
+      : list.filter(u => u.companyName === batchCompanyFilter.value);
+  }
+  if (q) {
+    list = list.filter(u => (u.name || '').toLowerCase().includes(q) || u.phone.includes(q));
+  }
+  return list.map(u => {
+    const roles = u.roles || [];
+    const isTargetAdminRole = roles.includes('超級管理員') || roles.includes('系統管理員');
+    const existingSystems = (projectId && adminStore.allUserPermissionsMap.get(u.phone)?.[projectId]?.systems) || [];
+    const ownedCount = batchSelectedSystems.value.filter(s => existingSystems.includes(s)).length;
+    let disabledReason = '';
+    if (!isGodModeAdmin.value) {
+      if (u.phone === userStore.user?.key) disabledReason = '不可授權自己';
+      else if (isTargetAdminRole) disabledReason = '無法編輯管理員';
+    }
+    return {
+      phone: u.phone,
+      name: u.name,
+      companyName: u.companyName || '',
+      ownedCount,
+      hasAll: batchSelectedSystems.value.length > 0 && ownedCount === batchSelectedSystems.value.length,
+      disabledReason
+    };
+  }).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant'));
+});
+
+// 切換建案時，移除新建案下不可授予的權限勾選
+watch(batchProject, () => {
+  batchSelectedSystems.value = batchSelectedSystems.value.filter(s => batchGrantableSystems.value.includes(s));
+});
+
+const openBatchGrantDialog = () => {
+  batchProject.value = batchGrantableProjects.value.length === 1 ? batchGrantableProjects.value[0] : null;
+  batchSelectedSystems.value = [];
+  batchSelectedUsers.value = [];
+  batchUserSearch.value = '';
+  batchCompanyFilter.value = null;
+  batchResult.value = null;
+  batchProgress.value = '';
+  batchDialogVisible.value = true;
+};
+
+const closeBatchDialog = () => {
+  if (batchSaving.value) return;
+  batchDialogVisible.value = false;
+  batchResult.value = null;
+};
+
+const selectAllBatchUsers = () => {
+  const selectable = batchUserList.value.filter(u => !u.disabledReason).map(u => u.phone);
+  batchSelectedUsers.value = Array.from(new Set([...batchSelectedUsers.value, ...selectable]));
+};
+
+const handleBatchGrant = async () => {
+  const projectName = batchProject.value;
+  const projectId = projectStore.nameToIdMap[projectName];
+  if (!projectId) {
+    toast.error('找不到建案資料，請重新整理後再試。');
+    return;
+  }
+
+  batchSaving.value = true;
+  const granted = [];
+  const unchanged = [];
+  const failed = [];
+  const quotaSkipped = {};
+
+  // 預先計算各權限的剩餘名額，批次過程中以本地計數遞減（快取資料在迴圈中不會更新）
+  const remaining = {};
+  for (const sys of batchSelectedSystems.value) {
+    const limit = getQuotaLimit(sys, projectName);
+    remaining[sys] = (!limit || limit <= 0) ? Infinity : Math.max(0, limit - getQuotaUsed(sys, projectName));
+  }
+
+  // 從完整名單取目標，避免搜尋過濾影響已勾選者
+  const allUsers = usersWithProjectData.value;
+  const targets = batchSelectedUsers.value
+    .map(phone => allUsers.find(u => u.phone === phone))
+    .filter(Boolean);
+
+  try {
+    let index = 0;
+    for (const target of targets) {
+      index++;
+      batchProgress.value = `正在授權 ${index}/${targets.length}：${target.name}`;
+
+      if (!isGodModeAdmin.value) {
+        const roles = target.roles || [];
+        if (target.phone === userStore.user?.key || roles.includes('超級管理員') || roles.includes('系統管理員')) {
+          failed.push({ name: target.name, message: '權限不足，無法編輯此人員' });
+          continue;
+        }
+      }
+
+      // 逐人取最新權限再合併，避免整份覆寫時弄丟其他建案的既有權限
+      const detailResult = await fetchUserDetailsForAdmin(target.phone, adminKey.value);
+      if (detailResult.status !== 'success') {
+        failed.push({ name: target.name, message: detailResult.message || '讀取人員資料失敗' });
+        continue;
+      }
+      const detail = detailResult.data;
+      const perms = JSON.parse(JSON.stringify(detail.permissions || {}));
+      const targetRoles = detail.basicInfo.roles || [];
+      const targetIsAdmin = targetRoles.includes('超級管理員') || targetRoles.includes('系統管理員');
+      const existingSystems = perms[projectId]?.systems || [];
+
+      const systemsToAdd = [];
+      for (const sys of batchSelectedSystems.value) {
+        if (existingSystems.includes(sys)) continue;
+        if (!targetIsAdmin && remaining[sys] <= 0) {
+          if (!quotaSkipped[sys]) quotaSkipped[sys] = [];
+          quotaSkipped[sys].push(target.name);
+          continue;
+        }
+        systemsToAdd.push(sys);
+      }
+
+      if (systemsToAdd.length === 0) {
+        if (batchSelectedSystems.value.every(sys => existingSystems.includes(sys))) {
+          unchanged.push(target.name);
+        }
+        continue;
+      }
+
+      if (!perms[projectId]) {
+        perms[projectId] = { projectName, systems: [] };
+      }
+      perms[projectId].systems = [...existingSystems, ...systemsToAdd];
+
+      const updateResult = await updateUserDetailsForAdmin({
+        targetUserKey: target.phone,
+        adminKey: adminKey.value,
+        adminName: userStore.user?.name,
+        basicInfo: { phone: target.phone, name: detail.basicInfo.name || target.name },
+        permissions: perms,
+        isNewUser: false
+      });
+
+      if (updateResult.status === 'success') {
+        granted.push({ name: target.name, systems: systemsToAdd });
+        if (!targetIsAdmin) {
+          systemsToAdd.forEach(sys => { if (remaining[sys] !== Infinity) remaining[sys]--; });
+        }
+      } else {
+        failed.push({ name: target.name, message: updateResult.message || '儲存失敗' });
+      }
+    }
+
+    batchResult.value = { granted, unchanged, failed, quotaSkipped };
+
+    if (granted.length > 0) {
+      toast.success(`批次授權完成：成功 ${granted.length} 人`);
+      adminStore.invalidateCache();
+      await loadInitialData();
+    } else if (failed.length === 0 && Object.keys(quotaSkipped).length === 0) {
+      toast.info('所選人員均已具備所選權限，未進行任何變更。');
+    }
+  } catch (error) {
+    batchResult.value = { granted, unchanged, failed: [...failed, { name: '（處理中斷）', message: error.message }], quotaSkipped };
+    toast.error(`批次授權發生錯誤：${error.message}`);
+  } finally {
+    batchSaving.value = false;
+    batchProgress.value = '';
+  }
+};
+
 const saveSystemFunction = async () => {
   const { valid } = await functionForm.value.validate();
   if (!valid) return;
@@ -2200,6 +2624,32 @@ const handleSendEmail = async () => {
   border-radius: 8px;
   padding: 12px;
   background: #fafafa;
+}
+.batch-section-container {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  max-height: 35vh;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+.batch-user-list {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  max-height: 35vh;
+  overflow-y: auto;
+}
+.batch-user-row {
+  border-bottom: 1px solid #f0f0f0;
+}
+.batch-user-row:last-child {
+  border-bottom: none;
+}
+.batch-quota-hint {
+  font-size: 11px;
+  color: #607d8b;
+  padding-left: 32px;
+  margin-top: -4px;
+  margin-bottom: 4px;
 }
 .quota-full-hint {
   display: flex;

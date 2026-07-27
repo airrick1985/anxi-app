@@ -13541,7 +13541,8 @@ exports.getUserManagementInitialData = onCall({ region: "asia-east1", memory: "5
         name: u.name || 'N/A',
         email: u.email || '',
         roles: u.roles || [],
-        lineId: u.lineId || null
+        lineId: u.lineId || null,
+        companyName: u.companyName || ''
       }));
       // 依姓名排序
       manageableUsers.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
