@@ -216,6 +216,15 @@
                                     <span v-else>{{ part.text }}</span>
                                     <span v-if="partIndex < event.displayParts.length - 1"> - </span>
                                   </template>
+                                  <!-- 驗屋人員 / 備註：獨立醒目區塊 -->
+                                  <span
+                                    v-for="(hp, hpIndex) in (event.highlightParts || [])"
+                                    :key="'hl-' + hpIndex"
+                                    :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
+                                  >
+                                    <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
+                                    <span>{{ hp.text }}</span>
+                                  </span>
                                 </span>
                              </div>
                            </TransitionGroup>
@@ -448,6 +457,13 @@ const userStore = useUserStore();
 const selectedProject = ref(null);
 
 const FilterCheckboxes = defineAsyncComponent(() => import('@/components/LiffCalendarFilters.vue'));
+
+// 需醒目呈現的欄位：在事件中以獨立色塊顯示，而非混入串接文字（與 InspectionCalendar 一致）
+const HIGHLIGHT_FIELD_META = {
+  inspectors: { icon: 'mdi-account-hard-hat', label: '驗屋人員', cssClass: 'event-hl-inspectors' },
+  remarks: { icon: 'mdi-alert-circle', label: '重要備註', cssClass: 'event-hl-remarks' },
+  bookingRemarks: { icon: 'mdi-note-text-outline', label: '預約備註', cssClass: 'event-hl-booking-remarks' },
+};
 
 // 動態計算顯示欄位選項（與 InspectionCalendar 邏輯一致）
 const displayFieldOptions = computed(() => {
@@ -923,22 +939,29 @@ const processAppointments = (rawAppointments) => {
       const timeMatch = timeSlotString.match(/(\d{1,2}[:：]\d{2})/);
       const startTime = timeMatch ? timeMatch[0].replace(/：/g, ':') : '00:00';
 
-      const displayParts = displayFieldOptions.value
+      // 驗屋人員與備註改以獨立醒目區塊呈現（highlightParts），不再混入串接文字
+      const displayParts = [];
+      const highlightParts = [];
+      displayFieldOptions.value
         .filter(option => selectedDisplayFields.value.includes(option.key))
-        .map(option => {
+        .forEach(option => {
           const value = getFieldValue(appt, option);  // ✅ 使用輔助函式取值（支援動態欄位）
-          if (!value) return null;
+          if (!value) return;
+          if (HIGHLIGHT_FIELD_META[option.key]) {
+            highlightParts.push({ kind: option.key, text: String(value) });
+            return;
+          }
           const formattedValue = option.formatter ? option.formatter(value) : String(value);
-          return { text: formattedValue, isHousehold: option.key === 'unitId' };
-        }).filter(Boolean);
-      
+          displayParts.push({ text: formattedValue, isHousehold: option.key === 'unitId' });
+        });
+
       const finalStartObject = new Date(`${dateStr}T${startTime}`);
 
       if (isNaN(finalStartObject.getTime())) {
         return null;
       }
-      
-      return { ...appt, start: finalStartObject, displayParts };
+
+      return { ...appt, start: finalStartObject, displayParts, highlightParts };
 
     } catch (e) {
       console.warn(`處理預約資料時發生錯誤: ${e.message}`, appt);
@@ -1370,6 +1393,41 @@ async function handleShare() {
 }
 .event-household {
   font-size: 1.2em;
+}
+
+/* 驗屋人員 / 備註 醒目區塊 */
+.event-highlight {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  margin-top: 3px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
+}
+.event-highlight-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.event-hl-inspectors {
+  width: fit-content; /* 僅佔內容寬度，不整條填滿 */
+  background-color: #E8EAF6; /* indigo lighten-5 */
+  color: #283593; /* indigo darken-3 */
+  border: 1px solid #9FA8DA;
+  font-weight: 600;
+}
+.event-hl-remarks {
+  background-color: #FFEBEE;
+  color: #B71C1C;
+  border: 1px solid #EF9A9A;
+}
+.event-hl-booking-remarks {
+  background-color: #FFF8E1;
+  color: #6D4C41;
+  border: 1px solid #FFE082;
 }
 
 

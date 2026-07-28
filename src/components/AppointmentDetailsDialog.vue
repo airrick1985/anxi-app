@@ -41,15 +41,52 @@
           <!-- 驗屋人員 -->
           <v-row dense class="mt-2" v-if="canEdit">
             <v-col cols="12">
-              <v-combobox
-                v-model="editableInspectors"
-                :items="bookingOptions.inspectionStaff"
-                label="驗屋人員 (可手動輸入，修改後即時儲存)"
-                multiple chips closable-chips clearable
-                variant="outlined" density="compact" hide-details
-                :loading="isSavingInspectors"
-                @update:model-value="handleInspectorsChange"
-              ></v-combobox>
+              <div class="inspector-chip-box pa-3 rounded">
+                <div class="d-flex align-center mb-2">
+                  <v-icon size="small" color="primary" class="mr-1">mdi-account-hard-hat-outline</v-icon>
+                  <span class="text-caption font-weight-bold">驗屋人員（點選人員可複選，修改後即時儲存）</span>
+                  <v-progress-circular v-if="isSavingInspectors" indeterminate size="14" width="2" color="primary" class="ml-2"></v-progress-circular>
+                  <v-spacer></v-spacer>
+                  <v-btn
+                    v-if="editableInspectors.length > 0"
+                    size="x-small" variant="text" color="grey-darken-1"
+                    prepend-icon="mdi-close-circle-outline"
+                    @click="clearInspectors"
+                  >清除全部</v-btn>
+                </div>
+
+                <div v-if="inspectorChipOptions.length > 0" class="d-flex flex-wrap ga-2">
+                  <v-chip
+                    v-for="name in inspectorChipOptions"
+                    :key="name"
+                    size="small" label
+                    :color="isInspectorSelected(name) ? 'primary' : 'grey-darken-1'"
+                    :variant="isInspectorSelected(name) ? 'flat' : 'outlined'"
+                    :prepend-icon="isInspectorSelected(name) ? 'mdi-check-circle' : 'mdi-plus-circle-outline'"
+                    style="cursor: pointer;"
+                    @click="toggleInspector(name)"
+                  >{{ name }}</v-chip>
+                </div>
+                <div v-else class="text-caption text-grey">
+                  尚未設定人員選單，可於「預約選單設定」建立，或於下方手動新增。
+                </div>
+
+                <div class="d-flex align-center ga-2 mt-3">
+                  <v-text-field
+                    v-model="manualInspectorName"
+                    label="手動新增人員 (按 Enter 或點新增)"
+                    variant="outlined" density="compact" hide-details clearable
+                    style="max-width: 320px;"
+                    @keyup.enter="addManualInspector"
+                  ></v-text-field>
+                  <v-btn
+                    size="small" color="primary" variant="tonal"
+                    prepend-icon="mdi-account-plus-outline"
+                    :disabled="!manualInspectorName || !manualInspectorName.trim()"
+                    @click="addManualInspector"
+                  >新增</v-btn>
+                </div>
+              </div>
             </v-col>
           </v-row>
         </div>
@@ -846,12 +883,55 @@ async function handleForceSave() {
 
 async function handleInspectorsChange(newInspectors) {
   if (!props.appointment) return;
-  
+
   // 這裡不再呼叫 API，而是發出一個事件通知父組件
   emit('update-inspectors', {
     appointmentId: props.appointment.id,
     inspectors: newInspectors
   });
+}
+
+// --- 驗屋人員 CHIP 複選 ---
+const manualInspectorName = ref('');
+
+// 預設人員取自「預約選單設定」的人員選單；bookingOptions 未提供時退回 projectConfig
+const inspectorChipOptions = computed(() => {
+  const preset = (props.bookingOptions?.inspectionStaff?.length
+    ? props.bookingOptions.inspectionStaff
+    : projectConfig.value?.inspectionStaff) || [];
+  // 手動新增（不在預設選單中）的人員也以 CHIP 呈現，方便取消
+  const extras = editableInspectors.value.filter(name => !preset.includes(name));
+  return [...preset, ...extras];
+});
+
+function isInspectorSelected(name) {
+  return editableInspectors.value.includes(name);
+}
+
+function toggleInspector(name) {
+  const idx = editableInspectors.value.indexOf(name);
+  if (idx >= 0) {
+    editableInspectors.value.splice(idx, 1);
+  } else {
+    editableInspectors.value.push(name);
+  }
+  handleInspectorsChange(editableInspectors.value);
+}
+
+function addManualInspector() {
+  const name = (manualInspectorName.value || '').trim();
+  if (!name) return;
+  if (!editableInspectors.value.includes(name)) {
+    editableInspectors.value.push(name);
+    handleInspectorsChange(editableInspectors.value);
+  }
+  manualInspectorName.value = '';
+}
+
+function clearInspectors() {
+  if (editableInspectors.value.length === 0) return;
+  editableInspectors.value = [];
+  handleInspectorsChange(editableInspectors.value);
 }
 
 // 快速編輯處理
@@ -1178,5 +1258,10 @@ const getStatusColor = (status) => {
 .edit-mode-header {
   background-color: #e3f2fd;
   border-left: 4px solid #1976d2;
+}
+
+.inspector-chip-box {
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
 }
 </style>

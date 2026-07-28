@@ -372,6 +372,15 @@
                             <span v-else>{{ part.text }}</span>
                             <span v-if="partIndex < event.displayParts.length - 1"> - </span>
                           </template>
+                          <!-- 驗屋人員 / 備註：獨立醒目區塊 -->
+                          <div
+                            v-for="(hp, hpIndex) in (event.highlightParts || [])"
+                            :key="'hl-' + hpIndex"
+                            :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
+                          >
+                            <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
+                            <span>{{ hp.text }}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1174,6 +1183,13 @@ const fieldConfig = {
     { title: '相關文件與批次', fields: [ { key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check', type: 'date' }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' }, { key: 'bankContact', label: '銀行窗口', icon: 'mdi-account-tie-outline' }, { key: 'inspectionDocsUrl', label: '驗屋文件', icon: 'mdi-file-document-outline', type: 'button', readOnly: true }, { key: 'inspectionReportUrl', label: '驗屋報告', icon: 'mdi-file-chart-outline', type: 'button', readOnly: true }, { key: 'remarks', label: '重要備註', icon: 'mdi-alert-circle-outline', type: 'remark' }, { key: 'initialInspectionBatch', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: 'reInspectionBatch', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, ]}
   ]
 };
+// 需醒目呈現的欄位：在事件中以獨立色塊顯示，而非混入串接文字
+const HIGHLIGHT_FIELD_META = {
+  inspectors: { icon: 'mdi-account-hard-hat', label: '驗屋人員', cssClass: 'event-hl-inspectors' },
+  remarks: { icon: 'mdi-alert-circle', label: '重要備註', cssClass: 'event-hl-remarks' },
+  bookingRemarks: { icon: 'mdi-note-text-outline', label: '預約備註', cssClass: 'event-hl-booking-remarks' },
+};
+
 // 動態顯示欄位選項：基礎欄位 + 從 bookingMenu 的 customFields (expanded: true) 動態掃描
 const displayFieldOptions = computed(() => {
   const baseFields = [
@@ -1481,30 +1497,37 @@ function processAppointments(rawAppointments) {
         const timeMatch = timeSlotString.match(/(\d{1,2}[:：]\d{2})/); 
         const startTime = timeMatch ? timeMatch[0].replace(/：/g, ':') : '00:00';
         
-        const displayParts = displayFieldOptions.value
+        // 驗屋人員與備註改以獨立醒目區塊呈現（highlightParts），不再混入串接文字
+        const displayParts = [];
+        const highlightParts = [];
+        displayFieldOptions.value
           .filter(option => selectedDisplayFields.value.includes(option.key))
-          .map(option => {
+          .forEach(option => {
             const value = getFieldValue(combinedData, option); // ✅ 使用輔助函式取值（支援動態欄位）
-            if (value === null || value === undefined) return null; // 修正：允許 0
-            
+            if (value === null || value === undefined || value === '') return; // 修正：允許 0
+
             // ✅ 修正：確保日期被正確格式化
-            if (value instanceof Date) {
-               const formattedDate = safeFormatDate(value, 'yyyy-MM-dd'); // 使用 safeFormatDate
-               return { text: formattedDate, isHousehold: option.key === 'unitId' };
+            const text = (value instanceof Date)
+              ? safeFormatDate(value, 'yyyy-MM-dd')
+              : String(value);
+
+            if (HIGHLIGHT_FIELD_META[option.key]) {
+              highlightParts.push({ kind: option.key, text });
+              return;
             }
 
-            const formattedValue = option.formatter ? option.formatter(value) : String(value);
-            return { text: formattedValue, isHousehold: option.key === 'unitId' };
-          }).filter(Boolean);
-        
+            const formattedValue = option.formatter ? option.formatter(value) : text;
+            displayParts.push({ text: formattedValue, isHousehold: option.key === 'unitId' });
+          });
+
         const finalStartObject = parseISO(`${dateStr}T${startTime}`);
 
         if (isNaN(finalStartObject.getTime())) {
           console.warn('產生無效的日期物件，已略過此筆預約:', combinedData);
           return null;
         }
-        
-        return { ...combinedData, start: finalStartObject, displayParts };
+
+        return { ...combinedData, start: finalStartObject, displayParts, highlightParts };
 
       } catch (e) {
         console.warn(`處理預約資料時發生錯誤: ${e.message}`, combinedData);
@@ -2436,13 +2459,26 @@ async function handleDownloadPng() {
           }
           
           // --- ✨ 修改後：使用 displayParts 產生 HTML 字串 ---
+          const escapeHtml = (str) => String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
           const titleHTML = event.displayParts.map(part => {
             if (part.isHousehold) {
-              return `<strong style="font-size: 1.1em;">${part.text}</strong>`;
+              return `<strong style="font-size: 1.1em;">${escapeHtml(part.text)}</strong>`;
             }
-            return part.text;
+            return escapeHtml(part.text);
           }).join(' - ');
-          eventItem.innerHTML = titleHTML;
+          // 驗屋人員 / 備註：醒目區塊（與畫面上的樣式一致）
+          const HL_INLINE_STYLES = {
+            inspectors: 'width:fit-content;background-color:#E8EAF6;color:#283593;border:1px solid #9FA8DA;',
+            remarks: 'background-color:#FFEBEE;color:#B71C1C;border:1px solid #EF9A9A;',
+            bookingRemarks: 'background-color:#FFF8E1;color:#6D4C41;border:1px solid #FFE082;',
+          };
+          const highlightHTML = (event.highlightParts || []).map(hp => {
+            const meta = HIGHLIGHT_FIELD_META[hp.kind];
+            if (!meta) return '';
+            return `<div style="${HL_INLINE_STYLES[hp.kind] || ''}margin-top:3px;padding:2px 5px;border-radius:4px;font-weight:700;line-height:1.35;">`
+              + `${meta.label}：${escapeHtml(hp.text)}</div>`;
+          }).join('');
+          eventItem.innerHTML = titleHTML + highlightHTML;
           // --- ✨ 修改結束 ---
 
           eventCell.appendChild(eventItem);
@@ -2836,6 +2872,41 @@ function navigateToHouseholdGrid() {
 }
 .event-item:hover {
   opacity: 0.8;
+}
+
+/* 驗屋人員 / 備註 醒目區塊 */
+.event-highlight {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  margin-top: 3px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
+}
+.event-highlight-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.event-hl-inspectors {
+  width: fit-content; /* 僅佔內容寬度，不整條填滿 */
+  background-color: #E8EAF6; /* indigo lighten-5 */
+  color: #283593; /* indigo darken-3 */
+  border: 1px solid #9FA8DA;
+  font-weight: 600;
+}
+.event-hl-remarks {
+  background-color: #FFEBEE;
+  color: #B71C1C;
+  border: 1px solid #EF9A9A;
+}
+.event-hl-booking-remarks {
+  background-color: #FFF8E1;
+  color: #6D4C41;
+  border: 1px solid #FFE082;
 }
 .table-chunk {
   page-break-inside: avoid;
