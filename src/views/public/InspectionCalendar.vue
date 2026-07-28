@@ -1,6 +1,6 @@
 <template>
-  <v-container fluid>
-    <v-card class="pa-4">
+  <v-container fluid class="pa-1 pa-sm-4">
+    <v-card class="pa-2 pa-sm-4">
 
 
       <div v-if="isLoading" class="d-flex flex-column gap-4">
@@ -151,8 +151,23 @@
 
   <v-col cols="auto" class="flex-grow-1"></v-col> 
 
-  <v-col cols="12" md="auto">
-    
+  <v-col cols="12" md="auto" class="d-flex align-center flex-wrap">
+
+    <v-btn-toggle
+      :model-value="desktopViewMode"
+      @update:model-value="v => v && setDesktopViewMode(v)"
+      mandatory density="compact" color="primary" variant="outlined" divided
+      class="mr-2"
+    >
+      <v-btn value="day" size="small">日</v-btn>
+      <v-btn value="week" size="small">週</v-btn>
+      <v-btn value="month" size="small">月</v-btn>
+    </v-btn-toggle>
+
+    <v-btn icon="mdi-chevron-left" variant="text" size="small" :title="desktopViewMode === 'day' ? '上一日' : desktopViewMode === 'week' ? '上一週' : '上一月'" @click="shiftDesktopRange(-1)"></v-btn>
+    <v-btn variant="tonal" color="primary" size="small" prepend-icon="mdi-calendar-today" @click="goToToday">今天</v-btn>
+    <v-btn icon="mdi-chevron-right" variant="text" size="small" :title="desktopViewMode === 'day' ? '下一日' : desktopViewMode === 'week' ? '下一週' : '下一月'" class="mr-2" @click="shiftDesktopRange(1)"></v-btn>
+
     <v-tooltip text="重新整理資料" location="bottom">
       <template v-slot:activator="{ props }">
         <v-btn v-bind="props" icon="mdi-refresh" variant="text" @click="handleRefresh" :loading="isLoading" color="black"></v-btn>
@@ -244,7 +259,155 @@
 
 
         
-        <div id="custom-calendar-container">
+        <!-- 手機版：行事曆式視圖（日 / 週 / 月） -->
+        <div v-if="xs" class="mobile-agenda">
+          <!-- 檢視切換 + 今天 -->
+          <div class="d-flex align-center mb-2">
+            <v-btn-toggle
+              :model-value="mobileViewMode"
+              @update:model-value="v => v && setMobileViewMode(v)"
+              mandatory density="compact" color="primary" variant="outlined" divided
+            >
+              <v-btn value="day" size="small">日</v-btn>
+              <v-btn value="week" size="small">週</v-btn>
+              <v-btn value="month" size="small">月</v-btn>
+            </v-btn-toggle>
+            <v-spacer></v-spacer>
+            <v-btn icon="mdi-chevron-left" variant="text" size="small" @click="shiftMobile(-1)"></v-btn>
+            <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-calendar-today" @click="goToToday">今天</v-btn>
+            <v-btn icon="mdi-chevron-right" variant="text" size="small" @click="shiftMobile(1)"></v-btn>
+          </div>
+
+          <!-- 日：日期橫條（左右滑動、點選切換日期） -->
+          <div v-if="mobileViewMode === 'day'" class="mobile-date-strip">
+            <button
+              v-for="day in mobileDates"
+              :key="day.key"
+              type="button"
+              class="mobile-date-pill"
+              :class="{ active: day.key === selectedMobileDate, today: day.isToday, weekend: day.isWeekend }"
+              :data-datekey="day.key"
+              @click="selectedMobileDate = day.key"
+            >
+              <span class="pill-dow">{{ day.dowLabel }}</span>
+              <span class="pill-date">{{ day.dateLabel }}</span>
+              <span :class="['pill-count', { 'pill-count-empty': day.count === 0 }]">{{ day.count > 0 ? day.count : '–' }}</span>
+            </button>
+          </div>
+
+          <!-- 月：月曆格 -->
+          <template v-if="mobileViewMode === 'month'">
+            <div class="mobile-month-nav">
+              <v-btn icon="mdi-chevron-left" variant="text" size="small" @click="shiftMobileMonth(-1)"></v-btn>
+              <span class="font-weight-bold text-subtitle-1">{{ mobileMonthLabel }}</span>
+              <v-btn icon="mdi-chevron-right" variant="text" size="small" @click="shiftMobileMonth(1)"></v-btn>
+            </div>
+            <div class="mobile-month-grid">
+              <div v-for="d in ['一', '二', '三', '四', '五', '六', '日']" :key="d" class="mobile-month-dow">{{ d }}</div>
+              <button
+                v-for="cell in mobileMonthCells"
+                :key="cell.key"
+                type="button"
+                class="mobile-month-cell"
+                :class="{ dim: !cell.inMonth, today: cell.isToday, weekend: cell.isWeekend, active: cell.key === selectedMobileDate }"
+                @click="pickMonthDate(cell)"
+              >
+                <span class="num">{{ cell.dateNum }}</span>
+                <span v-if="cell.count > 0" class="cnt">{{ cell.count }}</span>
+              </button>
+            </div>
+          </template>
+
+          <!-- 日 / 月：選定日期的行程列表 -->
+          <template v-if="mobileViewMode !== 'week'">
+            <div class="mobile-day-header">
+              <v-icon size="small" color="primary" class="mr-1">mdi-calendar-today</v-icon>
+              <span class="font-weight-bold">{{ selectedMobileDateLabel }}</span>
+              <v-chip size="x-small" color="primary" variant="tonal" class="ml-2" label>{{ mobileSelectedDayCount }} 筆</v-chip>
+            </div>
+            <div class="mobile-agenda-list">
+              <div v-if="mobileSlotsForSelectedDay.length === 0" class="text-center text-grey py-10">
+                <v-icon size="42" color="grey-lighten-1">mdi-calendar-blank-outline</v-icon>
+                <p class="mt-2">這一天沒有符合條件的預約</p>
+              </div>
+              <div v-for="slot in mobileSlotsForSelectedDay" :key="slot.time" class="mobile-slot">
+                <div class="mobile-slot-time"><v-icon size="x-small" class="mr-1">mdi-clock-outline</v-icon>{{ slot.time }}</div>
+                <div class="mobile-slot-events">
+                  <div
+                    v-for="event in slot.events"
+                    :key="event.id"
+                    :class="['event-item', 'mobile-event-card', { 'cancelled-event': event.status === '取消' }]"
+                    :style="getEventStyle(event)"
+                    @click="handleCustomEventClick(event)"
+                  >
+                    <v-icon v-if="event.status === '取消'" color="red-darken-1" size="small" class="mr-1">mdi-close-circle-outline</v-icon>
+                    <v-icon v-if="event.status === '已完成'" color="blue-grey" size="small" class="mr-1">mdi-check-all</v-icon>
+                    <template v-for="(part, partIndex) in event.displayParts" :key="partIndex">
+                      <strong v-if="part.isHousehold" class="event-household">{{ part.text }}</strong>
+                      <span v-else>{{ part.text }}</span>
+                      <span v-if="partIndex < event.displayParts.length - 1"> - </span>
+                    </template>
+                    <div
+                      v-for="(hp, hpIndex) in (event.highlightParts || [])"
+                      :key="'hl-' + hpIndex"
+                      :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
+                    >
+                      <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
+                      <span>{{ hp.text }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- 週：整週行程列表（類似 Google 行事曆「時間表」） -->
+          <div v-else class="mobile-agenda-list">
+            <div v-if="mobileTotalCount === 0" class="text-center text-grey py-10">
+              <v-icon size="42" color="grey-lighten-1">mdi-calendar-blank-outline</v-icon>
+              <p class="mt-2">這一週沒有符合條件的預約</p>
+            </div>
+            <template v-for="day in mobileDates" :key="day.key">
+              <div v-if="day.count > 0" class="mobile-week-day">
+                <div class="mobile-week-day-header" :class="{ 'is-today': day.isToday }">
+                  <span class="font-weight-bold">{{ day.dateLabel }}（{{ day.dowLabel }}）</span>
+                  <v-chip size="x-small" color="primary" variant="tonal" class="ml-2" label>{{ day.count }} 筆</v-chip>
+                </div>
+                <div v-for="slot in slotsForDate(day.key)" :key="day.key + slot.time" class="mobile-slot">
+                  <div class="mobile-slot-time"><v-icon size="x-small" class="mr-1">mdi-clock-outline</v-icon>{{ slot.time }}</div>
+                  <div class="mobile-slot-events">
+                    <div
+                      v-for="event in slot.events"
+                      :key="event.id"
+                      :class="['event-item', 'mobile-event-card', { 'cancelled-event': event.status === '取消' }]"
+                      :style="getEventStyle(event)"
+                      @click="handleCustomEventClick(event)"
+                    >
+                      <v-icon v-if="event.status === '取消'" color="red-darken-1" size="small" class="mr-1">mdi-close-circle-outline</v-icon>
+                      <v-icon v-if="event.status === '已完成'" color="blue-grey" size="small" class="mr-1">mdi-check-all</v-icon>
+                      <template v-for="(part, partIndex) in event.displayParts" :key="partIndex">
+                        <strong v-if="part.isHousehold" class="event-household">{{ part.text }}</strong>
+                        <span v-else>{{ part.text }}</span>
+                        <span v-if="partIndex < event.displayParts.length - 1"> - </span>
+                      </template>
+                      <div
+                        v-for="(hp, hpIndex) in (event.highlightParts || [])"
+                        :key="'hl-' + hpIndex"
+                        :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
+                      >
+                        <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
+                        <span>{{ hp.text }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- 桌機版：多日時間表 -->
+        <div v-else id="custom-calendar-container">
           <div v-for="(chunk, index) in dateChunks" :key="index" class="mb-8 table-chunk">
             <h3 class="text-h6 mb-2">
               　 {{ projectName }} - 時間表: {{ format(chunk[0].dateObj, 'yyyy/MM/dd') }} - {{ format(chunk[chunk.length - 1].dateObj, 'yyyy/MM/dd') }}
@@ -396,6 +559,29 @@
     <v-snackbar v-model="snackbar" :timeout="2000" color="success">
       {{ snackbarText }}
     </v-snackbar>
+
+    <!-- 手機 PNG 預覽（瀏覽器不支援系統分享時的儲存方式） -->
+    <v-dialog :model-value="isPngPreviewVisible" @update:model-value="closePngPreview" max-width="560px" scrollable>
+      <v-card>
+        <v-card-title class="d-flex align-center bg-primary text-white py-3">
+          <v-icon start>mdi-image-area</v-icon>
+          <span class="text-subtitle-1">預約時間表圖片</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" color="white" size="small" @click="closePngPreview"></v-btn>
+        </v-card-title>
+        <v-card-text class="pa-3">
+          <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+            <strong>長按下方圖片</strong>，選擇「儲存圖片 / 加入相簿」即可存到手機。
+          </v-alert>
+          <img :src="pngPreviewUrl" alt="預約時間表" style="width: 100%; border: 1px solid #e0e0e0; border-radius: 4px;" />
+        </v-card-text>
+        <v-card-actions class="pa-3 pt-0">
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-share-variant" @click="sharePngFromPreview">分享 / 儲存</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="closePngPreview">關閉</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
       <AppointmentDetailsDialog
       v-model="isDialogVisible"
@@ -736,6 +922,7 @@
     </v-dialog>
 
     <v-navigation-drawer
+  v-if="isFilterDrawerVisible"
   v-model="isFilterDrawerVisible"
   location="right"
   temporary
@@ -955,7 +1142,8 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/firebase';
 
 
-import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO } from 'date-fns';
+import { useDisplay } from 'vuetify';
+import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO, startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -1395,7 +1583,8 @@ const isAnyOverlayActive = computed(() => {
          isDuplicateDialogVisible.value || 
          isForceSaveDialogVisible.value || 
          isBatchMismatchDialogVisible.value ||
-         isFilterDrawerVisible.value;
+         isFilterDrawerVisible.value ||
+         isPngPreviewVisible.value;
 });
 
 const buildingOptions = computed(() => Object.keys(bookingOptions.value.buildingsAndUnits).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true })));
@@ -1596,6 +1785,204 @@ const groupedEvents = computed(() => {
 });
   return grouped;
 });
+
+// --- 手機版行事曆式視圖（日期橫條 + 當日行程） ---
+const { xs } = useDisplay();
+const selectedMobileDate = ref('');
+
+const mobileDates = computed(() => {
+  if (!startDate.value || !endDate.value) return [];
+  try {
+    return eachDayOfInterval({ start: startDate.value, end: endDate.value }).map(d => {
+      const key = format(d, 'yyyy-MM-dd');
+      const slots = groupedEvents.value[key] || {};
+      const count = Object.values(slots).reduce((sum, arr) => sum + arr.length, 0);
+      return {
+        key,
+        dowLabel: '日一二三四五六'[d.getDay()],
+        dateLabel: format(d, 'M/d'),
+        isToday: isToday(d),
+        isWeekend: isSaturday(d) || isSunday(d),
+        count,
+      };
+    });
+  } catch (e) {
+    return [];
+  }
+});
+
+// 日期範圍變動時，維持選取日；不在範圍內則優先選今天，否則選第一天
+watch(mobileDates, (days) => {
+  if (!days.length) { selectedMobileDate.value = ''; return; }
+  if (days.some(d => d.key === selectedMobileDate.value)) return;
+  const today = days.find(d => d.isToday);
+  selectedMobileDate.value = (today || days[0]).key;
+}, { immediate: true });
+
+// 選定日期後，讓日期橫條自動捲動到該日期
+watch(selectedMobileDate, async (key) => {
+  if (!key) return;
+  await nextTick();
+  const el = document.querySelector(`.mobile-date-pill[data-datekey="${key}"]`);
+  if (el && el.scrollIntoView) el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+});
+
+const selectedMobileDateLabel = computed(() => {
+  if (!selectedMobileDate.value) return '';
+  try {
+    return format(parseISO(selectedMobileDate.value), 'M月d日 EEEE', { locale: zhTW });
+  } catch (e) {
+    return selectedMobileDate.value;
+  }
+});
+
+function slotsForDate(dateKey) {
+  const daySlots = groupedEvents.value[dateKey] || {};
+  return timeSlots.value
+    .filter(t => (daySlots[t] || []).length > 0)
+    .map(t => ({ time: t, events: daySlots[t] }));
+}
+
+const mobileSlotsForSelectedDay = computed(() => slotsForDate(selectedMobileDate.value));
+
+const mobileSelectedDayCount = computed(() =>
+  mobileSlotsForSelectedDay.value.reduce((sum, s) => sum + s.events.length, 0)
+);
+
+const mobileTotalCount = computed(() =>
+  mobileDates.value.reduce((sum, d) => sum + d.count, 0)
+);
+
+// --- 日 / 週 / 月 檢視模式 ---
+const mobileViewMode = ref('day'); // day | week | month
+
+function setRange(start, end) {
+  dateRange.value = [start, end]; // watch(dateRange) 會同步 startDate / endDate 並觸發抓資料
+}
+
+function mobileAnchorDate() {
+  if (selectedMobileDate.value) {
+    const d = parseISO(selectedMobileDate.value);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return startDate.value || new Date();
+}
+
+function setMobileViewMode(mode) {
+  if (mobileViewMode.value === mode) return;
+  mobileViewMode.value = mode;
+  const anchor = mobileAnchorDate();
+  if (mode === 'month') {
+    setRange(startOfMonth(anchor), endOfMonth(anchor));
+  } else {
+    setRange(startOfWeek(anchor, { weekStartsOn: 1 }), endOfWeek(anchor, { weekStartsOn: 1 }));
+  }
+}
+
+// --- 桌機 日 / 週 / 月 檢視模式 ---
+const desktopViewMode = ref('week'); // day | week | month
+
+function applyDesktopRange(anchor) {
+  if (desktopViewMode.value === 'day') {
+    setRange(anchor, anchor);
+  } else if (desktopViewMode.value === 'month') {
+    setRange(startOfMonth(anchor), endOfMonth(anchor));
+  } else {
+    setRange(startOfWeek(anchor, { weekStartsOn: 1 }), endOfWeek(anchor, { weekStartsOn: 1 }));
+  }
+}
+
+function setDesktopViewMode(mode) {
+  if (desktopViewMode.value === mode) return;
+  desktopViewMode.value = mode;
+  applyDesktopRange(startDate.value || new Date());
+}
+
+// 桌機 ‹ ›：依檢視模式切換上一/下一 日、週、月
+function shiftDesktopRange(delta) {
+  const anchor = startDate.value || new Date();
+  let next;
+  if (desktopViewMode.value === 'day') next = addDays(anchor, delta);
+  else if (desktopViewMode.value === 'month') next = addMonths(anchor, delta);
+  else next = addDays(anchor, delta * 7);
+  applyDesktopRange(next);
+}
+
+// 手機 ‹ ›：日模式切上一/下一日（跨週自動換範圍）、週模式切上一/下一週、月模式切月份
+function shiftMobile(delta) {
+  if (mobileViewMode.value === 'month') {
+    shiftMobileMonth(delta);
+    return;
+  }
+  if (mobileViewMode.value === 'week') {
+    if (!startDate.value || !endDate.value) return;
+    setRange(addDays(startDate.value, delta * 7), addDays(endDate.value, delta * 7));
+    return;
+  }
+  // 日模式
+  const cur = selectedMobileDate.value ? parseISO(selectedMobileDate.value) : new Date();
+  const next = addDays(cur, delta);
+  if (startDate.value && endDate.value && (next < startDate.value || next > endDate.value)) {
+    setRange(startOfWeek(next, { weekStartsOn: 1 }), endOfWeek(next, { weekStartsOn: 1 }));
+  }
+  selectedMobileDate.value = format(next, 'yyyy-MM-dd');
+}
+
+// 「今天」：把焦點快速切回今天（依目前檢視模式調整範圍；桌機並捲動到今天欄位）
+function goToToday() {
+  const today = new Date();
+  if (xs.value) {
+    if (mobileViewMode.value === 'month') {
+      setRange(startOfMonth(today), endOfMonth(today));
+    } else {
+      setRange(startOfWeek(today, { weekStartsOn: 1 }), endOfWeek(today, { weekStartsOn: 1 }));
+    }
+  } else {
+    applyDesktopRange(today);
+  }
+  selectedMobileDate.value = format(today, 'yyyy-MM-dd');
+  nextTick(() => {
+    const el = document.querySelector('#custom-calendar-container .day-header.today-column');
+    if (el && el.scrollIntoView) el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  });
+}
+
+// --- 月檢視：月曆格 ---
+const mobileMonthLabel = computed(() => (startDate.value ? format(startDate.value, 'yyyy年M月') : ''));
+
+const mobileMonthCells = computed(() => {
+  if (mobileViewMode.value !== 'month' || !startDate.value) return [];
+  const monthStart = startOfMonth(startDate.value);
+  const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const gridEnd = endOfWeek(endOfMonth(monthStart), { weekStartsOn: 1 });
+  return eachDayOfInterval({ start: gridStart, end: gridEnd }).map(d => {
+    const key = format(d, 'yyyy-MM-dd');
+    const slots = groupedEvents.value[key] || {};
+    const count = Object.values(slots).reduce((sum, arr) => sum + arr.length, 0);
+    return {
+      key,
+      dateNum: format(d, 'd'),
+      inMonth: d.getMonth() === monthStart.getMonth(),
+      isToday: isToday(d),
+      isWeekend: isSaturday(d) || isSunday(d),
+      count,
+    };
+  });
+});
+
+function shiftMobileMonth(delta) {
+  const cur = startDate.value ? startOfMonth(startDate.value) : startOfMonth(new Date());
+  const next = addMonths(cur, delta);
+  setRange(startOfMonth(next), endOfMonth(next)); // 選取日由 watch(mobileDates) 自動修正（今天優先）
+}
+
+function pickMonthDate(cell) {
+  if (!cell.inMonth) {
+    const d = parseISO(cell.key);
+    if (!isNaN(d.getTime())) setRange(startOfMonth(d), endOfMonth(d));
+  }
+  selectedMobileDate.value = cell.key;
+}
 
 // ✅ 7. 修改 inspectionApi 函數定義
 const inspectionApi = (action, data) => {
@@ -2034,6 +2421,7 @@ function handleSearchResultSelection(selectedItem) {
 
   startDate.value = newStartDate;
   endDate.value = newEndDate;
+  selectedMobileDate.value = format(targetDate, 'yyyy-MM-dd'); // 手機視圖同步跳到該日期
 
   nextTick(() => {
     // ✅✅✅ 【BUG 修正點】 ✅✅✅
@@ -2333,7 +2721,74 @@ const getVisibleFields = (fields, isAdding = false) => {
     // ...
 };
 
-// (handleDownloadPng 函數保持不變)
+// --- 下載輔助（手機支援系統分享 / 長按儲存） ---
+const isPngPreviewVisible = ref(false);
+const pngPreviewUrl = ref('');
+const pngPreviewBlob = ref(null);
+const pngPreviewFileName = ref('');
+
+function isMobileLike() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 600;
+}
+
+// 取得台灣時間 (Asia/Taipei) 的「月/日－時:分」標註字串
+function getTaiwanTimestampStamp() {
+  const parts = new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  const get = (t) => parts.find(p => p.type === t)?.value || '';
+  return `${get('month')}/${get('day')}－${get('hour')}:${get('minute')}`;
+}
+
+// 透過系統分享面板送出檔案（手機可存到相簿/檔案 App 或分享到 LINE）
+async function shareFileViaSystem(blob, fileName, mimeType) {
+  try {
+    // 桌面作業系統（含縮小視窗或未變更 UA 的裝置模擬）不走系統分享：
+    // Windows/macOS 的桌面分享面板對檔案支援很差，直接退回預覽/傳統下載。
+    // 注意 iPad 桌面模式 UA 會偽裝成 Macintosh，但其 maxTouchPoints > 0，不會被誤判。
+    const ua = navigator.userAgent;
+    const isDesktopOS = /Windows NT|Macintosh|CrOS|X11/.test(ua)
+      && !/Android|iPhone|iPad|iPod/i.test(ua)
+      && (navigator.maxTouchPoints || 0) === 0;
+    if (isDesktopOS) return false;
+    const file = new File([blob], fileName, { type: mimeType });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: fileName });
+      return true;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return true; // 使用者自行取消分享面板，視為已處理
+    console.warn('系統分享失敗，改用其他下載方式:', e);
+  }
+  return false;
+}
+
+function triggerLinkDownload(url, fileName) {
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function closePngPreview() {
+  isPngPreviewVisible.value = false;
+  if (pngPreviewUrl.value) {
+    URL.revokeObjectURL(pngPreviewUrl.value);
+    pngPreviewUrl.value = '';
+  }
+  pngPreviewBlob.value = null;
+}
+
+async function sharePngFromPreview() {
+  if (!pngPreviewBlob.value) return;
+  const ok = await shareFileViaSystem(pngPreviewBlob.value, pngPreviewFileName.value, 'image/png');
+  if (!ok) showSnackbar('此瀏覽器不支援分享，請直接長按圖片儲存', 'info');
+}
+
 async function handleDownloadPng() {
  isDownloadingPdf.value = true;
 
@@ -2380,9 +2835,8 @@ async function handleDownloadPng() {
     padding: '20px', backgroundColor: 'white'
   });
 
-  const todayStr = format(new Date(), 'MM/dd');
   const dateStampElement = document.createElement('div');
-  dateStampElement.textContent = `${todayStr} 更新`;
+  dateStampElement.textContent = `${getTaiwanTimestampStamp()} 更新`;
   Object.assign(dateStampElement.style, {
     fontSize: '3em', fontWeight: 'bold', color: 'red', marginBottom: '20px'
   });
@@ -2499,16 +2953,26 @@ async function handleDownloadPng() {
 
   document.body.removeChild(tempContainer);
 
-  const imageURL = canvas.toDataURL('image/png');
-  const link = document.createElement('a');
-  link.href = imageURL;
-
   const fileName = `${projectName.value}_驗屋預約表_${format(start, 'yyyyMMdd')}-${format(end, 'yyyyMMdd')}.png`;
-  link.download = fileName;
+  const blob = await new Promise((resolve, reject) =>
+    canvas.toBlob(b => (b ? resolve(b) : reject(new Error('圖片轉檔失敗'))), 'image/png')
+  );
 
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  if (isMobileLike()) {
+    // 手機：優先叫出系統分享面板（可儲存到相簿/檔案或分享到 LINE）
+    const shared = await shareFileViaSystem(blob, fileName, 'image/png');
+    if (!shared) {
+      // 不支援分享（如 LINE 內建瀏覽器）→ 顯示預覽，長按圖片即可儲存
+      pngPreviewBlob.value = blob;
+      pngPreviewFileName.value = fileName;
+      pngPreviewUrl.value = URL.createObjectURL(blob);
+      isPngPreviewVisible.value = true;
+    }
+  } else {
+    const url = URL.createObjectURL(blob);
+    triggerLinkDownload(url, fileName);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
 
  } catch (err) {
   console.error("圖片產生失敗:", err);
@@ -2567,8 +3031,8 @@ async function handleDownloadExcel() {
       border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
     };
 
-    // --- 4. 寫入總標題 (A1:E1 合併) ---
-    ws['A1'] = { v: `${projectName.value} - 預約時間表`, t: 's', s: mainTitleStyle };
+    // --- 4. 寫入總標題 (A1:E1 合併)，附台灣時間更新標註 ---
+    ws['A1'] = { v: `${projectName.value} - 預約時間表（${getTaiwanTimestampStamp()} 更新）`, t: 's', s: mainTitleStyle };
     merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } });
     
     let currentRow = 1; // 內容從第 2 列開始
@@ -2676,15 +3140,18 @@ async function handleDownloadExcel() {
     XLSX.utils.book_append_sheet(wb, ws, "預約時間表");
     const fileName = `${projectName.value}_預約時間表_${format(new Date(), 'yyyyMMdd')}.xlsx`;
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], { type: 'application/octet-stream' });
-    const link = document.createElement('a');
+    const excelMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const blob = new Blob([wbout], { type: excelMime });
+
+    if (isMobileLike()) {
+      // 手機：優先叫出系統分享面板（可儲存到檔案 App 或分享到 LINE）
+      const shared = await shareFileViaSystem(blob, fileName, excelMime);
+      if (shared) return;
+      showSnackbar('此瀏覽器不支援直接儲存檔案，已嘗試傳統下載；若無反應請改用 Chrome / Safari 開啟本頁', 'info');
+    }
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', fileName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    triggerLinkDownload(url, fileName);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
 
   } catch (err) {
     console.error("Excel 產生失敗:", err);
@@ -2943,6 +3410,189 @@ function navigateToHouseholdGrid() {
   .btn-text {
     display: none; /* 隱藏按鈕內的文字 */
   }
+
+}
+
+/* --- 手機版行事曆式視圖（日期橫條 + 當日行程） --- */
+.mobile-date-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 6px 2px 10px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.mobile-date-strip::-webkit-scrollbar {
+  display: none;
+}
+.mobile-date-pill {
+  flex: 0 0 auto;
+  min-width: 58px;
+  padding: 6px 4px;
+  border-radius: 14px;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.mobile-date-pill.weekend {
+  background: #fff5f5;
+}
+.mobile-date-pill.today {
+  border: 2px solid #1976d2;
+}
+.mobile-date-pill.active {
+  background: #1976d2;
+  border-color: #1976d2;
+  color: #fff;
+}
+.pill-dow {
+  font-size: 0.7rem;
+  opacity: 0.75;
+}
+.pill-date {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.pill-count {
+  font-size: 0.68rem;
+  line-height: 1.3;
+  background: #e3f2fd;
+  color: #1565c0;
+  border-radius: 8px;
+  padding: 0 6px;
+  font-weight: 700;
+}
+.pill-count-empty {
+  background: transparent;
+  color: #bdbdbd;
+  font-weight: 400;
+}
+.mobile-date-pill.active .pill-count {
+  background: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+.mobile-day-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 4px;
+  border-bottom: 2px solid #1976d2;
+  font-size: 1rem;
+}
+.mobile-agenda-list {
+  padding-bottom: 96px; /* 預留底部浮動工具列空間 */
+}
+/* 時間改為事件群組上方的小標籤，讓事件卡片佔滿整個手機寬度 */
+.mobile-slot {
+  display: block;
+  padding: 6px 0 8px;
+  border-bottom: 1px solid #eeeeee;
+}
+.mobile-slot-time {
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  color: #1976d2;
+  font-size: 0.85rem;
+  padding: 2px 0;
+}
+.mobile-slot-events {
+  width: 100%;
+  min-width: 0;
+}
+.mobile-event-card {
+  font-size: 0.95em;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* 月檢視 */
+.mobile-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 2px 0;
+}
+.mobile-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  padding: 4px 0 10px;
+}
+.mobile-month-dow {
+  text-align: center;
+  font-size: 0.72rem;
+  color: #888;
+  padding: 2px 0;
+}
+.mobile-month-cell {
+  border: 1px solid #eeeeee;
+  border-radius: 10px;
+  background: #fff;
+  padding: 4px 0 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-height: 46px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.mobile-month-cell.dim {
+  opacity: 0.35;
+}
+.mobile-month-cell.weekend {
+  background: #fff8f8;
+}
+.mobile-month-cell.today .num {
+  color: #1976d2;
+  font-weight: 900;
+}
+.mobile-month-cell.active {
+  background: #1976d2;
+  border-color: #1976d2;
+  color: #fff;
+}
+.mobile-month-cell.active .cnt {
+  background: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+.mobile-month-cell.active.today .num {
+  color: #fff;
+}
+.mobile-month-cell .num {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.mobile-month-cell .cnt {
+  font-size: 0.65rem;
+  background: #e3f2fd;
+  color: #1565c0;
+  border-radius: 8px;
+  padding: 0 5px;
+  font-weight: 700;
+}
+
+/* 週檢視 */
+.mobile-week-day-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 4px 4px;
+  margin-top: 6px;
+  border-bottom: 2px solid #e0e0e0;
+}
+.mobile-week-day-header.is-today {
+  border-bottom-color: #1976d2;
 }
 .cancelled-event {
   text-decoration: line-through;

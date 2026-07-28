@@ -1,10 +1,12 @@
 <template>
   <v-layout class="inspection-layout">
     <v-navigation-drawer
+      v-if="!smAndDown || drawer"
       v-model="drawer"
-      :rail="rail"
+      :rail="isRail"
       :width="260"
-      permanent
+      :permanent="!smAndDown"
+      :temporary="smAndDown"
       class="inspection-drawer"
     >
       <v-menu
@@ -17,7 +19,7 @@
           <div
             v-bind="menuProps"
             class="project-switcher d-flex align-center"
-            :class="{ 'is-rail': rail }"
+            :class="{ 'is-rail': isRail }"
           >
             <v-avatar
               size="36"
@@ -27,14 +29,14 @@
             >
               <v-icon>mdi-home-city-outline</v-icon>
             </v-avatar>
-            <div v-if="!rail" class="ms-3 flex-grow-1 overflow-hidden">
+            <div v-if="!isRail" class="ms-3 flex-grow-1 overflow-hidden">
               <div class="text-subtitle-2 font-weight-bold text-truncate">
                 {{ projectName || '預約管理系統' }}
               </div>
               <div class="text-caption text-medium-emphasis">驗屋預約管理</div>
             </div>
             <v-icon
-              v-if="!rail"
+              v-if="!isRail"
               size="18"
               class="ms-2 flex-shrink-0 text-medium-emphasis"
             >mdi-unfold-more-horizontal</v-icon>
@@ -102,12 +104,12 @@
       <v-divider></v-divider>
 
       <v-list density="comfortable" nav class="px-2 py-3">
-        <v-list-subheader v-if="!rail" class="text-caption font-weight-medium ps-2">
+        <v-list-subheader v-if="!isRail" class="text-caption font-weight-medium ps-2">
           預約管理
         </v-list-subheader>
 
         <template v-for="item in primaryNav" :key="item.name">
-          <v-tooltip location="end" :text="item.title" :disabled="!rail">
+          <v-tooltip location="end" :text="item.title" :disabled="!isRail">
             <template v-slot:activator="{ props }">
               <v-list-item
                 v-bind="props"
@@ -124,11 +126,11 @@
         </template>
 
         <template v-if="canEdit">
-          <v-list-subheader v-if="!rail" class="text-caption font-weight-medium ps-2 mt-2">
+          <v-list-subheader v-if="!isRail" class="text-caption font-weight-medium ps-2 mt-2">
             系統
           </v-list-subheader>
 
-          <v-tooltip location="end" text="批次及系統管理" :disabled="!rail">
+          <v-tooltip location="end" text="批次及系統管理" :disabled="!isRail">
             <template v-slot:activator="{ props }">
               <v-list-item
                 v-bind="props"
@@ -147,6 +149,7 @@
     </v-navigation-drawer>
 
     <v-btn
+      v-if="!smAndDown"
       class="drawer-edge-toggle"
       :style="{ left: `${rail ? 44 : 248}px` }"
       :icon="rail ? 'mdi-chevron-right' : 'mdi-chevron-left'"
@@ -158,6 +161,13 @@
     ></v-btn>
 
     <v-main>
+      <!-- 手機：內嵌式頂欄（不浮動、不遮擋內容） -->
+      <div v-if="smAndDown" class="mobile-topbar d-flex align-center px-1">
+        <v-btn icon="mdi-menu" variant="text" size="small" title="開啟選單" @click="drawer = true"></v-btn>
+        <span class="text-subtitle-2 font-weight-bold ms-1">{{ currentNavTitle }}</span>
+        <v-spacer></v-spacer>
+        <span class="text-caption text-medium-emphasis me-2 text-truncate" style="max-width: 45%">{{ projectName }}</span>
+      </div>
       <router-view v-slot="{ Component }">
         <v-fade-transition leave-absolute>
           <component :is="Component" :key="projectId" />
@@ -170,6 +180,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { checkInToSystem } from '@/api';
@@ -179,8 +190,19 @@ const router = useRouter();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 
+const { smAndDown } = useDisplay();
 const drawer = ref(true);
 const rail = ref(true);
+
+// 手機：導覽欄改為覆蓋式，平時完全隱藏不佔版面；桌機：固定顯示可收合為圖示列
+const isRail = computed(() => !smAndDown.value && rail.value);
+watch(smAndDown, (mobile) => {
+  drawer.value = !mobile;
+}, { immediate: true });
+// 手機點選選單項目切換頁面後，自動收合導覽欄
+watch(() => route.fullPath, () => {
+  if (smAndDown.value) drawer.value = false;
+});
 
 const projectId = computed(() => route.params.projectId);
 const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '');
@@ -192,6 +214,14 @@ const primaryNav = [
   { name: 'InternalInspectionCalendar', title: '預約時間表', icon: 'mdi-calendar-month-outline' },
   { name: 'InternalReportFolderManager',title: '驗屋報告管理', icon: 'mdi-folder-outline' },
 ];
+
+// 手機頂欄顯示的目前頁面名稱
+const currentNavTitle = computed(() => {
+  const found = primaryNav.find(item => item.name === route.name);
+  if (found) return found.title;
+  if (route.name === 'BookingRuleManager') return '批次及系統管理';
+  return '驗屋預約管理';
+});
 
 const REQUIRED_SYSTEMS = ['驗屋預約管理-修改', '驗屋預約管理-檢視'];
 
@@ -316,6 +346,16 @@ onMounted(() => {
   z-index: 1010;
   border: 1px solid rgba(0, 0, 0, 0.08);
   transition: left .25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow .2s ease, transform .15s ease;
+}
+
+/* 手機內嵌式頂欄：黏在頁面頂端（全域頂欄下方），不遮擋內容 */
+.mobile-topbar {
+  position: sticky;
+  top: var(--v-layout-top, 0px);
+  z-index: 5;
+  background: #ffffff;
+  border-bottom: 1px solid #eeeeee;
+  min-height: 44px;
 }
 .drawer-edge-toggle:hover {
   transform: scale(1.1);

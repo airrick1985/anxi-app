@@ -1100,7 +1100,13 @@ const isAdmin = computed(() => {
   return userStore.currentUserRoles.some(role => adminRoles.includes(role));
 });
 
-const sideBarConfig = ref(true); // Maintain default sidebar as requested, visibility controlled by render
+// 側邊欄：保留「欄位」「篩選器」兩個面板，但預設全部收合（不設 defaultToolPanel）
+const sideBarConfig = ref({
+  toolPanels: [
+    { id: 'columns', labelDefault: 'Columns', labelKey: 'columns', iconKey: 'columns', toolPanel: 'agColumnsToolPanel' },
+    { id: 'filters', labelDefault: 'Filters', labelKey: 'filters', iconKey: 'filter', toolPanel: 'agFiltersToolPanel' },
+  ],
+});
 
 // 上傳功能狀態 ---
 const uploadDialog = ref(false);
