@@ -2308,16 +2308,31 @@ const tableHeaders = computed(() => {
   }
  // 情境 B: [銷控模式]
   else {
+    // 手機版：欄位與電腦版完全相同（不減少欄位），凍結狀態/戶別欄 + 橫向滑動，適合直式操作
     if (isMobile.value) {
       return [
         { title: '狀態', key: 'status', align: 'center', width: '60px', fixed: true },
         { title: '戶別', key: 'unitId', align: 'start', width: '70px', fixed: true },
-        { title: '優付', key: 'isPreferredPayment', align: 'center', width: '80px' },
+        { title: '優付', key: 'isPreferredPayment', align: 'center', width: '70px' },
         { title: '面積(坪)', key: 'area_house_ping', align: 'end', width: '80px' },
-        { title: '露臺(坪)', key: 'area_terrace_ping', align: 'end', width: '80px' }, // ✅ [新增] 手機版露臺
-        { title: '房屋總價', key: 'price_list_house_total', align: 'end', width: '90px' },
-        { title: '房屋底價', key: 'price_floor_house_total', align: 'end', width: '90px' },
-        { title: '成交總價', key: 'total_transaction', align: 'end', width: '100px' },
+        { title: '露臺(坪)', key: 'area_terrace_ping', align: 'end', width: '80px' },
+        { title: '房價(表價)', key: 'price_list_house_total', align: 'end', width: '90px' },
+        { title: '表價單價', key: 'unit_price_list', align: 'end', width: '85px', sort: customPriceSort },
+        { title: '底價', key: 'price_floor_house_total', align: 'end', width: '85px' },
+        { title: '底價單價', key: 'unit_price_floor', align: 'end', width: '85px', sort: customPriceSort },
+        { title: '成交價', key: 'price_transaction_house', align: 'end', width: '85px' },
+        { title: '成交單價', key: 'unit_price_transaction', align: 'end', width: '85px', sort: customPriceSort },
+        { title: '車位底價', key: 'parking_floor_total', align: 'end', width: '85px' },
+        { title: '車位成交', key: 'parking_trans_total', align: 'end', width: '85px' },
+        { title: '成交總價(含車)', key: 'total_transaction', align: 'end', width: '110px' },
+        { title: '合計底價(含車)', key: 'total_floor', align: 'end', width: '110px' },
+        { title: '溢差價', key: 'price_diff', align: 'end', width: '80px' },
+        { title: '銷售人員', key: 'salesperson', align: 'start', width: '95px' },
+        { title: '買方姓名', key: 'buyerName', align: 'start', width: '90px' },
+        { title: '小訂日期', key: 'payment_deposit_date', align: 'center', width: '100px' },
+        { title: '補足日期', key: 'payment_complete_date', align: 'center', width: '100px' },
+        { title: '簽約日期', key: 'payment_contract_date', align: 'center', width: '100px' },
+        { title: '備註', key: 'remarks', align: 'start' },
       ];
     }
 
@@ -3538,6 +3553,41 @@ overflow: hidden;
   max-width: 300px;
   line-height: 1.4;
   font-size: 0.9rem;
+}
+
+/* ✅ [新增] 手機版列表：欄位全列出，改用緊湊字體與間距 + 橫向滑動 */
+@media (max-width: 959px) {
+  .compact-table :deep(th),
+  .compact-table :deep(td) {
+    padding: 0 8px !important;
+    font-size: 0.78rem !important;
+  }
+
+  .list-view-container :deep(.v-data-table-header th) {
+    height: 38px !important;
+  }
+
+  .list-view-container :deep(tbody tr td) {
+    height: 38px !important;
+  }
+
+  /* 備註欄在手機上別撐太寬 */
+  .compact-table :deep(td:last-child) {
+    min-width: 130px;
+    max-width: 220px;
+    font-size: 0.78rem;
+  }
+
+  /* 狀態 Chip / 優付開關縮小，配合緊湊列高 */
+  .compact-table :deep(.v-chip) {
+    font-size: 0.7rem;
+    height: 22px;
+  }
+
+  /* 凍結欄（狀態/戶別）右側加陰影，滑動時邊界清楚 */
+  .compact-table :deep(.v-data-table-column--last-fixed) {
+    box-shadow: 4px 0 6px -2px rgba(0, 0, 0, 0.15);
+  }
 }
 
 /* 表頭樣式微調 */
