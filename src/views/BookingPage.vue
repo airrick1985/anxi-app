@@ -613,15 +613,15 @@
                   <!-- 報告上傳入口 -->
                   <v-col cols="12" v-if="projectConfig.showReportUploadButton">
                     <v-card variant="outlined"
-                      class="rounded-xl pa-4 d-flex align-center flex-sm-row flex-column text-center text-sm-left"
-                      color="secondary">
+                      class="rounded-xl pa-4 d-flex align-center flex-sm-row flex-column text-center text-sm-left report-upload-card"
+                      color="secondary" @click="isUploadMode = true">
                       <v-icon size="48" color="secondary" class="mr-sm-4 mb-sm-0 mb-4">mdi-file-upload-outline</v-icon>
                       <div class="flex-grow-1">
                         <h5 class="text-h6 font-weight-bold mb-1">我有驗屋報告欲上傳</h5>
                         <p class="text-caption text-grey-darken-1 mb-0">若您已經有驗屋公司完成之驗屋報告需上傳，請由此進入</p>
                       </div>
                       <v-btn color="secondary" variant="elevated"
-                        class="ml-sm-4 mt-sm-0 mt-4 px-8 font-weight-bold rounded-pill" @click="isUploadMode = true">
+                        class="ml-sm-4 mt-sm-0 mt-4 px-8 font-weight-bold rounded-pill" tabindex="-1">
                         立即上傳
                       </v-btn>
                     </v-card>
@@ -3892,6 +3892,17 @@ const goBackToStep0 = () => {
   transition: transform 0.2s ease;
 }
 
+/* 報告上傳入口：整張卡片可點擊，hover 浮升 + 邊框加深提示可互動 */
+.report-upload-card {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.report-upload-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
 /* 預約說明按鈕：漸層 + 呼吸光暈 + hover 浮升，提升質感與引導性 */
 .instructions-btn {
   background: linear-gradient(135deg, #1a73e8 0%, #6c5ce7 50%, #a855f7 100%) !important;
@@ -4127,6 +4138,25 @@ const goBackToStep0 = () => {
   background: #fff;
   scrollbar-width: thin;
   scrollbar-color: #c5c7e0 transparent;
+}
+
+/* 預約說明內文：左右多留一點空間，長字串（網址、連續英數）強制換行避免溢出容器 */
+.instructions-content .prose {
+  padding-left: 8px;
+  padding-right: 8px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.instructions-content .prose :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
+
+.instructions-content .prose :deep(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .instructions-content::-webkit-scrollbar {
