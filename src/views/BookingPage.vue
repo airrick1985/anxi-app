@@ -2577,6 +2577,24 @@ const isDateAllowed = (date) => {
   return slots.some(s => !String(s).includes('已額滿'));
 };
 
+// 進入步驟二時，預設選取可預約日期中最早的一天；若已選日期仍有效則保留
+const applyDefaultBookingDate = () => {
+  const current = formStep2.value.預約日期;
+  if (current && isDateAllowed(current)) return;
+
+  const parseDate = (dateStr) => {
+    const [y, m, d] = dateStr.split(/[-/]/).map(Number);
+    return new Date(y, m - 1, d);
+  };
+
+  const earliestStr = Object.keys(bookingSlots.value.timeSlotsByDate || {})
+    .sort()
+    .find(dateStr => isDateAllowed(parseDate(dateStr)));
+
+  formStep2.value.預約日期 = earliestStr ? parseDate(earliestStr) : null;
+  formStep2.value.預約時段 = null;
+};
+
 // 授權書對話框狀態
 const isAuthDialogVisible = ref(false);
 const isSigningInitiated = ref(false);
@@ -3142,6 +3160,7 @@ const proceedToNextBooking = async () => {
 
     if (res.status === 'success' && res.data) {
       bookingSlots.value = res.data;
+      applyDefaultBookingDate();
       step.value = 2;
     } else {
       throw new Error(res.message || '無法獲取可預約時段');
@@ -3213,6 +3232,7 @@ const handleStep1Submit = async () => {
 
     if (res.status === 'success' && res.data) {
       bookingSlots.value = res.data;
+      applyDefaultBookingDate();
       step.value = 2;
     } else {
       throw new Error(res.message || '無法獲取可預約時段');
@@ -3292,6 +3312,7 @@ const handleGoBackAndRefresh = async () => {
 
     if (res.status === 'success' && res.data) {
       bookingSlots.value = res.data;
+      applyDefaultBookingDate();
       step.value = 2;
     } else {
       throw new Error(res.message || '無法刷新預約時段');
