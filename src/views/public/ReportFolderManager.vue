@@ -5,7 +5,7 @@
         <v-toolbar-title class="font-weight-bold">驗屋報告管理</v-toolbar-title>
         <v-spacer></v-spacer>
        <v-btn
-          v-if="!isInternal"
+          v-if="!isInternal && !isStandalone"
           variant="outlined"
           @click="goBack"
           prepend-icon="mdi-arrow-left"
@@ -201,6 +201,8 @@ const props = defineProps({
 const router = useRouter();
 const route = useRoute();
 const isInternal = computed(() => route.name === 'InternalReportFolderManager');
+// 獨立入口（Home 進入）：走 DefaultLayout，不顯示「返回時間表」(回 LIFF) 按鈕
+const isStandalone = computed(() => route.name === 'InspectionReportManager');
 const driveStore = useDriveStore();
 const userStore = useUserStore();
 const isLoading = ref(true);
@@ -227,7 +229,7 @@ const completedRenameTaskIds = computed(() => { return Object.values(driveStore.
 watch(completedRenameTaskIds, (newIds, oldIds) => { if (newIds.length > (oldIds?.length || 0)) { const newlyCompletedId = newIds.find(id => !(oldIds || []).includes(id)); if (newlyCompletedId) { refreshSnackbar.message = '資料夾加註完成，建議重新整理列表以查看最新狀態。'; refreshSnackbar.visible = true; } } });
 const headers = [ { title: '棟別', key: 'building' }, { title: '棟號', key: 'unitNumber' }, { title: '驗屋報告', key: 'reportFolder.name', sortable: false }, { title: '狀態', key: 'status' }, { title: '修改時間', key: 'modifiedTime' }, ];
 const sortBy = ref([{ key: 'modifiedTime', order: 'asc' }]);
-const authorizedProjects = computed(() => { const permissions = userStore.user?.permissions; if (!permissions) return []; const projects = []; for (const projectId in permissions) { const p = permissions[projectId]; if (p.systems?.includes('驗屋預約管理-檢視') || p.systems?.includes('驗屋預約管理-修改')) { projects.push({ title: p.projectName, value: projectId }); } } return projects.sort((a, b) => a.title.localeCompare(b.title, 'zh-Hant')); });
+const authorizedProjects = computed(() => { const permissions = userStore.user?.permissions; if (!permissions) return []; const projects = []; for (const projectId in permissions) { const p = permissions[projectId]; if (p.systems?.includes('驗屋報告管理')) { projects.push({ title: p.projectName, value: projectId }); } } return projects.sort((a, b) => a.title.localeCompare(b.title, 'zh-Hant')); });
 const tableData = computed(() => { return allReportData.value.map(item => { const name = item.reportFolder.name; let status = '未下載'; let statusOrder = 1; const hasDownloaded = name.includes('已下載'); const hasInvalidated = name.includes('作廢'); if (hasInvalidated) { status = '作廢'; statusOrder = 3; } if (hasDownloaded) { status = hasInvalidated ? '已下載, 作廢' : '已下載'; statusOrder = 2; } if(status === '作廢') statusOrder = 3; return { ...item, status, statusOrder }; }); });
 const filteredTableData = computed(() => { return tableData.value.filter(item => { const statusMatch = statusFilter.value.length === 0 || statusFilter.value.some(s => item.status.includes(s)); const searchMatch = !searchFilter.value || Object.values(item).some(val => String(val).toLowerCase().includes(searchFilter.value.toLowerCase()) || String(val.name)?.toLowerCase().includes(searchFilter.value.toLowerCase()) ); return statusMatch && searchMatch; }); });
 const getRowProps = ({ item }) => { if (item.status.includes('作廢')) return { class: 'bg-grey-lighten-3 text-medium-emphasis' }; if (item.status.includes('已下載')) return { class: 'bg-green-lighten-5' }; return { class: 'font-weight-bold' }; };

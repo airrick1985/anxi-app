@@ -398,6 +398,19 @@ const routes = [
       title: '驗屋報告資料夾管理'
     }
   },
+  // 驗屋報告管理：獨立入口（獨立權限「驗屋報告管理」控管）
+  {
+    path: '/inspection-reports/:projectId?',
+    name: 'InspectionReportManager',
+    component: () => import('@/views/public/ReportFolderManager.vue'),
+    props: true,
+    meta: {
+      requiresAuth: true,
+      requiredAnySystem: ['驗屋報告管理'],
+      layout: DefaultLayout,
+      title: '驗屋報告管理'
+    }
+  },
   // ✓ START: 新增客戶端驗屋報告路由
   {
     path: '/customer-report', // Path matches the URL
@@ -501,7 +514,7 @@ const routes = [
         props: true,
         meta: {
           requiresAuth: true,
-          requiredAnySystem: ['驗屋預約管理-修改', '驗屋預約管理-檢視'],
+          requiredAnySystem: ['驗屋報告管理'],
           layout: DefaultLayout // ✅
         }
       }

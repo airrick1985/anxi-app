@@ -52,6 +52,7 @@ import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
 import reservationCalenderIcon from '@/assets/icons/reservation-calender.png';
 import profileIcon from '@/assets/icons/profile.png';
 import SMSIcon from '@/assets/icons/SMS.png';
+import fileIcon from '@/assets/icons/file.png';
 
 
 const router = useRouter();
@@ -111,7 +112,17 @@ const allButtons = ref([
   // ✓ END: 新增按鈕
 
   { id: 'designChangeSystem', text: '客變系統', icon: blueprintIcon, permissionType: 'system', permissionArgs: ['客變系統'], nav: null },
-  { id: 'inspectionTimetable', text: '驗屋預約', icon: inspectionCalenderIcon, permissionType: 'anySystem', permissionArgs:  ['驗屋預約管理-修改', '驗屋預約管理-檢視'], nav: { name: 'ProjectSelector' } 
+  { id: 'inspectionTimetable', text: '驗屋預約', icon: inspectionCalenderIcon, permissionType: 'anySystem', permissionArgs:  ['驗屋預約管理-修改', '驗屋預約管理-檢視'], nav: { name: 'ProjectSelector' }
+  },
+
+  // 驗屋報告管理：獨立權限、獨立入口
+  {
+    id: 'inspectionReportManager',
+    text: '驗屋報告',
+    icon: fileIcon,
+    permissionType: 'system',
+    permissionArgs: ['驗屋報告管理'],
+    nav: { name: 'InspectionReportManager' }
   },
    { 
     id: 'ViewingReservation', 

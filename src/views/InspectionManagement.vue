@@ -209,15 +209,21 @@ const projectName = computed(() => projectStore.idToNameMap[projectId.value] || 
 
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管理-修改', projectName.value));
 
-const primaryNav = [
-  { name: 'HouseholdGrid',              title: '戶別資料管理', icon: 'mdi-table-large' },
-  { name: 'InternalInspectionCalendar', title: '預約時間表', icon: 'mdi-calendar-month-outline' },
-  { name: 'InternalReportFolderManager',title: '驗屋報告管理', icon: 'mdi-folder-outline' },
-];
+const primaryNav = computed(() => {
+  const nav = [
+    { name: 'HouseholdGrid',              title: '戶別資料管理', icon: 'mdi-table-large' },
+    { name: 'InternalInspectionCalendar', title: '預約時間表', icon: 'mdi-calendar-month-outline' },
+  ];
+  // 驗屋報告管理已獨立為專屬權限，具權限者才顯示此導覽項目
+  if (userStore.hasProjectPermission('驗屋報告管理', projectName.value)) {
+    nav.push({ name: 'InternalReportFolderManager', title: '驗屋報告管理', icon: 'mdi-folder-outline' });
+  }
+  return nav;
+});
 
 // 手機頂欄顯示的目前頁面名稱
 const currentNavTitle = computed(() => {
-  const found = primaryNav.find(item => item.name === route.name);
+  const found = primaryNav.value.find(item => item.name === route.name);
   if (found) return found.title;
   if (route.name === 'BookingRuleManager') return '批次及系統管理';
   return '驗屋預約管理';
