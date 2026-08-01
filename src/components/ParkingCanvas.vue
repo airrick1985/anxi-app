@@ -94,19 +94,23 @@
       </button>
        
       <div v-if="showStatusToggle" class="status-toggle">
-        <button 
+        <button
           @click="switchDisplayMode('backend')"
           :class="['btn', 'btn-sm', { 'btn-active': displayMode === 'backend' }]"
         >
           後台狀態
         </button>
-        <button 
+        <button
           @click="switchDisplayMode('sales')"
           :class="['btn', 'btn-sm', { 'btn-active': displayMode === 'sales' }]"
         >
           銷售狀態
         </button>
       </div>
+
+      <button @click="openPrintDialog" class="btn btn-secondary">
+        <svg-icon type="mdi" :path="mdiPrinter" class="icon"></svg-icon> 列印
+      </button>
     </div>
     
     <div v-if="importDialog" class="modal-overlay" @click.self="closeImportModal">
@@ -183,8 +187,57 @@
       </div>
     </div>
 
-    <div 
-      v-if="selectedSpot" 
+    <!-- 列印車位圖選項 -->
+    <div v-if="showPrintDialog" class="modal-overlay" @click.self="closePrintDialog">
+      <div class="modal-content" style="max-width: 460px;">
+        <div class="modal-header">
+          <h3>列印車位圖（A3）</h3>
+          <button @click="closePrintDialog" class="btn-close">
+            <svg-icon type="mdi" :path="mdiClose"></svg-icon>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="print-info-row">
+            列印狀態：<strong>{{ printModeLabel }}</strong>
+            <span class="print-info-note">（與目前畫面顯示一致）</span>
+          </div>
+          <div class="print-info-row">
+            底圖尺寸：{{ canvasWidth }} × {{ canvasHeight }}（{{ recommendedOrientation === 'landscape' ? '橫幅' : '直幅' }}），建議使用「{{ recommendedOrientation === 'landscape' ? '橫式' : '直式' }}」
+          </div>
+          <div class="print-orientation-group">
+            <div
+              :class="['print-orientation-card', { active: printOrientation === 'portrait' }]"
+              @click="printOrientation = 'portrait'"
+            >
+              <div class="orientation-box portrait"></div>
+              <div class="orientation-label">
+                直式 A3
+                <span v-if="recommendedOrientation === 'portrait'" class="orientation-badge">建議</span>
+              </div>
+            </div>
+            <div
+              :class="['print-orientation-card', { active: printOrientation === 'landscape' }]"
+              @click="printOrientation = 'landscape'"
+            >
+              <div class="orientation-box landscape"></div>
+              <div class="orientation-label">
+                橫式 A3
+                <span v-if="recommendedOrientation === 'landscape'" class="orientation-badge">建議</span>
+              </div>
+            </div>
+          </div>
+          <p class="print-hint">車位與底圖將依原始座標整體等比縮放置入 A3 版面，位置不會位移。</p>
+        </div>
+        <div class="modal-footer">
+          <button @click="doPrint" class="btn btn-primary">
+            <svg-icon type="mdi" :path="mdiPrinter" class="icon"></svg-icon> 開始列印
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="selectedSpot"
       class="spot-properties-panel"
       :style="propertiesPanelStyle"
       @mousedown="onPropertiesPanelDragStart"
@@ -469,6 +522,7 @@ import {
   mdiMinus,
   mdiPlus,
   mdiFitToScreenOutline,
+  mdiPrinter,
 } from '@mdi/js';
 import { useToast } from 'vue-toastification';
 import { formatSalespersons } from '@/utils/salespersonUtils';
@@ -1159,6 +1213,100 @@ export default {
       emit('update:displayMode', mode);
       spotLayouts.value.forEach(spot => { spot.displayMode = mode; });
     }
+
+    // =====================================================
+    // 列印車位圖（A3）
+    // =====================================================
+    const showPrintDialog = ref(false);
+    const printOrientation = ref('landscape');
+    // 依底圖長寬比建議紙張方向：橫幅底圖建議橫式，直幅底圖建議直式
+    const recommendedOrientation = computed(() =>
+      canvasWidth.value >= canvasHeight.value ? 'landscape' : 'portrait'
+    );
+    // 列印狀態必須對應目前畫面的顯示模式，不可交叉（銷售狀態畫面只能印銷售狀態）
+    const printModeLabel = computed(() =>
+      props.displayMode === 'backend' ? '後台狀態' : '銷售狀態'
+    );
+
+    const openPrintDialog = () => {
+      printOrientation.value = recommendedOrientation.value;
+      showPrintDialog.value = true;
+    };
+    const closePrintDialog = () => { showPrintDialog.value = false; };
+
+    const doPrint = () => {
+      const orientation = printOrientation.value;
+      const MM_TO_PX = 96 / 25.4;
+      const pageW = orientation === 'landscape' ? 420 : 297;
+      const pageH = orientation === 'landscape' ? 297 : 420;
+      const marginMm = 8;
+      const headerMm = 10;
+      const availW = (pageW - marginMm * 2) * MM_TO_PX;
+      const availH = (pageH - marginMm * 2 - headerMm) * MM_TO_PX;
+      // 整張畫布（含底圖與車位）用同一個縮放係數等比縮入 A3，座標相對位置完全不變
+      const scale = Math.min(availW / canvasWidth.value, availH / canvasHeight.value);
+
+      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+      let bgHtml = '';
+      if (bgImageUrl.value) {
+        const st = bgImageStyles.value || {};
+        bgHtml = `<img src="${esc(bgImageUrl.value)}" style="position:absolute;left:${st.left || '0px'};top:${st.top || '0px'};width:${st.width || '100%'};height:${st.height || '100%'};transform:${st.transform || 'none'};transform-origin:top left;object-fit:contain;" />`;
+      }
+
+      const spotsHtml = spotLayouts.value.map(spot => {
+        const colorSet = getStatusColor(props.displayMode, spot.parkingData);
+        const cs = typeof colorSet === 'string'
+          ? { backgroundColor: colorSet, borderColor: '#000000', textColor: '#000000' }
+          : colorSet;
+        const spans = getDisplayFields(props.displayMode, spot.parkingData).map(f => {
+          const ts = props.textStyles[f.key] || {};
+          return `<span style="display:block;text-align:center;font-size:${ts.fontSize || 10}px;color:${ts.fill || '#000'};font-weight:${ts.fontWeight || 'normal'};font-family:${ts.fontFamily || 'Arial'};">${esc(f.value)}</span>`;
+        }).join('');
+        return `<div style="position:absolute;left:${spot.x}px;top:${spot.y}px;width:${spot.width}px;height:${spot.height}px;transform:rotate(${spot.rotation || 0}deg);background-color:${cs.backgroundColor};border:2px solid ${cs.borderColor};color:${cs.textColor};display:flex;flex-direction:column;justify-content:center;align-items:center;padding:4px;box-sizing:border-box;overflow:hidden;font-family:Arial, sans-serif;">${spans}</div>`;
+      }).join('');
+
+      const fv = props.floorPlan?.floor;
+      const floorLabel = (typeof fv === 'object' && fv !== null) ? fv.value : (fv || '');
+      const printTime = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+      const title = `車位銷控圖_${floorLabel}_${printModeLabel.value}`;
+
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${esc(title)}</title>
+<style>
+  @page { size: A3 ${orientation}; margin: ${marginMm}mm; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  html, body { margin: 0; padding: 0; }
+  .print-header { height: ${headerMm}mm; display: flex; align-items: center; justify-content: space-between; font-family: Arial, "Microsoft JhengHei", sans-serif; font-size: 12px; color: #333; }
+  .canvas-outer { width: ${Math.floor(canvasWidth.value * scale)}px; height: ${Math.floor(canvasHeight.value * scale)}px; margin: 0 auto; overflow: hidden; }
+  .canvas-inner { position: relative; width: ${canvasWidth.value}px; height: ${canvasHeight.value}px; transform: scale(${scale}); transform-origin: top left; background: #ffffff; }
+</style>
+</head>
+<body>
+<div class="print-header">
+  <span>${esc(floorLabel)} 車位圖</span>
+  <span>顯示狀態：${esc(printModeLabel.value)}｜列印時間：${esc(printTime)}</span>
+</div>
+<div class="canvas-outer"><div class="canvas-inner">${bgHtml}${spotsHtml}</div></div>
+<script>
+  window.onload = function () { setTimeout(function () { window.print(); }, 200); };
+<\/script>
+</body>
+</html>`;
+
+      const win = window.open('', '_blank');
+      if (!win) {
+        toast.error('無法開啟列印視窗，請允許彈出視窗後再試一次。');
+        return;
+      }
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      showPrintDialog.value = false;
+    };
   
     let resizeObserver = null;
     onMounted(async () => {
@@ -1200,7 +1348,9 @@ export default {
       getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, zoomIn, zoomOut, isCanvasLoading, propertiesPanelStyle, onPropertiesPanelDragStart,
       showDetailModal, selectedDetailSpot, handleSpotClick, closeDetailModal, getDetailStatusStyle,
       formatSalespersons,
-      mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus, mdiFitToScreenOutline,
+      canvasWidth, canvasHeight,
+      showPrintDialog, printOrientation, recommendedOrientation, printModeLabel, openPrintDialog, closePrintDialog, doPrint,
+      mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus, mdiFitToScreenOutline, mdiPrinter,
       onCanvasWheel
     }
   }
@@ -1390,6 +1540,37 @@ export default {
 
 .loading-state, .no-data { text-align: center; padding: 2rem; }
 .parking-numbers { background: #f8f9fa; padding: 1rem; border-radius: 6px; margin: 1rem 0; }
+
+/* 列印車位圖選項 */
+.print-info-row { margin-bottom: 0.5rem; font-size: 0.95rem; color: #333; }
+.print-info-note { color: #888; font-size: 0.85rem; }
+.print-orientation-group { display: flex; gap: 1rem; margin: 1rem 0; }
+.print-orientation-card {
+  flex: 1;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+.print-orientation-card:hover { border-color: #9ec5fe; }
+.print-orientation-card.active { border-color: #007bff; background: #f0f7ff; }
+.orientation-box { margin: 0 auto 0.5rem; background: #e9ecef; border: 1px solid #adb5bd; }
+.orientation-box.portrait { width: 42px; height: 60px; }
+.orientation-box.landscape { width: 60px; height: 42px; }
+.orientation-label { font-size: 0.9rem; font-weight: 600; }
+.orientation-badge {
+  margin-left: 6px;
+  background: #28a745;
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.print-hint { font-size: 0.8rem; color: #888; margin-top: 0.5rem; }
 
 .btn {
   padding: 0.5rem 1rem;

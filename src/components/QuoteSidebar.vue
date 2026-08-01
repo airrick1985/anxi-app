@@ -48,13 +48,13 @@
         </v-list-item>
       </v-list>
       
-      <!-- 固定的底部操作欄 -->
-      <div class="summary-footer" v-if="quoteStore.items && quoteStore.items.length > 0">
-         <div class="summary-text d-flex justify-space-between align-center">
+      <!-- 固定的底部操作欄：有戶別即顯示；具銷控管理權限者即使空清單也可直接進入報價單設定 -->
+      <div class="summary-footer" v-if="quoteStore.items && (quoteStore.items.length > 0 || canDirectEnterSettings)">
+         <div v-if="quoteStore.items.length > 0" class="summary-text d-flex justify-space-between align-center">
           <span>已選擇 <strong class="highlight-text">{{ quoteStore.itemCount }}</strong> 戶</span>
           <v-btn color="error" variant="text" size="small" @click="handleClearQuote">清空全部</v-btn>
         </div>
-        <v-btn block color="success" size="large" class="mt-4" @click="goToQuoteSettings" :disabled="quoteStore.itemCount === 0">
+        <v-btn block color="success" size="large" class="mt-4" @click="goToQuoteSettings" :disabled="quoteStore.itemCount === 0 && !canDirectEnterSettings">
           <v-icon left>mdi-file-document-edit-outline</v-icon>
           報價單設定
         </v-btn>
@@ -64,16 +64,30 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits } from 'vue';
+import { computed, defineProps, defineEmits } from 'vue';
 import { useQuoteStore } from '@/store/quoteStore';
+import { useUserStore } from '@/store/user';
+import { useProjectStore } from '@/store/projectStore';
 import { useRoute, useRouter } from 'vue-router'; // 引入 useRouter
 
 const props = defineProps({ isOpen: Boolean });
 const emit = defineEmits(['update:isOpen']);
 
 const quoteStore = useQuoteStore();
+const userStore = useUserStore();
+const projectStore = useProjectStore();
 const router = useRouter();
 const route = useRoute(); // ✅ 獲取當前路由信息
+
+// ✅ [新增] 具銷控管理權限者可不加入戶別直接進入報價單設定
+// （與 QuoteSettings 頁管理功能相同標準：系統/超級管理員或具該案「銷控系統」權限）
+const canDirectEnterSettings = computed(() => {
+  const roles = userStore.user?.roles || [];
+  if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
+  const fullProjectName = projectStore.idToNameMap?.[route.params.projectName];
+  if (!fullProjectName) return false;
+  return userStore.hasProjectPermission('銷控系統', fullProjectName);
+});
 
 // removeItem 和 clearQuote 可以直接從 store 中解構
 const { removeItem, clearQuote } = quoteStore;
