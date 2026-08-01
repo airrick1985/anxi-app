@@ -355,9 +355,19 @@
               {{ contextMode === 'sales' ? (selectedDetailSpot.parkingData.status_backend || '未設定') : (selectedDetailSpot.parkingData.status || '未設定') }}
             </span>
           </div>
-          <button @click="closeDetailModal" class="btn-close detail-close-btn">
-            <svg-icon type="mdi" :path="mdiClose"></svg-icon>
-          </button>
+          <div class="d-flex align-center" style="gap: 8px;">
+            <button
+              v-if="canEditParking && selectedDetailSpot.parkingData.id"
+              @click="openParkingEditDialog"
+              class="btn-close detail-close-btn detail-edit-btn"
+              title="編輯車位資料"
+            >
+              <svg-icon type="mdi" :path="mdiPencil"></svg-icon>
+            </button>
+            <button @click="closeDetailModal" class="btn-close detail-close-btn">
+              <svg-icon type="mdi" :path="mdiClose"></svg-icon>
+            </button>
+          </div>
         </div>
         
         <div class="modal-body detail-body">
@@ -500,6 +510,13 @@
       </div>
     </div>
 
+    <!-- 編輯車位資料（沿用車位銷控管理的共用編輯元件與更新邏輯） -->
+    <ParkingSpotEditDialog
+      v-model="showParkingEditDialog"
+      :parking="selectedDetailSpot?.parkingData"
+      @saved="handleParkingEditSaved"
+    />
+
   </div>
 </template>
 
@@ -513,25 +530,29 @@ import {
    getSpotLayoutsAPI,
    getFloorPlansAPI,
 } from '@/api'; 
-import { 
-  mdiDownload, 
-  mdiLoading, 
-  mdiClose, 
+import {
+  mdiDownload,
+  mdiLoading,
+  mdiClose,
   mdiTrashCanOutline,
   mdiArrowExpandAll,
   mdiMinus,
   mdiPlus,
   mdiFitToScreenOutline,
   mdiPrinter,
+  mdiPencil,
 } from '@mdi/js';
 import { useToast } from 'vue-toastification';
 import { formatSalespersons } from '@/utils/salespersonUtils';
+import { useUserStore } from '@/store/user';
+import ParkingSpotEditDialog from '@/components/ParkingSpotEditDialog.vue';
 
 export default {
   name: 'ParkingCanvas',
   components: {
     SvgIcon,
-    VueDragResizeRotate, 
+    VueDragResizeRotate,
+    ParkingSpotEditDialog,
   },
   props: {
     floorPlan: {
@@ -651,6 +672,29 @@ export default {
     const showDetailModal = ref(false);
     const selectedDetailSpot = ref(null);
 
+    // 車位資料編輯（後台/銷控模式限定）：沿用車位銷控管理的共用編輯元件
+    const userStore = useUserStore();
+    const showParkingEditDialog = ref(false);
+    // 權限標準與銷控系統其他管理功能一致：系統/超級管理員，或具該案「銷控系統」權限
+    const canEditParking = computed(() => {
+      if (!props.previewMode || props.contextMode !== 'sales') return false;
+      const roles = userStore.user?.roles || [];
+      if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
+      return userStore.user?.permissions?.[props.projectId]?.systems?.includes('銷控系統') || false;
+    });
+
+    const openParkingEditDialog = () => {
+      if (!selectedDetailSpot.value?.parkingData?.id) return;
+      showParkingEditDialog.value = true;
+    };
+
+    const handleParkingEditSaved = (updated) => {
+      if (!selectedDetailSpot.value?.parkingData) return;
+      // parkingData 與 allParkingData 內為同一物件參照，就地合併即可同步畫布與詳細視窗
+      const { docId, id, ...fields } = updated;
+      Object.assign(selectedDetailSpot.value.parkingData, fields);
+    };
+
     const handleSpotClick = (spot) => {
       if (!props.previewMode || !spot.parkingData) return;
       console.log('[ParkingCanvas] handleSpotClick - contextMode:', props.contextMode, '| displayMode:', props.displayMode);
@@ -754,7 +798,8 @@ export default {
     const handleKeyDown = (event) => {
       if (event.key === 'Shift') isShiftDown.value = true;
       if (showDetailModal.value && event.key === 'Escape') {
-        closeDetailModal();
+        // 編輯車位資料視窗開啟時，Escape 不關閉底下的詳細資訊視窗
+        if (!showParkingEditDialog.value) closeDetailModal();
         return;
       }
       // 在輸入框內打字時不觸發畫布快捷鍵
@@ -1347,10 +1392,11 @@ export default {
       multiSelectedIds, marqueeRect, onMarqueeStart, handleSpotDeactivated,
       getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, zoomIn, zoomOut, isCanvasLoading, propertiesPanelStyle, onPropertiesPanelDragStart,
       showDetailModal, selectedDetailSpot, handleSpotClick, closeDetailModal, getDetailStatusStyle,
+      canEditParking, showParkingEditDialog, openParkingEditDialog, handleParkingEditSaved,
       formatSalespersons,
       canvasWidth, canvasHeight,
       showPrintDialog, printOrientation, recommendedOrientation, printModeLabel, openPrintDialog, closePrintDialog, doPrint,
-      mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus, mdiFitToScreenOutline, mdiPrinter,
+      mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus, mdiFitToScreenOutline, mdiPrinter, mdiPencil,
       onCanvasWheel
     }
   }
@@ -1781,6 +1827,16 @@ export default {
 .detail-close-btn:hover {
   background: rgba(15, 23, 42, 0.12);
   transform: rotate(90deg);
+}
+
+.detail-edit-btn {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.detail-edit-btn:hover {
+  background: rgba(37, 99, 235, 0.16);
+  transform: none;
 }
 
 .info-section {
