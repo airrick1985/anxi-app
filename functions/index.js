@@ -1243,6 +1243,20 @@ exports.uploadHouseholds = onCall({
       }
       //  --- 處理結束 ---
 
+      // ✅ [新增] 可選方案（方案編輯器）：正規化為字串陣列（存方案 id）。
+      // 注意：payload「沒有」此欄位時不可寫入（merge: true 會保留既有值），
+      // 以支援舊格式 Excel（無「可選方案」欄）上傳不清空既有設定
+      if (Object.prototype.hasOwnProperty.call(dataToSave, 'availablePlans')) {
+        const rawPlans = dataToSave.availablePlans;
+        if (Array.isArray(rawPlans)) {
+          dataToSave.availablePlans = rawPlans.map(v => String(v || '').trim()).filter(Boolean);
+        } else if (typeof rawPlans === 'string' && rawPlans.trim() !== '') {
+          dataToSave.availablePlans = rawPlans.split(',').map(v => v.trim()).filter(Boolean);
+        } else {
+          dataToSave.availablePlans = [];
+        }
+      }
+
       // ✓ START: 新增 - 處理銀行帳號和特定文字欄位
       // 正體中文註解：定義哪些欄位應被強制視為文字，以保留前導 0 或特殊格式。
       // (請確保您在 SalesControlSystem.vue 的 COLUMN_DEFINITIONS 中使用相同的英文 key)
@@ -3035,6 +3049,19 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
     }
     if (Object.prototype.hasOwnProperty.call(dataToSave, 'salespersonUserKey')) {
       dataToSave.salespersonUserKey = normalizeSalespersons(dataToSave.salespersonUserKey);
+    }
+
+    // ✅ [新增] 可選方案（方案編輯器）：正規化為字串陣列（存方案 id）。
+    // payload 沒有此欄位時不寫入，保留既有值
+    if (Object.prototype.hasOwnProperty.call(dataToSave, 'availablePlans')) {
+      const rawPlans = dataToSave.availablePlans;
+      if (Array.isArray(rawPlans)) {
+        dataToSave.availablePlans = rawPlans.map(v => String(v || '').trim()).filter(Boolean);
+      } else if (typeof rawPlans === 'string' && rawPlans.trim() !== '') {
+        dataToSave.availablePlans = rawPlans.split(',').map(v => v.trim()).filter(Boolean);
+      } else {
+        dataToSave.availablePlans = [];
+      }
     }
 
     // salesStatus_backend 與 status 必須連動

@@ -76,6 +76,16 @@
     @click="isRemarkEditorVisible = true"
   >報價單備註</v-btn>
 
+  <!-- ✅ [新增] 方案編輯器：僅銷控管理權限人員可見 -->
+  <v-btn
+    v-if="canEditQuoteRemark"
+    color="deep-purple-darken-1"
+    variant="tonal"
+    prepend-icon="mdi-star-box-multiple"
+    class="mr-4"
+    @click="isPlanEditorVisible = true"
+  >方案編輯器</v-btn>
+
   <!-- ✅ [新增] 配套總價門檻設定：僅銷控管理權限人員可見 -->
   <v-tooltip v-if="canEditQuoteRemark" text="配套總價門檻設定" location="bottom">
     <template v-slot:activator="{ props }">
@@ -189,11 +199,12 @@
             <div class="item-cell flex-shrink-0" style="width: 50px;"></div>
           </div>
           <v-card v-for="item in quoteStore.items" :key="item.internalId" class="quote-item-card">
-          <QuoteItem 
+          <QuoteItem
               :item="item"
               :payment-terms-data="paymentTermsData"
               :package-terms-data="packageTermsData"
               :payment-templates="paymentTemplates"
+              :quote-plans="quotePlans"
               :show-package-deal="showPackageDealColumns"
               :is-loading="loading"
               :all-parking-data="parkingStore.parkingData || []"
@@ -332,6 +343,13 @@
     <QuotePackageLimitDialog
       v-model="isPackageLimitDialogVisible"
       :project-id="projectId"
+    />
+
+    <!-- ✅ [新增] 方案編輯器（銷控管理權限） -->
+    <QuotePlanEditorDialog
+      v-model="isPlanEditorVisible"
+      :project-id="projectId"
+      :payment-templates="paymentTemplates"
     />
 
     <!-- ✅ [新增] 建案簡介網址設定（銷控管理權限）：供列印報價單產生 QR Code -->
@@ -473,6 +491,7 @@ import {
   fetchSalesPersonnelList, // 新增 Firestore 版本
   fetchPaymentTermTemplates, // 新增：期款範本 API
   selectApplicableTemplates, // 新增：範本選擇邏輯
+  listenToQuotePlans, // ✅ [新增] 方案編輯器：即時監聽方案清單
 } from '@/api';
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QrcodeVue from 'qrcode.vue';
@@ -485,6 +504,7 @@ import QuotePrintDialog from '@/components/QuotePrintDialog.vue';
 import QuoteRemarkEditorDialog from '@/components/QuoteRemarkEditorDialog.vue';
 import QuotePackageLimitDialog from '@/components/QuotePackageLimitDialog.vue';
 import QuoteIntroUrlDialog from '@/components/QuoteIntroUrlDialog.vue';
+import QuotePlanEditorDialog from '@/components/QuotePlanEditorDialog.vue';
 import { useSalesDataStore } from '@/store/salesDataStore';
 
 // ✅ [停用] 舊版「列印報價單」按鈕開關：暫時隱藏，只保留「列印報價單(含期款)」。
@@ -569,6 +589,26 @@ const isPackageLimitDialogVisible = ref(false);
 
 // ✅ [新增] 建案簡介網址（報價單 QR Code）設定對話框
 const isIntroUrlDialogVisible = ref(false);
+
+// ✅ [新增] 方案編輯器對話框與方案清單（即時監聽，供 QuoteItem「選擇方案」使用）
+const isPlanEditorVisible = ref(false);
+const quotePlans = ref([]);
+let unsubQuotePlans = null;
+function subscribeQuotePlans() {
+  if (unsubQuotePlans) unsubQuotePlans();
+  quotePlans.value = [];
+  if (!projectId.value) return;
+  unsubQuotePlans = listenToQuotePlans(projectId.value, (plans) => {
+    quotePlans.value = plans;
+  });
+}
+onMounted(subscribeQuotePlans);
+onUnmounted(() => {
+  if (unsubQuotePlans) unsubQuotePlans();
+});
+watch(projectId, (newId, oldId) => {
+  if (newId && newId !== oldId) subscribeQuotePlans();
+});
 
 // ✅ [新增] 報價單備註編輯權限：系統/超級管理員或具該案「銷控系統」權限（與活動訊息管理相同標準）
 const canEditQuoteRemark = computed(() => {

@@ -236,9 +236,30 @@
    </template>
 
    <div class="item-cell flex-1">
-    <v-btn @click="isPaymentDetailsVisible = !isPaymentDetailsVisible" size="small" :append-icon="isPaymentDetailsVisible ? 'mdi-chevron-up' : 'mdi-chevron-down'">
-     付款方式
-    </v-btn>
+    <div class="d-flex flex-column align-center ga-1" style="width: 100%;">
+      <v-btn @click="isPaymentDetailsVisible = !isPaymentDetailsVisible" size="small" :append-icon="isPaymentDetailsVisible ? 'mdi-chevron-up' : 'mdi-chevron-down'">
+       付款方式
+      </v-btn>
+      <!-- ✅ [新增] 選擇方案：套用預先定義的方案（付款方式＋議價調整＋文字內容） -->
+      <v-btn
+        size="small"
+        class="plan-select-btn"
+        prepend-icon="mdi-star-box-multiple"
+        @click="isPlanPickerVisible = true"
+      >選擇方案</v-btn>
+      <div v-if="appliedPlansList.length > 0" class="d-flex flex-wrap justify-center ga-1">
+        <v-chip
+          v-for="ap in appliedPlansList"
+          :key="ap.planId"
+          size="x-small"
+          color="deep-purple-darken-1"
+          :variant="isPlanModified(ap) ? 'outlined' : 'flat'"
+          :class="{ 'plan-chip-modified': isPlanModified(ap) }"
+          closable
+          @click:close="removeAppliedPlan(ap)"
+        >{{ ap.planName }}{{ isPlanModified(ap) ? '（已修改）' : '' }}</v-chip>
+      </div>
+    </div>
    </div>
    <div class="item-cell flex-shrink-0">
     <v-btn color="red" variant="flat" size="small" @click="emit('remove')">移除本戶</v-btn>
@@ -663,6 +684,16 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- ✅ [新增] 選擇方案對話框（方案編輯器功能） -->
+    <QuotePlanPickerDialog
+      v-model="isPlanPickerVisible"
+      :item="item"
+      :plans="quotePlans"
+      :payment-templates="paymentTemplates"
+      @apply="applyPlans"
+      @clear="clearAppliedPlans"
+    />
     </div>
 </template>
 
@@ -673,6 +704,7 @@ import { useDisplay } from 'vuetify';
 import PaymentDetails from './PaymentDetails.vue';
 import ParkingEditModal from './ParkingEditModal.vue';
 import UnitImageLightbox from './UnitImageLightbox.vue';
+import QuotePlanPickerDialog from './QuotePlanPickerDialog.vue';
 import { useProjectStore } from '@/store/projectStore';
 
 const props = defineProps({
@@ -684,7 +716,8 @@ const props = defineProps({
   isLoading: { type: Boolean, default: false },
   allParkingData: { type: Array, default: () => [] },
   projectId: { type: String, required: true }, // ✓ 新增：接收 projectId
-  allSalesImages: { type: Array, default: () => [] } // ✅ [新增] 建案全部銷控圖片，用於戶別圖片燈箱
+  allSalesImages: { type: Array, default: () => [] }, // ✅ [新增] 建案全部銷控圖片，用於戶別圖片燈箱
+  quotePlans: { type: Array, default: () => [] } // ✅ [新增] 建案方案清單（方案編輯器功能）
 });
 
 const emit = defineEmits(['remove', 'request-open-slide']);
@@ -1610,6 +1643,13 @@ const appliedPaymentNotes = computed(() => {
     if (packageNote && packageNote.trim()) notes.push(packageNote.trim());
   }
 
+  // ✅ [新增] 已套用方案的文字內容（如贈品、特殊需求）：一併於報價單顯示與列印
+  // ✅ [優化] 前綴完整方案名稱，讓報價單一目了然文字內容出自哪個方案
+  (props.item.appliedPlans || []).forEach(p => {
+    const planNote = String(p.note || '').trim();
+    if (planNote) notes.push(`【方案｜${p.planName}】${planNote}`);
+  });
+
   return notes;
 });
 
@@ -1898,6 +1938,174 @@ watch(isNegotiationDialogVisible, (isVisible) => {
     quoteStore.resetNegotiationPrice(props.item.internalId);
   }
 });
+
+// ★★★ ✅ [新增] 方案編輯器：選擇方案／套用／清除 ★★★
+
+const isPlanPickerVisible = ref(false);
+
+// 已套用方案快照（舊 persist 資料無此欄位 → 空陣列）
+const appliedPlansList = computed(() => props.item.appliedPlans || []);
+
+// 依方案 adjustments 計算議價結果（基準 = 原始價格；已有調整時取 originalPrice）
+function computePlanNegotiation(adjustments) {
+  const area = Number(props.item.unitDetails.area_house_ping) || 0;
+  const find = (mode) => (adjustments || []).find(a => a.mode === mode);
+  const per = find('perTsubo');
+  const dir = find('directAmount');
+  const tot = find('totalPrice');
+
+  const existingOriginal = props.item.negotiationState?.originalPrice;
+  const basePrice = (existingOriginal !== null && existingOriginal !== undefined)
+    ? existingOriginal
+    : quoteStore.getRawDisplayHousePrice(props.item.internalId);
+
+  let newPrice;
+  if (tot) {
+    newPrice = Math.round(Number(tot.value) || 0);
+  } else {
+    const perAdj = per ? Math.round((Number(per.value) || 0) * area) : 0;
+    const dirAdj = dir ? Math.round(Number(dir.value) || 0) : 0;
+    newPrice = Math.round(basePrice + perAdj + dirAdj);
+  }
+
+  const activeMode = tot ? 'totalPrice'
+    : (per && dir) ? 'both'
+    : dir ? 'directAmount'
+    : per ? 'perTsubo' : '';
+
+  return {
+    perTsuboValue: per ? String(per.value) : '',
+    directAmountValue: dir ? String(dir.value) : '',
+    totalPriceValue: tot ? String(tot.value) : '',
+    activeMode,
+    basePrice,
+    newPrice,
+  };
+}
+
+// 套用勾選的方案（selections: [{ plan, selectedPaymentTemplateId }]，picker 已保證衝突規則）
+function applyPlans(selections) {
+  const internalId = props.item.internalId;
+  const prevPlans = appliedPlansList.value;
+
+  // 1) 議價方案（至多一個）先試算，加價時沿用現有二次確認；取消則整批不套用
+  const negSelection = selections.find(s => Array.isArray(s.plan.adjustments) && s.plan.adjustments.length > 0);
+  let negResult = null;
+  if (negSelection) {
+    negResult = computePlanNegotiation(negSelection.plan.adjustments);
+    if (negResult.newPrice > negResult.basePrice) {
+      const confirmed = confirm(
+        `套用方案「${negSelection.plan.name}」將加價 ${negResult.newPrice - negResult.basePrice} 萬元，\n` +
+        `原價: ${negResult.basePrice} 萬 → 新價: ${negResult.newPrice} 萬\n\n確定要套用嗎？`
+      );
+      if (!confirmed) return;
+    }
+  }
+
+  // 2) 付款方式方案（至多一個）：等同手動兩層選擇器選定該範本
+  const paySelection = selections.find(s => Array.isArray(s.plan.paymentTemplateIds) && s.plan.paymentTemplateIds.length > 0);
+  if (paySelection) {
+    const template = (props.paymentTemplates || []).find(t => t.id === paySelection.selectedPaymentTemplateId);
+    if (template) {
+      quoteStore.updateItemManualTemplate(internalId, {
+        category: template.paymentCategory,
+        templateId: template.id,
+      });
+    }
+  } else if (prevPlans.some(p => p.hasPayment)) {
+    // 新組合不含付款方式，但先前方案有 → 還原自動判斷
+    resetManualTemplate();
+  }
+
+  // 3) 議價調整落地
+  if (negResult) {
+    quoteStore.updateHousePrice(internalId, negResult.newPrice);
+    quoteStore.updateNegotiationState(internalId, {
+      originalPrice: negResult.basePrice,
+      activeMode: negResult.activeMode,
+      perTsuboValue: negResult.perTsuboValue,
+      directAmountValue: negResult.directAmountValue,
+      totalPriceValue: negResult.totalPriceValue,
+    });
+  } else if (prevPlans.some(p => p.hasNegotiation)) {
+    // 新組合不含議價調整，但先前方案有 → 恢復原始價格
+    quoteStore.resetNegotiationPrice(internalId);
+  }
+
+  // 4) 寫入快照（供 chips 顯示、「已修改」偵測與方案文字備註）
+  const snapshots = selections.map(({ plan, selectedPaymentTemplateId }) => {
+    const hasNeg = Array.isArray(plan.adjustments) && plan.adjustments.length > 0;
+    const hasPay = Array.isArray(plan.paymentTemplateIds) && plan.paymentTemplateIds.length > 0;
+    // ✅ [優化] 快照所選付款方式名稱：供列印報價單「採用方案」帶顯示，不依賴範本資料是否載入
+    const selectedTemplate = hasPay
+      ? (props.paymentTemplates || []).find(t => t.id === selectedPaymentTemplateId)
+      : null;
+    return {
+      planId: plan.id,
+      planName: plan.name,
+      note: String(plan.note || '').trim(),
+      hasNegotiation: hasNeg,
+      hasPayment: hasPay,
+      selectedPaymentTemplateId: hasPay ? (selectedPaymentTemplateId || null) : null,
+      selectedPaymentTemplateName: selectedTemplate ? selectedTemplate.templateName : null,
+      negotiation: hasNeg ? {
+        perTsuboValue: negResult?.perTsuboValue ?? '',
+        directAmountValue: negResult?.directAmountValue ?? '',
+        totalPriceValue: negResult?.totalPriceValue ?? '',
+      } : null,
+    };
+  });
+  quoteStore.updateItemAppliedPlans(internalId, snapshots);
+}
+
+// 移除單一方案 chip：還原該方案帶入的效果
+function removeAppliedPlan(appliedPlan) {
+  const internalId = props.item.internalId;
+  if (appliedPlan.hasNegotiation) {
+    quoteStore.resetNegotiationPrice(internalId);
+  }
+  if (appliedPlan.hasPayment) {
+    resetManualTemplate();
+  }
+  quoteStore.updateItemAppliedPlans(
+    internalId,
+    appliedPlansList.value.filter(p => p.planId !== appliedPlan.planId)
+  );
+}
+
+// 清除全部方案
+function clearAppliedPlans() {
+  const internalId = props.item.internalId;
+  if (appliedPlansList.value.some(p => p.hasNegotiation)) {
+    quoteStore.resetNegotiationPrice(internalId);
+  }
+  if (appliedPlansList.value.some(p => p.hasPayment)) {
+    resetManualTemplate();
+  }
+  quoteStore.updateItemAppliedPlans(internalId, []);
+}
+
+// 套用後使用者手動更改議價或付款方式 → chip 標示「已修改」（不自動移除）
+function isPlanModified(appliedPlan) {
+  const sameNumeric = (a, b) => {
+    const na = a === '' || a === null || a === undefined ? null : Number(a);
+    const nb = b === '' || b === null || b === undefined ? null : Number(b);
+    return na === nb;
+  };
+  if (appliedPlan.hasNegotiation) {
+    const state = props.item.negotiationState || {};
+    const snap = appliedPlan.negotiation || {};
+    // 議價已被清除（恢復原價）也視為已修改
+    if (state.originalPrice === null || state.originalPrice === undefined) return true;
+    if (!sameNumeric(state.perTsuboValue, snap.perTsuboValue)) return true;
+    if (!sameNumeric(state.directAmountValue, snap.directAmountValue)) return true;
+    if (!sameNumeric(state.totalPriceValue, snap.totalPriceValue)) return true;
+  }
+  if (appliedPlan.hasPayment) {
+    if ((props.item.manualTemplate?.templateId || null) !== (appliedPlan.selectedPaymentTemplateId || null)) return true;
+  }
+  return false;
+}
 </script>
 
 <style scoped>
@@ -1910,6 +2118,16 @@ watch(isNegotiationDialogVisible, (isVisible) => {
 }
 .unit-id-clickable:hover {
   opacity: 0.7;
+}
+
+/* ✅ [新增] 選擇方案按鈕：漸層醒目樣式 */
+.plan-select-btn {
+  background: linear-gradient(135deg, #5e35b1, #d81b60);
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(94, 53, 177, 0.35);
+}
+.plan-chip-modified {
+  border-style: dashed !important;
 }
 
 /* Styles remain the same */

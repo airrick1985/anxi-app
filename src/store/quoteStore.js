@@ -151,7 +151,10 @@ function addItem(unitData) {
         perTsuboValue: '',      // 每坪調整的值（獨立保存）
         directAmountValue: '',  // 直接調整的值（獨立保存）
         totalPriceValue: ''     // 直接輸入總價的值（獨立保存）
-      }
+      },
+      // ✅ [新增] 已套用方案快照（方案編輯器功能）：
+      // [{ planId, planName, note, hasNegotiation, hasPayment, selectedPaymentTemplateId, negotiation }]
+      appliedPlans: []
     });
 
     return true; // 保持回傳 true，以便 UnitDetailModal 顯示 toast
@@ -291,6 +294,15 @@ function addItem(unitData) {
     }
   }
 
+  // ✅ [新增] 更新已套用方案快照（方案編輯器功能）
+  // plans 為完整快照陣列；舊資料（persist 還原）無此欄位時也能安全寫入
+  function updateItemAppliedPlans(internalId, plans) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      item.appliedPlans = Array.isArray(plans) ? plans : [];
+    }
+  }
+
   // ✅ [新增] 進入報價頁時正規化：將所有戶別（含 persist 還原的舊資料）首購狀態一律重設為「是」（首購）
   function resetAllToFirstTimeBuyer() {
     items.value.forEach(item => {
@@ -330,6 +342,7 @@ function addItem(unitData) {
     updateItemManualTemplate,
     updateItemManualPackageTemplate,
     updateItemPrintPaymentData,
+    updateItemAppliedPlans,
     resetAllToFirstTimeBuyer,
     clearQuote
   };

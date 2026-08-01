@@ -233,7 +233,7 @@
                 :allParkingData="allData['車位'] || []" :projectName="projectName" :project-id="projectId"
                 :view-mode="props.viewMode" @request-open-slide="$emit('request-open-slide')"
                 @parking-updated="handleParkingUpdate" :contractTypeOptions="props.contractTypes"
-                :firstPurchaseOptions="firstPurchaseOptions" />
+                :firstPurchaseOptions="firstPurchaseOptions" :planOptions="props.planOptions" />
             </template>
 
             <template v-else>
@@ -1188,6 +1188,7 @@ const props = defineProps({
   contractTypes: { type: Array, default: () => [] },
   projectId: { type: String, required: true }, // ✅ 修正：新增這一行
   priceFormulas: { type: Object, default: () => null }, // 房土比計算公式（建案層級）
+  planOptions: { type: Array, default: () => [] }, // ✅ [新增] 建案方案清單（可選方案編輯用）
 });
 
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);

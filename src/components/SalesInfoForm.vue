@@ -37,6 +37,22 @@
               clearable
               hint="可複選多位銷售人員"
               persistent-hint
+            ></v-select>
+
+            <!-- ✅ [新增] 可選方案（方案編輯器功能）：限制該戶別在報價端可套用的方案，可複選 -->
+            <v-select
+              label="可選方案"
+              :items="planOptions"
+              v-model="availablePlansList"
+              class="mb-4"
+              item-title="name"
+              item-value="id"
+              multiple
+              chips
+              closable-chips
+              clearable
+              hint="未設定時，報價端「選擇方案」將無方案可選"
+              persistent-hint
             ></v-select> <v-combobox
               label="戶別圖片"
               v-model="editableData.salesImages"
@@ -453,6 +469,8 @@ const props = defineProps({
   firstPurchaseOptions: { type: Array, default: () => [] },
   // ✅ 1. 新增 Prop
   allSalesImages: { type: Array, default: () => [] },
+  // ✅ [新增] 建案方案清單（方案編輯器功能，「可選方案」複選選項）
+  planOptions: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['update:modelValue', 'request-open-slide', 'parking-updated']);
@@ -523,6 +541,21 @@ const salespersonList = computed({
   set: (val) => {
     if (editableData.value) {
       editableData.value.salesperson = normalizeSalespersons(val);
+    }
+  }
+});
+
+// ✅ [新增] 可選方案複選：存方案 id 陣列；顯示時過濾失效 id（方案已刪除），儲存時一併剔除
+const availablePlansList = computed({
+  get: () => {
+    const ids = editableData.value?.availablePlans;
+    if (!Array.isArray(ids)) return [];
+    const validIds = new Set((props.planOptions || []).map(p => p.id));
+    return ids.filter(id => validIds.has(id));
+  },
+  set: (val) => {
+    if (editableData.value) {
+      editableData.value.availablePlans = Array.isArray(val) ? val : [];
     }
   }
 });

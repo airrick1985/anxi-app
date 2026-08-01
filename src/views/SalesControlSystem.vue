@@ -89,6 +89,20 @@
           ></v-btn>
         </v-badge>
 
+        <!-- ✅ [新增] 報價單設定直接入口：具銷控管理權限者免加入戶別即可進入 -->
+        <v-tooltip location="bottom" v-if="canDirectEnterQuoteSettings">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="goToQuoteSettingsDirect"
+              icon="mdi-file-document-edit-outline"
+            ></v-btn>
+          </template>
+          <span>報價單設定</span>
+        </v-tooltip>
+
         <!-- 實價登錄申報提醒徽章：sales 模式且有待申報戶別時顯示 -->
         <v-tooltip v-if="currentViewMode === 'sales' && pendingReportUnits.length > 0" location="bottom">
           <template #activator="{ props: ttp }">
@@ -207,6 +221,19 @@
             ></v-btn>
           </template>
           <span>下載戶別資料EXCEL</span>
+        </v-tooltip>
+
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="isUnitExportDialogVisible = true"
+              icon="mdi-table-arrow-down"
+            ></v-btn>
+          </template>
+          <span>下載指定戶別資料</span>
         </v-tooltip>
 
         <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
@@ -904,6 +931,12 @@
         <span>報價單</span>
       </v-btn>
 
+      <!-- ✅ [新增] 報價單設定直接入口：具銷控管理權限者免加入戶別即可進入 -->
+      <v-btn v-if="canDirectEnterQuoteSettings" @click="goToQuoteSettingsDirect">
+        <v-icon>mdi-file-document-edit-outline</v-icon>
+        <span>報價設定</span>
+      </v-btn>
+
       
       <v-menu top v-if="viewFormat !== 'list'">
         <template v-slot:activator="{ props }">
@@ -989,6 +1022,12 @@
             </template>
             <v-list-item-title>下載戶別資料EXCEL</v-list-item-title>
           </v-list-item>
+          <v-list-item @click="isMoreMenuOpen = false; isUnitExportDialogVisible = true">
+            <template v-slot:prepend>
+              <v-icon color="black">mdi-table-arrow-down</v-icon>
+            </template>
+            <v-list-item-title>下載指定戶別資料</v-list-item-title>
+          </v-list-item>
           <v-list-item @click="isMoreMenuOpen = false; uploadDialog = true">
             <template v-slot:prepend>
               <v-icon color="black">mdi-tray-arrow-up</v-icon>
@@ -1064,6 +1103,7 @@
       :all-data="allDataForModal"
       :contract-types="project.contractTypes || []"
       :price-formulas="project.priceFormulaSettings || null"
+      :plan-options="quotePlansList"
       @request-open-slide="handleOpenSlideViewer" />
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
@@ -1395,6 +1435,16 @@
       </v-card>
     </v-dialog>
 
+    <!-- 下載指定戶別資料（篩選後勾選戶別/欄位、拖曳排序後匯出 EXCEL） -->
+    <UnitDataExportDialog
+      v-model="isUnitExportDialogVisible"
+      :items="unitExportItems"
+      :columns="unitExportColumns"
+      :project-name="projectName"
+      :status-options="statusOptions"
+      :price-mode="priceDisplayMode"
+    />
+
     <!-- 統計分析面板 -->
     <AnalyticsPanel
       :show="isAnalyticsPanelVisible"
@@ -1424,11 +1474,12 @@ import { useRouter, useRoute } from 'vue-router';
 import { onBeforeRouteLeave } from 'vue-router';
 import { useSystemPresence } from '@/composables/useSystemPresence'; 
 
-import { 
-  uploadHouseholds, 
-  getFloorPlansAPI, 
+import {
+  uploadHouseholds,
+  getFloorPlansAPI,
   updateSalesData,
-  updateSingleField
+  updateSingleField,
+  listenToQuotePlans
  } from '@/api';
 
 import { useToast, POSITION } from 'vue-toastification';
@@ -1454,6 +1505,7 @@ import CancelledPurchaseManager from '@/components/CancelledPurchaseManager.vue'
 import SalesBotChat from '@/components/SalesBotChat.vue';
 import AnalyticsPanel from '@/components/AnalyticsPanel.vue';
 import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
+import UnitDataExportDialog from '@/components/UnitDataExportDialog.vue';
 import { useUserStore } from '@/store/user';
 import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
@@ -2009,11 +2061,61 @@ const COLUMN_DEFINITIONS = [
     { key: 'payment_contract_amount', title: '簽約金額' },
     { key: 'reportNo', title: '申報書序號' },
     { key: 'remarks', title: '備註' },
+    { key: 'availablePlans', title: '可選方案' },
     { key: 'salesImages', title: '戶別圖片' },
     { key: 'svgName', title: 'SVG圖檔' },
     { key: 'driveFolderUrl', title: '戶別資料夾位置' },
 ];
 const exportableColumns = computed(() => COLUMN_DEFINITIONS.filter(c => c.exportable !== false));
+
+// ✅ [新增] 方案清單（方案編輯器功能）：供「可選方案」編輯選項、上傳名稱反查與匯出名稱轉換
+const quotePlansList = ref([]);
+let unsubQuotePlans = null;
+function subscribeQuotePlans(targetId) {
+  if (unsubQuotePlans) unsubQuotePlans();
+  quotePlansList.value = [];
+  if (!targetId) return;
+  unsubQuotePlans = listenToQuotePlans(targetId, (plans) => {
+    quotePlansList.value = plans;
+  });
+}
+const planIdToName = computed(() => new Map(quotePlansList.value.map(p => [p.id, p.name])));
+const planNameToId = computed(() => new Map(quotePlansList.value.map(p => [p.name, p.id])));
+// 匯出用：方案 id 陣列 → 名稱陣列（失效 id 過濾不顯示）
+function planIdsToNames(ids) {
+  return (Array.isArray(ids) ? ids : []).map(id => planIdToName.value.get(id)).filter(Boolean);
+}
+
+// 「下載指定戶別資料」對話框：原始欄位 + 前端計算欄位（tableItems 加算的值）
+const isUnitExportDialogVisible = ref(false);
+const UNIT_EXPORT_COMPUTED_COLUMNS = [
+    { key: 'parking_spots', title: '車位編號' },
+    { key: 'parking_trans_total', title: '車位成交合計' },
+    { key: 'parking_floor_total', title: '車位底價合計' },
+    { key: 'total_transaction', title: '成交總價(含車位)' },
+    { key: 'total_floor', title: '合計底價(含車位)' },
+    { key: 'price_diff', title: '溢差價' },
+    { key: 'unit_price_list', title: '表價單價' },
+    { key: 'unit_price_floor', title: '底價單價' },
+    { key: 'unit_price_transaction', title: '成交單價' },
+];
+const unitExportColumns = computed(() => [...exportableColumns.value, ...UNIT_EXPORT_COMPUTED_COLUMNS]);
+
+// 匯出用資料：涵蓋「全部戶別」（住家/店面等所有類型，不受頁面分類頁籤與篩選影響），
+// 加算欄位與 tableItems 相同，另補上車位編號（複數以逗號分隔）
+const unitExportItems = computed(() => {
+    const allParkings = salesParkings.value || [];
+    const parkingMap = buildParkingMap(allParkings);
+    return salesHouseholds.value
+        .map(unit => enrichUnitItem(unit, parkingMap))
+        .sort((a, b) => naturalSort(a.unitId, b.unitId))
+        .map(item => ({
+            ...item,
+            parking_spots: getUnitParkings(item, allParkings).map(p => p.spotId ?? '').filter(Boolean).join(','),
+            // ✅ [新增] 可選方案：id 陣列預先轉為名稱陣列，匯出時以逗號分隔輸出
+            availablePlans: planIdsToNames(item.availablePlans),
+        }));
+});
 const fieldMapping = computed(() => Object.fromEntries(exportableColumns.value.map(col => [col.key, col.title])));
 const chineseHeaders = computed(() => exportableColumns.value.map(c => c.title));
 const exportOrder = computed(() => exportableColumns.value.map(c => c.key));
@@ -2163,6 +2265,23 @@ const canUploadActivityMessage = computed(() => {
   if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
   return userStore.hasProjectPermission('銷控系統', project.value?.name);
 });
+
+// ✅ [新增] 報價單設定直接入口權限：與報價單設定頁管理功能相同標準
+// （系統/超級管理員或具該案「銷控系統」權限），免先加入戶別即可進入
+const canDirectEnterQuoteSettings = computed(() => {
+  const roles = userStore.user?.roles || [];
+  if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
+  return userStore.hasProjectPermission('銷控系統', project.value?.name);
+});
+
+// ✅ [新增] 直接前往報價單設定（保留現有報價單資料，返回鍵可回銷控）
+function goToQuoteSettingsDirect() {
+  router.push({
+    name: 'QuoteSettings',
+    params: { projectName: projectId.value },
+    query: { viewMode: currentViewMode.value },
+  });
+}
 
 // --- Computed Properties ---
 const projectStore = useProjectStore();
@@ -2381,18 +2500,7 @@ const customPriceSort = (a, b) => {
 
 
 // 修改 tableItems computed
-const tableItems = computed(() => {
-  // 🔴 [修正重點] 這裡必須用 'let'，因為下面會重新賦值
-  let units = filteredHouseholds.value;
-  
-  // ✅ [新增] 過濾邏輯
-  if (currentViewMode.value === 'quote' && !showSoldItems.value) {
-    // 這裡會對 units 重新賦值，所以上面必須是 let
-    units = units.filter(u => u.salesStatus_quote !== '已售');
-  }
-
-  const parkings = salesParkings.value || [];
-
+const buildParkingMap = (parkings) => {
   const parkingMap = {};
   parkings.forEach(p => {
     if (p.buyerUnitId) {
@@ -2400,9 +2508,11 @@ const tableItems = computed(() => {
       parkingMap[p.buyerUnitId].push(p);
     }
   });
+  return parkingMap;
+};
 
-  return units.map(unit => {
-    // ... (原本的 map 內部邏輯保持不變) ...
+// 戶別加算欄位（狀態、車位合計、成交總價、溢差價、單價…），tableItems 與匯出共用
+const enrichUnitItem = (unit, parkingMap) => {
     const item = { ...unit };
     item.status = currentViewMode.value === 'quote' ? unit.salesStatus_quote : unit.salesStatus_backend;
 
@@ -2413,10 +2523,10 @@ const tableItems = computed(() => {
     // 新增：將車位計算結果存入 item
     item.parking_trans_total = parkingTransTotal;
     item.parking_floor_total = parkingFloorTotal;
-    
+
     // 房屋成交價
     const houseTrans = Number(unit.price_transaction_house) || 0;
-    
+
     // 成交總價
     item.total_transaction = houseTrans + parkingTransTotal;
 
@@ -2453,7 +2563,20 @@ const tableItems = computed(() => {
     }
 
     return item;
-  }).sort((a, b) => naturalSort(a.unitId, b.unitId));
+};
+
+const tableItems = computed(() => {
+  // 🔴 [修正重點] 這裡必須用 'let'，因為下面會重新賦值
+  let units = filteredHouseholds.value;
+
+  // ✅ [新增] 過濾邏輯
+  if (currentViewMode.value === 'quote' && !showSoldItems.value) {
+    // 這裡會對 units 重新賦值，所以上面必須是 let
+    units = units.filter(u => u.salesStatus_quote !== '已售');
+  }
+
+  const parkingMap = buildParkingMap(salesParkings.value || []);
+  return units.map(unit => enrichUnitItem(unit, parkingMap)).sort((a, b) => naturalSort(a.unitId, b.unitId));
 });
 
 
@@ -2767,6 +2890,7 @@ watch(projectId, async (newId, oldId) => {
   if (!newId || newId === oldId) return;
   console.log(`🔄 [SalesControlSystem] 偵測到建案切換: ${oldId} → ${newId}`);
   reportSnackbarShown.value = false; // 新建案重置實價登錄提醒
+  subscribeQuotePlans(newId); // ✅ [新增] 重新監聽新建案的方案清單
   await loadCurrentProjectData(newId);
 });
 
@@ -2776,6 +2900,7 @@ onMounted(async () => {
     await projectStore.fetchProjects();
   }
 
+  subscribeQuotePlans(projectId.value); // ✅ [新增] 監聽方案清單（可選方案編輯/上傳/匯出用）
   await loadCurrentProjectData(projectId.value);
 
   // 檢查是否需要保持 AnalyticsPanel 打開
@@ -2789,6 +2914,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   console.log('🧹 [SalesControlSystem] 組件卸載');
+  if (unsubQuotePlans) unsubQuotePlans(); // ✅ [新增] 停止監聽方案清單
 });
 
 // Export/Upload methods (Keeping same)
@@ -2839,6 +2965,10 @@ const exportToExcel = () => {
 
             if (key === 'salesImages' && Array.isArray(value)) {
                 return value.join(',');
+            }
+            // ✅ [新增] 可選方案：id 陣列 → 方案名稱逗號分隔（失效 id 不輸出），重新上傳時再反查回 id
+            if (key === 'availablePlans') {
+                return planIdsToNames(value).join(',');
             }
             // 銷售人員（複選）：陣列以逗號分隔匯出，重新上傳時再解析回陣列
             if (key === 'salesperson' || key === 'salespersonUserKey') {
@@ -2939,7 +3069,9 @@ const handleFileChange = () => {
     reader.onload = (e) => {
         try {
             const headerToKeyMap = new Map(COLUMN_DEFINITIONS.map(col => [col.title.trim(), col.key]));
-            const requiredHeaders = new Set(headerToKeyMap.keys());
+            // ✅ [新增] 可選標頭：舊格式檔案缺「可選方案」欄仍可上傳（該欄位不會被異動，merge 寫入保留既有值）
+            const OPTIONAL_UPLOAD_HEADERS = new Set(['可選方案']);
+            const requiredHeaders = new Set([...headerToKeyMap.keys()].filter(t => !OPTIONAL_UPLOAD_HEADERS.has(t)));
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array', cellDates: true });
             // Sheet 1 戶別資料：優先以名稱查找，fallback 為首工作表（向後相容舊檔）
@@ -2972,6 +3104,8 @@ const handleFileChange = () => {
             });
             const dataRows = dataAsArrays.slice(1);
             const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
+            // ✅ [新增] 可選方案：名稱反查失敗的收集器（不擋整批，解析完成後警示）
+            const unknownPlanNames = new Set();
           const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
                 const newRow = {};
                 for (const [colIndex, englishKey] of indexToKeyMap.entries()) {
@@ -3003,6 +3137,20 @@ const handleFileChange = () => {
                     // ✅ [新增] 銷售人員（複選）：逗號分隔字串解析回陣列
                     if (englishKey === 'salesperson' || englishKey === 'salespersonUserKey') {
                         value = normalizeSalespersons(value);
+                    }
+
+                    // ✅ [新增] 可選方案：方案名稱（逗號/頓號分隔）反查回方案 id 陣列；
+                    // 查不到的名稱收集警示後略過；空儲存格 → 清空該戶設定
+                    if (englishKey === 'availablePlans') {
+                        const raw = (value === null || value === undefined) ? '' : String(value);
+                        const names = raw.split(/[,、]/).map(s => s.trim()).filter(Boolean);
+                        const ids = [];
+                        names.forEach(n => {
+                            const id = planNameToId.value.get(n);
+                            if (id) ids.push(id);
+                            else unknownPlanNames.add(n);
+                        });
+                        value = ids;
                     }
 
                     newRow[englishKey] = value;
@@ -3073,6 +3221,11 @@ const handleFileChange = () => {
             uploadMessage.value = landSheet
                 ? `成功解析 ${jsonDataWithEnglishKeys.length} 筆戶別資料，含 ${landCount} 筆土地標的，可以開始上傳。`
                 : `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料 (含優付欄位)，可以開始上傳。`;
+            // ✅ [新增] 可選方案名稱反查失敗警示（不擋上傳，該名稱已略過）
+            if (unknownPlanNames.size > 0) {
+                uploadMessageType.value = 'warning';
+                uploadMessage.value += `\n注意：以下方案名稱不存在，已略過：${[...unknownPlanNames].join('、')}`;
+            }
         } catch (err) {
             uploadMessageType.value = 'error';
             uploadMessage.value = err.message || '解析檔案失敗，請使用系統匯出的範本。';

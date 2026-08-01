@@ -120,6 +120,15 @@
             hide-details
             class="mr-8"
           ></v-switch>
+          <!-- ✅ [新增] 顯示採用方案（方案編輯器功能） -->
+          <v-switch
+            v-model="optShowPlans"
+            label="顯示採用方案"
+            color="teal-darken-1"
+            density="compact"
+            hide-details
+            class="mr-8"
+          ></v-switch>
           <!-- ✅ [新增] 主管簽核／用印欄 -->
           <v-switch
             v-model="optShowApproval"
@@ -235,6 +244,7 @@ const show = computed({
 // --- 列印選項 ---
 const optShowNegotiation = ref(true); // 顯示議價資訊（原價/優惠額），預設開啟
 const optShowNotes = ref(true);        // 列印期款說明（applyNote）
+const optShowPlans = ref(true);        // ✅ [新增] 顯示採用方案（方案名稱＋所選付款方式），預設開啟
 const optShowApproval = ref(true);     // ✅ [新增] 主管簽核／用印欄，預設開啟
 const optShowQr = ref(true);           // ✅ [新增] 建案簡介 QR Code（僅在有設定網址時可切換）
 const optQuoteDate = ref('');          // 報價日期（可自訂）
@@ -313,6 +323,7 @@ watch(show, (visible) => {
   optShowNegotiation.value = true;
   optShowApproval.value = true;
   optShowQr.value = true;
+  optShowPlans.value = true; // ✅ [新增] 顯示採用方案預設開啟
   optQuoteDate.value = isoTodayTW();
   optValidUntil.value = '';
   isRemarkExpanded.value = false;
@@ -517,10 +528,20 @@ function renderSheet(item) {
   ].filter(Boolean);
   const payFlexClass = bothBlocks ? 'pay-flex pair' : 'pay-flex';
 
+  // ✅ [新增] 採用方案帶：完整方案名稱＋所選付款方式，一目了然本報價單採用的方案組合
+  const appliedPlans = optShowPlans.value ? (item.appliedPlans || []) : [];
+  const planBand = appliedPlans.length ? `
+    <section class="plan-band">
+      <span class="plan-lbl">採用方案</span>
+      ${appliedPlans.map(p => `
+      <span class="plan-item"><b>${esc(p.planName)}</b>${p.selectedPaymentTemplateName ? `<em>付款方式：${esc(p.selectedPaymentTemplateName)}</em>` : ''}</span>`).join(`
+      <span class="plan-plus">＋</span>`)}
+    </section>` : '';
+
   const notes = optShowNotes.value ? (pay.notes || []).filter(Boolean) : [];
   const notesHtml = notes.length ? `
       <div class="notes">
-        <div class="notes-title">期款說明</div>
+        <div class="notes-title">備註</div>
         <ol>${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ol>
       </div>` : '';
 
@@ -572,6 +593,8 @@ function renderSheet(item) {
         <span class="pkg-extra">＋ 配套價 <b>${fmt(packagePrice)}</b> 萬<small>（另依配套期款支付，未含於總價）</small></span>` : ''}
       </div>
     </section>
+
+    ${planBand}
 
     <div class="sec-title">付款方式</div>
     <div class="${payFlexClass}">
@@ -703,6 +726,26 @@ const SHEET_CSS = `
     background: #fafbfc; font-weight: 700; font-size: 10.5pt;
   }
   .no-pay { width: 100%; text-align: center; color: #b71c1c; font-size: 10pt; padding: 6mm 0; }
+  /* ✅ [新增] 採用方案帶：紫色系醒目條，完整列出方案名稱與所選付款方式 */
+  .plan-band {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 2mm;
+    margin-top: 4mm; padding: 2.4mm 3.5mm;
+    background: #f6f2fb; border: 1px solid #d1c4e9; border-left: 4px solid #5e35b1;
+    border-radius: 1.5mm;
+  }
+  .plan-band .plan-lbl {
+    font-size: 9.5pt; font-weight: 700; color: #5e35b1; margin-right: 1.5mm; white-space: nowrap;
+  }
+  .plan-band .plan-item {
+    display: inline-flex; align-items: baseline; gap: 1.5mm;
+    background: #fff; border: 1px solid #d1c4e9; border-radius: 1mm;
+    padding: 1mm 2.5mm;
+  }
+  .plan-band .plan-item b { font-size: 10pt; color: #311b92; }
+  .plan-band .plan-item em {
+    font-style: normal; font-size: 8.5pt; color: #7e57c2; white-space: nowrap;
+  }
+  .plan-band .plan-plus { font-size: 10pt; font-weight: 700; color: #5e35b1; }
   .notes { margin-top: 5mm; background: #fffdf3; border: 1px solid #efe6c1; border-radius: 1.5mm; padding: 3mm 4mm; }
   .notes-title { font-size: 9.5pt; font-weight: 700; color: #8a6d1c; margin-bottom: 1.5mm; }
   .notes ol { padding-left: 5mm; }
@@ -765,6 +808,9 @@ const SHEET_CSS = `
   .sheet.compact .prow { padding: 0.9mm 0; font-size: 9pt; }
   .sheet.compact .prow.child { font-size: 8.5pt; }
   .sheet.compact .ptotal { padding: 1.6mm 3.5mm; font-size: 10pt; }
+  .sheet.compact .plan-band { margin-top: 2.5mm; padding: 1.6mm 3mm; }
+  .sheet.compact .plan-band .plan-item b { font-size: 9pt; }
+  .sheet.compact .plan-band .plan-item em { font-size: 8pt; }
   .sheet.compact .notes { margin-top: 3mm; padding: 2mm 3mm; }
   .sheet.compact .notes li { font-size: 8.5pt; line-height: 1.55; }
   .sheet.compact .remark { margin-top: 3mm; }

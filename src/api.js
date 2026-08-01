@@ -262,6 +262,71 @@ export async function deleteQuoteRemark(projectId) {
   }
 }
 
+/* ==========================================================
+ * ✅ [新增] 方案編輯器 API（quotePlans 集合，docId = projectId）
+ * 一份文件存整個建案的方案清單 plans[]；銷控權限用戶於報價單設定編輯，
+ * 報價項目「選擇方案」與銷控「可選方案」欄位共用此資料
+ * ========================================================== */
+
+/**
+ * 讀取建案方案清單
+ * @param {string} projectId
+ * @returns {Promise<object>} { status, data: plans[] }
+ */
+export async function fetchQuotePlans(projectId) {
+  if (!projectId) {
+    return { status: 'error', message: '缺少 projectId。' };
+  }
+  try {
+    const snap = await getDoc(doc(db, 'quotePlans', projectId));
+    const plans = snap.exists() && Array.isArray(snap.data().plans) ? snap.data().plans : [];
+    return { status: 'success', data: plans };
+  } catch (error) {
+    console.error('[api.js] fetchQuotePlans error:', error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * 儲存建案方案清單（整包覆寫 plans 陣列）
+ * @param {string} projectId
+ * @param {Array} plans - 方案陣列 [{ id, name, paymentTemplateIds, adjustments, note, order }]
+ * @param {string} updatedBy - 更新者名稱
+ */
+export async function saveQuotePlans(projectId, plans, updatedBy = '') {
+  if (!projectId) {
+    return { status: 'error', message: '缺少 projectId。' };
+  }
+  try {
+    await setDoc(doc(db, 'quotePlans', projectId), {
+      projectId,
+      plans: Array.isArray(plans) ? plans : [],
+      updatedBy,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    return { status: 'success' };
+  } catch (error) {
+    console.error('[api.js] saveQuotePlans error:', error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * 即時監聽建案方案清單
+ * @param {string} projectId
+ * @param {function} onDataChange - 收到 plans[]（依 order 排序）時的回呼
+ * @returns {function} unsubscribe
+ */
+export function listenToQuotePlans(projectId, onDataChange) {
+  const unsubscribe = onSnapshot(doc(db, 'quotePlans', projectId), (snap) => {
+    const plans = snap.exists() && Array.isArray(snap.data().plans) ? snap.data().plans : [];
+    onDataChange([...plans].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+  }, (error) => {
+    console.error(`監聽方案清單時發生錯誤 (Project: ${projectId}):`, error);
+  });
+  return unsubscribe;
+}
+
 /**
  * 根據條件選擇適用的期款範本
  * @param {Array} templates - 所有範本列表
