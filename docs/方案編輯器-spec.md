@@ -43,6 +43,8 @@
         }
       ],
       note: string,                // 其他：直接輸入文本（贈品、特殊需求等），可為空
+      activeFrom: string,          // 啟用時間 "YYYY-MM-DDTHH:mm"（台灣時間），空字串 = 不限制
+      activeUntil: string,         // 結束時間 "YYYY-MM-DDTHH:mm"（台灣時間），空字串 = 不限制
       order: number                // 顯示排序
     }
   ],
@@ -59,6 +61,7 @@
 | 方案名稱必填且唯一 | 空白或重名不可儲存。 |
 | 純文字型方案 | `paymentTemplateIds` 為空且 `adjustments` 為空、僅有 `note` 的方案（如「其他」），即為純文字型——**由內容推導，不另存 type 欄位**。 |
 | 至少一項內容 | 付款方式、議價調整、文字內容三者不可全空。 |
+| 啟用期間 | `activeFrom` / `activeUntil` 皆可留空（不限制）；兩者皆設定時結束需晚於啟用。判斷一律以台灣時間 (Asia/Taipei) 為準（`src/utils/quotePlanUtils.js`）。不在期間內（已截止／尚未開始）的方案：**報價端「選擇方案」完全隱藏**（清單不顯示、開啟視窗不還原勾選，不可再套用）；若戶別有設定可選方案但全數不在期間內，顯示「目前沒有開放中的方案」提示。編輯器卡片仍全部列出並以標籤標示「啟用中／尚未開始／已截止」供管理。已套用在既有報價項目上的方案不受影響。 |
 
 ### 2.2 `salesHouseholds` 新欄位：`availablePlans`
 

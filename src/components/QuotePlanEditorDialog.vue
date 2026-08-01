@@ -34,9 +34,23 @@
                   <div class="d-flex align-center mb-2">
                     <v-icon class="plan-drag-handle mr-2" style="cursor: grab;">mdi-drag</v-icon>
                     <span class="text-subtitle-1 font-weight-bold">{{ plan.name }}</span>
+                    <v-chip
+                      v-if="formatPlanPeriodText(plan)"
+                      size="small"
+                      :color="planStatusColor(plan)"
+                      variant="flat"
+                      class="ml-2"
+                    >{{ PLAN_TIME_STATUS_LABEL[getPlanTimeStatus(plan)] }}</v-chip>
                     <v-spacer></v-spacer>
                     <v-btn icon="mdi-pencil" size="small" variant="text" color="primary" @click="openEdit(plan)"></v-btn>
                     <v-btn icon="mdi-delete-outline" size="small" variant="text" color="error" @click="confirmDelete(plan)"></v-btn>
+                  </div>
+
+                  <div v-if="formatPlanPeriodText(plan)" class="mb-2">
+                    <span class="text-caption text-grey-darken-1 mr-2">啟用期間：</span>
+                    <span class="text-caption" :class="getPlanTimeStatus(plan) === 'active' ? 'text-grey-darken-2' : 'text-error'">
+                      {{ formatPlanPeriodText(plan) }}
+                    </span>
                   </div>
 
                   <div v-if="planTemplateNames(plan).length" class="mb-2">
@@ -116,6 +130,35 @@
             class="mb-4"
           ></v-select>
 
+          <div class="text-subtitle-2 font-weight-bold mb-2">啟用期間</div>
+          <div class="text-caption text-grey-darken-1 mb-3">
+            可設定方案的啟用與結束時間（台灣時間），留空代表不限制；不在期間內的方案報價端將顯示「尚未開始」或「已截止」且不可選擇。
+          </div>
+          <v-row dense class="mb-3">
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="form.activeFrom"
+                label="啟用時間"
+                type="datetime-local"
+                variant="outlined"
+                density="compact"
+                clearable
+                hide-details
+              ></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="form.activeUntil"
+                label="結束時間"
+                type="datetime-local"
+                variant="outlined"
+                density="compact"
+                clearable
+                hide-details
+              ></v-text-field>
+            </v-col>
+          </v-row>
+
           <div class="text-subtitle-2 font-weight-bold mb-2">議價調整</div>
           <div class="text-caption text-grey-darken-1 mb-3">
             「每坪調整」「直接調整」可並存；「輸入總價」與前兩者互斥（輸入其一會清空另一方）。
@@ -187,6 +230,7 @@ import { useToast } from 'vue-toastification';
 import draggable from 'vuedraggable';
 import { fetchQuotePlans, saveQuotePlans } from '@/api';
 import { useUserStore } from '@/store/user';
+import { getPlanTimeStatus, PLAN_TIME_STATUS_LABEL, formatPlanPeriodText } from '@/utils/quotePlanUtils';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -222,6 +266,13 @@ function planTemplateNames(plan) {
   return (plan.paymentTemplateIds || [])
     .map(id => templateNameMap.value.get(id))
     .filter(Boolean);
+}
+
+function planStatusColor(plan) {
+  const status = getPlanTimeStatus(plan);
+  if (status === 'notStarted') return 'orange-darken-2';
+  if (status === 'ended') return 'red-darken-2';
+  return 'green-darken-1';
 }
 
 function planAdjustmentText(plan) {
@@ -270,6 +321,8 @@ const editingId = ref(null);
 const form = reactive({
   name: '',
   paymentTemplateIds: [],
+  activeFrom: '',
+  activeUntil: '',
   perTsuboValue: '',
   directAmountValue: '',
   totalPriceValue: '',
@@ -295,6 +348,8 @@ function openCreate() {
   editingId.value = null;
   form.name = '';
   form.paymentTemplateIds = [];
+  form.activeFrom = '';
+  form.activeUntil = '';
   form.perTsuboValue = '';
   form.directAmountValue = '';
   form.totalPriceValue = '';
@@ -306,6 +361,8 @@ function openEdit(plan) {
   editingId.value = plan.id;
   form.name = plan.name || '';
   form.paymentTemplateIds = [...(plan.paymentTemplateIds || [])];
+  form.activeFrom = plan.activeFrom || '';
+  form.activeUntil = plan.activeUntil || '';
   const adj = (mode) => (plan.adjustments || []).find(a => a.mode === mode);
   form.perTsuboValue = adj('perTsubo') ? String(adj('perTsubo').value) : '';
   form.directAmountValue = adj('directAmount') ? String(adj('directAmount').value) : '';
@@ -351,6 +408,13 @@ async function savePlan() {
     toast.error('付款方式、議價調整、文字內容至少需設定一項');
     return;
   }
+  // 啟用期間：clearable 清除時值為 null，一律正規化為字串
+  const activeFrom = String(form.activeFrom || '').trim();
+  const activeUntil = String(form.activeUntil || '').trim();
+  if (activeFrom && activeUntil && activeFrom >= activeUntil) {
+    toast.error('「結束時間」必須晚於「啟用時間」');
+    return;
+  }
 
   saving.value = true;
   try {
@@ -358,6 +422,8 @@ async function savePlan() {
       id: editingId.value || genPlanId(),
       name,
       paymentTemplateIds: [...form.paymentTemplateIds],
+      activeFrom,
+      activeUntil,
       adjustments,
       note,
     };

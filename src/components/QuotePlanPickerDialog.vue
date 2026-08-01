@@ -9,16 +9,17 @@
       </v-card-title>
 
       <v-card-text class="pa-4">
-        <!-- 戶別未設定可選方案 → 不可選任何方案 -->
+        <!-- 戶別未設定可選方案 → 不可選任何方案；有設定但全數不在啟用期間 → 提示無開放中方案 -->
         <v-alert v-if="visiblePlans.length === 0" type="info" variant="tonal">
-          此戶別尚未設定可選方案，請洽銷控人員於銷控系統的「銷售資訊」設定「可選方案」。
+          <template v-if="unitPlans.length > 0">
+            目前沒有開放中的方案（已截止或尚未開始的方案不會顯示）。
+          </template>
+          <template v-else>
+            此戶別尚未設定可選方案，請洽銷控人員於銷控系統的「銷售資訊」設定「可選方案」。
+          </template>
         </v-alert>
 
         <template v-else>
-          <div class="text-caption text-grey-darken-1 mb-3">
-            可複選搭配；含「議價調整」的方案僅能擇一，含「付款方式」的方案僅能擇一，純文字方案不受限。
-          </div>
-
           <v-card
             v-for="plan in visiblePlans"
             :key="plan.id"
@@ -42,6 +43,11 @@
                 <span class="text-subtitle-1 font-weight-bold">{{ plan.name }}</span>
                 <v-spacer></v-spacer>
                 <span v-if="isPlanDisabled(plan)" class="text-caption text-error">{{ disabledReason(plan) }}</span>
+              </div>
+
+              <div v-if="formatPlanPeriodText(plan)" class="ml-8 mb-2">
+                <span class="text-caption text-grey-darken-1 mr-2">啟用期間：</span>
+                <span class="text-caption text-grey-darken-2">{{ formatPlanPeriodText(plan) }}</span>
               </div>
 
               <div v-if="hasPayment(plan)" class="mb-2 ml-8">
@@ -115,6 +121,7 @@
 <script setup>
 import { ref, computed, reactive, watch } from 'vue';
 import { useToast } from 'vue-toastification';
+import { getPlanTimeStatus, PLAN_TIME_STATUS_LABEL, formatPlanPeriodText } from '@/utils/quotePlanUtils';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -135,12 +142,18 @@ const show = computed({
 });
 
 // ── 可選方案過濾：戶別有設定 availablePlans 才顯示（未設定 → 空清單，不可選） ──
-const visiblePlans = computed(() => {
+// 戶別可選方案（未過濾啟用期間），用於區分「未設定」與「全數已截止/尚未開始」兩種空清單訊息
+const unitPlans = computed(() => {
   const availableIds = props.item?.unitDetails?.availablePlans;
   if (!Array.isArray(availableIds) || availableIds.length === 0) return [];
   const idSet = new Set(availableIds);
   return (props.plans || []).filter(p => idSet.has(p.id));
 });
+
+// 不在啟用期間內（已截止/尚未開始）的方案前端完全隱藏
+const visiblePlans = computed(() =>
+  unitPlans.value.filter(p => getPlanTimeStatus(p) === 'active')
+);
 
 function hasNegotiation(plan) {
   return Array.isArray(plan.adjustments) && plan.adjustments.length > 0;
@@ -177,8 +190,15 @@ const selectedPlans = computed(() =>
   visiblePlans.value.filter(p => isSelected(p.id))
 );
 
-// 衝突規則（最嚴格）：含議價調整的方案僅能選一個；含付款方式的方案僅能選一個
+// 啟用期間狀態（開啟期間即時判斷，以台灣時間為準）
+function planTimeStatus(plan) {
+  return getPlanTimeStatus(plan);
+}
+
+// 衝突規則（最嚴格）：不在啟用期間內的方案一律停用；
+// 含議價調整的方案僅能選一個；含付款方式的方案僅能選一個
 function isPlanDisabled(plan) {
+  if (planTimeStatus(plan) !== 'active') return true;
   if (isSelected(plan.id)) return false;
   if (hasNegotiation(plan) && selectedPlans.value.some(p => hasNegotiation(p))) return true;
   if (hasPayment(plan) && selectedPlans.value.some(p => hasPayment(p))) return true;
@@ -186,6 +206,8 @@ function isPlanDisabled(plan) {
 }
 
 function disabledReason(plan) {
+  const timeStatus = planTimeStatus(plan);
+  if (timeStatus !== 'active') return PLAN_TIME_STATUS_LABEL[timeStatus];
   if (hasNegotiation(plan) && selectedPlans.value.some(p => hasNegotiation(p))) return '議價調整方案僅能擇一';
   if (hasPayment(plan) && selectedPlans.value.some(p => hasPayment(p))) return '付款方式方案僅能擇一';
   return '';
@@ -222,8 +244,11 @@ const canApply = computed(() => {
 watch(show, (visible) => {
   if (!visible) return;
   const applied = props.item?.appliedPlans || [];
-  const visibleIdSet = new Set(visiblePlans.value.map(p => p.id));
-  selectedIds.value = applied.map(a => a.planId).filter(id => visibleIdSet.has(id));
+  // 僅還原目前仍在啟用期間內的方案（已截止/尚未開始的方案不可再選擇）
+  const selectableIdSet = new Set(
+    visiblePlans.value.filter(p => planTimeStatus(p) === 'active').map(p => p.id)
+  );
+  selectedIds.value = applied.map(a => a.planId).filter(id => selectableIdSet.has(id));
   Object.keys(selectedTemplateByPlan).forEach(k => delete selectedTemplateByPlan[k]);
   applied.forEach(a => {
     if (a.selectedPaymentTemplateId) selectedTemplateByPlan[a.planId] = a.selectedPaymentTemplateId;
