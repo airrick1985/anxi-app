@@ -2588,7 +2588,11 @@ async function _ensureInspectionEditPermission(anxiDb, userKey, projectId) {
 
 /**
  * [內部函式] 儲存「驗屋預約時間表」事件顏色設定（共用、寫入 projects 文件）。
- * data: { projectId, userKey, eventColorSettings: { admin:{類型:hex}, bookingPage:{類型:hex} } }
+ * data: { projectId, userKey, eventColorSettings: {
+ *   admin:{類型:hex}, bookingPage:{類型:hex},
+ *   keywordRules:[{ field, keyword, color }],   // 關鍵字底色規則，依序第一個符合者生效
+ *   keywordPriority:'type'|'keyword'            // 關鍵字 vs 項目類型 優先層級
+ * } }
  * 僅具該建案「驗屋預約管理-修改」權限者可寫入；其餘來源/欄位一律清洗。
  */
 async function _handleSaveEventColorSettings(data) {
@@ -2612,9 +2616,24 @@ async function _handleSaveEventColorSettings(data) {
     }
     return out;
   };
+  // 清洗關鍵字規則：field/keyword 必填字串、color 必須是 #RRGGBB，最多 50 條
+  const sanitizeKeywordRules = (raw) => {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const r of raw.slice(0, 50)) {
+      if (!r || typeof r !== "object") continue;
+      const field = typeof r.field === "string" ? r.field.trim() : "";
+      const keyword = typeof r.keyword === "string" ? r.keyword.trim().slice(0, 100) : "";
+      const color = typeof r.color === "string" && HEX_RE.test(r.color) ? r.color.toUpperCase() : "";
+      if (field && keyword && color) out.push({ field, keyword, color });
+    }
+    return out;
+  };
   const sanitized = {
     admin: sanitizeMap(eventColorSettings?.admin),
     bookingPage: sanitizeMap(eventColorSettings?.bookingPage),
+    keywordRules: sanitizeKeywordRules(eventColorSettings?.keywordRules),
+    keywordPriority: eventColorSettings?.keywordPriority === "keyword" ? "keyword" : "type",
   };
 
   await anxiDb.collection("projects").doc(projectId).set(

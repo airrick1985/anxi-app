@@ -32,8 +32,17 @@
             locale="zh-TW"
             auto-apply
             :close-on-auto-apply="true"
-            placeholder="請選擇日期區間"
-          ></VueDatePicker>
+            teleport
+          >
+            <template #trigger>
+              <div class="range-trigger">
+                <v-icon size="18" color="primary" class="flex-shrink-0">mdi-calendar-range</v-icon>
+                <span class="range-part"><span class="range-tag">起</span>{{ rangeStartLabel }}</span>
+                <v-icon size="16" color="grey" class="flex-shrink-0">mdi-arrow-right-thin</v-icon>
+                <span class="range-part"><span class="range-tag range-tag--end">迄</span>{{ rangeEndLabel }}</span>
+              </div>
+            </template>
+          </VueDatePicker>
         </v-col>
         <v-col cols="12">
           <v-autocomplete
@@ -96,8 +105,19 @@
       locale="zh-TW"
       auto-apply
       :close-on-auto-apply="true"
-      placeholder="請選擇日期區間"
-    ></VueDatePicker>
+      teleport
+      multi-calendars
+      :preset-dates="datePresets"
+    >
+      <template #trigger>
+        <div class="range-trigger">
+          <v-icon size="18" color="primary" class="flex-shrink-0">mdi-calendar-range</v-icon>
+          <span class="range-part"><span class="range-tag">起</span>{{ rangeStartLabel }}</span>
+          <v-icon size="16" color="grey" class="flex-shrink-0">mdi-arrow-right-thin</v-icon>
+          <span class="range-part"><span class="range-tag range-tag--end">迄</span>{{ rangeEndLabel }}</span>
+        </div>
+      </template>
+    </VueDatePicker>
   </v-col>
   
   <v-col cols="12" sm="4" md="3">
@@ -237,6 +257,18 @@
           color="black"
           @click="isStatisticsDialogVisible = true"
           :disabled="statisticsMatrix.rows.length === 0"
+        ></v-btn>
+      </template>
+    </v-tooltip>
+
+    <v-tooltip text="樞紐分析" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn
+          v-bind="props"
+          icon="mdi-table-pivot"
+          variant="text"
+          color="black"
+          @click="isPivotDialogVisible = true"
         ></v-btn>
       </template>
     </v-tooltip>
@@ -693,7 +725,7 @@
                   事件顏色
                   <v-chip size="x-small" label class="ml-2" color="indigo-lighten-4">全建案共用</v-chip>
                 </div>
-                <div class="text-caption text-grey-darken-1">為各預約項目類型指定事件底色，留空則沿用系統預設配色</div>
+                <div class="text-caption text-grey-darken-1">可依「預約項目類型」或「關鍵字」指定事件底色，留空則沿用系統預設配色</div>
               </div>
               <template v-if="canEdit">
                 <v-btn size="x-small" variant="text" color="primary" :disabled="!currentTypeOptions.length" @click="applyDefaultTypeColors">建議配色</v-btn>
@@ -751,6 +783,71 @@
                 </div>
               </div>
             </div>
+            <!-- 關鍵字顏色規則 -->
+            <v-divider class="my-3"></v-divider>
+            <div class="d-flex align-center mb-2">
+              <v-avatar size="30" color="amber-darken-2" class="mr-2"><v-icon size="18" color="white">mdi-format-color-highlight</v-icon></v-avatar>
+              <div class="flex-grow-1">
+                <div class="text-subtitle-2 font-weight-bold">關鍵字顏色</div>
+                <div class="text-caption text-grey-darken-1">指定欄位內容含關鍵字時的事件底色，由上而下第一個符合的規則生效</div>
+              </div>
+              <v-btn v-if="canEdit" size="x-small" variant="text" color="primary" prepend-icon="mdi-plus" @click="addKeywordRule">新增規則</v-btn>
+            </div>
+            <div v-if="!keywordColorRules.length" class="text-caption text-grey mb-2">尚未設定關鍵字規則。例：欄位「選擇方式」＋關鍵字「屋主自驗」→ 黃色底。</div>
+            <div v-else class="d-flex flex-column ga-2 mb-2">
+              <div v-for="(rule, idx) in keywordColorRules" :key="idx" class="pa-2 rounded-lg d-flex align-center flex-wrap ga-2" style="background-color:#fafafa;border:1px solid #eee;">
+                <span class="text-caption text-grey flex-shrink-0" style="width:18px;">{{ idx + 1 }}.</span>
+                <v-select :model-value="rule.field" @update:model-value="updateKeywordRule(idx, { field: $event })"
+                  :items="keywordFieldOptions" item-title="label" item-value="key" density="compact" hide-details
+                  variant="outlined" label="欄位" style="min-width:140px;max-width:170px;" :disabled="!canEdit"></v-select>
+                <v-text-field :model-value="rule.keyword" @update:model-value="updateKeywordRule(idx, { keyword: $event })"
+                  density="compact" hide-details variant="outlined" label="關鍵字" placeholder="例：屋主自驗"
+                  style="min-width:130px;flex:1 1 130px;" :disabled="!canEdit"></v-text-field>
+                <v-menu v-if="canEdit" :close-on-content-click="false" location="bottom start">
+                  <template #activator="{ props }">
+                    <div v-bind="props" class="d-flex align-center justify-center flex-shrink-0"
+                      :style="{ width:'32px', height:'32px', borderRadius:'8px', cursor:'pointer',
+                        backgroundColor: rule.color || '#ffffff',
+                        border: rule.color ? '1px solid rgba(0,0,0,0.15)' : '1px dashed #bdbdbd' }">
+                      <v-icon v-if="!rule.color" size="16" color="grey">mdi-eyedropper-variant</v-icon>
+                    </div>
+                  </template>
+                  <v-card width="280">
+                    <v-color-picker :model-value="rule.color || '#FFF59D'"
+                      @update:model-value="updateKeywordRule(idx, { color: $event })" mode="hex" hide-inputs show-swatches width="100%"></v-color-picker>
+                  </v-card>
+                </v-menu>
+                <div v-else class="d-flex align-center justify-center flex-shrink-0"
+                  :style="{ width:'32px', height:'32px', borderRadius:'8px',
+                    backgroundColor: rule.color || '#ffffff',
+                    border: rule.color ? '1px solid rgba(0,0,0,0.15)' : '1px dashed #bdbdbd' }"></div>
+                <v-chip size="small" label variant="flat" class="flex-shrink-0"
+                  :style="{ backgroundColor: rule.color || '#EEEEEE', color: getReadableTextColor(rule.color || '#EEEEEE') }">
+                  {{ rule.keyword || '預覽' }}
+                </v-chip>
+                <template v-if="canEdit">
+                  <v-btn icon="mdi-arrow-up" size="x-small" variant="text" color="grey" class="flex-shrink-0"
+                    :disabled="idx === 0" @click="moveKeywordRule(idx, -1)" title="上移（提高優先）"></v-btn>
+                  <v-btn icon="mdi-arrow-down" size="x-small" variant="text" color="grey" class="flex-shrink-0"
+                    :disabled="idx === keywordColorRules.length - 1" @click="moveKeywordRule(idx, 1)" title="下移（降低優先）"></v-btn>
+                  <v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="grey" class="flex-shrink-0"
+                    @click="removeKeywordRule(idx)" title="刪除此規則"></v-btn>
+                </template>
+              </div>
+            </div>
+
+            <!-- 優先層級 -->
+            <div class="pa-3 rounded-lg" style="background-color:#fafafa;border:1px solid #eee;">
+              <div class="text-body-2 font-weight-bold mb-1">顏色優先層級</div>
+              <div class="text-caption text-grey-darken-1 mb-2">當事件同時符合「關鍵字」與「預約項目類型」顏色時，優先採用：</div>
+              <v-btn-toggle :model-value="keywordPriority" @update:model-value="setKeywordPriority"
+                mandatory density="compact" color="primary" variant="outlined" :disabled="!canEdit">
+                <v-btn value="type" size="small">項目類型優先</v-btn>
+                <v-btn value="keyword" size="small">關鍵字優先</v-btn>
+              </v-btn-toggle>
+              <div class="text-caption text-grey mt-2">「取消／已完成」狀態的固定灰色不受此設定影響。</div>
+            </div>
+
             <template v-if="canEdit">
               <v-divider class="my-3"></v-divider>
               <div class="d-flex align-center flex-wrap ga-2">
@@ -865,8 +962,8 @@
                   <strong v-if="header === '總計'" class="text-deep-orange-darken-3">
                     {{ statisticsMatrix.totals.grandTotal }}
                   </strong>
-                  <span 
-                    v-else 
+                  <span
+                    v-else
                     :class="!selectedStatisticsStatuses.includes(header) ? 'text-grey' : ''"
                   >
                     {{ statisticsMatrix.totals[header] || 0 }}
@@ -878,7 +975,117 @@
         </v-card-text>
       </v-card>
     </v-dialog>
-    
+
+    <!-- 樞紐分析 -->
+    <v-dialog v-model="isPivotDialogVisible" max-width="960px" scrollable>
+      <v-card>
+        <v-card-title class="text-h6 d-flex align-center bg-blue-grey-lighten-5" v-draggable-dialog>
+          <v-icon start>mdi-table-pivot</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">
+            {{ projectName }} {{ formattedDateRangeTitle }} 樞紐分析
+          </span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="isPivotDialogVisible = false"></v-btn>
+        </v-card-title>
+        <v-divider></v-divider>
+
+        <v-card-text class="pa-4" style="background-color:#f5f6f8;">
+          <!-- 維度與範圍設定 -->
+          <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
+            <div class="d-flex flex-wrap align-center ga-3">
+              <v-select v-model="pivotRowDim" :items="pivotDimensionOptions" item-title="label" item-value="key"
+                label="列（分組依據）" density="compact" hide-details variant="outlined"
+                prepend-inner-icon="mdi-table-row" style="min-width:200px;max-width:240px;"></v-select>
+              <v-icon color="grey">mdi-close</v-icon>
+              <v-select v-model="pivotColDim" :items="pivotColDimOptions" item-title="label" item-value="key"
+                label="欄（交叉維度，可不選）" density="compact" hide-details variant="outlined"
+                prepend-inner-icon="mdi-table-column" style="min-width:200px;max-width:240px;"></v-select>
+            </div>
+            <div class="d-flex flex-wrap align-center ga-1 mt-2">
+              <span class="text-caption text-grey-darken-1 mr-1">
+                <v-icon size="14">mdi-flag-variant</v-icon> 狀態：
+              </span>
+              <v-chip-group v-model="pivotStatuses" multiple column selected-class="text-primary" class="pivot-status-chips">
+                <v-chip v-for="s in PIVOT_STATUS_OPTIONS" :key="s" :value="s" filter variant="outlined" size="small">{{ s }}</v-chip>
+              </v-chip-group>
+            </div>
+            <div class="d-flex flex-wrap align-center ga-2 mt-1">
+              <v-chip size="small" color="blue-grey" variant="tonal" prepend-icon="mdi-calendar-range">
+                共 {{ pivotMatrix.eventCount }} 筆預約
+              </v-chip>
+              <span class="text-caption text-grey-darken-1">
+                狀態可在此獨立勾選（開啟時預設同行事曆）；「項目／選擇方式」篩選與日期區間則跟隨行事曆設定。
+              </span>
+              <v-chip v-if="pivotHasPersonCount" size="small" color="indigo" variant="tonal" prepend-icon="mdi-account-multiple">
+                合計 {{ pivotMatrix.grandTotal }} 人次
+              </v-chip>
+              <span v-if="pivotHasPersonCount" class="text-caption text-grey-darken-1">
+                一筆預約有多位驗屋人員時會分別計入，總計為「人次」而非筆數。
+              </span>
+            </div>
+          </div>
+
+          <!-- 樞紐表 -->
+          <v-alert v-if="pivotMatrix.rows.length === 0" type="info" variant="tonal"
+            text="目前條件下無任何預約資料可供分析。"></v-alert>
+          <div v-else class="bg-white rounded-lg" style="border:1px solid #eceff1;overflow:auto;max-height:60vh;">
+            <v-table density="compact">
+              <thead>
+                <tr class="bg-grey-lighten-4">
+                  <th class="text-left font-weight-bold pivot-sortable" style="min-width:140px;position:sticky;left:0;background:#f5f5f5;z-index:1;"
+                    @click="togglePivotSort('__name__')" title="點擊排序">
+                    {{ pivotDimensionLabel(pivotRowDim) }}
+                    <v-icon size="14" :color="pivotSort.key === '__name__' ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon('__name__') }}</v-icon>
+                  </th>
+                  <th v-for="c in pivotMatrix.colHeaders" :key="c" class="text-center font-weight-bold pivot-sortable" style="min-width:70px;"
+                    @click="togglePivotSort(c)" title="點擊排序">
+                    {{ c }}
+                    <v-icon size="14" :color="pivotSort.key === c ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon(c) }}</v-icon>
+                  </th>
+                  <th v-if="pivotMatrix.useCol" class="text-center font-weight-bold pivot-sortable" style="min-width:70px;"
+                    @click="togglePivotSort('__total__')" title="點擊排序">
+                    總計
+                    <v-icon size="14" :color="pivotSort.key === '__total__' ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon('__total__') }}</v-icon>
+                  </th>
+                  <th class="text-center font-weight-bold pivot-sortable" style="min-width:70px;"
+                    @click="togglePivotSort('__total__')" title="點擊排序（同總計）">
+                    佔比
+                    <v-icon size="14" :color="pivotSort.key === '__total__' ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon('__total__') }}</v-icon>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in sortedPivotRows" :key="row.name">
+                  <td class="font-weight-medium" style="position:sticky;left:0;background:#fff;z-index:1;">{{ row.name }}</td>
+                  <td v-for="c in pivotMatrix.colHeaders" :key="c" class="text-center">
+                    <span :class="row.counts[c] ? '' : 'text-grey-lighten-1'">{{ row.counts[c] || 0 }}</span>
+                  </td>
+                  <td v-if="pivotMatrix.useCol" class="text-center font-weight-bold text-blue-grey-darken-2">{{ row.total }}</td>
+                  <td class="text-center text-grey-darken-1">{{ row.pct }}%</td>
+                </tr>
+              </tbody>
+              <tfoot class="bg-grey-lighten-3">
+                <tr class="font-weight-bold">
+                  <td style="position:sticky;left:0;background:#eeeeee;z-index:1;">總計</td>
+                  <td v-for="c in pivotMatrix.colHeaders" :key="c" class="text-center">{{ pivotMatrix.totals[c] || 0 }}</td>
+                  <td v-if="pivotMatrix.useCol" class="text-center text-deep-orange-darken-3">{{ pivotMatrix.grandTotal }}</td>
+                  <td class="text-center">100%</td>
+                </tr>
+              </tfoot>
+            </v-table>
+          </div>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3 bg-grey-lighten-4">
+          <v-btn variant="text" color="primary" prepend-icon="mdi-content-copy"
+            :disabled="pivotMatrix.rows.length === 0" @click="copyPivotTable">複製表格</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="flat" @click="isPivotDialogVisible = false">完成</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
 
 
 
@@ -1076,6 +1283,11 @@
     >
       <v-icon>mdi-chart-bar</v-icon>
       <span>統計</span>
+    </v-btn>
+
+    <v-btn @click="isPivotDialogVisible = true">
+      <v-icon>mdi-table-pivot</v-icon>
+      <span>分析</span>
     </v-btn>
 
 
@@ -1479,6 +1691,10 @@ function resolveSourceKey(source) {
 // 事件顏色設定改為「資料庫共用」：讀取自 projects 文件、寫入需「驗屋預約管理-修改」權限。
 // 本地 ref 為編輯/顯示用的工作副本；按下「儲存」才寫回資料庫並套用給所有使用者。
 const bookingTypeColorMap = ref({ admin: {}, bookingPage: {} });
+// 關鍵字顏色規則：[{ field: 欄位key（'*' 表任一標題顯示欄位）, keyword, color }]，由上而下第一個符合者生效
+const keywordColorRules = ref([]);
+// 關鍵字 vs 預約項目類型 的優先層級：'type'（預設，項目類型優先）或 'keyword'
+const keywordPriority = ref('type');
 const colorSettingsDirty = ref(false); // 是否有未儲存的變更
 const isSavingColors = ref(false);
 
@@ -1486,10 +1702,23 @@ function normalizeColorSettings(raw) {
   const pick = (m) => (m && typeof m === 'object' ? { ...m } : {});
   return { admin: pick(raw?.admin), bookingPage: pick(raw?.bookingPage) };
 }
+function normalizeKeywordRules(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(r => r && typeof r === 'object' && typeof r.field === 'string' && r.field)
+    .map(r => ({
+      field: r.field,
+      keyword: typeof r.keyword === 'string' ? r.keyword : '',
+      color: typeof r.color === 'string' ? r.color : '',
+    }));
+}
 // 從已載入的建案設定同步顏色；除非 force，否則不覆蓋尚未儲存的編輯
 function syncColorSettingsFromProject(force = false) {
   if (colorSettingsDirty.value && !force) return;
-  bookingTypeColorMap.value = normalizeColorSettings(projectSettings.value?.eventColorSettings);
+  const raw = projectSettings.value?.eventColorSettings;
+  bookingTypeColorMap.value = normalizeColorSettings(raw);
+  keywordColorRules.value = normalizeKeywordRules(raw?.keywordRules);
+  keywordPriority.value = raw?.keywordPriority === 'keyword' ? 'keyword' : 'type';
   colorSettingsDirty.value = false;
 }
 function getTypeColor(srcKey, typeName) {
@@ -1515,6 +1744,67 @@ function clearAllTypeColors() {
   bookingTypeColorMap.value = { admin: {}, bookingPage: {} };
   colorSettingsDirty.value = true;
 }
+// --- 關鍵字顏色規則操作 ---
+// 規則可選的欄位：任一欄位 + 全部「標題顯示」欄位；若既有規則的欄位已失效，仍列出讓使用者辨識
+const keywordFieldOptions = computed(() => {
+  const opts = [{ key: '*', label: '任一欄位' }, ...displayFieldOptions.value.map(f => ({ key: f.key, label: f.label }))];
+  const known = new Set(opts.map(o => o.key));
+  for (const rule of keywordColorRules.value) {
+    if (rule.field && !known.has(rule.field)) {
+      known.add(rule.field);
+      opts.push({ key: rule.field, label: `${rule.field}（欄位已移除）` });
+    }
+  }
+  return opts;
+});
+function addKeywordRule() {
+  keywordColorRules.value = [...keywordColorRules.value, { field: '*', keyword: '', color: '#FFF59D' }];
+  colorSettingsDirty.value = true;
+}
+function updateKeywordRule(index, patch) {
+  const rules = [...keywordColorRules.value];
+  if (!rules[index]) return;
+  rules[index] = { ...rules[index], ...patch };
+  keywordColorRules.value = rules;
+  colorSettingsDirty.value = true;
+}
+function removeKeywordRule(index) {
+  keywordColorRules.value = keywordColorRules.value.filter((_, i) => i !== index);
+  colorSettingsDirty.value = true;
+}
+function moveKeywordRule(index, delta) {
+  const target = index + delta;
+  const rules = [...keywordColorRules.value];
+  if (!rules[index] || target < 0 || target >= rules.length) return;
+  [rules[index], rules[target]] = [rules[target], rules[index]];
+  keywordColorRules.value = rules;
+  colorSettingsDirty.value = true;
+}
+function setKeywordPriority(value) {
+  if (!value) return;
+  keywordPriority.value = value === 'keyword' ? 'keyword' : 'type';
+  colorSettingsDirty.value = true;
+}
+// 依關鍵字規則比對事件，回傳第一個符合規則的顏色；無符合回傳空字串
+function matchKeywordRuleColor(event) {
+  for (const rule of keywordColorRules.value) {
+    if (!rule.keyword || !rule.color) continue;
+    let text = '';
+    if (rule.field === '*') {
+      text = displayFieldOptions.value.map(f => getFieldValue(event, f)).filter(Boolean).join(' ');
+    } else {
+      const opt = displayFieldOptions.value.find(f => f.key === rule.field);
+      if (opt) {
+        text = getFieldValue(event, opt) ?? '';
+      } else {
+        // 欄位定義已移除時的退路：先找靜態欄位，再找動態欄位
+        text = event[rule.field] ?? event.bookingMethodDetails?.[rule.field] ?? '';
+      }
+    }
+    if (String(text).includes(rule.keyword)) return rule.color;
+  }
+  return '';
+}
 // 兩組可辨識的建議色票：前台偏冷色淺底、後台偏暖色淺底，方便一眼分辨來源
 const PALETTE_BOOKINGPAGE = ['#E3F2FD', '#E1F5FE', '#E0F7FA', '#E8F5E9', '#F1F8E9', '#EDE7F6', '#E8EAF6', '#E0F2F1'];
 const PALETTE_ADMIN = ['#FFF3E0', '#FFEBEE', '#FCE4EC', '#FFF8E1', '#FBE9E7', '#FFFDE7', '#F3E5F5', '#EFEBE9'];
@@ -1537,14 +1827,25 @@ async function saveEventColorSettings() {
   }
   isSavingColors.value = true;
   try {
-    const payload = normalizeColorSettings(bookingTypeColorMap.value);
+    const payload = {
+      ...normalizeColorSettings(bookingTypeColorMap.value),
+      keywordRules: normalizeKeywordRules(keywordColorRules.value).filter(r => r.keyword && r.color),
+      keywordPriority: keywordPriority.value === 'keyword' ? 'keyword' : 'type',
+    };
     const res = await inspectionApi('saveEventColorSettings', {
       projectId: projectId.value,
       userKey: userStore.user?.key,
       eventColorSettings: payload,
     });
-    const saved = normalizeColorSettings(res?.data?.eventColorSettings || payload);
-    bookingTypeColorMap.value = saved;
+    const savedRaw = res?.data?.eventColorSettings || payload;
+    const saved = {
+      ...normalizeColorSettings(savedRaw),
+      keywordRules: normalizeKeywordRules(savedRaw?.keywordRules),
+      keywordPriority: savedRaw?.keywordPriority === 'keyword' ? 'keyword' : 'type',
+    };
+    bookingTypeColorMap.value = { admin: saved.admin, bookingPage: saved.bookingPage };
+    keywordColorRules.value = saved.keywordRules;
+    keywordPriority.value = saved.keywordPriority;
     if (projectSettings.value) projectSettings.value.eventColorSettings = saved;
     colorSettingsDirty.value = false;
     snackbarText.value = '事件顏色已儲存，並套用給所有使用者。';
@@ -1658,6 +1959,15 @@ const formattedDateRangeTitle = computed(() => {
   return '日期區間'; // 最終備案
 });
 
+// 以台灣時間 (Asia/Taipei) 取得 yyyy-MM-dd 日期字串：
+// 預約日期的「屬於哪一天」一律以台灣時間為準，不受瀏覽器所在時區影響
+const TAIPEI_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+});
+function toTaipeiDateStr(date) {
+  return TAIPEI_DATE_FMT.format(date); // en-CA 輸出即為 yyyy-MM-dd
+}
+
 // ✅ 5. 修改 processAppointments，現在它負責合併資料
 function processAppointments(rawAppointments) {
   if (!Array.isArray(rawAppointments)) return [];
@@ -1680,8 +1990,9 @@ function processAppointments(rawAppointments) {
 
         if (isNaN(date.getTime())) return null;
 
-        const dateStr = format(date, 'yyyy-MM-dd');
-        
+        // 一律以台灣時間判定日期，避免瀏覽器時區不同造成日期偏移
+        const dateStr = toTaipeiDateStr(date);
+
         const timeSlotString = combinedData.appointmentTimeSlot ? String(combinedData.appointmentTimeSlot) : '';
         const timeMatch = timeSlotString.match(/(\d{1,2}[:：]\d{2})/); 
         const startTime = timeMatch ? timeMatch[0].replace(/：/g, ':') : '00:00';
@@ -1859,6 +2170,43 @@ const mobileViewMode = ref('day'); // day | week | month
 function setRange(start, end) {
   dateRange.value = [start, end]; // watch(dateRange) 會同步 startDate / endDate 並觸發抓資料
 }
+
+// --- 日期選擇器：起/迄顯示標籤與快速區間 ---
+function formatRangeLabel(d) {
+  if (!d) return '選擇日期';
+  const date = d instanceof Date ? d : new Date(d);
+  if (isNaN(date.getTime())) return '選擇日期';
+  return `${format(date, 'yyyy/MM/dd')}（${format(date, 'EEEEE', { locale: zhTW })}）`;
+}
+const rangeStartLabel = computed(() => formatRangeLabel(dateRange.value?.[0]));
+const rangeEndLabel = computed(() => formatRangeLabel(dateRange.value?.[1] ?? dateRange.value?.[0]));
+// 快速區間：超出可選範圍的部分自動夾在 min/max 內；完全超出者不顯示
+function clampPresetRange(start, end) {
+  const min = minSelectableDate.value ? new Date(minSelectableDate.value) : null;
+  const max = maxSelectableDate.value ? new Date(maxSelectableDate.value) : null;
+  let s = start, e = end;
+  if (min && e < min) return null;
+  if (max && s > max) return null;
+  if (min && s < min) s = min;
+  if (max && e > max) e = max;
+  return [s, e];
+}
+const datePresets = computed(() => {
+  const today = new Date();
+  const raw = [
+    { label: '今天', range: [today, today] },
+    { label: '本週', range: [startOfWeek(today, { weekStartsOn: 1 }), endOfWeek(today, { weekStartsOn: 1 })] },
+    { label: '下週', range: [startOfWeek(addDays(today, 7), { weekStartsOn: 1 }), endOfWeek(addDays(today, 7), { weekStartsOn: 1 })] },
+    { label: '本月', range: [startOfMonth(today), endOfMonth(today)] },
+    { label: '下月', range: [startOfMonth(addMonths(today, 1)), endOfMonth(addMonths(today, 1))] },
+  ];
+  return raw
+    .map(p => {
+      const clamped = clampPresetRange(p.range[0], p.range[1]);
+      return clamped ? { label: p.label, value: clamped } : null;
+    })
+    .filter(Boolean);
+});
 
 function mobileAnchorDate() {
   if (selectedMobileDate.value) {
@@ -2069,6 +2417,218 @@ const statisticsMatrix = computed(() => {
   };
 });
 // ✅ END: 替換 statisticsMatrix
+
+// --- 樞紐分析：對目前日期區間的預約資料做靈活的交叉統計 ---
+const isPivotDialogVisible = ref(false);
+const pivotRowDim = ref('inspectors');     // 列維度
+const pivotColDim = ref('none');           // 欄維度（'none' = 只算數量）
+const PIVOT_EMPTY_LABEL = '（未填寫）';
+const PIVOT_WEEKDAY_ORDER = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+
+// 可選維度：基礎欄位 + 動態自訂欄位（與「標題顯示」同源）
+const pivotDimensionOptions = computed(() => {
+  const base = [
+    { key: 'bookingType', label: '預約項目' },
+    { key: 'inspectionMethod', label: '選擇方式' },
+    { key: 'bookingSubOption', label: '子項目' },
+    { key: 'status', label: '狀態' },
+    { key: 'inspectors', label: '驗屋人員（每人分計）' },
+    { key: 'source', label: '來源' },
+    { key: 'date', label: '日期' },
+    { key: 'weekday', label: '星期' },
+    { key: 'unitId', label: '戶別' },
+    { key: 'bookerName', label: '預約人' },
+  ];
+  const dynamic = displayFieldOptions.value
+    .filter(f => f.isDynamic)
+    .map(f => ({ key: `dyn:${f.key}`, label: f.label }));
+  return [...base, ...dynamic];
+});
+const pivotColDimOptions = computed(() => [
+  { key: 'none', label: '（無，只計數量）' },
+  ...pivotDimensionOptions.value.filter(o => o.key !== pivotRowDim.value),
+]);
+function pivotDimensionLabel(key) {
+  return pivotDimensionOptions.value.find(o => o.key === key)?.label || key;
+}
+// 取得事件在某維度下的值（陣列；驗屋人員一筆可拆多人，各計一次）
+function getPivotValues(evt, dimKey) {
+  if (dimKey.startsWith('dyn:')) {
+    const v = evt.bookingMethodDetails?.[dimKey.slice(4)];
+    return (v === null || v === undefined || v === '') ? [PIVOT_EMPTY_LABEL] : [String(v)];
+  }
+  switch (dimKey) {
+    case 'inspectors': {
+      const raw = evt.inspectors;
+      const list = Array.isArray(raw) ? raw : String(raw || '').split(/[,、，;；/]+/);
+      const cleaned = list.map(s => String(s).trim()).filter(Boolean);
+      return cleaned.length ? cleaned : [PIVOT_EMPTY_LABEL];
+    }
+    case 'source':
+      return [resolveSourceKey(evt.source) === 'admin' ? '後台新增' : '前台預約'];
+    case 'date':
+      return [evt.start ? format(evt.start, 'yyyy-MM-dd') : PIVOT_EMPTY_LABEL];
+    case 'weekday':
+      return [evt.start ? format(evt.start, 'EEEE', { locale: zhTW }) : PIVOT_EMPTY_LABEL];
+    default: {
+      const v = evt[dimKey];
+      return (v === null || v === undefined || v === '') ? [PIVOT_EMPTY_LABEL] : [String(v)];
+    }
+  }
+}
+// 樞紐分析的狀態篩選：開啟對話框時預設帶入行事曆目前的狀態勾選，可在對話框內獨立調整
+const PIVOT_STATUS_OPTIONS = ['預約中', '取消', '已完成'];
+const pivotStatuses = ref([...PIVOT_STATUS_OPTIONS]);
+watch(isPivotDialogVisible, (open) => {
+  if (open) pivotStatuses.value = [...selectedStatuses.value];
+});
+// 分析資料來源：目前日期區間 + 行事曆的「項目/選擇方式」篩選 + 對話框內的狀態勾選
+// （並以可見日期範圍再過濾一次，未顯示在行事曆網格上的預約一律不納入）
+const pivotSourceEvents = computed(() => {
+  const appts = allAppointments.value.filter(appt => {
+    const statusMatch = pivotStatuses.value.includes(appt.status);
+    const typeMatch = selectedTypes.value.includes(appt.bookingType);
+    const methodMatch = selectedMethods.value.length === 0 || selectedMethods.value.includes(appt.inspectionMethod);
+    return statusMatch && typeMatch && methodMatch;
+  });
+  const processed = processAppointments(appts);
+  const s = startDate.value;
+  const e = endDate.value;
+  if (!s || !e) return processed;
+  const sKey = format(s, 'yyyy-MM-dd');
+  const eKey = format(e, 'yyyy-MM-dd');
+  return processed.filter(ev => {
+    if (!ev.start) return false;
+    const k = format(ev.start, 'yyyy-MM-dd');
+    return k >= sKey && k <= eKey;
+  });
+});
+// 維度鍵值排序：日期/星期依序、其餘依數量多→少（同數量依筆劃/字典序）
+function sortPivotKeys(keys, dimKey, getTotal) {
+  if (dimKey === 'date') return [...keys].sort();
+  if (dimKey === 'weekday') {
+    return [...keys].sort((a, b) => PIVOT_WEEKDAY_ORDER.indexOf(a) - PIVOT_WEEKDAY_ORDER.indexOf(b));
+  }
+  return [...keys].sort((a, b) => (getTotal(b) - getTotal(a)) || a.localeCompare(b, 'zh-Hant'));
+}
+const pivotMatrix = computed(() => {
+  const events = pivotSourceEvents.value;
+  const rowDim = pivotRowDim.value;
+  const colDim = pivotColDim.value;
+  const useCol = colDim && colDim !== 'none';
+
+  const rowMap = new Map();   // rowKey -> { total, cols: Map(colKey -> count) }
+  const colTotals = new Map();
+  let grandTotal = 0;
+
+  for (const evt of events) {
+    const rowVals = getPivotValues(evt, rowDim);
+    const colVals = useCol ? getPivotValues(evt, colDim) : ['__count__'];
+    for (const r of rowVals) {
+      let row = rowMap.get(r);
+      if (!row) { row = { total: 0, cols: new Map() }; rowMap.set(r, row); }
+      for (const c of colVals) {
+        row.cols.set(c, (row.cols.get(c) || 0) + 1);
+        colTotals.set(c, (colTotals.get(c) || 0) + 1);
+        row.total++;
+        grandTotal++;
+      }
+    }
+  }
+
+  const rowKeys = sortPivotKeys([...rowMap.keys()], rowDim, k => rowMap.get(k).total);
+  const colHeaders = useCol
+    ? sortPivotKeys([...colTotals.keys()], colDim, k => colTotals.get(k) || 0)
+    : ['數量'];
+  const rows = rowKeys.map(name => {
+    const row = rowMap.get(name);
+    const counts = {};
+    if (useCol) {
+      for (const c of colHeaders) counts[c] = row.cols.get(c) || 0;
+    } else {
+      counts['數量'] = row.total;
+    }
+    return {
+      name,
+      counts,
+      total: row.total,
+      pct: grandTotal ? Math.round((row.total / grandTotal) * 1000) / 10 : 0,
+    };
+  });
+  const totals = {};
+  if (useCol) {
+    for (const c of colHeaders) totals[c] = colTotals.get(c) || 0;
+  } else {
+    totals['數量'] = grandTotal;
+  }
+  return { rows, colHeaders, totals, grandTotal, useCol, eventCount: events.length };
+});
+// 列維度變更時，若與欄維度相同則重設欄維度，避免同維度交叉
+watch(pivotRowDim, (newDim) => {
+  if (newDim === pivotColDim.value) pivotColDim.value = 'none';
+});
+// 是否有「人次」計算（驗屋人員一筆多人會分別計入，總計會大於筆數）
+const pivotHasPersonCount = computed(() =>
+  pivotRowDim.value === 'inspectors' || pivotColDim.value === 'inspectors'
+);
+// --- 樞紐表欄位排序：點表頭切換 升冪 → 降冪 → 回復預設 ---
+// key: '__name__'（列名稱欄）| '__total__'（總計/佔比欄）| 欄維度的各欄名
+const pivotSort = ref({ key: null, dir: 'asc' });
+watch([pivotRowDim, pivotColDim], () => {
+  pivotSort.value = { key: null, dir: 'asc' };
+});
+function togglePivotSort(key) {
+  if (pivotSort.value.key === key) {
+    pivotSort.value = pivotSort.value.dir === 'asc'
+      ? { key, dir: 'desc' }
+      : { key: null, dir: 'asc' }; // 第三次點擊回復預設排序
+  } else {
+    // 名稱欄預設 A→Z，數值欄預設大→小
+    pivotSort.value = { key, dir: key === '__name__' ? 'asc' : 'desc' };
+  }
+}
+function pivotSortIcon(key) {
+  if (pivotSort.value.key !== key) return 'mdi-unfold-more-horizontal';
+  return pivotSort.value.dir === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down';
+}
+const sortedPivotRows = computed(() => {
+  const { key, dir } = pivotSort.value;
+  const rows = pivotMatrix.value.rows;
+  if (!key) return rows;
+  const mul = dir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    if (key === '__name__') {
+      const rowDim = pivotRowDim.value;
+      if (rowDim === 'weekday') {
+        return (PIVOT_WEEKDAY_ORDER.indexOf(a.name) - PIVOT_WEEKDAY_ORDER.indexOf(b.name)) * mul;
+      }
+      // 日期為 yyyy-MM-dd 字串，字典序即時間序
+      return a.name.localeCompare(b.name, 'zh-Hant') * mul;
+    }
+    const av = key === '__total__' ? a.total : (a.counts[key] || 0);
+    const bv = key === '__total__' ? b.total : (b.counts[key] || 0);
+    return ((av - bv) * mul) || a.name.localeCompare(b.name, 'zh-Hant');
+  });
+});
+// 將目前樞紐表複製為 TSV（可直接貼進 Excel / Google Sheets）
+function copyPivotTable() {
+  const m = pivotMatrix.value;
+  const lines = [];
+  lines.push([
+    pivotDimensionLabel(pivotRowDim.value),
+    ...(m.useCol ? m.colHeaders : ['數量']),
+    '總計', '佔比',
+  ].join('\t'));
+  for (const row of sortedPivotRows.value) {
+    lines.push([
+      row.name,
+      ...m.colHeaders.map(c => row.counts[c] || 0),
+      row.total, `${row.pct}%`,
+    ].join('\t'));
+  }
+  lines.push(['總計', ...m.colHeaders.map(c => m.totals[c] || 0), m.grandTotal, '100%'].join('\t'));
+  handleCopy(lines.join('\n'));
+}
 
 // ✅ 8. 修改 fetchData 函數
 async function fetchData() {
@@ -2659,14 +3219,21 @@ function getReadableTextColor(bgHex) {
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luminance > 0.6 ? '#212121' : '#FFFFFF';
 }
+// 依優先層級決定事件底色：取消/已完成的固定灰色最優先，
+// 之後依 keywordPriority 決定「關鍵字規則」與「來源+項目類型」誰先套用
+function resolveCustomEventColor(event) {
+  const typeColor = getTypeColor(resolveSourceKey(event.source), event.bookingType);
+  const kwColor = matchKeywordRuleColor(event);
+  return keywordPriority.value === 'keyword' ? (kwColor || typeColor) : (typeColor || kwColor);
+}
 function getEventStyle(event) {
   if (!event || Object.keys(event).length === 0) return { backgroundColor: '#FFFFFF', color: '#000000' };
   if (event.status === '取消') return { backgroundColor: '#F5F5F5', color: '#9E9E9E' };
   if (event.status === '已完成') return { backgroundColor: '#ECEFF1', color: '#546E7A' };
-  // 使用者在「篩選設定」依「來源(後台新增/前台預約) + 預約項目類型」設定的顏色優先
-  const typeColor = getTypeColor(resolveSourceKey(event.source), event.bookingType);
-  if (typeColor) return { backgroundColor: typeColor, color: getReadableTextColor(typeColor) };
-  // 未設定類型色 → 沿用原本關鍵字配色（向下相容）
+  // 使用者自訂顏色（關鍵字規則 / 來源+項目類型，依優先層級）
+  const customColor = resolveCustomEventColor(event);
+  if (customColor) return { backgroundColor: customColor, color: getReadableTextColor(customColor) };
+  // 未設定自訂色 → 沿用原本關鍵字配色（向下相容）
   // ✅ 修正：確保 textToSearch 的欄位存在
   const textToSearch = [ event.bookingType, event.inspectionMethod, event.specialRemarks, event.specialRemarks2 ].filter(Boolean).join(' ');
   for (const config of CSS_KEYWORD_COLOR_MAP) {
@@ -2683,12 +3250,12 @@ function getAppointmentItemStyle(itemText) {
 function getExcelRowStyle(event) {
   if (!event || Object.keys(event).length === 0) return { backgroundColor: 'FFFFFF', textColor: '000000' };
   if (event.status === '取消') return { backgroundColor: 'F5F5F5', textColor: '9E9E9E' };
-  // 使用者依「來源 + 預約項目類型」設定的顏色優先（Excel 色碼不含 #）
-  const typeColor = getTypeColor(resolveSourceKey(event.source), event.bookingType);
-  if (typeColor) {
+  // 使用者自訂顏色（關鍵字規則 / 來源+項目類型，依優先層級；Excel 色碼不含 #）
+  const customColor = resolveCustomEventColor(event);
+  if (customColor) {
     return {
-      backgroundColor: typeColor.replace('#', '').toUpperCase(),
-      textColor: getReadableTextColor(typeColor).replace('#', '')
+      backgroundColor: customColor.replace('#', '').toUpperCase(),
+      textColor: getReadableTextColor(customColor).replace('#', '')
     };
   }
   // ✅ 修正：確保 textToSearch 的欄位存在
@@ -3215,6 +3782,72 @@ function navigateToHouseholdGrid() {
 
 
 <style>
+/* --- 日期區間選擇器：起/迄 觸發器 --- */
+.range-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 38px;
+  padding: 4px 12px;
+  background-color: #fff;
+  border: 1px solid #c4c9cf;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.range-trigger:hover {
+  border-color: #1867c0;
+  box-shadow: 0 0 0 1px rgba(24, 103, 192, 0.2);
+}
+.range-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.875rem;
+  color: #212121;
+  white-space: nowrap;
+}
+.range-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+.range-tag--end {
+  background-color: #fff3e0;
+  color: #e65100;
+}
+/* teleport 到 body 的日期選單置頂，避免被其他元素遮住 */
+.dp__outer_menu_wrap {
+  z-index: 3000 !important;
+}
+
+/* --- 樞紐分析：狀態勾選列高度收斂 --- */
+.pivot-status-chips .v-chip-group__content,
+.pivot-status-chips {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* --- 樞紐分析：可排序表頭 --- */
+.pivot-sortable {
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.pivot-sortable:hover {
+  background-color: #eceff1 !important;
+}
+
 /* --- 時段篩選引導提示動畫 --- */
 .time-hint-badge .v-badge__badge {
   animation: pulse-hint 1.5s ease-in-out infinite;
