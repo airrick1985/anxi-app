@@ -25088,7 +25088,7 @@ function _formatTaipeiDateTime(ts) {
 // 聯絡名單工作表欄位（與前端 getLeadsExportData 完全一致）
 const LEADS_SHEET_HEADERS = [
   '建檔日期', '填表日期', '分配銷售', '客戶姓名', '客戶電話',
-  '名單來源', '預算', '聯絡狀況', '不考慮原因', '名單狀態'
+  '名單來源', '預算', '聯絡狀況', '不考慮原因', '名單狀態', '最後回報時間'
 ];
 
 /**
@@ -25115,7 +25115,8 @@ async function _syncLeadsToSheetFull(db, projectId, spreadsheetId, sheetName) {
       l.budget || '',
       l.status || '未處理',
       l.reason || '',
-      l.statusText || ''
+      l.statusText || '',
+      l.lastReportedAt ? _formatTaipeiDateTime(l.lastReportedAt) : '' // 最後回報時間 yyyy/MM/dd HH:mm:ss
     ]);
   });
 

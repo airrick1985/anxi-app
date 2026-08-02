@@ -412,6 +412,11 @@
       </v-chip>
     </template>
 
+    <!-- ✅ 新增：最後回報時間（yyyy/mm/dd hh:mm:ss） -->
+    <template v-slot:item.lastReportedAt="{ item }">
+      <span class="text-caption">{{ item.lastReportedAt ? formatDateTime(item.lastReportedAt) : '-' }}</span>
+    </template>
+
     <!-- ✅ 優化：預約狀態欄位（支援排序且保留樣式） -->
     <template v-slot:item.reservationCount="{ item }">
       <div v-if="getCustomerReservations(item.phone)?.length > 0" class="d-flex align-center gap-1">
@@ -544,6 +549,12 @@
         <div class="mt-2 text-caption text-grey-darken-1 d-flex align-center gap-1 flex-wrap">
           <v-icon size="13" class="flex-shrink-0">mdi-account-tie</v-icon>
           <span>負責人：</span><span class="font-weight-bold text-indigo-darken-2 text-truncate">{{ item.assignedName || '尚未指派' }}</span>
+        </div>
+
+        <!-- ✅ 新增：最後回報時間 -->
+        <div class="mt-1 text-caption text-grey-darken-1 d-flex align-center gap-1 flex-wrap">
+          <v-icon size="13" class="flex-shrink-0">mdi-clock-outline</v-icon>
+          <span>最後回報：</span><span class="font-weight-bold text-indigo-darken-2 text-truncate">{{ item.lastReportedAt ? formatDateTime(item.lastReportedAt) : '尚未回報' }}</span>
         </div>
       </v-card-text>
     </v-card>
@@ -2282,6 +2293,14 @@ const salesStaffWithCounts = computed(() => {
 
 
 
+// ✅ [新增] 將 Firestore Timestamp / 日期字串轉為毫秒，供表格排序使用（無值排最舊）
+const toLeadMillis = (ts) => {
+  if (!ts) return 0;
+  if (ts.toMillis) return ts.toMillis();
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+};
+
 // 1. 更新表格欄位定義 (新增 來源、預算、填表日期)
 const statusHeaders = [
   { title: '姓名', key: 'name' },
@@ -2292,6 +2311,12 @@ const statusHeaders = [
   { title: '指派給', key: 'assignedName' },
   { title: '指派時間', key: 'assignedAt' },
   { title: '狀態', key: 'status' },
+  // ✅ [新增] 最後回報時間：以 sortRaw 轉毫秒排序（Timestamp 物件無法直接比較）
+  {
+    title: '最後回報時間',
+    key: 'lastReportedAt',
+    sortRaw: (a, b) => toLeadMillis(a.lastReportedAt) - toLeadMillis(b.lastReportedAt)
+  },
   { title: '預約紀錄', key: 'reservationCount' }, // ✅ [優化] 使用 reservationCount 欄位支援排序
   { title: '不考慮原因', key: 'reason' },
   { title: '備註', key: 'note' },
@@ -3380,7 +3405,8 @@ const getLeadsExportData = () => {
       '預算': item.budget || '',
       '聯絡狀況': item.status || '未處理',
       '不考慮原因': item.reason || '',
-      '名單狀態': item.statusText || ''
+      '名單狀態': item.statusText || '',
+      '最後回報時間': item.lastReportedAt ? formatDateTime(item.lastReportedAt) : '' // ✓ [共用] YYYY/MM/DD HH:mm:ss
     };
   });
 };
@@ -3560,14 +3586,15 @@ const executeGoogleSync = async () => {
     // 定義 Header 順序
     const headers = [
       '建檔日期', '填表日期', '分配銷售', '客戶姓名', '客戶電話',
-      '名單來源', '預算', '聯絡狀況', '不考慮原因', '名單狀態'
+      '名單來源', '預算', '聯絡狀況', '不考慮原因', '名單狀態', '最後回報時間'
     ];
-    
+
     const values = [headers];
     exportRows.forEach(row => {
       values.push([
         row['建檔日期'], row['填表日期'], row['分配銷售'], row['客戶姓名'], row['客戶電話'],
-        row['名單來源'], row['預算'], row['聯絡狀況'], row['不考慮原因'], row['名單狀態']
+        row['名單來源'], row['預算'], row['聯絡狀況'], row['不考慮原因'], row['名單狀態'],
+        row['最後回報時間']
       ]);
     });
 
