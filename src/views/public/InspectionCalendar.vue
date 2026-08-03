@@ -635,7 +635,7 @@
       @booking-success="handleBookingSuccess"
     />
 
-    <v-dialog v-model="isFilterDialogVisible" max-width="640px" scrollable>
+    <v-dialog v-model="isFilterDialogVisible" max-width="640px" scrollable :fullscreen="xs">
       <v-card class="d-flex flex-column">
         <v-card-title class="d-flex align-center bg-primary text-white py-3 px-4">
           <v-icon start>mdi-tune-variant</v-icon>
@@ -1175,6 +1175,8 @@
     </div>
     <v-spacer></v-spacer>
     <div class="pa-2 bg-grey-lighten-4">
+      <v-btn variant="tonal" color="indigo" block class="mb-2" prepend-icon="mdi-cog"
+        @click="isFilterDrawerVisible = false; isFilterDialogVisible = true">進階篩選與顯示設定</v-btn>
       <v-btn color="primary" block @click="isFilterDrawerVisible = false"
         >完成</v-btn
       >
@@ -1277,28 +1279,31 @@
       <span>新增</span>
     </v-btn>
 
-    <v-btn
-      @click="isStatisticsDialogVisible = true"
-      :disabled="statisticsMatrix.rows.length === 0"
-    >
-      <v-icon>mdi-chart-bar</v-icon>
-      <span>統計</span>
-    </v-btn>
-
-    <v-btn @click="isPivotDialogVisible = true">
-      <v-icon>mdi-table-pivot</v-icon>
-      <span>分析</span>
-    </v-btn>
-
-
     <v-menu location="top">
       <template v-slot:activator="{ props }">
         <v-btn v-bind="props" :loading="isDownloadingPdf || isDownloadingExcel">
-          <v-icon>mdi-download</v-icon>
-          <span>下載</span>
+          <v-icon>mdi-dots-horizontal</v-icon>
+          <span>更多</span>
         </v-btn>
       </template>
       <v-list density="compact">
+        <v-list-item
+          prepend-icon="mdi-chart-bar"
+          title="統計摘要"
+          @click="isStatisticsDialogVisible = true"
+          :disabled="statisticsMatrix.rows.length === 0"
+        ></v-list-item>
+        <v-list-item
+          prepend-icon="mdi-table-pivot"
+          title="樞紐分析"
+          @click="isPivotDialogVisible = true"
+        ></v-list-item>
+        <v-list-item
+          prepend-icon="mdi-cog"
+          title="篩選與顯示設定"
+          @click="isFilterDialogVisible = true"
+        ></v-list-item>
+        <v-divider></v-divider>
         <v-list-item
           prepend-icon="mdi-image-area"
           title="下載PNG"
@@ -1878,13 +1883,16 @@ const selectedStatuses = useStorage(`inspection_calendar_selected_statuses_${pro
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管理-修改', projectName.value));
 
 const isAnyOverlayActive = computed(() => {
-  return isDialogVisible.value || 
-         isAdminAddDialogVisible.value || 
-         isCancelConfirmDialogVisible.value || 
-         isDuplicateDialogVisible.value || 
-         isForceSaveDialogVisible.value || 
+  return isDialogVisible.value ||
+         isAdminAddDialogVisible.value ||
+         isCancelConfirmDialogVisible.value ||
+         isDuplicateDialogVisible.value ||
+         isForceSaveDialogVisible.value ||
          isBatchMismatchDialogVisible.value ||
          isFilterDrawerVisible.value ||
+         isFilterDialogVisible.value ||
+         isStatisticsDialogVisible.value ||
+         isPivotDialogVisible.value ||
          isPngPreviewVisible.value;
 });
 
@@ -3496,8 +3504,10 @@ async function handleDownloadPng() {
           const highlightHTML = (event.highlightParts || []).map(hp => {
             const meta = HIGHLIGHT_FIELD_META[hp.kind];
             if (!meta) return '';
+            // 驗屋人員不顯示「驗屋人員：」標籤，只顯示人名（樣式維持）
+            const labelPrefix = hp.kind === 'inspectors' ? '' : `${meta.label}：`;
             return `<div style="${HL_INLINE_STYLES[hp.kind] || ''}margin-top:3px;padding:2px 5px;border-radius:4px;font-weight:700;line-height:1.35;">`
-              + `${meta.label}：${escapeHtml(hp.text)}</div>`;
+              + `${labelPrefix}${escapeHtml(hp.text)}</div>`;
           }).join('');
           eventItem.innerHTML = titleHTML + highlightHTML;
           // --- ✨ 修改結束 ---

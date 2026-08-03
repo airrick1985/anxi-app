@@ -3496,6 +3496,40 @@ export async function fetchRulesForBatch(batchId) {
 }
 
 /**
+ * [批次預覽] 取得建案所有「預約中」的預約（輕量欄位），供批次預覽計算各時段已約名額。
+ * 查詢條件與後端 saveBooking 的名額檢查一致（僅計 status == '預約中'）。
+ * @param {string} projectId
+ * @returns {Promise<Array<{date: string, timeSlot: string, bookingType: string, method: string, subOption: string, batchCode: string}>>}
+ */
+export async function fetchActiveAppointmentsForPreview(projectId) {
+  if (!projectId) return [];
+  const q = query(
+    collection(db, 'appointments'),
+    where('projectId', '==', projectId),
+    where('status', '==', '預約中')
+  );
+  const snapshot = await getDocs(q);
+  const results = [];
+  snapshot.forEach((docSnap) => {
+    const data = docSnap.data();
+    let dateStr = '';
+    if (data.appointmentDate && typeof data.appointmentDate.toDate === 'function') {
+      // 以台灣時區轉為 YYYY-MM-DD，與規則日期 key 對齊
+      dateStr = data.appointmentDate.toDate().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+    }
+    results.push({
+      date: dateStr,
+      timeSlot: data.appointmentTimeSlot || '',
+      bookingType: data.bookingType || '',
+      method: data.inspectionMethod || '',
+      subOption: data.bookingSubOption || '',
+      batchCode: data.batchCode || '',
+    });
+  });
+  return results;
+}
+
+/**
  * 將新增的預約方式/子選項在該建案所有有效 dateRule 的每個 slot 標記為「未開放」(寫入 0)。
  * 用途：避免新增方式/子選項時，舊有 slot 因 undefined 被後端 fallback 為「共用時段總名額」。
  * 僅補入「尚未存在」的 key，不覆寫使用者既有設定。

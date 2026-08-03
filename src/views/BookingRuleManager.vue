@@ -2223,80 +2223,157 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="isPreviewDialogVisible" max-width="800px">
+    <v-dialog v-model="isPreviewDialogVisible" max-width="880px">
       <v-card v-if="batchToPreview">
         <v-card-title class="d-flex align-center primary-bg">
           <v-icon start>mdi-calendar-search</v-icon>
-          <span>預覽批次設定</span>
+          <span>預覽批次設定與預約狀況</span>
           <v-spacer></v-spacer>
           <v-btn variant="text" icon="mdi-close" @click="isPreviewDialogVisible = false"></v-btn>
         </v-card-title>
-        <v-card-subtitle class="pa-3 bg-grey-lighten-4">
-          <strong>{{ projectName }}</strong> / 「<strong>{{ batchToPreview.bookingType }}</strong>」批次 - <strong>{{
-            batchToPreview.batchCode }}</strong>
+        <v-card-subtitle class="pa-3 bg-grey-lighten-4 d-flex align-center flex-wrap ga-2">
+          <span>
+            <strong>{{ projectName }}</strong> / 「<strong>{{ batchToPreview.bookingType }}</strong>」批次 - <strong>{{
+              batchToPreview.batchCode }}</strong>
+          </span>
+          <v-chip size="x-small" label variant="tonal"
+            :color="(batchToPreview.quotaMode || 'shared') === 'isolated' ? 'orange' : 'blue'">
+            <v-icon start size="x-small">
+              {{ (batchToPreview.quotaMode || 'shared') === 'isolated' ? 'mdi-lock-outline' : 'mdi-link-variant' }}
+            </v-icon>
+            {{ (batchToPreview.quotaMode || 'shared') === 'isolated' ? '獨立名額' : '共用名額' }}
+          </v-chip>
         </v-card-subtitle>
         <v-divider></v-divider>
         <v-card-text style="max-height: 70vh; overflow-y: auto;">
           <div v-if="isPreviewLoading" class="text-center pa-8">
             <v-progress-circular indeterminate color="primary"></v-progress-circular>
-            <p class="mt-2 text-grey-darken-1">正在讀取規則...</p>
+            <p class="mt-2 text-grey-darken-1">正在讀取規則與預約狀況...</p>
           </div>
           <div v-else>
             <div v-if="Object.keys(previewData).length === 0" class="text-center pa-8 text-grey-darken-1">
               <v-icon size="48">mdi-calendar-remove-outline</v-icon>
               <p class="mt-2">此批次未設定「可預約區間」。</p>
             </div>
-            <v-list v-else lines="two">
-              <template v-for="(dayData, date) in previewData" :key="date">
-                <v-list-subheader class="font-weight-bold text-primary">{{ formatDateWithWeekday(date)
-                  }}</v-list-subheader>
-                <v-list-item>
-                  <div v-if="dayData.length > 0">
-                    <div v-for="slot in dayData" :key="slot.time" class="mb-2">
-                      <div class="d-flex align-center flex-wrap ga-2 mb-1">
-                        <v-chip color="indigo" variant="tonal" label>
-                          <v-icon start>mdi-clock-time-four-outline</v-icon>
-                          <strong>{{ slot.time }}</strong>
-                        </v-chip>
-                        <!-- 時段名額 -->
-                        <v-chip color="success" variant="tonal" label size="small">
-                          <v-icon start size="small">mdi-account-group-outline</v-icon>
-                          <span>名額 {{ slot.capacity }} 名</span>
-                        </v-chip>
-                        <!-- 時段上限（如果有設定） -->
-                        <v-chip v-if="slot.maxCapacity" color="amber" variant="tonal" label size="small">
-                          <v-icon start size="small">mdi-crown-outline</v-icon>
-                          <span>上限 {{ slot.maxCapacity }} 名</span>
-                        </v-chip>
-                      </div>
-                      <div class="pl-2 d-flex flex-wrap ga-2">
-                        <v-chip v-for="method in previewBatchMethods" :key="method"
-                          :variant="slot.methods.includes(method) ? 'elevated' : 'outlined'"
-                          :color="slot.methods.includes(method) ? 'green' : 'grey'" size="x-small" label>
-                          {{ method }}
-                          <span v-if="slot.methods.includes(method)" class="ml-1">
-                            {{ getMethodLimitDisplay(slot, method) }}
-                          </span>
-                        </v-chip>
-                        <span v-if="slot.methods.length === 0" class="text-caption text-grey">未指定方式</span>
-                      </div>
-                      <div v-if="previewBatchSubOptions.length > 0" class="pl-2 mt-1 d-flex flex-wrap ga-1 align-center">
-                        <v-icon size="x-small" color="primary" class="mr-1">mdi-sitemap-outline</v-icon>
-                        <v-chip v-for="subOpt in previewBatchSubOptions" :key="subOpt"
-                          size="x-small" variant="tonal" :color="slot.subOptionLimits[subOpt] !== undefined ? ((slot.subOptionLimits[subOpt] > 0) ? 'blue' : 'grey') : 'orange'" label>
-                          {{ subOpt }}: {{ slot.subOptionLimits[subOpt] === undefined ? '無限制' : (Number(slot.subOptionLimits[subOpt]) > 0 ? slot.subOptionLimits[subOpt] : '未開放') }}
-                        </v-chip>
-                      </div>
+            <template v-else>
+              <!-- 總覽統計 -->
+              <v-row dense class="mb-1">
+                <v-col cols="4" sm="2">
+                  <v-sheet rounded border class="pa-2 text-center">
+                    <div class="text-h6 font-weight-bold">{{ previewSummary.dayCount }}</div>
+                    <div class="text-caption text-grey-darken-1">開放天數</div>
+                  </v-sheet>
+                </v-col>
+                <v-col cols="4" sm="2">
+                  <v-sheet rounded border class="pa-2 text-center">
+                    <div class="text-h6 font-weight-bold">{{ previewSummary.slotCount }}</div>
+                    <div class="text-caption text-grey-darken-1">時段數</div>
+                  </v-sheet>
+                </v-col>
+                <v-col cols="4" sm="2">
+                  <v-sheet rounded border class="pa-2 text-center">
+                    <div class="text-h6 font-weight-bold">{{ previewSummary.totalCapacity }}</div>
+                    <div class="text-caption text-grey-darken-1">總名額</div>
+                  </v-sheet>
+                </v-col>
+                <v-col cols="4" sm="2">
+                  <v-sheet rounded border class="pa-2 text-center">
+                    <div class="text-h6 font-weight-bold text-deep-purple">{{ previewSummary.totalBooked }}</div>
+                    <div class="text-caption text-grey-darken-1">已約</div>
+                  </v-sheet>
+                </v-col>
+                <v-col cols="4" sm="2">
+                  <v-sheet rounded border class="pa-2 text-center">
+                    <div class="text-h6 font-weight-bold text-teal">{{ previewSummary.totalRemaining }}</div>
+                    <div class="text-caption text-grey-darken-1">剩餘</div>
+                  </v-sheet>
+                </v-col>
+                <v-col cols="4" sm="2">
+                  <v-sheet rounded border class="pa-2 text-center">
+                    <div class="text-h6 font-weight-bold" :class="previewSummary.fullSlots > 0 ? 'text-red' : ''">
+                      {{ previewSummary.fullSlots }}
                     </div>
-                  </div>
-                  <div v-else class="text-grey-darken-1">
-                    <v-icon size="small" class="mr-1">mdi-calendar-blank-outline</v-icon>
-                    <span>無設定時段</span>
-                  </div>
-                </v-list-item>
-                <v-divider class="mt-2"></v-divider>
+                    <div class="text-caption text-grey-darken-1">額滿時段</div>
+                  </v-sheet>
+                </v-col>
+              </v-row>
+              <v-alert density="compact" type="info" variant="tonal" class="mb-3 text-caption">
+                {{ previewQuotaScope.label }}（僅計入狀態為「預約中」的預約）
+              </v-alert>
+
+              <!-- 每日明細 -->
+              <template v-for="(dayData, date) in previewData" :key="date">
+                <div class="d-flex align-center flex-wrap ga-2 mt-3 mb-1">
+                  <span class="font-weight-bold text-primary">{{ formatDateWithWeekday(date) }}</span>
+                  <template v-if="dayData.length > 0">
+                    <v-chip size="x-small" label variant="tonal" color="deep-purple">
+                      已約 {{ getDayStats(dayData).booked }} / {{ getDayStats(dayData).capacity }}
+                    </v-chip>
+                    <v-chip size="x-small" label variant="tonal"
+                      :color="getDayStats(dayData).remaining <= 0 ? 'red' : 'teal'">
+                      {{ getDayStats(dayData).remaining <= 0 ? '額滿' : `剩 ${getDayStats(dayData).remaining} 名` }}
+                    </v-chip>
+                  </template>
+                </div>
+                <div v-if="dayData.length > 0">
+                  <v-sheet v-for="slot in dayData" :key="slot.time" rounded border class="pa-2 mb-2">
+                    <div class="d-flex align-center flex-wrap ga-2 mb-1">
+                      <v-chip color="indigo" variant="tonal" label size="small">
+                        <v-icon start size="small">mdi-clock-time-four-outline</v-icon>
+                        <strong>{{ slot.time }}</strong>
+                      </v-chip>
+                      <!-- 時段名額 -->
+                      <v-chip color="success" variant="tonal" label size="small">
+                        <v-icon start size="small">mdi-account-group-outline</v-icon>
+                        <span>名額 {{ slot.capacity }}</span>
+                      </v-chip>
+                      <!-- 時段上限（如果有設定） -->
+                      <v-chip v-if="slot.maxCapacity" color="amber" variant="tonal" label size="small">
+                        <v-icon start size="small">mdi-crown-outline</v-icon>
+                        <span>上限 {{ slot.maxCapacity }}</span>
+                      </v-chip>
+                      <v-spacer></v-spacer>
+                      <!-- 已約 / 剩餘 -->
+                      <v-chip color="deep-purple" variant="tonal" label size="small">
+                        <v-icon start size="small">mdi-account-check-outline</v-icon>
+                        <span>已約 {{ slot.booked }}</span>
+                      </v-chip>
+                      <v-chip :color="getSlotRemainingColor(slot)" variant="flat" label size="small">
+                        {{ slot.capacity > 0 && slot.remaining <= 0 ? '額滿' : `剩 ${slot.remaining}` }}
+                      </v-chip>
+                    </div>
+                    <v-progress-linear
+                      :model-value="slot.capacity > 0 ? (slot.booked / slot.capacity) * 100 : 0"
+                      :color="getSlotRemainingColor(slot)" height="5" rounded class="mb-2"></v-progress-linear>
+                    <div class="d-flex flex-wrap ga-2">
+                      <v-chip v-for="method in previewBatchMethods" :key="method"
+                        :variant="slot.methods.includes(method) ? (isMethodFull(slot, method) ? 'flat' : 'elevated') : 'outlined'"
+                        :color="slot.methods.includes(method) ? (isMethodFull(slot, method) ? 'red' : 'green') : 'grey'"
+                        size="x-small" label>
+                        {{ method }}
+                        <span v-if="slot.methods.includes(method)" class="ml-1">
+                          ({{ getMethodLimitDisplay(slot, method) }})
+                        </span>
+                      </v-chip>
+                      <span v-if="slot.methods.length === 0" class="text-caption text-grey">未指定方式</span>
+                    </div>
+                    <div v-if="previewBatchSubOptions.length > 0" class="mt-1 d-flex flex-wrap ga-1 align-center">
+                      <v-icon size="x-small" color="primary" class="mr-1">mdi-sitemap-outline</v-icon>
+                      <v-chip v-for="subOpt in previewBatchSubOptions" :key="subOpt"
+                        size="x-small" :variant="isSubOptionFull(slot, subOpt) ? 'flat' : 'tonal'"
+                        :color="getSubOptionQuotaColor(slot, subOpt)" label>
+                        {{ getSubOptionQuotaDisplay(slot, subOpt) }}
+                      </v-chip>
+                    </div>
+                  </v-sheet>
+                </div>
+                <div v-else class="text-grey-darken-1 text-caption mb-2">
+                  <v-icon size="small" class="mr-1">mdi-calendar-blank-outline</v-icon>
+                  <span>無設定時段</span>
+                </div>
+                <v-divider></v-divider>
               </template>
-            </v-list>
+            </template>
           </div>
         </v-card-text>
         <v-card-actions class="bg-grey-lighten-5 pa-3">
@@ -3485,7 +3562,8 @@ import {
   listGoogleSheets,           // 列出 Sheet
   syncHouseholdsToSheet,      // 同步
   syncAppointmentsToSheet,    // 同步預約
-  markNewBookingItemsUnopened
+  markNewBookingItemsUnopened,
+  fetchActiveAppointmentsForPreview // 批次預覽：讀取有效預約以計算已約/剩餘名額
 } from '@/api';
 
 
@@ -5794,13 +5872,76 @@ async function scanDuplicateRules() {
   }
 }
 
+// [批次預覽] 名額計算範圍說明（與後端 saveBooking 邏輯一致）
+const previewQuotaScope = computed(() => {
+  if (!batchToPreview.value) return { mode: 'shared', types: [], label: '' };
+  const item = batchToPreview.value;
+  const mode = item.quotaMode || 'shared';
+  if (mode === 'isolated') {
+    return { mode, types: [], label: `獨立名額：僅計算本批次（${item.batchCode}）的預約` };
+  }
+  // shared：依專案層級 bookingCapacityGroups 找出共用名額的項目群組
+  const groups = projectSettings.value.bookingCapacityGroups || [];
+  let types = [item.bookingType];
+  for (const group of groups) {
+    if (group && Array.isArray(group.types) && group.types.includes(item.bookingType)) {
+      types = group.types;
+      break;
+    }
+  }
+  const label = types.length > 1
+    ? `共用名額：「${types.join('」+「')}」同時段合併計算`
+    : `共用名額：計算「${item.bookingType}」全部批次的預約`;
+  return { mode, types, label };
+});
+
+// [批次預覽] 方式 → 子項目對照（依預覽批次的預約項目，勿與編輯中的 editedBatch 混用）
+const previewMethodSubOptionsMap = computed(() => {
+  if (!batchToPreview.value) return {};
+  const selectedType = batchToPreview.value.bookingType;
+  if (!selectedType || !projectSettings.value.bookingMenu?.length) return {};
+  const item = projectSettings.value.bookingMenu.find(i => i.title === selectedType && !i.deleted);
+  if (!item?.methods) return {};
+  const map = {};
+  item.methods.filter(m => !m.deleted).forEach(m => {
+    map[m.title] = (m.subOptions && Array.isArray(m.subOptions)) ? m.subOptions : [];
+  });
+  return map;
+});
+
+// [批次預覽] 全批次總覽統計
+const previewSummary = computed(() => {
+  let totalCapacity = 0, totalBooked = 0, slotCount = 0, fullSlots = 0, dayCount = 0;
+  for (const date in previewData.value) {
+    const slots = previewData.value[date];
+    if (slots.length > 0) dayCount++;
+    slots.forEach(slot => {
+      slotCount++;
+      totalCapacity += slot.capacity || 0;
+      totalBooked += slot.booked || 0;
+      if ((slot.capacity || 0) > 0 && (slot.booked || 0) >= slot.capacity) fullSlots++;
+    });
+  }
+  return {
+    totalCapacity,
+    totalBooked,
+    totalRemaining: Math.max(totalCapacity - totalBooked, 0),
+    slotCount,
+    fullSlots,
+    dayCount
+  };
+});
+
 async function openPreviewDialog(item) {
   batchToPreview.value = item;
   isPreviewDialogVisible.value = true;
   isPreviewLoading.value = true;
   try {
-    //  [修改] 使用新的 API 函式
-    const dailyRules = await fetchRulesForBatch(item.id);
+    // 並行讀取：批次規則 + 建案所有「預約中」的預約
+    const [dailyRules, activeAppointments] = await Promise.all([
+      fetchRulesForBatch(item.id),
+      fetchActiveAppointmentsForPreview(projectId.value)
+    ]);
 
     // Ensure data structure is consistent
     for (const date in dailyRules) {
@@ -5811,6 +5952,29 @@ async function openPreviewDialog(item) {
         }
       }
     }
+
+    // 依名額模式篩選出「會佔用本批次名額」的預約（與後端 saveBooking 檢查一致）
+    const scope = previewQuotaScope.value;
+    const relevantAppointments = activeAppointments.filter(appt => {
+      if (scope.mode === 'isolated') {
+        return appt.batchCode === item.batchCode;
+      }
+      return scope.types.includes(appt.bookingType);
+    });
+
+    // 建立 日期 → 時段 → 已約統計 對照表
+    const bookedMap = {};
+    relevantAppointments.forEach(appt => {
+      if (!appt.date || !appt.timeSlot) return;
+      if (!bookedMap[appt.date]) bookedMap[appt.date] = {};
+      if (!bookedMap[appt.date][appt.timeSlot]) {
+        bookedMap[appt.date][appt.timeSlot] = { total: 0, byMethod: {}, bySubOption: {} };
+      }
+      const entry = bookedMap[appt.date][appt.timeSlot];
+      entry.total++;
+      if (appt.method) entry.byMethod[appt.method] = (entry.byMethod[appt.method] || 0) + 1;
+      if (appt.subOption) entry.bySubOption[appt.subOption] = (entry.bySubOption[appt.subOption] || 0) + 1;
+    });
 
     const formattedData = {};
     if (item.bookingStart && item.bookingEnd) {
@@ -5826,13 +5990,19 @@ async function openPreviewDialog(item) {
         if (ruleForDay && ruleForDay.slots) {
           for (const time of Object.keys(ruleForDay.slots).sort()) {
             const slotInfo = ruleForDay.slots[time];
+            const bookedInfo = bookedMap[dateKey]?.[time] || { total: 0, byMethod: {}, bySubOption: {} };
+            const capacity = slotInfo.capacity || 0;
             slotsData.push({
               time: time,
-              capacity: slotInfo.capacity || 0,
+              capacity: capacity,
               maxCapacity: slotInfo.maxCapacity || null,
               methods: slotInfo.methods || [],
               methodLimits: slotInfo.methodLimits || {},
-              subOptionLimits: slotInfo.subOptionLimits || {}
+              subOptionLimits: slotInfo.subOptionLimits || {},
+              booked: bookedInfo.total,
+              bookedByMethod: bookedInfo.byMethod,
+              bookedBySubOption: bookedInfo.bySubOption,
+              remaining: Math.max(capacity - bookedInfo.total, 0)
             });
           }
         }
@@ -5847,28 +6017,88 @@ async function openPreviewDialog(item) {
   }
 }
 
-// 取得方式的名額顯示文字（若有子項目則加總子項目，否則使用方式名額）
-function getMethodLimitDisplay(slot, method) {
-  const subOpts = batchMethodSubOptionsMap.value?.[method] || [];
+// 取得方式的名額資訊：已約數 / 上限 / 是否額滿
+// 上限規則：有子項目 → 子項目名額加總；否則用方式名額；皆無 → 無限制（額滿與否看時段總名額）
+function getMethodQuotaInfo(slot, method) {
+  const subOpts = previewMethodSubOptionsMap.value?.[method] || [];
+  const booked = slot.bookedByMethod?.[method] || 0;
+  let limit = null;
 
   if (subOpts.length > 0) {
-    // 有子項目：加總子項目的名額
     let total = 0;
     subOpts.forEach(subOpt => {
       total += Number(slot.subOptionLimits?.[subOpt]) || 0;
     });
-    if (total > 0) {
-      return `(${total} 名)`;
-    }
+    if (total > 0) limit = total;
   } else {
-    // 無子項目：使用方式的名額
-    const limit = slot.methodLimits?.[method];
-    if (limit) {
-      return `(${limit} 名)`;
-    }
+    const l = slot.methodLimits?.[method];
+    if (l) limit = Number(l);
   }
 
-  return '(無限制)';
+  const full = limit !== null
+    ? booked >= limit
+    : (slot.capacity > 0 && slot.remaining <= 0);
+  return { booked, limit, full };
+}
+
+// 取得方式的名額顯示文字
+function getMethodLimitDisplay(slot, method) {
+  const { booked, limit, full } = getMethodQuotaInfo(slot, method);
+  if (full) return `已約 ${booked} 額滿`;
+  if (limit !== null) return `已約 ${booked}/${limit}`;
+  return `已約 ${booked}·無限制`;
+}
+
+// 方式是否額滿（供 chip 顏色判斷）
+function isMethodFull(slot, method) {
+  return slot.methods.includes(method) && getMethodQuotaInfo(slot, method).full;
+}
+
+// 子項目名額顯示文字：已約 / 上限
+function getSubOptionQuotaDisplay(slot, subOpt) {
+  const booked = slot.bookedBySubOption?.[subOpt] || 0;
+  const limit = slot.subOptionLimits?.[subOpt];
+  if (limit === undefined) return `${subOpt}：已約 ${booked}·無限制`;
+  if (Number(limit) <= 0) return `${subOpt}：未開放`;
+  const remaining = Number(limit) - booked;
+  if (remaining <= 0) return `${subOpt}：已約 ${booked} 額滿`;
+  return `${subOpt}：已約 ${booked}/${limit}·剩 ${remaining}`;
+}
+
+// 子項目 chip 顏色：未開放灰、額滿紅、其餘藍、無限制橘
+function getSubOptionQuotaColor(slot, subOpt) {
+  const limit = slot.subOptionLimits?.[subOpt];
+  if (limit === undefined) return 'orange';
+  if (Number(limit) <= 0) return 'grey';
+  const booked = slot.bookedBySubOption?.[subOpt] || 0;
+  const remaining = Number(limit) - booked;
+  if (remaining <= 0) return 'red';
+  return 'blue';
+}
+
+// 子項目是否額滿（額滿時 chip 改紅底白字）
+function isSubOptionFull(slot, subOpt) {
+  const limit = slot.subOptionLimits?.[subOpt];
+  if (limit === undefined || Number(limit) <= 0) return false;
+  return (slot.bookedBySubOption?.[subOpt] || 0) >= Number(limit);
+}
+
+// 時段剩餘名額的顏色：額滿紅、剩 1-2 名橘、其餘綠
+function getSlotRemainingColor(slot) {
+  if (slot.capacity <= 0) return 'grey';
+  if (slot.remaining <= 0) return 'red';
+  if (slot.remaining <= 2) return 'orange';
+  return 'teal';
+}
+
+// 單日已約/名額統計（供預覽的日期標題列使用）
+function getDayStats(dayData) {
+  let capacity = 0, booked = 0;
+  dayData.forEach(slot => {
+    capacity += slot.capacity || 0;
+    booked += slot.booked || 0;
+  });
+  return { capacity, booked, remaining: Math.max(capacity - booked, 0) };
 }
 
 // 驗證時段名額配置（名額必須 ≤ 時段總名額上限）
