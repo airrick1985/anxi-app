@@ -120,8 +120,9 @@
     </VueDatePicker>
   </v-col>
   
-  <v-col cols="12" sm="4" md="3">
+  <v-col cols="12" sm="5" md="4" class="d-flex align-center">
     <v-autocomplete
+      class="flex-grow-1"
       v-model="selectedSearchResult"
       v-model:search="searchQuery"
       :items="autocompleteItems"
@@ -167,9 +168,18 @@
         </v-list-item>
       </template>
     </v-autocomplete>
+    <v-badge :content="advFilterCount" :model-value="advFilterCount > 0" color="error" offset-x="2" offset-y="2" class="ml-2 flex-shrink-0">
+      <v-btn
+        :color="advFilterCount > 0 ? 'primary' : 'black'"
+        :variant="advFilterCount > 0 ? 'flat' : 'tonal'"
+        size="small"
+        prepend-icon="mdi-filter-variant"
+        @click="isAdvFilterDialogVisible = true"
+      >篩選</v-btn>
+    </v-badge>
   </v-col>
 
-  <v-col cols="auto" class="flex-grow-1"></v-col> 
+  <v-col cols="auto" class="flex-grow-1"></v-col>
 
   <v-col cols="12" md="auto" class="d-flex align-center flex-wrap">
 
@@ -196,13 +206,26 @@
 
     <v-tooltip text="新增預約" location="bottom">
       <template v-slot:activator="{ props }">
-        <v-btn 
-          v-if="canEdit" 
-          v-bind="props" 
-          icon="mdi-calendar-plus" 
-          variant="text" 
-          color="black" 
+        <v-btn
+          v-if="canEdit"
+          v-bind="props"
+          icon="mdi-calendar-plus"
+          variant="text"
+          color="black"
           @click="isAdminAddDialogVisible = true"
+        ></v-btn>
+      </template>
+    </v-tooltip>
+
+    <v-tooltip text="驗屋人員排休" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn
+          v-if="canEdit"
+          v-bind="props"
+          icon="mdi-account-clock"
+          variant="text"
+          color="black"
+          @click="isLeaveManagerVisible = true"
         ></v-btn>
       </template>
     </v-tooltip>
@@ -241,6 +264,12 @@
                 <v-progress-circular v-if="isDownloadingExcel" indeterminate color="grey" size="20" width="2"></v-progress-circular>
               </template>
             </v-list-item>
+            <v-list-item
+              prepend-icon="mdi-table-arrow-down"
+              title="下載EXCEL(列表)"
+              @click="isListExportDialogVisible = true"
+              :disabled="isDownloadingPdf || isDownloadingExcel"
+            ></v-list-item>
           </v-list>
         </v-menu>
       </template>
@@ -273,7 +302,7 @@
       </template>
     </v-tooltip>
 
-    <v-tooltip text="篩選設定" location="bottom">
+    <v-tooltip text="顯示設定" location="bottom">
       <template v-slot:activator="{ props }">
         <v-btn
           v-bind="props"
@@ -305,6 +334,7 @@
               <v-btn value="month" size="small">月</v-btn>
             </v-btn-toggle>
             <v-spacer></v-spacer>
+            <v-btn v-if="canEdit" icon="mdi-account-clock" variant="text" size="small" title="驗屋人員排休" @click="isLeaveManagerVisible = true"></v-btn>
             <v-btn icon="mdi-chevron-left" variant="text" size="small" @click="shiftMobile(-1)"></v-btn>
             <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-calendar-today" @click="goToToday">今天</v-btn>
             <v-btn icon="mdi-chevron-right" variant="text" size="small" @click="shiftMobile(1)"></v-btn>
@@ -379,13 +409,18 @@
                       <span v-else>{{ part.text }}</span>
                       <span v-if="partIndex < event.displayParts.length - 1"> - </span>
                     </template>
-                    <div
-                      v-for="(hp, hpIndex) in (event.highlightParts || [])"
-                      :key="'hl-' + hpIndex"
-                      :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
-                    >
-                      <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
-                      <span>{{ hp.text }}</span>
+                    <div v-if="event.highlightParts && event.highlightParts.length" class="event-highlight-wrap">
+                      <div
+                        v-for="(hp, hpIndex) in event.highlightParts"
+                        :key="'hl-' + hpIndex"
+                        :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
+                      >
+                        <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
+                        <span v-if="hp.persons && hp.persons.length">
+                          <template v-for="(p, pIdx) in hp.persons" :key="'p-' + pIdx"><span :class="{ 'event-hl-person-leave': p.onLeave }">{{ p.label }}</span><span v-if="pIdx < hp.persons.length - 1">,</span></template>
+                        </span>
+                        <span v-else>{{ hp.text }}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -422,13 +457,18 @@
                         <span v-else>{{ part.text }}</span>
                         <span v-if="partIndex < event.displayParts.length - 1"> - </span>
                       </template>
-                      <div
-                        v-for="(hp, hpIndex) in (event.highlightParts || [])"
-                        :key="'hl-' + hpIndex"
-                        :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
-                      >
-                        <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
-                        <span>{{ hp.text }}</span>
+                      <div v-if="event.highlightParts && event.highlightParts.length" class="event-highlight-wrap">
+                        <div
+                          v-for="(hp, hpIndex) in event.highlightParts"
+                          :key="'hl-' + hpIndex"
+                          :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
+                        >
+                          <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
+                          <span v-if="hp.persons && hp.persons.length">
+                            <template v-for="(p, pIdx) in hp.persons" :key="'p-' + pIdx"><span :class="{ 'event-hl-person-leave': p.onLeave }">{{ p.label }}</span><span v-if="pIdx < hp.persons.length - 1">,</span></template>
+                          </span>
+                          <span v-else>{{ hp.text }}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -567,14 +607,19 @@
                             <span v-else>{{ part.text }}</span>
                             <span v-if="partIndex < event.displayParts.length - 1"> - </span>
                           </template>
-                          <!-- 驗屋人員 / 備註：獨立醒目區塊 -->
-                          <div
-                            v-for="(hp, hpIndex) in (event.highlightParts || [])"
-                            :key="'hl-' + hpIndex"
-                            :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
-                          >
-                            <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
-                            <span>{{ hp.text }}</span>
+                          <!-- 驗屋人員 / 銷售人員 / 備註：獨立醒目區塊（人員類並排同一列） -->
+                          <div v-if="event.highlightParts && event.highlightParts.length" class="event-highlight-wrap">
+                            <div
+                              v-for="(hp, hpIndex) in event.highlightParts"
+                              :key="'hl-' + hpIndex"
+                              :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
+                            >
+                              <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
+                              <span v-if="hp.persons && hp.persons.length">
+                                <template v-for="(p, pIdx) in hp.persons" :key="'p-' + pIdx"><span :class="{ 'event-hl-person-leave': p.onLeave }">{{ p.label }}</span><span v-if="pIdx < hp.persons.length - 1">,</span></template>
+                              </span>
+                              <span v-else>{{ hp.text }}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -622,12 +667,13 @@
       :booking-options="bookingOptions"
       :booking-history="bookingHistory"
       :calendar-data="calendarData"
+      :inspector-leave-map="inspectorLeaveMap"
       @save="handleSaveChangesFromDialog"
       @cancel-appointment="promptCancelBooking"
       @update-inspectors="handleUpdateInspectorsFromDialog"
       @request-calendar-data="handleRequestCalendarData"
     />
-    
+
        <AdminAddBookingDialog
       v-if="isAdminAddDialogVisible"
       v-model="isAdminAddDialogVisible"
@@ -635,19 +681,32 @@
       @booking-success="handleBookingSuccess"
     />
 
-    <v-dialog v-model="isFilterDialogVisible" max-width="640px" scrollable :fullscreen="xs">
+    <InspectorLeaveManagerDialog
+      v-if="isLeaveManagerVisible"
+      v-model="isLeaveManagerVisible"
+      :project-id="projectId"
+      :project-name="projectName"
+      :staff-list="bookingOptions.inspectionStaff || []"
+      :can-edit="canEdit"
+      @staff-updated="handleStaffListUpdated"
+      @leaves-changed="fetchInspectorLeavesData"
+    />
+
+    <!-- 進階篩選：狀態/項目/選擇方式 + 進階條件（自「篩選與顯示設定」拆出的獨立對話框） -->
+    <v-dialog v-model="isAdvFilterDialogVisible" max-width="640px" scrollable :fullscreen="xs">
       <v-card class="d-flex flex-column">
         <v-card-title class="d-flex align-center bg-primary text-white py-3 px-4">
-          <v-icon start>mdi-tune-variant</v-icon>
-          <span class="text-subtitle-1 font-weight-bold">篩選與顯示設定</span>
+          <v-icon start>mdi-filter-variant</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">進階篩選</span>
+          <v-chip v-if="advFilterCount > 0" size="x-small" color="error" variant="flat" class="ml-2" label>{{ advFilterCount }} 項條件</v-chip>
           <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" variant="text" color="white" size="small" @click="isFilterDialogVisible = false"></v-btn>
+          <v-btn icon="mdi-close" variant="text" color="white" size="small" @click="isAdvFilterDialogVisible = false"></v-btn>
         </v-card-title>
 
         <v-card-text class="pa-4" style="background-color:#f5f6f8;">
           <div class="text-caption text-grey-darken-1 mb-4 d-flex align-center">
             <v-icon size="16" class="mr-1" color="grey">mdi-information-outline</v-icon>
-            勾選或調整後會即時反映在時間表上，設定會記憶在此裝置。
+            調整後即時反映在時間表上；狀態／項目／選擇方式會記憶在此裝置，進階條件重新整理後自動重置。
           </div>
 
           <!-- 狀態 -->
@@ -698,6 +757,131 @@
               <v-chip v-for="m in currentMethodOptions" :key="m" :value="m" filter variant="outlined" size="small">{{ m }}</v-chip>
             </v-chip-group>
             <div v-else class="text-caption text-grey">此建案尚未設定選擇方式</div>
+          </div>
+
+          <!-- 進階篩選（與「下載EXCEL(列表)」的篩選條件相同，即時套用於時間表） -->
+          <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
+            <div class="d-flex align-center mb-2">
+              <v-avatar size="30" color="purple" class="mr-2"><v-icon size="18" color="white">mdi-filter-variant</v-icon></v-avatar>
+              <div class="flex-grow-1">
+                <div class="text-subtitle-2 font-weight-bold">進階條件</div>
+                <div class="text-caption text-grey-darken-1">關鍵字、星期、時段、人員等條件；此區不做記憶，重新整理後自動重置</div>
+              </div>
+              <v-btn v-if="advFilterCount > 0" size="x-small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="clearAdvFilters">清除</v-btn>
+            </div>
+            <v-text-field
+              v-model="advFilters.keyword"
+              placeholder="全域搜尋：戶別、預約人、電話、驗屋人員、備註…（可空白分隔多關鍵字）"
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined" density="compact" hide-details clearable
+              class="mb-2"
+            ></v-text-field>
+            <v-row dense>
+              <v-col cols="12" sm="6">
+                <v-select
+                  v-model="advFilters.weekdays"
+                  :items="advWeekdayOptions"
+                  label="星期 (多選)"
+                  multiple chips closable-chips
+                  variant="outlined" density="compact" hide-details clearable
+                ></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-select
+                  v-model="advFilters.timeSlots"
+                  :items="advTimeSlotOptions"
+                  label="時段 (多選)"
+                  multiple chips closable-chips
+                  variant="outlined" density="compact" hide-details clearable
+                  :menu-props="{ maxHeight: 320 }"
+                ></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-select
+                  v-model="advFilters.sources"
+                  :items="ADV_SOURCE_OPTIONS"
+                  label="來源 (多選)"
+                  multiple chips closable-chips
+                  variant="outlined" density="compact" hide-details clearable
+                ></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-select
+                  v-model="advFilters.checkInStatuses"
+                  :items="advCheckInOptions"
+                  label="報到狀態 (多選)"
+                  multiple chips closable-chips
+                  variant="outlined" density="compact" hide-details clearable
+                ></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-autocomplete
+                  v-model="advFilters.inspectors"
+                  :items="advInspectorOptions"
+                  label="驗屋人員 (多選)"
+                  multiple chips closable-chips
+                  variant="outlined" density="compact" hide-details clearable
+                ></v-autocomplete>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-autocomplete
+                  v-model="advFilters.companies"
+                  :items="advCompanyOptions"
+                  label="代驗公司 (多選)"
+                  multiple chips closable-chips
+                  variant="outlined" density="compact" hide-details clearable
+                ></v-autocomplete>
+              </v-col>
+              <v-col v-if="advBuildingOptions.length > 0" cols="12" sm="6">
+                <v-select
+                  v-model="advFilters.buildings"
+                  :items="advBuildingOptions"
+                  label="棟別 (多選)"
+                  multiple chips closable-chips
+                  variant="outlined" density="compact" hide-details clearable
+                ></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field
+                  v-model="advFilters.bookerName"
+                  label="預約人姓名"
+                  variant="outlined" density="compact" hide-details clearable
+                ></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field
+                  v-model="advFilters.buyerName"
+                  label="買方姓名"
+                  variant="outlined" density="compact" hide-details clearable
+                ></v-text-field>
+              </v-col>
+            </v-row>
+          </div>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions class="px-4 py-3">
+          <v-btn v-if="advFilterCount > 0" size="small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="clearAdvFilters">清除進階條件</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="flat" @click="isAdvFilterDialogVisible = false">完成</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 顯示設定：標題顯示 + 事件顏色（原「篩選與顯示設定」瘦身而來） -->
+    <v-dialog v-model="isFilterDialogVisible" max-width="640px" scrollable :fullscreen="xs">
+      <v-card class="d-flex flex-column">
+        <v-card-title class="d-flex align-center bg-primary text-white py-3 px-4">
+          <v-icon start>mdi-tune-variant</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">顯示設定</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" color="white" size="small" @click="isFilterDialogVisible = false"></v-btn>
+        </v-card-title>
+
+        <v-card-text class="pa-4" style="background-color:#f5f6f8;">
+          <div class="text-caption text-grey-darken-1 mb-4 d-flex align-center">
+            <v-icon size="16" class="mr-1" color="grey">mdi-information-outline</v-icon>
+            勾選或調整後會即時反映在時間表上，設定會記憶在此裝置。
           </div>
 
           <!-- 標題顯示 -->
@@ -1175,8 +1359,13 @@
     </div>
     <v-spacer></v-spacer>
     <div class="pa-2 bg-grey-lighten-4">
+      <v-btn variant="tonal" color="purple" block class="mb-2" prepend-icon="mdi-filter-variant"
+        @click="isFilterDrawerVisible = false; isAdvFilterDialogVisible = true">
+        進階篩選
+        <v-chip v-if="advFilterCount > 0" size="x-small" color="error" variant="flat" class="ml-1" label>{{ advFilterCount }}</v-chip>
+      </v-btn>
       <v-btn variant="tonal" color="indigo" block class="mb-2" prepend-icon="mdi-cog"
-        @click="isFilterDrawerVisible = false; isFilterDialogVisible = true">進階篩選與顯示設定</v-btn>
+        @click="isFilterDrawerVisible = false; isFilterDialogVisible = true">顯示設定</v-btn>
       <v-btn color="primary" block @click="isFilterDrawerVisible = false"
         >完成</v-btn
       >
@@ -1254,7 +1443,17 @@
   </v-card>
 </v-dialog>
 
-
+  <!-- 下載EXCEL(列表)：選日期 + 選欄位/排序（比照銷控「下載指定戶別資料」） -->
+  <ScheduleListExportDialog
+    v-model="isListExportDialogVisible"
+    :items="listExportItems"
+    :columns="listExportColumns"
+    :project-name="projectName"
+    :range-start="listExportRangeStart"
+    :range-end="listExportRangeEnd"
+    :fetching="isListExportFetching"
+    @fetch-range="handleListExportFetchRange"
+  />
 
   </v-container>
 
@@ -1271,7 +1470,9 @@
     </v-btn>
 
     <v-btn @click="isFilterDrawerVisible = true">
-      <v-icon>mdi-filter-variant</v-icon>
+      <v-badge :content="advFilterCount" :model-value="advFilterCount > 0" color="error" offset-x="-4" offset-y="-2">
+        <v-icon>mdi-filter-variant</v-icon>
+      </v-badge>
       <span>篩選</span>
     </v-btn>
 
@@ -1299,8 +1500,13 @@
           @click="isPivotDialogVisible = true"
         ></v-list-item>
         <v-list-item
+          prepend-icon="mdi-filter-variant"
+          title="進階篩選"
+          @click="isAdvFilterDialogVisible = true"
+        ></v-list-item>
+        <v-list-item
           prepend-icon="mdi-cog"
-          title="篩選與顯示設定"
+          title="顯示設定"
           @click="isFilterDialogVisible = true"
         ></v-list-item>
         <v-divider></v-divider>
@@ -1324,6 +1530,12 @@
             <v-progress-circular v-if="isDownloadingExcel" indeterminate color="grey" size="20" width="2"></v-progress-circular>
           </template>
         </v-list-item>
+        <v-list-item
+          prepend-icon="mdi-table-arrow-down"
+          title="下載EXCEL(列表)"
+          @click="isListExportDialogVisible = true"
+          :disabled="isDownloadingPdf || isDownloadingExcel"
+        ></v-list-item>
       </v-list>
     </v-menu>
   </v-bottom-navigation>
@@ -1334,6 +1546,9 @@
 import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
 import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
+import ScheduleListExportDialog from '@/components/ScheduleListExportDialog.vue';
+import InspectorLeaveManagerDialog from '@/components/InspectorLeaveManagerDialog.vue';
+import { buildLeaveMap, annotateInspectorPersons } from '@/utils/inspectorLeaveUtils';
 
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -1368,6 +1583,7 @@ import { useClipboard } from '@vueuse/core';
 import * as XLSX from 'xlsx-js-style';
 import { vDraggableDialog } from '@/directives/vDraggableDialog';
 import { useSystemPresence } from '@/composables/useSystemPresence';
+import { formatSalespersons, normalizeSalespersons } from '@/utils/salespersonUtils';
 
 
 
@@ -1468,7 +1684,10 @@ const householdListenerUnsubscribe = ref(null);
 const loadedWeeks = ref(new Set()); // 用來記錄哪些週的開始日期已經被載入
 
 const isDialogVisible = ref(false);
-const isAdminAddDialogVisible = ref(false); 
+const isAdminAddDialogVisible = ref(false);
+const isLeaveManagerVisible = ref(false); // 驗屋人員排休管理
+const inspectorLeaveRecords = ref([]); // 目前日期範圍內的排休/備註
+const inspectorLeaveMap = computed(() => buildLeaveMap(inspectorLeaveRecords.value).leaveMap);
 const selectedEvent = ref(null);
 const calendarData = ref([]); // ★ 2. 新增 ref 來儲存日期標記
 const bookingHistory = ref([]); // ★ 3. 新增 ref 來儲存歷史紀錄
@@ -1476,6 +1695,8 @@ const isDownloadingPdf = ref(false);
 const isDownloadingExcel = ref(false);
 const isFilterDialogVisible = ref(false);
 const isStatisticsDialogVisible = ref(false); // ✅ 新增這一行
+const isListExportDialogVisible = ref(false); // 下載EXCEL(列表) 對話框
+const isAdvFilterDialogVisible = ref(false); // 進階篩選對話框（自「篩選與顯示設定」拆出）
 const selectedStatisticsTypes = ref([]); // 儲存 Dialog 中被勾選的項目 (e.g., ['初驗', '複驗'])
 const selectedStatisticsStatuses = ref([]); // 儲存 Dialog 中被勾選的狀態 (e.g., ['預約中', '已完成'])
 
@@ -1591,6 +1812,7 @@ const fieldConfig = {
 // 需醒目呈現的欄位：在事件中以獨立色塊顯示，而非混入串接文字
 const HIGHLIGHT_FIELD_META = {
   inspectors: { icon: 'mdi-account-hard-hat', label: '驗屋人員', cssClass: 'event-hl-inspectors' },
+  salesperson: { icon: 'mdi-account-tie', label: '銷售人員', cssClass: 'event-hl-salesperson' },
   remarks: { icon: 'mdi-alert-circle', label: '重要備註', cssClass: 'event-hl-remarks' },
   bookingRemarks: { icon: 'mdi-note-text-outline', label: '預約備註', cssClass: 'event-hl-booking-remarks' },
 };
@@ -1606,6 +1828,7 @@ const displayFieldOptions = computed(() => {
     { key: 'remarks', label: '重要備註' },
     { key: 'bookingRemarks', label: '預約備註' },
     { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null },
+    { key: 'salesperson', label: '銷售人員' },
   ];
   // 動態掃描 bookingMenu 中所有 methods 的 customFields，篩選 expanded === true
   const dynamicFields = [];
@@ -1640,7 +1863,223 @@ function getFieldValue(eventData, fieldOption) {
   if (fieldOption.isDynamic) {
     return eventData.bookingMethodDetails?.[fieldOption.key] ?? null;
   }
+  // 銷售人員（陣列，容忍舊字串）：格式化為「、」分隔字串，空值回傳 null 以跳過顯示
+  if (fieldOption.key === 'salesperson') {
+    const s = formatSalespersons(eventData.salesperson, '、', '');
+    return s || null;
+  }
   return eventData[fieldOption.key] ?? null;
+}
+
+// 下載EXCEL(列表) 的可匯出欄位：預約欄位 + 動態自訂欄位（key 前綴 dyn:）+ 戶別欄位
+const listExportColumns = computed(() => {
+  const dynamic = displayFieldOptions.value
+    .filter(f => f.isDynamic)
+    .map(f => ({ key: `dyn:${f.key}`, title: f.label }));
+  return [
+    { key: 'date', title: '日期' },
+    { key: 'weekday', title: '星期' },
+    { key: 'appointmentTimeSlot', title: '時段' },
+    { key: 'unitId', title: '戶別' },
+    { key: 'bookingType', title: '預約項目' },
+    { key: 'inspectionMethod', title: '選擇方式' },
+    { key: 'bookingSubOption', title: '子項目' },
+    ...dynamic,
+    { key: 'status', title: '狀態' },
+    { key: 'checkInStatus', title: '報到狀態' },
+    { key: 'source', title: '來源' },
+    { key: 'bookerName', title: '預約人姓名' },
+    { key: 'bookerPhone', title: '預約人電話' },
+    { key: 'bookerEmail', title: '預約人EMAIL' },
+    { key: 'bookerIdNumber', title: '預約人身分證(驗證碼)' },
+    { key: 'inspectors', title: '驗屋人員' },
+    { key: 'salesperson', title: '銷售人員' },
+    { key: 'inspectionCompanyName', title: '代驗公司' },
+    { key: 'agentName', title: '受託人姓名' },
+    { key: 'agentPhone', title: '受託人電話' },
+    { key: 'bookingRemarks', title: '預約備註' },
+    { key: 'remarks', title: '重要備註' },
+    { key: 'address', title: '門牌' },
+    { key: 'parkingLots', title: '車位' },
+    { key: 'buyerName', title: '買方姓名' },
+    { key: 'buyerPhone', title: '買方電話' },
+    { key: 'buyerEmail', title: '買方EMAIL' },
+    { key: 'appropriationDate', title: '撥款日期' },
+    { key: 'bank', title: '銀行' },
+    { key: 'bankContact', title: '銀行窗口' },
+    { key: 'initialInspectionBatch', title: '初驗批次' },
+    { key: 'reInspectionBatch', title: '複驗批次' },
+    { key: 'handoverTime', title: '交屋時間' },
+    { key: 'createdByName', title: '建立人' },
+    { key: 'lastModifiedByName', title: '最後修改人' },
+  ];
+});
+
+// 下載EXCEL(列表) 的資料來源：不受頁面篩選影響，交由對話框內部自行篩選
+const listExportItems = computed(() => processAppointments(allAppointments.value));
+
+// ── 進階篩選（移植自「下載EXCEL(列表)」對話框的篩選條件，即時套用於時間表月曆） ──
+// 刻意不做本機記憶：重新整理即重置，避免看不見的舊條件造成「時間表怎麼沒資料」的困惑
+const ADV_EMPTY_OPTION = '(無)';
+const advFilters = reactive({
+  keyword: '',
+  weekdays: [],
+  timeSlots: [],
+  sources: [],
+  checkInStatuses: [],
+  inspectors: [],
+  companies: [],
+  buildings: [],
+  bookerName: '',
+  buyerName: '',
+});
+const clearAdvFilters = () => {
+  advFilters.keyword = '';
+  advFilters.weekdays = [];
+  advFilters.timeSlots = [];
+  advFilters.sources = [];
+  advFilters.checkInStatuses = [];
+  advFilters.inspectors = [];
+  advFilters.companies = [];
+  advFilters.buildings = [];
+  advFilters.bookerName = '';
+  advFilters.buyerName = '';
+};
+const advFilterCount = computed(() => {
+  let n = 0;
+  if (advFilters.keyword && advFilters.keyword.trim()) n++;
+  if (advFilters.weekdays.length > 0) n++;
+  if (advFilters.timeSlots.length > 0) n++;
+  if (advFilters.sources.length > 0) n++;
+  if (advFilters.checkInStatuses.length > 0) n++;
+  if (advFilters.inspectors.length > 0) n++;
+  if (advFilters.companies.length > 0) n++;
+  if (advFilters.buildings.length > 0) n++;
+  if (advFilters.bookerName) n++;
+  if (advFilters.buyerName) n++;
+  return n;
+});
+
+const ADV_DOW_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+const advWeekdayOptions = [1, 2, 3, 4, 5, 6, 0].map(d => ({ value: d, title: `星期${ADV_DOW_LABELS[d]}` }));
+const ADV_SOURCE_OPTIONS = ['前台預約', '後台新增'];
+
+// 時段字串正規化為 HH:mm（資料可能是「09:30」或含後綴文字）
+function normalizeTimeSlotStr(raw) {
+  const s = raw ? String(raw) : '';
+  const m = s.match(/(\d{1,2}[:：]\d{2})/);
+  return m ? m[0].replace(/：/g, ':') : s;
+}
+// 驗屋人員：陣列或分隔字串 → 姓名陣列
+function splitInspectors(raw) {
+  const list = Array.isArray(raw) ? raw : String(raw || '').split(/[,、，;；/]+/);
+  return list.map(s => String(s).trim()).filter(Boolean);
+}
+
+const zhOptSort = (arr) => arr.sort((a, b) => String(a).localeCompare(String(b), 'zh-Hant', { numeric: true, sensitivity: 'base' }));
+const collectAdvOption = (getter, { withEmpty = false } = {}) => {
+  const set = new Set();
+  let hasEmpty = false;
+  listExportItems.value.forEach(item => {
+    const v = getter(item);
+    if (v === null || v === undefined || v === '') { hasEmpty = true; return; }
+    set.add(String(v));
+  });
+  const list = zhOptSort(Array.from(set));
+  if (withEmpty && hasEmpty) list.push(ADV_EMPTY_OPTION);
+  return list;
+};
+const advTimeSlotOptions = computed(() => collectAdvOption(i => normalizeTimeSlotStr(i.appointmentTimeSlot)).sort());
+const advCheckInOptions = computed(() => collectAdvOption(i => i.checkInStatus, { withEmpty: true }));
+const advCompanyOptions = computed(() => collectAdvOption(i => i.inspectionCompanyName, { withEmpty: true }));
+const advBuildingOptions = computed(() => collectAdvOption(i => i.building));
+const advInspectorOptions = computed(() => {
+  const set = new Set();
+  listExportItems.value.forEach(i => splitInspectors(i.inspectors).forEach(n => set.add(n)));
+  return zhOptSort(Array.from(set));
+});
+
+// 全域關鍵字搜尋用：把事件依可匯出欄位攤平成文字（與下載EXCEL(列表)的搜尋範圍一致）
+function advCellText(evt, key) {
+  if (key.startsWith('dyn:')) {
+    const v = evt.bookingMethodDetails?.[key.slice(4)];
+    if (v === null || v === undefined) return '';
+    return Array.isArray(v) ? v.join('、') : String(v);
+  }
+  switch (key) {
+    case 'date': return evt.start ? format(evt.start, 'yyyy-MM-dd') : '';
+    case 'weekday': return evt.start ? `星期${ADV_DOW_LABELS[evt.start.getDay()]}` : '';
+    case 'appointmentTimeSlot': return normalizeTimeSlotStr(evt.appointmentTimeSlot);
+    case 'inspectors': return splitInspectors(evt.inspectors).join('、');
+    case 'salesperson': return formatSalespersons(evt.salesperson, '、', '');
+    case 'source': return resolveSourceKey(evt.source) === 'admin' ? '後台新增' : '前台預約';
+  }
+  const value = evt[key];
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) return value.join('、');
+  if (typeof value === 'object') return '';
+  return String(value);
+}
+
+const advMatchEmptyable = (selected, value) => {
+  if (selected.length === 0) return true;
+  const isEmpty = value === null || value === undefined || value === '';
+  return selected.includes(String(value)) || (selected.includes(ADV_EMPTY_OPTION) && isEmpty);
+};
+
+function matchesAdvFilters(evt) {
+  const f = advFilters;
+  if (f.weekdays.length > 0 && (!evt.start || !f.weekdays.includes(evt.start.getDay()))) return false;
+  if (f.timeSlots.length > 0 && !f.timeSlots.includes(normalizeTimeSlotStr(evt.appointmentTimeSlot))) return false;
+  if (f.sources.length > 0) {
+    const label = resolveSourceKey(evt.source) === 'admin' ? '後台新增' : '前台預約';
+    if (!f.sources.includes(label)) return false;
+  }
+  if (!advMatchEmptyable(f.checkInStatuses, evt.checkInStatus)) return false;
+  if (!advMatchEmptyable(f.companies, evt.inspectionCompanyName)) return false;
+  if (f.buildings.length > 0 && !f.buildings.includes(String(evt.building ?? ''))) return false;
+  if (f.inspectors.length > 0) {
+    const list = splitInspectors(evt.inspectors);
+    if (!list.some(n => f.inspectors.includes(n))) return false;
+  }
+  if (f.bookerName && !(evt.bookerName || '').includes(f.bookerName)) return false;
+  if (f.buyerName && !(evt.buyerName || '').includes(f.buyerName)) return false;
+  const kwTokens = (f.keyword || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (kwTokens.length > 0) {
+    const blob = listExportColumns.value.map(c => advCellText(evt, c.key)).join(' ').toLowerCase();
+    if (!kwTokens.every(tk => blob.includes(tk))) return false;
+  }
+  return true;
+}
+
+// 下載EXCEL(列表)：日期區間預設與時間表目前檢視範圍同步
+const listExportRangeStart = computed(() => (startDate.value ? format(startDate.value, 'yyyy-MM-dd') : null));
+const listExportRangeEnd = computed(() => (endDate.value ? format(endDate.value, 'yyyy-MM-dd') : null));
+
+// 對話框調整日期區間時，載入該區間的預約資料並合併進 allAppointments
+// （時間表僅載入目前檢視範圍，超出範圍的日期需在此補抓，否則匯出會缺資料）
+const isListExportFetching = ref(false);
+async function handleListExportFetchRange({ start, end }) {
+  if (!start || !end || start > end) return;
+  isListExportFetching.value = true;
+  try {
+    const result = await inspectionApi('fetchCalendarData', {
+      projectId: projectId.value,
+      startDate: parseISO(`${start}T00:00:00`),
+      endDate: parseISO(`${end}T23:59:59`),
+    });
+    if (result.data && Array.isArray(result.data)) {
+      const appointmentsWithDates = result.data.map(appt => convertFirestoreTimestampsToDates(appt));
+      const appointmentsMap = new Map(allAppointments.value.map(item => [item.id, item]));
+      appointmentsWithDates.forEach(item => appointmentsMap.set(item.id, item));
+      allAppointments.value = Array.from(appointmentsMap.values());
+    }
+  } catch (err) {
+    console.error('載入匯出日期區間資料失敗:', err);
+    showSnackbar(`載入日期區間資料失敗: ${err.message}`, 'error');
+  } finally {
+    isListExportFetching.value = false;
+  }
 }
 
 const CSS_KEYWORD_COLOR_MAP = [ { keyword: '已撥款', backgroundColor: '#ffc107', color: '#212529' }, { keyword: '交屋', backgroundColor: '#ffc107', color: '#212529' }, { keyword: '初驗', backgroundColor: '#d4edda', color: '#155724' }, { keyword: '複驗', backgroundColor: '#f8d7da', color: '#721c24' }, ];
@@ -1891,9 +2330,12 @@ const isAnyOverlayActive = computed(() => {
          isBatchMismatchDialogVisible.value ||
          isFilterDrawerVisible.value ||
          isFilterDialogVisible.value ||
+         isAdvFilterDialogVisible.value ||
          isStatisticsDialogVisible.value ||
          isPivotDialogVisible.value ||
-         isPngPreviewVisible.value;
+         isListExportDialogVisible.value ||
+         isPngPreviewVisible.value ||
+         isLeaveManagerVisible.value;
 });
 
 const buildingOptions = computed(() => Object.keys(bookingOptions.value.buildingsAndUnits).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true })));
@@ -2020,7 +2462,13 @@ function processAppointments(rawAppointments) {
               : String(value);
 
             if (HIGHLIGHT_FIELD_META[option.key]) {
-              highlightParts.push({ kind: option.key, text });
+              if (option.key === 'inspectors') {
+                // 標註每位人員的排休狀態：排休者顯示「小明(休假)」並於畫面高亮提醒
+                const persons = annotateInspectorPersons(value, inspectorLeaveMap.value, dateStr, startTime);
+                highlightParts.push({ kind: option.key, text: persons.map(p => p.label).join(','), persons });
+              } else {
+                highlightParts.push({ kind: option.key, text });
+              }
               return;
             }
 
@@ -2057,7 +2505,11 @@ const filteredAppointments = computed(() => {
   });
 
   // 2. 合併戶別資料並處理顯示
-  return processAppointments(filteredAppts);
+  const processed = processAppointments(filteredAppts);
+
+  // 3. 進階篩選（關鍵字/星期/時段/來源/報到狀態/人員等；需合併戶別資料後才過濾）
+  if (advFilterCount.value === 0) return processed;
+  return processed.filter(matchesAdvFilters);
 });
 
 
@@ -2441,6 +2893,7 @@ const pivotDimensionOptions = computed(() => {
     { key: 'bookingSubOption', label: '子項目' },
     { key: 'status', label: '狀態' },
     { key: 'inspectors', label: '驗屋人員（每人分計）' },
+    { key: 'salesperson', label: '銷售人員（每人分計）' },
     { key: 'source', label: '來源' },
     { key: 'date', label: '日期' },
     { key: 'weekday', label: '星期' },
@@ -2471,6 +2924,10 @@ function getPivotValues(evt, dimKey) {
       const list = Array.isArray(raw) ? raw : String(raw || '').split(/[,、，;；/]+/);
       const cleaned = list.map(s => String(s).trim()).filter(Boolean);
       return cleaned.length ? cleaned : [PIVOT_EMPTY_LABEL];
+    }
+    case 'salesperson': {
+      const list = normalizeSalespersons(evt.salesperson);
+      return list.length ? list : [PIVOT_EMPTY_LABEL];
     }
     case 'source':
       return [resolveSourceKey(evt.source) === 'admin' ? '後台新增' : '前台預約'];
@@ -2638,8 +3095,29 @@ function copyPivotTable() {
   handleCopy(lines.join('\n'));
 }
 
+// 讀取目前日期範圍的驗屋人員排休（供事件人員標籤與詳細資訊 chips 標記）
+async function fetchInspectorLeavesData() {
+  if (!projectId.value || !startDate.value || !endDate.value) return;
+  try {
+    const res = await inspectionApi('fetchInspectorLeaves', {
+      projectId: projectId.value,
+      startDate: format(startDate.value, 'yyyy-MM-dd'),
+      endDate: format(endDate.value, 'yyyy-MM-dd'),
+    });
+    inspectorLeaveRecords.value = res.data?.data || [];
+  } catch (err) {
+    console.warn('讀取驗屋人員排休失敗:', err);
+  }
+}
+
+// 排休管理彈窗更新名單後，同步回人員選單（與「編輯人員」共用）
+function handleStaffListUpdated(newList) {
+  bookingOptions.value = { ...bookingOptions.value, inspectionStaff: newList };
+}
+
 // ✅ 8. 修改 fetchData 函數
 async function fetchData() {
+  fetchInspectorLeavesData(); // 排休資料獨立載入，不阻塞預約主流程
   if (allHouseholdData.value.size === 0) {
     console.warn("fetchData: 戶別快取為空，暫停獲取預約。");
     // isLoading.value = false; // 讓 isLoading 保持 true，直到戶別資料載入
@@ -2818,6 +3296,7 @@ async function loadDataForProject() {
       getAllBookingRules(projectId.value),
       fetchAllHouseholdsForProject(projectId.value)
     ]);
+    fetchInspectorLeavesData(); // 排休資料獨立載入
     
     // 將重新獲取的資料賦值給對應的 ref
     allAppointments.value = calendarData;
@@ -3158,6 +3637,12 @@ onMounted(async () => {
 
     // 2. 儲存靜態資料
     projectSettings.value = projectConfig;
+    // 初始載入即填入人員/選擇方式選單（先前僅在「重新整理」時載入，導致排休管理的人員名單為空）
+    bookingOptions.value = {
+      ...bookingOptions.value,
+      inspectionMethods: projectConfig?.bookingMethodOptions || bookingOptions.value.inspectionMethods,
+      inspectionStaff: Array.isArray(projectConfig?.inspectionStaff) ? projectConfig.inspectionStaff : bookingOptions.value.inspectionStaff,
+    };
     syncColorSettingsFromProject(); // 由建案設定載入共用的事件顏色
     minSelectableDate.value = dateRangeData.minDate;
     maxSelectableDate.value = dateRangeData.maxDate; // ✅ 修正了這裡的變數名稱
@@ -3495,21 +3980,38 @@ async function handleDownloadPng() {
             }
             return escapeHtml(part.text);
           }).join(' - ');
-          // 驗屋人員 / 備註：醒目區塊（與畫面上的樣式一致）
+          // 驗屋人員 / 銷售人員 / 備註：醒目區塊（與畫面上的樣式一致）
+          // 色塊統一放進 flex 容器：人員類（驗屋/銷售）並排同一列，備註類獨占整列
+          const HL_FULL_ROW = 'flex:0 0 100%;';
           const HL_INLINE_STYLES = {
             inspectors: 'width:fit-content;background-color:#E8EAF6;color:#283593;border:1px solid #9FA8DA;',
-            remarks: 'background-color:#FFEBEE;color:#B71C1C;border:1px solid #EF9A9A;',
-            bookingRemarks: 'background-color:#FFF8E1;color:#6D4C41;border:1px solid #FFE082;',
+            salesperson: 'width:fit-content;background-color:#F3E5F5;color:#6A1B9A;border:1px solid #CE93D8;',
+            remarks: `${HL_FULL_ROW}background-color:#FFEBEE;color:#B71C1C;border:1px solid #EF9A9A;`,
+            bookingRemarks: `${HL_FULL_ROW}background-color:#FFF8E1;color:#6D4C41;border:1px solid #FFE082;`,
           };
           const highlightHTML = (event.highlightParts || []).map(hp => {
             const meta = HIGHLIGHT_FIELD_META[hp.kind];
             if (!meta) return '';
-            // 驗屋人員不顯示「驗屋人員：」標籤，只顯示人名（樣式維持）
-            const labelPrefix = hp.kind === 'inspectors' ? '' : `${meta.label}：`;
+            // 驗屋人員/銷售人員不顯示標籤文字，只顯示人名（並排時保持精簡，以顏色區分）
+            const labelPrefix = (hp.kind === 'inspectors' || hp.kind === 'salesperson') ? '' : `${meta.label}：`;
+            // 驗屋人員：排休者以粉紅標記（與畫面一致）
+            let contentHTML;
+            if (hp.kind === 'inspectors' && Array.isArray(hp.persons) && hp.persons.length) {
+              const LEAVE_PERSON_STYLE = 'display:inline-block;background-color:#FCE4EC;color:#C2185B;border:1px solid #F48FB1;border-radius:3px;padding:0 3px;font-weight:800;';
+              contentHTML = hp.persons.map(p =>
+                p.onLeave ? `<span style="${LEAVE_PERSON_STYLE}">${escapeHtml(p.label)}</span>` : escapeHtml(p.label)
+              ).join(',');
+            } else {
+              contentHTML = escapeHtml(hp.text);
+            }
             return `<div style="${HL_INLINE_STYLES[hp.kind] || ''}margin-top:3px;padding:2px 5px;border-radius:4px;font-weight:700;line-height:1.35;">`
-              + `${labelPrefix}${escapeHtml(hp.text)}</div>`;
+              + `${labelPrefix}${contentHTML}</div>`;
           }).join('');
-          eventItem.innerHTML = titleHTML + highlightHTML;
+          // flex 容器：讓驗屋人員與銷售人員色塊落在同一列，備註類換整列
+          const highlightWrapped = highlightHTML
+            ? `<div style="display:flex;flex-wrap:wrap;align-items:flex-start;column-gap:4px;">${highlightHTML}</div>`
+            : '';
+          eventItem.innerHTML = titleHTML + highlightWrapped;
           // --- ✨ 修改結束 ---
 
           eventCell.appendChild(eventItem);
@@ -4001,12 +4503,41 @@ function navigateToHouseholdGrid() {
   margin-top: 2px;
   flex-shrink: 0;
 }
+/* 排休人員：在驗屋人員標籤中以粉紅高亮提醒（該人員排休卻被編排） */
+.event-hl-person-leave {
+  display: inline-block;
+  background-color: #FCE4EC; /* pink lighten-5 */
+  color: #C2185B; /* pink darken-2 */
+  border: 1px solid #F48FB1;
+  border-radius: 3px;
+  padding: 0 3px;
+  margin: 1px 0;
+  font-weight: 800;
+}
 .event-hl-inspectors {
   width: fit-content; /* 僅佔內容寬度，不整條填滿 */
   background-color: #E8EAF6; /* indigo lighten-5 */
   color: #283593; /* indigo darken-3 */
   border: 1px solid #9FA8DA;
   font-weight: 600;
+}
+.event-hl-salesperson {
+  width: fit-content; /* 僅佔內容寬度，不整條填滿 */
+  background-color: #F3E5F5; /* purple lighten-5 */
+  color: #6A1B9A; /* purple darken-3 */
+  border: 1px solid #CE93D8;
+  font-weight: 600;
+}
+/* 醒目色塊容器：驗屋人員與銷售人員並排同一列，備註類獨占整列 */
+.event-highlight-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 4px;
+}
+.event-highlight-wrap .event-hl-remarks,
+.event-highlight-wrap .event-hl-booking-remarks {
+  flex: 0 0 100%;
 }
 .event-hl-remarks {
   background-color: #FFEBEE;

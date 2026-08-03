@@ -27,6 +27,21 @@ export function normalizeSalespersons(value) {
 }
 
 /**
+ * 將使用者輸入的多人字串解析為陣列。
+ * 與 normalizeSalespersons 不同：輸入框允許以「空白」分隔（例：王小明 張曉華），
+ * 同時相容逗號/頓號/分號/斜線等分隔符；傳入陣列則直接正規化。
+ * @param {*} value
+ * @returns {string[]}
+ */
+export function parseSalespersonsInput(value) {
+  if (value === null || value === undefined || value === '') return [];
+  if (Array.isArray(value)) return normalizeSalespersons(value);
+  const arr = String(value).split(/[\s,，、;；/]+/);
+  const cleaned = arr.map(v => v.trim()).filter(Boolean);
+  return [...new Set(cleaned)];
+}
+
+/**
  * 將 salesperson 陣列格式化為顯示字串（逗號分隔全部）。
  * @param {*} value
  * @param {string} sep 分隔符，預設「、」

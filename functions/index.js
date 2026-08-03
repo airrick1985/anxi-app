@@ -2564,7 +2564,7 @@ async function _ensureActivityMessageManagePermission(anxiDb, userKey, projectId
  * 驗證使用者是否擁有指定建案的「驗屋預約管理-修改」權限。
  * 通過條件：roles 含「超級管理員/系統管理員」，或 userPermissions[projectId].systems 含「驗屋預約管理-修改」。
  */
-async function _ensureInspectionEditPermission(anxiDb, userKey, projectId) {
+async function _ensureInspectionEditPermission(anxiDb, userKey, projectId, actionLabel = "執行此操作") {
   if (!userKey) {
     throw new HttpsError("unauthenticated", "缺少使用者識別 (userKey)，請重新登入。");
   }
@@ -2582,7 +2582,7 @@ async function _ensureInspectionEditPermission(anxiDb, userKey, projectId) {
   const permissions = permSnap.exists ? (permSnap.data().permissions || {}) : {};
   const systems = permissions[projectId]?.systems || [];
   if (!systems.includes("驗屋預約管理-修改")) {
-    throw new HttpsError("permission-denied", "您沒有此建案的「驗屋預約管理-修改」權限，無法調整事件顏色。");
+    throw new HttpsError("permission-denied", `您沒有此建案的「驗屋預約管理-修改」權限，無法${actionLabel}。`);
   }
 }
 
@@ -2601,7 +2601,7 @@ async function _handleSaveEventColorSettings(data) {
     throw new HttpsError("invalid-argument", "缺少 projectId。");
   }
   const anxiDb = new Firestore({ databaseId: "anxi-app" });
-  await _ensureInspectionEditPermission(anxiDb, userKey, projectId);
+  await _ensureInspectionEditPermission(anxiDb, userKey, projectId, "調整事件顏色");
 
   // 清洗：只保留 admin / bookingPage 兩個來源，值必須是 #RRGGBB
   const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -5153,7 +5153,9 @@ exports.uploadInspectionHouseholds = onCall({ region: "asia-east1", timeoutSecon
       });
 
       // 處理日期 (Excel 可能傳來日期物件或 null)
+      // 部分欄位上傳：欄位「沒有出現」在上傳資料中就不動既有資料，避免被覆寫為 null
       ['appropriationDate', 'initialInspectionDate', 'reInspectionDate'].forEach(field => {
+        if (!(field in dataToSave)) return;
         if (dataToSave[field]) {
           const date = new Date(dataToSave[field]);
           if (!isNaN(date.getTime())) {
@@ -5167,11 +5169,27 @@ exports.uploadInspectionHouseholds = onCall({ region: "asia-east1", timeoutSecon
       });
 
       // 處理可能為 null 的字串欄位，確保它們是空字串
+      // 部分欄位上傳：欄位「沒有出現」就跳過，避免被覆寫為空字串
       ['address', 'bank', 'buyerEmail', 'remarks'].forEach(field => {
+        if (!(field in dataToSave)) return;
         if (dataToSave[field] === null || dataToSave[field] === undefined) {
           dataToSave[field] = "";
         }
       });
+
+      // 銷售人員：一律正規化為字串陣列（相容前端已解析的陣列與原始字串上傳）
+      if (dataToSave.salesperson !== undefined) {
+        const rawSp = dataToSave.salesperson;
+        let spArr;
+        if (Array.isArray(rawSp)) {
+          spArr = rawSp;
+        } else if (rawSp === null || rawSp === '') {
+          spArr = [];
+        } else {
+          spArr = String(rawSp).split(/[\s,，、;；/]+/);
+        }
+        dataToSave.salesperson = [...new Set(spArr.map(v => String(v ?? '').trim()).filter(Boolean))];
+      }
       // END: 新增資料格式轉換邏輯
 
       const docRef = db.collection("households").doc(docId);
@@ -17172,6 +17190,16 @@ exports.inspectionCalendarApi = onCall({
       case 'saveEventColorSettings':
         return await _handleSaveEventColorSettings(data);
 
+      // --- 驗屋人員排休 ---
+      case 'fetchInspectorLeaves':
+        return await _handleFetchInspectorLeaves(data);
+      case 'saveInspectorLeaves':
+        return await _handleSaveInspectorLeaves(data);
+      case 'deleteInspectorLeave':
+        return await _handleDeleteInspectorLeave(data);
+      case 'updateInspectionStaffList':
+        return await _handleUpdateInspectionStaffList(data);
+
       default:
         console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
         throw new HttpsError('invalid-argument', `未知的 API 動作: ${action}`);
@@ -17464,6 +17492,211 @@ async function _handleUpdateAppointmentInspectors(data) {
   }
 }
 
+// =================================================================
+// /   【新增】驗屋人員排休 (inspectorLeaves 集合)
+// =================================================================
+
+const LEAVE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const LEAVE_TYPES = ["am", "pm", "full"]; // 上休 / 下休 / 休假(整天)
+
+/**
+ * [內部函式] 讀取指定建案在日期區間內的排休與備註
+ * data: { projectId, startDate: 'yyyy-MM-dd', endDate: 'yyyy-MM-dd' }
+ * 註：為避免 projectId + date 複合索引需求，僅以 projectId 查詢後在記憶體過濾日期。
+ */
+async function _handleFetchInspectorLeaves(data) {
+  const { projectId, startDate, endDate } = data || {};
+  const functionName = "_handleFetchInspectorLeaves";
+  if (!projectId) throw new HttpsError("invalid-argument", "缺少 projectId。");
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const snapshot = await db.collection("inspectorLeaves")
+      .where("projectId", "==", projectId)
+      .get();
+
+    const results = [];
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      if (startDate && LEAVE_DATE_RE.test(startDate) && d.date < startDate) return;
+      if (endDate && LEAVE_DATE_RE.test(endDate) && d.date > endDate) return;
+      results.push({
+        id: doc.id,
+        projectId: d.projectId,
+        date: d.date,
+        kind: d.kind || "leave",
+        staffName: d.staffName || "",
+        type: d.type || "full",
+        note: d.note || "",
+        createdByName: d.createdByName || "",
+        createdAt: (d.createdAt && typeof d.createdAt.toDate === "function") ? d.createdAt.toDate().toISOString() : null,
+        updatedByName: d.updatedByName || "",
+        updatedAt: (d.updatedAt && typeof d.updatedAt.toDate === "function") ? d.updatedAt.toDate().toISOString() : null,
+      });
+    });
+
+    console.log(`[${functionName}] ${projectId} 於 ${startDate}~${endDate} 共 ${results.length} 筆排休/備註。`);
+    return { status: "success", data: results };
+  } catch (error) {
+    console.error(`[${functionName}] 讀取排休資料失敗:`, error);
+    throw new HttpsError("internal", `讀取排休資料失敗: ${error.message}`);
+  }
+}
+
+/**
+ * [內部函式] 批次建立/覆蓋排休或月曆備註
+ * data: { projectId, userKey, entries: [{ date, kind:'leave'|'note', staffName, type:'am'|'pm'|'full', note }] }
+ * 排休採「同人同日唯一」：以 projectId_date_staffName 為文件 ID，重複建立即覆蓋（更新排休類型/備註）。
+ * 備註 (kind='note') 使用自動 ID，同一天可多筆。
+ */
+async function _handleSaveInspectorLeaves(data) {
+  const { projectId, userKey, entries } = data || {};
+  const functionName = "_handleSaveInspectorLeaves";
+  if (!projectId) throw new HttpsError("invalid-argument", "缺少 projectId。");
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new HttpsError("invalid-argument", "缺少排休資料 (entries)。");
+  }
+  if (entries.length > 200) {
+    throw new HttpsError("invalid-argument", "單次最多建立 200 筆排休。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  await _ensureInspectionEditPermission(db, userKey, projectId, "管理驗屋人員排休");
+
+  // 取得操作者名稱（異動紀錄用）
+  let operatorName = "";
+  try {
+    const userSnap = await db.collection("users").doc(userKey).get();
+    operatorName = userSnap.exists ? (userSnap.data().name || "") : "";
+  } catch (e) { /* 名稱取不到不阻擋主流程 */ }
+
+  // 清洗資料
+  const sanitized = [];
+  for (const raw of entries) {
+    if (!raw || typeof raw !== "object") continue;
+    const date = typeof raw.date === "string" ? raw.date.trim() : "";
+    if (!LEAVE_DATE_RE.test(date)) continue;
+    const kind = raw.kind === "note" ? "note" : "leave";
+    const note = typeof raw.note === "string" ? raw.note.trim().slice(0, 200) : "";
+    if (kind === "note") {
+      if (!note) continue;
+      sanitized.push({ kind, date, staffName: "", type: "", note });
+    } else {
+      const staffName = typeof raw.staffName === "string" ? raw.staffName.trim().slice(0, 30) : "";
+      const type = LEAVE_TYPES.includes(raw.type) ? raw.type : "";
+      if (!staffName || !type) continue;
+      sanitized.push({ kind, date, staffName, type, note });
+    }
+  }
+  if (sanitized.length === 0) {
+    throw new HttpsError("invalid-argument", "沒有有效的排休資料可建立。");
+  }
+
+  try {
+    const batch = db.batch();
+    const collectionRef = db.collection("inspectorLeaves");
+    for (const entry of sanitized) {
+      let docRef;
+      if (entry.kind === "leave") {
+        // 同人同日唯一：以確定性 ID 覆蓋（encodeURIComponent 避免姓名含不合法字元）
+        const safeName = encodeURIComponent(entry.staffName);
+        docRef = collectionRef.doc(`${projectId}_${entry.date}_${safeName}`);
+      } else {
+        docRef = collectionRef.doc();
+      }
+      batch.set(docRef, {
+        projectId,
+        date: entry.date,
+        kind: entry.kind,
+        staffName: entry.staffName,
+        type: entry.type,
+        note: entry.note,
+        updatedBy: userKey,
+        updatedByName: operatorName,
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: userKey,
+        createdByName: operatorName,
+        createdAt: FieldValue.serverTimestamp(),
+      }, { merge: false });
+    }
+    await batch.commit();
+
+    console.log(`[${functionName}] ${operatorName || userKey} 於 ${projectId} 建立/覆蓋 ${sanitized.length} 筆排休/備註。`);
+    return { status: "success", count: sanitized.length };
+  } catch (error) {
+    console.error(`[${functionName}] 建立排休失敗:`, error);
+    throw new HttpsError("internal", `建立排休失敗: ${error.message}`);
+  }
+}
+
+/**
+ * [內部函式] 刪除單筆排休/備註
+ * data: { projectId, userKey, leaveId }
+ */
+async function _handleDeleteInspectorLeave(data) {
+  const { projectId, userKey, leaveId } = data || {};
+  const functionName = "_handleDeleteInspectorLeave";
+  if (!projectId || !leaveId) throw new HttpsError("invalid-argument", "缺少 projectId 或 leaveId。");
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  await _ensureInspectionEditPermission(db, userKey, projectId, "管理驗屋人員排休");
+
+  try {
+    const docRef = db.collection("inspectorLeaves").doc(leaveId);
+    const snap = await docRef.get();
+    if (!snap.exists) {
+      return { status: "success", message: "資料已不存在。" };
+    }
+    if (snap.data().projectId !== projectId) {
+      throw new HttpsError("permission-denied", "此排休資料不屬於該建案。");
+    }
+    await docRef.delete();
+    console.log(`[${functionName}] ${userKey} 刪除了 ${projectId} 的排休 ${leaveId}。`);
+    return { status: "success" };
+  } catch (error) {
+    console.error(`[${functionName}] 刪除排休失敗:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `刪除排休失敗: ${error.message}`);
+  }
+}
+
+/**
+ * [內部函式] 更新驗屋人員名單（與「預約選單設定 > 編輯人員」共用 projects.inspectionStaff 欄位）
+ * data: { projectId, userKey, inspectionStaff: string[] }
+ */
+async function _handleUpdateInspectionStaffList(data) {
+  const { projectId, userKey, inspectionStaff } = data || {};
+  const functionName = "_handleUpdateInspectionStaffList";
+  if (!projectId) throw new HttpsError("invalid-argument", "缺少 projectId。");
+  if (!Array.isArray(inspectionStaff)) {
+    throw new HttpsError("invalid-argument", "inspectionStaff 必須為陣列。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  await _ensureInspectionEditPermission(db, userKey, projectId, "管理驗屋人員名單");
+
+  // 清洗：字串、去空白、去重、上限 100 人、每名 30 字內
+  const seen = new Set();
+  const cleaned = [];
+  for (const raw of inspectionStaff) {
+    if (typeof raw !== "string") continue;
+    const name = raw.trim().slice(0, 30);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    cleaned.push(name);
+    if (cleaned.length >= 100) break;
+  }
+
+  try {
+    await db.collection("projects").doc(projectId).update({ inspectionStaff: cleaned });
+    console.log(`[${functionName}] ${userKey} 更新了 ${projectId} 的驗屋人員名單，共 ${cleaned.length} 人。`);
+    return { status: "success", inspectionStaff: cleaned };
+  } catch (error) {
+    console.error(`[${functionName}] 更新人員名單失敗:`, error);
+    throw new HttpsError("internal", `更新人員名單失敗: ${error.message}`);
+  }
+}
+
 
 // =================================================================
 // /   【新增】LIFF 驗屋行事曆 (LiffInspectionCalendar) 路由函數
@@ -17522,6 +17755,10 @@ exports.liffCalendarApi = onCall({
         return await _handleGetCancelNotifyRecipients(data);
       case 'updateAppointmentInspectors':
         return await _handleUpdateAppointmentInspectors(data);
+
+      // --- 驗屋人員排休（LIFF 僅讀取，供時間表/詳細資訊顯示排休標記） ---
+      case 'fetchInspectorLeaves':
+        return await _handleFetchInspectorLeaves(data);
 
       default:
         console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);

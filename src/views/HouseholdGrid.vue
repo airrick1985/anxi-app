@@ -121,7 +121,7 @@
          variant="tonal"
          class="mb-4"
          title="重要提示"
-         text="此操作將根據「文件ID」覆蓋現有資料，或根據「戶別」建立新資料。為避免資料遺失，強烈建議您先下載目前的資料作為備份與範本。"
+         text="此操作將根據「文件ID」更新現有資料，或根據「戶號」建立新資料。支援部分欄位上傳：只需保留「文件ID（或戶號）」加上想更新的欄位，檔案中未出現的欄位不會被更動；但表頭有出現的欄位，儲存格空白會清空該戶既有資料。為避免資料遺失，強烈建議先下載目前的資料作為備份與範本。"
        ></v-alert>
 
        <v-file-input
@@ -526,6 +526,17 @@
                <label>目前狀態</label>
                <v-text-field v-model="selectedHouseholdForDetail.currentStatus"
                   :readonly="!isModalEditMode"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"
+                  placeholder="—"></v-text-field>
+            </div>
+            <div class="hdm-row hdm-row-edit">
+               <label>銷售人員</label>
+               <v-text-field v-if="isModalEditMode" v-model="_salespersonEditText"
+                  variant="plain" density="compact" hide-details class="hdm-edit-field"
+                  placeholder="多位請以空白或逗號分隔"></v-text-field>
+               <v-text-field v-else
+                  :model-value="formatSalespersons(selectedHouseholdForDetail.salesperson, '、', '')"
+                  readonly
                   variant="plain" density="compact" hide-details class="hdm-edit-field"
                   placeholder="—"></v-text-field>
             </div>
@@ -1061,6 +1072,7 @@ import { format } from 'date-fns';
 import UrlArrayRenderer from '@/components/grid/UrlArrayRenderer.vue';
 import AuthLetterArrayRenderer from '@/components/grid/AuthLetterArrayRenderer.vue';
 import { formatAuthLetterName, extractAuthLetterDate, getLatestAgentInfo } from '@/utils/authLetterName.js';
+import { formatSalespersons, parseSalespersonsInput } from '@/utils/salespersonUtils';
 import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
 import { functions, storage } from '@/firebase';
@@ -1994,6 +2006,9 @@ const handleAdminBookingSuccess = () => {
    snackbar.show = true;
 };
 
+// 戶別整合 Modal — 銷售人員編輯用文字（陣列 ↔ 「、」分隔字串）
+const _salespersonEditText = ref('');
+
 // 戶別整合 Modal — 進入編輯模式：拍一份原值快照供退出時 diff
 const enterModalEditMode = () => {
    if (!selectedHouseholdForDetail.value) return;
@@ -2002,6 +2017,7 @@ const enterModalEditMode = () => {
    } catch (_) {
       _editModeSnapshot.value = { ...selectedHouseholdForDetail.value };
    }
+   _salespersonEditText.value = formatSalespersons(selectedHouseholdForDetail.value.salesperson, '、', '');
    // 為每個「已有實際預約」的 type 建立可編輯草稿（沒有 appointmentId 的 type 不可編輯）
    const drafts = {};
    const info = detailBookingInfo.value || {};
@@ -2057,6 +2073,12 @@ const exitModalEditMode = async () => {
       const newV = !!h[f];
       if (oldV !== newV) payload[f] = newV;
    }
+
+   // 銷售人員（編輯文字 → 解析為陣列，與快照比較）
+   const spOld = formatSalespersons(snap.salesperson, '、', '');
+   const spNewArr = parseSalespersonsInput(_salespersonEditText.value);
+   const spNew = spNewArr.join('、');
+   if (spOld !== spNew) payload.salesperson = spNewArr;
 
    // 撥款日（input type=date 字串 vs 原始 Date/Timestamp）
    const dateOld = toDateInputValue(snap.appropriationDate);
@@ -2127,6 +2149,10 @@ const exitModalEditMode = async () => {
    try {
       if (hasHouseholdChanges) {
          await updateHouseholdData(h._docId, payload);
+         // 銷售人員經獨立編輯文字解析，需手動同步回本地顯示（其餘欄位由 v-model 直接綁定）
+         if ('salesperson' in payload) {
+            selectedHouseholdForDetail.value = { ...selectedHouseholdForDetail.value, salesperson: payload.salesperson };
+         }
       }
       // 逐筆寫回預約（僅聯絡資訊／方式額外資訊，不動日期時段，不會觸發排程衝突）
       // silent=true：此 Modal 編輯一律不寄「預約異動通知」email 給預約人
@@ -2518,6 +2544,11 @@ const baseColDefs = computed(() => {
       }
     },
     { headerName: '目前狀態', field: 'currentStatus', width: 130, editable: true },
+    {
+      headerName: '銷售人員', field: 'salesperson', editable: true, width: 140,
+      // 存陣列、顯示以「、」串接；編輯時輸入空白/逗號/頓號分隔的多人姓名
+      valueFormatter: (params) => formatSalespersons(params.value, '、', ''),
+    },
     { headerName: '買方姓名', field: 'buyerName', editable: true },
      { headerName: '備註', field: 'remarks', editable: true, minWidth: 250 },
     { headerName: '買方電話', field: 'buyerPhone', editable: true, minWidth: 160 },
@@ -2830,6 +2861,9 @@ const exportToExcel = () => {
         const arr = item.authorizationLetterUrl;
         const n = Array.isArray(arr) ? arr.filter(f => f && f.url).length : 0;
         value = n > 0 ? `已授權 ×${n}` : '未授權';
+      } else if (key === 'salesperson') {
+        // 銷售人員（陣列）：以「、」串接匯出，重新上傳時可解析回陣列
+        value = formatSalespersons(item.salesperson, '、', '');
       } else if (key.includes('.')) {
         // 原有的巢狀欄位處理邏輯
         const parts = key.split('.');
@@ -2937,18 +2971,29 @@ const handleFileChange = () => {
         throw new Error(`檔案缺少標頭列。`);
       }
 
-      // 建立標頭對應表
+      // 建立標頭對應表（白名單制：僅接受「可編輯欄位＋識別欄位」，唯讀/衍生欄位一律忽略，
+      // 避免授權狀態、驗屋報告、預約資訊等顯示用欄位被寫回資料庫覆蓋原始資料）
       const uploadedHeaders = dataAsArrays[0].map(h => String(h || '').trim());
-       const requiredHeaders = ['文件ID', ...finalColDefs.value.map(def => def.headerName)];
       const headerMap = new Map();
-       finalColDefs.value.forEach(def => headerMap.set(def.headerName, def.field));
       headerMap.set('文件ID', '_docId');
+      headerMap.set('戶號', 'unitId');
+      headerMap.set('棟別', 'building'); // 非編輯欄位，但新增戶別時需要
+      finalColDefs.value.forEach(def => {
+        if (def && def.editable === true && def.field) headerMap.set(def.headerName, def.field);
+      });
 
-      // 驗證標頭
-      const missingHeaders = requiredHeaders.filter(h => !uploadedHeaders.includes(h));
-      if (missingHeaders.length > 0) {
-        throw new Error(`檔案標頭不符，缺少必要欄位: \n${missingHeaders.join('、')}`);
+      // 驗證標頭：支援「部分欄位上傳」——只更新檔案中有出現的欄位，其餘欄位不受影響。
+      // 最低要求：「文件ID」或「戶號」至少其一（定位資料），且至少一個可更新的資料欄位。
+      if (!uploadedHeaders.includes('文件ID') && !uploadedHeaders.includes('戶號')) {
+        throw new Error('檔案缺少識別欄位：表頭至少需要「文件ID」或「戶號」其中一欄。');
       }
+      const updatableHeaders = uploadedHeaders.filter(h =>
+        headerMap.has(h) && h !== '文件ID' && h !== '戶號'
+      );
+      if (updatableHeaders.length === 0) {
+        throw new Error('檔案中沒有任何可更新的資料欄位，請至少包含一個欄位（例如：銷售人員）。');
+      }
+      const ignoredHeaders = uploadedHeaders.filter(h => h && !headerMap.has(h));
 
       const dataRows = dataAsArrays.slice(1);
       const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
@@ -2966,6 +3011,11 @@ const handleFileChange = () => {
                 if (upperVal === 'TRUE') val = true;
                 if (upperVal === 'FALSE') val = false;
               }
+            }
+
+            // 銷售人員：上傳字串（空白/逗號/頓號分隔多人）→ 解析為陣列
+            if (key === 'salesperson') {
+              val = parseSalespersonsInput(val);
             }
 
             // 電話欄位救援：Excel 常把開頭 0 的電話當成數字，導致前導 0 被去掉。
@@ -3008,7 +3058,15 @@ const handleFileChange = () => {
 
       parsedData.value = jsonDataWithEnglishKeys;
       uploadMessageType.value = 'success';
-      uploadMessage.value = `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料，可以開始上傳。`;
+      const msgLines = [
+        `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料，可以開始上傳。`,
+        `本次將更新欄位：${updatableHeaders.join('、')}`,
+        '（表頭有出現的欄位，儲存格空白會「清空」該戶的既有資料；未出現的欄位不受影響）',
+      ];
+      const newRowCount = jsonDataWithEnglishKeys.filter(r => !r._docId).length;
+      if (newRowCount > 0) msgLines.push(`其中 ${newRowCount} 筆為「新增」戶別（無文件ID）。`);
+      if (ignoredHeaders.length > 0) msgLines.push(`已忽略唯讀或無法辨識的欄位：${ignoredHeaders.join('、')}`);
+      uploadMessage.value = msgLines.join('\n');
     } catch (err) {
       uploadMessageType.value = 'error';
       uploadMessage.value = err.message || '解析檔案失敗，請使用系統匯出的範本。';
@@ -3261,11 +3319,14 @@ async function onCellValueChanged(event) {
   const householdDocId = data?._docId;
   if (!householdDocId) return;
 
+  // 銷售人員：輸入字串（空白/逗號/頓號分隔多人）→ 解析為陣列後儲存
+  const valueToSave = field === 'salesperson' ? parseSalespersonsInput(newValue) : newValue;
+
   // 如果是貼上動作
   if (source === 'paste') {
     collectedUpdates.push({
       docId: householdDocId,
-      data: { [field]: newValue }
+      data: { [field]: valueToSave }
     });
     handleBatchPaste(event.api);
     return;
@@ -3274,9 +3335,9 @@ async function onCellValueChanged(event) {
   // 一般手動修改動作
   if (isBatchProcessing.value) return;
 
-  console.log('單一單元格更新:', householdDocId, field, newValue);
+  console.log('單一單元格更新:', householdDocId, field, valueToSave);
   try {
-    await updateHouseholdData(householdDocId, { [field]: newValue });
+    await updateHouseholdData(householdDocId, { [field]: valueToSave });
     snackbar.text = `戶別 [${data.unitId}] 的 [${colDef.headerName}] 已更新成功！`;
     snackbar.color = 'success';
     snackbar.show = true;

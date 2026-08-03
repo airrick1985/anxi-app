@@ -223,7 +223,10 @@
                                     :class="['event-highlight', HIGHLIGHT_FIELD_META[hp.kind]?.cssClass]"
                                   >
                                     <v-icon size="x-small" class="event-highlight-icon">{{ HIGHLIGHT_FIELD_META[hp.kind]?.icon }}</v-icon>
-                                    <span>{{ hp.text }}</span>
+                                    <span v-if="hp.persons && hp.persons.length">
+                                      <template v-for="(p, pIdx) in hp.persons" :key="'p-' + pIdx"><span :class="{ 'event-hl-person-leave': p.onLeave }">{{ p.label }}</span><span v-if="pIdx < hp.persons.length - 1">,</span></template>
+                                    </span>
+                                    <span v-else>{{ hp.text }}</span>
                                   </span>
                                 </span>
                              </div>
@@ -356,7 +359,8 @@
       :can-edit="canEdit"
       :booking-options="bookingOptions"
       :booking-history="appointmentHistory"
-      :calendar-data="calendarData" 
+      :calendar-data="calendarData"
+      :inspector-leave-map="inspectorLeaveMap"
       @save="handleSaveAppointment"
       @cancel-appointment="promptCancelBooking"
       @update-inspectors="handleUpdateInspectors"
@@ -436,8 +440,10 @@ import {
   liffGetAdminBookingCalendarData,
   fetchAllHouseholdsForLiff, // ✓ 加上這個 import
   fetchProjectConfig, // ✓ 新增：獲取完整的項目配置（包含 bookingMenu）
+  liffFetchInspectorLeaves, // 驗屋人員排休（顯示排休標記）
 
 } from '@/api';
+import { buildLeaveMap, annotateInspectorPersons } from '@/utils/inspectorLeaveUtils';
 import { useDate, useDisplay } from 'vuetify';
 import { watchDebounced } from '@vueuse/core';
 import VueDatePicker from '@vuepic/vue-datepicker';
@@ -581,6 +587,15 @@ const snackbar = reactive({
 });
 
 const projectHouseholds = ref(new Map()); // ✓ 新增此行，用 Map 來快速查找
+
+// --- 驗屋人員排休（顯示排休標記用） ---
+const inspectorLeaveRecords = ref([]);
+const inspectorLeaveMap = computed(() => buildLeaveMap(inspectorLeaveRecords.value).leaveMap);
+async function fetchInspectorLeavesData(projectId, date) {
+  if (!projectId || !date) return;
+  const dateStr = format(date, 'yyyy-MM-dd');
+  inspectorLeaveRecords.value = await liffFetchInspectorLeaves(projectId, dateStr, dateStr);
+}
 
 const userName = computed(() => userStore.user?.name || '');
 
@@ -948,7 +963,13 @@ const processAppointments = (rawAppointments) => {
           const value = getFieldValue(appt, option);  // ✅ 使用輔助函式取值（支援動態欄位）
           if (!value) return;
           if (HIGHLIGHT_FIELD_META[option.key]) {
-            highlightParts.push({ kind: option.key, text: String(value) });
+            if (option.key === 'inspectors') {
+              // 標註每位人員的排休狀態：排休者顯示「小明(休假)」並以粉紅高亮提醒
+              const persons = annotateInspectorPersons(value, inspectorLeaveMap.value, dateStr, startTime);
+              highlightParts.push({ kind: option.key, text: persons.map(p => p.label).join(','), persons });
+            } else {
+              highlightParts.push({ kind: option.key, text: String(value) });
+            }
             return;
           }
           const formattedValue = option.formatter ? option.formatter(value) : String(value);
@@ -1014,6 +1035,7 @@ watch(selectedProject, async (newProjectId) => {
     fetchDayData(newProjectId, selectedDate.value);
     fetchAllProjectData(newProjectId);
     fetchProjectHouseholds(newProjectId); // ✓ 新增此行
+    fetchInspectorLeavesData(newProjectId, selectedDate.value); // 排休標記
     try {
       bookingOptions.value = await liffFetchBookingOptions(newProjectId);
     } catch(err) {
@@ -1027,6 +1049,7 @@ watch(selectedProject, async (newProjectId) => {
 watch(selectedDate, (newDate) => {
   // ✓ 當日期改變時，只須要獲取當日的詳細資料列表
   fetchDayData(selectedProject.value, newDate);
+  fetchInspectorLeavesData(selectedProject.value, newDate); // 排休標記
 });
 
 watchDebounced(searchQuery, (newQuery) => {
@@ -1418,6 +1441,17 @@ async function handleShare() {
   color: #283593; /* indigo darken-3 */
   border: 1px solid #9FA8DA;
   font-weight: 600;
+}
+/* 排休人員：在驗屋人員標籤中以粉紅高亮提醒（該人員排休卻被編排） */
+.event-hl-person-leave {
+  display: inline-block;
+  background-color: #FCE4EC; /* pink lighten-5 */
+  color: #C2185B; /* pink darken-2 */
+  border: 1px solid #F48FB1;
+  border-radius: 3px;
+  padding: 0 3px;
+  margin: 1px 0;
+  font-weight: 800;
 }
 .event-hl-remarks {
   background-color: #FFEBEE;

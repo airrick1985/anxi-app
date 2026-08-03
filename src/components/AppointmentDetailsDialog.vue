@@ -60,16 +60,22 @@
                     v-for="name in inspectorChipOptions"
                     :key="name"
                     size="small" label
-                    :color="isInspectorSelected(name) ? 'primary' : 'grey-darken-1'"
-                    :variant="isInspectorSelected(name) ? 'flat' : 'outlined'"
+                    :color="chipLeaveType(name) ? 'pink' : (isInspectorSelected(name) ? 'primary' : 'grey-darken-1')"
+                    :variant="isInspectorSelected(name) ? 'flat' : (chipLeaveType(name) ? 'tonal' : 'outlined')"
                     :prepend-icon="isInspectorSelected(name) ? 'mdi-check-circle' : 'mdi-plus-circle-outline'"
                     style="cursor: pointer;"
                     @click="toggleInspector(name)"
-                  >{{ name }}</v-chip>
+                  >{{ chipLeaveType(name) ? `${name}(${LEAVE_TYPE_LABELS[chipLeaveType(name)]})` : name }}</v-chip>
                 </div>
                 <div v-else class="text-caption text-grey">
                   尚未設定人員選單，可於「預約選單設定」建立，或於下方手動新增。
                 </div>
+                <v-alert
+                  v-if="selectedOnLeaveNames.length"
+                  type="warning" variant="tonal" density="compact" class="mt-2 text-caption"
+                >
+                  {{ selectedOnLeaveNames.join('、') }} 於此預約時段排休，仍被編排為驗屋人員，請留意人力安排。
+                </v-alert>
 
                 <div class="d-flex align-center ga-2 mt-3">
                   <v-text-field
@@ -348,7 +354,10 @@
                           <template v-else-if="field.isDate">
                             {{ formatDate(appointment[field.key], 'yyyy-MM-dd') || '無' }}
                           </template>
-                          
+                          <template v-else-if="field.isSalespersons">
+                            {{ formatSalespersons(appointment[field.key], '、', '無') }}
+                          </template>
+
                           <a v-else-if="field.isTel" :href="`tel:${appointment[field.key]}`" class="text-decoration-none text-primary">{{ appointment[field.key] || '無' }}</a>
                           <a v-else-if="field.isMail" :href="`mailto:${appointment[field.key]}`" class="text-decoration-none text-primary">{{ appointment[field.key] || '無' }}</a>
                           <span v-else style="word-break: break-all; white-space: normal;">{{ appointment[field.key] || '無' }}</span>
@@ -462,6 +471,8 @@ import { useDate } from 'vuetify';
 import { format } from 'date-fns';
 import { getSlotsForAdmin, fetchProjectConfig,updateAppointment } from '@/api';
 import { vDraggableDialog } from '@/directives/vDraggableDialog';
+import { LEAVE_TYPE_LABELS, getLeaveTypeForSlot, extractStartTime } from '@/utils/inspectorLeaveUtils';
+import { formatSalespersons } from '@/utils/salespersonUtils';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 
@@ -485,6 +496,11 @@ const props = defineProps({
   calendarData: {
     type: Array,
     default: () => []
+  },
+  // 驗屋人員排休 Map：{ 'yyyy-MM-dd': { 人員名: { type: 'am'|'pm'|'full', ... } } }
+  inspectorLeaveMap: {
+    type: Object,
+    default: () => ({})
   }
 });
 
@@ -553,7 +569,7 @@ const timeFormatRules = [
 
 const fieldConfig = [
   { title: '系統功能', fields: [ { key: 'showInMenu', label: '預約系統', icon: 'mdi-calendar-sync', isSwitch: true }, { key: 'allowMultipleBookings', label: '允許重複預約', icon: 'mdi-account-multiple-check-outline', isSwitch: true }, { key: 'initialReportUploadSwitch', label: '初驗報告上傳', icon: 'mdi-upload-network-outline', isSwitch: true }, { key: 'reInspectionReportUploadSwitch', label: '複驗報告上傳', icon: 'mdi-upload-network', isSwitch: true }, { key: 'initialInspectionBatch', label: '初驗批次', icon: 'mdi-numeric-1-box-multiple-outline' }, { key: 'reInspectionBatch', label: '複驗批次', icon: 'mdi-numeric-2-box-multiple-outline' }, ]},
-  { title: '基本資料', fields: [ { key: 'address', label: '門牌', icon: 'mdi-map-marker-outline' }, { key: 'parkingLots', label: '車位', icon: 'mdi-car-outline' }, { key: 'buyerName', label: '買方姓名', icon: 'mdi-account-star-outline' }, { key: 'buyerPhone', label: '買方電話', icon: 'mdi-phone-outline', isTel: true }, { key: 'buyerEmail', label: '買方EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'buyerIdNumber', label: '買方身分證(驗證碼)', icon: 'mdi-card-account-details-outline' },{ key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check', isDate: true }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' } ]},
+  { title: '基本資料', fields: [ { key: 'address', label: '門牌', icon: 'mdi-map-marker-outline' }, { key: 'parkingLots', label: '車位', icon: 'mdi-car-outline' }, { key: 'salesperson', label: '銷售人員', icon: 'mdi-account-tie', isSalespersons: true }, { key: 'buyerName', label: '買方姓名', icon: 'mdi-account-star-outline' }, { key: 'buyerPhone', label: '買方電話', icon: 'mdi-phone-outline', isTel: true }, { key: 'buyerEmail', label: '買方EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'buyerIdNumber', label: '買方身分證(驗證碼)', icon: 'mdi-card-account-details-outline' },{ key: 'appropriationDate', label: '撥款日期', icon: 'mdi-cash-check', isDate: true }, { key: 'bank', label: '銀行', icon: 'mdi-bank-outline' } ]},
   { title: '預約人資料', fields: [ { key: 'bookerName', label: '預約人姓名', icon: 'mdi-account-outline' }, { key: 'bookerPhone', label: '預約人電話', icon: 'mdi-cellphone', isTel: true }, { key: 'bookerEmail', label: '預約人EMAIL', icon: 'mdi-email-outline', isMail: true }, { key: 'bookerIdNumber', label: '預約人身分證(驗證碼)', icon: 'mdi-card-account-details-outline' } ]},
   { title: '驗屋與預約詳情', fields: [ { key: 'bookingType', label: '預約項目', icon: 'mdi-format-list-checks' }, { key: 'inspectionMethod', label: '選擇方式', icon: 'mdi-cog-outline' }, { key: 'agentName', label: '受託人姓名', icon: 'mdi-account-tie-outline' }, { key: 'agentPhone', label: '受託人電話', icon: 'mdi-phone-in-talk-outline', isTel: true } ]},
   { title: '驗屋文件及報告', fields: [  { key: 'inspectionDocsUrl', label: '驗屋文件', icon: 'mdi-file-document-outline' }, { key: 'inspectionReportUrl', label: '驗屋報告', icon: 'mdi-file-chart-outline' }, ]}
@@ -568,6 +584,7 @@ const editableFields = computed(() => {
   // 排除掉唯讀的欄位
   fields.delete('inspectionDocsUrl');
   fields.delete('inspectionReportUrl');
+  fields.delete('salesperson'); // 銷售人員為陣列，僅供檢視；請至戶別資料總表編輯
   return fields;
 });
 
@@ -711,7 +728,7 @@ const allFieldKeys = fieldConfig.flatMap(panel => panel.fields.map(field => fiel
 
   keysToCompare.forEach(key => {
     // ... (比較原始值和編輯後的值，填充 payload 的邏輯) ...
-        if (key === 'inspectionDocsUrl' || key === 'inspectionReportUrl') return;
+        if (key === 'inspectionDocsUrl' || key === 'inspectionReportUrl' || key === 'salesperson') return;
     const originalValue = props.appointment[key];
     const editedValue = editableEvent.value[key];
     let changeDetected = false;
@@ -907,6 +924,30 @@ const inspectorChipOptions = computed(() => {
 function isInspectorSelected(name) {
   return editableInspectors.value.includes(name);
 }
+
+// --- 排休狀態：預約日期(台灣時間) + 時段開始時間 → 人員是否受排休影響 ---
+const TAIPEI_DATE_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
+const appointmentDateStr = computed(() => {
+  const raw = props.appointment?.appointmentDate;
+  if (!raw) return '';
+  const d = raw instanceof Date ? raw : new Date(raw);
+  if (isNaN(d.getTime())) return '';
+  return TAIPEI_DATE_FMT.format(d);
+});
+const appointmentStartTime = computed(() => extractStartTime(props.appointment?.appointmentTimeSlot));
+
+// 該人員在此預約時段的排休類型（'am'|'pm'|'full'|null）；有排休者 chip 變粉紅但依然可選
+function chipLeaveType(name) {
+  if (!appointmentDateStr.value) return null;
+  return getLeaveTypeForSlot(props.inspectorLeaveMap, appointmentDateStr.value, appointmentStartTime.value, name);
+}
+
+// 已被選取、卻在此時段排休的人員（顯示警示）
+const selectedOnLeaveNames = computed(() =>
+  editableInspectors.value
+    .filter(name => chipLeaveType(name))
+    .map(name => `${name}(${LEAVE_TYPE_LABELS[chipLeaveType(name)]})`)
+);
 
 function toggleInspector(name) {
   const idx = editableInspectors.value.indexOf(name);

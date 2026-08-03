@@ -7903,6 +7903,23 @@ export async function liffGetCancelNotifyRecipients(projectId, appointmentId) {
 }
 
 /**
+ * [LIFF用] 讀取驗屋人員排休（日期區間，供時間表與詳細資訊顯示排休標記）
+ * @returns {Promise<Array>} 排休/備註紀錄陣列
+ */
+export async function liffFetchInspectorLeaves(projectId, startDate, endDate) {
+  try {
+    const result = await liffCalendarApiRouter({
+      action: 'fetchInspectorLeaves',
+      data: { projectId, startDate, endDate }
+    });
+    return result.data?.data || [];
+  } catch (error) {
+    console.error("API liffFetchInspectorLeaves 錯誤:", error);
+    return [];
+  }
+}
+
+/**
  * [LIFF用] 僅更新單筆預約紀錄的驗屋人員欄位
  * (V2: 呼叫 liffCalendarApi 路由)
  */
