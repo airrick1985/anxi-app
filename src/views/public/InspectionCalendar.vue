@@ -246,14 +246,20 @@
           <v-list density="compact">
             <v-list-item
               prepend-icon="mdi-image-area"
-              title="下載 (PNG)"
-              @click="handleDownloadPng"
+              title="下載日期PNG"
+              @click="isDatePngDialogVisible = true"
               :disabled="isDownloadingPdf || isDownloadingExcel"
             >
               <template v-slot:append>
                 <v-progress-circular v-if="isDownloadingPdf" indeterminate color="grey" size="20" width="2"></v-progress-circular>
               </template>
             </v-list-item>
+            <v-list-item
+              prepend-icon="mdi-account-multiple-outline"
+              title="下載人員行程表 (PNG)"
+              @click="isPersonPngDialogVisible = true"
+              :disabled="isDownloadingPdf || isDownloadingExcel"
+            ></v-list-item>
             <v-list-item
               prepend-icon="mdi-microsoft-excel"
               title="下載 (Excel)"
@@ -1270,7 +1276,102 @@
       </v-card>
     </v-dialog>
 
+    <!-- 下載人員行程表(PNG)：勾選人員後下載（每人一張 / 合併一張） -->
+    <v-dialog v-model="isPersonPngDialogVisible" max-width="640px" scrollable :fullscreen="xs">
+      <v-card>
+        <v-card-title class="text-h6 d-flex align-center bg-blue-grey-lighten-5" v-draggable-dialog>
+          <v-icon start>mdi-account-multiple-outline</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">下載人員行程表 (PNG)</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="isPersonPngDialogVisible = false"></v-btn>
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-card-text class="pa-4">
+          <div class="text-caption text-medium-emphasis mb-2">
+            日期區間與篩選條件跟隨時間表目前設定（{{ formattedDateRangeTitle }}），共 {{ personPngEventsInRange.length }} 筆預約；顯示欄位與資料列顏色跟隨「顯示設定」的事件欄位與事件顏色；一筆預約有多位人員時，會在每位人員的行程表各列一次。
+          </div>
+          <v-alert v-if="personPngEventsInRange.length === 0" type="info" variant="tonal"
+            text="目前日期區間與篩選條件下沒有預約資料。"></v-alert>
+          <v-row v-else dense>
+            <v-col v-for="(meta, groupKey) in PERSON_PNG_GROUP_META" :key="groupKey" cols="12" sm="6">
+              <div class="d-flex align-center mb-1">
+                <span class="text-subtitle-2 font-weight-bold">{{ meta.label }}</span>
+                <span class="text-caption text-medium-emphasis ml-1">（已選 {{ personPngSelected[groupKey].length }}/{{ personPngGroups[groupKey].length }}）</span>
+                <v-spacer></v-spacer>
+                <v-btn size="x-small" variant="text" color="primary" @click="personPngSelected[groupKey] = personPngGroups[groupKey].map(([n]) => n)">全選</v-btn>
+                <v-btn size="x-small" variant="text" color="grey-darken-1" @click="personPngSelected[groupKey] = []">清除</v-btn>
+              </div>
+              <div class="person-png-list rounded border">
+                <v-checkbox
+                  v-for="[name, evts] in personPngGroups[groupKey]"
+                  :key="name"
+                  v-model="personPngSelected[groupKey]"
+                  :value="name"
+                  :label="`${name}（${evts.length} 筆）`"
+                  density="compact" hide-details color="primary"
+                ></v-checkbox>
+                <div v-if="personPngGroups[groupKey].length === 0" class="text-caption text-medium-emphasis pa-3 text-center">此區間沒有資料</div>
+              </div>
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3 bg-grey-lighten-4 flex-wrap">
+          <span class="text-caption text-medium-emphasis">已選 {{ personPngSelectedCount }} 人</span>
+          <v-spacer></v-spacer>
+          <v-btn color="grey-darken-1" variant="text" :disabled="isDownloadingPdf" @click="isPersonPngDialogVisible = false">取消</v-btn>
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-image-area"
+            :disabled="personPngSelectedCount === 0 || isDownloadingPdf"
+            @click="handleDownloadPersonPngCombined">合併一張</v-btn>
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-image-multiple-outline"
+            :disabled="personPngSelectedCount === 0" :loading="isDownloadingPdf"
+            @click="handleDownloadPersonPngSeparate">每人一張</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
+    <!-- 下載日期PNG：選擇日期區間後下載時間表圖檔 -->
+    <v-dialog v-model="isDatePngDialogVisible" max-width="420px">
+      <v-card>
+        <v-card-title class="text-h6 d-flex align-center bg-blue-grey-lighten-5" v-draggable-dialog>
+          <v-icon start>mdi-image-area</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">下載日期PNG</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="isDatePngDialogVisible = false"></v-btn>
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-card-text class="pa-4">
+          <div class="text-caption text-medium-emphasis mb-2">
+            選擇要下載的日期區間（預設為時間表目前檢視範圍）；項目／狀態等篩選條件跟隨時間表目前設定。
+          </div>
+          <div class="d-flex align-center ga-2">
+            <input type="date" v-model="datePngRange.start" class="date-png-input">
+            <span class="text-grey">~</span>
+            <input type="date" v-model="datePngRange.end" class="date-png-input">
+          </div>
+          <div class="d-flex align-center mt-3">
+            <v-progress-circular v-if="isListExportFetching" indeterminate size="16" width="2" color="primary" class="mr-2"></v-progress-circular>
+            <span class="text-caption" :class="isListExportFetching ? 'text-medium-emphasis' : ''">
+              {{ isListExportFetching ? '載入區間資料中…' : `此區間共 ${datePngCount} 筆預約` }}
+            </span>
+          </div>
+          <v-alert
+            v-if="datePngRange.start && datePngRange.end && datePngRange.start > datePngRange.end"
+            type="warning" variant="tonal" density="compact" class="mt-2"
+            text="開始日期不可晚於結束日期。"
+          ></v-alert>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3 bg-grey-lighten-4">
+          <v-spacer></v-spacer>
+          <v-btn color="grey-darken-1" variant="text" :disabled="isDownloadingPdf" @click="isDatePngDialogVisible = false">取消</v-btn>
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-tray-arrow-down"
+            :disabled="!datePngRange.start || !datePngRange.end || datePngRange.start > datePngRange.end || isListExportFetching"
+            :loading="isDownloadingPdf"
+            @click="handleDatePngDownload">下載PNG</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
 
      <v-dialog v-model="isCancelConfirmDialogVisible" max-width="500px" persistent>
@@ -1512,14 +1613,20 @@
         <v-divider></v-divider>
         <v-list-item
           prepend-icon="mdi-image-area"
-          title="下載PNG"
-          @click="handleDownloadPng"
+          title="下載日期PNG"
+          @click="isDatePngDialogVisible = true"
           :disabled="isDownloadingPdf || isDownloadingExcel"
         >
           <template v-slot:append>
             <v-progress-circular v-if="isDownloadingPdf" indeterminate color="grey" size="20" width="2"></v-progress-circular>
           </template>
         </v-list-item>
+        <v-list-item
+          prepend-icon="mdi-account-multiple-outline"
+          title="下載人員行程表PNG"
+          @click="isPersonPngDialogVisible = true"
+          :disabled="isDownloadingPdf || isDownloadingExcel"
+        ></v-list-item>
         <v-list-item
           prepend-icon="mdi-microsoft-excel"
           title="下載Excel"
@@ -1548,7 +1655,7 @@ import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
 import ScheduleListExportDialog from '@/components/ScheduleListExportDialog.vue';
 import InspectorLeaveManagerDialog from '@/components/InspectorLeaveManagerDialog.vue';
-import { buildLeaveMap, annotateInspectorPersons } from '@/utils/inspectorLeaveUtils';
+import { buildLeaveMap, annotateInspectorPersons, getLeaveTypeForSlot, LEAVE_TYPE_LABELS } from '@/utils/inspectorLeaveUtils';
 
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -3849,7 +3956,8 @@ async function sharePngFromPreview() {
   if (!ok) showSnackbar('此瀏覽器不支援分享，請直接長按圖片儲存', 'info');
 }
 
-async function handleDownloadPng() {
+// rangeStart / rangeEnd 未指定時，使用時間表目前檢視範圍（「下載日期PNG」對話框會傳入自選區間）
+async function handleDownloadPng(rangeStart, rangeEnd) {
  isDownloadingPdf.value = true;
 
  const chunkArray = (array, size) => {
@@ -3861,8 +3969,8 @@ async function handleDownloadPng() {
  };
 
  try {
-  const start = startDate.value;
-  const end = endDate.value;
+  const start = rangeStart instanceof Date ? rangeStart : startDate.value;
+  const end = rangeEnd instanceof Date ? rangeEnd : endDate.value;
 
   if (!start || !end) {
    throw new Error("請先選擇有效的開始與結束日期。");
@@ -4060,6 +4168,324 @@ async function handleDownloadPng() {
   isDownloadingPdf.value = false;
  }
 }
+
+// ── 下載日期PNG：選擇日期區間後下載時間表圖檔 ──
+const isDatePngDialogVisible = ref(false);
+const datePngRange = reactive({ start: null, end: null }); // yyyy-MM-dd
+
+// 開啟對話框時預設帶入時間表目前檢視範圍
+watch(isDatePngDialogVisible, (open) => {
+  if (open) {
+    datePngRange.start = startDate.value ? format(startDate.value, 'yyyy-MM-dd') : null;
+    datePngRange.end = endDate.value ? format(endDate.value, 'yyyy-MM-dd') : null;
+  }
+});
+
+// 調整區間時補抓該區間的預約資料（沿用列表匯出的載入機制，合併進 allAppointments）
+watchDebounced(
+  () => [datePngRange.start, datePngRange.end],
+  ([start, end]) => {
+    if (!isDatePngDialogVisible.value || !start || !end || start > end) return;
+    handleListExportFetchRange({ start, end });
+  },
+  { debounce: 600 }
+);
+
+// 選定區間內符合目前篩選條件的筆數（提示用）
+const datePngCount = computed(() => {
+  if (!datePngRange.start || !datePngRange.end) return 0;
+  return filteredAppointments.value.filter(evt => {
+    if (!evt.start) return false;
+    const k = format(evt.start, 'yyyy-MM-dd');
+    return k >= datePngRange.start && k <= datePngRange.end;
+  }).length;
+});
+
+async function handleDatePngDownload() {
+  if (!datePngRange.start || !datePngRange.end || datePngRange.start > datePngRange.end) return;
+  const start = parseISO(`${datePngRange.start}T00:00:00`);
+  const end = parseISO(`${datePngRange.end}T00:00:00`);
+  await handleDownloadPng(start, end);
+  isDatePngDialogVisible.value = false;
+}
+
+// ── 下載人員行程表(PNG)：對話框勾選人員後下載，每人一張或合併一張 ──
+// 資料範圍與篩選條件跟隨時間表目前設定；一筆預約有多位人員時會在每位人員底下各列一次
+const isPersonPngDialogVisible = ref(false);
+const personPngSelected = reactive({ inspectors: [], salesperson: [] });
+const PERSON_PNG_GROUP_META = {
+  inspectors: { label: '驗屋人員', theme: { headerBg: '#E8EAF6', headerText: '#283593' } },
+  salesperson: { label: '銷售人員', theme: { headerBg: '#F3E5F5', headerText: '#6A1B9A' } },
+};
+
+// 目前日期區間＋篩選條件下的預約（依開始時間排序）
+const personPngEventsInRange = computed(() => {
+  if (!startDate.value || !endDate.value) return [];
+  const sKey = format(startDate.value, 'yyyy-MM-dd');
+  const eKey = format(endDate.value, 'yyyy-MM-dd');
+  return filteredAppointments.value
+    .filter(evt => {
+      if (!evt.start) return false;
+      const k = format(evt.start, 'yyyy-MM-dd');
+      return k >= sKey && k <= eKey;
+    })
+    .sort((a, b) => a.start - b.start);
+});
+
+// 依人員拆分：拆人邏輯與樞紐分析相同（getPivotValues）；未填寫歸到最後，其餘依筆數多→少
+function groupPersonPngEvents(dimKey) {
+  const map = new Map();
+  personPngEventsInRange.value.forEach(evt => {
+    getPivotValues(evt, dimKey).forEach(name => {
+      if (!map.has(name)) map.set(name, []);
+      map.get(name).push(evt);
+    });
+  });
+  return Array.from(map.entries()).sort((a, b) => {
+    const aEmpty = a[0] === PIVOT_EMPTY_LABEL ? 1 : 0;
+    const bEmpty = b[0] === PIVOT_EMPTY_LABEL ? 1 : 0;
+    return (aEmpty - bEmpty) || (b[1].length - a[1].length) || a[0].localeCompare(b[0], 'zh-Hant');
+  });
+}
+const personPngGroups = computed(() => ({
+  inspectors: groupPersonPngEvents('inspectors'),
+  salesperson: groupPersonPngEvents('salesperson'),
+}));
+const personPngSelectedCount = computed(() =>
+  personPngSelected.inspectors.length + personPngSelected.salesperson.length
+);
+
+// 開啟對話框時預設全選
+watch(isPersonPngDialogVisible, (open) => {
+  if (open) {
+    personPngSelected.inspectors = personPngGroups.value.inspectors.map(([name]) => name);
+    personPngSelected.salesperson = personPngGroups.value.salesperson.map(([name]) => name);
+  }
+});
+
+const escapePngHtml = (str) => String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const PERSON_PNG_DOW = ['日', '一', '二', '三', '四', '五', '六'];
+// 平均分配欄寬（table-layout:fixed 且不設個別寬度）、允許文字換行
+const PERSON_PNG_TD = 'border:1px solid #e0e0e0;padding:5px 8px;vertical-align:top;word-break:break-word;overflow-wrap:anywhere;';
+const PERSON_PNG_TH = 'border:1px solid #dee2e6;padding:6px 8px;background:#f8f9fa;font-weight:bold;text-align:left;word-break:break-word;';
+
+// 醒目欄位色塊：與事件卡片上的驗屋人員/銷售人員/備註樣式一致
+const PERSON_PNG_HL_STYLES = {
+  inspectors: 'background-color:#E8EAF6;color:#283593;border:1px solid #9FA8DA;',
+  salesperson: 'background-color:#F3E5F5;color:#6A1B9A;border:1px solid #CE93D8;',
+  remarks: 'background-color:#FFEBEE;color:#B71C1C;border:1px solid #EF9A9A;',
+  bookingRemarks: 'background-color:#FFF8E1;color:#6D4C41;border:1px solid #FFE082;',
+};
+
+// 行程表欄位＝「顯示設定」目前勾選的事件顯示欄位（含動態自訂欄位），前面固定日期/時段、最後為狀態
+const personPngColumns = computed(() =>
+  displayFieldOptions.value.filter(option => selectedDisplayFields.value.includes(option.key))
+);
+
+// 單一儲存格：取值與事件顯示相同（getFieldValue＋formatter）；醒目欄位以事件同款色塊呈現
+function buildPersonPngCellHTML(evt, option) {
+  const raw = getFieldValue(evt, option);
+  if (raw === null || raw === undefined || raw === '') return '';
+  const text = raw instanceof Date ? safeFormatDate(raw, 'yyyy-MM-dd') : String(raw);
+  const hlStyle = PERSON_PNG_HL_STYLES[option.key];
+  if (option.key === 'inspectors') {
+    // 驗屋人員：沿用事件的排休標註（排休者粉紅標記）
+    const persons = annotateInspectorPersons(text, inspectorLeaveMap.value, format(evt.start, 'yyyy-MM-dd'), format(evt.start, 'HH:mm'));
+    const LEAVE_STYLE = 'display:inline-block;background-color:#FCE4EC;color:#C2185B;border:1px solid #F48FB1;border-radius:3px;padding:0 3px;font-weight:800;';
+    const content = persons.map(p =>
+      p.onLeave ? `<span style="${LEAVE_STYLE}">${escapePngHtml(p.label)}</span>` : escapePngHtml(p.label)
+    ).join(',');
+    return `<span style="${hlStyle}display:inline-block;border-radius:4px;padding:1px 5px;font-weight:700;">${content}</span>`;
+  }
+  if (hlStyle) {
+    return `<span style="${hlStyle}display:inline-block;border-radius:4px;padding:1px 5px;font-weight:700;">${escapePngHtml(text)}</span>`;
+  }
+  const formatted = option.formatter ? option.formatter(raw) : text;
+  return escapePngHtml(formatted ?? '');
+}
+
+function buildPersonPngRowsHTML(person, events, isInspectorBlock) {
+  const columns = personPngColumns.value;
+  return events.map(evt => {
+    const dateKey = format(evt.start, 'yyyy-MM-dd');
+    const time = format(evt.start, 'HH:mm');
+    const dateLabel = `${format(evt.start, 'MM/dd')}（${PERSON_PNG_DOW[evt.start.getDay()]}）`;
+    // 驗屋人員區塊：該人員於該日該時段排休時，於時段旁標註提醒
+    let leaveBadge = '';
+    if (isInspectorBlock && person !== PIVOT_EMPTY_LABEL) {
+      const leaveType = getLeaveTypeForSlot(inspectorLeaveMap.value, dateKey, time, person);
+      if (leaveType) {
+        leaveBadge = `<span style="margin-left:4px;background:#FCE4EC;color:#C2185B;border:1px solid #F48FB1;border-radius:3px;padding:0 4px;font-weight:800;">${LEAVE_TYPE_LABELS[leaveType]}</span>`;
+      }
+    }
+    // 資料列底色/文字色沿用畫面上的事件顏色設定（取消/已完成→自訂顏色→關鍵字顏色→預設）
+    const style = getEventStyle(evt);
+    const cancelled = evt.status === '取消';
+    const rowStyle = `background-color:${style.backgroundColor};color:${style.color};${cancelled ? 'text-decoration:line-through;opacity:.8;' : ''}`;
+    const cells = columns.map(option => `<td style="${PERSON_PNG_TD}">${buildPersonPngCellHTML(evt, option)}</td>`).join('');
+    return `<tr style="${rowStyle}">
+      <td style="${PERSON_PNG_TD}">${escapePngHtml(dateLabel)}</td>
+      <td style="${PERSON_PNG_TD}font-weight:700;">${escapePngHtml(time)}${leaveBadge}</td>
+      ${cells}
+      <td style="${PERSON_PNG_TD}text-align:center;">${escapePngHtml(evt.status || '')}</td>
+    </tr>`;
+  }).join('');
+}
+
+// 單一人員的卡片區塊（標題色依驗屋/銷售人員區分）
+function buildPersonPngBlockHTML(person, events, groupKey) {
+  const meta = PERSON_PNG_GROUP_META[groupKey];
+  const headCells = ['日期', '時段', ...personPngColumns.value.map(o => o.label), '狀態']
+    .map(label => `<th style="${PERSON_PNG_TH}">${escapePngHtml(label)}</th>`).join('');
+  return `
+    <div style="border:1px solid #dee2e6;border-radius:8px;margin-bottom:14px;overflow:hidden;">
+      <div style="background:${meta.theme.headerBg};color:${meta.theme.headerText};padding:6px 12px;font-size:16px;font-weight:800;">
+        ${escapePngHtml(person)}<span style="font-weight:600;font-size:13px;margin-left:8px;">${events.length} 筆</span>
+      </div>
+      <table style="border-collapse:collapse;width:100%;table-layout:fixed;font-size:14px;">
+        <thead><tr>${headCells}</tr></thead>
+        <tbody>${buildPersonPngRowsHTML(person, events, groupKey === 'inspectors')}</tbody>
+      </table>
+    </div>`;
+}
+
+// 將 HTML 內容渲染成 PNG blob（頂部加紅字更新時間戳記）
+async function renderPersonPngBlob(innerHTML) {
+  const tempContainer = document.createElement('div');
+  Object.assign(tempContainer.style, {
+    position: 'absolute', left: '-9999px', width: '1123px',
+    padding: '20px', backgroundColor: 'white',
+  });
+  tempContainer.innerHTML = `<div style="font-size:3em;font-weight:bold;color:red;margin-bottom:8px;">${escapePngHtml(getTaiwanTimestampStamp())} 更新</div>` + innerHTML;
+  document.body.appendChild(tempContainer);
+  try {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const canvas = await html2canvas(tempContainer, { scale: 2, useCORS: true });
+    return await new Promise((resolve, reject) =>
+      canvas.toBlob(b => (b ? resolve(b) : reject(new Error('圖片轉檔失敗'))), 'image/png')
+    );
+  } finally {
+    document.body.removeChild(tempContainer);
+  }
+}
+
+// 已勾選的人員清單 [{ groupKey, person, events }]（依驗屋→銷售、各組原本排序）
+function selectedPersonPngEntries() {
+  const entries = [];
+  for (const groupKey of Object.keys(PERSON_PNG_GROUP_META)) {
+    for (const [person, events] of personPngGroups.value[groupKey]) {
+      if (personPngSelected[groupKey].includes(person)) entries.push({ groupKey, person, events });
+    }
+  }
+  return entries;
+}
+
+const sanitizePngFileName = (name) => String(name).replace(/[\\/:*?"<>|]/g, '_');
+
+// 每人一張：逐一產圖後下載；手機優先以系統分享面板一次分享全部圖檔
+async function handleDownloadPersonPngSeparate() {
+  if (personPngSelectedCount.value === 0) return;
+  isDownloadingPdf.value = true;
+  try {
+    const rangeLabel = `${format(startDate.value, 'yyyy/MM/dd')} - ${format(endDate.value, 'yyyy/MM/dd')}`;
+    const rangeFile = `${format(startDate.value, 'yyyyMMdd')}-${format(endDate.value, 'yyyyMMdd')}`;
+
+    const files = [];
+    for (const { groupKey, person, events } of selectedPersonPngEntries()) {
+      const meta = PERSON_PNG_GROUP_META[groupKey];
+      const innerHTML = `
+        <h3 style="font-size:1.25rem;margin:0 0 10px;">${escapePngHtml(projectName.value)} - ${escapePngHtml(person)}（${meta.label}）行程表: ${rangeLabel}</h3>
+        ${buildPersonPngBlockHTML(person, events, groupKey)}`;
+      const blob = await renderPersonPngBlob(innerHTML);
+      files.push({ blob, fileName: `${projectName.value}_${meta.label}_${sanitizePngFileName(person)}_${rangeFile}.png` });
+    }
+
+    if (isMobileLike()) {
+      // 手機：優先一次分享多張（可存到相簿或傳到 LINE）
+      try {
+        const fileObjs = files.map(f => new File([f.blob], f.fileName, { type: 'image/png' }));
+        if (navigator.canShare && navigator.canShare({ files: fileObjs })) {
+          await navigator.share({ files: fileObjs, title: '人員行程表' });
+          isPersonPngDialogVisible.value = false;
+          return;
+        }
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // 使用者自行取消分享面板
+        console.warn('多檔分享失敗，改用逐張下載:', e);
+      }
+      // 不支援多檔分享：單張退回既有預覽（長按儲存），多張改逐張下載
+      if (files.length === 1) {
+        pngPreviewBlob.value = files[0].blob;
+        pngPreviewFileName.value = files[0].fileName;
+        pngPreviewUrl.value = URL.createObjectURL(files[0].blob);
+        isPngPreviewVisible.value = true;
+        return;
+      }
+    }
+
+    for (const f of files) {
+      const url = URL.createObjectURL(f.blob);
+      triggerLinkDownload(url, f.fileName);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      // 逐張間隔，避免瀏覽器擋下連續多個下載
+      await new Promise(resolve => setTimeout(resolve, 400));
+    }
+    isPersonPngDialogVisible.value = false;
+  } catch (err) {
+    console.error('人員行程表圖片產生失敗:', err);
+    error.value = `產生圖片失敗: ${err.message}`;
+  } finally {
+    isDownloadingPdf.value = false;
+  }
+}
+
+// 合併一張：兩區塊總表版型，僅包含勾選的人員
+async function handleDownloadPersonPngCombined() {
+  if (personPngSelectedCount.value === 0) return;
+  isDownloadingPdf.value = true;
+  try {
+    const rangeLabel = `${format(startDate.value, 'yyyy/MM/dd')} - ${format(endDate.value, 'yyyy/MM/dd')}`;
+    const sections = Object.entries(PERSON_PNG_GROUP_META).map(([groupKey, meta]) => {
+      const blocks = personPngGroups.value[groupKey]
+        .filter(([person]) => personPngSelected[groupKey].includes(person))
+        .map(([person, events]) => buildPersonPngBlockHTML(person, events, groupKey))
+        .join('');
+      if (!blocks) return '';
+      return `
+        <div style="margin-top:24px;">
+          <h3 style="font-size:1.25rem;margin:0 0 4px;">${escapePngHtml(projectName.value)} - ${meta.label}行程表: ${rangeLabel}</h3>
+          <div style="font-size:12px;color:#757575;margin-bottom:10px;">一筆預約有多位人員時，會在每位人員底下各列一次。</div>
+          ${blocks}
+        </div>`;
+    }).join('');
+
+    const blob = await renderPersonPngBlob(sections);
+    const fileName = `${projectName.value}_人員行程表_${format(startDate.value, 'yyyyMMdd')}-${format(endDate.value, 'yyyyMMdd')}.png`;
+
+    if (isMobileLike()) {
+      // 手機：優先叫出系統分享面板（可儲存到相簿/檔案或分享到 LINE）
+      const shared = await shareFileViaSystem(blob, fileName, 'image/png');
+      if (!shared) {
+        pngPreviewBlob.value = blob;
+        pngPreviewFileName.value = fileName;
+        pngPreviewUrl.value = URL.createObjectURL(blob);
+        isPngPreviewVisible.value = true;
+        return;
+      }
+    } else {
+      const url = URL.createObjectURL(blob);
+      triggerLinkDownload(url, fileName);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+    isPersonPngDialogVisible.value = false;
+  } catch (err) {
+    console.error('人員行程表圖片產生失敗:', err);
+    error.value = `產生圖片失敗: ${err.message}`;
+  } finally {
+    isDownloadingPdf.value = false;
+  }
+}
+
 async function handleDownloadExcel() {
   isDownloadingExcel.value = true;
   try {
@@ -4527,6 +4953,25 @@ function navigateToHouseholdGrid() {
   color: #6A1B9A; /* purple darken-3 */
   border: 1px solid #CE93D8;
   font-weight: 600;
+}
+/* 下載人員行程表：人員勾選清單 */
+.person-png-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px 8px;
+}
+/* 下載日期PNG：日期區間輸入框 */
+.date-png-input {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 0.95rem;
+  width: 100%;
+  color: #333;
+}
+.date-png-input:focus {
+  outline: 2px solid #1976D2;
+  border-color: transparent;
 }
 /* 醒目色塊容器：驗屋人員與銷售人員並排同一列，備註類獨占整列 */
 .event-highlight-wrap {
