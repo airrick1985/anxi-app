@@ -49,12 +49,12 @@
          <tbody>
           <tr class="font-weight-bold bg-blue-grey-lighten-5">
            <td>房屋總面積</td>
-           <td class="text-right">{{ formatNumber(item.unitDetails.area_house_ping) }} 坪</td>
+           <td class="text-right">{{ formatNumber(item.unitDetails.area_house_ping) }} 坪{{ formatSqmSuffix(item.unitDetails.area_house_sqm) }}</td>
           </tr>
           <tr v-for="(detail, i) in areaDetails" :key="i">
            <td class="text-grey-darken-1">{{ detail.label }}</td>
            <td class="text-right">
-            {{ detail.isPercentage ? formatPercentage(detail.value) : `${formatNumber(detail.value)} ${detail.unit}` }}
+            {{ detail.isPercentage ? formatPercentage(detail.value) : `${formatNumber(detail.value)} ${detail.unit}${formatSqmSuffix(detail.sqm)}` }}
            </td>
           </tr>
          </tbody>
@@ -152,12 +152,12 @@
        <tbody>
         <tr class="font-weight-bold bg-blue-grey-lighten-5">
          <td>房屋總面積</td>
-         <td class="text-right">{{ formatNumber(item.unitDetails.area_house_ping) }} 坪</td>
+         <td class="text-right">{{ formatNumber(item.unitDetails.area_house_ping) }} 坪{{ formatSqmSuffix(item.unitDetails.area_house_sqm) }}</td>
         </tr>
         <tr v-for="(detail, i) in areaDetails" :key="i">
          <td class="text-grey-darken-1">{{ detail.label }}</td>
          <td class="text-right">
-          {{ detail.isPercentage ? formatPercentage(detail.value) : `${formatNumber(detail.value)} ${detail.unit}` }}
+          {{ detail.isPercentage ? formatPercentage(detail.value) : `${formatNumber(detail.value)} ${detail.unit}${formatSqmSuffix(detail.sqm)}` }}
          </td>
         </tr>
        </tbody>
@@ -1771,15 +1771,22 @@ const formattedParkingPrice = computed(() => {
 const areaDetails = computed(() => {
   const details = props.item.unitDetails;
   if (!details) return [];
+  // sqm 直接取用資料庫的平方公尺欄位值（不做換算），顯示為「XX.XX 坪(XX.XXm²)」
   const areaItems = [
-    { label: '主建物(室內)', value: details.area_main_ping, unit: '坪' },
-    { label: '附屬建物(陽台)', value: details.area_ancillary_ping, unit: '坪' },
-    { label: '共用部分(公設)', value: details.area_common_ping, unit: '坪' },
+    { label: '主建物(室內)', value: details.area_main_ping, unit: '坪', sqm: details.area_main_sqm },
+    { label: '附屬建物(陽台)', value: details.area_ancillary_ping, unit: '坪', sqm: details.area_ancillary_sqm },
+    { label: '共用部分(公設)', value: details.area_common_ping, unit: '坪', sqm: details.area_common_sqm },
     { label: '露臺(不計坪)', value: details.area_terrace_ping, unit: '坪' },
+    { label: '土地持分面積', value: details.land_share_ping, unit: '坪', sqm: details.land_share_sqm },
     { label: '公設比', value: details.common_area_ratio, unit: '%', isPercentage: true }
   ];
   return areaItems.filter(item => item.value !== null && item.value !== undefined && item.value !== '');
 });
+// 坪數後方帶出 m²（有資料才顯示）
+function formatSqmSuffix(sqm) {
+  const num = parseFloat(sqm);
+  return (sqm === null || sqm === undefined || sqm === '' || isNaN(num)) ? '' : `(${formatNumber(sqm)}m²)`;
+}
 
 function formatPercentage(value) {
   const num = parseFloat(value);

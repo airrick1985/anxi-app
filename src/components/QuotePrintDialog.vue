@@ -417,23 +417,30 @@ function renderSheet(item) {
   const area = ud.area_house_ping;
 
   // 詳細面積資訊：獨立橫列（每項目一小欄：上標籤、下數值）
+  // 坪數為主值，資料庫的平方公尺欄位值（不做換算）以小字淡色顯示於下一行，凸顯坪數
+  const pingWithSqm = (ping, sqm) => {
+    const s = Number(sqm);
+    const hasSqm = sqm !== null && sqm !== undefined && sqm !== '' && !isNaN(s);
+    return { main: `${fmt(ping, 2)} 坪`, sqm: hasSqm ? `(${fmt(s, 2)}m²)` : '' };
+  };
   const areaDetailItems = [
-    ['主建物(室內)', ud.area_main_ping, '坪'],
-    ['附屬建物(陽台)', ud.area_ancillary_ping, '坪'],
-    ['共用部分(公設)', ud.area_common_ping, '坪'],
-    ['露臺(不計坪)', ud.area_terrace_ping, '坪'],
+    ['主建物(室內)', ud.area_main_ping, ud.area_main_sqm],
+    ['附屬建物(陽台)', ud.area_ancillary_ping, ud.area_ancillary_sqm],
+    ['共用部分(公設)', ud.area_common_ping, ud.area_common_sqm],
+    ['露臺(不計坪)', ud.area_terrace_ping, null],
+    ['土地持分面積', ud.land_share_ping, ud.land_share_sqm],
   ]
     .filter(([, v]) => v !== null && v !== undefined && v !== '')
-    .map(([label, v, unit]) => ({ label, text: `${fmt(v, 2)} ${unit}` }));
+    .map(([label, ping, sqm]) => ({ label, ...pingWithSqm(ping, sqm) }));
   const ratio = parseFloat(ud.common_area_ratio);
   if (!isNaN(ratio)) {
-    areaDetailItems.push({ label: '公設比', text: `${(ratio * 100).toFixed(2)} %` });
+    areaDetailItems.push({ label: '公設比', main: `${(ratio * 100).toFixed(2)} %`, sqm: '' });
   }
   const areaStrip = areaDetailItems.length ? `
     <section class="wide-strip">
       <span class="lbl">詳細面積</span>
       ${areaDetailItems.map(it => `
-      <span class="strip-item"><em>${esc(it.label)}</em><b>${esc(it.text)}</b></span>`).join('')}
+      <span class="strip-item"><em>${esc(it.label)}</em><b>${esc(it.main)}${it.sqm ? `<span class="sqm">${esc(it.sqm)}</span>` : ''}</b></span>`).join('')}
     </section>` : '';
 
   const housePrice = quoteStore.getRawDisplayHousePrice(id);
@@ -498,7 +505,7 @@ function renderSheet(item) {
   const infoCells = [
     ['戶別', `<b>${esc(item.unitId)}</b>`],
     ['物件類型', esc(type)],
-    ['面積', `${fmt(area, 2)} 坪`],
+    ['面積', (() => { const a = pingWithSqm(area, ud.area_house_sqm); return `${esc(a.main)}${a.sqm ? `<span class="sqm">${esc(a.sqm)}</span>` : ''}`; })()],
     ['首購', item.isFirstTimeBuyer === '是' ? '首購' : '非首購'],
     ['房屋總價', housePriceVal],
     [hasTerraceSplit ? '房屋單價(不含露臺)' : '房屋單價', unitPriceVal],
@@ -675,6 +682,8 @@ const SHEET_CSS = `
   .strip-item + .strip-item { border-left: 1px solid #eceff1; }
   .strip-item em { font-style: normal; font-size: 8pt; color: #78909c; white-space: nowrap; }
   .strip-item b { font-size: 10pt; color: #263238; margin-top: .6mm; font-weight: 600; white-space: nowrap; }
+  /* 平方公尺：小字淡色、獨立一行，凸顯坪數主值 */
+  .sqm { display: block; font-size: 7.5pt; color: #9e9e9e; font-weight: 400; line-height: 1.15; }
   .total-band {
     display: flex; justify-content: space-between; align-items: center;
     background: #eef4fb; border: 1px solid #b4cdec; border-radius: 1.5mm;
