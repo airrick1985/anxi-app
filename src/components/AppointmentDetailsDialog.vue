@@ -18,15 +18,63 @@
             </v-col>
 
             <v-col cols="12" sm="6">
-              <div class="text-caption text-grey-darken-1">預約日期與時段</div>
-              <div class="text-body-1 font-weight-medium">
-                {{ formatDate(appointment?.appointmentDate, 'yyyy-MM-dd') }}
+              <div class="text-caption text-grey-darken-1">
+                預約日期與時段<span v-if="canEdit && !isEditMode">（點擊即可修改）</span>
+              </div>
+              <div class="text-body-1 font-weight-medium d-flex align-center flex-wrap">
+                <!-- 日期：後台人員可直接點擊修改，不需先進入編輯模式 -->
+                <v-menu v-if="canEdit && !isEditMode" v-model="isQuickDateMenuOpen" :close-on-content-click="false" location="bottom start">
+                  <template v-slot:activator="{ props: menuActivator }">
+                    <span v-bind="menuActivator" class="quick-edit-field" title="點擊修改預約日期">
+                      {{ formatDate(appointment?.appointmentDate, 'yyyy-MM-dd') }}
+                      <v-icon size="x-small" color="grey-darken-1">mdi-pencil</v-icon>
+                    </span>
+                  </template>
+                  <v-card class="pa-2">
+                    <VueDatePicker
+                      v-model="quickEditDate"
+                      inline auto-apply locale="zh-TW"
+                      :enable-time-picker="false" :month-change-on-scroll="false"
+                      @update:model-value="onQuickDatePicked"
+                    ></VueDatePicker>
+                  </v-card>
+                </v-menu>
+                <span v-else>{{ formatDate(appointment?.appointmentDate, 'yyyy-MM-dd') }}</span>
+
                 <v-icon size="small" class="mx-1">mdi-clock-outline</v-icon>
-                {{ appointment?.appointmentTimeSlot }}
+
+                <!-- 時段：後台人員可直接點擊修改，出現時間選擇器 -->
+                <v-menu v-if="canEdit && !isEditMode" v-model="isQuickTimeMenuOpen" :close-on-content-click="false" location="bottom start">
+                  <template v-slot:activator="{ props: menuActivator }">
+                    <span v-bind="menuActivator" class="quick-edit-field" title="點擊修改預約時段">
+                      {{ appointment?.appointmentTimeSlot }}
+                      <v-icon size="x-small" color="grey-darken-1">mdi-pencil</v-icon>
+                    </span>
+                  </template>
+                  <v-card class="pa-2">
+                    <VueDatePicker
+                      v-model="quickEditTime"
+                      time-picker inline auto-apply locale="zh-TW"
+                    ></VueDatePicker>
+                    <div class="d-flex justify-end ga-2 mt-2">
+                      <v-btn size="small" variant="text" @click="isQuickTimeMenuOpen = false">取消</v-btn>
+                      <v-btn size="small" color="primary" variant="flat" @click="confirmQuickTime">確定</v-btn>
+                    </div>
+                  </v-card>
+                </v-menu>
+                <span v-else>{{ appointment?.appointmentTimeSlot }}</span>
+
+                <v-progress-circular v-if="isQuickSaving" indeterminate size="16" width="2" color="primary" class="ml-2"></v-progress-circular>
                 <v-chip v-if="isEditMode" size="x-small" color="info" variant="tonal" class="ml-2">
                   <v-icon start size="x-small">mdi-pencil</v-icon>可在下方面板修改
                 </v-chip>
               </div>
+              <v-alert
+                v-if="quickEditError"
+                type="error" variant="tonal" density="compact" closable
+                class="mt-2 text-caption"
+                @click:close="quickEditError = ''"
+              >{{ quickEditError }}</v-alert>
             </v-col>
 
             <v-col cols="12" sm="4" class="d-flex flex-wrap ga-2 justify-start justify-sm-end">
@@ -841,12 +889,15 @@ const allFieldKeys = fieldConfig.flatMap(panel => panel.fields.map(field => fiel
 
   // ✅【修改】放寬判斷條件，只要包含 "時段" 和 "不存在" 即可
   const isSlotNotFoundError = errorMessage.includes('時段') && errorMessage.includes('不存在'); // <-- ✅ 修改這行
+  // 批次異常（找不到有效批次 / 未指派批次）也允許後台人員強制儲存
+  const isBatchError = errorMessage.includes('有效預約批次') || errorMessage.includes('未指派批次') || errorMessage.includes('對應的規則');
 
   console.log('isRuleError:', isRuleError);
   console.log('isSlotFullError:', isSlotFullError);
   console.log('isMethodError:', isMethodError);
   console.log('isSlotNotFoundError:', isSlotNotFoundError); // <-- 檢查這次是否變為 true
-  const combinedErrorCheck = (isRuleError || isSlotFullError || isMethodError || isSlotNotFoundError);
+  console.log('isBatchError:', isBatchError);
+  const combinedErrorCheck = (isRuleError || isSlotFullError || isMethodError || isSlotNotFoundError || isBatchError);
   console.log('Combined Error Check:', combinedErrorCheck);
   console.log('props.canEdit:', props.canEdit);
   console.log('--- End Debugging ---');
@@ -1039,6 +1090,85 @@ async function saveInlineRemark(field) {
     isSavingInline.value = false;
     if (field === 'remarks') isEditingImportantRemarks.value = false;
     else isEditingBookingRemarks.value = false;
+  }
+}
+
+// --- 頂部日期/時段快速編輯（不需先按「編輯」）---
+const isQuickDateMenuOpen = ref(false);
+const isQuickTimeMenuOpen = ref(false);
+const quickEditDate = ref(null);
+const quickEditTime = ref({ hours: 9, minutes: 0 });
+const isQuickSaving = ref(false);
+const quickEditError = ref('');
+
+// 開啟選單時，以目前預約值初始化選擇器
+watch(isQuickDateMenuOpen, (open) => {
+  if (!open) return;
+  quickEditError.value = '';
+  const raw = props.appointment?.appointmentDate;
+  const d = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+  quickEditDate.value = (d && !isNaN(d.getTime())) ? d : new Date();
+});
+watch(isQuickTimeMenuOpen, (open) => {
+  if (!open) return;
+  quickEditError.value = '';
+  const m = String(props.appointment?.appointmentTimeSlot || '').match(/^(\d{1,2}):(\d{2})/);
+  quickEditTime.value = m ? { hours: Number(m[1]), minutes: Number(m[2]) } : { hours: 9, minutes: 0 };
+});
+
+async function onQuickDatePicked(val) {
+  isQuickDateMenuOpen.value = false;
+  if (!val) return;
+  const picked = new Date(val);
+  if (isNaN(picked.getTime())) return;
+  const newDateStr = format(picked, 'yyyy-MM-dd');
+  const raw = props.appointment?.appointmentDate;
+  const cur = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+  const curDateStr = (cur && !isNaN(cur.getTime())) ? format(cur, 'yyyy-MM-dd') : '';
+  if (newDateStr === curDateStr) return; // 沒變更
+  // 以 UTC 正午送出，避免序列化跨時區時日期位移
+  await quickSaveDateTime({ appointmentDate: new Date(`${newDateStr}T12:00:00Z`) });
+}
+
+async function confirmQuickTime() {
+  isQuickTimeMenuOpen.value = false;
+  const t = quickEditTime.value;
+  if (!t || t.hours == null || t.minutes == null) return;
+  const slot = `${String(t.hours).padStart(2, '0')}:${String(t.minutes).padStart(2, '0')}`;
+  if (slot === props.appointment?.appointmentTimeSlot) return; // 沒變更
+  await quickSaveDateTime({ appointmentTimeSlot: slot });
+}
+
+// 與 saveChanges 相同的可強制儲存錯誤判斷
+function isForceableSaveError(msg) {
+  return msg.includes('不在可預約範圍內') || msg.includes('規則已被刪除')
+    || msg.startsWith('SLOT_FULL:') || msg.includes('不適用於選擇方式')
+    || (msg.includes('時段') && msg.includes('不存在'))
+    || msg.includes('有效預約批次') || msg.includes('未指派批次') || msg.includes('對應的規則');
+}
+
+async function quickSaveDateTime(bookingPayload) {
+  if (!props.appointment?.id) return;
+  isQuickSaving.value = true;
+  quickEditError.value = '';
+  const householdDocId = props.appointment.householdDocId || `${props.appointment.projectId}_${props.appointment.unitId}`;
+  const payload = { appointmentId: props.appointment.id, householdDocId, bookingPayload, householdPayload: {} };
+  try {
+    await updateAppointment(payload.appointmentId, bookingPayload, householdDocId, {});
+    emit('save', payload); // 父層會重新整理資料並關閉對話框
+  } catch (error) {
+    const msg = error.message || '儲存失敗';
+    console.error('快速修改日期/時段失敗:', msg);
+    if (isForceableSaveError(msg) && props.canEdit) {
+      // 交給既有的「確認強制儲存」對話框處理
+      forceErrorMessage.value = msg;
+      payloadToForce.value = payload;
+      isForceConfirmVisible.value = true;
+    } else {
+      quickEditError.value = `修改失敗：${msg}`;
+    }
+  } finally {
+    isQuickSaving.value = false;
   }
 }
 
@@ -1304,5 +1434,17 @@ const getStatusColor = (status) => {
 .inspector-chip-box {
   background-color: #ffffff;
   border: 1px solid #e0e0e0;
+}
+
+/* 頂部日期/時段快速編輯：虛線底線提示可點擊 */
+.quick-edit-field {
+  cursor: pointer;
+  border-bottom: 1px dashed #9e9e9e;
+  padding-bottom: 1px;
+  transition: background-color 0.15s ease;
+}
+.quick-edit-field:hover {
+  background-color: #e3f2fd;
+  border-bottom-color: #1976d2;
 }
 </style>

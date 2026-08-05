@@ -296,7 +296,7 @@
       </template>
     </v-tooltip>
 
-    <v-tooltip text="樞紐分析" location="bottom">
+    <v-tooltip text="資料透視" location="bottom">
       <template v-slot:activator="{ props }">
         <v-btn
           v-bind="props"
@@ -1166,13 +1166,13 @@
       </v-card>
     </v-dialog>
 
-    <!-- 樞紐分析 -->
+    <!-- 資料透視 -->
     <v-dialog v-model="isPivotDialogVisible" max-width="960px" scrollable>
       <v-card>
         <v-card-title class="text-h6 d-flex align-center bg-blue-grey-lighten-5" v-draggable-dialog>
           <v-icon start>mdi-table-pivot</v-icon>
           <span class="text-subtitle-1 font-weight-bold">
-            {{ projectName }} {{ formattedDateRangeTitle }} 樞紐分析
+            {{ projectName }} {{ formattedDateRangeTitle }} 資料透視
           </span>
           <v-spacer></v-spacer>
           <v-btn icon="mdi-close" variant="text" @click="isPivotDialogVisible = false"></v-btn>
@@ -1215,7 +1215,7 @@
             </div>
           </div>
 
-          <!-- 樞紐表 -->
+          <!-- 資料透視表 -->
           <v-alert v-if="pivotMatrix.rows.length === 0" type="info" variant="tonal"
             text="目前條件下無任何預約資料可供分析。"></v-alert>
           <div v-else class="bg-white rounded-lg" style="border:1px solid #eceff1;overflow:auto;max-height:60vh;">
@@ -1597,7 +1597,7 @@
         ></v-list-item>
         <v-list-item
           prepend-icon="mdi-table-pivot"
-          title="樞紐分析"
+          title="資料透視"
           @click="isPivotDialogVisible = true"
         ></v-list-item>
         <v-list-item
@@ -2985,7 +2985,7 @@ const statisticsMatrix = computed(() => {
 });
 // ✅ END: 替換 statisticsMatrix
 
-// --- 樞紐分析：對目前日期區間的預約資料做靈活的交叉統計 ---
+// --- 資料透視：對目前日期區間的預約資料做靈活的交叉統計 ---
 const isPivotDialogVisible = ref(false);
 const pivotRowDim = ref('inspectors');     // 列維度
 const pivotColDim = ref('none');           // 欄維度（'none' = 只算數量）
@@ -3048,7 +3048,7 @@ function getPivotValues(evt, dimKey) {
     }
   }
 }
-// 樞紐分析的狀態篩選：開啟對話框時預設帶入行事曆目前的狀態勾選，可在對話框內獨立調整
+// 資料透視的狀態篩選：開啟對話框時預設帶入行事曆目前的狀態勾選，可在對話框內獨立調整
 const PIVOT_STATUS_OPTIONS = ['預約中', '取消', '已完成'];
 const pivotStatuses = ref([...PIVOT_STATUS_OPTIONS]);
 watch(isPivotDialogVisible, (open) => {
@@ -3143,7 +3143,7 @@ watch(pivotRowDim, (newDim) => {
 const pivotHasPersonCount = computed(() =>
   pivotRowDim.value === 'inspectors' || pivotColDim.value === 'inspectors'
 );
-// --- 樞紐表欄位排序：點表頭切換 升冪 → 降冪 → 回復預設 ---
+// --- 資料透視表欄位排序：點表頭切換 升冪 → 降冪 → 回復預設 ---
 // key: '__name__'（列名稱欄）| '__total__'（總計/佔比欄）| 欄維度的各欄名
 const pivotSort = ref({ key: null, dir: 'asc' });
 watch([pivotRowDim, pivotColDim], () => {
@@ -3182,7 +3182,7 @@ const sortedPivotRows = computed(() => {
     return ((av - bv) * mul) || a.name.localeCompare(b.name, 'zh-Hant');
   });
 });
-// 將目前樞紐表複製為 TSV（可直接貼進 Excel / Google Sheets）
+// 將目前資料透視表複製為 TSV（可直接貼進 Excel / Google Sheets）
 function copyPivotTable() {
   const m = pivotMatrix.value;
   const lines = [];
@@ -4232,7 +4232,7 @@ const personPngEventsInRange = computed(() => {
     .sort((a, b) => a.start - b.start);
 });
 
-// 依人員拆分：拆人邏輯與樞紐分析相同（getPivotValues）；未填寫歸到最後，其餘依筆數多→少
+// 依人員拆分：拆人邏輯與資料透視相同（getPivotValues）；未填寫歸到最後，其餘依筆數多→少
 function groupPersonPngEvents(dimKey) {
   const map = new Map();
   personPngEventsInRange.value.forEach(evt => {
@@ -4769,14 +4769,14 @@ function navigateToHouseholdGrid() {
   z-index: 3000 !important;
 }
 
-/* --- 樞紐分析：狀態勾選列高度收斂 --- */
+/* --- 資料透視：狀態勾選列高度收斂 --- */
 .pivot-status-chips .v-chip-group__content,
 .pivot-status-chips {
   padding-top: 0;
   padding-bottom: 0;
 }
 
-/* --- 樞紐分析：可排序表頭 --- */
+/* --- 資料透視：可排序表頭 --- */
 .pivot-sortable {
   cursor: pointer;
   white-space: nowrap;

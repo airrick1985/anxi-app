@@ -208,6 +208,19 @@
           <span>銷控統計分析</span>
         </v-tooltip>
 
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="isSalesPivotVisible = true"
+              icon="mdi-table-pivot"
+            ></v-btn>
+          </template>
+          <span>資料透視</span>
+        </v-tooltip>
+
         <span class="toolbar-divider" aria-hidden="true" v-if="currentViewMode === 'sales'"></span>
 
         <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
@@ -1070,6 +1083,13 @@
             <v-list-item-title>銷控統計分析</v-list-item-title>
           </v-list-item>
 
+          <v-list-item @click="isMoreMenuOpen = false; isSalesPivotVisible = true">
+            <template v-slot:prepend>
+              <v-icon color="black">mdi-table-pivot</v-icon>
+            </template>
+            <v-list-item-title>資料透視</v-list-item-title>
+          </v-list-item>
+
           <v-list-item
             v-if="project.paymentScheduleFolderUrl"
             :href="project.paymentScheduleFolderUrl"
@@ -1203,7 +1223,349 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-    
+
+    <!-- 資料透視（類 Google Sheet 資料透視：左欄位 / 中設定 / 右結果 三欄式） -->
+    <v-dialog v-model="isSalesPivotVisible" max-width="1680px" :fullscreen="isMobile">
+      <v-card class="pivot-layout-card d-flex flex-column">
+        <v-card-title class="text-h6 d-flex align-center bg-blue-grey-lighten-5 flex-shrink-0">
+          <v-icon start>mdi-table-pivot</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">{{ projectName }} 銷控資料透視</span>
+          <v-chip size="small" color="blue-grey" variant="tonal" class="ml-3" prepend-icon="mdi-home-group">
+            共 {{ pivotMatrix.itemCount }} 戶
+          </v-chip>
+          <v-chip v-if="pivotHasPersonCount" size="small" color="indigo" variant="tonal" class="ml-1"
+            prepend-icon="mdi-account-multiple" title="一戶有多個值（多位銷售人員、多個車位/方案）時會分別計入，總計為「筆數」而非戶數">
+            合計 {{ pivotMatrix.grand.count }} 筆
+          </v-chip>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" @click="isSalesPivotVisible = false"></v-btn>
+        </v-card-title>
+        <v-divider></v-divider>
+
+        <div class="pivot-layout flex-grow-1">
+          <!-- 左：所有資料欄位（可搜尋、可拖曳） -->
+          <aside class="pivot-pane pivot-pane-fields">
+            <div class="pivot-pane-title"><v-icon size="15">mdi-format-list-bulleted</v-icon> 資料欄位</div>
+            <v-text-field v-model="pivotFieldSearch" placeholder="輸入文字過濾欄位" density="compact" hide-details
+              variant="outlined" clearable prepend-inner-icon="mdi-magnify"
+              class="mb-2 flex-shrink-0 pivot-field-search"></v-text-field>
+            <div class="text-caption text-grey mb-1 flex-shrink-0">拖曳欄位至右方「列／欄／值／篩選器」</div>
+            <div class="pivot-field-list">
+              <div class="pivot-field-item pivot-field-count" draggable="true"
+                @dragstart="onPivotFieldDragStart($event, '__count__')" title="拖曳到「值」計算戶數">
+                <v-icon size="14" color="indigo">mdi-counter</v-icon>
+                <span class="pivot-field-label">戶數（計數）</span>
+                <v-icon size="13" color="grey-lighten-1" class="ml-auto">mdi-drag</v-icon>
+              </div>
+              <div v-for="f in pivotFieldList" :key="f.key" class="pivot-field-item" :class="{ used: f.used }"
+                draggable="true" @dragstart="onPivotFieldDragStart($event, f.key)" :title="f.label">
+                <v-icon size="14" :color="f.numeric ? 'teal' : 'blue-grey-lighten-1'">{{ f.numeric ? 'mdi-pound' : 'mdi-label-outline' }}</v-icon>
+                <span class="pivot-field-label">{{ f.label }}</span>
+                <v-icon v-if="f.used" size="13" color="indigo" class="ml-auto" title="已用於列/欄">mdi-check</v-icon>
+                <v-icon v-else size="13" color="grey-lighten-1" class="ml-auto">mdi-drag</v-icon>
+              </div>
+              <div v-if="pivotFieldList.length === 0" class="text-caption text-grey pa-2">無符合的欄位</div>
+            </div>
+          </aside>
+
+          <!-- 中：列 / 欄 / 值 / 篩選器（拖放區＋列表新增） -->
+          <section class="pivot-pane pivot-pane-editor">
+            <div class="pivot-zone" :class="{ 'drag-over': pivotDragOverZone === 'row' }"
+              @dragover.prevent="pivotDragOverZone = 'row'" @dragleave="pivotDragOverZone = ''"
+              @drop.prevent="onPivotZoneDrop('row', $event)">
+              <div class="pivot-zone-title"><v-icon size="14">mdi-table-row</v-icon> 列</div>
+              <div class="d-flex flex-wrap ga-1 mb-1">
+                <v-chip v-for="(d, i) in pivotRowDims" :key="d" size="small" color="indigo" variant="tonal" label closable
+                  @click:close="pivotRowDims.splice(i, 1)">{{ pivotDimensionLabel(d) }}</v-chip>
+                <span v-if="pivotRowDims.length === 0" class="text-caption text-grey">拖曳欄位到此</span>
+              </div>
+              <v-autocomplete v-model="pivotRowDimToAdd" :items="pivotAddDimOptions" item-title="label" item-value="key"
+                density="compact" hide-details variant="outlined" auto-select-first placeholder="＋新增列"
+                :menu-props="{ maxHeight: 400 }" @update:model-value="k => addPivotDim('row', k)"></v-autocomplete>
+            </div>
+
+            <div class="pivot-zone" :class="{ 'drag-over': pivotDragOverZone === 'col' }"
+              @dragover.prevent="pivotDragOverZone = 'col'" @dragleave="pivotDragOverZone = ''"
+              @drop.prevent="onPivotZoneDrop('col', $event)">
+              <div class="pivot-zone-title"><v-icon size="14">mdi-table-column</v-icon> 欄</div>
+              <div class="d-flex flex-wrap ga-1 mb-1">
+                <v-chip v-for="(d, i) in pivotColDims" :key="d" size="small" color="teal" variant="tonal" label closable
+                  @click:close="pivotColDims.splice(i, 1)">{{ pivotDimensionLabel(d) }}</v-chip>
+                <span v-if="pivotColDims.length === 0" class="text-caption text-grey">拖曳欄位到此（可不設）</span>
+              </div>
+              <v-autocomplete v-model="pivotColDimToAdd" :items="pivotAddDimOptions" item-title="label" item-value="key"
+                density="compact" hide-details variant="outlined" auto-select-first placeholder="＋新增欄"
+                :menu-props="{ maxHeight: 400 }" @update:model-value="k => addPivotDim('col', k)"></v-autocomplete>
+            </div>
+
+            <div class="pivot-zone" :class="{ 'drag-over': pivotDragOverZone === 'values' }"
+              @dragover.prevent="pivotDragOverZone = 'values'" @dragleave="pivotDragOverZone = ''"
+              @drop.prevent="onPivotZoneDrop('values', $event)">
+              <div class="pivot-zone-title"><v-icon size="14">mdi-sigma</v-icon> 值</div>
+              <div v-for="(vd, i) in pivotValues" :key="i" class="pivot-value-entry mb-1">
+                <!-- 第一行：欄位（全寬，避免文字被截斷）＋ 刪除 -->
+                <div class="d-flex align-center ga-1">
+                  <v-autocomplete v-model="vd.field" :items="pivotValueFieldOptionsWithCount" item-title="label" item-value="key"
+                    density="compact" hide-details variant="outlined" auto-select-first class="flex-grow-1" style="min-width:0;"
+                    :title="pivotValueFieldLabelOf(vd.field)"
+                    :menu-props="{ maxHeight: 400 }" @update:model-value="onPivotValueFieldChange(vd)"></v-autocomplete>
+                  <v-btn icon="mdi-close" size="x-small" variant="text" color="grey" class="flex-shrink-0"
+                    :disabled="pivotValues.length <= 1" @click="removePivotValue(i)"></v-btn>
+                </div>
+                <!-- 第二行：彙總方式（獨立一行，不與欄位擠壓） -->
+                <div v-if="vd.field !== '__count__'" class="d-flex align-center ga-2 mt-1">
+                  <span class="text-caption text-grey-darken-1 flex-shrink-0">彙總</span>
+                  <v-btn-toggle v-model="vd.mode" color="indigo" variant="outlined" density="compact" mandatory
+                    class="pivot-agg-toggle">
+                    <v-btn v-for="opt in PIVOT_AGG_OPTIONS" :key="opt.key" :value="opt.key" size="x-small">{{ opt.label }}</v-btn>
+                  </v-btn-toggle>
+                </div>
+              </div>
+              <v-btn size="small" variant="text" color="indigo" prepend-icon="mdi-plus" @click="addPivotValue">新增值</v-btn>
+              <div v-if="pivotWeightedHint" class="text-caption text-indigo-darken-1 mt-1">
+                <v-icon size="13">mdi-information-outline</v-icon>
+                單價的「平均」採加權計算（總價加總 ÷ 面積加總）。
+              </div>
+            </div>
+
+            <div class="pivot-zone" :class="{ 'drag-over': pivotDragOverZone === 'filter' }"
+              @dragover.prevent="pivotDragOverZone = 'filter'" @dragleave="pivotDragOverZone = ''"
+              @drop.prevent="onPivotZoneDrop('filter', $event)">
+              <div class="pivot-zone-title"><v-icon size="14">mdi-filter-variant</v-icon> 篩選器</div>
+              <div v-for="(f, i) in pivotFilters" :key="f.field" class="pivot-filter-entry mb-1">
+                <div class="d-flex align-center mb-1">
+                  <span class="text-caption font-weight-bold text-grey-darken-2">{{ pivotDimensionLabel(f.field) }}</span>
+                  <v-spacer></v-spacer>
+                  <v-btn icon="mdi-close" size="x-small" variant="text" color="grey" @click="removePivotFilter(i)"></v-btn>
+                </div>
+                <v-autocomplete v-model="f.selected" :items="pivotFilterOptionsMap[f.field] || []"
+                  multiple chips closable-chips clearable density="compact" hide-details variant="outlined"
+                  placeholder="全部（未勾選＝不限）" :menu-props="{ maxHeight: 320 }"></v-autocomplete>
+              </div>
+              <v-autocomplete v-model="pivotFilterFieldToAdd" :items="pivotDimensionOptions" item-title="label" item-value="key"
+                density="compact" hide-details variant="outlined" auto-select-first placeholder="＋新增篩選器"
+                :menu-props="{ maxHeight: 400 }" @update:model-value="addPivotFilter"></v-autocomplete>
+            </div>
+
+            <div class="pivot-zone">
+              <div class="pivot-zone-title"><v-icon size="14">mdi-home-city-outline</v-icon> 資料範圍</div>
+              <div class="text-caption text-grey-darken-1">類型：</div>
+              <v-chip-group v-model="pivotPropertyTypes" multiple column selected-class="text-primary" class="pivot-status-chips">
+                <v-chip v-for="t in PIVOT_PROPERTY_TYPE_OPTIONS" :key="t" :value="t" filter variant="outlined" size="small">{{ t }}</v-chip>
+              </v-chip-group>
+              <div class="text-caption text-grey-darken-1 mt-1">銷控狀態：</div>
+              <v-chip-group v-model="pivotStatuses" multiple column selected-class="text-primary" class="pivot-status-chips">
+                <v-chip v-for="s in statusOptions" :key="s" :value="s" filter variant="outlined" size="small">{{ s }}</v-chip>
+              </v-chip-group>
+              <div class="text-caption text-grey mt-1">
+                住家與店面全數納入（不受網格顯示類型影響）；列表的關鍵字/棟別/樓層/價格等篩選仍生效。
+              </div>
+            </div>
+
+            <div class="pivot-zone">
+              <div class="pivot-zone-title"><v-icon size="14">mdi-tune</v-icon> 顯示選項</div>
+              <v-checkbox v-if="pivotHasNonCountValue" v-model="pivotShowBoth" label="同時顯示戶數"
+                density="compact" hide-details color="indigo"></v-checkbox>
+              <v-select v-if="pivotAnyPctable" v-model="pivotCellPct" :items="PIVOT_CELL_PCT_OPTIONS"
+                item-title="label" item-value="key" label="儲存格佔比" density="compact" hide-details variant="outlined"
+                prepend-inner-icon="mdi-percent-outline" class="my-1"></v-select>
+              <v-switch v-model="pivotShowChart" label="長條圖" color="indigo" density="compact" hide-details></v-switch>
+              <v-switch v-if="pivotHasNumericDim" v-model="pivotNumericBinning" label="數值區間分組"
+                color="indigo" density="compact" hide-details
+                title="關閉時每個實際數值單獨一列；開啟時自動分組為區間（如 1,000～1,500）"></v-switch>
+            </div>
+          </section>
+
+          <!-- 右：分析結果 -->
+          <main class="pivot-pane pivot-pane-result">
+          <v-alert v-if="pivotMatrix.rows.length === 0" type="info" variant="tonal"
+            text="目前條件下無任何戶別資料可供分析。"></v-alert>
+          <div v-else class="pivot-table-wrap">
+            <v-table density="compact">
+              <thead>
+                <tr class="bg-grey-lighten-4">
+                  <th v-for="(label, li) in pivotMatrix.rowDimLabels" :key="'rd' + li"
+                    :rowspan="pivotMatrix.useCol ? 2 : 1"
+                    class="text-left font-weight-bold pivot-sortable"
+                    :style="li === 0 ? 'min-width:110px;position:sticky;left:0;background:#f5f5f5;z-index:2;' : 'min-width:100px;'"
+                    @click="togglePivotSort({ type: 'name', li })" title="點擊排序">
+                    {{ label }}
+                    <v-icon size="14" :color="pivotSortActive({ type: 'name', li }) ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon({ type: 'name', li }) }}</v-icon>
+                  </th>
+                  <template v-if="pivotMatrix.useCol">
+                    <th v-for="cKey in pivotMatrix.colKeys" :key="'c' + cKey" :colspan="pivotMatrix.valueDefs.length"
+                      class="text-center font-weight-bold" style="min-width:70px;border-left:1px solid #e0e0e0;">
+                      {{ pivotColLabel(cKey) }}
+                    </th>
+                    <th :colspan="pivotMatrix.valueDefs.length" class="text-center font-weight-bold"
+                      :style="pivotStickyTotalGroupStyle('#f5f5f5')">總計</th>
+                  </template>
+                  <template v-else>
+                    <th v-for="(vd, vi) in pivotMatrix.valueDefs" :key="'v' + vi"
+                      class="text-center font-weight-bold pivot-sortable" style="min-width:84px;"
+                      @click="togglePivotSort({ type: 'total', vi })" title="點擊排序">
+                      {{ pivotValueDefLabel(vd) }}
+                      <v-icon size="14" :color="pivotSortActive({ type: 'total', vi }) ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon({ type: 'total', vi }) }}</v-icon>
+                    </th>
+                  </template>
+                  <th :rowspan="pivotMatrix.useCol ? 2 : 1" class="text-center font-weight-bold"
+                    :style="pivotStickyPctStyle('#f5f5f5')">佔比</th>
+                </tr>
+                <tr v-if="pivotMatrix.useCol" class="bg-grey-lighten-4">
+                  <template v-for="cKey in pivotMatrix.colKeys" :key="'sub' + cKey">
+                    <th v-for="(vd, vi) in pivotMatrix.valueDefs" :key="'sub' + cKey + vi"
+                      class="text-center text-caption pivot-sortable" style="min-width:70px;"
+                      @click="togglePivotSort({ type: 'cell', cKey, vi })" title="點擊排序">
+                      {{ pivotValueDefLabel(vd) }}
+                      <v-icon size="13" :color="pivotSortActive({ type: 'cell', cKey, vi }) ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon({ type: 'cell', cKey, vi }) }}</v-icon>
+                    </th>
+                  </template>
+                  <th v-for="(vd, vi) in pivotMatrix.valueDefs" :key="'tot' + vi"
+                    class="text-center text-caption pivot-sortable"
+                    :style="pivotStickyTotalStyle(vi, '#f5f5f5')"
+                    @click="togglePivotSort({ type: 'total', vi })" title="點擊排序">
+                    {{ pivotValueDefLabel(vd) }}
+                    <v-icon size="13" :color="pivotSortActive({ type: 'total', vi }) ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon({ type: 'total', vi }) }}</v-icon>
+                  </th>
+                </tr>
+                <!-- 頂部總計列（與底部總計相同，方便長表不用捲到底） -->
+                <tr class="font-weight-bold bg-grey-lighten-3">
+                  <td :colspan="pivotMatrix.rowDimLabels.length" style="position:sticky;left:0;background:#eeeeee;z-index:1;">總計</td>
+                  <template v-for="cKey in pivotMatrix.colKeys" :key="'tf' + cKey">
+                    <td v-for="(vd, vi) in pivotMatrix.valueDefs" :key="'tf' + cKey + vi"
+                      class="text-center pivot-cell-click"
+                      @click="openPivotDrill('__col__', cKey)" title="點擊查看戶別明細">{{ pivotColTotalMain(cKey, vi) }}</td>
+                  </template>
+                  <template v-if="pivotMatrix.useCol">
+                    <td v-for="(vd, vi) in pivotMatrix.valueDefs" :key="'tg' + vi"
+                      class="text-center text-deep-orange-darken-3 pivot-cell-click"
+                      :style="pivotStickyTotalStyle(vi, '#eeeeee')"
+                      @click="openPivotDrill('__grand__', '')" title="點擊查看戶別明細">{{ pivotGrandMain(vi) }}</td>
+                  </template>
+                  <td class="text-center" :style="pivotStickyPctStyle('#eeeeee')">{{ pivotMatrix.pctValueIndex >= 0 ? '100%' : '—' }}</td>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in sortedPivotRows" :key="row.key">
+                  <td v-for="(p, li) in row.parts" :key="row.key + 'p' + li"
+                    class="font-weight-medium pivot-cell-click"
+                    :style="li === 0 ? 'position:sticky;left:0;background:#fff;z-index:1;' : ''"
+                    @click="openPivotDrill(row.key, '__row__')" title="點擊查看戶別明細">{{ p }}</td>
+                  <template v-for="cKey in pivotMatrix.colKeys" :key="row.key + cKey">
+                    <td v-for="(vd, vi) in pivotMatrix.valueDefs" :key="row.key + cKey + vi"
+                      class="text-center pivot-cell-click"
+                      @click="openPivotDrill(row.key, pivotMatrix.useCol ? cKey : '__row__')" title="點擊查看戶別明細">
+                      <span :class="(row.cells[cKey]?.count) ? '' : 'text-grey-lighten-1'">{{ pivotCellMain(row, cKey, vi) }}</span>
+                      <div v-if="pivotCellSub(row, cKey, vi)" class="pivot-cell-sub">{{ pivotCellSub(row, cKey, vi) }}</div>
+                    </td>
+                  </template>
+                  <template v-if="pivotMatrix.useCol">
+                    <td v-for="(vd, vi) in pivotMatrix.valueDefs" :key="row.key + 'rt' + vi"
+                      class="text-center font-weight-bold text-blue-grey-darken-2 pivot-cell-click"
+                      :style="pivotStickyTotalStyle(vi, '#ffffff')"
+                      @click="openPivotDrill(row.key, '__row__')" title="點擊查看戶別明細">{{ pivotRowTotalMain(row, vi) }}</td>
+                  </template>
+                  <td class="text-center text-grey-darken-1" :style="pivotStickyPctStyle('#ffffff')">{{ row.pct === null ? '—' : row.pct + '%' }}</td>
+                </tr>
+              </tbody>
+              <tfoot class="bg-grey-lighten-3">
+                <tr class="font-weight-bold">
+                  <td :colspan="pivotMatrix.rowDimLabels.length" style="position:sticky;left:0;background:#eeeeee;z-index:1;">總計</td>
+                  <template v-for="cKey in pivotMatrix.colKeys" :key="'f' + cKey">
+                    <td v-for="(vd, vi) in pivotMatrix.valueDefs" :key="'f' + cKey + vi"
+                      class="text-center pivot-cell-click"
+                      @click="openPivotDrill('__col__', cKey)" title="點擊查看戶別明細">{{ pivotColTotalMain(cKey, vi) }}</td>
+                  </template>
+                  <template v-if="pivotMatrix.useCol">
+                    <td v-for="(vd, vi) in pivotMatrix.valueDefs" :key="'g' + vi"
+                      class="text-center text-deep-orange-darken-3 pivot-cell-click"
+                      :style="pivotStickyTotalStyle(vi, '#eeeeee')"
+                      @click="openPivotDrill('__grand__', '')" title="點擊查看戶別明細">{{ pivotGrandMain(vi) }}</td>
+                  </template>
+                  <td class="text-center" :style="pivotStickyPctStyle('#eeeeee')">{{ pivotMatrix.pctValueIndex >= 0 ? '100%' : '—' }}</td>
+                </tr>
+              </tfoot>
+            </v-table>
+          </div>
+          <div v-if="pivotMatrix.rows.length" class="text-caption text-grey mt-1 pivot-result-hint">
+            <v-icon size="13">mdi-cursor-default-click-outline</v-icon> 點擊任一儲存格可查看對應的戶別明細。
+          </div>
+
+          <!-- 長條圖：第一個值的列合計（單一序列橫向長條） -->
+          <div v-if="pivotShowChart && pivotMatrix.rows.length" class="bg-white rounded-lg pa-3 mt-3 pivot-chart-block" style="border:1px solid #eceff1;">
+            <div class="text-caption font-weight-bold text-grey-darken-2 mb-2">{{ pivotChartTitle }}</div>
+            <div>
+              <div v-for="bar in pivotChartData.bars" :key="bar.key" class="pivot-chart-row"
+                :title="`${bar.name}：${formatPivotValue(bar.value)}`"
+                @click="openPivotDrill(bar.key, '__row__')">
+                <div class="pivot-chart-label">{{ bar.name }}</div>
+                <div class="pivot-chart-track">
+                  <div class="pivot-chart-bar" :class="{ neg: bar.neg }" :style="{ width: bar.widthPct + '%' }"></div>
+                </div>
+                <div class="pivot-chart-value">{{ pivotFormatValueAt(pivotMatrix.valueDefs[0], bar.value) }}</div>
+              </div>
+            </div>
+            <div v-if="pivotChartData.truncated > 0" class="text-caption text-grey mt-1">
+              僅顯示前 {{ PIVOT_CHART_MAX_BARS }} 列，其餘 {{ pivotChartData.truncated }} 列未繪出（可先在表格排序後檢視）。
+            </div>
+          </div>
+          </main>
+        </div>
+
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3 bg-grey-lighten-4 flex-shrink-0">
+          <v-btn variant="text" color="primary" prepend-icon="mdi-content-copy"
+            :disabled="pivotMatrix.rows.length === 0" @click="copyPivotTable">複製表格</v-btn>
+          <v-btn variant="text" color="teal-darken-1" prepend-icon="mdi-file-excel-outline"
+            :disabled="pivotMatrix.rows.length === 0" @click="exportPivotToExcel">匯出EXCEL</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="flat" @click="isSalesPivotVisible = false">完成</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 資料透視下鑽明細：點儲存格顯示對應戶別清單 -->
+    <v-dialog v-model="isPivotDrillVisible" max-width="720px" scrollable>
+      <v-card>
+        <v-card-title class="text-subtitle-1 d-flex align-center bg-indigo-lighten-5">
+          <v-icon start size="small">mdi-format-list-bulleted</v-icon>
+          <span class="font-weight-bold">{{ pivotDrillTitle }}</span>
+          <v-chip size="x-small" variant="tonal" color="indigo" class="ml-2" label>{{ pivotDrillItems.length }} 戶</v-chip>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" density="compact" @click="isPivotDrillVisible = false"></v-btn>
+        </v-card-title>
+        <v-divider></v-divider>
+        <v-card-text class="pa-0" style="max-height:60vh;">
+          <v-table density="compact" hover>
+            <thead>
+              <tr class="bg-grey-lighten-4">
+                <th class="font-weight-bold">戶別</th>
+                <th class="font-weight-bold">銷控狀態</th>
+                <th class="font-weight-bold">買方姓名</th>
+                <th class="font-weight-bold">銷售人員</th>
+                <th v-if="pivotDrillValueDef" class="font-weight-bold text-right">{{ pivotValueFieldLabelOf(pivotDrillValueDef.field) }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="it in pivotDrillItems" :key="it.unitId" class="pivot-cell-click" @click="openUnitFromDrill(it)" title="點擊開啟戶別詳細資料">
+                <td class="font-weight-medium text-primary">{{ it.unitId }}</td>
+                <td>{{ it.status || '—' }}</td>
+                <td>{{ it.buyerName || '—' }}</td>
+                <td>{{ formatSalespersons(it.salesperson) || '—' }}</td>
+                <td v-if="pivotDrillValueDef" class="text-right">{{ formatPivotValue(Number(it[pivotDrillValueDef.field])) }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-2">
+          <span class="text-caption text-grey ml-2">點擊任一列可開啟該戶別詳細資料</span>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="isPivotDrillVisible = false">關閉</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
       <v-card class="d-flex flex-column">
         <v-toolbar dark color="primary" density="compact">
@@ -1669,15 +2031,16 @@ const buildSearchBlob = (item) => {
 };
 
 // 5. 修改 filteredTableItems (加入篩選邏輯)
-const filteredTableItems = computed(() => {
-  // ✅ [新增] 全域關鍵字（空白分隔＝AND；全部符合才顯示）
-  const kwTokens = (filters.keyword || '')
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean);
+// 全域關鍵字（空白分隔＝AND；全部符合才顯示）
+const parseKeywordTokens = () => (filters.keyword || '')
+  .trim()
+  .toLowerCase()
+  .split(/\s+/)
+  .filter(Boolean);
 
-  return tableItems.value.filter(item => {
+// 單筆判斷抽成函式：filteredTableItems 與資料透視共用
+// （資料透視 skipStatus=true，銷控狀態改由對話框內獨立勾選）
+const itemMatchesFilters = (item, kwTokens, skipStatus = false) => {
     // 0. 全域關鍵字：跨所有欄位比對
     if (kwTokens.length > 0) {
       const blob = buildSearchBlob(item);
@@ -1731,7 +2094,7 @@ const filteredTableItems = computed(() => {
     if (currentViewMode.value !== 'quote') {
         
         // 5. 銷控狀態 (多選)
-        if (filters.statuses && filters.statuses.length > 0) {
+        if (!skipStatus && filters.statuses && filters.statuses.length > 0) {
             const hasEmptyFilter = filters.statuses.includes('(無)');
             const isStatusEmpty = item.status === null || item.status === undefined || item.status === '';
             const matchStatus = filters.statuses.includes(item.status) || (hasEmptyFilter && isStatusEmpty);
@@ -1784,17 +2147,903 @@ const filteredTableItems = computed(() => {
     const terrace = Number(item.area_terrace_ping) || 0;
     if (filters.terraceMin !== null && filters.terraceMin !== '' && terrace < Number(filters.terraceMin)) return false;
     if (filters.terraceMax !== null && filters.terraceMax !== '' && terrace > Number(filters.terraceMax)) return false;
-    
+
     }
 
     return true;
-  });
+};
+
+const filteredTableItems = computed(() => {
+  const kwTokens = parseKeywordTokens();
+  return tableItems.value.filter(item => itemMatchesFilters(item, kwTokens));
 });
 
 // ✅ [新增] 網格模式篩選：沿用列表相同的篩選邏輯，取得符合條件的戶別集合
 const hasActiveFilters = computed(() => activeFilterCount.value > 0);
 const matchedUnitIdSet = computed(() => new Set(filteredTableItems.value.map(i => i.unitId)));
 const isUnitFilteredOut = (unit) => hasActiveFilters.value && !matchedUnitIdSet.value.has(unit.unitId);
+
+// --- 資料透視：類 Google Sheet 資料透視（多列 / 多欄 / 多值 / 篩選器） ---
+const isSalesPivotVisible = ref(false);
+const pivotRowDims = ref(['building']);   // 列維度（可多個，依序分層）
+const pivotColDims = ref(['status']);     // 欄維度（可多個，依序分層；空 = 只有值欄）
+const PIVOT_EMPTY_LABEL = '（未填寫）';
+
+// 常用維度置頂，其餘「所有資料欄位」（COLUMN_DEFINITIONS + 前端計算欄位）自動接在後面
+const PIVOT_CURATED_DIMENSIONS = [
+  { key: 'building', label: '棟別' },
+  { key: 'floor', label: '樓層' },
+  { key: 'propertyType', label: '物件類型' },
+  { key: 'layout', label: '格局' },
+  { key: 'status', label: '銷控狀態' },
+  { key: 'salesperson', label: '銷售人員（每人分計）' },
+  { key: 'contractType', label: '合約方式' },
+  { key: 'isPreferredPayment', label: '優付' },
+  { key: 'isFirstTimeBuyer', label: '是否首購' },
+  { key: 'buyerGender', label: '性別' },
+  { key: 'buyerMaritalStatus', label: '婚姻狀況' },
+  { key: 'buyerOccupationIndustry', label: '行業別' },
+  { key: 'buyerOccupationTitle', label: '職務' },
+  { key: 'buyerPurchasePurpose', label: '購買用途' },
+  { key: 'buyerHasPurchasedFuyu', label: '已購買富宇房子' },
+  { key: 'buyerMailingAddressCity', label: '通訊地址-縣市' },
+  { key: 'buyerMailingAddressDistrict', label: '通訊地址-區域' },
+  { key: 'referrerName', label: '介紹人' },
+  { key: 'depositMonth', label: '小訂月份' },
+  { key: 'contractMonth', label: '簽約月份' },
+  { key: 'constructionMethod', label: '興建方式' },
+];
+const PIVOT_EXCLUDED_KEYS = new Set([
+  'salesImages',          // 圖片物件，無法作為維度
+  'svgName',              // SVG 圖檔名
+  'driveFolderUrl',       // 資料夾連結
+  'salesStatus_backend',  // 與「銷控狀態」重複
+]);
+const pivotDimensionOptions = computed(() => {
+  const curatedKeys = new Set(PIVOT_CURATED_DIMENSIONS.map(o => o.key));
+  const rest = [...COLUMN_DEFINITIONS, ...UNIT_EXPORT_COMPUTED_COLUMNS]
+    .filter(c => !curatedKeys.has(c.key) && !PIVOT_EXCLUDED_KEYS.has(c.key))
+    .map(c => ({ key: c.key, label: c.title }));
+  return [...PIVOT_CURATED_DIMENSIONS, ...rest];
+});
+// 已用於列/欄的維度不再重複提供
+const pivotUsedDimKeys = computed(() => new Set([...pivotRowDims.value, ...pivotColDims.value]));
+const pivotAddDimOptions = computed(() => pivotDimensionOptions.value.filter(o => !pivotUsedDimKeys.value.has(o.key)));
+function pivotDimensionLabel(key) {
+  return pivotDimensionOptions.value.find(o => o.key === key)?.label || key;
+}
+// 新增列/欄維度（autocomplete 選定即加入並清空）
+const pivotRowDimToAdd = ref(null);
+const pivotColDimToAdd = ref(null);
+function addPivotDim(kind, key) {
+  if (key) {
+    const arr = kind === 'row' ? pivotRowDims : pivotColDims;
+    if (!arr.value.includes(key)) arr.value.push(key);
+  }
+  nextTick(() => { pivotRowDimToAdd.value = null; pivotColDimToAdd.value = null; });
+}
+
+// --- 左側欄位清單：文字過濾 + 拖曳到列/欄/值/篩選器 ---
+const pivotFieldSearch = ref('');
+const pivotFieldList = computed(() => {
+  const kw = (pivotFieldSearch.value || '').trim().toLowerCase();
+  return pivotDimensionOptions.value
+    .filter(o => !kw || o.label.toLowerCase().includes(kw) || o.key.toLowerCase().includes(kw))
+    .map(o => ({
+      ...o,
+      numeric: PIVOT_BINNED_DIM_KEYS.has(o.key),
+      used: pivotUsedDimKeys.value.has(o.key),
+    }));
+});
+const pivotDragOverZone = ref('');
+function onPivotFieldDragStart(e, key) {
+  e.dataTransfer.setData('text/plain', key);
+  e.dataTransfer.effectAllowed = 'copy';
+}
+function onPivotZoneDrop(zone, e) {
+  pivotDragOverZone.value = '';
+  const key = e.dataTransfer.getData('text/plain');
+  if (!key) return;
+  if (zone === 'row' || zone === 'col') {
+    if (key === '__count__') return; // 戶數只能作為「值」
+    addPivotDim(zone, key);
+  } else if (zone === 'values') {
+    if (key === '__count__') {
+      pivotValues.value.push({ field: '__count__', mode: 'count' });
+    } else if (PIVOT_BINNED_DIM_KEYS.has(key)) {
+      pivotValues.value.push({ field: key, mode: 'sum' });
+    } else {
+      toast.warning('「值」僅支援數值欄位或戶數（計數）。', { position: POSITION.TOP_CENTER, timeout: 2500 });
+    }
+  } else if (zone === 'filter') {
+    if (key === '__count__') return;
+    addPivotFilter(key);
+  }
+}
+
+// --- 值設定（可多個）：每個值 = 欄位 × 彙總方式；'__count__' = 戶數計數 ---
+const pivotValues = ref([{ field: '__count__', mode: 'count' }]);
+const pivotShowBoth = ref(true);    // 數值型值每格同時顯示戶數
+const pivotCellPct = ref('none');   // 儲存格佔比基準：none|grand|row|col
+const pivotShowChart = ref(false);  // 長條圖
+const PIVOT_VALUE_MODE_OPTIONS = [
+  { key: 'count', label: '計數（戶數）' },
+  { key: 'sum', label: '加總' },
+  { key: 'avg', label: '平均' },
+  { key: 'max', label: '最大' },
+  { key: 'min', label: '最小' },
+];
+const PIVOT_AGG_OPTIONS = PIVOT_VALUE_MODE_OPTIONS.filter(o => o.key !== 'count');
+const PIVOT_CELL_PCT_OPTIONS = [
+  { key: 'none', label: '不顯示' },
+  { key: 'grand', label: '佔總計' },
+  { key: 'row', label: '佔列合計' },
+  { key: 'col', label: '佔欄合計' },
+];
+// 單價欄位的「平均」採加權計算：對應總價加總 ÷ 面積加總（與列表加總列相同邏輯）
+const PIVOT_WEIGHTED_UNIT_PRICE = {
+  unit_price_list: { totalKey: 'price_list_house_total', areaKey: 'area_house_ping' },
+  unit_price_floor: { totalKey: 'price_floor_house_total', areaKey: 'area_house_ping' },
+  unit_price_transaction: { totalKey: 'price_transaction_house', areaKey: 'area_house_ping' },
+};
+// 數值型欄位：可作為「值」計算欄位；作為維度時自動做區間分組（binning）
+const PIVOT_BINNED_DIM_KEYS = new Set([
+  'area_house_sqm', 'area_house_ping', 'area_main_sqm', 'area_main_ping',
+  'area_ancillary_sqm', 'area_ancillary_ping', 'area_common_sqm', 'area_common_ping',
+  'area_terrace_ping', 'common_area_ratio', 'land_share_sqm', 'land_share_ping',
+  'price_list_house_only', 'price_list_terrace', 'price_list_terrace_unit', 'price_list_ancillary', 'price_list_house_total',
+  'price_floor_house_only', 'price_floor_terrace', 'price_floor_ancillary', 'price_floor_house_total', 'price_transaction_house',
+  'housePriceRatio', 'landPriceRatio', 'price_package_deal', 'price_package',
+  'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount',
+  'parking_trans_total', 'parking_floor_total', 'total_transaction', 'total_floor', 'price_diff',
+  'unit_price_list', 'unit_price_floor', 'unit_price_transaction',
+]);
+// 值欄位選項：常用金額/面積置頂，其餘數值欄位接在後面
+const pivotValueFieldOptions = computed(() => {
+  const all = [...COLUMN_DEFINITIONS, ...UNIT_EXPORT_COMPUTED_COLUMNS];
+  const priority = [
+    'total_transaction', 'price_transaction_house', 'total_floor', 'price_floor_house_total', 'price_list_house_total',
+    'parking_trans_total', 'parking_floor_total', 'price_diff',
+    'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount',
+    'area_house_ping', 'area_terrace_ping',
+    'unit_price_list', 'unit_price_floor', 'unit_price_transaction',
+  ];
+  const opts = [];
+  for (const k of priority) {
+    const c = all.find(x => x.key === k);
+    if (c) opts.push({ key: k, label: c.title });
+  }
+  for (const c of all) {
+    if (PIVOT_BINNED_DIM_KEYS.has(c.key) && !priority.includes(c.key)) opts.push({ key: c.key, label: c.title });
+  }
+  return opts;
+});
+// 值欄位選項（含「戶數」）與值標籤
+const pivotValueFieldOptionsWithCount = computed(() => [
+  { key: '__count__', label: '戶數（計數）' },
+  ...pivotValueFieldOptions.value,
+]);
+function pivotValueFieldLabelOf(fieldKey) {
+  if (fieldKey === '__count__') return '戶數';
+  return pivotValueFieldOptions.value.find(o => o.key === fieldKey)?.label || fieldKey;
+}
+function pivotValueDefLabel(vd) {
+  if (vd.field === '__count__') return '戶數';
+  const agg = PIVOT_VALUE_MODE_OPTIONS.find(o => o.key === vd.mode)?.label || vd.mode;
+  return `${pivotValueFieldLabelOf(vd.field)}·${agg}`;
+}
+// 新增/移除值
+function addPivotValue() {
+  pivotValues.value.push({ field: 'total_transaction', mode: 'sum' });
+}
+function removePivotValue(i) {
+  if (pivotValues.value.length <= 1) return;
+  pivotValues.value.splice(i, 1);
+}
+// 值欄位切換時自動校正彙總方式
+function onPivotValueFieldChange(vd) {
+  if (vd.field === '__count__') vd.mode = 'count';
+  else if (vd.mode === 'count') vd.mode = 'sum';
+}
+// 任一值為單價欄位＋平均時顯示加權說明
+const pivotWeightedHint = computed(() =>
+  pivotValues.value.some(vd => vd.mode === 'avg' && !!PIVOT_WEIGHTED_UNIT_PRICE[vd.field])
+);
+// 是否有非計數的值（控制「同時顯示戶數」顯示）與可計佔比的值
+const pivotHasNonCountValue = computed(() => pivotValues.value.some(vd => vd.field !== '__count__'));
+function pivotValueDefPctable(vd) { return vd.field === '__count__' || vd.mode === 'sum'; }
+const pivotAnyPctable = computed(() => pivotValues.value.some(pivotValueDefPctable));
+
+// 數值格式化：千分位，>=100 取整數、<100 保留一位小數
+function formatPivotValue(v) {
+  if (v === null || v === undefined || !isFinite(v)) return '—';
+  const rounded = Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 10) / 10;
+  return rounded.toLocaleString('en-US');
+}
+
+// 數值維度的區間分組：以「漂亮的」級距自動分約 8 組（如 2,000～2,500）
+function makePivotBinner(items, dimKey) {
+  const nums = [];
+  for (const it of items) {
+    const raw = it[dimKey];
+    const v = Number(raw);
+    if (raw !== null && raw !== undefined && raw !== '' && isFinite(v)) nums.push(v);
+  }
+  if (!nums.length) {
+    return { getValues: () => [PIVOT_EMPTY_LABEL], sortKeys: (keys) => [...keys] };
+  }
+  const lo = Math.min(...nums);
+  const hi = Math.max(...nums);
+  const rawStep = (hi - lo) / 8 || Math.abs(lo) / 8 || 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * pow).find(s => s >= rawStep) || rawStep;
+  const start = Math.floor(lo / step) * step;
+  const fmtEdge = (n) => Number(n.toFixed(2)).toLocaleString('en-US');
+  const labelOfIdx = (idx) => `${fmtEdge(start + idx * step)}～${fmtEdge(start + (idx + 1) * step)}`;
+  const orderMap = new Map();
+  for (let i = 0; start + i * step <= hi; i++) orderMap.set(labelOfIdx(i), i);
+  return {
+    getValues: (item) => {
+      const raw = item[dimKey];
+      const v = Number(raw);
+      if (raw === null || raw === undefined || raw === '' || !isFinite(v)) return [PIVOT_EMPTY_LABEL];
+      return [labelOfIdx(Math.floor((v - start) / step))];
+    },
+    sortKeys: (keys) => [...keys].sort((a, b) => (orderMap.get(a) ?? Number.MAX_SAFE_INTEGER) - (orderMap.get(b) ?? Number.MAX_SAFE_INTEGER)),
+  };
+}
+// 數值維度「原值直列」：每個實際數值一列（千分位顯示），依數值大小排序
+function makeNumericRawGetter(dimKey) {
+  return {
+    getValues: (item) => {
+      const raw = item[dimKey];
+      const v = Number(raw);
+      if (raw === null || raw === undefined || raw === '' || !isFinite(v)) return [PIVOT_EMPTY_LABEL];
+      return [Number(v.toFixed(2)).toLocaleString('en-US')];
+    },
+    sortKeys: (keys) => [...keys].sort((a, b) => {
+      const na = Number(String(a).replace(/,/g, ''));
+      const nb = Number(String(b).replace(/,/g, ''));
+      const aNum = a !== PIVOT_EMPTY_LABEL && isFinite(na);
+      const bNum = b !== PIVOT_EMPTY_LABEL && isFinite(nb);
+      if (aNum && bNum) return na - nb;
+      if (aNum) return -1; // 未填寫排最後
+      if (bNum) return 1;
+      return 0;
+    }),
+  };
+}
+// 是否啟用數值區間分組（預設關閉＝原值直列為主，可切換）
+const pivotNumericBinning = ref(false);
+const pivotHasNumericDim = computed(() =>
+  [...pivotRowDims.value, ...pivotColDims.value].some(k => PIVOT_BINNED_DIM_KEYS.has(k))
+);
+// 依維度取得「取值 + 鍵值排序」：數值欄位依開關走原值直列或區間分組，其餘走一般取值
+function makePivotDimGetter(items, dimKey) {
+  if (PIVOT_BINNED_DIM_KEYS.has(dimKey)) {
+    return pivotNumericBinning.value ? makePivotBinner(items, dimKey) : makeNumericRawGetter(dimKey);
+  }
+  return {
+    getValues: (item) => getPivotValues(item, dimKey),
+    sortKeys: (keys, getTotal) => sortPivotKeys(keys, dimKey, getTotal),
+  };
+}
+
+// Timestamp/Date → 台灣時區日期字串（fullDate=false 取 'yyyy-MM' 月份）
+const pivotTsToDateStr = (ts, fullDate = true) => {
+  if (!ts) return PIVOT_EMPTY_LABEL;
+  const d = ts instanceof Date ? ts : (typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts));
+  if (isNaN(d.getTime())) return PIVOT_EMPTY_LABEL;
+  const str = d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+  return fullDate ? str : str.slice(0, 7);
+};
+// 日期型欄位（值為 Timestamp/Date，顯示為 yyyy-MM-dd）
+const PIVOT_DATE_KEYS = new Set(['payment_deposit_date', 'payment_supplement_date', 'payment_contract_date', 'buyerDateOfBirth']);
+
+// 取得戶別在某維度下的值（陣列；銷售人員/車位/方案等一戶多值時，各計一次）
+function getPivotValues(item, dimKey) {
+  switch (dimKey) {
+    case 'salesperson': {
+      const list = normalizeSalespersons(item.salesperson);
+      return list.length ? list : [PIVOT_EMPTY_LABEL];
+    }
+    case 'status':
+      return [(item.status === null || item.status === undefined || item.status === '') ? PIVOT_EMPTY_LABEL : String(item.status)];
+    case 'floor':
+      return [(item.floor === null || item.floor === undefined || item.floor === '') ? PIVOT_EMPTY_LABEL : `${item.floor}F`];
+    case 'depositMonth':
+      return [pivotTsToDateStr(item.payment_deposit_date, false)];
+    case 'contractMonth':
+      return [pivotTsToDateStr(item.payment_contract_date, false)];
+    case 'parking_spots': {
+      // 車位編號：'A1,A2' → 每個車位各計一次
+      const list = String(item.parking_spots || '').split(',').map(s => s.trim()).filter(Boolean);
+      return list.length ? list : [PIVOT_EMPTY_LABEL];
+    }
+    default: {
+      const v = item[dimKey];
+      if (PIVOT_DATE_KEYS.has(dimKey)) return [pivotTsToDateStr(v)];
+      if (Array.isArray(v)) {
+        // 陣列欄位（可選方案名稱、userKey 等）：每個值各計一次
+        const list = v.map(x => String(x).trim()).filter(Boolean);
+        return list.length ? list : [PIVOT_EMPTY_LABEL];
+      }
+      if (typeof v === 'boolean') return [v ? '是' : '否'];
+      if (v !== null && typeof v === 'object' && typeof v.toDate === 'function') return [pivotTsToDateStr(v)];
+      return (v === null || v === undefined || v === '') ? [PIVOT_EMPTY_LABEL] : [String(v)];
+    }
+  }
+}
+
+// 資料透視的狀態篩選：開啟對話框時預設帶入篩選面板目前的狀態勾選（未勾選則全選），可在對話框內獨立調整
+const pivotStatuses = ref([]);
+// 住家/店面勾選：資料透視一律納入全部資料，不受網格模式目前的住家/店面切換影響，開啟時預設全選
+const PIVOT_PROPERTY_TYPE_OPTIONS = ['住家', '店面'];
+const pivotPropertyTypes = ref([...PIVOT_PROPERTY_TYPE_OPTIONS]);
+watch(isSalesPivotVisible, (open) => {
+  if (!open) return;
+  pivotStatuses.value = (filters.statuses && filters.statuses.length > 0)
+    ? [...filters.statuses]
+    : [...statusOptions.value];
+  pivotPropertyTypes.value = [...PIVOT_PROPERTY_TYPE_OPTIONS];
+  restorePivotSettings(); // 還原上次的維度/值設定（依建案記憶）
+});
+
+// 分析資料來源（基底）：全部戶別（住家+店面，與網格目前顯示的類型無關），
+// 直接沿用「下載指定戶別資料」的 unitExportItems（含前端計算欄位、車位編號、方案名稱），
+// 跟隨列表目前篩選（關鍵字/棟別/樓層/價格等）；住家/店面與銷控狀態改用對話框內的勾選
+const pivotBaseItems = computed(() => {
+  const kwTokens = parseKeywordTokens();
+  return unitExportItems.value.filter(item => {
+    const propertyType = item.layout === '店面' ? '店面' : '住家';
+    if (!pivotPropertyTypes.value.includes(propertyType)) return false;
+    if (!itemMatchesFilters(item, kwTokens, true)) return false;
+    const isStatusEmpty = item.status === null || item.status === undefined || item.status === '';
+    return pivotStatuses.value.includes(item.status) || (isStatusEmpty && pivotStatuses.value.includes('(無)'));
+  });
+});
+
+// --- 篩選器（類 Google Sheet：任選欄位、勾選要保留的值）---
+const pivotFilters = ref([]); // [{ field, selected: [] }]（selected 空 = 不限）
+const pivotFilterFieldToAdd = ref(null);
+function pivotFilterValuesOf(item, field) {
+  return PIVOT_BINNED_DIM_KEYS.has(field)
+    ? makeNumericRawGetter(field).getValues(item)
+    : getPivotValues(item, field);
+}
+function addPivotFilter(fieldKey) {
+  if (fieldKey && !pivotFilters.value.some(f => f.field === fieldKey)) {
+    pivotFilters.value.push({ field: fieldKey, selected: [] });
+  }
+  nextTick(() => { pivotFilterFieldToAdd.value = null; });
+}
+function removePivotFilter(i) { pivotFilters.value.splice(i, 1); }
+// 每個篩選器的可勾選值（自基底資料取 distinct，依欄位型別排序）
+const pivotFilterOptionsMap = computed(() => {
+  const map = {};
+  for (const f of pivotFilters.value) {
+    const set = new Set();
+    for (const it of pivotBaseItems.value) pivotFilterValuesOf(it, f.field).forEach(v => set.add(v));
+    const keys = [...set];
+    map[f.field] = PIVOT_BINNED_DIM_KEYS.has(f.field)
+      ? makeNumericRawGetter(f.field).sortKeys(keys)
+      : sortPivotKeys(keys, f.field, () => 0);
+  }
+  return map;
+});
+// 最終資料 = 基底 + 所有啟用中的篩選器（每個篩選器內為 OR、篩選器之間為 AND）
+const pivotSourceItems = computed(() => {
+  const active = pivotFilters.value
+    .filter(f => f.selected.length > 0)
+    .map(f => ({ field: f.field, sel: new Set(f.selected) }));
+  if (!active.length) return pivotBaseItems.value;
+  return pivotBaseItems.value.filter(item =>
+    active.every(f => pivotFilterValuesOf(item, f.field).some(v => f.sel.has(v)))
+  );
+});
+
+// 維度鍵值排序：日期/月份依時間序、樓層高→低（與網格一致）、其餘依數量多→少（同數量依筆劃/字典序）
+function sortPivotKeys(keys, dimKey, getTotal) {
+  if (dimKey === 'depositMonth' || dimKey === 'contractMonth' || PIVOT_DATE_KEYS.has(dimKey)) return [...keys].sort();
+  if (dimKey === 'floor') {
+    return [...keys].sort((a, b) => {
+      const na = parseInt(a, 10);
+      const nb = parseInt(b, 10);
+      if (!isNaN(na) && !isNaN(nb) && na !== nb) return nb - na;
+      if (!isNaN(na) && isNaN(nb)) return -1; // 未填寫排最後
+      if (isNaN(na) && !isNaN(nb)) return 1;
+      return String(a).localeCompare(String(b), 'zh-Hant', { numeric: true });
+    });
+  }
+  return [...keys].sort((a, b) => (getTotal(b) - getTotal(a)) || String(a).localeCompare(String(b), 'zh-Hant'));
+}
+
+const PIVOT_SEP = '|#|';       // 組合鍵層級分隔
+const PIVOT_CELL_SEP = '||CELL||'; // 下鑽 key 的列/欄分隔
+const pivotMatrix = computed(() => {
+  const items = pivotSourceItems.value;
+  const rowDims = pivotRowDims.value;
+  const colDims = pivotColDims.value;
+  const useCol = colDims.length > 0;
+  const valueDefs = pivotValues.value.length ? pivotValues.value : [{ field: '__count__', mode: 'count' }];
+
+  // 儲存格累加器：戶數 + 各值統計 + 明細（供下鑽）
+  const newStats = () => valueDefs.map(() => ({ sum: 0, n: 0, min: Infinity, max: -Infinity, wTotal: 0, wArea: 0 }));
+  const newCell = () => ({ count: 0, items: [], stats: newStats() });
+  const accumulate = (cell, item) => {
+    cell.count++;
+    cell.items.push(item);
+    valueDefs.forEach((vd, i) => {
+      if (vd.field === '__count__') return;
+      const st = cell.stats[i];
+      const w = vd.mode === 'avg' ? PIVOT_WEIGHTED_UNIT_PRICE[vd.field] : null;
+      if (w) {
+        const t = Number(item[w.totalKey]);
+        const a = Number(item[w.areaKey]);
+        if (isFinite(t)) st.wTotal += t;
+        if (isFinite(a)) st.wArea += a;
+      }
+      const raw = item[vd.field];
+      const v = Number(raw);
+      if (raw !== null && raw !== undefined && raw !== '' && isFinite(v)) {
+        st.sum += v;
+        st.n++;
+        if (v < st.min) st.min = v;
+        if (v > st.max) st.max = v;
+      }
+    });
+  };
+  // 儲存格第 i 個值：計數→戶數；單價平均→加權（總價加總/面積加總）；其餘依彙總方式
+  const cellValueAt = (cell, i) => {
+    const vd = valueDefs[i];
+    if (vd.field === '__count__') return cell.count;
+    const st = cell.stats[i];
+    if (vd.mode === 'avg' && PIVOT_WEIGHTED_UNIT_PRICE[vd.field]) {
+      return st.wArea > 0 ? st.wTotal / st.wArea : null;
+    }
+    switch (vd.mode) {
+      case 'sum': return st.sum;
+      case 'avg': return st.n ? st.sum / st.n : null;
+      case 'max': return st.n ? st.max : null;
+      case 'min': return st.n ? st.min : null;
+      default: return cell.count;
+    }
+  };
+
+  const rowGetters = rowDims.map(d => makePivotDimGetter(items, d));
+  const colGetters = colDims.map(d => makePivotDimGetter(items, d));
+
+  // 多維組合展開（多值維度 → 笛卡兒積，各組合各計一次）
+  const combosOf = (getters, item) => {
+    let combos = [[]];
+    for (const g of getters) {
+      const vals = g.getValues(item);
+      const next = [];
+      for (const base of combos) for (const v of vals) next.push([...base, v]);
+      combos = next;
+    }
+    return combos;
+  };
+
+  const rowMap = new Map();   // rowKey -> { parts, totalCell, cols: Map(colKey -> cell) }
+  const colMap = new Map();   // colKey -> { parts, cell }
+  const grandCell = newCell();
+
+  for (const item of items) {
+    const rowCombos = rowDims.length ? combosOf(rowGetters, item) : [['全部']];
+    const colCombos = useCol ? combosOf(colGetters, item) : [['']];
+    for (const rParts of rowCombos) {
+      const rKey = rParts.join(PIVOT_SEP);
+      let row = rowMap.get(rKey);
+      if (!row) { row = { parts: rParts, totalCell: newCell(), cols: new Map() }; rowMap.set(rKey, row); }
+      for (const cParts of colCombos) {
+        const cKey = cParts.join(PIVOT_SEP);
+        let col = colMap.get(cKey);
+        if (!col) { col = { parts: cParts, cell: newCell() }; colMap.set(cKey, col); }
+        let cc = row.cols.get(cKey);
+        if (!cc) { cc = newCell(); row.cols.set(cKey, cc); }
+        accumulate(cc, item);
+        accumulate(col.cell, item);
+        accumulate(row.totalCell, item);
+        accumulate(grandCell, item);
+      }
+    }
+  }
+
+  // 階層排序：逐層依各維度的鍵值排序規則（數量權重取該層合計戶數）
+  const buildLevelOrders = (getters, entries) => getters.map((g, li) => {
+    const totals = new Map();
+    for (const e of entries) {
+      const v = e.parts[li];
+      totals.set(v, (totals.get(v) || 0) + e.count);
+    }
+    const sorted = g.sortKeys([...totals.keys()], k => totals.get(k) || 0);
+    return new Map(sorted.map((k, i) => [k, i]));
+  });
+  const cmpByLevels = (orderMaps) => (aParts, bParts) => {
+    for (let i = 0; i < orderMaps.length; i++) {
+      const d = (orderMaps[i].get(aParts[i]) ?? 0) - (orderMaps[i].get(bParts[i]) ?? 0);
+      if (d) return d;
+    }
+    return 0;
+  };
+  const rowOrders = buildLevelOrders(rowGetters, [...rowMap.values()].map(r => ({ parts: r.parts, count: r.totalCell.count })));
+  const colOrders = buildLevelOrders(colGetters, [...colMap.values()].map(c => ({ parts: c.parts, count: c.cell.count })));
+  const rowKeys = [...rowMap.keys()].sort((a, b) => cmpByLevels(rowOrders)(rowMap.get(a).parts, rowMap.get(b).parts));
+  const colKeys = useCol
+    ? [...colMap.keys()].sort((a, b) => cmpByLevels(colOrders)(colMap.get(a).parts, colMap.get(b).parts))
+    : [''];
+
+  // 佔比欄：以第一個可計佔比的值（戶數或加總）為準
+  const pctValueIndex = valueDefs.findIndex(vd => vd.field === '__count__' || vd.mode === 'sum');
+  const grandValues = valueDefs.map((vd, i) => cellValueAt(grandCell, i));
+  const grandPctDenom = pctValueIndex >= 0 ? (grandValues[pctValueIndex] || 0) : 0;
+
+  const rows = rowKeys.map(rKey => {
+    const row = rowMap.get(rKey);
+    const cells = {};
+    for (const cKey of colKeys) {
+      const cc = row.cols.get(cKey);
+      cells[cKey] = {
+        count: cc ? cc.count : 0,
+        values: valueDefs.map((vd, i) => cc ? cellValueAt(cc, i) : (vd.field === '__count__' || vd.mode === 'sum' ? 0 : null)),
+      };
+    }
+    const totalValues = valueDefs.map((vd, i) => cellValueAt(row.totalCell, i));
+    return {
+      key: rKey,
+      parts: row.parts,
+      cells,
+      total: row.totalCell.count,
+      totalValues,
+      pct: (pctValueIndex >= 0 && grandPctDenom)
+        ? Math.round(((totalValues[pctValueIndex] || 0) / grandPctDenom) * 1000) / 10
+        : null,
+    };
+  });
+
+  const colTotals = {};
+  for (const cKey of colKeys) {
+    const col = colMap.get(cKey);
+    colTotals[cKey] = {
+      count: col ? col.cell.count : 0,
+      values: valueDefs.map((vd, i) => col ? cellValueAt(col.cell, i) : null),
+    };
+  }
+
+  // 下鑽明細：儲存格 → 戶別清單
+  const itemsByCell = new Map();
+  for (const rKey of rowKeys) {
+    const row = rowMap.get(rKey);
+    itemsByCell.set(`${rKey}${PIVOT_CELL_SEP}__row__`, row.totalCell.items);
+    for (const cKey of colKeys) {
+      const cc = row.cols.get(cKey);
+      if (cc) itemsByCell.set(`${rKey}${PIVOT_CELL_SEP}${cKey}`, cc.items);
+    }
+  }
+  for (const cKey of colKeys) {
+    const col = colMap.get(cKey);
+    if (col) itemsByCell.set(`__col__${PIVOT_CELL_SEP}${cKey}`, col.cell.items);
+  }
+  itemsByCell.set('__grand__', grandCell.items);
+
+  return {
+    rows,
+    colKeys,
+    colTotals,
+    useCol,
+    valueDefs,
+    rowDimLabels: rowDims.length ? rowDims.map(pivotDimensionLabel) : ['全部'],
+    itemCount: items.length,
+    grand: { count: grandCell.count, values: grandValues },
+    pctValueIndex,
+    itemsByCell,
+  };
+});
+// 是否有「多值分計」（銷售人員/車位編號/可選方案等一戶多值會分別計入，總計會大於戶數）
+const PIVOT_MULTI_VALUE_KEYS = new Set(['salesperson', 'salespersonUserKey', 'parking_spots', 'availablePlans']);
+const pivotHasPersonCount = computed(() =>
+  [...pivotRowDims.value, ...pivotColDims.value].some(k => PIVOT_MULTI_VALUE_KEYS.has(k))
+);
+// --- 資料透視表欄位排序：點表頭切換 升冪 → 降冪 → 回復預設 ---
+// spec: { type: 'name'|'cell'|'total', li?, cKey?, vi?, dir }
+const pivotSort = ref(null);
+watch([pivotRowDims, pivotColDims, pivotValues], () => { pivotSort.value = null; }, { deep: true });
+function pivotSortSpecEquals(a, b) {
+  return !!a && !!b && a.type === b.type && a.li === b.li && a.cKey === b.cKey && a.vi === b.vi;
+}
+function togglePivotSort(spec) {
+  const cur = pivotSort.value;
+  if (cur && pivotSortSpecEquals(cur, spec)) {
+    pivotSort.value = cur.dir === 'asc' ? { ...spec, dir: 'desc' } : null; // 第三次點擊回復預設排序
+  } else {
+    // 名稱欄預設 A→Z，數值欄預設大→小
+    pivotSort.value = { ...spec, dir: spec.type === 'name' ? 'asc' : 'desc' };
+  }
+}
+function pivotSortActive(spec) {
+  return !!pivotSort.value && pivotSortSpecEquals(pivotSort.value, spec);
+}
+function pivotSortIcon(spec) {
+  if (!pivotSortActive(spec)) return 'mdi-unfold-more-horizontal';
+  return pivotSort.value.dir === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down';
+}
+const sortedPivotRows = computed(() => {
+  const spec = pivotSort.value;
+  const rows = pivotMatrix.value.rows;
+  if (!spec) return rows;
+  const mul = spec.dir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    if (spec.type === 'name') {
+      const an = a.parts[spec.li] ?? '';
+      const bn = b.parts[spec.li] ?? '';
+      const dk = pivotRowDims.value[spec.li];
+      if (dk === 'floor') {
+        const na = parseInt(an, 10);
+        const nb = parseInt(bn, 10);
+        if (!isNaN(na) && !isNaN(nb)) return (na - nb) * mul;
+      }
+      // 數值維度（原值或區間）：去千分位後依數值排序（區間取起始值）
+      if (PIVOT_BINNED_DIM_KEYS.has(dk)) {
+        const na = parseFloat(String(an).replace(/,/g, ''));
+        const nb = parseFloat(String(bn).replace(/,/g, ''));
+        if (isFinite(na) && isFinite(nb)) return (na - nb) * mul;
+      }
+      // 月份為 yyyy-MM 字串，字典序即時間序
+      return String(an).localeCompare(String(bn), 'zh-Hant', { numeric: true }) * mul;
+    }
+    const av = spec.type === 'total' ? (a.totalValues[spec.vi] ?? -Infinity) : (a.cells[spec.cKey]?.values[spec.vi] ?? -Infinity);
+    const bv = spec.type === 'total' ? (b.totalValues[spec.vi] ?? -Infinity) : (b.cells[spec.cKey]?.values[spec.vi] ?? -Infinity);
+    return ((av - bv) * mul) || String(a.key).localeCompare(String(b.key), 'zh-Hant');
+  });
+});
+
+// --- 儲存格顯示（row.cells[cKey] = { count, values[] }）---
+function pivotColLabel(cKey) {
+  return String(cKey).split(PIVOT_SEP).filter(Boolean).join(' / ');
+}
+function pivotFormatValueAt(vd, v) {
+  if (vd.field === '__count__') return String(v ?? 0);
+  return formatPivotValue(v);
+}
+function pivotCellMain(row, cKey, vi) {
+  return pivotFormatValueAt(pivotMatrix.value.valueDefs[vi], row.cells[cKey]?.values[vi]);
+}
+// 儲存格副行：戶數（數值型值）＋ 佔比（依基準）
+function pivotCellSub(row, cKey, vi) {
+  const vd = pivotMatrix.value.valueDefs[vi];
+  const parts = [];
+  if (vd.field !== '__count__' && pivotShowBoth.value) parts.push(`${row.cells[cKey]?.count || 0}戶`);
+  const pct = pivotCellPctText(row, cKey, vi);
+  if (pct) parts.push(pct);
+  return parts.join('・');
+}
+function pivotCellPctText(row, cKey, vi) {
+  if (pivotCellPct.value === 'none') return '';
+  const m = pivotMatrix.value;
+  const vd = m.valueDefs[vi];
+  if (!pivotValueDefPctable(vd)) return ''; // 平均/最大/最小無佔比意義
+  const metric = row.cells[cKey]?.values[vi] || 0;
+  let denom = 0;
+  if (pivotCellPct.value === 'grand') denom = m.grand.values[vi] || 0;
+  else if (pivotCellPct.value === 'row') denom = row.totalValues[vi] || 0;
+  else if (pivotCellPct.value === 'col') denom = m.colTotals[cKey]?.values[vi] || 0;
+  if (!denom) return '';
+  return `${Math.round((metric / denom) * 1000) / 10}%`;
+}
+// 總計/佔比欄凍結在表格右緣：依值欄位數計算各欄的 right 偏移（佔比 60px、每個總計欄 100px）
+const PIVOT_PCT_COL_W = 60;
+const PIVOT_TOTAL_COL_W = 100;
+function pivotStickyPctStyle(bg) {
+  const style = { position: 'sticky', right: '0', minWidth: `${PIVOT_PCT_COL_W}px`, maxWidth: `${PIVOT_PCT_COL_W}px`, backgroundColor: bg, zIndex: 3 };
+  if (!pivotMatrix.value.useCol) style.boxShadow = '-3px 0 4px rgba(0,0,0,0.08)';
+  return style;
+}
+function pivotStickyTotalStyle(vi, bg) {
+  const n = pivotMatrix.value.valueDefs.length;
+  const right = PIVOT_PCT_COL_W + (n - 1 - vi) * PIVOT_TOTAL_COL_W;
+  const style = { position: 'sticky', right: `${right}px`, minWidth: `${PIVOT_TOTAL_COL_W}px`, maxWidth: `${PIVOT_TOTAL_COL_W}px`, backgroundColor: bg, zIndex: 3 };
+  if (vi === 0) style.boxShadow = '-3px 0 4px rgba(0,0,0,0.08)';
+  return style;
+}
+function pivotStickyTotalGroupStyle(bg) {
+  return { position: 'sticky', right: `${PIVOT_PCT_COL_W}px`, backgroundColor: bg, zIndex: 3, boxShadow: '-3px 0 4px rgba(0,0,0,0.08)' };
+}
+function pivotRowTotalMain(row, vi) {
+  return pivotFormatValueAt(pivotMatrix.value.valueDefs[vi], row.totalValues[vi]);
+}
+function pivotColTotalMain(cKey, vi) {
+  const m = pivotMatrix.value;
+  return pivotFormatValueAt(m.valueDefs[vi], m.colTotals[cKey]?.values[vi]);
+}
+function pivotGrandMain(vi) {
+  const m = pivotMatrix.value;
+  return pivotFormatValueAt(m.valueDefs[vi], m.grand.values[vi]);
+}
+
+// --- 下鑽明細：點儲存格看戶別清單 ---
+const isPivotDrillVisible = ref(false);
+const pivotDrillTitle = ref('');
+const pivotDrillItems = ref([]);
+// 下鑽清單顯示的值欄位：第一個非計數的值
+const pivotDrillValueDef = computed(() => pivotValues.value.find(vd => vd.field !== '__count__') || null);
+function openPivotDrill(rowKey, colKey) {
+  const m = pivotMatrix.value;
+  const partsLabel = k => String(k).split(PIVOT_SEP).filter(Boolean).join(' / ');
+  let key;
+  let title;
+  if (rowKey === '__grand__') { key = '__grand__'; title = '全部'; }
+  else if (colKey === '__row__') { key = `${rowKey}${PIVOT_CELL_SEP}__row__`; title = partsLabel(rowKey); }
+  else if (rowKey === '__col__') { key = `__col__${PIVOT_CELL_SEP}${colKey}`; title = partsLabel(colKey) || '全部'; }
+  else { key = `${rowKey}${PIVOT_CELL_SEP}${colKey}`; title = [partsLabel(rowKey), partsLabel(colKey)].filter(Boolean).join(' × '); }
+  const list = m.itemsByCell.get(key) || [];
+  // 多值維度同一戶會重複，依戶別去重
+  const seen = new Set();
+  pivotDrillItems.value = list.filter(it => {
+    if (seen.has(it.unitId)) return false;
+    seen.add(it.unitId);
+    return true;
+  });
+  pivotDrillTitle.value = title || '全部';
+  isPivotDrillVisible.value = true;
+}
+function openUnitFromDrill(item) {
+  openUnitDetail(item);
+}
+
+// --- 記住透視設定（依建案，localStorage）---
+const pivotSettingsKey = computed(() => `salesPivotSettings_${projectId.value || 'default'}`);
+let isRestoringPivotSettings = false;
+function savePivotSettings() {
+  if (isRestoringPivotSettings) return;
+  try {
+    localStorage.setItem(pivotSettingsKey.value, JSON.stringify({
+      v: 2,
+      rowDims: pivotRowDims.value,
+      colDims: pivotColDims.value,
+      values: pivotValues.value,
+      filters: pivotFilters.value.map(f => ({ field: f.field, selected: f.selected })),
+      showBoth: pivotShowBoth.value,
+      cellPct: pivotCellPct.value,
+      showChart: pivotShowChart.value,
+      numericBinning: pivotNumericBinning.value,
+    }));
+  } catch (e) { /* localStorage 不可用時靜默略過 */ }
+}
+function restorePivotSettings() {
+  try {
+    const raw = localStorage.getItem(pivotSettingsKey.value);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    isRestoringPivotSettings = true;
+    const validDim = k => pivotDimensionOptions.value.some(o => o.key === k);
+    const validValueField = k => k === '__count__' || pivotValueFieldOptions.value.some(o => o.key === k);
+    if (Array.isArray(s.rowDims)) pivotRowDims.value = s.rowDims.filter(validDim);
+    else if (validDim(s.rowDim)) pivotRowDims.value = [s.rowDim]; // 舊版設定相容
+    if (Array.isArray(s.colDims)) pivotColDims.value = s.colDims.filter(k => validDim(k) && !pivotRowDims.value.includes(k));
+    else if (validDim(s.colDim) && s.colDim !== 'none' && !pivotRowDims.value.includes(s.colDim)) pivotColDims.value = [s.colDim];
+    else if (s.colDim === 'none') pivotColDims.value = [];
+    if (Array.isArray(s.values)) {
+      const values = s.values.filter(vd => vd && validValueField(vd.field)
+        && PIVOT_VALUE_MODE_OPTIONS.some(o => o.key === vd.mode));
+      if (values.length) pivotValues.value = values;
+    } else if (s.valueMode) { // 舊版設定相容
+      pivotValues.value = s.valueMode === 'count' || !validValueField(s.valueField)
+        ? [{ field: '__count__', mode: 'count' }]
+        : [{ field: s.valueField, mode: s.valueMode }];
+    }
+    if (Array.isArray(s.filters)) {
+      pivotFilters.value = s.filters
+        .filter(f => f && validDim(f.field))
+        .map(f => ({ field: f.field, selected: Array.isArray(f.selected) ? f.selected : [] }));
+    }
+    if (typeof s.showBoth === 'boolean') pivotShowBoth.value = s.showBoth;
+    if (PIVOT_CELL_PCT_OPTIONS.some(o => o.key === s.cellPct)) pivotCellPct.value = s.cellPct;
+    if (typeof s.showChart === 'boolean') pivotShowChart.value = s.showChart;
+    if (typeof s.numericBinning === 'boolean') pivotNumericBinning.value = s.numericBinning;
+  } catch (e) { /* 設定損毀時忽略，用預設值 */ }
+  finally {
+    nextTick(() => { isRestoringPivotSettings = false; });
+  }
+}
+watch(
+  [pivotRowDims, pivotColDims, pivotValues, pivotFilters, pivotShowBoth, pivotCellPct, pivotShowChart, pivotNumericBinning],
+  savePivotSettings,
+  { deep: true }
+);
+
+// --- 匯出資料組裝（複製 TSV 與匯出 Excel 共用）---
+function buildPivotAoa() {
+  const m = pivotMatrix.value;
+  const headers = [
+    ...m.rowDimLabels,
+    ...m.colKeys.flatMap(cKey => m.valueDefs.map(vd =>
+      m.useCol ? `${pivotColLabel(cKey)}·${pivotValueDefLabel(vd)}` : pivotValueDefLabel(vd)
+    )),
+    ...(m.useCol ? m.valueDefs.map(vd => `總計·${pivotValueDefLabel(vd)}`) : []),
+    '佔比',
+  ];
+  const body = sortedPivotRows.value.map(row => [
+    ...row.parts,
+    ...m.colKeys.flatMap(cKey => m.valueDefs.map((vd, vi) => {
+      const v = row.cells[cKey]?.values[vi];
+      return (v === null || v === undefined) ? '' : v;
+    })),
+    ...(m.useCol ? m.valueDefs.map((vd, vi) => row.totalValues[vi] ?? '') : []),
+    row.pct === null ? '' : `${row.pct}%`,
+  ]);
+  const footer = [
+    '總計',
+    ...Array(Math.max(m.rowDimLabels.length - 1, 0)).fill(''),
+    ...m.colKeys.flatMap(cKey => m.valueDefs.map((vd, vi) => m.colTotals[cKey]?.values[vi] ?? '')),
+    ...(m.useCol ? m.valueDefs.map((vd, vi) => m.grand.values[vi] ?? '') : []),
+    m.pctValueIndex >= 0 ? '100%' : '',
+  ];
+  return [headers, ...body, footer];
+}
+// 將目前資料透視表複製為 TSV（可直接貼進 Excel / Google Sheets）
+async function copyPivotTable() {
+  const aoa = buildPivotAoa();
+  try {
+    await navigator.clipboard.writeText(aoa.map(r => r.join('\t')).join('\n'));
+    toast.success('已複製到剪貼簿！', { position: POSITION.TOP_CENTER, timeout: 2000 });
+  } catch (e) {
+    console.error('複製資料透視表失敗:', e);
+    toast.error('複製失敗，請重試。', { position: POSITION.TOP_CENTER, timeout: 2500 });
+  }
+}
+// 匯出含格式的 Excel
+function exportPivotToExcel() {
+  const m = pivotMatrix.value;
+  if (!m.rows.length) return;
+  const aoa = buildPivotAoa();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  const headerStyle = {
+    font: { bold: true },
+    fill: { fgColor: { rgb: 'E8EAF6' } },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: { bottom: { style: 'thin', color: { rgb: '9FA8DA' } } },
+  };
+  const footerStyle = { font: { bold: true }, fill: { fgColor: { rgb: 'EEEEEE' } } };
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const hCell = ws[XLSX.utils.encode_cell({ r: 0, c })];
+    if (hCell) hCell.s = headerStyle;
+    const fCell = ws[XLSX.utils.encode_cell({ r: range.e.r, c })];
+    if (fCell) fCell.s = footerStyle;
+  }
+  ws['!cols'] = aoa[0].map((h, i) => ({ wch: i === 0 ? 18 : Math.max(10, String(h).length * 2 + 2) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '資料透視');
+  const rowLabel = m.rowDimLabels.join('+');
+  const colLabel = m.useCol ? `×${pivotColDims.value.map(pivotDimensionLabel).join('+')}` : '';
+  XLSX.writeFile(wb, `${projectName.value}_資料透視_${rowLabel}${colLabel}.xlsx`);
+  toast.success('已匯出 Excel！', { position: POSITION.TOP_CENTER, timeout: 2000 });
+}
+
+// --- 長條圖（第一個值的列合計，單一序列橫向長條）---
+const PIVOT_CHART_MAX_BARS = 40;
+const pivotChartData = computed(() => {
+  const all = sortedPivotRows.value.map(r => ({
+    key: r.key,
+    name: r.parts.join(' / '),
+    value: r.totalValues[0] ?? 0,
+  }));
+  const bars = all.slice(0, PIVOT_CHART_MAX_BARS);
+  const maxAbs = Math.max(...bars.map(b => Math.abs(b.value)), 0);
+  return {
+    bars: bars.map(b => ({
+      ...b,
+      widthPct: maxAbs ? Math.max(1.5, (Math.abs(b.value) / maxAbs) * 100) : 0,
+      neg: b.value < 0,
+    })),
+    truncated: all.length - bars.length,
+  };
+});
+const pivotChartTitle = computed(() => {
+  const m = pivotMatrix.value;
+  return `${m.rowDimLabels.join(' / ')} — ${pivotValueDefLabel(m.valueDefs[0])}`;
+});
 
 
 // ==========================================
@@ -3267,6 +4516,307 @@ const uploadData = async () => {
 </script>
 
 <style scoped>
+/* --- 資料透視：狀態勾選列高度收斂 --- */
+.pivot-status-chips .v-chip-group__content,
+.pivot-status-chips {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* --- 資料透視：可排序表頭 --- */
+.pivot-sortable {
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.pivot-sortable:hover {
+  background-color: #eceff1 !important;
+}
+
+/* --- 資料透視：三欄式版面（左欄位 / 中設定 / 右結果） --- */
+.pivot-layout-card {
+  height: 92vh;
+}
+.pivot-layout {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  background-color: #f5f6f8;
+}
+.pivot-pane {
+  padding: 12px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.pivot-pane-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #37474f;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+/* 左：欄位清單 */
+.pivot-pane-fields {
+  width: 240px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid #eceff1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* 左側欄位過濾框：縮小尺寸（高 30px、小字級、小圖示） */
+/* v-text-field 預設 flex:1 1 auto，在直向 flex 容器內會被垂直撐開，必須固定為內容高度 */
+.pivot-field-search {
+  flex: 0 0 auto !important;
+}
+.pivot-field-search :deep(.v-field) {
+  --v-field-padding-start: 6px;
+  font-size: 12.5px;
+}
+.pivot-field-search :deep(.v-field__input) {
+  min-height: 30px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.pivot-field-search :deep(.v-field__prepend-inner .v-icon),
+.pivot-field-search :deep(.v-field__clearable .v-icon) {
+  font-size: 16px;
+}
+.pivot-field-search :deep(.v-field__prepend-inner),
+.pivot-field-search :deep(.v-field__clearable) {
+  padding-top: 4px;
+}
+.pivot-field-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid #eceff1;
+  border-radius: 6px;
+}
+.pivot-field-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  font-size: 12.5px;
+  color: #37474f;
+  cursor: grab;
+  border-bottom: 1px solid #f5f5f5;
+  user-select: none;
+}
+.pivot-field-item:hover {
+  background-color: #e8eaf6;
+}
+.pivot-field-item.used {
+  color: #9e9e9e;
+}
+.pivot-field-item:active {
+  cursor: grabbing;
+}
+.pivot-field-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pivot-field-count {
+  background-color: #eef0fb;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+/* 中：列/欄/值/篩選器 */
+.pivot-pane-editor {
+  width: 322px;
+  flex-shrink: 0;
+  border-right: 1px solid #eceff1;
+  background: #fafbfc;
+}
+.pivot-zone {
+  background: #ffffff;
+  border: 1px dashed #cfd8dc;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.pivot-zone.drag-over {
+  border-color: #3949ab;
+  border-style: solid;
+  background-color: #e8eaf6;
+}
+.pivot-zone-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #455a64;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pivot-value-entry {
+  background-color: #f5f6f8;
+  border-radius: 6px;
+  padding: 6px;
+}
+/* 值的彙總切換：小型按鈕組，避免下拉文字截斷 */
+.pivot-agg-toggle {
+  height: 26px;
+}
+.pivot-agg-toggle :deep(.v-btn) {
+  height: 26px !important;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 12px;
+}
+/* 值/篩選器的選擇器內文字完整顯示（縮小內距與字級） */
+.pivot-value-entry :deep(.v-field__input),
+.pivot-filter-entry :deep(.v-field__input) {
+  font-size: 13px;
+  padding-left: 8px;
+  padding-right: 0;
+}
+.pivot-filter-entry {
+  background-color: #f5f6f8;
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+/* 右：分析結果（flex 欄位配置：表格永遠在可視範圍內，水平捲軸不會被推到看不到的地方） */
+.pivot-pane-result {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pivot-table-wrap {
+  background: #ffffff;
+  border: 1px solid #eceff1;
+  border-radius: 8px;
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 180px;
+}
+/* 資料欄過多時：水平捲軸加大並常駐顯示 */
+.pivot-table-wrap::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+.pivot-table-wrap::-webkit-scrollbar-thumb {
+  background-color: #90a4ae;
+  border-radius: 6px;
+  border: 2px solid #ffffff;
+}
+.pivot-table-wrap::-webkit-scrollbar-thumb:hover {
+  background-color: #607d8b;
+}
+.pivot-table-wrap::-webkit-scrollbar-track {
+  background-color: #eceff1;
+  border-radius: 6px;
+}
+.pivot-table-wrap {
+  scrollbar-width: auto;
+  scrollbar-color: #90a4ae #eceff1; /* Firefox */
+}
+/* 表格欄位不自動換行壓縮，超出寬度時走水平捲動 */
+.pivot-table-wrap :deep(th),
+.pivot-table-wrap :deep(td) {
+  white-space: nowrap;
+}
+.pivot-result-hint {
+  flex-shrink: 0;
+}
+.pivot-chart-block {
+  flex-shrink: 0;
+  max-height: 42%;
+  overflow-y: auto;
+}
+/* 窄螢幕：改為上下堆疊 */
+@media (max-width: 1264px) {
+  .pivot-layout {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .pivot-pane-fields,
+  .pivot-pane-editor {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #eceff1;
+  }
+  .pivot-field-list {
+    max-height: 200px;
+  }
+  /* 堆疊模式：結果區改回一般流式排版，表格自身限制高度 */
+  .pivot-pane-result {
+    display: block;
+    overflow: visible;
+  }
+  .pivot-table-wrap {
+    max-height: 60vh;
+  }
+  .pivot-chart-block {
+    max-height: none;
+  }
+}
+
+/* --- 資料透視：可點擊下鑽的儲存格 --- */
+.pivot-cell-click {
+  cursor: pointer;
+}
+.pivot-cell-click:hover {
+  background-color: #e8eaf6;
+}
+.pivot-cell-sub {
+  font-size: 11px;
+  color: #757575;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* --- 資料透視：橫向長條圖（單一序列） --- */
+.pivot-chart-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.pivot-chart-row:hover .pivot-chart-bar {
+  opacity: 0.8;
+}
+.pivot-chart-label {
+  width: 140px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 12px;
+  color: #424242;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pivot-chart-track {
+  flex: 1;
+  min-width: 0;
+}
+.pivot-chart-bar {
+  height: 14px;
+  background-color: #3949ab;
+  border-radius: 0 4px 4px 0;
+}
+.pivot-chart-bar.neg {
+  background-color: #d84315;
+}
+.pivot-chart-value {
+  min-width: 76px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #424242;
+}
+
 /* 實價登錄提醒 Dialog：固定 85vh 高度 + 內部 card-text 捲動 */
 .report-reminder-card {
   height: 85vh;

@@ -75,11 +75,11 @@ export const AG_GRID_LOCALE_TW = {
  
   // Enterprise specific
   valueColumns: '數值欄位',
-  pivotMode: '樞紐模式', // ✅ 【修改】「樞紐模式」比「樞紐分析模式」簡潔
+  pivotMode: '資料透視模式', // ✅ 【修改】「資料透視模式」比「資料透視模式」簡潔
   groups: '列群組',     // ✅ 【修改】明確指出這是對「列」進行分組
   rowGroupColumnsEmptyMessage: '拖曳至此以設定列群組', // ✅ 【修改】優化提示訊息，更簡潔易懂
   values: '數值',
-  pivots: '欄標籤', // ✅ 【修改】在樞紐分析表中，Pivots 通常指的是 Column Labels
+  pivots: '欄標籤', // ✅ 【修改】在資料透視表中，Pivots 通常指的是 Column Labels
   pivotColumnsEmptyMessage: '拖曳至此以設定欄標籤', // ✅ 【修改】對應上面的修改
 
   // Header Context Menu
@@ -118,8 +118,8 @@ export const AG_GRID_LOCALE_TW = {
   totalAndFilteredRows: '列',
 
   // --- Charts ---
-  pivotChartAndPivotMode: '樞紐圖表與模式',
-  pivotChart: '樞紐圖表',
+  pivotChartAndPivotMode: '資料透視圖表與模式',
+  pivotChart: '資料透視圖表',
   chartRange: '圖表範圍',
   columnChart: '直條圖',
   barChart: '橫條圖',
