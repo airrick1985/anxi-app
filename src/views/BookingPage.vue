@@ -1414,8 +1414,8 @@
         <v-card-title class="attachment-preview-toolbar">
           <span class="attachment-preview-name">{{ currentPreviewAttachment?.name }}</span>
           <v-spacer></v-spacer>
-          <!-- 圖片縮放工具 -->
-          <template v-if="isImagePreview">
+          <!-- 縮放工具（圖片與 PDF 共用；PDF 100% = 符合頁面寬度） -->
+          <template v-if="isImagePreview || isPdfPreview">
             <v-btn icon="mdi-magnify-minus-outline" variant="text" size="small" density="comfortable"
               :disabled="previewZoom <= 0.5" @click="zoomOutPreview"></v-btn>
             <span class="preview-zoom-text">{{ Math.round(previewZoom * 100) }}%</span>
@@ -1435,10 +1435,26 @@
         </v-card-title>
         <v-divider></v-divider>
         <v-card-text class="flex-grow-1 pa-0 attachment-preview-content">
-          <!-- PDF 預覽 -->
-          <iframe v-if="isPdfPreview"
-            :src="currentPreviewAttachment?.url" type="application/pdf"
-            class="attachment-iframe"></iframe>
+          <!-- PDF 預覽（vue-pdf-embed 逐頁渲染完整多頁內容，預設符合頁面寬度） -->
+          <div v-if="isPdfPreview" ref="pdfScrollContainerRef" class="pdf-scroll-container">
+            <div v-if="isPdfLoading && !pdfLoadFailed" class="pdf-status-hint">
+              <v-progress-circular indeterminate color="white" size="36" class="mb-3"></v-progress-circular>
+              <div>PDF 載入中...</div>
+            </div>
+            <div v-if="pdfLoadFailed" class="pdf-status-hint">
+              <v-icon size="40" class="mb-2">mdi-file-alert-outline</v-icon>
+              <div class="mb-3">PDF 預覽載入失敗</div>
+              <v-btn color="primary" variant="flat" size="small" prepend-icon="mdi-open-in-new"
+                :href="currentPreviewAttachment?.url" target="_blank" rel="noopener">在新分頁開啟</v-btn>
+            </div>
+            <vue-pdf-embed v-if="pdfBaseWidth > 0 && !pdfLoadFailed"
+              :source="currentPreviewAttachment?.url"
+              :width="pdfRenderWidth"
+              class="pdf-embed-pages"
+              @rendered="isPdfLoading = false"
+              @loading-failed="onPdfLoadFailed"
+              @rendering-failed="onPdfLoadFailed" />
+          </div>
 
           <!-- 圖片預覽（含縮放/拖移） -->
           <div v-else-if="isImagePreview"
@@ -1656,6 +1672,7 @@ import {
 import { useDate, useDisplay } from 'vuetify';
 import html2canvas from 'html2canvas';
 import { VueSignaturePad } from 'vue-signature-pad';
+import VuePdfEmbed from 'vue-pdf-embed';
 
 // --- Customer Message Imports ---
 import { functions, storage } from '@/firebase';
@@ -2682,6 +2699,47 @@ const isPdfPreview = computed(() =>
 const isImagePreview = computed(() =>
   !!currentPreviewAttachment.value?.url && !isPdfPreview.value
 );
+
+// PDF 預覽：以 vue-pdf-embed 逐頁渲染，預設寬度符合容器（頁面寬度），縮放時按倍率調整渲染寬度
+const pdfScrollContainerRef = ref(null);
+const pdfBaseWidth = ref(0);
+const isPdfLoading = ref(false);
+const pdfLoadFailed = ref(false);
+const pdfRenderWidth = computed(() =>
+  pdfBaseWidth.value > 0 ? Math.round(pdfBaseWidth.value * previewZoom.value) : undefined
+);
+
+const onPdfLoadFailed = () => {
+  isPdfLoading.value = false;
+  pdfLoadFailed.value = true;
+};
+
+// Dialog 有開場動畫，容器寬度可能一開始量不到，需重試
+const measurePdfBaseWidth = () => {
+  const attempt = (retries) => {
+    const w = pdfScrollContainerRef.value?.clientWidth || 0;
+    if (w > 0) {
+      pdfBaseWidth.value = Math.max(280, w - 32); // 扣除左右內距
+    } else if (retries > 0) {
+      setTimeout(() => attempt(retries - 1), 100);
+    }
+  };
+  nextTick(() => attempt(10));
+};
+
+watch([isAttachmentPreviewVisible, currentPreviewAttachment], () => {
+  if (isAttachmentPreviewVisible.value && isPdfPreview.value) {
+    isPdfLoading.value = true;
+    pdfLoadFailed.value = false;
+    measurePdfBaseWidth();
+  }
+});
+
+const onPreviewContainerResize = () => {
+  if (isAttachmentPreviewVisible.value && isPdfPreview.value) measurePdfBaseWidth();
+};
+onMounted(() => window.addEventListener('resize', onPreviewContainerResize));
+onUnmounted(() => window.removeEventListener('resize', onPreviewContainerResize));
 
 const previewImageStyle = computed(() => ({
   transform: `translate3d(${previewTranslateX.value}px, ${previewTranslateY.value}px, 0) scale(${previewZoom.value})`,
@@ -4329,12 +4387,44 @@ const goBackToStep0 = () => {
   overflow: hidden;
 }
 
-.attachment-iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: #fff;
+/* PDF 多頁預覽：可上下捲動看完整內容，頁面置中 */
+.pdf-scroll-container {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pdf-embed-pages {
+  width: fit-content;
+  margin: 0 auto;
+}
+
+.pdf-embed-pages :deep(.vue-pdf-embed__page) {
+  margin-bottom: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.pdf-embed-pages :deep(.vue-pdf-embed__page canvas) {
   display: block;
+  background: #fff;
+}
+
+.pdf-status-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.95rem;
+  pointer-events: none;
+}
+
+.pdf-status-hint .v-btn {
+  pointer-events: auto;
 }
 
 .image-zoom-container {
