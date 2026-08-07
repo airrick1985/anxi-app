@@ -8847,6 +8847,109 @@ exports.finalizeLineBinding = onCall(async (request) => {
 
 
 /**
+ * [人員管理] 由超級管理員解除指定用戶的 LINE 綁定
+ * data: { adminKey, targetUserKey }
+ *
+ * 僅具「超級管理員」角色者可執行。解除後：
+ *  - 移除 users/{phone}.lineId，並保留 previousLineId / lineUnboundBy / lineUnboundAt 供追溯
+ *  - 一併清除該用戶尚未完成的綁定驗證信 (lineBindingTokens)，避免舊連結又把綁定加回去
+ *  - 寫入 lineBindingLogs 稽核紀錄（best-effort，失敗不影響主流程）
+ * 用戶之後可自行重新走 LINE 綁定流程。
+ */
+exports.unbindLineIdByAdmin = onCall({
+  region: "asia-east1",
+  memory: "512MiB",
+}, async (request) => {
+  const functionName = "unbindLineIdByAdmin";
+  const { adminKey, targetUserKey } = request.data || {};
+
+  if (!adminKey) throw new HttpsError("invalid-argument", "缺少 adminKey。");
+  if (!targetUserKey) throw new HttpsError("invalid-argument", "缺少 targetUserKey。");
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  try {
+    // 1. 驗證操作者為超級管理員
+    const adminSnap = await db.collection("users").doc(String(adminKey)).get();
+    if (!adminSnap.exists) {
+      throw new HttpsError("permission-denied", "找不到操作者資料，無法執行此操作。");
+    }
+    const adminData = adminSnap.data();
+    const adminRoles = adminData.roles || [];
+    if (!adminRoles.includes("超級管理員")) {
+      throw new HttpsError("permission-denied", "權限不足：僅限「超級管理員」解除 LINE 綁定。");
+    }
+
+    // 2. 取得目標用戶
+    const targetRef = db.collection("users").doc(String(targetUserKey));
+    const targetSnap = await targetRef.get();
+    if (!targetSnap.exists) {
+      throw new HttpsError("not-found", "找不到指定的用戶資料。");
+    }
+    const targetData = targetSnap.data();
+    const previousLineId = targetData.lineId || "";
+
+    if (!previousLineId) {
+      return { status: "success", alreadyUnbound: true, message: "此用戶目前並未綁定 LINE。" };
+    }
+
+    // 3. 解除綁定（保留前次 lineId 供追溯）
+    await targetRef.update({
+      lineId: FieldValue.delete(),
+      previousLineId,
+      lineUnboundBy: String(adminKey),
+      lineUnboundByName: adminData.name || "",
+      lineUnboundAt: FieldValue.serverTimestamp(),
+    });
+
+    // 4. 清除該用戶尚未完成的綁定驗證信，避免舊連結重新綁回
+    let removedTokens = 0;
+    try {
+      const tokenSnap = await db.collection("lineBindingTokens")
+        .where("phone", "==", String(targetUserKey))
+        .get();
+      if (!tokenSnap.empty) {
+        const batch = db.batch();
+        tokenSnap.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        removedTokens = tokenSnap.size;
+      }
+    } catch (tokenErr) {
+      console.error(`[${functionName}] 清除待驗證綁定 token 失敗:`, tokenErr);
+    }
+
+    // 5. 稽核紀錄（best-effort）
+    try {
+      await db.collection("lineBindingLogs").add({
+        action: "unbind",
+        targetUserKey: String(targetUserKey),
+        targetUserName: targetData.name || "",
+        previousLineId,
+        operatorKey: String(adminKey),
+        operatorName: adminData.name || "",
+        removedPendingTokens: removedTokens,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    } catch (logErr) {
+      console.error(`[${functionName}] 寫入 lineBindingLogs 失敗:`, logErr);
+    }
+
+    console.log(`[${functionName}] ${adminData.name || adminKey} 解除了用戶 ${targetData.name || targetUserKey} 的 LINE 綁定（原 lineId: ${previousLineId}，清除 ${removedTokens} 筆待驗證 token）。`);
+    return {
+      status: "success",
+      alreadyUnbound: false,
+      targetUserName: targetData.name || String(targetUserKey),
+      message: "已解除該用戶的 LINE 綁定。",
+    };
+  } catch (error) {
+    console.error(`[${functionName}] 解除 LINE 綁定失敗:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `解除 LINE 綁定失敗: ${error.message}`);
+  }
+});
+
+
+/**
  * [LIFF查詢用] 獲取使用者資料與其可查詢的建案列表 (V2 - 包含 bookingTypes)
  * @param {string} lineId - 從 LIFF SDK 獲取的 LINE User ID
  * @returns {Promise<object>} - 包含綁定狀態、使用者名稱及包含 bookingTypes 的建案列表

@@ -61,9 +61,20 @@
                 :page-text="'{0}-{1} 筆 / 共 {2} 筆'"
               >
                 <template v-slot:item.lineId="{ item }">
-                  <v-chip :color="item.lineId ? 'green' : 'grey'" small label>
-                    {{ item.lineId ? '已綁定' : '未綁定' }}
-                  </v-chip>
+                  <div class="d-flex align-center justify-center ga-1">
+                    <v-chip :color="item.lineId ? 'green' : 'grey'" small label>
+                      {{ item.lineId ? '已綁定' : '未綁定' }}
+                    </v-chip>
+                    <v-btn
+                      v-if="isSuperAdmin && item.lineId"
+                      icon="mdi-link-variant-off"
+                      size="x-small"
+                      color="error"
+                      variant="text"
+                      title="解除 LINE 綁定"
+                      @click="openUnbindLineDialog(item)"
+                    ></v-btn>
+                  </div>
                 </template>
                 <template v-slot:item.projects="{ item }">
                   <div style="max-width: 300px; display: flex; flex-wrap: wrap; gap: 4px;" class="py-2">
@@ -139,6 +150,15 @@
                           <v-chip :color="item[field.key] ? field.options.trueColor : field.options.falseColor" small label class="ml-2">
                             {{ item[field.key] ? field.options.trueText : field.options.falseText }}
                           </v-chip>
+                          <v-btn
+                            v-if="field.key === 'lineId' && isSuperAdmin && item.lineId"
+                            size="x-small"
+                            color="error"
+                            variant="tonal"
+                            class="ml-2"
+                            prepend-icon="mdi-link-variant-off"
+                            @click="openUnbindLineDialog(item)"
+                          >解除綁定</v-btn>
                         </template>
                         <template v-else-if="field.type === 'projects'">
                           <div style="display: flex; flex-wrap: wrap; gap: 4px;" class="mt-1">
@@ -1133,6 +1153,31 @@
             </v-card-actions>
         </v-card>
     </v-dialog>
+
+    <!-- 解除 LINE 綁定確認（僅超級管理員） -->
+    <v-dialog v-model="isUnbindLineDialogVisible" persistent max-width="440px">
+      <v-card v-if="unbindLineTarget">
+        <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
+          <v-icon start color="red-darken-2">mdi-link-variant-off</v-icon>
+          解除 LINE 綁定
+        </v-card-title>
+        <v-card-text class="pt-4">
+          <p class="text-body-2 mb-3">
+            確定要解除
+            <strong>{{ unbindLineTarget.name || unbindLineTarget.phone }}</strong>
+            （{{ unbindLineTarget.phone }}）的 LINE 綁定嗎？
+          </p>
+          <v-alert type="warning" variant="tonal" density="compact" class="text-caption">
+            解除後該用戶將無法透過 LINE 進入各項系統，也不會再收到 LINE 通知，需由本人重新完成綁定流程。
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-3 pt-0">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" color="grey" :disabled="isUnbindingLine" @click="isUnbindLineDialogVisible = false">取消</v-btn>
+          <v-btn color="error" variant="flat" :loading="isUnbindingLine" @click="handleUnbindLine">確認解除</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -1150,8 +1195,9 @@ import {
   updateUserRoles,
   updateRole,
   deleteRole,
-  createSystemFunction,   
+  createSystemFunction,
   updateSystemFunction,
+  unbindLineIdByAdmin,
   // fetchUserManagementInitialData, // 由 adminStore 處理
 } from '@/api.js';
 import { useToast } from 'vue-toastification';
@@ -1610,6 +1656,43 @@ const groupedPermissions = computed(() => {
 const rules = {
   required: [ value => !!value || '此欄位為必填項。' ],
 };
+
+// --- 解除 LINE 綁定（僅超級管理員） ---
+const isUnbindLineDialogVisible = ref(false);
+const unbindLineTarget = ref(null);
+const isUnbindingLine = ref(false);
+
+function openUnbindLineDialog(item) {
+  unbindLineTarget.value = item;
+  isUnbindLineDialogVisible.value = true;
+}
+
+async function handleUnbindLine() {
+  const target = unbindLineTarget.value;
+  if (!target) return;
+  isUnbindingLine.value = true;
+  try {
+    const res = await unbindLineIdByAdmin({
+      adminKey: adminKey.value,
+      targetUserKey: target.phone,
+    });
+    if (res?.alreadyUnbound) {
+      toast.info(`${target.name || target.phone} 目前並未綁定 LINE。`);
+    } else {
+      toast.success(`已解除 ${target.name || target.phone} 的 LINE 綁定。`);
+    }
+    isUnbindLineDialogVisible.value = false;
+    unbindLineTarget.value = null;
+    // 重新載入人員列表，讓「已綁定／未綁定」狀態即時更新
+    adminStore.invalidateCache();
+    await loadInitialData();
+  } catch (err) {
+    console.error('解除 LINE 綁定失敗:', err);
+    toast.error(`解除失敗：${err?.message || '未知錯誤'}`);
+  } finally {
+    isUnbindingLine.value = false;
+  }
+}
 
 // --- Computed Properties ---
 const isSuperAdmin = computed(() => userStore.currentUserRoles.includes('超級管理員'));

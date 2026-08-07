@@ -6012,6 +6012,22 @@ export const finalizeLineBinding = async (payload) => {
   }
 };
 
+/**
+ * [API] 由超級管理員解除指定用戶的 LINE 綁定（人員管理用）
+ * @param {object} payload - 包含 { adminKey, targetUserKey }
+ * @returns {Promise<object>} - 後端回傳的結果
+ */
+export const unbindLineIdByAdmin = async (payload) => {
+  try {
+    const unbindFunction = httpsCallable(functions, 'unbindLineIdByAdmin');
+    const result = await unbindFunction(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in unbindLineIdByAdmin:", error);
+    throw new Error(error.message);
+  }
+};
+
 // ✓ END
 
 // ✓ START: 新增 - LIFF 查詢功能所需的 API 函式
