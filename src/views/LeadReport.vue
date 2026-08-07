@@ -14,7 +14,26 @@
           <p class="text-body-2 text-grey-darken-1 mt-2">
             您的身份尚未綁定或無此項目的作業權限，<br>請聯絡 ANXI 客服進行開通。
           </p>
-          
+
+          <!-- 名單歸屬人（去識別化）：方便使用者向客服說明或聯繫負責人 -->
+          <div v-if="deniedOwnerInfo" class="owner-info-box mt-4 text-start">
+            <div class="d-flex align-center mb-2">
+              <v-icon size="18" color="grey-darken-1" class="me-2">mdi-account-lock-outline</v-icon>
+              <span class="text-caption font-weight-bold text-grey-darken-2">此名單歸屬人員</span>
+            </div>
+            <template v-if="deniedOwnerInfo.userId || deniedOwnerInfo.name">
+              <div class="d-flex align-center flex-wrap ga-2">
+                <span class="owner-tag">USERID</span>
+                <span class="owner-value">{{ deniedOwnerInfo.userId || '—' }}</span>
+                <span class="owner-value owner-name">{{ deniedOwnerInfo.name || '—' }}</span>
+              </div>
+            </template>
+            <div v-else class="text-body-2 text-grey-darken-1">此名單尚未指派銷售人員</div>
+            <div class="text-caption text-grey mt-2">
+              為保護個資，以上資訊已去識別化顯示。
+            </div>
+          </div>
+
           <v-divider class="my-6"></v-divider>
           
           <div class="text-subtitle-2 mb-3 text-primary font-weight-bold">ANXI 官方客服</div>
@@ -311,6 +330,8 @@ const leadId = route.query.id;
 const authStatus = ref('loading');
 const projectName = ref('');
 const leadData = ref({ name: '', phone: '', projectId: '', source: '', budget: '', date: '', note: '' });
+// 無權限時顯示的「名單歸屬人」資訊（已去識別化，供使用者向客服說明或聯繫負責人）
+const deniedOwnerInfo = ref(null);
 const form = ref({ status: '', reason: '', note: '' });
 const historyLogs = ref([]);
 const snackbar = reactive({ show: false, text: '', color: '' });
@@ -357,6 +378,27 @@ watch(() => form.value.status, (newStatus) => {
 });
 
 /**
+ * 去識別化：USERID（手機號）僅遮蔽末 3 碼，例：0980111222 → 0980111XXX
+ */
+const maskUserId = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.length <= 3) return 'X'.repeat(raw.length);
+  return raw.slice(0, -3) + 'XXX';
+};
+
+/**
+ * 去識別化：姓名保留首尾字、中間以 O 取代，例：王大明 → 王O明、王明 → 王O
+ */
+const maskName = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.length === 1) return raw;
+  if (raw.length === 2) return `${raw[0]}O`;
+  return `${raw[0]}${'O'.repeat(raw.length - 2)}${raw[raw.length - 1]}`;
+};
+
+/**
  * 權限與設定驗證
  */
 const verifyAccess = async (lineId) => {
@@ -368,6 +410,12 @@ const verifyAccess = async (lineId) => {
     const leadInfo = leadSnap.data();
     const targetProjectId = leadInfo.projectId;
     console.log(`[權限驗證] 名單所屬項目: ${targetProjectId}`);
+
+    // 先記錄名單歸屬人（去識別化），後續任一驗證未通過時可顯示於無權限畫面
+    deniedOwnerInfo.value = {
+      userId: maskUserId(leadInfo.assignedTo),
+      name: maskName(leadInfo.assignedName),
+    };
 
     const setSnap = await getDoc(doc(db, 'projectSettings', targetProjectId));
     if (setSnap.exists()) {
@@ -688,6 +736,34 @@ const getStatusKey = (s) => ({ '已約賞屋': 'success', '不考慮': 'error', 
 .history-item:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* 無權限畫面：名單歸屬人（去識別化） */
+.owner-info-box {
+  background-color: #f5f6f8;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.owner-tag {
+  display: inline-block;
+  background-color: #607d8b;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.owner-value {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #37474f;
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+}
+.owner-name {
+  padding-left: 4px;
 }
 
 </style>
