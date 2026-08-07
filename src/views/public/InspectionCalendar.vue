@@ -230,6 +230,21 @@
       </template>
     </v-tooltip>
 
+    <v-tooltip text="行事曆備註" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-badge :content="calendarNoteRecords.length" :model-value="calendarNoteRecords.length > 0" color="amber-darken-2" offset-x="6" offset-y="6">
+          <v-btn
+            v-if="canEdit"
+            v-bind="props"
+            icon="mdi-calendar-text"
+            variant="text"
+            color="black"
+            @click="openCalendarNoteManager()"
+          ></v-btn>
+        </v-badge>
+      </template>
+    </v-tooltip>
+
     <v-tooltip text="下載時間表" location="bottom">
       <template v-slot:activator="{ props: tooltipProps }">
         <v-menu location="bottom end">
@@ -341,6 +356,7 @@
             </v-btn-toggle>
             <v-spacer></v-spacer>
             <v-btn v-if="canEdit" icon="mdi-account-clock" variant="text" size="small" title="驗屋人員排休" @click="isLeaveManagerVisible = true"></v-btn>
+            <v-btn v-if="canEdit" icon="mdi-calendar-text" variant="text" size="small" title="行事曆備註" @click="openCalendarNoteManager(selectedMobileDate)"></v-btn>
             <v-btn icon="mdi-chevron-left" variant="text" size="small" @click="shiftMobile(-1)"></v-btn>
             <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-calendar-today" @click="goToToday">今天</v-btn>
             <v-btn icon="mdi-chevron-right" variant="text" size="small" @click="shiftMobile(1)"></v-btn>
@@ -360,6 +376,11 @@
               <span class="pill-dow">{{ day.dowLabel }}</span>
               <span class="pill-date">{{ day.dateLabel }}</span>
               <span :class="['pill-count', { 'pill-count-empty': day.count === 0 }]">{{ day.count > 0 ? day.count : '–' }}</span>
+              <span
+                v-if="(calendarNotesByDate[day.key] || []).length"
+                class="pill-note-dot"
+                :style="{ backgroundColor: getNoteColor(calendarNotesByDate[day.key][0].color).border }"
+              ></span>
             </button>
           </div>
 
@@ -392,6 +413,39 @@
               <v-icon size="small" color="primary" class="mr-1">mdi-calendar-today</v-icon>
               <span class="font-weight-bold">{{ selectedMobileDateLabel }}</span>
               <v-chip size="x-small" color="primary" variant="tonal" class="ml-2" label>{{ mobileSelectedDayCount }} 筆</v-chip>
+            </div>
+            <!-- 每日名額摘要（手機版：點擊開啟明細） -->
+            <div v-if="(dailyQuotaByDate[selectedMobileDate] || []).length" class="mobile-quota-strip">
+              <button
+                v-for="row in dailyQuotaByDate[selectedMobileDate]" :key="row.label"
+                type="button" class="mobile-quota-item"
+                @click="openQuotaDetail(selectedMobileDate, row.label)"
+              >
+                <span class="mobile-quota-name">{{ row.label }}</span>
+                <span class="mobile-quota-num" :style="{ color: quotaColor(row) }">{{ row.booked }}/{{ row.capacity }}</span>
+                <span class="mobile-quota-rest" :style="{ color: quotaColor(row) }">
+                  {{ row.remaining <= 0 ? '額滿' : `剩 ${row.remaining}` }}
+                </span>
+                <v-icon size="13" color="grey-darken-1">mdi-chevron-right</v-icon>
+              </button>
+            </div>
+            <!-- 行事曆備註（手機版：日期標題下一列） -->
+            <div v-if="(calendarNotesByDate[selectedMobileDate] || []).length" class="calendar-note-stack mobile-note-stack">
+              <div
+                v-for="note in calendarNotesByDate[selectedMobileDate]"
+                :key="note.id"
+                class="calendar-note-chip"
+                :class="{ 'is-clickable': canEdit }"
+                :style="{
+                  backgroundColor: getNoteColor(note.color).bg,
+                  color: getNoteColor(note.color).text,
+                  borderColor: getNoteColor(note.color).border,
+                }"
+                @click="canEdit && openCalendarNoteManager(selectedMobileDate)"
+              >
+                <v-icon size="x-small" class="calendar-note-chip-icon">mdi-pin</v-icon>
+                <span class="calendar-note-chip-text">{{ note.note }}</span>
+              </div>
             </div>
             <div class="mobile-agenda-list">
               <div v-if="mobileSlotsForSelectedDay.length === 0" class="text-center text-grey py-10">
@@ -441,10 +495,43 @@
               <p class="mt-2">這一週沒有符合條件的預約</p>
             </div>
             <template v-for="day in mobileDates" :key="day.key">
-              <div v-if="day.count > 0" class="mobile-week-day">
+              <div v-if="day.count > 0 || (calendarNotesByDate[day.key] || []).length || (dailyQuotaByDate[day.key] || []).length" class="mobile-week-day">
                 <div class="mobile-week-day-header" :class="{ 'is-today': day.isToday }">
                   <span class="font-weight-bold">{{ day.dateLabel }}（{{ day.dowLabel }}）</span>
                   <v-chip size="x-small" color="primary" variant="tonal" class="ml-2" label>{{ day.count }} 筆</v-chip>
+                </div>
+                <!-- 每日名額摘要（手機週檢視：點擊開啟明細） -->
+                <div v-if="(dailyQuotaByDate[day.key] || []).length" class="mobile-quota-strip">
+                  <button
+                    v-for="row in dailyQuotaByDate[day.key]" :key="row.label"
+                    type="button" class="mobile-quota-item"
+                    @click="openQuotaDetail(day.key, row.label)"
+                  >
+                    <span class="mobile-quota-name">{{ row.label }}</span>
+                    <span class="mobile-quota-num" :style="{ color: quotaColor(row) }">{{ row.booked }}/{{ row.capacity }}</span>
+                    <span class="mobile-quota-rest" :style="{ color: quotaColor(row) }">
+                      {{ row.remaining <= 0 ? '額滿' : `剩 ${row.remaining}` }}
+                    </span>
+                    <v-icon size="13" color="grey-darken-1">mdi-chevron-right</v-icon>
+                  </button>
+                </div>
+                <!-- 行事曆備註（手機週檢視：日期標題下一列） -->
+                <div v-if="(calendarNotesByDate[day.key] || []).length" class="calendar-note-stack mobile-note-stack">
+                  <div
+                    v-for="note in calendarNotesByDate[day.key]"
+                    :key="note.id"
+                    class="calendar-note-chip"
+                    :class="{ 'is-clickable': canEdit }"
+                    :style="{
+                      backgroundColor: getNoteColor(note.color).bg,
+                      color: getNoteColor(note.color).text,
+                      borderColor: getNoteColor(note.color).border,
+                    }"
+                    @click="canEdit && openCalendarNoteManager(day.key)"
+                  >
+                    <v-icon size="x-small" class="calendar-note-chip-icon">mdi-pin</v-icon>
+                    <span class="calendar-note-chip-text">{{ note.note }}</span>
+                  </div>
                 </div>
                 <div v-for="slot in slotsForDate(day.key)" :key="day.key + slot.time" class="mobile-slot">
                   <div class="mobile-slot-time"><v-icon size="x-small" class="mr-1">mdi-clock-outline</v-icon>{{ slot.time }}</div>
@@ -586,9 +673,116 @@
         </v-menu>
       </th>
                   <th v-for="day in chunk" :key="day.fullDate" class="day-header" :class="{ 'today-column': day.isToday, 'weekend-column': day.isWeekend }">
-                    <div v-if="day.isInRange">
-                      <div>{{ day.dayName }}</div>
-                      <div>{{ day.date }}</div>
+                    <div v-if="day.isInRange">{{ day.dateLabel }}</div>
+                  </th>
+                </tr>
+                <!-- 每日名額摘要：日期標題下第一列（該週無批次名額時不顯示） -->
+                <tr v-if="chunkHasQuota(chunk)" class="quota-row">
+                  <th class="quota-label" role="button" :title="isQuotaRowExpanded ? '收合名額列' : '展開名額列'"
+                    @click="isQuotaRowExpanded = !isQuotaRowExpanded">
+                    <v-icon size="small" color="teal-darken-2">mdi-chart-box-outline</v-icon>
+                    <span>名額</span>
+                    <v-icon size="14" class="row-toggle-icon">{{ isQuotaRowExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+                  </th>
+                  <th
+                    v-for="day in chunk" :key="'quota-' + day.fullDate"
+                    class="quota-cell"
+                    :class="{ 'today-column': day.isToday, 'weekend-column': day.isWeekend }"
+                  >
+                    <template v-if="day.isInRange && (dailyQuotaByDate[day.fullDate] || []).length">
+                      <!-- 收合時仍保留全日總計，點擊可看明細 -->
+                      <div v-if="!isQuotaRowExpanded" class="quota-collapsed" role="button"
+                        title="點擊查看名額明細" @click="openQuotaDetail(day.fullDate)">
+                        {{ quotaDayTotal(day.fullDate).booked }}/{{ quotaDayTotal(day.fullDate).capacity }}
+                        <span class="quota-total-rest">剩 {{ Math.max(quotaDayTotal(day.fullDate).capacity - quotaDayTotal(day.fullDate).booked, 0) }}</span>
+                      </div>
+                      <template v-else>
+                      <!-- 全日總計 -->
+                      <div class="quota-total">
+                        {{ quotaDayTotal(day.fullDate).booked }}/{{ quotaDayTotal(day.fullDate).capacity }}
+                        <span class="quota-total-rest">剩 {{ Math.max(quotaDayTotal(day.fullDate).capacity - quotaDayTotal(day.fullDate).booked, 0) }}</span>
+                      </div>
+                      <!-- 各預約項目一條迷你進度條；滑鼠移上顯示明細，點擊開啟明細對話框 -->
+                      <v-tooltip
+                        v-for="row in dailyQuotaByDate[day.fullDate]" :key="row.label"
+                        location="bottom" open-delay="120" content-class="quota-tooltip"
+                      >
+                        <template v-slot:activator="{ props }">
+                          <div v-bind="props" class="quota-item" @click="openQuotaDetail(day.fullDate, row.label)">
+                            <div class="quota-item-head">
+                              <span class="quota-item-name">{{ row.label }}</span>
+                              <span class="quota-item-num" :style="{ color: quotaColor(row) }">{{ row.booked }}/{{ row.capacity }}</span>
+                            </div>
+                            <div class="quota-bar">
+                              <div class="quota-bar-fill" :style="{ width: quotaPercent(row) + '%', backgroundColor: quotaColor(row) }"></div>
+                            </div>
+                          </div>
+                        </template>
+                        <div class="quota-tip">
+                          <div class="quota-tip-title">
+                            {{ row.label }}　已約 {{ row.booked }} / {{ row.capacity }}
+                            <span :style="{ color: row.remaining <= 0 ? '#FF8A80' : '#A5D6A7' }">
+                              {{ row.remaining <= 0 ? '額滿' : `剩 ${row.remaining}` }}
+                            </span>
+                          </div>
+                          <div v-if="row.methods.length" class="quota-tip-section">
+                            <div v-for="m in row.methods" :key="m.name" class="quota-tip-line">
+                              <span class="quota-tip-key">{{ m.name }}</span>
+                              <span>{{ quotaMethodText(m) }}</span>
+                            </div>
+                          </div>
+                          <div v-if="row.slots.length" class="quota-tip-section">
+                            <div v-for="s in row.slots" :key="s.time" class="quota-tip-line">
+                              <span class="quota-tip-key">{{ s.time }}</span>
+                              <span>{{ s.booked }}/{{ s.capacity }}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </v-tooltip>
+                      </template>
+                    </template>
+                  </th>
+                </tr>
+                <!-- 行事曆備註：緊貼在日期標題下方，整週皆無備註時不顯示 -->
+                <tr v-if="chunkHasCalendarNote(chunk)" class="calendar-note-row">
+                  <th class="calendar-note-label" role="button" :title="isNoteRowExpanded ? '收合備註列' : '展開備註列'"
+                    @click="isNoteRowExpanded = !isNoteRowExpanded">
+                    <v-icon size="small" color="amber-darken-3">mdi-pin</v-icon>
+                    <span>備註</span>
+                    <v-icon size="14" class="row-toggle-icon">{{ isNoteRowExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+                  </th>
+                  <th
+                    v-for="day in chunk" :key="'note-' + day.fullDate"
+                    class="calendar-note-cell"
+                    :class="{ 'today-column': day.isToday, 'weekend-column': day.isWeekend }"
+                  >
+                    <!-- 收合時以色點表示該日有幾則備註，點擊即展開 -->
+                    <div v-if="day.isInRange && !isNoteRowExpanded" class="note-collapsed" role="button"
+                      title="點擊展開備註" @click="isNoteRowExpanded = true">
+                      <span
+                        v-for="note in (calendarNotesByDate[day.fullDate] || [])"
+                        :key="'dot-' + note.id"
+                        class="note-collapsed-dot"
+                        :style="{ backgroundColor: getNoteColor(note.color).border }"
+                      ></span>
+                    </div>
+                    <div v-else-if="day.isInRange" class="calendar-note-stack">
+                      <div
+                        v-for="note in (calendarNotesByDate[day.fullDate] || [])"
+                        :key="note.id"
+                        class="calendar-note-chip"
+                        :class="{ 'is-clickable': canEdit }"
+                        :style="{
+                          backgroundColor: getNoteColor(note.color).bg,
+                          color: getNoteColor(note.color).text,
+                          borderColor: getNoteColor(note.color).border,
+                        }"
+                        :title="canEdit ? `${note.note}（點擊可編輯）` : note.note"
+                        @click="canEdit && openCalendarNoteManager(day.fullDate)"
+                      >
+                        <v-icon size="x-small" class="calendar-note-chip-icon">mdi-pin</v-icon>
+                        <span class="calendar-note-chip-text">{{ note.note }}</span>
+                      </div>
                     </div>
                   </th>
                 </tr>
@@ -697,6 +891,92 @@
       @staff-updated="handleStaffListUpdated"
       @leaves-changed="fetchInspectorLeavesData"
     />
+
+    <CalendarNoteManagerDialog
+      v-if="isCalendarNoteManagerVisible"
+      v-model="isCalendarNoteManagerVisible"
+      :project-id="projectId"
+      :project-name="projectName"
+      :can-edit="canEdit"
+      :default-date="calendarNoteDefaultDate"
+      @notes-changed="fetchCalendarNotesData"
+    />
+
+    <!-- 每日名額明細（手機無法 hover，改以點擊開啟；桌機點擊亦可開啟） -->
+    <v-dialog v-model="isQuotaDetailVisible" max-width="520px" scrollable :fullscreen="xs">
+      <v-card class="d-flex flex-column">
+        <v-card-title class="d-flex align-center bg-teal-darken-2 text-white py-3 px-4">
+          <v-icon start>mdi-chart-box-outline</v-icon>
+          <span class="text-subtitle-1">{{ quotaDetailDateLabel }} 名額明細</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" color="white" size="small" @click="isQuotaDetailVisible = false"></v-btn>
+        </v-card-title>
+
+        <v-card-text class="pa-4" style="background-color:#f5f6f8;">
+          <div v-if="!quotaDetailRows.length" class="text-center text-grey py-8">
+            <v-icon size="42" color="grey-lighten-1">mdi-calendar-remove-outline</v-icon>
+            <p class="mt-2 text-body-2">這一天沒有批次名額設定</p>
+          </div>
+
+          <div
+            v-for="row in quotaDetailRows" :key="row.label"
+            class="bg-white rounded-lg pa-3 mb-3"
+            :style="{ border: '1px solid #eceff1', borderLeft: `5px solid ${quotaColor(row)}` }"
+          >
+            <div class="d-flex align-center mb-1">
+              <span class="text-subtitle-2 font-weight-bold">{{ row.label }}</span>
+              <v-spacer></v-spacer>
+              <span class="text-body-2 font-weight-bold" :style="{ color: quotaColor(row) }">
+                {{ row.booked }} / {{ row.capacity }}
+              </span>
+              <v-chip size="x-small" label variant="flat" class="ml-2"
+                :style="{ backgroundColor: quotaColor(row), color: '#fff' }">
+                {{ row.remaining <= 0 ? '額滿' : `剩 ${row.remaining}` }}
+              </v-chip>
+            </div>
+            <div class="quota-bar mb-3">
+              <div class="quota-bar-fill" :style="{ width: quotaPercent(row) + '%', backgroundColor: quotaColor(row) }"></div>
+            </div>
+
+            <template v-if="row.methods.length">
+              <div class="text-caption font-weight-bold text-grey-darken-1 mb-1">各選擇方式</div>
+              <div class="quota-detail-table mb-3">
+                <div v-for="m in row.methods" :key="m.name" class="quota-detail-line">
+                  <span class="quota-detail-key">{{ m.name }}</span>
+                  <span class="font-weight-bold">{{ quotaMethodText(m) }}</span>
+                </div>
+              </div>
+            </template>
+
+            <template v-if="row.slots.length">
+              <div class="text-caption font-weight-bold text-grey-darken-1 mb-1">各時段</div>
+              <div class="quota-detail-table">
+                <div v-for="s in row.slots" :key="s.time" class="quota-detail-line">
+                  <span class="quota-detail-key">{{ s.time }}</span>
+                  <span class="font-weight-bold">
+                    {{ s.booked }}/{{ s.capacity }}
+                    <span :style="{ color: s.capacity - s.booked <= 0 ? '#E53935' : '#2E9E6B' }">
+                      {{ s.capacity - s.booked <= 0 ? '額滿' : `剩 ${s.capacity - s.booked}` }}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div class="text-caption text-grey-darken-1">
+            <v-icon size="14" class="mr-1">mdi-information-outline</v-icon>
+            「已約」計入狀態為「預約中」與「已完成」的預約；方式未設定名額時與其他方式共用時段總名額。
+          </div>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3 bg-grey-lighten-4">
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="flat" @click="isQuotaDetailVisible = false">關閉</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- 進階篩選：狀態/項目/選擇方式 + 進階條件（自「篩選與顯示設定」拆出的獨立對話框） -->
     <v-dialog v-model="isAdvFilterDialogVisible" max-width="640px" scrollable :fullscreen="xs">
@@ -915,7 +1195,7 @@
                   事件顏色
                   <v-chip size="x-small" label class="ml-2" color="indigo-lighten-4">全建案共用</v-chip>
                 </div>
-                <div class="text-caption text-grey-darken-1">可依「預約項目類型」或「關鍵字」指定事件底色，留空則沿用系統預設配色</div>
+                <div class="text-caption text-grey-darken-1">可依「預約項目類型」或「關鍵字／空值規則」指定事件底色與邊框色，留空則沿用系統預設配色</div>
               </div>
               <template v-if="canEdit">
                 <v-btn size="x-small" variant="text" color="primary" :disabled="!currentTypeOptions.length" @click="applyDefaultTypeColors">建議配色</v-btn>
@@ -933,21 +1213,23 @@
               <div v-for="t in currentTypeOptions" :key="t" class="pa-3 rounded-lg" style="background-color:#fafafa;border:1px solid #eee;">
                 <div class="text-body-2 font-weight-bold mb-2">{{ t }}</div>
                 <div class="d-flex flex-wrap ga-4">
-                  <div v-for="src in SOURCE_KEYS" :key="src.key" class="d-flex align-center" style="min-width:230px;flex:1 1 230px;">
+                  <div v-for="src in SOURCE_KEYS" :key="src.key" class="d-flex align-center" style="min-width:260px;flex:1 1 260px;">
                     <v-chip size="x-small" label variant="flat" class="mr-2 flex-shrink-0"
                       :color="src.key === 'admin' ? 'deep-orange-lighten-4' : 'blue-lighten-4'">
                       {{ src.label }}
                     </v-chip>
+                    <!-- 底色 -->
                     <v-menu v-if="canEdit" :close-on-content-click="false" location="bottom start">
                       <template #activator="{ props }">
-                        <div v-bind="props" class="d-flex align-center justify-center mr-2 flex-shrink-0"
+                        <div v-bind="props" class="d-flex align-center justify-center mr-1 flex-shrink-0" title="底色"
                           :style="{ width:'32px', height:'32px', borderRadius:'8px', cursor:'pointer',
                             backgroundColor: getTypeColor(src.key, t) || '#ffffff',
                             border: getTypeColor(src.key, t) ? '1px solid rgba(0,0,0,0.15)' : '1px dashed #bdbdbd' }">
-                          <v-icon v-if="!getTypeColor(src.key, t)" size="16" color="grey">mdi-eyedropper-variant</v-icon>
+                          <v-icon v-if="!getTypeColor(src.key, t)" size="16" color="grey">mdi-format-color-fill</v-icon>
                         </div>
                       </template>
                       <v-card width="280">
+                        <div class="text-caption text-grey px-3 pt-2">底色</div>
                         <v-color-picker :model-value="getTypeColor(src.key, t) || (src.key === 'admin' ? '#FFF3E0' : '#E3F2FD')"
                           @update:model-value="setTypeColor(src.key, t, $event)" mode="hex" hide-inputs show-swatches width="100%"></v-color-picker>
                         <v-divider></v-divider>
@@ -957,18 +1239,44 @@
                         </div>
                       </v-card>
                     </v-menu>
-                    <div v-else class="d-flex align-center justify-center mr-2 flex-shrink-0"
+                    <div v-else class="d-flex align-center justify-center mr-1 flex-shrink-0"
                       :style="{ width:'32px', height:'32px', borderRadius:'8px',
                         backgroundColor: getTypeColor(src.key, t) || '#ffffff',
                         border: getTypeColor(src.key, t) ? '1px solid rgba(0,0,0,0.15)' : '1px dashed #bdbdbd' }">
                       <v-icon v-if="!getTypeColor(src.key, t)" size="16" color="grey">mdi-minus</v-icon>
                     </div>
+                    <!-- 邊框色 -->
+                    <v-menu v-if="canEdit" :close-on-content-click="false" location="bottom start">
+                      <template #activator="{ props }">
+                        <div v-bind="props" class="d-flex align-center justify-center mr-2 flex-shrink-0" title="邊框顏色"
+                          :style="{ width:'32px', height:'32px', borderRadius:'8px', cursor:'pointer', backgroundColor:'#ffffff',
+                            border: getTypeBorder(src.key, t) ? `3px solid ${getTypeBorder(src.key, t)}` : '1px dashed #bdbdbd' }">
+                          <v-icon v-if="!getTypeBorder(src.key, t)" size="16" color="grey">mdi-border-color</v-icon>
+                        </div>
+                      </template>
+                      <v-card width="280">
+                        <div class="text-caption text-grey px-3 pt-2">邊框顏色</div>
+                        <v-color-picker :model-value="getTypeBorder(src.key, t) || '#E53935'"
+                          @update:model-value="setTypeBorder(src.key, t, $event)" mode="hex" hide-inputs show-swatches width="100%"></v-color-picker>
+                        <v-divider></v-divider>
+                        <div class="d-flex pa-2">
+                          <v-spacer></v-spacer>
+                          <v-btn size="small" variant="text" color="grey" @click="clearTypeBorder(src.key, t)">清除（無邊框）</v-btn>
+                        </div>
+                      </v-card>
+                    </v-menu>
+                    <div v-else class="d-flex align-center justify-center mr-2 flex-shrink-0"
+                      :style="{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#ffffff',
+                        border: getTypeBorder(src.key, t) ? `3px solid ${getTypeBorder(src.key, t)}` : '1px dashed #bdbdbd' }">
+                      <v-icon v-if="!getTypeBorder(src.key, t)" size="16" color="grey">mdi-minus</v-icon>
+                    </div>
                     <v-chip size="small" label variant="flat" class="flex-shrink-0"
-                      :style="{ backgroundColor: getTypeColor(src.key, t) || '#EEEEEE', color: getReadableTextColor(getTypeColor(src.key, t) || '#EEEEEE') }">
-                      {{ getTypeColor(src.key, t) ? '預覽' : '預設' }}
+                      :style="{ backgroundColor: getTypeColor(src.key, t) || '#EEEEEE', color: getReadableTextColor(getTypeColor(src.key, t) || '#EEEEEE'),
+                        border: getTypeBorder(src.key, t) ? `2px solid ${getTypeBorder(src.key, t)}` : 'none' }">
+                      {{ (getTypeColor(src.key, t) || getTypeBorder(src.key, t)) ? '預覽' : '預設' }}
                     </v-chip>
-                    <v-btn v-if="canEdit && getTypeColor(src.key, t)" icon="mdi-close" size="x-small" variant="text" color="grey" class="ml-1 flex-shrink-0"
-                      @click="clearTypeColor(src.key, t)" title="清除此來源顏色"></v-btn>
+                    <v-btn v-if="canEdit && (getTypeColor(src.key, t) || getTypeBorder(src.key, t))" icon="mdi-close" size="x-small" variant="text" color="grey" class="ml-1 flex-shrink-0"
+                      @click="clearTypeColor(src.key, t)" title="清除此來源底色與邊框"></v-btn>
                   </div>
                 </div>
               </div>
@@ -978,43 +1286,91 @@
             <div class="d-flex align-center mb-2">
               <v-avatar size="30" color="amber-darken-2" class="mr-2"><v-icon size="18" color="white">mdi-format-color-highlight</v-icon></v-avatar>
               <div class="flex-grow-1">
-                <div class="text-subtitle-2 font-weight-bold">關鍵字顏色</div>
-                <div class="text-caption text-grey-darken-1">指定欄位內容含關鍵字時的事件底色，由上而下第一個符合的規則生效</div>
+                <div class="text-subtitle-2 font-weight-bold">關鍵字／空值顏色</div>
+                <div class="text-caption text-grey-darken-1">指定欄位「含關鍵字」或「為空值」時的事件底色與邊框色，由上而下第一個符合的規則生效（↑↓ 可調整優先順序）。同一規則可加入多個條件，全部條件都符合才套用。</div>
               </div>
               <v-btn v-if="canEdit" size="x-small" variant="text" color="primary" prepend-icon="mdi-plus" @click="addKeywordRule">新增規則</v-btn>
             </div>
-            <div v-if="!keywordColorRules.length" class="text-caption text-grey mb-2">尚未設定關鍵字規則。例：欄位「選擇方式」＋關鍵字「屋主自驗」→ 黃色底。</div>
+            <div v-if="!keywordColorRules.length" class="text-caption text-grey mb-2">尚未設定規則。例：欄位「選擇方式」含「屋主自驗」→ 黃色底；欄位「驗屋人員」為空值 → 白底紅框；也可組合多個條件（如「初驗」且「驗屋人員為空」）。</div>
             <div v-else class="d-flex flex-column ga-2 mb-2">
-              <div v-for="(rule, idx) in keywordColorRules" :key="idx" class="pa-2 rounded-lg d-flex align-center flex-wrap ga-2" style="background-color:#fafafa;border:1px solid #eee;">
-                <span class="text-caption text-grey flex-shrink-0" style="width:18px;">{{ idx + 1 }}.</span>
-                <v-select :model-value="rule.field" @update:model-value="updateKeywordRule(idx, { field: $event })"
-                  :items="keywordFieldOptions" item-title="label" item-value="key" density="compact" hide-details
-                  variant="outlined" label="欄位" style="min-width:140px;max-width:170px;" :disabled="!canEdit"></v-select>
-                <v-text-field :model-value="rule.keyword" @update:model-value="updateKeywordRule(idx, { keyword: $event })"
-                  density="compact" hide-details variant="outlined" label="關鍵字" placeholder="例：屋主自驗"
-                  style="min-width:130px;flex:1 1 130px;" :disabled="!canEdit"></v-text-field>
+              <div v-for="(rule, idx) in keywordColorRules" :key="idx" class="pa-2 rounded-lg" style="background-color:#fafafa;border:1px solid #eee;">
+                <!-- 條件列（可多個，全部符合才套用） -->
+                <div v-for="(cond, cIdx) in rule.conditions" :key="cIdx" class="d-flex align-center flex-wrap ga-2" :class="{ 'mt-2': cIdx > 0 }">
+                  <span v-if="cIdx === 0" class="text-caption text-grey flex-shrink-0" style="width:18px;">{{ idx + 1 }}.</span>
+                  <span v-else class="text-caption text-blue-grey flex-shrink-0 font-weight-bold" style="width:18px;">且</span>
+                  <v-select :model-value="cond.matchMode || 'contains'" @update:model-value="setRuleConditionMatchMode(idx, cIdx, $event)"
+                    :items="[{ key: 'contains', label: '含關鍵字' }, { key: 'empty', label: '欄位為空值' }]"
+                    item-title="label" item-value="key" density="compact" hide-details
+                    variant="outlined" label="比對方式" style="min-width:118px;max-width:130px;" :disabled="!canEdit"></v-select>
+                  <v-select :model-value="cond.field" @update:model-value="updateRuleCondition(idx, cIdx, { field: $event })"
+                    :items="cond.matchMode === 'empty' ? keywordFieldOptions.filter(o => o.key !== '*') : keywordFieldOptions"
+                    item-title="label" item-value="key" density="compact" hide-details
+                    variant="outlined" label="欄位" style="min-width:140px;max-width:170px;" :disabled="!canEdit"></v-select>
+                  <v-text-field v-if="cond.matchMode !== 'empty'" :model-value="cond.keyword" @update:model-value="updateRuleCondition(idx, cIdx, { keyword: $event })"
+                    density="compact" hide-details variant="outlined" label="關鍵字" placeholder="例：屋主自驗"
+                    style="min-width:130px;flex:1 1 130px;" :disabled="!canEdit"></v-text-field>
+                  <v-btn v-if="canEdit && rule.conditions.length > 1" icon="mdi-close" size="x-small" variant="text" color="grey" class="flex-shrink-0"
+                    @click="removeRuleCondition(idx, cIdx)" title="移除此條件"></v-btn>
+                </div>
+                <!-- 規則層：新增條件 + 顏色 + 預覽 + 排序/刪除 -->
+                <div class="d-flex align-center flex-wrap ga-2 mt-2">
+                <span class="flex-shrink-0" style="width:18px;"></span>
+                <v-btn v-if="canEdit" size="x-small" variant="tonal" color="blue-grey" prepend-icon="mdi-plus" class="flex-shrink-0"
+                  @click="addRuleCondition(idx)" title="加入另一個條件（全部符合才套用）">加條件</v-btn>
+                <!-- 底色 -->
                 <v-menu v-if="canEdit" :close-on-content-click="false" location="bottom start">
                   <template #activator="{ props }">
-                    <div v-bind="props" class="d-flex align-center justify-center flex-shrink-0"
+                    <div v-bind="props" class="d-flex align-center justify-center flex-shrink-0" title="底色"
                       :style="{ width:'32px', height:'32px', borderRadius:'8px', cursor:'pointer',
                         backgroundColor: rule.color || '#ffffff',
                         border: rule.color ? '1px solid rgba(0,0,0,0.15)' : '1px dashed #bdbdbd' }">
-                      <v-icon v-if="!rule.color" size="16" color="grey">mdi-eyedropper-variant</v-icon>
+                      <v-icon v-if="!rule.color" size="16" color="grey">mdi-format-color-fill</v-icon>
                     </div>
                   </template>
                   <v-card width="280">
+                    <div class="text-caption text-grey px-3 pt-2">底色</div>
                     <v-color-picker :model-value="rule.color || '#FFF59D'"
                       @update:model-value="updateKeywordRule(idx, { color: $event })" mode="hex" hide-inputs show-swatches width="100%"></v-color-picker>
+                    <v-divider></v-divider>
+                    <div class="d-flex pa-2">
+                      <v-spacer></v-spacer>
+                      <v-btn size="small" variant="text" color="grey" @click="updateKeywordRule(idx, { color: '' })">清除底色</v-btn>
+                    </div>
                   </v-card>
                 </v-menu>
                 <div v-else class="d-flex align-center justify-center flex-shrink-0"
                   :style="{ width:'32px', height:'32px', borderRadius:'8px',
                     backgroundColor: rule.color || '#ffffff',
                     border: rule.color ? '1px solid rgba(0,0,0,0.15)' : '1px dashed #bdbdbd' }"></div>
+                <!-- 邊框色 -->
+                <v-menu v-if="canEdit" :close-on-content-click="false" location="bottom start">
+                  <template #activator="{ props }">
+                    <div v-bind="props" class="d-flex align-center justify-center flex-shrink-0" title="邊框顏色"
+                      :style="{ width:'32px', height:'32px', borderRadius:'8px', cursor:'pointer', backgroundColor:'#ffffff',
+                        border: rule.borderColor ? `3px solid ${rule.borderColor}` : '1px dashed #bdbdbd' }">
+                      <v-icon v-if="!rule.borderColor" size="16" color="grey">mdi-border-color</v-icon>
+                    </div>
+                  </template>
+                  <v-card width="280">
+                    <div class="text-caption text-grey px-3 pt-2">邊框顏色</div>
+                    <v-color-picker :model-value="rule.borderColor || '#E53935'"
+                      @update:model-value="updateKeywordRule(idx, { borderColor: $event })" mode="hex" hide-inputs show-swatches width="100%"></v-color-picker>
+                    <v-divider></v-divider>
+                    <div class="d-flex pa-2">
+                      <v-spacer></v-spacer>
+                      <v-btn size="small" variant="text" color="grey" @click="updateKeywordRule(idx, { borderColor: '' })">清除（無邊框）</v-btn>
+                    </div>
+                  </v-card>
+                </v-menu>
+                <div v-else class="d-flex align-center justify-center flex-shrink-0"
+                  :style="{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#ffffff',
+                    border: rule.borderColor ? `3px solid ${rule.borderColor}` : '1px dashed #bdbdbd' }"></div>
                 <v-chip size="small" label variant="flat" class="flex-shrink-0"
-                  :style="{ backgroundColor: rule.color || '#EEEEEE', color: getReadableTextColor(rule.color || '#EEEEEE') }">
-                  {{ rule.keyword || '預覽' }}
+                  :style="{ backgroundColor: rule.color || '#EEEEEE', color: getReadableTextColor(rule.color || '#EEEEEE'),
+                    border: rule.borderColor ? `2px solid ${rule.borderColor}` : 'none' }">
+                  {{ ruleSummary(rule) }}
                 </v-chip>
+                <v-spacer></v-spacer>
                 <template v-if="canEdit">
                   <v-btn icon="mdi-arrow-up" size="x-small" variant="text" color="grey" class="flex-shrink-0"
                     :disabled="idx === 0" @click="moveKeywordRule(idx, -1)" title="上移（提高優先）"></v-btn>
@@ -1023,19 +1379,20 @@
                   <v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="grey" class="flex-shrink-0"
                     @click="removeKeywordRule(idx)" title="刪除此規則"></v-btn>
                 </template>
+                </div>
               </div>
             </div>
 
             <!-- 優先層級 -->
             <div class="pa-3 rounded-lg" style="background-color:#fafafa;border:1px solid #eee;">
               <div class="text-body-2 font-weight-bold mb-1">顏色優先層級</div>
-              <div class="text-caption text-grey-darken-1 mb-2">當事件同時符合「關鍵字」與「預約項目類型」顏色時，優先採用：</div>
+              <div class="text-caption text-grey-darken-1 mb-2">當事件同時符合「關鍵字／空值規則」與「預約項目類型」顏色時，優先採用：</div>
               <v-btn-toggle :model-value="keywordPriority" @update:model-value="setKeywordPriority"
                 mandatory density="compact" color="primary" variant="outlined" :disabled="!canEdit">
                 <v-btn value="type" size="small">項目類型優先</v-btn>
-                <v-btn value="keyword" size="small">關鍵字優先</v-btn>
+                <v-btn value="keyword" size="small">關鍵字／空值規則優先</v-btn>
               </v-btn-toggle>
-              <div class="text-caption text-grey mt-2">「取消／已完成」狀態的固定灰色不受此設定影響。</div>
+              <div class="text-caption text-grey mt-2">關鍵字與空值規則同屬一份清單，以 ↑↓ 排序決定彼此的優先順序（由上而下第一個符合者生效）。「取消／已完成」狀態的固定灰色不受此設定影響。</div>
             </div>
 
             <template v-if="canEdit">
@@ -1655,7 +2012,9 @@ import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
 import ScheduleListExportDialog from '@/components/ScheduleListExportDialog.vue';
 import InspectorLeaveManagerDialog from '@/components/InspectorLeaveManagerDialog.vue';
+import CalendarNoteManagerDialog from '@/components/CalendarNoteManagerDialog.vue';
 import { buildLeaveMap, annotateInspectorPersons, getLeaveTypeForSlot, LEAVE_TYPE_LABELS } from '@/utils/inspectorLeaveUtils';
+import { buildCalendarNoteMap, getNoteColor } from '@/utils/calendarNoteUtils';
 
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -1795,6 +2154,17 @@ const isAdminAddDialogVisible = ref(false);
 const isLeaveManagerVisible = ref(false); // 驗屋人員排休管理
 const inspectorLeaveRecords = ref([]); // 目前日期範圍內的排休/備註
 const inspectorLeaveMap = computed(() => buildLeaveMap(inspectorLeaveRecords.value).leaveMap);
+// 行事曆備註（獨立於排休備註，顯示於時間表日期標題下一列）
+const isCalendarNoteManagerVisible = ref(false);
+const calendarNoteDefaultDate = ref('');
+const calendarNoteRecords = ref([]); // 目前日期範圍內的行事曆備註
+const calendarNotesByDate = computed(() => buildCalendarNoteMap(calendarNoteRecords.value));
+// 每日名額摘要：{ 'yyyy-MM-dd': [{ label, capacity, booked, remaining, methods[], slots[] }] }
+// 由後端彙整批次設定（dateRules）與已約筆數（預約中＋已完成）後回傳
+const dailyQuotaByDate = ref({});
+// 桌機時間表的「名額」「備註」列收合狀態（預設展開，記憶在此裝置、依建案區分）
+const isQuotaRowExpanded = useStorage(`inspection_calendar_quota_row_expanded_${projectId.value}`, true);
+const isNoteRowExpanded = useStorage(`inspection_calendar_note_row_expanded_${projectId.value}`, true);
 const selectedEvent = ref(null);
 const calendarData = ref([]); // ★ 2. 新增 ref 來儲存日期標記
 const bookingHistory = ref([]); // ★ 3. 新增 ref 來儲存歷史紀錄
@@ -2241,27 +2611,49 @@ function resolveSourceKey(source) {
 }
 // 事件顏色設定改為「資料庫共用」：讀取自 projects 文件、寫入需「驗屋預約管理-修改」權限。
 // 本地 ref 為編輯/顯示用的工作副本；按下「儲存」才寫回資料庫並套用給所有使用者。
-const bookingTypeColorMap = ref({ admin: {}, bookingPage: {} });
-// 關鍵字顏色規則：[{ field: 欄位key（'*' 表任一標題顯示欄位）, keyword, color }]，由上而下第一個符合者生效
+// adminBorder / bookingPageBorder 為各來源的「邊框顏色」對照表（選填，與底色獨立）。
+const bookingTypeColorMap = ref({ admin: {}, bookingPage: {}, adminBorder: {}, bookingPageBorder: {} });
+// 顏色規則：[{ conditions:[{ field, matchMode:'contains'|'empty', keyword }], color, borderColor }]
+// 由上而下第一個符合的規則生效；同一規則內可有多個條件，「全部條件都符合」才算符合（AND）
+//  - contains：欄位內容包含關鍵字（field 可為 '*' 任一欄位）
+//  - empty：欄位值為空（須指定特定欄位）
+// 舊格式（單一 field/matchMode/keyword 直接放在規則層）會於 normalize 時自動轉為單條件規則
 const keywordColorRules = ref([]);
-// 關鍵字 vs 預約項目類型 的優先層級：'type'（預設，項目類型優先）或 'keyword'
+// 關鍵字/空值規則 vs 預約項目類型 的優先層級：'type'（預設，項目類型優先）或 'keyword'
 const keywordPriority = ref('type');
 const colorSettingsDirty = ref(false); // 是否有未儲存的變更
 const isSavingColors = ref(false);
 
 function normalizeColorSettings(raw) {
   const pick = (m) => (m && typeof m === 'object' ? { ...m } : {});
-  return { admin: pick(raw?.admin), bookingPage: pick(raw?.bookingPage) };
+  return {
+    admin: pick(raw?.admin),
+    bookingPage: pick(raw?.bookingPage),
+    adminBorder: pick(raw?.adminBorder),
+    bookingPageBorder: pick(raw?.bookingPageBorder),
+  };
+}
+function normalizeRuleConditions(r) {
+  // 新格式取 conditions 陣列；舊格式（field 在規則層）視為單一條件
+  const src = Array.isArray(r?.conditions) && r.conditions.length ? r.conditions : [r];
+  return src
+    .filter(c => c && typeof c === 'object' && typeof c.field === 'string' && c.field)
+    .map(c => ({
+      field: c.field,
+      matchMode: c.matchMode === 'empty' ? 'empty' : 'contains',
+      keyword: typeof c.keyword === 'string' ? c.keyword : '',
+    }));
 }
 function normalizeKeywordRules(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter(r => r && typeof r === 'object' && typeof r.field === 'string' && r.field)
+    .filter(r => r && typeof r === 'object')
     .map(r => ({
-      field: r.field,
-      keyword: typeof r.keyword === 'string' ? r.keyword : '',
+      conditions: normalizeRuleConditions(r),
       color: typeof r.color === 'string' ? r.color : '',
-    }));
+      borderColor: typeof r.borderColor === 'string' ? r.borderColor : '',
+    }))
+    .filter(r => r.conditions.length);
 }
 // 從已載入的建案設定同步顏色；除非 force，否則不覆蓋尚未儲存的編輯
 function syncColorSettingsFromProject(force = false) {
@@ -2275,6 +2667,9 @@ function syncColorSettingsFromProject(force = false) {
 function getTypeColor(srcKey, typeName) {
   return bookingTypeColorMap.value?.[srcKey]?.[typeName] || '';
 }
+function getTypeBorder(srcKey, typeName) {
+  return bookingTypeColorMap.value?.[`${srcKey}Border`]?.[typeName] || '';
+}
 function setTypeColor(srcKey, typeName, color) {
   if (!srcKey || !typeName || !color) return;
   const cur = bookingTypeColorMap.value || {};
@@ -2284,15 +2679,37 @@ function setTypeColor(srcKey, typeName, color) {
   };
   colorSettingsDirty.value = true;
 }
+function setTypeBorder(srcKey, typeName, color) {
+  if (!srcKey || !typeName || !color) return;
+  const mapKey = `${srcKey}Border`;
+  const cur = bookingTypeColorMap.value || {};
+  bookingTypeColorMap.value = {
+    ...cur,
+    [mapKey]: { ...(cur[mapKey] || {}), [typeName]: color },
+  };
+  colorSettingsDirty.value = true;
+}
+function clearTypeBorder(srcKey, typeName) {
+  const mapKey = `${srcKey}Border`;
+  const cur = bookingTypeColorMap.value || {};
+  const sub = { ...(cur[mapKey] || {}) };
+  delete sub[typeName];
+  bookingTypeColorMap.value = { ...cur, [mapKey]: sub };
+  colorSettingsDirty.value = true;
+}
 function clearTypeColor(srcKey, typeName) {
+  // 清除該來源此類型的底色與邊框色
   const cur = bookingTypeColorMap.value || {};
   const sub = { ...(cur[srcKey] || {}) };
   delete sub[typeName];
-  bookingTypeColorMap.value = { ...cur, [srcKey]: sub };
+  const borderKey = `${srcKey}Border`;
+  const borderSub = { ...(cur[borderKey] || {}) };
+  delete borderSub[typeName];
+  bookingTypeColorMap.value = { ...cur, [srcKey]: sub, [borderKey]: borderSub };
   colorSettingsDirty.value = true;
 }
 function clearAllTypeColors() {
-  bookingTypeColorMap.value = { admin: {}, bookingPage: {} };
+  bookingTypeColorMap.value = { admin: {}, bookingPage: {}, adminBorder: {}, bookingPageBorder: {} };
   colorSettingsDirty.value = true;
 }
 // --- 關鍵字顏色規則操作 ---
@@ -2301,15 +2718,20 @@ const keywordFieldOptions = computed(() => {
   const opts = [{ key: '*', label: '任一欄位' }, ...displayFieldOptions.value.map(f => ({ key: f.key, label: f.label }))];
   const known = new Set(opts.map(o => o.key));
   for (const rule of keywordColorRules.value) {
-    if (rule.field && !known.has(rule.field)) {
-      known.add(rule.field);
-      opts.push({ key: rule.field, label: `${rule.field}（欄位已移除）` });
+    for (const cond of (rule.conditions || [])) {
+      if (cond.field && !known.has(cond.field)) {
+        known.add(cond.field);
+        opts.push({ key: cond.field, label: `${cond.field}（欄位已移除）` });
+      }
     }
   }
   return opts;
 });
 function addKeywordRule() {
-  keywordColorRules.value = [...keywordColorRules.value, { field: '*', keyword: '', color: '#FFF59D' }];
+  keywordColorRules.value = [...keywordColorRules.value, {
+    conditions: [{ field: '*', matchMode: 'contains', keyword: '' }],
+    color: '#FFF59D', borderColor: '',
+  }];
   colorSettingsDirty.value = true;
 }
 function updateKeywordRule(index, patch) {
@@ -2318,6 +2740,45 @@ function updateKeywordRule(index, patch) {
   rules[index] = { ...rules[index], ...patch };
   keywordColorRules.value = rules;
   colorSettingsDirty.value = true;
+}
+// --- 規則內的條件操作（一項規則可有多個條件，全部符合才套用） ---
+function addRuleCondition(ruleIdx) {
+  const rule = keywordColorRules.value[ruleIdx];
+  if (!rule) return;
+  updateKeywordRule(ruleIdx, { conditions: [...(rule.conditions || []), { field: '*', matchMode: 'contains', keyword: '' }] });
+}
+function removeRuleCondition(ruleIdx, condIdx) {
+  const rule = keywordColorRules.value[ruleIdx];
+  if (!rule || (rule.conditions || []).length <= 1) return; // 至少保留一個條件
+  updateKeywordRule(ruleIdx, { conditions: rule.conditions.filter((_, i) => i !== condIdx) });
+}
+function updateRuleCondition(ruleIdx, condIdx, patch) {
+  const rule = keywordColorRules.value[ruleIdx];
+  if (!rule || !rule.conditions?.[condIdx]) return;
+  const conditions = [...rule.conditions];
+  conditions[condIdx] = { ...conditions[condIdx], ...patch };
+  updateKeywordRule(ruleIdx, { conditions });
+}
+// 切換比對方式；改成「欄位為空值」時，欄位不可為「任一欄位」，自動改選第一個具體欄位
+function setRuleConditionMatchMode(ruleIdx, condIdx, mode) {
+  const cond = keywordColorRules.value[ruleIdx]?.conditions?.[condIdx];
+  if (!cond) return;
+  const patch = { matchMode: mode === 'empty' ? 'empty' : 'contains' };
+  if (patch.matchMode === 'empty' && (!cond.field || cond.field === '*')) {
+    const firstField = keywordFieldOptions.value.find(o => o.key !== '*');
+    if (firstField) patch.field = firstField.key;
+  }
+  updateRuleCondition(ruleIdx, condIdx, patch);
+}
+function keywordFieldLabel(key) {
+  return keywordFieldOptions.value.find(o => o.key === key)?.label || key || '欄位';
+}
+// 規則摘要（預覽 chip 用）：各條件以「＋」串接
+function ruleSummary(rule) {
+  const parts = (rule.conditions || []).map(c =>
+    c.matchMode === 'empty' ? `${keywordFieldLabel(c.field)}為空` : (c.keyword || '…')
+  );
+  return parts.join('＋') || '預覽';
 }
 function removeKeywordRule(index) {
   keywordColorRules.value = keywordColorRules.value.filter((_, i) => i !== index);
@@ -2336,25 +2797,35 @@ function setKeywordPriority(value) {
   keywordPriority.value = value === 'keyword' ? 'keyword' : 'type';
   colorSettingsDirty.value = true;
 }
-// 依關鍵字規則比對事件，回傳第一個符合規則的顏色；無符合回傳空字串
-function matchKeywordRuleColor(event) {
-  for (const rule of keywordColorRules.value) {
-    if (!rule.keyword || !rule.color) continue;
-    let text = '';
-    if (rule.field === '*') {
-      text = displayFieldOptions.value.map(f => getFieldValue(event, f)).filter(Boolean).join(' ');
-    } else {
-      const opt = displayFieldOptions.value.find(f => f.key === rule.field);
-      if (opt) {
-        text = getFieldValue(event, opt) ?? '';
-      } else {
-        // 欄位定義已移除時的退路：先找靜態欄位，再找動態欄位
-        text = event[rule.field] ?? event.bookingMethodDetails?.[rule.field] ?? '';
-      }
-    }
-    if (String(text).includes(rule.keyword)) return rule.color;
+// 取得規則要比對的欄位文字（'*' 表任一標題顯示欄位）
+function getRuleFieldText(event, field) {
+  if (field === '*') {
+    return displayFieldOptions.value.map(f => getFieldValue(event, f)).filter(Boolean).join(' ');
   }
-  return '';
+  const opt = displayFieldOptions.value.find(f => f.key === field);
+  if (opt) return getFieldValue(event, opt) ?? '';
+  // 欄位定義已移除時的退路：先找靜態欄位，再找動態欄位
+  return event[field] ?? event.bookingMethodDetails?.[field] ?? '';
+}
+// 單一條件是否符合（含關鍵字 / 欄位為空值）
+function ruleConditionMatches(event, cond) {
+  if (cond.matchMode === 'empty') {
+    // 空值條件須指定特定欄位（「任一欄位」為空無意義）
+    if (!cond.field || cond.field === '*') return false;
+    return String(getRuleFieldText(event, cond.field) ?? '').trim() === '';
+  }
+  if (!cond.keyword) return false;
+  return String(getRuleFieldText(event, cond.field)).includes(cond.keyword);
+}
+// 依顏色規則比對事件，回傳第一個「全部條件皆符合」的規則；無符合回傳 null
+function matchKeywordRule(event) {
+  for (const rule of keywordColorRules.value) {
+    if (!rule.color && !rule.borderColor) continue;
+    const conds = rule.conditions || [];
+    if (!conds.length) continue;
+    if (conds.every(c => ruleConditionMatches(event, c))) return rule;
+  }
+  return null;
 }
 // 兩組可辨識的建議色票：前台偏冷色淺底、後台偏暖色淺底，方便一眼分辨來源
 const PALETTE_BOOKINGPAGE = ['#E3F2FD', '#E1F5FE', '#E0F7FA', '#E8F5E9', '#F1F8E9', '#EDE7F6', '#E8EAF6', '#E0F2F1'];
@@ -2366,7 +2837,8 @@ function applyDefaultTypeColors() {
     pageMap[t] = PALETTE_BOOKINGPAGE[i % PALETTE_BOOKINGPAGE.length];
     adminMap[t] = PALETTE_ADMIN[i % PALETTE_ADMIN.length];
   });
-  bookingTypeColorMap.value = { admin: adminMap, bookingPage: pageMap };
+  // 只套用建議底色，保留使用者已設定的邊框色
+  bookingTypeColorMap.value = { ...bookingTypeColorMap.value, admin: adminMap, bookingPage: pageMap };
   colorSettingsDirty.value = true;
 }
 // 儲存到資料庫（共用、套用給所有使用者）；僅具「驗屋預約管理-修改」權限者可用
@@ -2380,7 +2852,15 @@ async function saveEventColorSettings() {
   try {
     const payload = {
       ...normalizeColorSettings(bookingTypeColorMap.value),
-      keywordRules: normalizeKeywordRules(keywordColorRules.value).filter(r => r.keyword && r.color),
+      keywordRules: normalizeKeywordRules(keywordColorRules.value)
+        .map(r => ({
+          ...r,
+          // 只保留完整的條件（含關鍵字需有關鍵字；空值需指定具體欄位）
+          conditions: r.conditions.filter(c =>
+            c.matchMode === 'empty' ? (c.field && c.field !== '*') : c.keyword
+          ),
+        }))
+        .filter(r => (r.color || r.borderColor) && r.conditions.length),
       keywordPriority: keywordPriority.value === 'keyword' ? 'keyword' : 'type',
     };
     const res = await inspectionApi('saveEventColorSettings', {
@@ -2394,7 +2874,12 @@ async function saveEventColorSettings() {
       keywordRules: normalizeKeywordRules(savedRaw?.keywordRules),
       keywordPriority: savedRaw?.keywordPriority === 'keyword' ? 'keyword' : 'type',
     };
-    bookingTypeColorMap.value = { admin: saved.admin, bookingPage: saved.bookingPage };
+    bookingTypeColorMap.value = {
+      admin: saved.admin,
+      bookingPage: saved.bookingPage,
+      adminBorder: saved.adminBorder,
+      bookingPageBorder: saved.bookingPageBorder,
+    };
     keywordColorRules.value = saved.keywordRules;
     keywordPriority.value = saved.keywordPriority;
     if (projectSettings.value) projectSettings.value.eventColorSettings = saved;
@@ -2634,6 +3119,8 @@ const dateChunks = computed(() => {
         dateObj: date,
         dayName: format(date, 'EEEE', { locale: zhTW }),
         date: format(date, 'M/d'),
+        // 單行日期標題（8/10(一)），較兩行「星期一 / 8/10」省列高
+        dateLabel: `${format(date, 'M/d')}(${'日一二三四五六'[date.getDay()]})`,
         fullDate: format(date, 'yyyy-MM-dd'),
         isInRange: isInRange,
         isToday: isToday(date),
@@ -3217,6 +3704,114 @@ async function fetchInspectorLeavesData() {
   }
 }
 
+// 讀取目前日期範圍的行事曆備註（顯示於時間表日期標題下一列）
+async function fetchCalendarNotesData() {
+  if (!projectId.value || !startDate.value || !endDate.value) return;
+  try {
+    const res = await inspectionApi('fetchCalendarNotes', {
+      projectId: projectId.value,
+      startDate: format(startDate.value, 'yyyy-MM-dd'),
+      endDate: format(endDate.value, 'yyyy-MM-dd'),
+    });
+    calendarNoteRecords.value = res.data?.data || [];
+  } catch (err) {
+    console.warn('讀取行事曆備註失敗:', err);
+  }
+}
+
+// 讀取目前日期範圍的每日名額摘要（顯示於時間表日期標題下方第一列）
+async function fetchDailyQuotaData() {
+  if (!projectId.value || !startDate.value || !endDate.value) return;
+  try {
+    const res = await inspectionApi('fetchDailyQuotaSummary', {
+      projectId: projectId.value,
+      startDate: format(startDate.value, 'yyyy-MM-dd'),
+      endDate: format(endDate.value, 'yyyy-MM-dd'),
+    });
+    dailyQuotaByDate.value = res.data?.data || {};
+  } catch (err) {
+    console.warn('讀取每日名額摘要失敗:', err);
+  }
+}
+
+// 該週（chunk）是否有任何名額資料 → 決定是否顯示名額摘要列
+function chunkHasQuota(chunk) {
+  return (chunk || []).some(day => day.isInRange && (dailyQuotaByDate.value[day.fullDate] || []).length > 0);
+}
+
+// 該日全部項目加總（顯示於摘要列最上方）
+function quotaDayTotal(dateKey) {
+  const rows = dailyQuotaByDate.value[dateKey] || [];
+  return rows.reduce((acc, r) => {
+    acc.capacity += r.capacity || 0;
+    acc.booked += r.booked || 0;
+    return acc;
+  }, { capacity: 0, booked: 0 });
+}
+
+// 進度條寬度百分比（已約 / 總名額）
+function quotaPercent(row) {
+  if (!row.capacity) return row.booked > 0 ? 100 : 0;
+  return Math.min(Math.round((row.booked / row.capacity) * 100), 100);
+}
+
+// 依剩餘名額決定顏色：額滿紅、剩 1–2 橘、其餘綠；未設名額（capacity=0）灰
+function quotaColor(row) {
+  if (!row.capacity) return '#90A4AE';
+  const remaining = Math.max(row.capacity - row.booked, 0);
+  if (remaining <= 0) return '#E53935';
+  if (remaining <= 2) return '#FB8C00';
+  return '#2E9E6B';
+}
+
+// --- 每日名額明細對話框（手機無 hover，改以點擊開啟） ---
+const isQuotaDetailVisible = ref(false);
+const quotaDetailDate = ref('');
+const quotaDetailFocusLabel = ref('');
+const quotaDetailRows = computed(() => {
+  const rows = dailyQuotaByDate.value[quotaDetailDate.value] || [];
+  // 被點選的項目排在最前面，其餘維持原順序
+  if (!quotaDetailFocusLabel.value) return rows;
+  return [...rows].sort((a, b) => {
+    if (a.label === quotaDetailFocusLabel.value) return -1;
+    if (b.label === quotaDetailFocusLabel.value) return 1;
+    return 0;
+  });
+});
+const quotaDetailDateLabel = computed(() => {
+  if (!quotaDetailDate.value) return '';
+  try {
+    const d = parseISO(quotaDetailDate.value);
+    return `${format(d, 'M/d')}(${'日一二三四五六'[d.getDay()]})`;
+  } catch (e) {
+    return quotaDetailDate.value;
+  }
+});
+function openQuotaDetail(dateKey, focusLabel = '') {
+  if (!dateKey) return;
+  quotaDetailDate.value = dateKey;
+  quotaDetailFocusLabel.value = focusLabel;
+  isQuotaDetailVisible.value = true;
+}
+
+// tooltip 內方式名額文字：未設方式名額時顯示「共用」
+function quotaMethodText(m) {
+  if (m.limit === null || m.limit === undefined) return `已約 ${m.booked}・共用`;
+  if (m.limit - m.booked <= 0) return `${m.booked}/${m.limit} 額滿`;
+  return `${m.booked}/${m.limit} 剩 ${m.limit - m.booked}`;
+}
+
+// 開啟行事曆備註管理（帶入預設日期，新增時直接選好該日）
+function openCalendarNoteManager(dateStr = '') {
+  calendarNoteDefaultDate.value = dateStr || '';
+  isCalendarNoteManagerVisible.value = true;
+}
+
+// 該週（chunk）是否有任何行事曆備註 → 決定是否顯示備註列
+function chunkHasCalendarNote(chunk) {
+  return (chunk || []).some(day => day.isInRange && (calendarNotesByDate.value[day.fullDate] || []).length > 0);
+}
+
 // 排休管理彈窗更新名單後，同步回人員選單（與「編輯人員」共用）
 function handleStaffListUpdated(newList) {
   bookingOptions.value = { ...bookingOptions.value, inspectionStaff: newList };
@@ -3225,6 +3820,8 @@ function handleStaffListUpdated(newList) {
 // ✅ 8. 修改 fetchData 函數
 async function fetchData() {
   fetchInspectorLeavesData(); // 排休資料獨立載入，不阻塞預約主流程
+  fetchCalendarNotesData();   // 行事曆備註同樣獨立載入
+  fetchDailyQuotaData();      // 每日名額摘要同樣獨立載入
   if (allHouseholdData.value.size === 0) {
     console.warn("fetchData: 戶別快取為空，暫停獲取預約。");
     // isLoading.value = false; // 讓 isLoading 保持 true，直到戶別資料載入
@@ -3404,7 +4001,9 @@ async function loadDataForProject() {
       fetchAllHouseholdsForProject(projectId.value)
     ]);
     fetchInspectorLeavesData(); // 排休資料獨立載入
-    
+    fetchCalendarNotesData();   // 行事曆備註獨立載入
+    fetchDailyQuotaData();      // 每日名額摘要獨立載入
+
     // 將重新獲取的資料賦值給對應的 ref
     allAppointments.value = calendarData;
     bookingOptions.value = optionsData;
@@ -3819,27 +4418,37 @@ function getReadableTextColor(bgHex) {
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luminance > 0.6 ? '#212121' : '#FFFFFF';
 }
-// 依優先層級決定事件底色：取消/已完成的固定灰色最優先，
-// 之後依 keywordPriority 決定「關鍵字規則」與「來源+項目類型」誰先套用
+// 依優先層級決定事件底色/邊框色：取消/已完成的固定灰色最優先，
+// 之後依 keywordPriority 決定「顏色規則（關鍵字/空值）」與「來源+項目類型」誰先套用。
+// 回傳 { bg, border }（皆可為空字串）或 null（無任何自訂設定符合）
 function resolveCustomEventColor(event) {
-  const typeColor = getTypeColor(resolveSourceKey(event.source), event.bookingType);
-  const kwColor = matchKeywordRuleColor(event);
-  return keywordPriority.value === 'keyword' ? (kwColor || typeColor) : (typeColor || kwColor);
+  const srcKey = resolveSourceKey(event.source);
+  const typeBg = getTypeColor(srcKey, event.bookingType);
+  const typeBorder = getTypeBorder(srcKey, event.bookingType);
+  const typeHit = (typeBg || typeBorder) ? { bg: typeBg, border: typeBorder } : null;
+  const rule = matchKeywordRule(event);
+  const ruleHit = rule ? { bg: rule.color || '', border: rule.borderColor || '' } : null;
+  return keywordPriority.value === 'keyword' ? (ruleHit || typeHit) : (typeHit || ruleHit);
 }
 function getEventStyle(event) {
   if (!event || Object.keys(event).length === 0) return { backgroundColor: '#FFFFFF', color: '#000000' };
   if (event.status === '取消') return { backgroundColor: '#F5F5F5', color: '#9E9E9E' };
   if (event.status === '已完成') return { backgroundColor: '#ECEFF1', color: '#546E7A' };
-  // 使用者自訂顏色（關鍵字規則 / 來源+項目類型，依優先層級）
-  const customColor = resolveCustomEventColor(event);
-  if (customColor) return { backgroundColor: customColor, color: getReadableTextColor(customColor) };
-  // 未設定自訂色 → 沿用原本關鍵字配色（向下相容）
-  // ✅ 修正：確保 textToSearch 的欄位存在
-  const textToSearch = [ event.bookingType, event.inspectionMethod, event.specialRemarks, event.specialRemarks2 ].filter(Boolean).join(' ');
-  for (const config of CSS_KEYWORD_COLOR_MAP) {
-    if (config.keyword && textToSearch.includes(config.keyword)) return { backgroundColor: config.backgroundColor, color: config.color };
+  // 使用者自訂顏色（顏色規則 / 來源+項目類型，依優先層級）
+  const custom = resolveCustomEventColor(event);
+  let style = null;
+  if (custom?.bg) {
+    style = { backgroundColor: custom.bg, color: getReadableTextColor(custom.bg) };
+  } else {
+    // 未設定自訂底色 → 沿用原本關鍵字配色（向下相容）
+    const textToSearch = [ event.bookingType, event.inspectionMethod, event.specialRemarks, event.specialRemarks2 ].filter(Boolean).join(' ');
+    for (const config of CSS_KEYWORD_COLOR_MAP) {
+      if (config.keyword && textToSearch.includes(config.keyword)) { style = { backgroundColor: config.backgroundColor, color: config.color }; break; }
+    }
+    if (!style) style = { backgroundColor: '#EEEEEE', color: '#212121' };
   }
-  return { backgroundColor: '#EEEEEE', color: '#212121' };
+  if (custom?.border) style.border = `2px solid ${custom.border}`;
+  return style;
 }
 function getAppointmentItemStyle(itemText) {
   if (!itemText) return {};
@@ -3850,20 +4459,22 @@ function getAppointmentItemStyle(itemText) {
 function getExcelRowStyle(event) {
   if (!event || Object.keys(event).length === 0) return { backgroundColor: 'FFFFFF', textColor: '000000' };
   if (event.status === '取消') return { backgroundColor: 'F5F5F5', textColor: '9E9E9E' };
-  // 使用者自訂顏色（關鍵字規則 / 來源+項目類型，依優先層級；Excel 色碼不含 #）
-  const customColor = resolveCustomEventColor(event);
-  if (customColor) {
+  // 使用者自訂顏色（顏色規則 / 來源+項目類型，依優先層級；Excel 色碼不含 #）
+  const custom = resolveCustomEventColor(event);
+  const borderColor = custom?.border ? custom.border.replace('#', '').toUpperCase() : '';
+  if (custom?.bg) {
     return {
-      backgroundColor: customColor.replace('#', '').toUpperCase(),
-      textColor: getReadableTextColor(customColor).replace('#', '')
+      backgroundColor: custom.bg.replace('#', '').toUpperCase(),
+      textColor: getReadableTextColor(custom.bg).replace('#', ''),
+      borderColor,
     };
   }
   // ✅ 修正：確保 textToSearch 的欄位存在
   const textToSearch = [ event.bookingType, event.inspectionMethod, event.specialRemarks, event.specialRemarks2 ].filter(Boolean).join(' ');
   for (const config of EXCEL_KEYWORD_COLOR_MAP) {
-    if (config.keyword && textToSearch.includes(config.keyword)) return { backgroundColor: config.backgroundColor, textColor: config.textColor };
+    if (config.keyword && textToSearch.includes(config.keyword)) return { backgroundColor: config.backgroundColor, textColor: config.textColor, borderColor };
   }
-  return { backgroundColor: 'EEEEEE', textColor: '212121' };
+  return { backgroundColor: 'EEEEEE', textColor: '212121', borderColor };
 }
 
 // (safeFormatDate 函數保持不變)
@@ -4038,7 +4649,7 @@ async function handleDownloadPng(rangeStart, rangeEnd) {
       headerRow.appendChild(timeHeaderCell);
 
       const dayHeaderCell = document.createElement('th');
-      dayHeaderCell.innerHTML = `<div>${format(date, 'EEEE', { locale: zhTW })}</div><div>${format(date, 'M/d')}</div>`;
+      dayHeaderCell.textContent = `${format(date, 'M/d')}(${'日一二三四五六'[date.getDay()]})`;
       Object.assign(dayHeaderCell.style, {
         width: 'auto',
         border: '1px solid #dee2e6', padding: '8px',
@@ -4049,6 +4660,45 @@ async function handleDownloadPng(rangeStart, rangeEnd) {
       headerRow.appendChild(dayHeaderCell);
     });
     thead.appendChild(headerRow);
+
+    // 行事曆備註列：接在星期/日期標題下方（整個 chunk 皆無備註則不輸出此列）
+    const chunkNoteDates = chunk.filter(date => (calendarNotesByDate.value[format(date, 'yyyy-MM-dd')] || []).length > 0);
+    if (chunkNoteDates.length > 0) {
+      const noteRow = document.createElement('tr');
+      chunk.forEach(date => {
+        const labelCell = document.createElement('th');
+        labelCell.textContent = '備註';
+        Object.assign(labelCell.style, {
+          border: '1px solid #dee2e6', padding: '6px', textAlign: 'center',
+          backgroundColor: '#fff8e1', color: '#7a4f01', fontWeight: 'bold', fontSize: '12px',
+          borderTop: '2px solid #f0a500',
+        });
+        noteRow.appendChild(labelCell);
+
+        const noteCell = document.createElement('th');
+        Object.assign(noteCell.style, {
+          border: '1px solid #dee2e6', padding: '4px', verticalAlign: 'top',
+          backgroundColor: '#fffdf5', borderTop: '2px solid #f0a500',
+        });
+        const notes = calendarNotesByDate.value[format(date, 'yyyy-MM-dd')] || [];
+        notes.forEach(note => {
+          const cfg = getNoteColor(note.color);
+          const noteItem = document.createElement('div');
+          noteItem.textContent = `📌 ${note.note}`;
+          Object.assign(noteItem.style, {
+            backgroundColor: cfg.bg, color: cfg.text,
+            border: `1px solid ${cfg.border}`, borderLeft: `5px solid ${cfg.border}`,
+            borderRadius: '5px', padding: '3px 6px', marginBottom: '3px',
+            fontSize: '12px', fontWeight: 'bold', lineHeight: '1.3',
+            textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          });
+          noteCell.appendChild(noteItem);
+        });
+        noteRow.appendChild(noteCell);
+      });
+      thead.appendChild(noteRow);
+    }
+
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
@@ -4321,7 +4971,7 @@ function buildPersonPngRowsHTML(person, events, isInspectorBlock) {
     // 資料列底色/文字色沿用畫面上的事件顏色設定（取消/已完成→自訂顏色→關鍵字顏色→預設）
     const style = getEventStyle(evt);
     const cancelled = evt.status === '取消';
-    const rowStyle = `background-color:${style.backgroundColor};color:${style.color};${cancelled ? 'text-decoration:line-through;opacity:.8;' : ''}`;
+    const rowStyle = `background-color:${style.backgroundColor};color:${style.color};${style.border ? `border:${style.border};` : ''}${cancelled ? 'text-decoration:line-through;opacity:.8;' : ''}`;
     const cells = columns.map(option => `<td style="${PERSON_PNG_TD}">${buildPersonPngCellHTML(evt, option)}</td>`).join('');
     return `<tr style="${rowStyle}">
       <td style="${PERSON_PNG_TD}">${escapePngHtml(dateLabel)}</td>
@@ -4581,6 +5231,10 @@ async function handleDownloadExcel() {
               let finalCellStyle = JSON.parse(JSON.stringify(defaultCellStyle));
               finalCellStyle.fill = { patternType: "solid", fgColor: { rgb: rowStyle.backgroundColor } };
               finalCellStyle.font.color = { rgb: rowStyle.textColor };
+              if (rowStyle.borderColor) {
+                const edge = { style: "medium", color: { rgb: rowStyle.borderColor } };
+                finalCellStyle.border = { top: edge, bottom: edge, left: edge, right: edge };
+              }
               // 使用 getFieldValue 輔助函式取值，支援動態 customField 欄位
               const cellValue = getFieldValue(event, header);
               ws[cellRef] = { v: cellValue || '', t: 's', s: finalCellStyle };
@@ -4897,6 +5551,265 @@ function navigateToHouseholdGrid() {
   color: var(--today-highlight-text);
   font-weight: 900;
 }
+
+/* --- 每日名額摘要列（日期標題下第一列） --- */
+.custom-calendar-table thead tr.quota-row th {
+  position: static;
+  top: auto;
+  z-index: 1;
+  background-color: #f7fbfa;
+  padding: 3px 5px;
+  vertical-align: top;
+  border-top: 2px solid #2e9e6b;
+}
+.custom-calendar-table thead tr.quota-row th.quota-label {
+  position: sticky;
+  left: 0;
+  top: auto;
+  z-index: 3;
+  background-color: #e8f5f0;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #1b5e4a;
+  white-space: nowrap;
+  box-shadow: 2px 0 5px -2px rgba(0, 0, 0, 0.1);
+}
+.quota-row th.quota-cell.weekend-column {
+  background-color: #f6f9f5;
+}
+.quota-row th.quota-cell.today-column {
+  background-color: #eef8f4;
+}
+.quota-total {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #37474f;
+  text-align: left;
+  letter-spacing: -0.2px;
+  margin-bottom: 2px;
+}
+.quota-total-rest {
+  font-weight: 700;
+  color: #78909c;
+  margin-left: 4px;
+}
+.quota-item {
+  margin-bottom: 3px;
+  cursor: pointer;
+}
+.quota-item:hover {
+  filter: brightness(0.97);
+}
+/* 收合狀態：只留一行全日總計 */
+.quota-collapsed {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #37474f;
+  text-align: left;
+  letter-spacing: -0.2px;
+  cursor: pointer;
+}
+/* 「名額」「備註」列標題的收合切換 */
+.custom-calendar-table thead tr.quota-row th.quota-label,
+.custom-calendar-table thead tr.calendar-note-row th.calendar-note-label {
+  cursor: pointer;
+  user-select: none;
+}
+.row-toggle-icon {
+  margin-left: 1px;
+  opacity: 0.75;
+}
+/* 備註收合狀態：以色點提示該日備註數量 */
+.note-collapsed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-height: 10px;
+  cursor: pointer;
+}
+.note-collapsed-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+/* 名額明細對話框內的表列 */
+.quota-detail-table {
+  border: 1px solid #eceff1;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.quota-detail-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+}
+.quota-detail-line:nth-child(odd) {
+  background-color: #fafafa;
+}
+.quota-detail-key {
+  color: #607d8b;
+  font-weight: 600;
+}
+.quota-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+.quota-item-name {
+  font-weight: 700;
+  color: #37474f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quota-item-num {
+  font-weight: 800;
+  flex-shrink: 0;
+  letter-spacing: -0.2px;
+}
+.quota-bar {
+  height: 4px;
+  border-radius: 2px;
+  background-color: #dfe6e9;
+  overflow: hidden;
+}
+.quota-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+/* tooltip 明細 */
+.quota-tip {
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.quota-tip-title {
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+.quota-tip-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  margin-top: 3px;
+  padding-top: 3px;
+}
+.quota-tip-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.quota-tip-key {
+  opacity: 0.85;
+}
+
+/* --- 行事曆備註列（緊接在日期標題下方） --- */
+/* thead 內的第二列不跟著垂直凍結，避免與日期標題列重疊；仍保留左側「備註」欄的水平凍結 */
+.custom-calendar-table thead tr.calendar-note-row th {
+  position: static;
+  top: auto;
+  z-index: 1;
+  background-color: #fffdf5;
+  padding: 3px 4px;
+  vertical-align: top;
+  border-top: 2px solid #f0a500;
+}
+.custom-calendar-table thead tr.calendar-note-row th.calendar-note-label {
+  position: sticky;
+  left: 0;
+  top: auto;
+  z-index: 3;
+  background-color: #fff8e1;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #7a4f01;
+  white-space: nowrap;
+  box-shadow: 2px 0 5px -2px rgba(0, 0, 0, 0.1);
+}
+.calendar-note-row th.calendar-note-cell.weekend-column {
+  background-color: #fdf7ef;
+}
+.calendar-note-row th.calendar-note-cell.today-column {
+  background-color: #fdf6e3;
+}
+.calendar-note-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.calendar-note-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  border: 1px solid;
+  border-left-width: 5px;
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.calendar-note-chip.is-clickable {
+  cursor: pointer;
+}
+.calendar-note-chip.is-clickable:hover {
+  filter: brightness(0.96);
+}
+.calendar-note-chip-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.calendar-note-chip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 手機版備註（日期標題下一列） */
+.mobile-note-stack {
+  margin: 0 0 8px;
+}
+/* 手機版每日名額摘要 */
+.mobile-quota-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+.mobile-quota-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f1f7f5;
+  border: 1px solid #cfe3dc;
+  border-radius: 999px;
+  padding: 4px 8px 4px 12px;
+  font: inherit;
+  font-size: 0.76rem;
+  color: inherit;
+  cursor: pointer;
+}
+.mobile-quota-item:active {
+  background: #e3efeb;
+}
+.mobile-quota-name {
+  font-weight: 700;
+  color: #37474f;
+}
+.mobile-quota-num {
+  font-weight: 800;
+}
+.mobile-quota-rest {
+  font-weight: 700;
+  opacity: 0.85;
+}
 .event-item {
   white-space: normal;
   word-wrap: break-word;
@@ -5061,6 +5974,13 @@ function navigateToHouseholdGrid() {
 }
 .mobile-date-pill.weekend {
   background: #fff5f5;
+}
+/* 有行事曆備註的日期，在日期橫條上加註色點 */
+.pill-note-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 1px;
 }
 .mobile-date-pill.today {
   border: 2px solid #1976d2;

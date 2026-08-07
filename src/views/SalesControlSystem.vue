@@ -1635,7 +1635,7 @@
             variant="tonal"
             class="mb-4"
             title="重要提示"
-            text="上傳的 Excel 將會根據「戶別」覆蓋現有資料。為避免資料遺失，強烈建議您先匯出目前的資料作為備份。"
+            text="上傳的 Excel 會依「戶別」比對更新：檔案中包含的欄位會覆蓋現有資料（空白儲存格會清空該欄位值），未包含的欄位維持不變。可只保留「戶別」與欲更新的欄位上傳。為避免資料遺失，強烈建議您先匯出目前的資料作為備份。"
           ></v-alert>
 
           <v-btn 
@@ -4246,10 +4246,12 @@ const exportToExcel = () => {
         const hasBackendStatus = String(item.salesStatus_backend || '').trim() !== '';
         const grandFloorTotal = hasBackendStatus ? getUnitTotalFloorPrice(item, allParkings) : '';
         row.push(parkingText, mySpots.length > 0 ? parkingFloorTotal : '', mySpots.length > 0 ? parkingTotal : '', grandTotal || '', grandFloorTotal || '');
+        // ✅ [新增] 第一欄輸出 Firestore 文件ID（僅供識別，上傳時非 COLUMN_DEFINITIONS 標頭會被自動忽略）
+        row.unshift(item.id || `${projectId.value}_${item.unitId}`);
         return row;
     });
 
-    const exportHeaders = [...chineseHeaders.value, ...PARKING_EXTRA_HEADERS];
+    const exportHeaders = ['文件ID', ...chineseHeaders.value, ...PARKING_EXTRA_HEADERS];
     const warningRow = ['注意：為確保資料能正確重新上傳，請勿修改第二列的標頭名稱。'];
     const dataWithHeader = [warningRow, exportHeaders, ...dataAsArray];
     const ws = XLSX.utils.aoa_to_sheet(dataWithHeader);
@@ -4318,9 +4320,6 @@ const handleFileChange = () => {
     reader.onload = (e) => {
         try {
             const headerToKeyMap = new Map(COLUMN_DEFINITIONS.map(col => [col.title.trim(), col.key]));
-            // ✅ [新增] 可選標頭：舊格式檔案缺「可選方案」欄仍可上傳（該欄位不會被異動，merge 寫入保留既有值）
-            const OPTIONAL_UPLOAD_HEADERS = new Set(['可選方案']);
-            const requiredHeaders = new Set([...headerToKeyMap.keys()].filter(t => !OPTIONAL_UPLOAD_HEADERS.has(t)));
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array', cellDates: true });
             // Sheet 1 戶別資料：優先以名稱查找，fallback 為首工作表（向後相容舊檔）
@@ -4328,22 +4327,17 @@ const handleFileChange = () => {
                 ? HOUSEHOLDS_SHEET_NAME
                 : workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
-            const dataAsArrays = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 });
-
-            if (dataAsArrays.length < 1) {
-                 throw new Error(`檔案缺少標頭列 (應在第 2 行)。`);
+            // ✅ [優化] 部分欄位上傳：不再要求所有欄位標頭齊備，只需「戶別」+ 至少一個可更新欄位。
+            // 標頭列自動偵測（前 5 列內含「戶別」儲存格者），相容系統範本（標頭在第 2 列，第 1 列為警語）
+            // 與自製精簡檔（標頭在第 1 列）；檔案中未包含的欄位不會被異動（後端 merge 寫入保留既有值）
+            const allRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            const headerRowIndex = allRows.findIndex((row, i) =>
+                i < 5 && Array.isArray(row) && row.some(c => String(c || '').trim() === '戶別')
+            );
+            if (headerRowIndex === -1) {
+                throw new Error('找不到標頭列：檔案前 5 列中必須有「戶別」欄位標頭。');
             }
-            const uploadedHeaders = dataAsArrays[0].map(h => String(h || '').trim());
-            const uploadedHeadersSet = new Set(uploadedHeaders);
-            const missingHeaders = [];
-            for (const requiredHeader of requiredHeaders) {
-                if (!uploadedHeadersSet.has(requiredHeader)) {
-                    missingHeaders.push(requiredHeader);
-                }
-            }
-            if (missingHeaders.length > 0) {
-                throw new Error(`檔案缺少必要的欄位標頭: ${missingHeaders.join('、')}`);
-            }
+            const uploadedHeaders = allRows[headerRowIndex].map(h => String(h || '').trim());
             const indexToKeyMap = new Map();
             uploadedHeaders.forEach((headerTitle, index) => {
                 const englishKey = headerToKeyMap.get(headerTitle);
@@ -4351,7 +4345,11 @@ const handleFileChange = () => {
                     indexToKeyMap.set(index, englishKey);
                 }
             });
-            const dataRows = dataAsArrays.slice(1);
+            const updatableKeys = [...indexToKeyMap.values()].filter(k => k !== 'unitId');
+            if (updatableKeys.length === 0) {
+                throw new Error('除了「戶別」外，未偵測到任何可更新的欄位標頭，請確認欄位名稱與系統匯出範本一致。');
+            }
+            const dataRows = allRows.slice(headerRowIndex + 1);
             const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
             // ✅ [新增] 可選方案：名稱反查失敗的收集器（不擋整批，解析完成後警示）
             const unknownPlanNames = new Set();
@@ -4458,18 +4456,21 @@ const handleFileChange = () => {
             }
 
             // ── 合併 landParcels 至戶別資料 ──
-            // 規則：Sheet 2 有資料 → 覆寫；無資料 → 留空陣列（代表該戶清空）
-            for (const row of jsonDataWithEnglishKeys) {
-                const key = String(row.unitId || '').trim();
-                row.landParcels = landParcelsByUnit.get(key) || [];
+            // 規則：檔案「含」土地標的清冊工作表 → 該戶有列則覆寫、無列則清空；
+            //      檔案「沒有」該工作表 → 完全不異動 landParcels（merge 寫入保留既有值，支援部分欄位上傳）
+            if (landSheet) {
+                for (const row of jsonDataWithEnglishKeys) {
+                    const key = String(row.unitId || '').trim();
+                    row.landParcels = landParcelsByUnit.get(key) || [];
+                }
             }
 
             parsedData.value = jsonDataWithEnglishKeys;
             uploadMessageType.value = 'success';
             const landCount = [...landParcelsByUnit.values()].reduce((s, a) => s + a.length, 0);
             uploadMessage.value = landSheet
-                ? `成功解析 ${jsonDataWithEnglishKeys.length} 筆戶別資料，含 ${landCount} 筆土地標的，可以開始上傳。`
-                : `成功解析 ${jsonDataWithEnglishKeys.length} 筆資料 (含優付欄位)，可以開始上傳。`;
+                ? `成功解析 ${jsonDataWithEnglishKeys.length} 筆戶別資料（將更新 ${updatableKeys.length} 個欄位），含 ${landCount} 筆土地標的，可以開始上傳。`
+                : `成功解析 ${jsonDataWithEnglishKeys.length} 筆戶別資料（將更新 ${updatableKeys.length} 個欄位；檔案未包含的欄位不會被異動），可以開始上傳。`;
             // ✅ [新增] 可選方案名稱反查失敗警示（不擋上傳，該名稱已略過）
             if (unknownPlanNames.size > 0) {
                 uploadMessageType.value = 'warning';

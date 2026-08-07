@@ -1231,15 +1231,19 @@ exports.uploadHouseholds = onCall({
       }
 
       //  --- 新增：處理銷控圖片欄位 ---
-      if (typeof dataToSave.salesImages === 'string' && dataToSave.salesImages.trim() !== '') {
-        // 將逗號分隔的字串，轉換為一個經過 trim 處理且移除非空字串的陣列
-        dataToSave.salesImages = dataToSave.salesImages
-          .split(',')
-          .map(name => name.trim())
-          .filter(name => name);
-      } else if (!dataToSave.salesImages) {
-        // 如果欄位不存在或為空，確保它是一個空陣列，以維持資料格式一致性
-        dataToSave.salesImages = [];
+      // ✅ [優化] 部分欄位上傳：payload「沒有」此欄位時不可寫入（merge: true 保留既有值），
+      // 只在欄位存在時做格式正規化（字串 → 陣列；空值 → 清空為 []）
+      if (Object.prototype.hasOwnProperty.call(dataToSave, 'salesImages')) {
+        if (typeof dataToSave.salesImages === 'string' && dataToSave.salesImages.trim() !== '') {
+          // 將逗號分隔的字串，轉換為一個經過 trim 處理且移除非空字串的陣列
+          dataToSave.salesImages = dataToSave.salesImages
+            .split(',')
+            .map(name => name.trim())
+            .filter(name => name);
+        } else if (!Array.isArray(dataToSave.salesImages)) {
+          // 欄位存在但為空（空儲存格）→ 清空為空陣列，維持資料格式一致性
+          dataToSave.salesImages = [];
+        }
       }
       //  --- 處理結束 ---
 
@@ -2589,9 +2593,12 @@ async function _ensureInspectionEditPermission(anxiDb, userKey, projectId, actio
 /**
  * [內部函式] 儲存「驗屋預約時間表」事件顏色設定（共用、寫入 projects 文件）。
  * data: { projectId, userKey, eventColorSettings: {
- *   admin:{類型:hex}, bookingPage:{類型:hex},
- *   keywordRules:[{ field, keyword, color }],   // 關鍵字底色規則，依序第一個符合者生效
- *   keywordPriority:'type'|'keyword'            // 關鍵字 vs 項目類型 優先層級
+ *   admin:{類型:hex}, bookingPage:{類型:hex},               // 底色
+ *   adminBorder:{類型:hex}, bookingPageBorder:{類型:hex},   // 邊框色（選填）
+ *   keywordRules:[{ conditions:[{ field, matchMode:'contains'|'empty', keyword }], color, borderColor }],
+ *     // 顏色規則，依序第一個符合者生效；同一規則內多個條件為 AND（全部符合才套用）
+ *     // 相容舊格式：field/matchMode/keyword 直接放在規則層，視為單一條件
+ *   keywordPriority:'type'|'keyword'            // 規則 vs 項目類型 優先層級
  * } }
  * 僅具該建案「驗屋預約管理-修改」權限者可寫入；其餘來源/欄位一律清洗。
  */
@@ -2616,22 +2623,44 @@ async function _handleSaveEventColorSettings(data) {
     }
     return out;
   };
-  // 清洗關鍵字規則：field/keyword 必填字串、color 必須是 #RRGGBB，最多 50 條
+  // 清洗顏色規則：每條規則含 conditions 陣列（最多 10 個條件，AND 邏輯）；
+  // 條件 field 必填；contains 需 keyword、empty 需具體欄位（不可 '*'）；
+  // color / borderColor 必須是 #RRGGBB 且至少擇一；最多 50 條規則。
+  // 相容舊格式：field/matchMode/keyword 直接放在規則層，視為單一條件。
   const sanitizeKeywordRules = (raw) => {
     if (!Array.isArray(raw)) return [];
     const out = [];
     for (const r of raw.slice(0, 50)) {
       if (!r || typeof r !== "object") continue;
-      const field = typeof r.field === "string" ? r.field.trim() : "";
-      const keyword = typeof r.keyword === "string" ? r.keyword.trim().slice(0, 100) : "";
       const color = typeof r.color === "string" && HEX_RE.test(r.color) ? r.color.toUpperCase() : "";
-      if (field && keyword && color) out.push({ field, keyword, color });
+      const borderColor = typeof r.borderColor === "string" && HEX_RE.test(r.borderColor) ? r.borderColor.toUpperCase() : "";
+      if (!color && !borderColor) continue;
+      const rawConds = Array.isArray(r.conditions) && r.conditions.length ? r.conditions : [r];
+      const conditions = [];
+      for (const c of rawConds.slice(0, 10)) {
+        if (!c || typeof c !== "object") continue;
+        const field = typeof c.field === "string" ? c.field.trim() : "";
+        const matchMode = c.matchMode === "empty" ? "empty" : "contains";
+        const keyword = typeof c.keyword === "string" ? c.keyword.trim().slice(0, 100) : "";
+        if (!field) continue;
+        if (matchMode === "empty") {
+          if (field === "*") continue;
+          conditions.push({ field, matchMode, keyword: "" });
+        } else {
+          if (!keyword) continue;
+          conditions.push({ field, matchMode, keyword });
+        }
+      }
+      if (!conditions.length) continue;
+      out.push({ conditions, color, borderColor });
     }
     return out;
   };
   const sanitized = {
     admin: sanitizeMap(eventColorSettings?.admin),
     bookingPage: sanitizeMap(eventColorSettings?.bookingPage),
+    adminBorder: sanitizeMap(eventColorSettings?.adminBorder),
+    bookingPageBorder: sanitizeMap(eventColorSettings?.bookingPageBorder),
     keywordRules: sanitizeKeywordRules(eventColorSettings?.keywordRules),
     keywordPriority: eventColorSettings?.keywordPriority === "keyword" ? "keyword" : "type",
   };
@@ -17202,6 +17231,18 @@ exports.inspectionCalendarApi = onCall({
       case 'updateInspectionStaffList':
         return await _handleUpdateInspectionStaffList(data);
 
+      // --- 行事曆備註（獨立於排休備註） ---
+      case 'fetchCalendarNotes':
+        return await _handleFetchCalendarNotes(data);
+      case 'saveCalendarNote':
+        return await _handleSaveCalendarNote(data);
+      case 'deleteCalendarNote':
+        return await _handleDeleteCalendarNote(data);
+
+      // --- 每日名額摘要（批次設定 × 已約統計） ---
+      case 'fetchDailyQuotaSummary':
+        return await _handleFetchDailyQuotaSummary(data);
+
       default:
         console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
         throw new HttpsError('invalid-argument', `未知的 API 動作: ${action}`);
@@ -17699,6 +17740,382 @@ async function _handleUpdateInspectionStaffList(data) {
   }
 }
 
+// =================================================================
+// /   【新增】行事曆備註 (calendarNotes 集合)
+// =================================================================
+// 說明：與「驗屋人員排休」的備註 (inspectorLeaves.kind='note') 完全獨立，
+//       各自使用不同集合、不同 API，互不干涉。
+//       一筆備註可套用多個日期，同批建立的文件共用 groupId，方便整批編輯/刪除。
+
+const CALENDAR_NOTE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const CALENDAR_NOTE_COLORS = ["amber", "red", "blue", "green", "purple"];
+const CALENDAR_NOTE_MAX_DATES = 200;
+const CALENDAR_NOTE_MAX_LENGTH = 300;
+
+/**
+ * [內部函式] 讀取指定建案在日期區間內的行事曆備註
+ * data: { projectId, startDate: 'yyyy-MM-dd', endDate: 'yyyy-MM-dd' }
+ * 註：為避免 projectId + date 複合索引需求，僅以 projectId 查詢後在記憶體過濾日期。
+ */
+async function _handleFetchCalendarNotes(data) {
+  const { projectId, startDate, endDate } = data || {};
+  const functionName = "_handleFetchCalendarNotes";
+  if (!projectId) throw new HttpsError("invalid-argument", "缺少 projectId。");
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+    const snapshot = await db.collection("calendarNotes")
+      .where("projectId", "==", projectId)
+      .get();
+
+    const results = [];
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      if (startDate && CALENDAR_NOTE_DATE_RE.test(startDate) && d.date < startDate) return;
+      if (endDate && CALENDAR_NOTE_DATE_RE.test(endDate) && d.date > endDate) return;
+      results.push({
+        id: doc.id,
+        projectId: d.projectId,
+        date: d.date,
+        note: d.note || "",
+        color: CALENDAR_NOTE_COLORS.includes(d.color) ? d.color : "amber",
+        groupId: d.groupId || doc.id,
+        createdByName: d.createdByName || "",
+        createdAt: (d.createdAt && typeof d.createdAt.toDate === "function") ? d.createdAt.toDate().toISOString() : null,
+        updatedByName: d.updatedByName || "",
+        updatedAt: (d.updatedAt && typeof d.updatedAt.toDate === "function") ? d.updatedAt.toDate().toISOString() : null,
+      });
+    });
+
+    results.sort((a, b) => (a.date === b.date ? String(a.id).localeCompare(String(b.id)) : a.date.localeCompare(b.date)));
+    console.log(`[${functionName}] ${projectId} 於 ${startDate}~${endDate} 共 ${results.length} 筆行事曆備註。`);
+    return { status: "success", data: results };
+  } catch (error) {
+    console.error(`[${functionName}] 讀取行事曆備註失敗:`, error);
+    throw new HttpsError("internal", `讀取行事曆備註失敗: ${error.message}`);
+  }
+}
+
+/**
+ * [內部函式] 建立/更新一則行事曆備註（可套用多個日期）
+ * data: { projectId, userKey, dates: ['yyyy-MM-dd', ...], note, color, groupId? }
+ * 帶 groupId 視為「編輯」：先刪掉該群組舊文件，再依新日期重建，日期增減皆可處理。
+ */
+async function _handleSaveCalendarNote(data) {
+  const { projectId, userKey, dates, note, color, groupId } = data || {};
+  const functionName = "_handleSaveCalendarNote";
+  if (!projectId) throw new HttpsError("invalid-argument", "缺少 projectId。");
+
+  const cleanNote = typeof note === "string" ? note.trim().slice(0, CALENDAR_NOTE_MAX_LENGTH) : "";
+  if (!cleanNote) throw new HttpsError("invalid-argument", "缺少備註內容。");
+
+  const cleanDates = [...new Set((Array.isArray(dates) ? dates : [])
+    .map(d => (typeof d === "string" ? d.trim() : ""))
+    .filter(d => CALENDAR_NOTE_DATE_RE.test(d)))].sort();
+  if (cleanDates.length === 0) throw new HttpsError("invalid-argument", "請至少選擇一個日期。");
+  if (cleanDates.length > CALENDAR_NOTE_MAX_DATES) {
+    throw new HttpsError("invalid-argument", `單則備註最多套用 ${CALENDAR_NOTE_MAX_DATES} 個日期。`);
+  }
+
+  const cleanColor = CALENDAR_NOTE_COLORS.includes(color) ? color : "amber";
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  await _ensureInspectionEditPermission(db, userKey, projectId, "管理行事曆備註");
+
+  let operatorName = "";
+  try {
+    const userSnap = await db.collection("users").doc(userKey).get();
+    operatorName = userSnap.exists ? (userSnap.data().name || "") : "";
+  } catch (e) { /* 名稱取不到不阻擋主流程 */ }
+
+  const collectionRef = db.collection("calendarNotes");
+  const targetGroupId = (typeof groupId === "string" && groupId.trim()) ? groupId.trim() : collectionRef.doc().id;
+
+  try {
+    const batch = db.batch();
+
+    // 編輯既有備註：先清掉同群組舊文件（日期可能被增減）
+    if (typeof groupId === "string" && groupId.trim()) {
+      const oldSnap = await collectionRef
+        .where("projectId", "==", projectId)
+        .where("groupId", "==", targetGroupId)
+        .get();
+      oldSnap.forEach(doc => batch.delete(doc.ref));
+    }
+
+    for (const date of cleanDates) {
+      batch.set(collectionRef.doc(), {
+        projectId,
+        date,
+        note: cleanNote,
+        color: cleanColor,
+        groupId: targetGroupId,
+        createdBy: userKey,
+        createdByName: operatorName,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedBy: userKey,
+        updatedByName: operatorName,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: false });
+    }
+
+    await batch.commit();
+    console.log(`[${functionName}] ${operatorName || userKey} 於 ${projectId} 儲存行事曆備註（群組 ${targetGroupId}，${cleanDates.length} 個日期）。`);
+    return { status: "success", groupId: targetGroupId, count: cleanDates.length };
+  } catch (error) {
+    console.error(`[${functionName}] 儲存行事曆備註失敗:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `儲存行事曆備註失敗: ${error.message}`);
+  }
+}
+
+/**
+ * [內部函式] 刪除行事曆備註
+ * data: { projectId, userKey, noteId }          → 只刪單一日期
+ * data: { projectId, userKey, groupId }         → 刪整則（所有套用日期）
+ */
+async function _handleDeleteCalendarNote(data) {
+  const { projectId, userKey, noteId, groupId } = data || {};
+  const functionName = "_handleDeleteCalendarNote";
+  if (!projectId) throw new HttpsError("invalid-argument", "缺少 projectId。");
+  if (!noteId && !groupId) throw new HttpsError("invalid-argument", "缺少 noteId 或 groupId。");
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  await _ensureInspectionEditPermission(db, userKey, projectId, "管理行事曆備註");
+
+  const collectionRef = db.collection("calendarNotes");
+
+  try {
+    if (groupId) {
+      const snap = await collectionRef
+        .where("projectId", "==", projectId)
+        .where("groupId", "==", groupId)
+        .get();
+      if (snap.empty) return { status: "success", message: "資料已不存在。", count: 0 };
+      const batch = db.batch();
+      snap.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      console.log(`[${functionName}] ${userKey} 刪除了 ${projectId} 的行事曆備註群組 ${groupId}（${snap.size} 筆）。`);
+      return { status: "success", count: snap.size };
+    }
+
+    const docRef = collectionRef.doc(noteId);
+    const snap = await docRef.get();
+    if (!snap.exists) return { status: "success", message: "資料已不存在。", count: 0 };
+    if (snap.data().projectId !== projectId) {
+      throw new HttpsError("permission-denied", "此備註不屬於該建案。");
+    }
+    await docRef.delete();
+    console.log(`[${functionName}] ${userKey} 刪除了 ${projectId} 的行事曆備註 ${noteId}。`);
+    return { status: "success", count: 1 };
+  } catch (error) {
+    console.error(`[${functionName}] 刪除行事曆備註失敗:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `刪除行事曆備註失敗: ${error.message}`);
+  }
+}
+
+
+// =================================================================
+// /   【新增】時間表每日名額摘要 (批次設定 × 已約統計)
+// =================================================================
+
+/**
+ * [內部函式] 取得指定日期區間內，每一天的批次名額摘要（供驗屋預約時間表顯示）
+ * data: { projectId, startDate: 'yyyy-MM-dd', endDate: 'yyyy-MM-dd' }
+ *
+ * 回傳 { 日期: [ { label, types, capacity, booked, remaining, methods[], slots[] } ] }
+ *  - 依「預約項目」分組；若 projects.bookingCapacityGroups 設定為合併計算，
+ *    同群組的項目會併成一列（label 以 '＋' 串接），避免同一份名額被重複顯示。
+ *  - 同一天多個批次可能連結到同一份 dateRules（共用規則），故名額以 ruleId 去重後加總。
+ *  - 已約計入「預約中」與「已完成」兩種狀態（取消不計）。
+ */
+async function _handleFetchDailyQuotaSummary(data) {
+  const { projectId, startDate, endDate } = data || {};
+  const functionName = "_handleFetchDailyQuotaSummary";
+  if (!projectId) throw new HttpsError("invalid-argument", "缺少 projectId。");
+  if (!CALENDAR_NOTE_DATE_RE.test(startDate || "") || !CALENDAR_NOTE_DATE_RE.test(endDate || "")) {
+    throw new HttpsError("invalid-argument", "startDate / endDate 格式須為 yyyy-MM-dd。");
+  }
+
+  const BOOKED_STATUSES = new Set(["預約中", "已完成"]);
+
+  try {
+    const db = new Firestore({ databaseId: "anxi-app" });
+
+    // 1. 專案設定：名額合併群組
+    const projectSnap = await db.collection("projects").doc(projectId).get();
+    const capacityGroups = (projectSnap.exists ? projectSnap.data().bookingCapacityGroups : null) || [];
+    const groupKeyForType = (type) => {
+      for (const g of capacityGroups) {
+        if (g && Array.isArray(g.types) && g.types.includes(type)) {
+          return { key: [...g.types].sort().join("|"), types: g.types };
+        }
+      }
+      return { key: type, types: [type] };
+    };
+
+    // 2. 批次主文件：batchId → bookingType
+    const batchSnap = await db.collection("bookingBatches")
+      .where("projectId", "==", projectId)
+      .where("isDeleted", "==", false)
+      .get();
+    const batchById = new Map();
+    batchSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.bookingType) batchById.set(doc.id, { bookingType: d.bookingType, batchCode: d.batchCode || "" });
+    });
+    if (batchById.size === 0) return { status: "success", data: {} };
+
+    // 3. 批次↔每日規則連結（僅以 projectId 查詢後在記憶體過濾日期，避免複合索引需求）
+    const linkSnap = await db.collection("batchRuleLinks")
+      .where("projectId", "==", projectId)
+      .where("isDeleted", "==", false)
+      .get();
+    const linksInRange = [];
+    const ruleIdSet = new Set();
+    linkSnap.forEach(doc => {
+      const d = doc.data();
+      if (!d.date || d.date < startDate || d.date > endDate) return;
+      if (!batchById.has(d.batchId) || !d.ruleId) return;
+      linksInRange.push({ date: d.date, batchId: d.batchId, ruleId: d.ruleId });
+      ruleIdSet.add(d.ruleId);
+    });
+    if (linksInRange.length === 0) return { status: "success", data: {} };
+
+    // 4. 讀取每日規則（documentId in 查詢上限 30 筆一批）
+    const ruleById = new Map();
+    const ruleIds = [...ruleIdSet];
+    for (let i = 0; i < ruleIds.length; i += 30) {
+      const chunk = ruleIds.slice(i, i + 30);
+      const snap = await db.collection("dateRules")
+        .where(FieldPath.documentId(), "in", chunk)
+        .get();
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d.isDeleted === true) return;
+        ruleById.set(doc.id, d.slots && typeof d.slots === "object" ? d.slots : {});
+      });
+    }
+
+    // 5. 讀取區間內的預約（狀態於記憶體過濾，避免 status + 日期範圍的複合索引）
+    const rangeStart = new Date(`${startDate}T00:00:00+08:00`);
+    const rangeEnd = new Date(`${endDate}T23:59:59+08:00`);
+    const apptSnap = await db.collection("appointments")
+      .where("projectId", "==", projectId)
+      .where("appointmentDate", ">=", rangeStart)
+      .where("appointmentDate", "<=", rangeEnd)
+      .get();
+    // bookedByDate[date][bookingType] = { total, byMethod:{}, byTime:{} }
+    const bookedByDate = {};
+    apptSnap.forEach(doc => {
+      const a = doc.data();
+      if (!BOOKED_STATUSES.has(a.status)) return;
+      if (!a.appointmentDate?.toDate || !a.bookingType) return;
+      const dateStr = formatInTimeZone(a.appointmentDate.toDate(), "Asia/Taipei", "yyyy-MM-dd");
+      if (!bookedByDate[dateStr]) bookedByDate[dateStr] = {};
+      const byType = bookedByDate[dateStr];
+      if (!byType[a.bookingType]) byType[a.bookingType] = { total: 0, byMethod: {}, byTime: {} };
+      const entry = byType[a.bookingType];
+      entry.total += 1;
+      if (a.inspectionMethod) entry.byMethod[a.inspectionMethod] = (entry.byMethod[a.inspectionMethod] || 0) + 1;
+      if (a.appointmentTimeSlot) entry.byTime[a.appointmentTimeSlot] = (entry.byTime[a.appointmentTimeSlot] || 0) + 1;
+    });
+
+    // 6. 依「日期 → 名額群組」彙整
+    const byDate = {}; // date → groupKey → { types:Set, ruleIds:Set }
+    for (const link of linksInRange) {
+      const { bookingType } = batchById.get(link.batchId);
+      const { key, types } = groupKeyForType(bookingType);
+      if (!byDate[link.date]) byDate[link.date] = new Map();
+      const groups = byDate[link.date];
+      if (!groups.has(key)) groups.set(key, { types: new Set(types), ruleIds: new Set() });
+      const g = groups.get(key);
+      types.forEach(t => g.types.add(t));
+      g.ruleIds.add(link.ruleId);
+    }
+
+    const result = {};
+    for (const [dateStr, groups] of Object.entries(byDate)) {
+      const rows = [];
+      for (const g of groups.values()) {
+        let capacity = 0;
+        const methodAgg = new Map(); // method → { limit, shared }
+        const timeAgg = new Map();   // time → capacity
+
+        for (const ruleId of g.ruleIds) {
+          const slots = ruleById.get(ruleId);
+          if (!slots) continue;
+          for (const [time, rawSlot] of Object.entries(slots)) {
+            // 舊資料相容：slot 直接是數字
+            const slot = (typeof rawSlot === "number") ? { capacity: rawSlot, methods: [] } : (rawSlot || {});
+            const slotCap = Number(slot.capacity) || 0;
+            capacity += slotCap;
+            timeAgg.set(time, (timeAgg.get(time) || 0) + slotCap);
+
+            const methods = Array.isArray(slot.methods) ? slot.methods : [];
+            const limits = slot.methodLimits || {};
+            for (const m of methods) {
+              if (!methodAgg.has(m)) methodAgg.set(m, { limit: 0, shared: false });
+              const agg = methodAgg.get(m);
+              const lim = limits[m];
+              if (typeof lim === "number") agg.limit += lim;
+              else agg.shared = true; // 未設定方式名額 → 與其他方式共用時段總名額
+            }
+          }
+        }
+
+        const types = [...g.types].sort();
+        let booked = 0;
+        const bookedByMethod = {};
+        const bookedByTime = {};
+        for (const t of types) {
+          const e = bookedByDate[dateStr]?.[t];
+          if (!e) continue;
+          booked += e.total;
+          for (const [m, n] of Object.entries(e.byMethod)) bookedByMethod[m] = (bookedByMethod[m] || 0) + n;
+          for (const [tm, n] of Object.entries(e.byTime)) bookedByTime[tm] = (bookedByTime[tm] || 0) + n;
+        }
+
+        if (capacity === 0 && booked === 0) continue; // 該日此群組未開放且無預約 → 不顯示
+
+        const methods = [...methodAgg.entries()]
+          .map(([name, agg]) => {
+            const b = bookedByMethod[name] || 0;
+            const limit = agg.shared ? null : agg.limit;
+            return { name, limit, booked: b, remaining: limit === null ? null : Math.max(limit - b, 0) };
+          })
+          .sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
+
+        const slotRows = [...timeAgg.entries()]
+          .map(([time, cap]) => ({ time, capacity: cap, booked: bookedByTime[time] || 0 }))
+          .sort((a, b) => a.time.localeCompare(b.time));
+
+        rows.push({
+          label: types.join("＋"),
+          types,
+          capacity,
+          booked,
+          remaining: Math.max(capacity - booked, 0),
+          methods,
+          slots: slotRows,
+        });
+      }
+      if (rows.length) {
+        rows.sort((a, b) => a.label.localeCompare(b.label, "zh-Hant"));
+        result[dateStr] = rows;
+      }
+    }
+
+    console.log(`[${functionName}] ${projectId} 於 ${startDate}~${endDate} 產出 ${Object.keys(result).length} 天名額摘要。`);
+    return { status: "success", data: result };
+  } catch (error) {
+    console.error(`[${functionName}] 取得每日名額摘要失敗:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `取得每日名額摘要失敗: ${error.message}`);
+  }
+}
+
 
 // =================================================================
 // /   【新增】LIFF 驗屋行事曆 (LiffInspectionCalendar) 路由函數
@@ -17761,6 +18178,10 @@ exports.liffCalendarApi = onCall({
       // --- 驗屋人員排休（LIFF 僅讀取，供時間表/詳細資訊顯示排休標記） ---
       case 'fetchInspectorLeaves':
         return await _handleFetchInspectorLeaves(data);
+
+      // --- 行事曆備註（LIFF 僅讀取） ---
+      case 'fetchCalendarNotes':
+        return await _handleFetchCalendarNotes(data);
 
       default:
         console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
