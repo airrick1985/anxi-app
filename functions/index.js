@@ -23562,6 +23562,499 @@ exports.batchImportAndAssignLeads = onCall({
 
 
 /**
+ * LINE 文字推播：名單批次匯入彙總通知（每位業務一則，避免逐筆轟炸）
+ * @param {string} token - LINE Channel Access Token
+ * @param {string|string[]} to - LINE ID（多筆走 multicast）
+ * @param {string} text - 訊息內容
+ */
+async function _sendLeadBatchSummaryText(token, to, text) {
+  const recipients = Array.from(new Set(
+    (Array.isArray(to) ? to : [to])
+      .filter(id => typeof id === 'string' && id.startsWith('U'))
+  ));
+  if (recipients.length === 0) return null;
+
+  const headers = { Authorization: `Bearer ${token}` };
+  const messages = [{ type: 'text', text }];
+
+  if (recipients.length > 1) {
+    return axios.post("https://api.line.me/v2/bot/message/multicast", { to: recipients, messages }, { headers });
+  }
+  return axios.post("https://api.line.me/v2/bot/message/push", { to: recipients[0], messages }, { headers });
+}
+
+/**
+ * [V2] Excel 批次匯入名單（資料移轉強化版）
+ * 與 batchImportAndAssignLeads 的差異：
+ *  - operatorKey 權限驗證（系統管理員/超級管理員，或該建案「客資系統-櫃台」）
+ *  - 伺服器端再驗證（電話正規化、名單狀態合法值、chunk 上限）
+ *  - db.batch() 批次寫入（含覆蓋既有名單），逐筆回傳結果供前端產出報告
+ *  - 支援歷史資料欄位：status / reason / lastReportedAt（Asia/Taipei 解析）
+ *  - LINE 通知彙總為每位業務一則（預設關閉）
+ *
+ * request.data: {
+ *   projectId, operator, operatorKey, sendLineNotify, chunkIndex,
+ *   leads: [{ name, phone, source, budget, date, note, statusText,
+ *             assignedTo, assignedName, status, reason, lastReportedAt,
+ *             duplicateAction: 'create'|'overwrite'|'skip',
+ *             overwriteLeadId, overwriteAssigned }]
+ * }
+ */
+exports.batchImportLeadsV2 = onCall({
+  region: "asia-east1",
+  cors: true,
+  memory: "512MiB",
+  timeoutSeconds: 300,
+  secrets: ["ANXISMART_LINE_CRM_TOKEN", "ANXI_ADMIN_RICK__LINEID"]
+}, async (request) => {
+  const functionName = "batchImportLeadsV2";
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const { projectId, leads, operator, operatorKey, sendLineNotify, chunkIndex, importSessionId, notifyStats } = request.data || {};
+
+  if (!projectId || !Array.isArray(leads)) {
+    throw new HttpsError("invalid-argument", "缺少必要參數。");
+  }
+  if (leads.length > 200) {
+    throw new HttpsError("invalid-argument", "單批次上限 200 筆，請分批送出。");
+  }
+
+  // 1. 權限驗證：本專案未使用 Firebase Auth，比照 unbindLineIdByAdmin 以 operatorKey 查證身分
+  if (!operatorKey) throw new HttpsError("permission-denied", "缺少操作者身分 (operatorKey)。");
+  const operatorSnap = await db.collection("users").doc(String(operatorKey)).get();
+  if (!operatorSnap.exists) {
+    throw new HttpsError("permission-denied", "找不到操作者資料，無法執行匯入。");
+  }
+  const operatorRoles = operatorSnap.data().roles || [];
+  const isOperatorAdmin = operatorRoles.includes("系統管理員") || operatorRoles.includes("超級管理員");
+  if (!isOperatorAdmin) {
+    const permSnap = await db.collection("userPermissions").doc(String(operatorKey)).get();
+    const systems = permSnap.exists ? (permSnap.data().permissions?.[projectId]?.systems || []) : [];
+    if (!systems.includes("客資系統-櫃台")) {
+      throw new HttpsError("permission-denied", "權限不足：僅限系統管理員或該建案「客資系統-櫃台」人員執行匯入。");
+    }
+  }
+
+  try {
+    // 2. 讀取建案名稱與名單狀態合法值
+    const [projectDoc, settingsDoc] = await Promise.all([
+      db.collection("projects").doc(projectId).get(),
+      db.collection("projectSettings").doc(projectId).get()
+    ]);
+    const projectName = projectDoc.exists ? (projectDoc.data().name || projectId) : projectId;
+    const validStatusOptions = (settingsDoc.exists && Array.isArray(settingsDoc.data().statusOptions) && settingsDoc.data().statusOptions.length > 0)
+      ? settingsDoc.data().statusOptions
+      : ["不考慮", "已約賞屋", "空號", "未接"];
+
+    const now = admin.firestore.Timestamp.now();
+
+    // 伺服器端電話正規化（與前端 normalizePhone 一致）
+    const normalizePhoneSrv = (p) => {
+      if (!p) return "";
+      let clean = p.toString().replace(/[\s\-()]/g, "");
+      if (clean.startsWith("+886")) clean = "0" + clean.slice(4);
+      else if (clean.startsWith("886")) clean = "0" + clean.slice(3);
+      clean = clean.replace(/\D/g, "");
+      if (clean.length === 9 && !clean.startsWith("0")) clean = "0" + clean;
+      return clean;
+    };
+
+    // 'YYYY/MM/DD' → 當日 12:00 (Asia/Taipei, UTC+8) 的 Timestamp；解析失敗回 null
+    const parseTaipeiNoon = (dateStr) => {
+      if (!dateStr) return null;
+      const m = String(dateStr).trim().replace(/-/g, "/").match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+      if (!m) return null;
+      const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+      if (y < 1990 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+      // 台北 12:00 = UTC 04:00
+      const parsed = new Date(Date.UTC(y, mo - 1, d, 4, 0, 0));
+      // 防止 2/31 之類的無效日期被 Date 自動進位（2026/02/31 → 3/3）
+      if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== mo - 1 || parsed.getUTCDate() !== d) return null;
+      return admin.firestore.Timestamp.fromDate(parsed);
+    };
+
+    // 3. 逐筆驗證與分類
+    const results = leads.map(() => null);
+    const createItems = [];    // { index, payload }
+    const overwriteItems = []; // { index, leadId, updateData }
+
+    leads.forEach((leadData, index) => {
+      const action = leadData.duplicateAction || "create";
+
+      if (action === "skip") {
+        results[index] = { index, action: "skipped", leadId: leadData.overwriteLeadId || null, error: null };
+        return;
+      }
+      if (!["create", "overwrite"].includes(action)) {
+        results[index] = { index, action: "failed", leadId: null, error: `無效的處理方式: ${action}` };
+        return;
+      }
+
+      const name = (leadData.name || "").toString().trim();
+      const phone = normalizePhoneSrv(leadData.phone);
+      if (!name && !phone) {
+        results[index] = { index, action: "failed", leadId: null, error: "客戶姓名與聯絡電話至少須填一項" };
+        return;
+      }
+
+      const status = (leadData.status || "").toString().trim();
+      // 「舊資料上傳」為系統特殊狀態：移轉名單標記後不會被 scheduledLeadReminder（status==""）視為未處理
+      if (status && status !== "舊資料上傳" && !validStatusOptions.includes(status)) {
+        results[index] = { index, action: "failed", leadId: null, error: `名單狀態「${status}」不在本建案合法選項內` };
+        return;
+      }
+      // 不考慮原因：僅狀態=不考慮時保留（合法值或自由文字皆照存）
+      const reason = status === "不考慮" ? (leadData.reason || "").toString().trim() : "";
+      // 最後回報時間：僅狀態非空時有效
+      let lastReportedAt = null;
+      if (status && leadData.lastReportedAt) {
+        lastReportedAt = parseTaipeiNoon(leadData.lastReportedAt);
+        if (!lastReportedAt) {
+          results[index] = { index, action: "failed", leadId: null, error: `最後回報時間「${leadData.lastReportedAt}」格式無法解析` };
+          return;
+        }
+      }
+
+      if (action === "create") {
+        if (!leadData.assignedTo) {
+          results[index] = { index, action: "failed", leadId: null, error: "尚未指派銷售" };
+          return;
+        }
+        const payload = {
+          name,
+          phone,
+          date: leadData.date || "",
+          source: leadData.source || "未註明",
+          statusText: leadData.statusText || "",
+          budget: leadData.budget || "",
+          note: leadData.note || "",
+          rawText: leadData.rawText || "EXCEL匯入",
+          projectId,
+          projectName,
+          status,
+          isDeleted: false,
+          createdAt: now,
+          importedBy: operator || "",
+          assignedTo: leadData.assignedTo,
+          assignedName: leadData.assignedName || "",
+          assignedAt: now,
+          lastModifiedAt: now,
+          lastModifiedBy: operator || ""
+        };
+        if (reason) payload.reason = reason;
+        if (lastReportedAt) payload.lastReportedAt = lastReportedAt;
+        // ✅ 冪等標記：前端重試同一 chunk 時，後端可辨識已寫入的列，避免重複建立
+        if (importSessionId) {
+          payload.importSessionId = String(importSessionId);
+          payload.importChunk = Number(chunkIndex) || 0;
+          payload.importRowIndex = index;
+        }
+        createItems.push({ index, payload });
+      } else {
+        // overwrite
+        if (!leadData.overwriteLeadId) {
+          results[index] = { index, action: "failed", leadId: null, error: "覆蓋模式缺少目標名單 ID" };
+          return;
+        }
+        // 僅覆蓋 Excel 實際有填的欄位（前端只傳有填的欄位），避免預設值(今日/未註明)洗掉既有資料
+        const updateData = {
+          updatedAt: now,
+          updatedBy: operator || ""
+        };
+        if (name) updateData.name = name;
+        if (leadData.source) updateData.source = leadData.source;
+        if (leadData.budget) updateData.budget = leadData.budget;
+        if (leadData.date) updateData.date = leadData.date;
+        if (leadData.note) updateData.note = leadData.note;
+        if (status) {
+          // 狀態變更時一併重設 reason / lastReportedAt，避免殘留前一狀態的不考慮原因
+          updateData.status = status;
+          updateData.reason = reason;
+          updateData.lastReportedAt = lastReportedAt || FieldValue.delete();
+        }
+        // 決策：Excel 有填指派銷售（且比對成功）才覆蓋歸屬，空值保留原歸屬
+        if (leadData.overwriteAssigned && leadData.assignedTo) {
+          updateData.assignedTo = leadData.assignedTo;
+          updateData.assignedName = leadData.assignedName || "";
+          updateData.assignedAt = now;
+        }
+        overwriteItems.push({ index, leadId: String(leadData.overwriteLeadId), updateData, status, reason, lastReportedAt });
+      }
+    });
+
+    // 4. 覆蓋目標檢查：存在性＋建案歸屬＋未被刪除＋同批重複目標去重
+    //    （同一 db.batch 內對同一文件寫兩次會使整批失敗，故後出現者直接標記失敗）
+    let validOverwrites = [];
+    if (overwriteItems.length > 0) {
+      const refs = overwriteItems.map(o => db.collection("leads").doc(o.leadId));
+      const snaps = await db.getAll(...refs);
+      const seenOverwriteIds = new Set();
+      overwriteItems.forEach((o, i) => {
+        if (!snaps[i].exists) {
+          results[o.index] = { index: o.index, action: "failed", leadId: o.leadId, error: "覆蓋目標名單不存在（可能已被刪除）" };
+          return;
+        }
+        const target = snaps[i].data();
+        if (target.projectId !== projectId) {
+          results[o.index] = { index: o.index, action: "failed", leadId: o.leadId, error: "覆蓋目標不屬於本建案，已拒絕" };
+          return;
+        }
+        if (target.isDeleted === true) {
+          results[o.index] = { index: o.index, action: "failed", leadId: o.leadId, error: "覆蓋目標已被刪除（垃圾桶中），請先還原" };
+          return;
+        }
+        if (seenOverwriteIds.has(o.leadId)) {
+          results[o.index] = { index: o.index, action: "failed", leadId: o.leadId, error: "同批次已有另一列覆蓋此名單（同電話重複列），此列未寫入" };
+          return;
+        }
+        seenOverwriteIds.add(o.leadId);
+        validOverwrites.push(o);
+      });
+    }
+
+    // 5. 冪等保護：前端重試已成功寫入的 chunk 時，跳過已存在的建立列
+    const alreadyImportedByRow = new Map(); // importRowIndex -> leadId
+    if (importSessionId && createItems.length > 0) {
+      try {
+        const dupSnap = await db.collection("leads")
+          .where("importSessionId", "==", String(importSessionId))
+          .where("importChunk", "==", Number(chunkIndex) || 0)
+          .get();
+        dupSnap.forEach(d => {
+          const ri = d.data().importRowIndex;
+          if (typeof ri === "number") alreadyImportedByRow.set(ri, d.id);
+        });
+        if (alreadyImportedByRow.size > 0) {
+          console.log(`[${functionName}] 冪等偵測：chunk ${chunkIndex} 已有 ${alreadyImportedByRow.size} 筆寫入，將跳過重複建立`);
+        }
+      } catch (e) {
+        console.warn(`[${functionName}] 冪等查詢失敗（不中斷，改為直接寫入）:`, e.message);
+      }
+    }
+
+    // 6. 批次寫入（每批 100 列；每列最多 2 個操作：名單＋歷史回報 contactLog，遠低於 Firestore 500 上限）
+    const BATCH_ROW_LIMIT = 100;
+    const operations = [];
+    createItems.forEach(item => {
+      const doneLeadId = alreadyImportedByRow.get(item.index);
+      if (doneLeadId) {
+        results[item.index] = { index: item.index, action: "created", leadId: doneLeadId, error: null };
+      } else {
+        operations.push({ type: "create", item });
+      }
+    });
+    validOverwrites.forEach(item => operations.push({ type: "overwrite", item }));
+
+    for (let i = 0; i < operations.length; i += BATCH_ROW_LIMIT) {
+      const slice = operations.slice(i, i + BATCH_ROW_LIMIT);
+      const batch = db.batch();
+      const sliceRefs = [];
+      slice.forEach(op => {
+        if (op.type === "create") {
+          const newRef = db.collection("leads").doc();
+          batch.set(newRef, op.item.payload);
+          // ✅ 歷史回報結果同步寫入 contactLogs，維持統計圖表（collectionGroup）一致性
+          //    （「舊資料上傳」僅為移轉標記、非實際洽談回報，不寫 log）
+          if (op.item.payload.status && op.item.payload.status !== "舊資料上傳") {
+            batch.set(newRef.collection("contactLogs").doc(), {
+              status: op.item.payload.status,
+              reason: op.item.payload.reason || "",
+              note: "歷史資料移轉匯入",
+              projectId,
+              createdBy: operator || "",
+              createdAt: op.item.payload.lastReportedAt || now
+            });
+          }
+          sliceRefs.push({ index: op.item.index, action: "created", leadId: newRef.id });
+        } else {
+          const targetRef = db.collection("leads").doc(op.item.leadId);
+          batch.update(targetRef, op.item.updateData);
+          if (op.item.status && op.item.status !== "舊資料上傳") {
+            batch.set(targetRef.collection("contactLogs").doc(), {
+              status: op.item.status,
+              reason: op.item.reason || "",
+              note: "歷史資料移轉匯入（覆蓋更新）",
+              projectId,
+              createdBy: operator || "",
+              createdAt: op.item.lastReportedAt || now
+            });
+          }
+          sliceRefs.push({ index: op.item.index, action: "overwritten", leadId: op.item.leadId });
+        }
+      });
+      try {
+        await batch.commit();
+        sliceRefs.forEach(r => { results[r.index] = { ...r, error: null }; });
+      } catch (batchErr) {
+        console.error(`[${functionName}] batch 寫入失敗 (chunk ${chunkIndex ?? "-"}, offset ${i}):`, batchErr);
+        sliceRefs.forEach(r => {
+          results[r.index] = { index: r.index, action: "failed", leadId: null, error: "資料庫寫入失敗：" + batchErr.message };
+        });
+      }
+    }
+
+    // 6. LINE 彙總通知（預設關閉；僅通知本次「新增」的名單，覆蓋/跳過不通知）
+    const summary = { created: 0, overwritten: 0, skipped: 0, failed: 0 };
+    results.forEach(r => {
+      if (!r) return;
+      if (r.action === "created") summary.created++;
+      else if (r.action === "overwritten") summary.overwritten++;
+      else if (r.action === "skipped") summary.skipped++;
+      else summary.failed++;
+    });
+
+    // LINE 彙總通知：僅在前端「最後一次呼叫」帶入 notifyStats（整場匯入的總計）時發送，
+    // 避免分批上傳造成每 chunk 各發一輪通知
+    if (sendLineNotify === true && notifyStats && typeof notifyStats === "object") {
+      try {
+        const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
+        const adminLineId = (process.env.ANXI_ADMIN_RICK__LINEID || "").trim();
+        const perSales = notifyStats.perSales || {}; // assignedTo -> { name, count }
+        const totalCreated = Number(notifyStats.created) || 0;
+
+        if (channelToken && totalCreated > 0) {
+          const liffUrl = "https://liff.line.me/2008257338-FSWtfaEM";
+
+          // 每位業務一則彙總（個別失敗不影響其他收件人）
+          const salesIds = Object.keys(perSales);
+          const salesDocs = await Promise.all(salesIds.map(uid => db.collection("users").doc(uid).get()));
+          await Promise.allSettled(salesIds.map((uid, i) => {
+            const lineId = (salesDocs[i].exists ? (salesDocs[i].data().lineId || "") : "").trim();
+            if (!lineId.startsWith("U")) return Promise.resolve();
+            const info = perSales[uid] || {};
+            const text = `📋 [${projectName}] 名單分配通知\n\n您好 ${info.name || ""}\n本次批次匯入已分配給您 ${info.count || 0} 筆新名單\n\n🔎 回報聯絡狀況\n${liffUrl}`;
+            return _sendLeadBatchSummaryText(channelToken, lineId, text).catch(err => {
+              console.warn(`[${functionName}] 業務 ${uid} LINE 通知失敗:`, err?.response?.data?.message || err.message);
+            });
+          }));
+
+          // 主管（notifyRecipients）＋系統管理員：一則整體摘要
+          const managerLineIds = [];
+          const notifyRecipients = settingsDoc.exists ? (settingsDoc.data().notifyRecipients || []) : [];
+          if (Array.isArray(notifyRecipients) && notifyRecipients.length > 0) {
+            const managerDocs = await Promise.all(notifyRecipients.map(uid => db.collection("users").doc(uid).get()));
+            managerDocs.forEach(d => {
+              const lid = (d.exists ? (d.data().lineId || "") : "").trim();
+              if (lid.startsWith("U")) managerLineIds.push(lid);
+            });
+          }
+          if (adminLineId.startsWith("U")) managerLineIds.push(adminLineId);
+          if (managerLineIds.length > 0) {
+            const detail = Object.values(perSales).map(s => `${s.name} ${s.count} 筆`).join("、");
+            const text = `📋 [${projectName}] 名單批次匯入完成\n\n操作人：${operator || "未知"}\n本次新增 ${totalCreated} 筆（覆蓋 ${Number(notifyStats.overwritten) || 0} 筆、跳過 ${Number(notifyStats.skipped) || 0} 筆）\n分配明細：${detail || "無"}`;
+            await _sendLeadBatchSummaryText(channelToken, managerLineIds, text).catch(err => {
+              console.warn(`[${functionName}] 主管彙總 LINE 通知失敗:`, err?.response?.data?.message || err.message);
+            });
+          }
+        }
+      } catch (lineError) {
+        // LINE 通知失敗不中斷主流程
+        const status = lineError?.response?.status;
+        console.warn(`[${functionName}] LINE 彙總通知失敗 (status=${status}):`, lineError?.response?.data?.message || lineError.message);
+      }
+    }
+
+    console.log(`[${functionName}] chunk ${chunkIndex ?? "-"} 完成：新增 ${summary.created}、覆蓋 ${summary.overwritten}、跳過 ${summary.skipped}、失敗 ${summary.failed}`);
+    return { status: "success", results, summary };
+
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error(`[${functionName}] 執行失敗:`, error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+
+/**
+ * [危險操作] 一次清除指定建案的「全部」聯絡名單文件（含垃圾桶中的軟刪除名單與 contactLogs 子集合）
+ *
+ * 防護機制：
+ *  1. 僅限「超級管理員」執行（operatorKey 查 users 驗證）
+ *  2. confirmProjectName 必須與 projects/{projectId}.name 完全一致（前端要求逐字輸入）
+ *  3. 查詢嚴格限定 where("projectId", "==", projectId)，絕不影響其他建案
+ *  4. 以 recursiveDelete 逐文件刪除（含子集合），並寫入 leadsClearLogs 稽核紀錄
+ *
+ * request.data: { projectId, operatorKey, operator, confirmProjectName }
+ * 回傳: { status, deletedCount, projectName }
+ */
+exports.clearProjectLeads = onCall({
+  region: "asia-east1",
+  cors: true,
+  memory: "512MiB",
+  timeoutSeconds: 540
+}, async (request) => {
+  const functionName = "clearProjectLeads";
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const { projectId, operatorKey, operator, confirmProjectName } = request.data || {};
+
+  if (!projectId || !operatorKey || !confirmProjectName) {
+    throw new HttpsError("invalid-argument", "缺少必要參數。");
+  }
+
+  // 1. 僅限超級管理員
+  const operatorSnap = await db.collection("users").doc(String(operatorKey)).get();
+  if (!operatorSnap.exists) {
+    throw new HttpsError("permission-denied", "找不到操作者資料，無法執行此操作。");
+  }
+  const operatorRoles = operatorSnap.data().roles || [];
+  if (!operatorRoles.includes("超級管理員")) {
+    throw new HttpsError("permission-denied", "權限不足：僅限「超級管理員」清除建案名單。");
+  }
+
+  // 2. 建案名稱二次確認（與 projects 文件的正式名稱逐字比對）
+  const projectDoc = await db.collection("projects").doc(projectId).get();
+  if (!projectDoc.exists) {
+    throw new HttpsError("not-found", "找不到指定的建案。");
+  }
+  const projectName = projectDoc.data().name || projectId;
+  if (String(confirmProjectName).trim() !== projectName) {
+    throw new HttpsError("failed-precondition", `建案名稱確認不符（須輸入「${projectName}」），已取消清除。`);
+  }
+
+  try {
+    // 3. 分頁撈取該建案全部名單（含 isDeleted 的垃圾桶名單），recursiveDelete 連同子集合刪除
+    let deletedCount = 0;
+    const PAGE_SIZE = 300;
+    const CONCURRENCY = 20;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const snap = await db.collection("leads")
+        .where("projectId", "==", projectId)
+        .limit(PAGE_SIZE)
+        .get();
+      if (snap.empty) break;
+
+      const refs = snap.docs.map(d => d.ref);
+      for (let i = 0; i < refs.length; i += CONCURRENCY) {
+        await Promise.all(refs.slice(i, i + CONCURRENCY).map(ref => db.recursiveDelete(ref)));
+      }
+      deletedCount += refs.length;
+
+      if (snap.size < PAGE_SIZE) break;
+    }
+
+    // 4. 稽核紀錄（不可跳過：重大操作必須可追溯）
+    await db.collection("leadsClearLogs").add({
+      projectId,
+      projectName,
+      operator: operator || "",
+      operatorKey: String(operatorKey),
+      deletedCount,
+      clearedAt: admin.firestore.Timestamp.now()
+    });
+
+    console.log(`[${functionName}] 超級管理員 ${operator}(${operatorKey}) 清除建案 ${projectName}(${projectId}) 名單共 ${deletedCount} 筆`);
+    return { status: "success", deletedCount, projectName };
+
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error(`[${functionName}] 執行失敗:`, error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+
+/**
  * 🤖 AI 優化洽談紀錄 (使用 Gemini 1.5 Flash)
  * 接收：{ text: "原始文本" }
  * 回傳：{ optimizedText: "優化後的文本" }

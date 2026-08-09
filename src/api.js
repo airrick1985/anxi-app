@@ -8715,6 +8715,38 @@ export const batchImportAndAssignLeadsAPI = async (data) => {
   }
 };
 
+/**
+ * [API] Excel 批次匯入名單 V2（資料移轉強化版）
+ * @param {object} data - { projectId, operator, operatorKey, sendLineNotify, chunkIndex, leads }
+ * 回傳 { status, results: [{ index, action, leadId, error }], summary: { created, overwritten, skipped, failed } }
+ */
+export const batchImportLeadsV2API = async (data) => {
+  try {
+    const func = httpsCallable(getFunctions(undefined, 'asia-east1'), 'batchImportLeadsV2');
+    const result = await func(data);
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] batchImportLeadsV2API 異常:", error);
+    throw error;
+  }
+};
+
+/**
+ * [API][危險操作] 清除指定建案的全部聯絡名單（僅限超級管理員）
+ * @param {object} data - { projectId, operatorKey, operator, confirmProjectName }
+ * 回傳 { status, deletedCount, projectName }
+ */
+export const clearProjectLeadsAPI = async (data) => {
+  try {
+    const func = httpsCallable(getFunctions(undefined, 'asia-east1'), 'clearProjectLeads', { timeout: 540000 });
+    const result = await func(data);
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] clearProjectLeadsAPI 異常:", error);
+    throw error;
+  }
+};
+
 
 
 

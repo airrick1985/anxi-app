@@ -32,13 +32,23 @@
   v-tooltip:bottom="'名單垃圾桶'"
 ></v-btn>
 
-<v-btn 
+<v-btn
   v-if="isAdmin || isReceptionist"
-  icon="mdi-cog" 
-  variant="text" 
-  color="grey-darken-1" 
-  @click="showSettings = true" 
+  icon="mdi-cog"
+  variant="text"
+  color="grey-darken-1"
+  @click="showSettings = true"
   v-tooltip:bottom="'聯絡名單系統設定'"
+></v-btn>
+
+<!-- ✅ [危險操作] 清除該建案全部名單（僅限超級管理員） -->
+<v-btn
+  v-if="isSuperAdmin"
+  icon="mdi-delete-forever"
+  variant="text"
+  color="red-darken-3"
+  @click="openClearAllDialog"
+  v-tooltip:bottom="'清除該建案全部名單（超級管理員）'"
 ></v-btn>
       </v-col>
 
@@ -142,7 +152,7 @@
       </v-select>
     </v-col>
     <v-col cols="12" sm="4">
-      <v-select v-model="statusSearch" :items="['未處理', ...statusOptions]" label="狀態" multiple variant="outlined" density="compact" hide-details rounded="lg" prepend-inner-icon="mdi-filter-variant">
+      <v-select v-model="statusSearch" :items="['未處理', ...statusOptions, '舊資料上傳']" label="狀態" multiple variant="outlined" density="compact" hide-details rounded="lg" prepend-inner-icon="mdi-filter-variant">
         <template v-slot:selection="{ index }"><span v-if="index === 0" class="text-caption">狀態 (+{{ statusSearch.length }})</span></template>
       </v-select>
     </v-col>
@@ -876,8 +886,80 @@
         @update:model-value="handleExcelFileSelect"
       ></v-file-input>
       <v-alert type="info" variant="tonal" density="compact" class="mt-2 text-caption">
-        請確保第一列為表頭：客戶姓名、聯絡電話、來源管道、購屋預算、填表日期、指派銷售(選填)、備註(選填)
+        請確保第一列為表頭：客戶姓名、聯絡電話、來源管道、購屋預算、填表日期、指派銷售(選填)、備註(選填)、
+        名單狀態(選填)、不考慮原因(選填)、最後回報時間(選填)。<br>
+        單檔上限 3,000 列；歷史資料移轉可直接填入名單狀態等回報結果，詳見下載檔案中的「填寫說明」工作表。
       </v-alert>
+
+      <!-- ✅ 快速匯入模式（大量資料移轉：略過預覽直接寫入） -->
+      <v-card variant="tonal" :color="excelFastMode ? 'green-lighten-5' : 'grey-lighten-4'" class="pa-3 mt-3 rounded-lg">
+        <div class="d-flex align-center">
+          <v-switch
+            v-model="excelFastMode"
+            color="green-darken-1"
+            density="compact"
+            hide-details
+            inset
+            class="me-2 flex-grow-0"
+          ></v-switch>
+          <div>
+            <div class="text-subtitle-2 font-weight-bold" :class="excelFastMode ? 'text-green-darken-2' : 'text-grey-darken-1'">
+              <v-icon size="16" class="me-1">{{ excelFastMode ? 'mdi-lightning-bolt' : 'mdi-table-eye' }}</v-icon>
+              {{ excelFastMode ? '快速匯入模式（建議大量資料使用）' : '預覽模式（可逐筆檢查與調整）' }}
+            </div>
+            <div class="text-caption text-grey-darken-1">
+              {{ excelFastMode
+                ? '解析驗證後顯示摘要即直接寫入資料庫，不經預覽表格（上千筆不卡頓）。每列須填妥「指派銷售」。'
+                : '解析後進入預覽表格，可逐筆調整指派與內容後再匯入（大量資料會較慢）。' }}
+            </div>
+          </div>
+        </div>
+        <v-select
+          v-if="excelFastMode"
+          v-model="excelFastDupAction"
+          :items="[
+            { title: '跳過（保留既有資料，不匯入該列）', value: 'skip' },
+            { title: '覆蓋（以 Excel 有填的欄位更新既有名單）', value: 'overwrite' },
+            { title: '仍新增（允許同電話多筆名單）', value: 'create' }
+          ]"
+          label="電話與既有名單重複時"
+          variant="outlined"
+          density="compact"
+          bg-color="white"
+          rounded="lg"
+          hide-details
+          class="mt-3"
+          prepend-inner-icon="mdi-content-duplicate"
+        ></v-select>
+        <div v-if="excelFastMode" class="text-caption text-grey mt-2">
+          ⚡ 快速模式僅以電話比對既有聯絡名單，不做客資／賞屋預約交叉查重；需要逐筆確認時請關閉此模式。
+        </div>
+      </v-card>
+
+      <!-- ✅ 舊資料上傳狀態標記 -->
+      <v-card variant="tonal" :color="excelLegacyStatusEnabled ? 'blue-grey-lighten-5' : 'grey-lighten-4'" class="pa-3 mt-3 rounded-lg">
+        <div class="d-flex align-center">
+          <v-switch
+            v-model="excelLegacyStatusEnabled"
+            color="blue-grey-darken-1"
+            density="compact"
+            hide-details
+            inset
+            class="me-2 flex-grow-0"
+          ></v-switch>
+          <div>
+            <div class="text-subtitle-2 font-weight-bold" :class="excelLegacyStatusEnabled ? 'text-blue-grey-darken-2' : 'text-grey-darken-1'">
+              <v-icon size="16" class="me-1">mdi-archive-clock</v-icon>
+              未填名單狀態的列自動標記為「舊資料上傳」
+            </div>
+            <div class="text-caption text-grey-darken-1">
+              {{ excelLegacyStatusEnabled
+                ? '移轉的舊名單不會被視為「未處理」，定時 LINE 回報提醒不會通知業務；業務之後回報時會覆蓋為實際狀態。'
+                : '⚠️ 關閉後，未填狀態的列將以「未處理」匯入，定時提醒會每天通知被指派的業務。' }}
+            </div>
+          </div>
+        </div>
+      </v-card>
     </v-window-item>
 
 <v-window-item value="manual">
@@ -943,6 +1025,8 @@
 
   <v-chip size="x-small" color="purple-darken-1" variant="flat" v-if="summaryCount.reservation">📅 賞屋預約 {{ summaryCount.reservation }} 筆</v-chip>
 
+  <v-chip size="x-small" color="deep-orange-darken-1" variant="flat" v-if="pendingOverwrites.length">♻️ 待覆蓋更新 {{ pendingOverwrites.length }} 筆</v-chip>
+
   <v-spacer></v-spacer>
   <v-progress-circular v-if="isCheckingDuplicates" indeterminate size="16" width="2" color="primary" class="me-2"></v-progress-circular>
 </div>
@@ -988,6 +1072,12 @@
                 <td class="text-center pa-2">
                   <div v-if="internalDuplicateMap[lead.phone]?.length > 1" class="mb-2">
                     <v-chip color="warning" size="x-small" variant="flat" class="font-weight-bold w-100">⚠️ 本次名單重複</v-chip>
+                  </div>
+
+                  <div v-if="lead.status" class="mb-2">
+                    <v-chip color="teal" size="x-small" variant="tonal" class="font-weight-bold w-100">
+                      📋 歷史回報：{{ lead.status }}{{ lead.status === '不考慮' && lead.reason ? `（${lead.reason}）` : '' }}
+                    </v-chip>
                   </div>
 
                   <div v-if="duplicateResults[lead.phone]">
@@ -1153,6 +1243,9 @@
                                      <v-chip v-if="internalDuplicateMap[lead.phone]?.length > 1" color="warning" size="x-small" variant="flat" label>
                                         ⚠️ 本次重複
                                      </v-chip>
+                                     <v-chip v-if="lead.status" color="teal" size="x-small" variant="tonal" label>
+                                        📋 歷史回報：{{ lead.status }}
+                                     </v-chip>
                                      <template v-if="duplicateResults[lead.phone]">
                                         <v-chip 
                                             v-if="duplicateResults[lead.phone].type === 'vip'" 
@@ -1289,11 +1382,11 @@
           variant="elevated"
           min-width="250"
           rounded="lg"
-          :disabled="isCheckingDuplicates || summaryCount.unassigned > 0"
+          :disabled="isCheckingDuplicates || summaryCount.unassigned > 0 || (previewLeads.length + pendingOverwrites.length === 0)"
           :loading="isImporting"
           @click="executeBatchImportAndAssign"
         >
-          {{ summaryCount.unassigned > 0 ? `尚未處理 (待指派 ${summaryCount.unassigned}筆)` : `確認無誤並執行分配 (${previewLeads.length}筆)` }}
+          {{ summaryCount.unassigned > 0 ? `尚未處理 (待指派 ${summaryCount.unassigned}筆)` : `確認無誤並執行分配 (${previewLeads.length + pendingOverwrites.length}筆)` }}
         </v-btn>
         </v-card-actions>
       </v-card>
@@ -1325,6 +1418,9 @@
           <v-btn size="small" variant="tonal" color="blue-grey" prepend-icon="mdi-select-remove" @click="setAllDuplicateAction('skip')">
             全部跳過
           </v-btn>
+          <v-btn size="small" variant="tonal" color="green-darken-2" prepend-icon="mdi-plus-box-multiple" @click="setAllDuplicateAction('create')">
+            全部仍新增
+          </v-btn>
         </div>
 
         <v-card-text class="pa-0" style="max-height: 500px; overflow-y: auto;">
@@ -1348,6 +1444,7 @@
                     <v-btn-toggle v-model="dup.action" mandatory density="compact" color="orange-darken-2" rounded="lg" class="flex-column">
                       <v-btn value="overwrite" size="x-small" class="font-weight-bold px-2">覆蓋</v-btn>
                       <v-btn value="skip" size="x-small" class="font-weight-bold px-2">跳過</v-btn>
+                      <v-btn value="create" size="x-small" class="font-weight-bold px-2">仍新增</v-btn>
                     </v-btn-toggle>
                   </td>
                   <td>
@@ -1401,6 +1498,7 @@
                   <v-btn-toggle v-model="dup.action" mandatory density="compact" color="orange-darken-2" rounded="lg">
                     <v-btn value="overwrite" size="x-small" class="font-weight-bold">覆蓋</v-btn>
                     <v-btn value="skip" size="x-small" class="font-weight-bold">跳過</v-btn>
+                    <v-btn value="create" size="x-small" class="font-weight-bold">仍新增</v-btn>
                   </v-btn-toggle>
                 </div>
                 <v-row dense>
@@ -1439,6 +1537,251 @@
           >
             確認並繼續 (匯入 {{ excelResolvedCount }} 筆)
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ✅ Excel 匯入：欄位驗證錯誤 Dialog -->
+    <v-dialog v-model="excelErrorDialog" max-width="700" persistent>
+      <v-card class="rounded-xl overflow-hidden">
+        <v-toolbar color="error" density="compact" class="px-4">
+          <v-icon start>mdi-alert-octagon</v-icon>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">部分資料格式錯誤</v-toolbar-title>
+        </v-toolbar>
+        <v-card-text class="pa-5">
+          <div class="text-body-2 mb-3">
+            共解析 <b>{{ excelErrorSummary.total }}</b> 列：
+            <span class="text-success font-weight-bold">有效 {{ excelValidRowsPending.length }} 列</span>、
+            <span class="text-error font-weight-bold">錯誤 {{ excelErrorSummary.errors }} 列</span>
+            <span v-if="excelErrorSummary.warnings">
+              、<span class="text-warning font-weight-bold">警告 {{ excelErrorSummary.warnings }} 列（含在有效列中）</span>
+            </span>
+          </div>
+          <v-alert type="info" variant="tonal" density="compact" class="text-caption mb-3">
+            「錯誤」列將不會匯入，請下載明細修正後重新上傳；「警告」列仍會匯入，僅供確認提醒。
+          </v-alert>
+          <v-list density="compact" class="border rounded-lg" max-height="240" style="overflow-y: auto;">
+            <v-list-item v-for="(row, i) in excelErrorRows.slice(0, 50)" :key="i" class="py-1">
+              <template v-slot:prepend>
+                <v-chip size="x-small" :color="row.type === '錯誤' ? 'error' : 'warning'" variant="flat" class="me-2">
+                  第 {{ row.rowNumber }} 列
+                </v-chip>
+              </template>
+              <v-list-item-title class="text-caption">{{ row.messages.join('；') }}</v-list-item-title>
+            </v-list-item>
+            <v-list-item v-if="excelErrorRows.length > 50" class="text-caption text-grey">
+              …還有 {{ excelErrorRows.length - 50 }} 列，請下載明細查看
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4">
+          <v-btn variant="text" color="grey-darken-1" @click="cancelExcelErrorDialog">取消匯入</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn variant="tonal" color="error" prepend-icon="mdi-file-download" @click="downloadExcelErrorRows">
+            下載錯誤明細
+          </v-btn>
+          <v-btn
+            v-if="excelValidRowsPending.length > 0"
+            color="primary"
+            variant="elevated"
+            rounded="lg"
+            prepend-icon="mdi-arrow-right-bold"
+            @click="confirmImportValidRowsOnly"
+          >
+            僅匯入有效列 ({{ excelValidRowsPending.length }} 筆)
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ✅ [危險操作] 清除該建案全部名單 Dialog（僅限超級管理員） -->
+    <v-dialog v-model="clearAllDialog.show" max-width="560" persistent>
+      <v-card class="rounded-xl overflow-hidden">
+        <v-toolbar color="red-darken-3" density="compact" class="px-4">
+          <v-icon start>mdi-alert-octagon</v-icon>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">危險操作：清除建案全部名單</v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" :disabled="clearAllDialog.loading" @click="closeClearAllDialog"></v-btn>
+        </v-toolbar>
+        <v-card-text class="pa-5">
+          <v-alert type="error" variant="tonal" density="compact" class="mb-4">
+            <div class="font-weight-bold mb-1">此操作將「永久刪除」以下建案的全部聯絡名單，無法復原！</div>
+            <div class="text-caption">
+              包含：目前顯示的名單、垃圾桶中的已刪除名單，以及所有洽談回報紀錄（contactLogs）。<br>
+              僅影響本建案，其他建案的資料不受影響。若有綁定 Google Sheet 自動同步，工作表也會同步清空。
+            </div>
+          </v-alert>
+
+          <v-list density="compact" class="border rounded-lg mb-4">
+            <v-list-item>
+              <v-list-item-title class="text-body-2">
+                目標建案：<b class="text-red-darken-3">{{ clearAllDialog.officialName || '讀取中…' }}</b>
+              </v-list-item-title>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title class="text-body-2">
+                目前名單：<b>{{ allLeads.length }}</b> 筆（另含垃圾桶中的已刪除名單）
+              </v-list-item-title>
+            </v-list-item>
+          </v-list>
+
+          <v-checkbox
+            v-model="clearAllDialog.confirmed"
+            color="red-darken-3"
+            density="compact"
+            hide-details
+            class="mb-3"
+            label="我了解此操作將永久刪除本建案全部名單與洽談紀錄，且無法復原"
+          ></v-checkbox>
+
+          <v-text-field
+            v-model="clearAllDialog.inputName"
+            :label="`請輸入建案名稱「${clearAllDialog.officialName}」以確認`"
+            variant="outlined"
+            density="comfortable"
+            color="red-darken-3"
+            prepend-inner-icon="mdi-form-textbox"
+            :disabled="clearAllDialog.loading"
+            hide-details
+          ></v-text-field>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4">
+          <v-btn variant="text" color="grey-darken-1" :disabled="clearAllDialog.loading" @click="closeClearAllDialog">取消</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn
+            color="red-darken-3"
+            variant="elevated"
+            rounded="lg"
+            prepend-icon="mdi-delete-forever"
+            class="font-weight-bold"
+            :disabled="!clearAllDialog.confirmed || !clearAllDialog.officialName || clearAllDialog.inputName.trim() !== clearAllDialog.officialName"
+            :loading="clearAllDialog.loading"
+            @click="executeClearAllLeads"
+          >
+            永久清除全部名單
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ✅ 快速匯入：確認摘要 Dialog（不渲染逐筆預覽，大量資料不卡頓） -->
+    <v-dialog v-model="fastImportPlan.show" max-width="520" persistent>
+      <v-card class="rounded-xl overflow-hidden">
+        <v-toolbar color="green-darken-1" density="compact" class="px-4">
+          <v-icon start>mdi-lightning-bolt</v-icon>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">快速匯入確認</v-toolbar-title>
+        </v-toolbar>
+        <v-card-text class="pa-5">
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <v-chip color="primary" variant="flat" class="font-weight-bold">總計 {{ fastImportPlan.newCount + fastImportPlan.dupCount }} 筆</v-chip>
+            <v-chip color="success" variant="flat" class="font-weight-bold">✨ 全新 {{ fastImportPlan.newCount }} 筆</v-chip>
+            <v-chip v-if="fastImportPlan.dupCount" color="orange-darken-2" variant="flat" class="font-weight-bold">
+              ⚠️ 電話重複 {{ fastImportPlan.dupCount }} 筆
+            </v-chip>
+          </div>
+          <v-alert v-if="fastImportPlan.dupCount" type="warning" variant="tonal" density="compact" class="text-caption mb-3">
+            重複名單將依所選策略處理：<b>{{ FAST_DUP_ACTION_LABELS[excelFastDupAction] }}</b>
+          </v-alert>
+
+          <div class="text-body-2 font-weight-bold mb-2">指派分佈：</div>
+          <v-list density="compact" class="border rounded-lg mb-3" max-height="180" style="overflow-y: auto;">
+            <v-list-item v-for="(s, i) in fastImportPlan.perSales" :key="i" class="py-0">
+              <v-list-item-title class="text-caption d-flex justify-space-between">
+                <span>{{ s.name }}</span><b>{{ s.count }} 筆</b>
+              </v-list-item-title>
+            </v-list-item>
+          </v-list>
+
+          <v-alert type="info" variant="tonal" density="compact" class="text-caption">
+            確認後將<b>直接分批寫入資料庫</b>（不經預覽表格）；LINE 通知目前為
+            <b>{{ sendLineNotify ? '開啟（每位業務一則彙總）' : '關閉' }}</b>。
+          </v-alert>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4">
+          <v-btn variant="text" color="grey-darken-1" @click="cancelFastImport">取消</v-btn>
+          <v-spacer></v-spacer>
+          <div class="d-flex align-center me-3">
+            <v-switch v-model="sendLineNotify" color="green" density="compact" hide-details inset class="me-1"></v-switch>
+            <span class="text-caption" :class="sendLineNotify ? 'text-green-darken-2' : 'text-grey'">LINE 通知</span>
+          </div>
+          <v-btn
+            color="green-darken-1"
+            variant="elevated"
+            rounded="lg"
+            prepend-icon="mdi-database-import"
+            class="font-weight-bold"
+            @click="executeFastImport"
+          >
+            開始匯入 ({{ fastImportPlan.newCount + fastImportPlan.dupCount }} 筆)
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ✅ Excel 匯入：進度 Dialog -->
+    <v-dialog :model-value="importProgress.active" max-width="450" persistent>
+      <v-card class="rounded-xl pa-6">
+        <div class="d-flex align-center mb-3">
+          <v-icon color="primary" class="me-2">mdi-database-import</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">名單匯入中，請勿關閉視窗</span>
+        </div>
+        <v-progress-linear
+          :model-value="importProgress.total ? (importProgress.current / importProgress.total) * 100 : 0"
+          color="primary"
+          height="14"
+          rounded
+          striped
+        ></v-progress-linear>
+        <div class="text-center text-caption text-grey-darken-1 mt-2">
+          已處理 {{ importProgress.current }} / {{ importProgress.total }} 筆
+        </div>
+      </v-card>
+    </v-dialog>
+
+    <!-- ✅ Excel 匯入：結果報告 Dialog -->
+    <v-dialog v-model="importReport.show" max-width="700" persistent>
+      <v-card class="rounded-xl overflow-hidden">
+        <v-toolbar :color="importReport.failed > 0 ? 'orange-darken-2' : 'success'" density="compact" class="px-4">
+          <v-icon start>{{ importReport.failed > 0 ? 'mdi-alert-circle' : 'mdi-check-circle' }}</v-icon>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">匯入結果報告</v-toolbar-title>
+        </v-toolbar>
+        <v-card-text class="pa-5">
+          <div class="d-flex flex-wrap gap-2 mb-4">
+            <v-chip color="success" variant="flat" class="font-weight-bold">✨ 新增 {{ importReport.created }} 筆</v-chip>
+            <v-chip color="deep-orange-darken-1" variant="flat" class="font-weight-bold" v-if="importReport.overwritten">♻️ 覆蓋 {{ importReport.overwritten }} 筆</v-chip>
+            <v-chip color="blue-grey" variant="flat" class="font-weight-bold" v-if="importReport.skipped">⏭️ 跳過 {{ importReport.skipped }} 筆</v-chip>
+            <v-chip color="error" variant="flat" class="font-weight-bold" v-if="importReport.failed">❌ 失敗 {{ importReport.failed }} 筆</v-chip>
+          </div>
+          <template v-if="importReport.failedRows.length">
+            <div class="text-body-2 font-weight-bold mb-2 text-error">失敗明細（前 20 筆）：</div>
+            <v-list density="compact" class="border rounded-lg" max-height="220" style="overflow-y: auto;">
+              <v-list-item v-for="(f, i) in importReport.failedRows.slice(0, 20)" :key="i" class="py-1">
+                <v-list-item-title class="text-caption">
+                  <b>{{ f.row.name || '(無姓名)' }} / {{ f.row.phone || '(無電話)' }}</b> — {{ f.error }}
+                </v-list-item-title>
+              </v-list-item>
+            </v-list>
+          </template>
+          <v-alert v-else type="success" variant="tonal" density="compact" class="text-caption">
+            全部資料處理完成，沒有失敗項目。
+          </v-alert>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4">
+          <v-btn
+            v-if="importReport.failedRows.length"
+            variant="tonal"
+            color="error"
+            prepend-icon="mdi-file-download"
+            @click="downloadImportFailedRows"
+          >
+            下載失敗明細
+          </v-btn>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="elevated" rounded="lg" @click="importReport.show = false">完成</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1607,6 +1950,8 @@ import {
 } from 'firebase/firestore';
 
 import { checkLeadDuplicates, batchImportAndAssignLeadsAPI,
+  batchImportLeadsV2API,
+  clearProjectLeadsAPI,
   listGoogleSheets,
   exportToGoogleSheet
 } from '@/api';
@@ -1924,13 +2269,64 @@ const sendLineNotify = ref(true); // ✅ LINE 通知開關（預設開啟）
 
 // --- Excel 匯入重複比對 ---
 const excelDuplicateDialog = ref(false);
-const excelDuplicates = ref([]); // { existing, incoming, action: 'skip'|'overwrite' }
+const excelDuplicates = ref([]); // { existing, incoming, action: 'skip'|'overwrite'|'create' }
 const excelParsedNewLeads = ref([]);
 const isResolvingDuplicates = ref(false);
 
+// --- Excel 匯入 V2（資料移轉強化版）狀態 ---
+const excelImportActive = ref(false);            // 本次上傳流程是否為 EXCEL 模式（決定走 V2 後端）
+const pendingOverwrites = ref([]);               // 待覆蓋既有名單：{ incoming, overwriteLeadId, overwriteAssigned }
+const excelSkippedCount = ref(0);                // 重複比對中選「跳過」的筆數（僅計入報告，不送後端）
+const excelErrorDialog = ref(false);
+const excelErrorRows = ref([]);                  // { rowNumber, raw, type: '錯誤'|'警告', messages: [] }
+const excelValidRowsPending = ref([]);           // 驗證通過、等待使用者確認「僅匯入有效列」的資料
+const importProgress = reactive({ active: false, current: 0, total: 0 });
+const importReport = reactive({ show: false, created: 0, overwritten: 0, skipped: 0, failed: 0, failedRows: [] });
+
+// --- 快速匯入模式（資料移轉用：略過預覽與交叉查重，直接寫入資料庫）---
+// 大量資料（上千筆）在預覽表格會渲染數千個可編輯元件導致嚴重卡頓，快速模式只顯示輕量確認摘要
+const excelFastMode = ref(true);
+const excelFastDupAction = ref('skip'); // 電話重複時的整批策略：skip | overwrite | create
+
+// ✅ 舊資料上傳特殊狀態：移轉的名單若狀態空白會被視為「未處理」，
+//    導致 scheduledLeadReminder 定時 LINE 提醒持續轟炸業務；標記此狀態即不再被提醒
+const LEGACY_IMPORT_STATUS = '舊資料上傳';
+const excelLegacyStatusEnabled = ref(true); // EXCEL 匯入時，未填名單狀態的列自動標記為「舊資料上傳」
+let fastNewRowsBuf = [];   // 非 reactive 緩衝（避免上千列被深層代理拖慢效能）
+let fastDupRowsBuf = [];   // { row, existingId }
+const fastImportPlan = reactive({ show: false, newCount: 0, dupCount: 0, perSales: [] });
+
+const FAST_DUP_ACTION_LABELS = {
+  skip: '跳過（保留既有資料）',
+  overwrite: '覆蓋（以 Excel 資料更新既有名單）',
+  create: '仍新增（允許同電話多筆名單）'
+};
+
+const resetExcelImportState = () => {
+  excelImportActive.value = false;
+  pendingOverwrites.value = [];
+  excelSkippedCount.value = 0;
+  excelErrorDialog.value = false;
+  excelErrorRows.value = [];
+  excelValidRowsPending.value = [];
+  fastNewRowsBuf = [];
+  fastDupRowsBuf = [];
+  fastImportPlan.show = false;
+  fastImportPlan.newCount = 0;
+  fastImportPlan.dupCount = 0;
+  fastImportPlan.perSales = [];
+};
+
 const excelResolvedCount = computed(() => {
-  const overwriteCount = excelDuplicates.value.filter(d => d.action === 'overwrite').length;
-  return excelParsedNewLeads.value.length + overwriteCount;
+  const keptCount = excelDuplicates.value.filter(d => d.action === 'overwrite' || d.action === 'create').length;
+  return excelParsedNewLeads.value.length + keptCount;
+});
+
+// 驗證錯誤 Dialog 的計數摘要（警告列同時存在於有效列中，總數以「有效＋錯誤」計，避免重複計數）
+const excelErrorSummary = computed(() => {
+  let errors = 0, warnings = 0;
+  excelErrorRows.value.forEach(r => { r.type === '錯誤' ? errors++ : warnings++; });
+  return { errors, warnings, total: excelValidRowsPending.value.length + errors };
 });
 
 const setAllDuplicateAction = (action) => {
@@ -1941,67 +2337,79 @@ const cancelExcelDuplicates = () => {
   excelDuplicateDialog.value = false;
   excelDuplicates.value = [];
   excelParsedNewLeads.value = [];
+  resetExcelImportState();
 };
 
+// ✅ 進入預覽（EXCEL 流程共用）：查重 → 自動指派 → 排序
+// 查重分批呼叫（每批 300 支電話），避免大檔案單次呼叫超過 checkLeadDuplicates 的 60 秒限制
+const RUNCHECK_PHONE_CHUNK = 300;
+
+const enterExcelPreview = async (newLeads) => {
+  previewLeads.value = newLeads;
+  uploadStep.value = 2;
+
+  const phones = [...new Set(newLeads.map(l => l.phone).filter(p => p))];
+  for (let i = 0; i < phones.length; i += RUNCHECK_PHONE_CHUNK) {
+    await runCheck(phones.slice(i, i + RUNCHECK_PHONE_CHUNK));
+  }
+
+  // 查重服務逾時/失敗時 runCheck 只記 log，這裡補上明確提示（缺漏的電話不會自動比對與指派）
+  const missing = phones.filter(p => !duplicateResults.value[p]).length;
+  if (missing > 0) {
+    showMsg(`⚠️ 有 ${missing} 支電話未完成查重（服務逾時），請檢查網路後重新解析，或手動確認指派`, 'warning');
+  }
+
+  previewLeads.value.forEach(lead => {
+    if (!lead.assignedTo) {
+      const res = duplicateResults.value[lead.phone];
+      if (res?.data?.latestSalesPhone || res?.data?.assignedTo) {
+        quickAssignInPreview(lead, res.data.latestSalesPhone || res.data.assignedTo);
+      }
+    }
+  });
+  applySorting();
+};
+
+// ✅ V2 版：重複名單三種策略（跳過/覆蓋/仍新增），覆蓋改由後端 batchImportLeadsV2 統一執行
 const resolveExcelDuplicates = async () => {
   isResolvingDuplicates.value = true;
   try {
-    // 1. 處理「覆蓋」的名單：直接更新 Firestore 現有文件
     const overwriteItems = excelDuplicates.value.filter(d => d.action === 'overwrite');
-    let updatedCount = 0;
-    for (const dup of overwriteItems) {
-      const updateData = {
-        name: dup.incoming.name || dup.existing.name,
-        source: dup.incoming.source || dup.existing.source,
-        budget: dup.incoming.budget || dup.existing.budget,
-        date: dup.incoming.date || dup.existing.date,
-        note: dup.incoming.note ?? dup.existing.note,
-        updatedAt: serverTimestamp(),
-        updatedBy: userStore.user?.name || '系統'
-      };
-      // 若 Excel 有指定銷售且比對成功，也一併更新
-      if (dup.incoming.assignedTo) {
-        updateData.assignedTo = dup.incoming.assignedTo;
-        updateData.assignedName = dup.incoming.assignedName;
+    const createItems = excelDuplicates.value.filter(d => d.action === 'create');
+    excelSkippedCount.value = excelDuplicates.value.filter(d => d.action === 'skip').length;
+
+    // 覆蓋項目存入待送清單（決策：Excel 有填指派銷售且比對成功才覆蓋歸屬）
+    // 同一筆既有名單只接受一列覆蓋（檔案內同電話多列時，後續列改列為跳過）
+    const seenOverwriteIds = new Set();
+    const dedupedOverwrites = [];
+    overwriteItems.forEach(dup => {
+      if (seenOverwriteIds.has(dup.existing.id)) {
+        excelSkippedCount.value++;
+        return;
       }
-      await updateDoc(doc(db, 'leads', dup.existing.id), updateData);
-      updatedCount++;
-    }
+      seenOverwriteIds.add(dup.existing.id);
+      dedupedOverwrites.push({
+        incoming: dup.incoming,
+        overwriteLeadId: dup.existing.id,
+        overwriteAssigned: !!dup.incoming.assignedTo
+      });
+    });
+    pendingOverwrites.value = dedupedOverwrites;
 
-    if (updatedCount > 0) {
-      showMsg(`已覆蓋更新 ${updatedCount} 筆現有名單`, 'info');
-    }
+    // 「仍新增」項目與全新名單一起進入預覽（照常需指派銷售）
+    const newLeads = [...excelParsedNewLeads.value, ...createItems.map(d => d.incoming)];
 
-    // 2. 將全新名單送入預覽流程
-    const newLeads = excelParsedNewLeads.value;
     excelDuplicateDialog.value = false;
+    excelDuplicates.value = [];
+    excelParsedNewLeads.value = [];
 
-    if (newLeads.length === 0) {
-      const skippedCount = excelDuplicates.value.filter(d => d.action === 'skip').length;
-      showMsg(`處理完成！覆蓋 ${updatedCount} 筆${skippedCount > 0 ? `，跳過 ${skippedCount} 筆` : ''}，無新名單需匯入`, 'success');
-      excelDuplicates.value = [];
-      excelParsedNewLeads.value = [];
+    if (newLeads.length === 0 && pendingOverwrites.value.length === 0) {
+      showMsg(`已跳過全部 ${excelSkippedCount.value} 筆重複名單，無資料需匯入`, 'info');
+      resetExcelImportState();
       return;
     }
 
-    // 繼續原有的預覽流程
-    previewLeads.value = newLeads;
-    uploadStep.value = 2;
-    await runCheck(newLeads.map(l => l.phone).filter(p => p));
-
-    // 自動指派
-    previewLeads.value.forEach(lead => {
-      if (!lead.assignedTo) {
-        const res = duplicateResults.value[lead.phone];
-        if (res?.data?.latestSalesPhone || res?.data?.assignedTo) {
-          quickAssignInPreview(lead, res.data.latestSalesPhone || res.data.assignedTo);
-        }
-      }
-    });
-    applySorting();
-
-    excelDuplicates.value = [];
-    excelParsedNewLeads.value = [];
+    await enterExcelPreview(newLeads);
   } catch (err) {
     showMsg('處理重複名單失敗：' + err.message, 'error');
   } finally {
@@ -2034,6 +2442,55 @@ const userSystems = computed(() => userStore.user?.permissions?.[props.projectId
 
 const isReceptionist = computed(() => userSystems.value.includes('客資系統-櫃台'));
 const isAdmin = computed(() => userStore.user?.roles?.includes('系統管理員') || userStore.user?.roles?.includes('超級管理員'));
+const isSuperAdmin = computed(() => userStore.user?.roles?.includes('超級管理員'));
+
+// --- [危險操作] 清除該建案全部名單（僅限超級管理員） ---
+const clearAllDialog = reactive({
+  show: false,
+  officialName: '',   // projects/{id}.name 正式名稱（後端逐字比對用，避免與權限顯示名稱不一致）
+  inputName: '',
+  confirmed: false,
+  loading: false
+});
+
+const openClearAllDialog = async () => {
+  clearAllDialog.show = true;
+  clearAllDialog.inputName = '';
+  clearAllDialog.confirmed = false;
+  clearAllDialog.officialName = '';
+  try {
+    const pDoc = await getDoc(doc(db, 'projects', props.projectId));
+    clearAllDialog.officialName = pDoc.exists() ? (pDoc.data().name || props.projectId) : props.projectId;
+  } catch (err) {
+    showMsg('讀取建案資料失敗：' + err.message, 'error');
+    clearAllDialog.show = false;
+  }
+};
+
+const closeClearAllDialog = () => {
+  clearAllDialog.show = false;
+  clearAllDialog.inputName = '';
+  clearAllDialog.confirmed = false;
+};
+
+const executeClearAllLeads = async () => {
+  if (!clearAllDialog.confirmed || clearAllDialog.inputName.trim() !== clearAllDialog.officialName) return;
+  clearAllDialog.loading = true;
+  try {
+    const res = await clearProjectLeadsAPI({
+      projectId: props.projectId,
+      operatorKey: userUid.value,
+      operator: userStore.user?.name || '',
+      confirmProjectName: clearAllDialog.inputName.trim()
+    });
+    showMsg(`✅ 已永久清除「${res.projectName}」全部名單，共 ${res.deletedCount} 筆`, 'success');
+    closeClearAllDialog();
+  } catch (err) {
+    showMsg('清除失敗：' + err.message, 'error');
+  } finally {
+    clearAllDialog.loading = false;
+  }
+};
 const leadStats = computed(() => { 
   const done = allLeads.value.filter(l => l.status && l.status !== '').length;
   const pending = allLeads.value.length - done;
@@ -2163,12 +2620,13 @@ const statusDistributionChartData = computed(() => {
   const counts = {};
   // 顏色對照表
   const colorMap = {
-    '不考慮': '#F44336', 
-    '已約賞屋': '#4CAF50', 
-    '還在討論': '#2196F3', 
-    '未接': '#FF9800',     
-    '空號': '#9E9E9E',     
-    '未處理': '#E0E0E0'    
+    '不考慮': '#F44336',
+    '已約賞屋': '#4CAF50',
+    '還在討論': '#2196F3',
+    '未接': '#FF9800',
+    '空號': '#9E9E9E',
+    '未處理': '#E0E0E0',
+    '舊資料上傳': '#607D8B'
   };
 
   // 1. 初始化統計：包含自定義選項與「未處理」
@@ -2900,6 +3358,8 @@ const addManualRow = () => {
 };
 
 const handleParsing = async () => {
+  resetExcelImportState(); // ✅ 文本/手動模式走原有流程，清除 EXCEL V2 狀態
+  sendLineNotify.value = true; // ✅ 文本/手動模式恢復預設發送通知（EXCEL 模式會設為關閉）
   let leads = [];
 
   if (uploadMode.value === 'text') {
@@ -2949,6 +3409,38 @@ const handleParsing = async () => {
 
 const isImporting = ref(false);
 
+// ✅ 共用：整理預覽名單（標準化來源＋依查重結果產生 statusText）
+const buildLeadsWithStatus = () => {
+  return previewLeads.value.map(l => {
+    // 🚩 強制標準化來源 (處理預覽中手動修改後的格式不一問題，統一走 normalizeSource)
+    const normalizedSource = normalizeSource(l.source);
+
+    const res = duplicateResults.value[l.phone];
+    let statusText = "✨ 全新名單";
+
+    if (res?.type === 'vip') {
+      const salesName = res.data?.latestSalesName || '未知';
+      statusText = `🚩 既有客資 (來客: ${res.data?.name || '無名'} / 銷售: ${salesName})`;
+    } else if (res?.type === 'purchased') {
+      const salesName = res.data?.assignedName || '未知';
+      statusText = `🏡 本案已購戶 (銷售: ${salesName} | 戶別: ${res.data?.unitId || '未知'})`;
+    } else if (res?.type === 'reservation') {
+      const salesName = res.data?.assignedName || '不指定';
+      statusText = `📅 已有賞屋預約 (業務: ${salesName} | 預約時間: ${res.data?.date || '--'})`;
+    } else if (res?.type === 'lead') {
+      statusText = `⚠️ 重複名單 (共 ${res.data?.count || 0} 筆)`;
+    }
+
+    return {
+      ...l,
+      source: normalizedSource,
+      statusText,
+      note: l.note || "", // ✅ 確保傳出備註
+      rawText: l.rawText || "未註明來源"
+    };
+  });
+};
+
 const executeBatchImportAndAssign = async () => {
   // ⚠️ 檢查是否有尚未選擇銷售的名單，若有則提醒用戶並中止分配流程
   const unassignedLeads = previewLeads.value.filter(l => !l.assignedTo);
@@ -2958,48 +3450,21 @@ const executeBatchImportAndAssign = async () => {
     return;
   }
 
+  // ✅ EXCEL 模式改走 V2 後端（批次寫入、逐筆結果、彙總通知）
+  if (excelImportActive.value) {
+    return executeExcelImportV2();
+  }
+
   try {
     // ✓ [打勾] 修正：手動開啟按鈕的 loading 狀態，解決看不到 LOADING 的問題
-    isImporting.value = true; 
+    isImporting.value = true;
     uiStore.setLoading(true);
 
-// 在 map 處理時，加入 source 的標準化檢查
-    const leadsWithStatus = previewLeads.value.map(l => {
-      // 🚩 強制標準化來源 (處理手動修改的大小寫不一問題)
-      let normalizedSource = (l.source || '未註明').trim();
-      const upper = normalizedSource.toUpperCase();
-      if (upper === 'FB') normalizedSource = 'FB';
-      else if (upper === 'IG') normalizedSource = 'IG';
-      else if (upper === 'LINE') normalizedSource = 'LINE';
-
-      const res = duplicateResults.value[l.phone];
-      let statusText = "✨ 全新名單"; 
-      
-      if (res?.type === 'vip') {
-        const salesName = res.data?.latestSalesName || '未知';
-        statusText = `🚩 既有客資 (來客: ${res.data?.name || '無名'} / 銷售: ${salesName})`;
-      } else if (res?.type === 'purchased') {
-        const salesName = res.data?.assignedName || '未知';
-        statusText = `🏡 本案已購戶 (銷售: ${salesName} | 戶別: ${res.data?.unitId || '未知'})`;
-      } else if (res?.type === 'reservation') {
-        const salesName = res.data?.assignedName || '不指定';
-        statusText = `📅 已有賞屋預約 (業務: ${salesName} | 預約時間: ${res.data?.date || '--'})`;
-      } else if (res?.type === 'lead') {
-        statusText = `⚠️ 重複名單 (共 ${res.data?.count || 0} 筆)`;
-      }
-
-        return { 
-            ...l, 
-            source: normalizedSource,
-            statusText,
-            note: l.note || "", // ✅ 確保傳出備註
-            rawText: l.rawText || "未註明來源" 
-          }; 
-        });
+    const leadsWithStatus = buildLeadsWithStatus();
 
     const res = await batchImportAndAssignLeadsAPI({
       projectId: props.projectId,
-      leads: leadsWithStatus, 
+      leads: leadsWithStatus,
       operator: userStore.user?.name || "櫃檯人員",
       sendLineNotify: sendLineNotify.value // ✅ 傳入 LINE 通知開關
     });
@@ -3020,6 +3485,191 @@ const executeBatchImportAndAssign = async () => {
   }
 };
 
+// ✅ EXCEL 匯入 V2：分批上傳（200 筆/批）＋進度顯示＋結果報告
+const IMPORT_CHUNK_SIZE = 200;
+
+// 只送後端需要的欄位（過濾 _ 開頭的驗證中繼欄位與 UI 專用欄位）
+const toImportPayloadRow = (l) => ({
+  name: l.name || '',
+  phone: l.phone || '',
+  source: l.source || '',
+  budget: l.budget || '',
+  date: l.date || '',
+  note: l.note || '',
+  statusText: l.statusText || '',
+  rawText: 'EXCEL匯入',
+  assignedTo: l.assignedTo || null,
+  assignedName: l.assignedName || '',
+  status: l.status || '',
+  reason: l.reason || '',
+  lastReportedAt: l.lastReportedAt || ''
+});
+
+// 覆蓋列只送 Excel 實際有填的欄位，未填欄位保留既有資料（後端以欄位存在與否判斷）
+const toOverwritePayloadRow = (inc, overwriteLeadId, overwriteAssigned) => {
+  const row = toImportPayloadRow(inc);
+  if (!inc._hasSource) row.source = '';
+  if (!inc._hasBudget) row.budget = '';
+  if (!inc._hasDate) row.date = '';
+  if (!inc._hasNote) row.note = '';
+  return {
+    ...row,
+    duplicateAction: 'overwrite',
+    overwriteLeadId,
+    overwriteAssigned
+  };
+};
+
+// 預覽模式：組合預覽名單（新增）＋待覆蓋名單後送共用上傳流程
+const executeExcelImportV2 = async () => {
+  const createRows = buildLeadsWithStatus().map(l => ({
+    ...toImportPayloadRow(l),
+    duplicateAction: 'create'
+  }));
+  const overwriteRows = pendingOverwrites.value.map(o =>
+    toOverwritePayloadRow(o.incoming, o.overwriteLeadId, o.overwriteAssigned)
+  );
+  await runImportV2([...createRows, ...overwriteRows], excelSkippedCount.value);
+};
+
+// ✅ 共用上傳流程：分批呼叫 V2 後端（進度、冪等重試、終場通知、結果報告）
+const runImportV2 = async (allRows, initialSkippedCount) => {
+  if (allRows.length === 0) {
+    showMsg('沒有可匯入的資料', 'warning');
+    return;
+  }
+
+  // 冪等 Session ID：後端據此辨識重試的 chunk，避免重複建立名單
+  const importSessionId = `imp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const wantNotify = sendLineNotify.value;
+
+  isImporting.value = true;
+  importProgress.active = true;
+  importProgress.current = 0;
+  importProgress.total = allRows.length;
+
+  const agg = { created: 0, overwritten: 0, skipped: initialSkippedCount || 0, failed: 0 };
+  const failedRows = [];
+  const perSalesCreated = {}; // assignedTo -> { name, count }（供終場 LINE 彙總通知）
+
+  try {
+    for (let i = 0; i < allRows.length; i += IMPORT_CHUNK_SIZE) {
+      const chunk = allRows.slice(i, i + IMPORT_CHUNK_SIZE);
+      let res = null;
+      let lastErr = null;
+
+      // 單批失敗自動重試 1 次（後端有冪等保護，重試不會重複建立）
+      for (let attempt = 0; attempt < 2 && !res; attempt++) {
+        try {
+          res = await batchImportLeadsV2API({
+            projectId: props.projectId,
+            operator: userStore.user?.name || '櫃檯人員',
+            operatorKey: userUid.value,
+            sendLineNotify: false, // 通知統一在最後一次呼叫發送
+            chunkIndex: Math.floor(i / IMPORT_CHUNK_SIZE),
+            importSessionId,
+            leads: chunk
+          });
+        } catch (e) {
+          lastErr = e;
+          res = null;
+        }
+      }
+
+      if (!res) {
+        // 本批失敗：本批＋後續未送出的列全部記為失敗，中止流程（已成功批次不回滾）
+        chunk.forEach(row => failedRows.push({ row, error: '上傳失敗：' + (lastErr?.message || '未知錯誤') }));
+        agg.failed += chunk.length;
+        allRows.slice(i + IMPORT_CHUNK_SIZE).forEach(row => failedRows.push({ row, error: '未執行（前一批次失敗，已中止）' }));
+        agg.failed += Math.max(0, allRows.length - (i + chunk.length));
+        break;
+      }
+
+      (res.results || []).forEach((r, j) => {
+        if (!r) return;
+        const srcRow = chunk[typeof r.index === 'number' ? r.index : j] || {};
+        if (r.action === 'created') {
+          agg.created++;
+          if (srcRow.assignedTo) {
+            if (!perSalesCreated[srcRow.assignedTo]) {
+              perSalesCreated[srcRow.assignedTo] = { name: srcRow.assignedName || srcRow.assignedTo, count: 0 };
+            }
+            perSalesCreated[srcRow.assignedTo].count++;
+          }
+        } else if (r.action === 'overwritten') agg.overwritten++;
+        else if (r.action === 'skipped') agg.skipped++;
+        else {
+          agg.failed++;
+          failedRows.push({ row: srcRow, error: r.error || '未知錯誤' });
+        }
+      });
+
+      importProgress.current = Math.min(i + chunk.length, allRows.length);
+    }
+
+    // 終場 LINE 彙總通知（一場匯入僅一輪：每位業務一則＋主管/管理員一則總結）
+    if (wantNotify && agg.created > 0) {
+      try {
+        await batchImportLeadsV2API({
+          projectId: props.projectId,
+          operator: userStore.user?.name || '櫃檯人員',
+          operatorKey: userUid.value,
+          sendLineNotify: true,
+          chunkIndex: -1,
+          leads: [],
+          notifyStats: {
+            perSales: perSalesCreated,
+            created: agg.created,
+            overwritten: agg.overwritten,
+            skipped: agg.skipped
+          }
+        });
+      } catch (notifyErr) {
+        console.warn('LINE 彙總通知發送失敗（不影響匯入結果）:', notifyErr);
+        showMsg('名單已匯入完成，但 LINE 通知發送失敗', 'warning');
+      }
+    }
+  } finally {
+    importProgress.active = false;
+    isImporting.value = false;
+  }
+
+  // 結果報告
+  importReport.created = agg.created;
+  importReport.overwritten = agg.overwritten;
+  importReport.skipped = agg.skipped;
+  importReport.failed = agg.failed;
+  importReport.failedRows = failedRows;
+  importReport.show = true;
+
+  closeUploadDialog();
+};
+
+// ✅ 下載匯入失敗明細（供修正後重新上傳）
+const downloadImportFailedRows = () => {
+  try {
+    const rows = importReport.failedRows.map(f => ({
+      '客戶姓名': f.row.name || '',
+      '聯絡電話': f.row.phone || '',
+      '來源管道': f.row.source || '',
+      '購屋預算': f.row.budget || '',
+      '填表日期': f.row.date || '',
+      '指派銷售': f.row.assignedName || '',
+      '備註': f.row.note || '',
+      '名單狀態': f.row.status || '',
+      '不考慮原因': f.row.reason || '',
+      '最後回報時間': f.row.lastReportedAt || '',
+      '失敗原因': f.error || ''
+    }));
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, '匯入失敗明細');
+    XLSX.writeFile(wb, `${projectName.value}_名單匯入失敗明細_${taipeiDateTag()}.xlsx`);
+  } catch (err) {
+    showMsg('下載失敗明細出錯：' + err.message, 'error');
+  }
+};
+
 const closeUploadDialog = () => {
   showUploadDialog.value = false;
   uploadStep.value = 1;
@@ -3029,6 +3679,7 @@ const closeUploadDialog = () => {
   excelFile.value = null;
   sendLineNotify.value = true; // ✅ 重置 LINE 通知開關
   selectedTemplateId.value = 'auto'; // ✅ 重置範本選擇
+  resetExcelImportState(); // ✅ 重置 EXCEL V2 匯入狀態
   // ✅ 清空所有偵測結果
   Object.keys(detectedTemplateInfoMap).forEach(k => delete detectedTemplateInfoMap[k]);
 };
@@ -3097,7 +3748,8 @@ const getStatusColor = (s) => {
     '不考慮': '#F44336',   // error
     '未接': '#FF9800',     // warning
     '空號': '#9E9E9E',     // grey
-    '未處理': '#FF5722'    // 警示橘紅，最顯眼
+    '未處理': '#FF5722',   // 警示橘紅，最顯眼
+    '舊資料上傳': '#607D8B' // 藍灰，區隔移轉資料
   };
   if (!s) return colors['未處理']; // 空字串/null/undefined 視為「未處理」
   return colors[s] || '#3949AB';   // 其他自定狀態預設為 indigo
@@ -3440,9 +4092,23 @@ const executeLeadsExport = async () => {
 // ✅ 匯出名單（使用與匯入相同的表頭格式，方便下載→編輯→再匯入）
 const isTemplateExporting = ref(false);
 
+// 匯入範本表頭（與 handleExcelFileSelect 的欄位別名對應，勿單獨修改）
+const IMPORT_TEMPLATE_HEADERS = [
+  '客戶姓名', '聯絡電話', '來源管道', '購屋預算', '填表日期',
+  '指派銷售', '備註', '名單狀態', '不考慮原因', '最後回報時間'
+];
+
 const exportLeadsForImport = async () => {
   isTemplateExporting.value = true;
   try {
+    // Timestamp → 'YYYY/MM/DD'（以台北時區取日期，避免瀏覽器時區造成偏移一天）
+    const tsToDateStr = (ts) => {
+      if (!ts) return '';
+      const d = ts.toDate ? ts.toDate() : new Date(ts);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' }).replace(/-/g, '/');
+    };
+
     // 使用與匯入解析完全對應的中文表頭
     const exportRows = allLeads.value.map((item) => ({
       '客戶姓名': item.name || '',
@@ -3451,11 +4117,16 @@ const exportLeadsForImport = async () => {
       '購屋預算': item.budget || '',
       '填表日期': item.date || '',
       '指派銷售': item.assignedName || '',
-      '備註': item.note || ''
+      '備註': item.note || '',
+      '名單狀態': item.status || '',
+      '不考慮原因': item.reason || '',
+      '最後回報時間': tsToDateStr(item.lastReportedAt)
     }));
 
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(exportRows);
+    const ws = exportRows.length > 0
+      ? XLSX.utils.json_to_sheet(exportRows, { header: IMPORT_TEMPLATE_HEADERS })
+      : XLSX.utils.aoa_to_sheet([IMPORT_TEMPLATE_HEADERS]); // 無資料時仍輸出表頭作為空白範本
 
     // 設定欄寬，提升可讀性
     ws['!cols'] = [
@@ -3465,16 +4136,42 @@ const exportLeadsForImport = async () => {
       { wch: 14 }, // 購屋預算
       { wch: 14 }, // 填表日期
       { wch: 12 }, // 指派銷售
-      { wch: 20 }  // 備註
+      { wch: 20 }, // 備註
+      { wch: 12 }, // 名單狀態
+      { wch: 14 }, // 不考慮原因
+      { wch: 14 }  // 最後回報時間
     ];
 
-    XLSX.utils.book_append_sheet(wb, ws, '聯絡名單');
+    XLSX.utils.book_append_sheet(wb, ws, '名單資料');
 
-    const dateTag = new Date().toISOString().split('T')[0];
-    const fileName = `${projectName.value}_聯絡名單_${dateTag}.xlsx`;
+    // ✅ 填寫說明工作表（名單狀態合法值隨建案設定動態產生）
+    const staffNames = salesStaff.value.map(s => s.name).join('、') || '（請先於人員管理設定本建案銷售人員）';
+    const guideRows = [
+      ['欄位', '必填', '填寫說明'],
+      ['客戶姓名', '▲', '與「聯絡電話」至少填一項'],
+      ['聯絡電話', '▲', '09 開頭 10 碼手機；支援 +886/886 開頭與 9 碼自動補 0；市話（0 開頭 9-10 碼）允許但會提示確認'],
+      ['來源管道', '', '空值自動填「未註明」；FB/IG/LINE/591 會自動統一格式'],
+      ['購屋預算', '', '自由文字，如「1500-2000萬」'],
+      ['填表日期', '', 'YYYY/MM/DD 或 YYYY-MM-DD；空值自動填匯入當日；格式錯誤該列會被擋下'],
+      ['指派銷售', '', `填銷售人員姓名，須與系統人員完全相同。本建案可選：${staffNames}`],
+      ['備註', '', '自由文字'],
+      ['名單狀態', '', `歷史資料移轉用。僅接受：${statusOptions.value.join('、')}、舊資料上傳；空值時若開啟「舊資料上傳」標記會自動填入（不會被定時提醒通知），未開啟則視為未處理`],
+      ['不考慮原因', '', `僅「名單狀態＝不考慮」時保留；建議選項：${reasonOptions.value.join('、')}，也可填自由文字`],
+      ['最後回報時間', '', 'YYYY/MM/DD；僅「名單狀態」有填時有效'],
+      [],
+      ['注意事項'],
+      ['1. 單檔上限 3,000 列，超過請分檔上傳'],
+      ['2. 電話與既有名單重複時，匯入前可逐筆選擇「跳過／覆蓋／仍新增」'],
+      ['3. 範例：王小明 | 0912345678 | FB | 1500-2000萬 | 2026/01/15 | 陳業務 | 想看三房 | 不考慮 | 總價太高 | 2026/02/01']
+    ];
+    const wsGuide = XLSX.utils.aoa_to_sheet(guideRows);
+    wsGuide['!cols'] = [{ wch: 14 }, { wch: 6 }, { wch: 90 }];
+    XLSX.utils.book_append_sheet(wb, wsGuide, '填寫說明');
+
+    const fileName = `${projectName.value}_聯絡名單_${taipeiDateTag()}.xlsx`;
     XLSX.writeFile(wb, fileName);
 
-    showMsg(`已匯出 ${exportRows.length} 筆名單`, 'success');
+    showMsg(`已匯出 ${exportRows.length} 筆名單（含填寫說明）`, 'success');
   } catch (err) {
     console.error('匯出失敗:', err);
     showMsg('匯出失敗: ' + err.message, 'error');
@@ -3779,7 +4476,251 @@ const applySorting = () => {
   });
 };
 
-// ✓ [打勾] 完整的 Excel 解析與多層級排序優化（含重複偵測）
+// ✅ [V2] Excel 匯入常數與驗證輔助
+const EXCEL_IMPORT_MAX_ROWS = 3000; // 單檔列數上限
+
+// 嚴格版日期解析：空值回 ''、可解析回 'YYYY/MM/DD'、無法解析回 null（與 normalizeDate 不同，不自動 fallback 今天）
+const normalizeDateStrict = (val) => {
+  if (val === undefined || val === null || val.toString().trim() === '') return '';
+
+  if (typeof val === 'number') {
+    // Excel 序號日期：限制在 1990-01-01 (32874) ~ 2100-12-31 (73415) 之間，
+    // 避免使用者輸入 20260115 這類數字被當成序號產生「57310/09/13」的荒謬日期
+    if (val < 32874 || val > 73415) return null;
+    const date = new Date(Math.round(val - 25569) * 86400 * 1000);
+    // 序號轉出的是 UTC 午夜，用 UTC 取值避免瀏覽器時區造成日期偏移一天
+    const y = date.getUTCFullYear();
+    const m = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+    const d = date.getUTCDate().toString().padStart(2, '0');
+    return `${y}/${m}/${d}`;
+  }
+
+  const cleanStr = val.toString().trim().replace(/-/g, '/');
+  const match = cleanStr.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (!match) return null;
+  const y = Number(match[1]), m = Number(match[2]), d = Number(match[3]);
+  if (y < 1990 || y > 2100) return null;
+  const date = new Date(y, m - 1, d);
+  // 防止 2/31 之類的無效日期被 Date 自動進位
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+  return `${y}/${m.toString().padStart(2, '0')}/${d.toString().padStart(2, '0')}`;
+};
+
+// 台北時區的日期標籤（檔名用），避免 toISOString 在台北 00:00-08:00 標成前一天
+const taipeiDateTag = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+
+// 逐列驗證：回傳 { errors, warnings }（errors 有值該列不匯入；warnings 僅提示仍匯入）
+// opts.requireAssigned：快速匯入模式無預覽可補指派，故「指派銷售」必填且須比對成功
+const validateImportRow = (mapped, opts = {}) => {
+  const errors = [];
+  const warnings = [];
+
+  if (!mapped.name && !mapped.phone) {
+    errors.push('客戶姓名與聯絡電話至少須填一項');
+  }
+
+  if (opts.requireAssigned && !mapped.assignedTo) {
+    errors.push(mapped._excelSalesName
+      ? `快速匯入模式：指派銷售「${mapped._excelSalesName}」比對不到本建案人員，請修正姓名`
+      : '快速匯入模式：「指派銷售」為必填（須與系統人員姓名完全相同）');
+  }
+
+  if (mapped.phone) {
+    if (/^09\d{8}$/.test(mapped.phone)) {
+      // 標準手機號碼 OK
+    } else if (/^0\d{8,9}$/.test(mapped.phone)) {
+      warnings.push(`電話「${mapped.phone}」疑似市話，請確認`);
+    } else {
+      errors.push(`電話「${mapped.phone}」格式異常（需為 09 開頭 10 碼手機，或 0 開頭 9-10 碼市話）`);
+    }
+  } else if (mapped.name) {
+    warnings.push('電話為空，無法進行重複比對（重複上傳同檔案將重複建立此列）');
+  }
+
+  if (mapped._dateInvalid) {
+    errors.push(`填表日期「${mapped._dateRaw}」無法解析（請用 YYYY/MM/DD 格式）`);
+  }
+
+  if (mapped.status && mapped.status !== LEGACY_IMPORT_STATUS && !statusOptions.value.includes(mapped.status)) {
+    errors.push(`名單狀態「${mapped.status}」不在合法選項內（${statusOptions.value.join('、')}、${LEGACY_IMPORT_STATUS}）`);
+  }
+
+  if (mapped.reason && mapped.status !== '不考慮') {
+    warnings.push('「不考慮原因」僅在名單狀態為「不考慮」時保留，已忽略');
+  }
+
+  if (mapped._lastReportedRaw) {
+    if (!mapped.status) {
+      warnings.push('未填名單狀態，「最後回報時間」已忽略');
+    } else if (mapped._lastReportedInvalid) {
+      errors.push(`最後回報時間「${mapped._lastReportedRaw}」無法解析（請用 YYYY/MM/DD 格式）`);
+    }
+  }
+
+  if (mapped._excelSalesName && !mapped.assignedTo) {
+    warnings.push(`指派銷售「${mapped._excelSalesName}」比對不到本建案人員，需於預覽中重新指派`);
+  }
+
+  return { errors, warnings };
+};
+
+// 建立「電話 → 最新一筆既有名單」對照表（allLeads 依 createdAt 由新到舊排序，取第一筆＝最新）
+const buildExistingPhoneMap = () => {
+  const map = {};
+  allLeads.value.forEach(lead => {
+    if (lead.phone && !map[lead.phone]) map[lead.phone] = lead;
+  });
+  return map;
+};
+
+// ✅ 快速匯入：只以電話比對既有名單分類新增/重複，顯示輕量確認摘要（不渲染預覽表格）
+const prepareFastImport = (validLeads) => {
+  const existingPhoneMap = buildExistingPhoneMap();
+  fastNewRowsBuf = [];
+  fastDupRowsBuf = [];
+  validLeads.forEach(r => {
+    const existing = r.phone ? existingPhoneMap[r.phone] : null;
+    if (existing) fastDupRowsBuf.push({ row: r, existingId: existing.id });
+    else fastNewRowsBuf.push(r);
+  });
+
+  const per = {};
+  validLeads.forEach(r => {
+    const key = r.assignedName || '未指派';
+    per[key] = (per[key] || 0) + 1;
+  });
+  fastImportPlan.perSales = Object.entries(per)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+  fastImportPlan.newCount = fastNewRowsBuf.length;
+  fastImportPlan.dupCount = fastDupRowsBuf.length;
+  fastImportPlan.show = true;
+};
+
+const cancelFastImport = () => {
+  resetExcelImportState();
+};
+
+// ✅ 快速匯入：確認後依整批策略組資料，直接送共用上傳流程
+const executeFastImport = async () => {
+  fastImportPlan.show = false;
+  const strategy = excelFastDupAction.value;
+
+  const createRows = fastNewRowsBuf.map(r => ({
+    ...toImportPayloadRow(r),
+    statusText: '✨ 全新名單',
+    duplicateAction: 'create'
+  }));
+
+  let skipped = 0;
+  const overwriteRows = [];
+
+  if (strategy === 'create') {
+    fastDupRowsBuf.forEach(d => createRows.push({
+      ...toImportPayloadRow(d.row),
+      statusText: '⚠️ 重複名單 (快速匯入)',
+      duplicateAction: 'create'
+    }));
+  } else if (strategy === 'overwrite') {
+    // 同一筆既有名單只接受一列覆蓋（檔案內同電話多列時，後續列計入跳過）
+    const seen = new Set();
+    fastDupRowsBuf.forEach(d => {
+      if (seen.has(d.existingId)) { skipped++; return; }
+      seen.add(d.existingId);
+      overwriteRows.push(toOverwritePayloadRow(d.row, d.existingId, !!d.row.assignedTo));
+    });
+  } else {
+    skipped = fastDupRowsBuf.length;
+  }
+
+  const allRows = [...createRows, ...overwriteRows];
+  if (allRows.length === 0) {
+    showMsg(`已跳過全部 ${skipped} 筆重複名單，無資料需匯入`, 'info');
+    resetExcelImportState();
+    return;
+  }
+
+  await runImportV2(allRows, skipped);
+};
+
+// 解析通過驗證後的共同流程：快速模式走摘要確認；預覽模式與既有名單比對重複 → 開啟策略 Dialog 或進入預覽
+const continueExcelFlow = async (validLeads) => {
+  if (excelFastMode.value) {
+    prepareFastImport(validLeads);
+    return;
+  }
+
+  const existingPhoneMap = buildExistingPhoneMap();
+
+  const newLeads = [];
+  const duplicates = [];
+
+  validLeads.forEach(lead => {
+    const existing = lead.phone ? existingPhoneMap[lead.phone] : null;
+    if (existing) {
+      duplicates.push({ existing, incoming: lead, action: 'skip' }); // 預設保留舊資料
+    } else {
+      newLeads.push(lead);
+    }
+  });
+
+  if (duplicates.length > 0) {
+    excelDuplicates.value = duplicates;
+    excelParsedNewLeads.value = newLeads;
+    excelDuplicateDialog.value = true;
+  } else {
+    await enterExcelPreview(newLeads);
+  }
+};
+
+const cancelExcelErrorDialog = () => {
+  excelErrorDialog.value = false;
+  excelErrorRows.value = [];
+  excelValidRowsPending.value = [];
+  resetExcelImportState();
+};
+
+const confirmImportValidRowsOnly = async () => {
+  const validRows = excelValidRowsPending.value;
+  excelErrorDialog.value = false;
+  excelValidRowsPending.value = [];
+  excelErrorRows.value = []; // 清除，避免殘留的錯誤/警告列影響下一次下載
+  try {
+    uiStore.setLoading(true);
+    await continueExcelFlow(validRows);
+  } finally {
+    uiStore.setLoading(false);
+  }
+};
+
+// 下載驗證錯誤/警告明細（原始欄位＋類型＋原因），供修正後重新上傳
+const downloadExcelErrorRows = () => {
+  try {
+    const rows = excelErrorRows.value.map(r => ({
+      '列號': r.rowNumber,
+      '客戶姓名': r.raw.name || '',
+      '聯絡電話': r.raw.phone || '',
+      '來源管道': r.raw.source || '',
+      '購屋預算': r.raw.budget || '',
+      '填表日期': r.raw._dateRaw || r.raw.date || '',
+      '指派銷售': r.raw._excelSalesName || r.raw.assignedName || '',
+      '備註': r.raw.note || '',
+      '名單狀態': r.raw.status || '',
+      '不考慮原因': r.raw.reason || '',
+      '最後回報時間': r.raw._lastReportedRaw || '',
+      '類型': r.type,
+      '原因': r.messages.join('；')
+    }));
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, '驗證明細');
+    XLSX.writeFile(wb, `${projectName.value}_名單匯入驗證明細_${taipeiDateTag()}.xlsx`);
+  } catch (err) {
+    showMsg('下載明細出錯：' + err.message, 'error');
+  }
+};
+
+// ✓ [V2] Excel 解析：逐列驗證＋錯誤攔截＋重複偵測
 const handleExcelFileSelect = async (input) => {
   const file = Array.isArray(input) ? input[0] : input;
   if (!file) return;
@@ -3788,12 +4729,48 @@ const handleExcelFileSelect = async (input) => {
   reader.onload = async (e) => {
     try {
       uiStore.setLoading(true);
+
+      // 確保名單狀態合法值已載入（驗證需要）；空陣列視同未設定，保留預設值
+      try {
+        const setSnap = await getDoc(doc(db, 'projectSettings', props.projectId));
+        if (setSnap.exists()) {
+          const s = setSnap.data();
+          if (Array.isArray(s.statusOptions) && s.statusOptions.length > 0) statusOptions.value = s.statusOptions;
+          if (Array.isArray(s.reasonOptions) && s.reasonOptions.length > 0) reasonOptions.value = s.reasonOptions;
+        }
+      } catch (err) {
+        console.warn('載入名單狀態選項失敗，改用預設值驗證', err);
+      }
+
       const data = new Uint8Array(e.target.result);
       const workbook = XLSX.read(data, { type: 'array' });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      // 優先讀取範本工作表「名單資料」（相容舊版「聯絡名單」與任意第一張工作表）
+      const sheetName = ['名單資料', '聯絡名單'].find(n => workbook.SheetNames.includes(n)) || workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
-      
-      const mappedLeads = jsonData.map(row => {
+
+      // 先清除上一次的 EXCEL 匯入狀態（含檔案被拒收的情況，避免殘留舊資料）
+      resetExcelImportState();
+
+      if (jsonData.length === 0) {
+        showMsg('檔案中沒有可解析的資料列，請確認第一列為表頭', 'warning');
+        return;
+      }
+      if (jsonData.length > EXCEL_IMPORT_MAX_ROWS) {
+        showMsg(`檔案共 ${jsonData.length} 列，超過單檔上限 ${EXCEL_IMPORT_MAX_ROWS} 列，請分檔後再上傳`, 'error');
+        return;
+      }
+
+      // 本次流程標記為 EXCEL 模式（執行時走 V2 後端）；資料移轉預設不發 LINE 通知
+      excelImportActive.value = true;
+      sendLineNotify.value = false;
+
+      const errorRows = [];
+      const validRows = [];
+
+      jsonData.forEach((row, idx) => {
+        const rowNumber = idx + 2; // 表頭佔第 1 列
+
         // 1. 解析指派人員
         const excelSalesName = (row['指派銷售'] || row['銷售人員'] || row['業務'] || '').toString().trim();
         let assignedTo = null;
@@ -3806,68 +4783,86 @@ const handleExcelFileSelect = async (input) => {
           }
         }
 
-        return {
+        // 2. 欄位對應與正規化
+        const dateRaw = row['填表日期'] ?? row['日期'];
+        const dateStrict = normalizeDateStrict(dateRaw);
+        const lastReportedRaw = row['最後回報時間'];
+        const lastReportedStrict = normalizeDateStrict(lastReportedRaw);
+        let status = (row['名單狀態'] || row['聯絡狀況'] || '').toString().trim();
+        // ✅ 未填名單狀態的列自動標記為「舊資料上傳」，避免移轉名單被定時提醒視為未處理持續通知
+        if (!status && excelLegacyStatusEnabled.value) status = LEGACY_IMPORT_STATUS;
+        const sourceRaw = (row['來源管道'] || row['來源'] || '').toString().trim();
+        const noteRaw = (row['備註'] || row['備註事項'] || '').toString().trim();
+        const budgetRaw = (row['購屋預算'] || row['預算'] || '').toString().trim();
+
+        const mapped = {
           name: (row['客戶姓名'] || row['姓名'] || '').toString().trim(),
           phone: normalizePhone(row['聯絡電話'] || row['電話']), // 自動補0
-          source: normalizeSource(row['來源管道'] || row['來源']), // ✅ 統一來源格式
-          budget: (row['購屋預算'] || row['預算'] || '').toString().trim(),
-          date: normalizeDate(row['填表日期'] || row['日期']),   // 統一日期 YYYY/MM/DD
-          note: (row['備註'] || '').toString().trim(), // ✅ 支援匯入備註欄位
+          source: normalizeSource(sourceRaw), // ✅ 統一來源格式
+          budget: budgetRaw,
+          date: dateStrict === '' ? normalizeDate(null) : (dateStrict || ''), // 空值 → 今日
+          note: noteRaw,
           rawText: 'EXCEL匯入',
           assignedTo,
-          assignedName
+          assignedName,
+          // ✅ 歷史資料移轉欄位（reason 保留原值，僅送出時依狀態決定是否採用，錯誤明細才不會遺失原填內容）
+          status,
+          reason: (row['不考慮原因'] || row['原因'] || '').toString().trim(),
+          lastReportedAt: (status && lastReportedStrict) ? lastReportedStrict : '',
+          // 驗證/覆蓋判斷用中繼欄位（送出時會過濾，不寫入資料庫）
+          _dateRaw: dateRaw !== undefined && dateRaw !== null ? dateRaw.toString() : '',
+          _dateInvalid: dateStrict === null,
+          _lastReportedRaw: lastReportedRaw !== undefined && lastReportedRaw !== null ? lastReportedRaw.toString() : '',
+          _lastReportedInvalid: lastReportedStrict === null,
+          _excelSalesName: excelSalesName,
+          // Excel 儲存格是否實際有填（覆蓋模式只覆蓋有填的欄位，避免預設值洗掉既有資料）
+          _hasDate: dateStrict !== '' && dateStrict !== null,
+          _hasSource: !!sourceRaw,
+          _hasBudget: !!budgetRaw,
+          _hasNote: !!noteRaw
         };
-      });
 
-      const validLeads = mappedLeads.filter(l => l.phone);
+        // 完全空白列直接略過
+        if (!mapped.name && !mapped.phone && !mapped.budget && !mapped.note && !status) return;
 
-      // ✅ 重複偵測：以電話號碼比對現有名單
-      const existingPhoneMap = {};
-      allLeads.value.forEach(lead => {
-        if (lead.phone) existingPhoneMap[lead.phone] = lead;
-      });
-
-      const newLeads = [];
-      const duplicates = [];
-
-      validLeads.forEach(lead => {
-        const existing = existingPhoneMap[lead.phone];
-        if (existing) {
-          duplicates.push({
-            existing: existing,
-            incoming: lead,
-            action: 'skip' // 預設保留舊資料
-          });
+        const { errors, warnings } = validateImportRow(mapped, { requireAssigned: excelFastMode.value });
+        if (errors.length > 0) {
+          errorRows.push({ rowNumber, raw: mapped, type: '錯誤', messages: errors });
         } else {
-          newLeads.push(lead);
+          if (warnings.length > 0) {
+            errorRows.push({ rowNumber, raw: mapped, type: '警告', messages: warnings });
+          }
+          validRows.push(mapped);
         }
       });
 
-      // ✅ 有重複 → 顯示比對 Dialog，讓用戶決定
-      if (duplicates.length > 0) {
-        excelDuplicates.value = duplicates;
-        excelParsedNewLeads.value = newLeads;
-        excelDuplicateDialog.value = true;
-      } else {
-        // 無重複，直接進入預覽
-        previewLeads.value = newLeads;
-        uploadStep.value = 2;
-        await runCheck(newLeads.map(l => l.phone).filter(p => p));
+      const hardErrorCount = errorRows.filter(r => r.type === '錯誤').length;
 
-        // 自動指派與多層級排序
-        previewLeads.value.forEach(lead => {
-          if (!lead.assignedTo) {
-            const res = duplicateResults.value[lead.phone];
-            if (res?.data?.latestSalesPhone || res?.data?.assignedTo) {
-              quickAssignInPreview(lead, res.data.latestSalesPhone || res.data.assignedTo);
-            }
-          }
-        });
-        applySorting();
+      if (hardErrorCount > 0) {
+        // 有錯誤列 → 顯示錯誤 Dialog，由使用者決定「僅匯入有效列」或取消
+        excelErrorRows.value = errorRows;
+        excelValidRowsPending.value = validRows;
+        excelErrorDialog.value = true;
+        return;
       }
+
+      if (validRows.length === 0) {
+        showMsg('沒有可匯入的有效資料列', 'warning');
+        resetExcelImportState();
+        return;
+      }
+
+      if (errorRows.length > 0) {
+        // 只有警告 → 提示但不阻擋
+        excelErrorRows.value = errorRows;
+        showMsg(`有 ${errorRows.length} 列警告（市話/未比對到銷售等），已照常納入預覽`, 'info');
+      }
+
+      await continueExcelFlow(validRows);
 
     } catch (err) {
       showMsg('解析失敗: ' + err.message, 'error');
+      resetExcelImportState();
     } finally {
       uiStore.setLoading(false);
       excelFile.value = null;
