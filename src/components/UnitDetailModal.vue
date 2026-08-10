@@ -468,14 +468,14 @@
                       <div class="info-section">
                         <div class="section-title"> {{ unitData.unitId }} 成交總覽</div>
                         <v-list dense>
-                          <v-list-item title="房屋成交"
-                            :subtitle="`${formatNumber(houseTransactionPrice)} 萬`"></v-list-item>
-                          <v-list-item title="車位成交"
-                            :subtitle="`${formatNumber(parkingTotalTransactionPrice)} 萬`"></v-list-item>
-                          <v-list-item
-                            class="font-weight-bold total-price-item"><v-list-item-title>成交總價</v-list-item-title><template
-                              v-slot:append><span class="highlight-price-final">{{
-                                formatNumber(grandTotalTransactionPrice) }} 萬</span></template></v-list-item>
+                          <div class="total-block">
+                            <div class="total-block-main">
+                              <span class="total-block-label">成交總價</span>
+                              <span class="highlight-price-final">{{ formatNumber(grandTotalTransactionPrice) }} 萬</span>
+                            </div>
+                            <div class="total-block-sub">房屋 {{ formatNumber(houseTransactionPrice) }} ＋ 車位 {{
+                              formatNumber(parkingTotalTransactionPrice) }}</div>
+                          </div>
                           <!-- 特殊合約（毛胚/配套）：顯示配套拆分附註 -->
                           <template v-if="isSpecialContract">
                             <v-list-item class="package-annotation" title="配套房屋總價">
@@ -524,24 +524,63 @@
                               </template>
                             </v-list-item>
                           </template>
-                          <v-list-item
-                            class="font-weight-bold total-price-item"><v-list-item-title>合計底價</v-list-item-title><template
-                              v-slot:append><span class="highlight-price">{{ formatNumber(totalFloorPrice) }}
-                                萬</span></template></v-list-item>
+                          <div class="total-block">
+                            <div class="total-block-main">
+                              <span class="total-block-label">合計底價</span>
+                              <span class="highlight-price">{{ formatNumber(totalFloorPrice) }} 萬</span>
+                            </div>
+                            <div class="total-block-sub">房屋 {{ formatNumber(houseFloorPrice) }} ＋ 車位 {{
+                              formatNumber(parkingTotalFloorPrice) }}</div>
+                          </div>
                           <v-list-item title="溢差價" class="premium-price-item"><template v-slot:append><span
                                 :class="pricePremium >= 0 ? 'text-success' : 'text-error'"
                                 style="font-size: 1.1rem; font-weight: 600;">{{ formatNumber(pricePremium, 0) }}
                                 萬</span></template></v-list-item>
                         </v-list>
-                        <div class="section-subtitle mt-4">持有車位</div>
-                        <v-alert v-if="assignedParkingLots.length === 0" type="info" variant="tonal" dense
-                          class="mt-2">此戶別未購買車位</v-alert>
-                        <div v-else class="parking-list">
-                          <div v-for="(parking, index) in assignedParkingLots" :key="index" class="parking-item">
-                            <p class="parking-title">車位 {{ index + 1 }}: {{ parking['車位編號'] }} ({{ parking['車位尺寸'] }})
-                            </p>
-                            <p>底價: {{ formatNumber(parking['車位底價']) }} 萬</p>
-                            <p>成交: {{ formatNumber(parking['車位成交價']) }} 萬</p>
+                        <div v-if="dealUnitPrice !== null || floorUnitPrice !== null" class="unit-price-strip">
+                          <div class="unit-price-strip-title">單價（萬/坪）</div>
+                          <div class="unit-price-tiles">
+                            <div class="unit-price-tile">
+                              <div class="unit-price-tile-label">成交單價</div>
+                              <div class="unit-price-tile-value deal">{{ dealUnitPrice === null ? '—' : formatNumber(dealUnitPrice, 2) }}</div>
+                            </div>
+                            <div class="unit-price-tile">
+                              <div class="unit-price-tile-label">底價單價</div>
+                              <div class="unit-price-tile-value floor">{{ floorUnitPrice === null ? '—' : formatNumber(floorUnitPrice, 2) }}</div>
+                            </div>
+                            <div class="unit-price-tile">
+                              <div class="unit-price-tile-label">溢差價單價</div>
+                              <div class="unit-price-tile-value"
+                                :class="premiumUnitPrice === null ? '' : (premiumUnitPrice >= 0 ? 'text-success' : 'text-error')">
+                                {{ premiumUnitPriceText }}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div v-if="assignedParkingLots.length" class="parking-deal-block">
+                          <div class="parking-deal-summary">
+                            <span class="parking-deal-title">車位明細
+                              <span class="parking-deal-count">{{ assignedParkingLots.length }} 個</span>
+                            </span>
+                          </div>
+                          <div class="parking-deal-table">
+                            <div class="parking-deal-row head">
+                              <span class="pd-id">車位</span>
+                              <span class="pd-num">底價</span>
+                              <span class="pd-num">成交</span>
+                            </div>
+                            <div v-for="(parking, index) in assignedParkingLots" :key="index" class="parking-deal-row">
+                              <span class="pd-id">
+                                <strong>{{ parking['車位編號'] }}</strong>
+                                <small v-if="parking['車位尺寸']" class="pd-size">{{ parking['車位尺寸'] }}</small>
+                              </span>
+                              <span class="pd-num">{{ formatNumber(parking['車位底價']) }}</span>
+                              <span class="pd-num pd-deal">{{ formatNumber(parking['車位成交價']) }}</span>
+                            </div>
+                            <div v-if="assignedParkingLots.length > 1" class="parking-deal-row foot">
+                              <span class="pd-id">合計</span>
+                              <span class="pd-num">{{ formatNumber(parkingTotalFloorPrice) }}</span>
+                              <span class="pd-num pd-deal">{{ formatNumber(parkingTotalTransactionPrice) }}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1438,6 +1477,29 @@ const pricePremium = computed(() => {
     return grandTotalTransactionPrice.value - totalFloorPrice.value;
   }
   return 0;
+});
+
+// ── 單價分析（萬/坪）：車位以「底價」自總額扣除後，除以房屋總面積，四捨五入至小數 2 位 ──
+const houseAreaPing = computed(() => Number(props.unitData?.area_house_ping) || 0);
+const roundTo2 = (n) => Math.round(n * 100) / 100;
+const dealUnitPrice = computed(() => {
+  if (!houseAreaPing.value || grandTotalTransactionPrice.value <= 0) return null;
+  return roundTo2((grandTotalTransactionPrice.value - parkingTotalFloorPrice.value) / houseAreaPing.value);
+});
+const floorUnitPrice = computed(() => {
+  if (!houseAreaPing.value || totalFloorPrice.value <= 0) return null;
+  return roundTo2((totalFloorPrice.value - parkingTotalFloorPrice.value) / houseAreaPing.value);
+});
+const premiumUnitPrice = computed(() => {
+  if (dealUnitPrice.value === null || floorUnitPrice.value === null) return null;
+  return roundTo2(pricePremium.value / houseAreaPing.value);
+});
+const premiumUnitPriceText = computed(() => {
+  if (premiumUnitPrice.value === null) return '—';
+  const text = formatNumber(Math.abs(premiumUnitPrice.value), 2);
+  if (premiumUnitPrice.value > 0) return `+${text}`;
+  if (premiumUnitPrice.value < 0) return `-${text}`;
+  return text;
 });
 
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p.statusName));
@@ -3012,13 +3074,6 @@ onUnmounted(() => {
   border-bottom: 2px solid #1a3a6e;
 }
 
-.section-subtitle {
-  font-size: 1rem;
-  font-weight: 500;
-  color: #37474f;
-  margin-bottom: 8px;
-}
-
 .highlight-price {
   font-size: 1.8rem !important;
   font-weight: 700 !important;
@@ -3165,34 +3220,141 @@ onUnmounted(() => {
   z-index: 1;
 }
 
-.total-price-item {
+/* 成交總覽：成交總價 / 合計底價 主列＋小字組成明細 */
+.total-block {
+  padding: 10px 16px;
+}
+
+.total-block+.total-block,
+.total-block:not(:first-child) {
   border-top: 1px solid #e0e0e0;
-  margin-top: 8px;
-  padding-top: 8px;
 }
 
-.parking-list {
-  max-height: 150px;
-  overflow-y: auto;
-  padding-right: 8px;
+.total-block-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
 }
 
-.parking-item {
-  background-color: #f5f5f5;
-  border-radius: 4px;
-  padding: 8px;
-  margin-top: 8px;
-  font-size: 0.85rem;
+.total-block-label {
+  font-size: 1rem;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.87);
+  white-space: nowrap;
 }
 
-.parking-item p {
-  margin: 0;
-  line-height: 1.5;
+.total-block-sub {
+  margin-top: 2px;
+  text-align: right;
+  font-size: 0.78rem;
+  color: #90a4ae;
+  font-variant-numeric: tabular-nums;
 }
 
-.parking-title {
+/* 成交總覽：車位明細（整合原「持有車位」） */
+.parking-deal-block {
+  margin-top: 10px;
+}
+
+.parking-deal-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.parking-deal-title {
+  font-size: 1rem;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.parking-deal-count {
+  font-size: 0.75rem;
+  color: #78909c;
+  background-color: #eceff1;
+  border-radius: 10px;
+  padding: 1px 8px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.parking-deal-table {
+  margin-top: 4px;
+  border: 1px solid #eceff1;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.parking-deal-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+}
+
+.parking-deal-row+.parking-deal-row {
+  border-top: 1px solid #f5f5f5;
+}
+
+.parking-deal-row.head {
+  background-color: #f5f7fa;
+  font-size: 0.75rem;
   font-weight: 600;
+  color: #78909c;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.parking-deal-row.foot {
+  background-color: #fafafa;
+  font-weight: 600;
+  border-top: 1px solid #eceff1;
+}
+
+.parking-deal-row .pd-id {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.parking-deal-row .pd-id strong {
   color: #1a3a6e;
+}
+
+.parking-deal-row .pd-size {
+  color: #90a4ae;
+  font-size: 0.75rem;
+  margin-left: 6px;
+}
+
+.parking-deal-row .pd-num {
+  flex: 0 0 72px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #546e7a;
+}
+
+.parking-deal-row .pd-num.pd-deal {
+  color: #2E7D32;
+  font-weight: 600;
+}
+
+.parking-deal-row.head .pd-num {
+  color: #78909c;
+  font-weight: 600;
+}
+
+/* 手機：車位編號與尺寸改上下排列，數字欄縮窄 */
+@media (max-width: 599px) {
+  .parking-deal-row .pd-size {
+    display: block;
+    margin-left: 0;
+    line-height: 1.2;
+  }
+
+  .parking-deal-row .pd-num {
+    flex-basis: 64px;
+  }
 }
 
 .base-price-item,
@@ -3200,6 +3362,85 @@ onUnmounted(() => {
   border-top: 1px solid #eee;
   margin-top: 4px;
   padding-top: 4px;
+}
+
+/* 成交總覽：單價分析（萬/坪） */
+.unit-price-strip {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background-color: #f5f7fa;
+  border: 1px solid #e0e4ea;
+  border-radius: 8px;
+}
+
+.unit-price-strip-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #607d8b;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.unit-price-tiles {
+  display: flex;
+  gap: 8px;
+}
+
+.unit-price-tile {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  background-color: #fff;
+  border: 1px solid #eceff1;
+  border-radius: 6px;
+  padding: 8px 4px;
+}
+
+.unit-price-tile-label {
+  font-size: 0.75rem;
+  color: #78909c;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.unit-price-tile-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #37474f;
+  line-height: 1.3;
+}
+
+.unit-price-tile-value.deal {
+  color: #2E7D32;
+}
+
+.unit-price-tile-value.floor {
+  color: #c62828;
+}
+
+/* 手機：三欄改直列，標籤在左、數值在右，避免窄螢幕擁擠 */
+@media (max-width: 599px) {
+  .unit-price-tiles {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .unit-price-tile {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    text-align: right;
+    padding: 8px 12px;
+  }
+
+  .unit-price-tile-label {
+    margin-bottom: 0;
+    font-size: 0.85rem;
+  }
+
+  .unit-price-tile-value {
+    font-size: 1.05rem;
+  }
 }
 
 .ratio-row-toggle:hover {
