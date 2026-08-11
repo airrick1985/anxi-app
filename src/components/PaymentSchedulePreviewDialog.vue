@@ -216,7 +216,7 @@
                                     <v-spacer></v-spacer>
                                     <v-chip
                                         size="small"
-                                        :color="pagePercentOk(page) ? 'success' : 'error'"
+                                        :color="page.checkPercent === false ? 'grey' : (pagePercentOk(page) ? 'success' : 'error')"
                                         variant="flat"
                                         class="mr-1"
                                     >
@@ -241,7 +241,7 @@
                                     density="compact"
                                     class="ma-2"
                                 >
-                                    <div v-if="!pagePercentOk(page)">比例合計須等於 100%（目前 {{ pagePercentSumText(page) }}%）</div>
+                                    <div v-if="page.checkPercent !== false && !pagePercentOk(page)">比例合計須等於 100%（目前 {{ pagePercentSumText(page) }}%）</div>
                                     <div v-if="!pageAmountOk(page)">金額合計須等於{{ page.baseLabel }}（目前差 {{ formatNumber(page.base - pageAmountSum(page)) }} 萬）</div>
                                     <div class="d-flex align-center mt-2 flex-wrap ga-2">
                                         <v-select
@@ -358,7 +358,7 @@
                                     </template>
                                     <!-- 總計列 -->
                                     <div class="edit-row edit-row-total">
-                                        <div class="col-percent text-center" :class="pagePercentOk(page) ? 'text-success' : 'text-error'">
+                                        <div class="col-percent text-center" :class="page.checkPercent === false ? 'text-grey-darken-1' : (pagePercentOk(page) ? 'text-success' : 'text-error')">
                                             {{ pagePercentSumText(page) }}%
                                         </div>
                                         <div class="col-name font-weight-bold">{{ page.totalLabel }}</div>
@@ -919,7 +919,8 @@ const editPages = computed(() => {
         baseLabel: packageModeEnabled.value ? '配套總價' : '成交總價',
         totalLabel: '總價',
         rows: editRows.value,
-        base: mainBase.value
+        base: mainBase.value,
+        checkPercent: true
     }];
     if (packageModeEnabled.value) {
         pages.push({
@@ -928,7 +929,9 @@ const editPages = computed(() => {
             baseLabel: '配套價',
             totalLabel: '配套總計',
             rows: editRows2.value,
-            base: packageBase.value
+            base: packageBase.value,
+            // ✅ 配套期款不檢查比例合計，只檢查金額合計 = 配套價
+            checkPercent: false
         });
     }
     return pages.filter(p => p.rows.length > 0 || p.id === 1);
@@ -950,16 +953,17 @@ function pageAmountOk(page) {
     return pageAmountSum(page) === page.base;
 }
 function pageOk(page) {
-    return pagePercentOk(page) && pageAmountOk(page);
+    // checkPercent === false（配套期款）時不檢查比例合計，只檢查金額合計
+    return (page.checkPercent === false || pagePercentOk(page)) && pageAmountOk(page);
 }
 
 const canDownload = computed(() => {
     if (editRows.value.length === 0 || mainBase.value <= 0) return false;
-    const page1 = { rows: editRows.value, base: mainBase.value };
+    const page1 = { rows: editRows.value, base: mainBase.value, checkPercent: true };
     if (!pageOk(page1)) return false;
     if (packageModeEnabled.value) {
         if (editRows2.value.length === 0 || packageBase.value <= 0) return false;
-        const page2 = { rows: editRows2.value, base: packageBase.value };
+        const page2 = { rows: editRows2.value, base: packageBase.value, checkPercent: false };
         if (!pageOk(page2)) return false;
     }
     return true;
@@ -979,10 +983,12 @@ function applyCorrection(page) {
         row.amount = (Math.round(Number(row.amount)) || 0) + diff;
     }
     recalcPercentFromAmount(row, page.base);
-    // 金額補正後，若比例仍不足 100%，將比例差額也歸入同一期
-    const pDiff = Math.round((100 - pagePercentSum(page)) * 100) / 100;
-    if (Math.abs(pDiff) > 0.01) {
-        row.percent = Math.round((Number(row.percent) + pDiff) * 100) / 100;
+    // 金額補正後，若比例仍不足 100%，將比例差額也歸入同一期（不檢查比例的頁面略過）
+    if (page.checkPercent !== false) {
+        const pDiff = Math.round((100 - pagePercentSum(page)) * 100) / 100;
+        if (Math.abs(pDiff) > 0.01) {
+            row.percent = Math.round((Number(row.percent) + pDiff) * 100) / 100;
+        }
     }
 }
 

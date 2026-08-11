@@ -18646,7 +18646,7 @@ exports.generatePaymentDocument = onCall({
 
   // 基本複核：期款列、比例合計、金額合計（渲染本身信任前端計算結果）
   // ✅ 配套模式：doc.packagePage 為第 2 頁（配套期款），基準為配套價
-  const validatePage = (pageRows, pageTotal, pageName) => {
+  const validatePage = (pageRows, pageTotal, pageName, checkPercent = true) => {
     if (!Array.isArray(pageRows) || pageRows.length === 0) {
       throw new HttpsError("invalid-argument", `${pageName}期款列不可為空。`);
     }
@@ -18655,7 +18655,7 @@ exports.generatePaymentDocument = onCall({
       if (r.type === 'group') return s + (r.children || []).reduce((cs, c) => cs + (Number(c.amount) || 0), 0);
       return s + (Number(r.amount) || 0);
     }, 0);
-    if (Math.abs(percentSum - 100) > 0.05) {
+    if (checkPercent && Math.abs(percentSum - 100) > 0.05) {
       throw new HttpsError("invalid-argument", `${pageName}期款比例合計須為 100%（目前 ${Math.round(percentSum * 100) / 100}%）。`);
     }
     if (Math.round(amountSum) !== Math.round(Number(pageTotal) || 0)) {
@@ -18664,7 +18664,8 @@ exports.generatePaymentDocument = onCall({
   };
   validatePage(doc.rows, doc.totalPrice, '');
   if (doc.packagePage) {
-    validatePage(doc.packagePage.rows, doc.packagePage.totalPrice, '配套');
+    // ✅ 配套期款不檢查比例合計，只檢查金額合計 = 配套價
+    validatePage(doc.packagePage.rows, doc.packagePage.totalPrice, '配套', false);
   }
 
   try {
