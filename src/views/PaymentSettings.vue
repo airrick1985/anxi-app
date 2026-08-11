@@ -194,11 +194,11 @@
                         <span class="price-value price-value-secondary">{{ formatNumber(calculated.totalParkingBasePrice) }} 萬</span>
                     </div>
                     <v-divider class="my-2"></v-divider>
-                    <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
+                    <div v-if="isPackageContract" class="price-item">
                         <span class="price-label">配套總價</span>
                         <span class="price-value">{{ formatNumber(formData.price_package_deal) }} 萬</span>
                     </div>
-                    <div v-if="formData.合約方式 === '毛胚合約'" class="price-item">
+                    <div v-if="isPackageContract" class="price-item">
                         <span class="price-label">配套價</span>
                         <span class="price-value">{{ formatNumber(calculated.packagePrice) }} 萬</span>
                     </div>
@@ -561,7 +561,7 @@ const totalParkingBasePrice = (ownedParkingSpots.value || []).reduce((sum, p) =>
     const grandTotalSalePrice = houseSalePrice + totalParkingSalePrice;
 
     let packagePrice = 0;
-    if (data.合約方式 === '毛胚合約') {
+    if (isPackageContract.value) {
         const packageHouseTotalPrice = Number(data.price_package_deal) || 0;
         packagePrice = grandTotalSalePrice - packageHouseTotalPrice;
     }
@@ -671,7 +671,8 @@ watch(() => props.show, (newVal) => {
 
 watch(() => formData.value?.合約方式, (newVal) => {
     if (!formData.value) return;
-    if (newVal !== '毛胚合約') {
+    // ✅ [改版] 配套合約判定改用建案設定的 packageContractTypes（相容舊寫死的「毛胚合約」）
+    if (!isPackageContractType(newVal)) {
         formData.value.price_package_deal = 0;
     } else {
         formData.value.price_package_deal = props.unitData?.price_package_deal || 0;
@@ -727,6 +728,17 @@ function formatPercentage(value) {
  * ========================================================== */
 const showPaymentDocDialog = ref(false);
 
+/**
+ * 配套合約判定：依建案設定 packageContractTypes（未設定時相容舊寫死的「毛胚合約」）
+ */
+function isPackageContractType(type) {
+    if (!type) return false;
+    const list = projectStore.getProjectById(props.projectId)?.packageContractTypes;
+    if (Array.isArray(list)) return list.includes(type);
+    return type === '毛胚合約';
+}
+const isPackageContract = computed(() => isPackageContractType(formData.value?.合約方式));
+
 // 至少一位銷售人員才可製作
 const hasSalesperson = computed(() => normalizeSalespersons(formData.value?.銷售).length > 0);
 
@@ -751,6 +763,10 @@ const paymentDocContext = computed(() => {
         usePreferredPayment: data.usePreferredPayment === true,
         propertyType: props.unitData?.propertyType || props.unitData?.layout || '住家',
         totalPrice: calculated.value.grandTotalSalePrice,
+        // ✅ [新增] 配套模式：合約方式命中建案設定的配套合約清單時自動觸發
+        isPackageContract: isPackageContract.value,
+        packageDealPrice: Number(formData.value?.price_package_deal) || 0,   // 配套總價（第 1 頁基準）
+        packagePrice: Number(calculated.value.packagePrice) || 0,           // 配套價（第 2 頁基準）
         parkingSpots: (ownedParkingSpots.value || []).map(p => ({
             spotId: p.spotId,
             price_transaction: p.price_transaction

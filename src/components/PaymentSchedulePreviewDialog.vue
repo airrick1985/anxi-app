@@ -104,17 +104,6 @@
                                         >
                                             還原自動判斷
                                         </v-btn>
-                                        <v-spacer></v-spacer>
-                                        <v-btn
-                                            v-if="activeTemplate"
-                                            size="x-small"
-                                            variant="text"
-                                            color="grey-darken-1"
-                                            prepend-icon="mdi-restore"
-                                            @click="rebuildRows"
-                                        >
-                                            重設調整
-                                        </v-btn>
                                     </div>
                                     <v-alert
                                         v-if="!activeTemplate"
@@ -125,30 +114,120 @@
                                     >
                                         無適用期款範本（{{ autoConditionText }}），請至「期款方式範本設定」建立，或手動指定範本。
                                     </v-alert>
+
+                                    <!-- ✅ 配套模式：合約方式屬配套合約時自動開啟，可手動覆蓋 -->
+                                    <template v-if="showPackageSwitch">
+                                        <v-divider class="my-3"></v-divider>
+                                        <v-switch
+                                            v-model="packageModeEnabled"
+                                            color="deep-orange"
+                                            density="compact"
+                                            hide-details
+                                            inset
+                                        >
+                                            <template v-slot:label>
+                                                <span class="text-body-2">配套模式（兩頁：一般期款＋配套期款）</span>
+                                            </template>
+                                        </v-switch>
+                                        <div v-if="packageModeEnabled" class="d-flex flex-wrap ga-2 mt-1">
+                                            <v-chip size="small" color="deep-orange" variant="tonal">
+                                                第 1 頁基準：配套總價 {{ formatNumber(mainBase) }} 萬
+                                            </v-chip>
+                                            <v-chip size="small" color="deep-orange" variant="tonal">
+                                                第 2 頁基準：配套價 {{ formatNumber(packageBase) }} 萬
+                                            </v-chip>
+                                        </div>
+                                        <v-alert
+                                            v-if="packageModeEnabled && (mainBase <= 0 || packageBase <= 0)"
+                                            type="warning"
+                                            variant="tonal"
+                                            density="compact"
+                                            class="mt-2"
+                                        >
+                                            配套總價或配套價尚未設定（需大於 0），請先於付款表設定填寫配套總價。
+                                        </v-alert>
+                                    </template>
                                 </template>
                             </v-card-text>
                         </v-card>
 
-                        <v-card v-if="editRows.length > 0" elevation="2" class="mb-4">
-                            <v-card-item class="editor-header">
+                        <!-- ✅ 配套期款範本選擇（第 2 頁） -->
+                        <v-card v-if="packageModeEnabled" elevation="2" class="mb-4">
+                            <v-card-item class="editor-header-package">
+                                <v-card-title class="text-subtitle-1">
+                                    <v-icon start size="small">mdi-package-variant</v-icon>
+                                    配套期款範本（第 2 頁）
+                                </v-card-title>
+                            </v-card-item>
+                            <v-divider></v-divider>
+                            <v-card-text>
+                                <v-select
+                                    v-model="packageTemplateIdModel"
+                                    :items="packageTemplateOptions"
+                                    item-title="templateName"
+                                    item-value="id"
+                                    label="配套期款範本"
+                                    variant="outlined"
+                                    density="compact"
+                                    hide-details
+                                >
+                                    <template v-slot:item="{ props: itemProps, item }">
+                                        <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle"></v-list-item>
+                                    </template>
+                                </v-select>
+                                <div class="d-flex align-center mt-2">
+                                    <v-chip v-if="!manualPackageTemplateId" size="small" color="success" variant="tonal">
+                                        <v-icon start size="x-small">mdi-auto-fix</v-icon>
+                                        自動判斷
+                                    </v-chip>
+                                    <v-chip v-else size="small" color="orange" variant="tonal">
+                                        <v-icon start size="x-small">mdi-hand-back-right-outline</v-icon>
+                                        手動指定
+                                    </v-chip>
+                                    <v-btn
+                                        v-if="manualPackageTemplateId"
+                                        size="x-small"
+                                        variant="text"
+                                        color="primary"
+                                        class="ml-2"
+                                        @click="manualPackageTemplateId = null"
+                                    >
+                                        還原自動判斷
+                                    </v-btn>
+                                </div>
+                                <v-alert
+                                    v-if="!activePackageTemplate"
+                                    type="info"
+                                    variant="tonal"
+                                    density="compact"
+                                    class="mt-3"
+                                >
+                                    無適用「配套期款」範本，請至「期款方式範本設定」建立（期款類別選「配套期款」）。
+                                </v-alert>
+                            </v-card-text>
+                        </v-card>
+
+                        <!-- ✅ 各頁比例與金額編輯（一般期款 / 配套期款） -->
+                        <v-card v-for="page in editPages" :key="`page-${page.id}`" elevation="2" class="mb-4">
+                            <v-card-item :class="page.id === 2 ? 'editor-header-package' : 'editor-header'">
                                 <v-card-title class="text-subtitle-1 d-flex align-center flex-wrap">
                                     <v-icon start size="small">mdi-pencil-ruler</v-icon>
-                                    比例與金額調整
+                                    {{ page.label }}
                                     <v-spacer></v-spacer>
                                     <v-chip
                                         size="small"
-                                        :color="percentOk ? 'success' : 'error'"
+                                        :color="pagePercentOk(page) ? 'success' : 'error'"
                                         variant="flat"
                                         class="mr-1"
                                     >
-                                        比例 {{ percentSumText }}%
+                                        比例 {{ pagePercentSumText(page) }}%
                                     </v-chip>
                                     <v-chip
                                         size="small"
-                                        :color="amountOk ? 'success' : 'error'"
+                                        :color="pageAmountOk(page) ? 'success' : 'error'"
                                         variant="flat"
                                     >
-                                        金額 {{ formatNumber(amountSum) }} / {{ formatNumber(totalPriceRounded) }} 萬
+                                        金額 {{ formatNumber(pageAmountSum(page)) }} / {{ formatNumber(page.base) }} 萬
                                     </v-chip>
                                 </v-card-title>
                             </v-card-item>
@@ -156,18 +235,18 @@
                             <v-card-text class="pa-2">
                                 <!-- 驗證提示與尾差補正 -->
                                 <v-alert
-                                    v-if="!isValid"
+                                    v-if="!pageOk(page)"
                                     type="error"
                                     variant="tonal"
                                     density="compact"
                                     class="ma-2"
                                 >
-                                    <div v-if="!percentOk">比例合計須等於 100%（目前 {{ percentSumText }}%，差 {{ percentDiffText }}%）</div>
-                                    <div v-if="!amountOk">金額合計須等於成交總價（目前差 {{ formatNumber(amountDiff) }} 萬）</div>
+                                    <div v-if="!pagePercentOk(page)">比例合計須等於 100%（目前 {{ pagePercentSumText(page) }}%）</div>
+                                    <div v-if="!pageAmountOk(page)">金額合計須等於{{ page.baseLabel }}（目前差 {{ formatNumber(page.base - pageAmountSum(page)) }} 萬）</div>
                                     <div class="d-flex align-center mt-2 flex-wrap ga-2">
                                         <v-select
-                                            v-model="correctionTargetKey"
-                                            :items="correctionTargets"
+                                            v-model="correctionTargetKeys[page.id]"
+                                            :items="page.rows.map(r => ({ key: r.key, label: r.name }))"
                                             item-title="label"
                                             item-value="key"
                                             label="差額歸入期別"
@@ -176,7 +255,7 @@
                                             hide-details
                                             style="max-width: 220px;"
                                         ></v-select>
-                                        <v-btn size="small" color="error" variant="flat" @click="applyCorrection">
+                                        <v-btn size="small" color="error" variant="flat" @click="applyCorrection(page)">
                                             一鍵補正差額
                                         </v-btn>
                                     </div>
@@ -190,7 +269,7 @@
                                         <div class="col-amount">金額(萬)</div>
                                         <div class="col-note">備註</div>
                                     </div>
-                                    <template v-for="row in editRows" :key="row.key">
+                                    <template v-for="row in page.rows" :key="row.key">
                                         <!-- 母項目（群組） -->
                                         <template v-if="row.type === 'group'">
                                             <div class="edit-row edit-row-group">
@@ -203,7 +282,7 @@
                                                         variant="outlined"
                                                         density="compact"
                                                         hide-details
-                                                        @change="recalcAmountFromPercent(row)"
+                                                        @change="recalcAmountFromPercent(row, page.base)"
                                                     ></v-text-field>
                                                 </div>
                                                 <div class="col-name font-weight-bold">{{ row.name }}</div>
@@ -226,7 +305,7 @@
                                                         variant="outlined"
                                                         density="compact"
                                                         hide-details
-                                                        @change="recalcPercentFromAmount(row)"
+                                                        @change="recalcPercentFromAmount(row, page.base)"
                                                     ></v-text-field>
                                                 </div>
                                                 <div class="col-note">
@@ -251,7 +330,7 @@
                                                     variant="outlined"
                                                     density="compact"
                                                     hide-details
-                                                    @change="recalcAmountFromPercent(row)"
+                                                    @change="recalcAmountFromPercent(row, page.base)"
                                                 ></v-text-field>
                                             </div>
                                             <div class="col-name">{{ row.name }}</div>
@@ -263,7 +342,7 @@
                                                     variant="outlined"
                                                     density="compact"
                                                     hide-details
-                                                    @change="recalcPercentFromAmount(row)"
+                                                    @change="recalcPercentFromAmount(row, page.base)"
                                                 ></v-text-field>
                                             </div>
                                             <div class="col-note">
@@ -279,12 +358,12 @@
                                     </template>
                                     <!-- 總計列 -->
                                     <div class="edit-row edit-row-total">
-                                        <div class="col-percent text-center" :class="percentOk ? 'text-success' : 'text-error'">
-                                            {{ percentSumText }}%
+                                        <div class="col-percent text-center" :class="pagePercentOk(page) ? 'text-success' : 'text-error'">
+                                            {{ pagePercentSumText(page) }}%
                                         </div>
-                                        <div class="col-name font-weight-bold">總價</div>
-                                        <div class="col-amount text-right font-weight-bold pr-2" :class="amountOk ? 'text-success' : 'text-error'">
-                                            {{ formatNumber(amountSum) }}
+                                        <div class="col-name font-weight-bold">{{ page.totalLabel }}</div>
+                                        <div class="col-amount text-right font-weight-bold pr-2" :class="pageAmountOk(page) ? 'text-success' : 'text-error'">
+                                            {{ formatNumber(pageAmountSum(page)) }}
                                         </div>
                                         <div class="col-note"></div>
                                     </div>
@@ -292,7 +371,7 @@
                             </v-card-text>
                         </v-card>
 
-                        <!-- ✅ 繳款銀行顯示控制：勾選決定房屋款/土地款/配套款是否顯示在付款表 -->
+                        <!-- ✅ 繳款銀行顯示控制：勾選決定房屋款/土地款/配套款是否顯示（配套模式下兩頁各自勾選） -->
                         <v-card v-if="availableBanks.length > 0" elevation="2" class="mb-4">
                             <v-card-item class="editor-header">
                                 <v-card-title class="text-subtitle-1">
@@ -302,10 +381,11 @@
                             </v-card-item>
                             <v-divider></v-divider>
                             <v-card-text class="py-2">
+                                <div v-if="packageModeEnabled" class="text-caption text-grey-darken-1 mb-1">第 1 頁（一般期款）</div>
                                 <div class="d-flex flex-wrap ga-2">
                                     <v-checkbox
                                         v-for="bank in availableBanks"
-                                        :key="bank.title"
+                                        :key="`b1-${bank.title}`"
                                         v-model="selectedBankTitles"
                                         :value="bank.title"
                                         :label="`${bank.title}（${bank.bankName || bank.accountName || bank.account}）`"
@@ -314,23 +394,44 @@
                                         hide-details
                                     ></v-checkbox>
                                 </div>
-                                <p v-if="banks.length === 0" class="text-caption text-orange-darken-2 mb-0 mt-1">
+                                <template v-if="packageModeEnabled">
+                                    <v-divider class="my-2"></v-divider>
+                                    <div class="text-caption text-grey-darken-1 mb-1">第 2 頁（配套期款）</div>
+                                    <div class="d-flex flex-wrap ga-2">
+                                        <v-checkbox
+                                            v-for="bank in availableBanks"
+                                            :key="`b2-${bank.title}`"
+                                            v-model="selectedBankTitles2"
+                                            :value="bank.title"
+                                            :label="`${bank.title}（${bank.bankName || bank.accountName || bank.account}）`"
+                                            density="compact"
+                                            color="deep-orange"
+                                            hide-details
+                                        ></v-checkbox>
+                                    </div>
+                                </template>
+                                <p v-if="!packageModeEnabled && banksPage1.length === 0" class="text-caption text-orange-darken-2 mb-0 mt-1">
                                     未勾選任何帳戶，付款表將不顯示繳款銀行區塊。
                                 </p>
                             </v-card-text>
                         </v-card>
                     </v-col>
 
-                    <!-- ================= 右側：付款表預覽 ================= -->
+                    <!-- ================= 右側：付款表預覽（配套模式為兩頁） ================= -->
                     <v-col cols="12" lg="7" v-show="!isMobile || mobileTab === 'preview'">
-                        <div class="preview-wrapper">
-                            <div class="preview-sheet" v-if="context" :style="previewSheetStyle">
+                        <div class="preview-wrapper" v-if="context">
+                            <div
+                                v-for="pv in previewPages"
+                                :key="`pv-page-${pv.id}`"
+                                class="preview-sheet"
+                                :style="previewSheetStyle"
+                            >
                                 <!-- 表頭 -->
                                 <div class="ps-header">
                                     <div class="ps-logo">
                                         <img v-if="docSettings.logoUrl" :src="docSettings.logoUrl" alt="logo" />
                                     </div>
-                                    <div class="ps-title">付款明細表</div>
+                                    <div class="ps-title">付款明細表{{ pv.suffix }}</div>
                                     <div class="ps-qr">
                                         <template v-if="docSettings.contractTemplateUrl">
                                             <div class="ps-qr-label">合約範本<br />QR CODE</div>
@@ -400,9 +501,9 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <template v-for="row in editRows" :key="`pv-${row.key}`">
+                                        <template v-for="row in pv.rows" :key="`pv-${pv.id}-${row.key}`">
                                             <template v-if="row.type === 'group'">
-                                                <tr v-for="(child, ci) in row.children" :key="`pv-${child.key}`">
+                                                <tr v-for="(child, ci) in row.children" :key="`pv-${pv.id}-${child.key}`">
                                                     <td v-if="ci === 0" :rowspan="row.children.length" class="ps-percent">
                                                         {{ fmtPercent(row.percent) }}
                                                     </td>
@@ -424,8 +525,8 @@
                                         </template>
                                         <tr class="ps-total-row">
                                             <td class="ps-percent">100%</td>
-                                            <td colspan="3" class="ps-name ps-total-name">總價</td>
-                                            <td class="ps-amount ps-total-amount">{{ formatNumber(totalPriceRounded) }}</td>
+                                            <td colspan="3" class="ps-name ps-total-name">{{ pv.totalLabel }}</td>
+                                            <td class="ps-amount ps-total-amount">{{ formatNumber(pv.total) }}</td>
                                             <td class="ps-note"></td>
                                         </tr>
                                     </tbody>
@@ -435,10 +536,10 @@
                                 <div v-if="docSettings.loanWarningText" class="ps-warning">{{ docSettings.loanWarningText }}</div>
 
                                 <!-- 繳款銀行 -->
-                                <div v-if="banks.length > 0 || docSettings.remitNoteText" class="ps-bank-box">
-                                    <div v-for="(bank, bi) in banks" :key="bi" class="ps-bank">
+                                <div v-if="pv.banks.length > 0 || docSettings.remitNoteText" class="ps-bank-box">
+                                    <div v-for="(bank, bi) in pv.banks" :key="bi" class="ps-bank">
                                         <div class="ps-bank-line">
-                                            <span class="ps-bank-label">{{ banks.length > 1 && bank.title ? `【${bank.title}】` : '' }}繳款銀行名稱：</span>
+                                            <span class="ps-bank-label">{{ pv.banks.length > 1 && bank.title ? `【${bank.title}】` : '' }}繳款銀行名稱：</span>
                                             <span class="ps-bank-val">{{ bank.bankName || '-' }}</span>
                                             <span class="ps-bank-label ml-4">戶名：</span>
                                             <span class="ps-bank-val">{{ bank.accountName || '-' }}</span>
@@ -529,7 +630,8 @@ const props = defineProps({
     /**
      * context：由 PaymentSettings 於開啟時組好的渲染資料
      * { unitId, unitLabel, contractType, isFirstTimeBuyer, usePreferredPayment, propertyType,
-     *   totalPrice, parkingSpots:[{spotId, price_transaction}], areas:{...},
+     *   totalPrice, isPackageContract, packageDealPrice, packagePrice,
+     *   parkingSpots:[{spotId, price_transaction}], areas:{...},
      *   banks:[{title,bankName,accountName,account}], salesperson, salesPhone }
      */
     context: { type: Object, default: () => null }
@@ -558,24 +660,40 @@ async function loadTemplates() {
     }
 }
 
-/* ---------- 範本選擇（自動 + 手動覆蓋） ---------- */
+/* ---------- 金額基準 ---------- */
+const totalPriceRounded = computed(() => Math.round(Number(props.context?.totalPrice) || 0));
+
+// ✅ 配套模式：合約方式屬於建案設定的配套合約清單時自動開啟（可手動覆蓋）
+const packageModeEnabled = ref(false);
+
+// 第 1 頁基準：配套模式 = 配套總價；一般模式 = 成交總價
+const mainBase = computed(() => packageModeEnabled.value
+    ? Math.round(Number(props.context?.packageDealPrice) || 0)
+    : totalPriceRounded.value
+);
+// 第 2 頁基準：配套價（成交總價 − 配套總價）
+const packageBase = computed(() => Math.round(Number(props.context?.packagePrice) || 0));
+
+// 有配套期款範本或合約方式屬配套時，顯示配套模式開關
+const packageTemplates = computed(() => templates.value.filter(t => t.paymentCategory === '配套期款'));
+const showPackageSwitch = computed(() => props.context?.isPackageContract || packageTemplates.value.length > 0);
+
+/* ---------- 第 1 頁範本選擇（自動 + 手動覆蓋） ---------- */
 const manualCategory = ref(null);
 const manualTemplateId = ref(null);
-
-const totalPriceRounded = computed(() => Math.round(Number(props.context?.totalPrice) || 0));
 
 const autoConditionText = computed(() => {
     const c = props.context || {};
     const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
     const category = c.usePreferredPayment ? '優付期款' : '一般期款';
-    return `${category}／${c.propertyType || '住家'}／${buyerType}／總價 ${formatNumber(totalPriceRounded.value)} 萬`;
+    return `${category}／${c.propertyType || '住家'}／${buyerType}／基準 ${formatNumber(mainBase.value)} 萬`;
 });
 
-// 自動判斷（沿用 QuoteItem.vue selectPaymentTemplate 邏輯）
+// 自動判斷（沿用 QuoteItem.vue selectPaymentTemplate 邏輯；配套模式下比對基準為配套總價）
 const autoTemplate = computed(() => {
     const c = props.context;
     if (!c || templates.value.length === 0) return null;
-    const totalPrice = totalPriceRounded.value;
+    const base = mainBase.value;
     const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
     const currentPropertyType = c.propertyType || '住家';
     const targetCategory = c.usePreferredPayment ? '優付期款' : '一般期款';
@@ -585,8 +703,8 @@ const autoTemplate = computed(() => {
         if (tPropType !== currentPropertyType) return false;
         return (
             t.paymentCategory === targetCategory &&
-            t.minPrice <= totalPrice &&
-            totalPrice <= t.maxPrice &&
+            t.minPrice <= base &&
+            base <= t.maxPrice &&
             t.buyerType === buyerType
         );
     });
@@ -602,7 +720,7 @@ const activeTemplate = computed(() => {
 
 const isAutoSelected = computed(() => !manualTemplateId.value);
 
-// 期款類別選項（排除配套期款：其基準為配套金額，非成交總價）
+// 期款類別選項（排除配套期款：其基準為配套金額，於第 2 頁另行選擇）
 const categoryOptions = computed(() => {
     const set = new Set();
     templates.value.forEach(t => {
@@ -620,21 +738,19 @@ const categoryModel = computed({
     }
 });
 
+function templateSubtitle(t) {
+    const range = (t.minPrice || t.maxPrice)
+        ? `${t.minPrice ? `${t.minPrice}萬` : '0'}~${t.maxPrice ? `${t.maxPrice}萬` : '無上限'}`
+        : '不限總價';
+    return `${t.propertyType || '住家'}｜${t.buyerType || '非首購'}｜${range}`;
+}
+
 const templateOptions = computed(() => {
     const category = categoryModel.value;
     if (!category) return [];
     return templates.value
         .filter(t => t.paymentCategory === category)
-        .map(t => {
-            const range = (t.minPrice || t.maxPrice)
-                ? `${t.minPrice ? `${t.minPrice}萬` : '0'}~${t.maxPrice ? `${t.maxPrice}萬` : '無上限'}`
-                : '不限總價';
-            return {
-                id: t.id,
-                templateName: t.templateName,
-                subtitle: `${t.propertyType || '住家'}｜${t.buyerType || '非首購'}｜${range}`
-            };
-        });
+        .map(t => ({ id: t.id, templateName: t.templateName, subtitle: templateSubtitle(t) }));
 });
 
 const templateIdModel = computed({
@@ -647,30 +763,56 @@ function resetToAuto() {
     manualTemplateId.value = null;
 }
 
-/* ---------- 期款編輯列 ---------- */
-const editRows = ref([]);
+/* ---------- 第 2 頁：配套期款範本選擇 ---------- */
+const manualPackageTemplateId = ref(null);
+
+const autoPackageTemplate = computed(() => {
+    const c = props.context;
+    if (!c || packageTemplates.value.length === 0) return null;
+    const base = mainBase.value; // 範本適用區間以配套總價比對（與報價單 finalTotalPrice 邏輯一致）
+    const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
+    const currentPropertyType = c.propertyType || '住家';
+    const applicable = packageTemplates.value.filter(t => {
+        const tPropType = t.propertyType || '住家';
+        if (tPropType !== currentPropertyType) return false;
+        return t.minPrice <= base && base <= t.maxPrice && t.buyerType === buyerType;
+    });
+    // 條件不中時退而求其次：只要有配套期款範本就取第一個（配套範本通常僅一套）
+    return applicable.length > 0 ? applicable[0] : packageTemplates.value[0];
+});
+
+const activePackageTemplate = computed(() => {
+    if (manualPackageTemplateId.value) {
+        return templates.value.find(t => t.id === manualPackageTemplateId.value) || null;
+    }
+    return autoPackageTemplate.value;
+});
+
+const packageTemplateOptions = computed(() =>
+    packageTemplates.value.map(t => ({ id: t.id, templateName: t.templateName, subtitle: templateSubtitle(t) }))
+);
+
+const packageTemplateIdModel = computed({
+    get: () => manualPackageTemplateId.value || activePackageTemplate.value?.id || null,
+    set: (value) => { manualPackageTemplateId.value = value; }
+});
+
+/* ---------- 期款編輯列（兩頁） ---------- */
+const editRows = ref([]);   // 第 1 頁：一般期款
+const editRows2 = ref([]);  // 第 2 頁：配套期款
+const correctionTargetKeys = reactive({ 1: null, 2: null });
 
 /** 依範本 items 母子結構 + 公式引擎結果建立可編輯列 */
-function rebuildRows() {
-    const template = activeTemplate.value;
-    if (!template || !Array.isArray(template.items) || totalPriceRounded.value <= 0) {
-        editRows.value = [];
-        return;
-    }
+function buildRowsFromTemplate(template, baseValue, baseVariable) {
+    if (!template || !Array.isArray(template.items) || baseValue <= 0) return [];
     const items = template.items;
-    const results = runNewCalculationEngine(items, totalPriceRounded.value, '總價');
+    const results = runNewCalculationEngine(items, baseValue, baseVariable);
     const parents = items.filter(i => !i.parentId);
 
-    editRows.value = parents.map(p => {
+    return parents.map(p => {
         const children = items.filter(i => i.parentId === p.id);
         const percent = Number(p.conditionalValue) || 0;
-        const base = {
-            key: p.id,
-            name: p.name,
-            percent,
-            roundingMethod: p.roundingMethod,
-            roundingValue: p.roundingValue
-        };
+        const base = { key: p.id, name: p.name, percent };
         if (children.length > 0) {
             // 子項 >= 3 時比照範本顯示直排母項目名稱與序號（如工程期款 1~10）
             const useSeq = children.length >= 3;
@@ -694,16 +836,43 @@ function rebuildRows() {
             note: ''
         };
     });
-    correctionTargetKey.value = editRows.value.length > 0 ? editRows.value[editRows.value.length - 1].key : null;
+}
+
+function rebuildRows() {
+    editRows.value = buildRowsFromTemplate(activeTemplate.value, mainBase.value, '總價');
+    correctionTargetKeys[1] = editRows.value.length > 0 ? editRows.value[editRows.value.length - 1].key : null;
+}
+
+function rebuildRows2() {
+    if (!packageModeEnabled.value) {
+        editRows2.value = [];
+        return;
+    }
+    editRows2.value = buildRowsFromTemplate(activePackageTemplate.value, packageBase.value, '配套金額');
+    correctionTargetKeys[2] = editRows2.value.length > 0 ? editRows2.value[editRows2.value.length - 1].key : null;
 }
 
 watch(activeTemplate, () => rebuildRows());
+watch(activePackageTemplate, () => rebuildRows2());
+// 切換配套模式：第 1 頁基準改變需重算，第 2 頁重建
+watch(packageModeEnabled, () => {
+    rebuildRows();
+    rebuildRows2();
+});
+
 watch(() => props.show, (val) => {
     if (val) {
         resetToAuto();
+        manualPackageTemplateId.value = null;
         // 繳款銀行預設不勾選，由用戶自行決定顯示哪些帳戶
         selectedBankTitles.value = [];
-        loadTemplates().then(() => rebuildRows());
+        selectedBankTitles2.value = [];
+        // 配套模式：依合約方式自動判定（可手動覆蓋）
+        packageModeEnabled.value = !!props.context?.isPackageContract;
+        loadTemplates().then(() => {
+            rebuildRows();
+            rebuildRows2();
+        });
     }
 });
 
@@ -713,9 +882,9 @@ function groupAmount(row) {
 }
 
 /** 改比例 → 重算金額（群組按子項原金額比重分攤，尾差歸最後一個子項） */
-function recalcAmountFromPercent(row) {
+function recalcAmountFromPercent(row, base) {
     const percent = Number(row.percent) || 0;
-    const target = Math.round(percent / 100 * totalPriceRounded.value);
+    const target = Math.round(percent / 100 * base);
     if (row.type === 'group') {
         const children = row.children || [];
         if (children.length === 0) return;
@@ -737,42 +906,70 @@ function recalcAmountFromPercent(row) {
 }
 
 /** 改金額 → 反算比例（顯示至小數 2 位） */
-function recalcPercentFromAmount(row) {
+function recalcPercentFromAmount(row, base) {
     const sum = row.type === 'group' ? groupAmount(row) : (Math.round(Number(row.amount)) || 0);
-    row.percent = totalPriceRounded.value > 0
-        ? Math.round(sum / totalPriceRounded.value * 10000) / 100
-        : 0;
+    row.percent = base > 0 ? Math.round(sum / base * 10000) / 100 : 0;
 }
 
-/* ---------- 驗證 ---------- */
-const percentSum = computed(() =>
-    editRows.value.reduce((s, r) => s + (Number(r.percent) || 0), 0)
-);
-const percentSumText = computed(() => (Math.round(percentSum.value * 100) / 100).toString());
-const percentOk = computed(() => Math.abs(percentSum.value - 100) <= 0.01);
-const percentDiffText = computed(() => (Math.round((100 - percentSum.value) * 100) / 100).toString());
+/* ---------- 各頁驗證 ---------- */
+const editPages = computed(() => {
+    const pages = [{
+        id: 1,
+        label: packageModeEnabled.value ? '第 1 頁：一般期款' : '比例與金額調整',
+        baseLabel: packageModeEnabled.value ? '配套總價' : '成交總價',
+        totalLabel: '總價',
+        rows: editRows.value,
+        base: mainBase.value
+    }];
+    if (packageModeEnabled.value) {
+        pages.push({
+            id: 2,
+            label: '第 2 頁：配套期款',
+            baseLabel: '配套價',
+            totalLabel: '配套總計',
+            rows: editRows2.value,
+            base: packageBase.value
+        });
+    }
+    return pages.filter(p => p.rows.length > 0 || p.id === 1);
+});
 
-const amountSum = computed(() =>
-    editRows.value.reduce((s, r) => s + (r.type === 'group' ? groupAmount(r) : (Math.round(Number(r.amount)) || 0)), 0)
-);
-const amountOk = computed(() => amountSum.value === totalPriceRounded.value);
-const amountDiff = computed(() => totalPriceRounded.value - amountSum.value);
+function pagePercentSum(page) {
+    return page.rows.reduce((s, r) => s + (Number(r.percent) || 0), 0);
+}
+function pagePercentSumText(page) {
+    return (Math.round(pagePercentSum(page) * 100) / 100).toString();
+}
+function pagePercentOk(page) {
+    return Math.abs(pagePercentSum(page) - 100) <= 0.01;
+}
+function pageAmountSum(page) {
+    return page.rows.reduce((s, r) => s + (r.type === 'group' ? groupAmount(r) : (Math.round(Number(r.amount)) || 0)), 0);
+}
+function pageAmountOk(page) {
+    return pageAmountSum(page) === page.base;
+}
+function pageOk(page) {
+    return pagePercentOk(page) && pageAmountOk(page);
+}
 
-const isValid = computed(() => percentOk.value && amountOk.value);
-const canDownload = computed(() =>
-    isValid.value && editRows.value.length > 0 && totalPriceRounded.value > 0
-);
+const canDownload = computed(() => {
+    if (editRows.value.length === 0 || mainBase.value <= 0) return false;
+    const page1 = { rows: editRows.value, base: mainBase.value };
+    if (!pageOk(page1)) return false;
+    if (packageModeEnabled.value) {
+        if (editRows2.value.length === 0 || packageBase.value <= 0) return false;
+        const page2 = { rows: editRows2.value, base: packageBase.value };
+        if (!pageOk(page2)) return false;
+    }
+    return true;
+});
 
 /* ---------- 尾差補正 ---------- */
-const correctionTargetKey = ref(null);
-const correctionTargets = computed(() =>
-    editRows.value.map(r => ({ key: r.key, label: r.name }))
-);
-
-function applyCorrection() {
-    const row = editRows.value.find(r => r.key === correctionTargetKey.value);
+function applyCorrection(page) {
+    const row = page.rows.find(r => r.key === correctionTargetKeys[page.id]);
     if (!row) return;
-    const diff = amountDiff.value;
+    const diff = page.base - pageAmountSum(page);
     if (row.type === 'group') {
         const children = row.children || [];
         if (children.length === 0) return;
@@ -781,9 +978,9 @@ function applyCorrection() {
     } else {
         row.amount = (Math.round(Number(row.amount)) || 0) + diff;
     }
-    recalcPercentFromAmount(row);
+    recalcPercentFromAmount(row, page.base);
     // 金額補正後，若比例仍不足 100%，將比例差額也歸入同一期
-    const pDiff = Math.round((100 - percentSum.value) * 100) / 100;
+    const pDiff = Math.round((100 - pagePercentSum(page)) * 100) / 100;
     if (Math.abs(pDiff) > 0.01) {
         row.percent = Math.round((Number(row.percent) + pDiff) * 100) / 100;
     }
@@ -817,15 +1014,39 @@ const parkingText = computed(() => {
     return spots.map(p => `${p.spotId} (${formatNumber(p.price_transaction)}萬)`).join('、');
 });
 
-// ✅ 繳款銀行顯示控制：有資料的帳戶（房屋款/土地款/配套款）由用戶勾選是否顯示在付款表
+// ✅ 繳款銀行顯示控制：有資料的帳戶（房屋款/土地款/配套款）由用戶勾選是否顯示（兩頁各自勾選）
 const availableBanks = computed(() => (props.context?.banks || []).filter(b =>
     b && ((b.bankName && b.bankName.trim()) || (b.accountName && b.accountName.trim()) || (b.account && b.account.trim()))
 ));
 const selectedBankTitles = ref([]);
-
-const banks = computed(() => availableBanks.value.filter(b => selectedBankTitles.value.includes(b.title)));
+const selectedBankTitles2 = ref([]);
+const banksPage1 = computed(() => availableBanks.value.filter(b => selectedBankTitles.value.includes(b.title)));
+const banksPage2 = computed(() => availableBanks.value.filter(b => selectedBankTitles2.value.includes(b.title)));
 
 const listDate = computed(() => formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyy年M月d日'));
+
+/* ---------- 預覽頁面（配套模式為兩頁） ---------- */
+const previewPages = computed(() => {
+    const pages = [{
+        id: 1,
+        suffix: '',
+        totalLabel: '總價',
+        total: mainBase.value,
+        rows: editRows.value,
+        banks: banksPage1.value
+    }];
+    if (packageModeEnabled.value) {
+        pages.push({
+            id: 2,
+            suffix: '（配套）',
+            totalLabel: '配套總計',
+            total: packageBase.value,
+            rows: editRows2.value,
+            banks: banksPage2.value
+        });
+    }
+    return pages;
+});
 
 /* ---------- 下載 ---------- */
 const downloading = reactive({ pdf: false, excel: false });
@@ -837,6 +1058,32 @@ function base64ToBlob(base64, mimeType) {
         byteNumbers[i] = byteChars.charCodeAt(i);
     }
     return new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
+}
+
+function mapRowsForPayload(rows) {
+    return rows.map(r => {
+        if (r.type === 'group') {
+            return {
+                type: 'group',
+                name: r.name,
+                percent: Number(r.percent) || 0,
+                verticalLabel: r.verticalLabel || null,
+                children: r.children.map(ch => ({
+                    seq: ch.seq,
+                    name: ch.name,
+                    amount: Math.round(Number(ch.amount)) || 0,
+                    note: ch.note || ''
+                }))
+            };
+        }
+        return {
+            type: 'single',
+            name: r.name,
+            percent: Number(r.percent) || 0,
+            amount: Math.round(Number(r.amount)) || 0,
+            note: r.note || ''
+        };
+    });
 }
 
 async function download(format) {
@@ -862,37 +1109,25 @@ async function download(format) {
                 qrDataUrl,
                 parkingText: parkingText.value,
                 areas: c.areas || {},
-                rows: editRows.value.map(r => {
-                    if (r.type === 'group') {
-                        return {
-                            type: 'group',
-                            name: r.name,
-                            percent: Number(r.percent) || 0,
-                            verticalLabel: r.verticalLabel || null,
-                            children: r.children.map(ch => ({
-                                seq: ch.seq,
-                                name: ch.name,
-                                amount: Math.round(Number(ch.amount)) || 0,
-                                note: ch.note || ''
-                            }))
-                        };
-                    }
-                    return {
-                        type: 'single',
-                        name: r.name,
-                        percent: Number(r.percent) || 0,
-                        amount: Math.round(Number(r.amount)) || 0,
-                        note: r.note || ''
-                    };
-                }),
-                totalPrice: totalPriceRounded.value,
-                banks: banks.value,
+                rows: mapRowsForPayload(editRows.value),
+                totalPrice: mainBase.value,
+                banks: banksPage1.value,
                 loanWarningText: docSettings.value.loanWarningText || '',
                 remitNoteText: docSettings.value.remitNoteText || '',
                 salesperson: c.salesperson || '',
                 salesPhone: c.salesPhone || ''
             }
         };
+
+        // ✅ 配套模式：第 2 頁（配套期款）資料
+        if (packageModeEnabled.value) {
+            payload.doc.packagePage = {
+                totalLabel: '配套總計',
+                rows: mapRowsForPayload(editRows2.value),
+                totalPrice: packageBase.value,
+                banks: banksPage2.value
+            };
+        }
 
         const result = await generatePaymentDocument(payload);
         if (result.status === 'success' && result.base64) {
@@ -914,6 +1149,10 @@ async function download(format) {
 .editor-header {
     background-color: #f5f5f5;
     border-bottom: 1px solid #e0e0e0;
+}
+.editor-header-package {
+    background-color: #FBE9E7;
+    border-bottom: 1px solid #FFAB91;
 }
 
 /* ---------- 期款編輯表格 ---------- */
@@ -984,7 +1223,7 @@ async function download(format) {
     background-color: white;
     width: 794px;              /* A4 96dpi 寬 */
     min-height: 1000px;
-    margin: 0 auto;
+    margin: 0 auto 24px;
     padding: 36px 44px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     color: #000;

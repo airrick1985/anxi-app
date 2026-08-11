@@ -13,10 +13,14 @@
  *            landSharePing, landShareSqm, landShareRatio },
  *   rows: [ { type:'group', name, percent, verticalLabel, children:[{seq,name,amount,note}] },
  *           { type:'single', name, percent, amount, note } ],
- *   totalPrice,         // 成交總價（萬）
+ *   totalPrice,         // 第 1 頁基準（一般：成交總價；配套模式：配套總價）
  *   banks: [ { title, bankName, accountName, account } ],
  *   loanWarningText, remitNoteText,
- *   salesperson, salesPhone
+ *   salesperson, salesPhone,
+ *   packagePage: {      // ✅ 配套模式第 2 頁（可省略）
+ *     totalLabel,       // 預設 '配套總計'
+ *     rows, totalPrice, banks
+ *   }
  * }
  */
 
@@ -74,21 +78,33 @@ function countDataRows(rows) {
   return rows.reduce((sum, r) => sum + (r.type === "group" ? r.children.length : 1), 0);
 }
 
+/** 將 docData 正規化為頁面陣列（一般 1 頁；配套模式 2 頁） */
+function normalizePages(docData) {
+  const pages = [{
+    titleSuffix: "",
+    totalLabel: "總價",
+    rows: docData.rows || [],
+    totalPrice: docData.totalPrice,
+    banks: docData.banks || []
+  }];
+  if (docData.packagePage && Array.isArray(docData.packagePage.rows) && docData.packagePage.rows.length > 0) {
+    pages.push({
+      titleSuffix: "（配套）",
+      totalLabel: docData.packagePage.totalLabel || "配套總計",
+      rows: docData.packagePage.rows,
+      totalPrice: docData.packagePage.totalPrice,
+      banks: docData.packagePage.banks || []
+    });
+  }
+  return pages;
+}
+
 /* ==========================================================
  * PDF 產製
  * ========================================================== */
-async function buildPaymentPdf(docData) {
-  const logoBuffer = await fetchImageBuffer(docData.logoUrl);
-  const qrBuffer = dataUrlToBuffer(docData.qrDataUrl);
 
-  const pdf = new PDFDocument({ size: "A4", margins: { top: 28, bottom: 28, left: 36, right: 36 } });
-  const chunks = [];
-  pdf.on("data", (c) => chunks.push(c));
-  const done = new Promise((resolve) => pdf.on("end", () => resolve(Buffer.concat(chunks))));
-
-  pdf.registerFont("TC", FONT_REGULAR);
-  pdf.registerFont("TC-Bold", FONT_BOLD);
-
+/** 繪製單一頁付款明細表 */
+function drawPdfPage(pdf, docData, page, logoBuffer, qrBuffer) {
   const pageW = 595.28;
   const left = 36;
   const right = pageW - 36;
@@ -103,8 +119,9 @@ async function buildPaymentPdf(docData) {
       console.warn("[paymentDocument] logo 嵌入失敗：", e.message);
     }
   }
-  pdf.font("TC-Bold").fontSize(24).fillColor(BLACK)
-    .text("付款明細表", left, headerTop + 18, { width: contentW, align: "center", characterSpacing: 6 });
+  const title = `付款明細表${page.titleSuffix}`;
+  pdf.font("TC-Bold").fontSize(page.titleSuffix ? 20 : 24).fillColor(BLACK)
+    .text(title, left, headerTop + 18, { width: contentW, align: "center", characterSpacing: page.titleSuffix ? 3 : 6 });
 
   if (qrBuffer) {
     const qrSize = 60;
@@ -177,12 +194,12 @@ async function buildPaymentPdf(docData) {
   drawLeftBox(infoTop + rowH * 3 + 4, "車位：", docData.parkingText || "無");
 
   /* ---------- 期款表格 ---------- */
-  const rows = docData.rows || [];
+  const rows = page.rows || [];
   const dataRowCount = countDataRows(rows) + 1; // +1 總價列
   const tableTop = infoBottom + 26;
 
-  // 版面預算：表尾固定區（警語 + 銀行區 + 銷售列）высота
-  const banks = (docData.banks || []).filter(b => b && (b.bankName || b.accountName || b.account));
+  // 版面預算：表尾固定區（警語 + 銀行區 + 銷售列）
+  const banks = (page.banks || []).filter(b => b && (b.bankName || b.accountName || b.account));
   const bankBoxH = banks.length > 0 ? banks.length * 32 + 26 + 8 : 26;
   const footerNeed = 14 + bankBoxH + 8 + 26 + 10; // 警語 + 銀行框 + 間距 + 銷售列
   const availableH = (841.89 - 32) - tableTop - footerNeed - 22; // 22 = 表頭列
@@ -221,7 +238,6 @@ async function buildPaymentPdf(docData) {
 
   let ty = tableTop + headH;
   const drawCellBorders = (y, h, nameDividers) => {
-    // 外框直線由整表結束後畫；此處畫該列底線與欄分隔
     pdf.lineWidth(0.75).strokeColor(BLACK);
     pdf.moveTo(xPercent, y + h).lineTo(right, y + h).stroke();
     nameDividers.forEach(x => {
@@ -297,8 +313,8 @@ async function buildPaymentPdf(docData) {
   pdf.font("TC-Bold").fontSize(tblFontSize + 1).fillColor(BLACK);
   const tcy = ty + (totalH - tblFontSize - 3) / 2;
   pdf.text("100%", xPercent, tcy, { width: colPercentW, align: "center" });
-  pdf.fontSize(tblFontSize + 3).text("總價", xName, ty + (totalH - tblFontSize - 5) / 2, { width: colNameW, align: "center" });
-  pdf.fontSize(tblFontSize + 1).text(fmtAmount(docData.totalPrice), xAmount, tcy, { width: colAmountW - 8, align: "center" });
+  pdf.fontSize(tblFontSize + 3).text(page.totalLabel, xName, ty + (totalH - tblFontSize - 5) / 2, { width: colNameW, align: "center" });
+  pdf.fontSize(tblFontSize + 1).text(fmtAmount(page.totalPrice), xAmount, tcy, { width: colAmountW - 8, align: "center" });
   pdf.lineWidth(0.75).strokeColor(BLACK);
   [xAmount, xNote].forEach(x => { pdf.moveTo(x, ty).lineTo(x, ty + totalH).stroke(); });
   ty += totalH;
@@ -353,6 +369,25 @@ async function buildPaymentPdf(docData) {
     .text("聯絡電話", left + 260, fcy, { width: 70, align: "center" });
   pdf.font("TC-Bold").fontSize(11)
     .text(docData.salesPhone || "-", left + 340, fcy, { width: contentW - 350, align: "center" });
+}
+
+async function buildPaymentPdf(docData) {
+  const logoBuffer = await fetchImageBuffer(docData.logoUrl);
+  const qrBuffer = dataUrlToBuffer(docData.qrDataUrl);
+  const pages = normalizePages(docData);
+
+  const pdf = new PDFDocument({ size: "A4", margins: { top: 28, bottom: 28, left: 36, right: 36 } });
+  const chunks = [];
+  pdf.on("data", (c) => chunks.push(c));
+  const done = new Promise((resolve) => pdf.on("end", () => resolve(Buffer.concat(chunks))));
+
+  pdf.registerFont("TC", FONT_REGULAR);
+  pdf.registerFont("TC-Bold", FONT_BOLD);
+
+  pages.forEach((page, idx) => {
+    if (idx > 0) pdf.addPage();
+    drawPdfPage(pdf, docData, page, logoBuffer, qrBuffer);
+  });
 
   pdf.end();
   return done;
@@ -361,12 +396,21 @@ async function buildPaymentPdf(docData) {
 /* ==========================================================
  * EXCEL 產製
  * ========================================================== */
-async function buildPaymentExcel(docData) {
-  const logoBuffer = await fetchImageBuffer(docData.logoUrl);
-  const qrBuffer = dataUrlToBuffer(docData.qrDataUrl);
 
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("付款明細表", {
+const EXCEL_FONT_NAME = "新細明體";
+
+/** Excel 小工具：設值 + 字型 + 對齊 */
+function setValPlain(ws, addr, value, font, horizontal = "center") {
+  const c = ws.getCell(addr);
+  c.value = value;
+  c.font = font;
+  c.alignment = { horizontal, vertical: "middle" };
+  return c;
+}
+
+/** 建立單一工作表（一頁付款明細表） */
+function buildExcelSheet(wb, docData, page, sheetName, logoBuffer, qrBuffer) {
+  const ws = wb.addWorksheet(sheetName, {
     pageSetup: {
       paperSize: 9, // A4
       orientation: "portrait",
@@ -377,11 +421,10 @@ async function buildPaymentExcel(docData) {
     }
   });
 
-  const FONT_NAME = "新細明體";
-  const baseFont = { name: FONT_NAME, size: 11 };
-  const boldFont = { name: FONT_NAME, size: 11, bold: true };
+  const baseFont = { name: EXCEL_FONT_NAME, size: 11 };
+  const boldFont = { name: EXCEL_FONT_NAME, size: 11, bold: true };
   const grayFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
-  const redFont = { name: FONT_NAME, size: 10, bold: true, color: { argb: "FFC00000" } };
+  const redFont = { name: EXCEL_FONT_NAME, size: 10, bold: true, color: { argb: "FFC00000" } };
   const center = { horizontal: "center", vertical: "middle" };
   const thinBorder = {
     top: { style: "thin" }, bottom: { style: "thin" },
@@ -406,8 +449,8 @@ async function buildPaymentExcel(docData) {
   /* ---------- 表頭（列 1-3）---------- */
   ws.mergeCells("C1:E3");
   const titleCell = ws.getCell("C1");
-  titleCell.value = "付 款 明 細 表";
-  titleCell.font = { name: FONT_NAME, size: 22, bold: true };
+  titleCell.value = page.titleSuffix ? `付款明細表${page.titleSuffix}` : "付 款 明 細 表";
+  titleCell.font = { name: EXCEL_FONT_NAME, size: page.titleSuffix ? 18 : 22, bold: true };
   titleCell.alignment = center;
 
   if (logoBuffer) {
@@ -422,7 +465,7 @@ async function buildPaymentExcel(docData) {
     ws.mergeCells("F1:F3");
     const qrLabel = ws.getCell("F1");
     qrLabel.value = "合約範本\nQR CODE";
-    qrLabel.font = { name: FONT_NAME, size: 9 };
+    qrLabel.font = { name: EXCEL_FONT_NAME, size: 9 };
     qrLabel.alignment = { ...center, wrapText: true };
     try {
       const qrId = wb.addImage({ buffer: qrBuffer, extension: "png" });
@@ -484,7 +527,7 @@ async function buildPaymentExcel(docData) {
   /* ---------- 列表日期（列 13）---------- */
   const dateCell = ws.getCell("A13");
   dateCell.value = `列表日期：　${docData.listDate || ""}`;
-  dateCell.font = { name: FONT_NAME, size: 10 };
+  dateCell.font = { name: EXCEL_FONT_NAME, size: 10 };
   ws.mergeCells("A13:D13");
 
   /* ---------- 期款表格（列 14 起）---------- */
@@ -513,7 +556,7 @@ async function buildPaymentExcel(docData) {
   };
   applyRowBorders(tableStartRow);
 
-  const rows = docData.rows || [];
+  const rows = page.rows || [];
   for (const row of rows) {
     if (row.type === "group") {
       const children = row.children || [];
@@ -544,7 +587,7 @@ async function buildPaymentExcel(docData) {
         ws.mergeCells(`F${r}:G${r}`);
         const note = ws.getCell(`F${r}`);
         note.value = child.note || "";
-        note.font = { name: FONT_NAME, size: 9 };
+        note.font = { name: EXCEL_FONT_NAME, size: 9 };
         note.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
         applyRowBorders(r);
         ws.getRow(r).height = 20;
@@ -585,7 +628,7 @@ async function buildPaymentExcel(docData) {
       ws.mergeCells(`F${r}:G${r}`);
       const note = ws.getCell(`F${r}`);
       note.value = row.note || "";
-      note.font = { name: FONT_NAME, size: 9 };
+      note.font = { name: EXCEL_FONT_NAME, size: 9 };
       note.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
       applyRowBorders(r);
       ws.getRow(r).height = 20;
@@ -599,13 +642,13 @@ async function buildPaymentExcel(docData) {
   ws.getCell(`A${r}`).alignment = center;
   ws.mergeCells(`B${r}:D${r}`);
   const totalName = ws.getCell(`B${r}`);
-  totalName.value = "總價";
-  totalName.font = { name: FONT_NAME, size: 14, bold: true };
+  totalName.value = page.totalLabel;
+  totalName.font = { name: EXCEL_FONT_NAME, size: 14, bold: true };
   totalName.alignment = center;
   const totalAmt = ws.getCell(`E${r}`);
-  totalAmt.value = Math.round(Number(docData.totalPrice) || 0);
+  totalAmt.value = Math.round(Number(page.totalPrice) || 0);
   totalAmt.numFmt = "#,##0";
-  totalAmt.font = { name: FONT_NAME, size: 12, bold: true };
+  totalAmt.font = { name: EXCEL_FONT_NAME, size: 12, bold: true };
   totalAmt.alignment = center;
   ws.mergeCells(`F${r}:G${r}`);
   applyRowBorders(r);
@@ -624,7 +667,7 @@ async function buildPaymentExcel(docData) {
   r++;
 
   /* ---------- 繳款銀行區 ---------- */
-  const banks = (docData.banks || []).filter(b => b && (b.bankName || b.accountName || b.account));
+  const banks = (page.banks || []).filter(b => b && (b.bankName || b.accountName || b.account));
   const bankStartRow = r;
   banks.forEach(bank => {
     const prefix = banks.length > 1 && bank.title ? `【${bank.title}】` : "";
@@ -680,18 +723,21 @@ async function buildPaymentExcel(docData) {
     ws.getCell(`${col}${r}`).border = thinBorder;
   });
   ws.getRow(r).height = 22;
+}
+
+async function buildPaymentExcel(docData) {
+  const logoBuffer = await fetchImageBuffer(docData.logoUrl);
+  const qrBuffer = dataUrlToBuffer(docData.qrDataUrl);
+  const pages = normalizePages(docData);
+
+  const wb = new ExcelJS.Workbook();
+  pages.forEach((page, idx) => {
+    const sheetName = idx === 0 ? "付款明細表" : "配套付款明細表";
+    buildExcelSheet(wb, docData, page, sheetName, logoBuffer, qrBuffer);
+  });
 
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);
-}
-
-/** Excel 小工具：設值 + 字型 + 對齊 */
-function setValPlain(ws, addr, value, font, horizontal = "center") {
-  const c = ws.getCell(addr);
-  c.value = value;
-  c.font = font;
-  c.alignment = { horizontal, vertical: "middle" };
-  return c;
 }
 
 module.exports = { buildPaymentPdf, buildPaymentExcel };

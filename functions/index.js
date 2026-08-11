@@ -18645,20 +18645,26 @@ exports.generatePaymentDocument = onCall({
   }
 
   // 基本複核：期款列、比例合計、金額合計（渲染本身信任前端計算結果）
-  const rows = Array.isArray(doc.rows) ? doc.rows : [];
-  if (rows.length === 0) {
-    throw new HttpsError("invalid-argument", "期款列不可為空。");
-  }
-  const percentSum = rows.reduce((s, r) => s + (Number(r.percent) || 0), 0);
-  const amountSum = rows.reduce((s, r) => {
-    if (r.type === 'group') return s + (r.children || []).reduce((cs, c) => cs + (Number(c.amount) || 0), 0);
-    return s + (Number(r.amount) || 0);
-  }, 0);
-  if (Math.abs(percentSum - 100) > 0.05) {
-    throw new HttpsError("invalid-argument", `期款比例合計須為 100%（目前 ${Math.round(percentSum * 100) / 100}%）。`);
-  }
-  if (Math.round(amountSum) !== Math.round(Number(doc.totalPrice) || 0)) {
-    throw new HttpsError("invalid-argument", `期款金額合計（${amountSum} 萬）須等於成交總價（${doc.totalPrice} 萬）。`);
+  // ✅ 配套模式：doc.packagePage 為第 2 頁（配套期款），基準為配套價
+  const validatePage = (pageRows, pageTotal, pageName) => {
+    if (!Array.isArray(pageRows) || pageRows.length === 0) {
+      throw new HttpsError("invalid-argument", `${pageName}期款列不可為空。`);
+    }
+    const percentSum = pageRows.reduce((s, r) => s + (Number(r.percent) || 0), 0);
+    const amountSum = pageRows.reduce((s, r) => {
+      if (r.type === 'group') return s + (r.children || []).reduce((cs, c) => cs + (Number(c.amount) || 0), 0);
+      return s + (Number(r.amount) || 0);
+    }, 0);
+    if (Math.abs(percentSum - 100) > 0.05) {
+      throw new HttpsError("invalid-argument", `${pageName}期款比例合計須為 100%（目前 ${Math.round(percentSum * 100) / 100}%）。`);
+    }
+    if (Math.round(amountSum) !== Math.round(Number(pageTotal) || 0)) {
+      throw new HttpsError("invalid-argument", `${pageName}期款金額合計（${amountSum} 萬）須等於基準金額（${pageTotal} 萬）。`);
+    }
+  };
+  validatePage(doc.rows, doc.totalPrice, '');
+  if (doc.packagePage) {
+    validatePage(doc.packagePage.rows, doc.packagePage.totalPrice, '配套');
   }
 
   try {

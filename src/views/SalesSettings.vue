@@ -243,6 +243,22 @@
                   variant="tonal"
                 ></v-btn>
               </div>
+
+              <!-- ✅ [新增] 配套合約標記：勾選的合約方式將觸發報價/付款表的「配套」邏輯 -->
+              <v-select
+                v-model="project.packageContractTypes"
+                :items="project.contractTypes"
+                label="屬於「配套合約」的合約方式"
+                variant="outlined"
+                density="compact"
+                multiple
+                chips
+                closable-chips
+                clearable
+                class="mt-4"
+                persistent-hint
+                hint="被勾選的合約方式（如毛胚合約、配套合約）在製作付款表時會自動啟用配套模式：第 1 頁一般期款以配套總價計算、第 2 頁配套期款以配套價計算。"
+              ></v-select>
             </div>
             <!-- 房土比計算公式設定 -->
             <v-divider class="my-4"></v-divider>
@@ -1938,6 +1954,12 @@ const loadProjectSettings = async () => {
         project.value.showPreferredPaymentInQuote = false;
     }
 
+    // ✅ [新增] 初始化「配套合約」標記：舊資料若已有「毛胚合約」則預設視為配套合約
+    if (project.value && !Array.isArray(project.value.packageContractTypes)) {
+      project.value.packageContractTypes =
+        (project.value.contractTypes || []).includes('毛胚合約') ? ['毛胚合約'] : [];
+    }
+
     // ✅ [新增] 初始化「付款表產製設定」（logo / 合約書 QR 網址 / 警語文字）
     if (project.value) {
       const defaults = {
@@ -2109,6 +2131,10 @@ const removeContractType = (typeToRemove) => {
     return;
   }
   project.value.contractTypes = project.value.contractTypes.filter(t => t !== typeToRemove);
+  // 同步自配套合約標記移除
+  if (Array.isArray(project.value.packageContractTypes)) {
+    project.value.packageContractTypes = project.value.packageContractTypes.filter(t => t !== typeToRemove);
+  }
 };
 
 const setupParamsListener = () => {
