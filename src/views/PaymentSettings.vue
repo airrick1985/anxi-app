@@ -390,24 +390,12 @@
          {{ unitData['戶別'] }}資料夾
     </v-btn>
 
-    <v-btn
-            v-if="projectStore.getProjectById(props.projectId)?.paymentScheduleFolderUrl"
-            color="cyan-darken-1"
-            variant="flat"
-            :href="projectStore.getProjectById(props.projectId).paymentScheduleFolderUrl"
-            target="_blank"
-            class="mr-2"
-        >
-            <v-icon start>mdi-folder-table</v-icon>
-            付款表資料夾
-        </v-btn>
-
+    <!-- ✅ [改版] 製作付款表：改為開啟預覽對話框（PDF/EXCEL 下載），取代舊 Google Sheet 流程 -->
         <v-btn
                 color="secondary"
                 variant="flat"
-                @click="showConfirmDialog = true"
-                :loading="isGenerating"
-                :disabled="isGenerating || !formData?.銷售"
+                @click="showPaymentDocDialog = true"
+                :disabled="!hasSalesperson"
             >
                 <v-icon start>mdi-file-document-edit-outline</v-icon>
                 製作付款表
@@ -427,110 +415,23 @@
             @request-open-slide="$emit('request-open-slide')"
             
             :project-id="props.projectId" />
+
+            <!-- ✅ [新增] 付款表預覽/下載對話框（PDF、EXCEL） -->
+            <PaymentSchedulePreviewDialog
+                v-model:show="showPaymentDocDialog"
+                :project-id="props.projectId"
+                :project-name="props.projectName"
+                :context="paymentDocContext"
+            />
             </v-dialog>
-
-    <v-dialog v-model="showConfirmDialog" max-width="520px" persistent>
-        <v-card>
-            <v-card-title class="d-flex align-center pa-4 bg-secondary text-white">
-                <v-icon start>mdi-clipboard-check-outline</v-icon>
-                <span class="text-h6">製作付款表確認</span>
-            </v-card-title>
-            <v-card-text class="pa-0">
-                <div class="pa-4 text-body-2 text-grey-darken-2 bg-grey-lighten-4">
-                    請再次確認以下資訊，確認無誤後再執行製作。
-                </div>
-                <v-list density="comfortable" class="py-0">
-                    <template v-for="(item, idx) in confirmSummaryItems" :key="item.label">
-                        <v-list-item class="px-4">
-                            <template v-slot:prepend>
-                                <v-icon :color="item.color || 'primary'" size="small">{{ item.icon }}</v-icon>
-                            </template>
-                            <v-row no-gutters align="center">
-                                <v-col cols="4" class="text-body-2 text-grey-darken-1">
-                                    {{ item.label }}
-                                </v-col>
-                                <v-col cols="8">
-                                    <span
-                                        class="text-body-1"
-                                        :class="item.valueClass || (item.highlight ? 'font-weight-bold text-error' : 'text-black')"
-                                    >
-                                        {{ item.value }}
-                                    </span>
-                                    <div v-if="item.hint" class="text-caption text-grey mt-0">
-                                        {{ item.hint }}
-                                    </div>
-                                </v-col>
-                            </v-row>
-                        </v-list-item>
-                        <v-divider v-if="idx < confirmSummaryItems.length - 1"></v-divider>
-                    </template>
-                </v-list>
-            </v-card-text>
-            <v-divider></v-divider>
-            <v-card-actions class="pa-3">
-                <v-spacer></v-spacer>
-                <v-btn
-                    variant="text"
-                    color="grey-darken-1"
-                    @click="showConfirmDialog = false"
-                    :disabled="isGenerating"
-                >
-                    取消
-                </v-btn>
-                <v-btn
-                    color="secondary"
-                    variant="flat"
-                    @click="confirmAndGenerate"
-                    :loading="isGenerating"
-                >
-                    <v-icon start>mdi-check</v-icon>
-                    確認製作
-                </v-btn>
-            </v-card-actions>
-        </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="showGeneratedLinkDialog" max-width="500px" persistent>
-            <v-card>
-                <v-card-title class="text-h5">
-                    <v-icon start color="success">mdi-check-circle</v-icon>
-                    產製成功
-                </v-card-title>
-                <v-card-text>
-                    付款表已成功產製。
-                </v-card-text>
-                <v-card-actions>
-                    <v-spacer></v-spacer>
-                    <v-btn
-                        color="grey-darken-1"
-                        variant="text"
-                        @click="showGeneratedLinkDialog = false"
-                    >
-                        關閉
-                    </v-btn>
-                    <v-btn
-                        color="primary"
-                        variant="flat"
-                        @click="openGeneratedSheet"
-                    >
-                        <v-icon start>mdi-open-in-new</v-icon>
-                        開啟付款表
-                    </v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
-
-
-
-
 </template>
 
 <script setup>
 import { ref, computed, watch, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import ParkingEditModal from '@/components/ParkingEditModal.vue';
-import { formatInTimeZone } from 'date-fns-tz';
-import { generatePaymentSheet, exportSheetToPdf } from '@/api.js';
+// ✅ [改版] 付款表改為系統內預覽 + PDF/EXCEL 下載（取代 Google Sheet 流程）
+import PaymentSchedulePreviewDialog from '@/components/PaymentSchedulePreviewDialog.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 
 import { useProjectStore } from '@/store/projectStore';
@@ -801,250 +702,6 @@ function updateSelectedParking(newParkingList) {
         parkingList: newParkingList
     });
 }
-// --- [新增] 文件產出相關狀態 ---
-const isGenerating = ref(false); // 控制按鈕的 loading 狀態
-const showConfirmDialog = ref(false); // ✅ 控制「製作付款表」前的確認對話框
-const showGeneratedLinkDialog = ref(false); // 控制產製成功對話框
-const generatedSheetUrl = ref(''); // 儲存產製的 URL
-
-// ✅ [新增] 確認對話框摘要內容：戶別、車位、價格、溢差價、合約方式、是否首購、銷售人員
-const confirmSummaryItems = computed(() => {
-    const data = formData.value || {};
-    const spots = ownedParkingSpots.value || [];
-    const houseTotal = Math.round(Number(data.房屋成交價) || 0);
-    const parkingTotal = Math.round(Number(calculated.value.totalParkingSalePrice) || 0);
-    const grandTotal = Math.round(Number(calculated.value.grandTotalSalePrice) || 0);
-    const baseTotal = Math.round(Number(calculated.value.grandTotalBasePrice) || 0);
-    const priceDiff = Math.round(Number(calculated.value.priceDifference) || 0);
-    // 正體中文註解：溢差價 = 總成交價 − 總底價；正值為溢價（綠）、負值為差價（紅）、0 為持平（灰）
-    const diffPrefix = priceDiff > 0 ? '+' : '';
-    const diffClass = priceDiff > 0
-        ? 'font-weight-bold text-success'
-        : (priceDiff < 0 ? 'font-weight-bold text-error' : 'font-weight-bold text-grey-darken-1');
-    const diffIcon = priceDiff > 0
-        ? 'mdi-trending-up'
-        : (priceDiff < 0 ? 'mdi-trending-down' : 'mdi-minus');
-    const diffIconColor = priceDiff > 0 ? 'success' : (priceDiff < 0 ? 'error' : 'grey');
-
-    return [
-        {
-            label: '戶別',
-            icon: 'mdi-home-outline',
-            value: data.unitId || data['戶別'] || '-'
-        },
-        {
-            label: '車位',
-            icon: 'mdi-car',
-            value: spots.length > 0
-                ? spots.map(p => p.spotId).join('、')
-                : '無'
-        },
-        {
-            label: '總成交價',
-            icon: 'mdi-currency-usd',
-            color: 'error',
-            highlight: true,
-            value: `${grandTotal.toLocaleString()} 萬`,
-            hint: `房屋 ${houseTotal.toLocaleString()} 萬 + 車位 ${parkingTotal.toLocaleString()} 萬`
-        },
-        {
-            label: '溢差價',
-            icon: diffIcon,
-            color: diffIconColor,
-            valueClass: diffClass,
-            value: `${diffPrefix}${priceDiff.toLocaleString()} 萬`,
-            hint: `總成交價 ${grandTotal.toLocaleString()} 萬 − 總底價 ${baseTotal.toLocaleString()} 萬`
-        },
-        {
-            label: '合約方式',
-            icon: 'mdi-file-document-outline',
-            value: data.合約方式 || '-'
-        },
-        {
-            label: '是否首購',
-            icon: 'mdi-star-outline',
-            value: data.isFirstTimeBuyer ? '是' : '否'
-        },
-        {
-            label: '銷售人員',
-            icon: 'mdi-account-outline',
-            value: formatSalespersons(data.銷售)
-        }
-    ];
-});
-
-// ✅ [新增] 使用者在確認對話框按下「確認製作」後觸發實際產製
-function confirmAndGenerate() {
-    showConfirmDialog.value = false;
-    handleGenerateDocument();
-}
-
-function openGeneratedSheet() {
-    if (generatedSheetUrl.value) {
-        window.open(generatedSheetUrl.value, '_blank');
-    }
-    // ✅ 移除: showGeneratedLinkDialog.value = false;
-    // (現在點擊開啟付款表後，對話框將保持開啟)
-}
-/**
- * [主函式] 當點擊「製作付款表」按鈕時觸發
- */
-async function handleGenerateDocument() {
-    isGenerating.value = true;
-
-    // 1. 準備 payload
-    const payload = {
-        projectId: props.unitData.projectId, // 傳遞 projectId
-        unitId: formData.value.unitId,
-        projectName: props.projectName,
-        salespersonName: formData.value.銷售,
-        data: {
-            // --- 現有欄位 ---
-            contractType: formData.value.合約方式,
-            isFirstTimeBuyer: formData.value.isFirstTimeBuyer,
-            usePreferredPayment: formData.value.usePreferredPayment,
-            salespersonPhone: salesPhone.value, 
-            housePrice: formData.value.房屋成交價,
-            packageDealPrice: formData.value.price_package_deal,
-            packagePrice: calculated.value.packagePrice,
-            parkingSpots: ownedParkingSpots.value.map(p => ({
-                spotId: p.spotId,
-                price_transaction: p.price_transaction
-            })),
-
-            // ✓ START: 新增的欄位
-            // (我們使用英文 key 傳輸，後端用中文 header 映射)
-
-            // 銀行帳號 (來自 formData，源自 props.unitData)
-            houseBankName: formData.value.houseBankName,
-            houseBankAccountName: formData.value.houseBankAccountName,
-            houseBankAccount: formData.value.houseBankAccount,
-            landBankName: formData.value.landBankName,
-            landBankAccountName: formData.value.landBankAccountName,
-            landBankAccount: formData.value.landBankAccount,
-            packageBankName: formData.value.packageBankName,
-            packageBankAccountName: formData.value.packageBankAccountName,
-            packageBankAccount: formData.value.packageBankAccount,
-
-            // 面積資訊 (來自 formData，使用中文 key 讀取)
-            area_house_ping: formData.value['房屋面積(坪)'],
-            area_house_sqm: formData.value['房屋面積(平方公尺)'],
-            common_area_ratio: formData.value['公設比'],
-            area_main_ping: formData.value['主建物面積(坪)'],
-            area_main_sqm: formData.value['主建物面積(平方公尺)'],
-            area_ancillary_ping: formData.value['附屬建物面積(坪)'],
-            area_ancillary_sqm: formData.value['附屬建物面積(平方公尺)'],
-            area_common_ping: formData.value['共用部分面積(坪)'],
-            area_common_sqm: formData.value['共用部分面積(平方公尺)'],
-            area_terrace_ping: formData.value['露臺(坪)'],
-            land_share_ping: formData.value['土地持分面積(坪)'],
-            land_share_sqm: formData.value['土地持分面積(平方公尺)'],
-            land_share_ratio: formData.value['土地持分']
-            // ✓ END: 新增的欄位
-        }
-    };
-    
-    console.log("準備發送到後端 (generatePaymentSheet) 的 Payload:", payload);
-
-    try {
-        // 2. 呼叫新的 API
-        const result = await generatePaymentSheet(payload);
-        
-        if (result.status === 'success' && result.url) { 
-            // ✅ START: 修改成功後的行為
-            // 3. 成功後，儲存 URL 並顯示對話框
-            generatedSheetUrl.value = result.url; // 儲存 URL
-            showGeneratedLinkDialog.value = true; // 開啟對話框
-            // alert('付款表已成功產製！'); // (移除 alert)
-            // window.open(result.url, '_blank'); // (移除 window.open)
-            // ✅ END: 修改成功後的行為
-        } else {
-            throw new Error(result.message || '後端發生未知錯誤');
-        }
-    } catch (error) {
-        console.error('製作付款表時發生錯誤:', error);
-        alert(`製作失敗: ${error.message}`);
-    } finally {
-        isGenerating.value = false;
-    }
-}
-
-/**
- * 準備並顯示 Email 發送視窗
- */
-function prepareAndShowEmailModal() {
-    console.log("準備彈出 Email 視窗...");
-    const salesPersonnel = props.allData['銷售人員'] || [];
-    // 銷售人員（複選）：當前戶別的所有銷售人員都視為「當前」
-    const currentSalespersons = normalizeSalespersons(formData.value.銷售);
-
-    const recipients = salesPersonnel.map(person => {
-        const name = person['銷售人員'];
-        const email = person['EMAIL'];
-
-        // 檢查此人是否需要被預設勾選
-        const isPreset = person['付款表預選'] === 'Y';
-        const isCurrent = currentSalespersons.includes(name);
-        
-        return {
-            name: name,
-            email: email,
-            selected: isPreset || isCurrent // 規則：預選或當前銷售人員，則勾選
-        };
-    }).filter(person => person.email); // 過濾掉沒有 Email 的人員
-
-    emailRecipients.value = recipients;
-    showEmailModal.value = true;
-}
-
-
-/**
- * [新增] 點擊「傳送」按鈕後觸發
- */
-async function sendEmails() {
-    isSendingEmail.value = true;
-
-    // 收集所有被勾選的 Email 地址
-    const selectedEmails = emailRecipients.value
-        .filter(r => r.selected)
-        .map(r => r.email);
-
-    if (selectedEmails.length === 0) {
-        alert('請至少選擇一位收件人！');
-        isSendingEmail.value = false;
-        return;
-    }
-    
-    // 準備要發送到後端的資料
-    const payload = {
-        projectName: props.projectName,
-        recipients: selectedEmails,
-        files: generatedFiles.value, // 已產生的檔案列表
-        unitId: formData.value['戶別']
-    };
-
-    try {
-        // [正式呼叫] 呼叫 api.js 中定義的函式
-        const result = await sendPaymentScheduleEmail(payload);
-
-        if (result.status === 'success') {
-            alert(result.message || '郵件已成功寄出！');
-            showEmailModal.value = false; // 成功後關閉視窗
-        } else {
-            throw new Error(result.message || '後端發生未知錯誤');
-        }
-
-    } catch (error) {
-        console.error('發送郵件時發生錯誤:', error);
-        alert(`發送失敗: ${error.message}`);
-    } finally {
-        isSendingEmail.value = false;
-    }
-}
-
-
-
-
 function formatNumber(value, frac = 0) {
     if (value === null || value === undefined || String(value).trim() === '') {
         return frac > 0 ? (0).toFixed(frac) : '0';
@@ -1065,23 +722,62 @@ function formatPercentage(value) {
 }
 
 
-/**
- * 根據檔案類型回傳對應的顏色與圖示
- * @param {string} type - 檔案類型 ('pdf', 'excel', etc.)
- * @returns {{color: string, icon: string}}
- */
-function getChipStyle(type) {
-    switch (type) {
-        case 'pdf':
-            return { color: 'red-darken-1', icon: 'mdi-file-pdf-box' };
-        case 'excel':
-            return { color: 'green-darken-1', icon: 'mdi-file-excel-box' };
-        case 'word':
-             return { color: 'blue-darken-1', icon: 'mdi-file-word-box' };
-        default:
-            return { color: 'grey-darken-1', icon: 'mdi-file-document-box' };
+/* ==========================================================
+ * ✅ [改版] 製作付款表：系統內預覽 + PDF/EXCEL 下載
+ * ========================================================== */
+const showPaymentDocDialog = ref(false);
+
+// 至少一位銷售人員才可製作
+const hasSalesperson = computed(() => normalizeSalespersons(formData.value?.銷售).length > 0);
+
+// 戶別顯示標籤（如 "A 棟 8 樓"），無棟/樓資訊時回退 unitId
+const unitLabelText = computed(() => {
+    const u = props.unitData || {};
+    if (u.building && u.floor) {
+        const floorNum = parseInt(u.floor, 10);
+        return `${u.building} 棟 ${isNaN(floorNum) ? u.floor : floorNum} 樓`;
     }
-}
+    return u.unitId || formData.value?.unitId || '';
+});
+
+// 傳給付款表預覽對話框的渲染資料
+const paymentDocContext = computed(() => {
+    const data = formData.value || {};
+    return {
+        unitId: data.unitId || data['戶別'] || '',
+        unitLabel: unitLabelText.value,
+        contractType: data.合約方式,
+        isFirstTimeBuyer: data.isFirstTimeBuyer !== false,
+        usePreferredPayment: data.usePreferredPayment === true,
+        propertyType: props.unitData?.propertyType || props.unitData?.layout || '住家',
+        totalPrice: calculated.value.grandTotalSalePrice,
+        parkingSpots: (ownedParkingSpots.value || []).map(p => ({
+            spotId: p.spotId,
+            price_transaction: p.price_transaction
+        })),
+        areas: {
+            houseTotalPing: data['房屋面積(坪)'],
+            houseTotalSqm: data['房屋面積(平方公尺)'],
+            mainPing: data['主建物面積(坪)'],
+            mainSqm: data['主建物面積(平方公尺)'],
+            ancillaryPing: data['附屬建物面積(坪)'],
+            ancillarySqm: data['附屬建物面積(平方公尺)'],
+            commonPing: data['共用部分面積(坪)'],
+            commonSqm: data['共用部分面積(平方公尺)'],
+            landSharePing: data['土地持分面積(坪)'],
+            landShareSqm: data['土地持分面積(平方公尺)'],
+            landShareRatio: data['土地持分']
+        },
+        banks: accountSections.value.map(s => ({
+            title: s.title,
+            bankName: s.bank,
+            accountName: s.name,
+            account: s.number
+        })),
+        salesperson: formatSalespersons(data.銷售),
+        salesPhone: salesPhone.value
+    };
+});
 
 </script>
 

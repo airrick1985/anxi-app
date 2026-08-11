@@ -111,26 +111,94 @@
               persistent-hint
             ></v-text-field>
 
-            <!-- ✓ 新增：付款表模板 ID 欄位 -->
-            <v-text-field
-              v-model="project.paymentScheduleTemplateId"
-              label="付款表模板SHEET ID"
-              variant="outlined"
-              density="compact"
-              class="mb-4"
-              persistent-hint
-              hint="用於「付款表設定」功能產製 Google Sheet 付款表時的模板。"
-            ></v-text-field>
+            <!-- ✅ [新增] 付款表產製設定（取代舊 Google Sheet 模板/儲存位置設定） -->
+            <v-divider class="my-4"></v-divider>
+            <div class="mb-4">
+              <p class="text-subtitle-1 mb-2">付款表產製設定</p>
+              <p class="text-caption text-grey-darken-1 mb-3">
+                「製作付款表」功能產出 PDF / EXCEL 時使用的建案 logo、合約書範本 QR code 與警語文字。
+              </p>
 
-            <v-text-field
-              v-model="project.paymentScheduleFolderUrl"
-              label="付款表儲存位置"
-              variant="outlined"
-              density="compact"
-              class="mb-4"
-              persistent-hint
-              hint="戶別付款表產出後儲存的 Google Drive 資料夾 URL。"
-            ></v-text-field>
+              <!-- 建案 logo 上傳 -->
+              <div class="d-flex align-center mb-4 flex-wrap ga-4">
+                <div class="payment-logo-preview">
+                  <v-img
+                    v-if="project.paymentDocSettings?.logoUrl"
+                    :src="project.paymentDocSettings.logoUrl"
+                    max-width="160"
+                    max-height="80"
+                    contain
+                  ></v-img>
+                  <div v-else class="text-caption text-grey text-center pa-4">尚未上傳 logo</div>
+                </div>
+                <div>
+                  <v-btn
+                    color="primary"
+                    variant="tonal"
+                    prepend-icon="mdi-image-plus"
+                    :loading="isUploadingPaymentLogo"
+                    @click="paymentLogoInput?.click()"
+                  >
+                    {{ project.paymentDocSettings?.logoUrl ? '更換 logo' : '上傳建案 logo' }}
+                  </v-btn>
+                  <v-btn
+                    v-if="project.paymentDocSettings?.logoUrl"
+                    color="error"
+                    variant="text"
+                    class="ml-2"
+                    prepend-icon="mdi-delete-outline"
+                    :disabled="isUploadingPaymentLogo"
+                    @click="removePaymentLogo"
+                  >
+                    移除
+                  </v-btn>
+                  <p class="text-caption text-grey mt-1 mb-0">
+                    支援 PNG / JPG / WEBP / SVG / GIF，上傳時自動轉存 PNG（最長邊 1200px，檔案 ≤ 10MB）。
+                  </p>
+                  <input
+                    ref="paymentLogoInput"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                    style="display: none"
+                    @change="handlePaymentLogoUpload"
+                  />
+                </div>
+              </div>
+
+              <!-- 合約書範本網址 + QR 預覽 -->
+              <div class="d-flex align-start ga-4 mb-2 flex-wrap">
+                <v-text-field
+                  v-model="paymentDocContractUrl"
+                  label="合約書範本網址"
+                  variant="outlined"
+                  density="compact"
+                  persistent-hint
+                  hint="付款表右上角「合約範本 QR CODE」的連結來源；留空則付款表不顯示 QR code。"
+                  style="min-width: 280px; flex: 1;"
+                ></v-text-field>
+                <div v-if="paymentDocContractUrl" class="text-center">
+                  <qrcode-vue :value="paymentDocContractUrl" :size="76" level="M" />
+                  <div class="text-caption text-grey">QR 預覽</div>
+                </div>
+              </div>
+
+              <v-text-field
+                v-model="paymentDocLoanWarning"
+                label="貸款警語（付款表紅字）"
+                variant="outlined"
+                density="compact"
+                class="mb-2"
+              ></v-text-field>
+
+              <v-text-field
+                v-model="paymentDocRemitNote"
+                label="匯款提醒（付款表紅字）"
+                variant="outlined"
+                density="compact"
+                class="mb-2"
+              ></v-text-field>
+            </div>
+            <v-divider class="my-4"></v-divider>
 
             <v-switch
               v-model="project.showPreferredPaymentInQuote"
@@ -1595,6 +1663,9 @@ import {
   syncCancelledPurchasesToSheet, // ✅ 新增
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
+// ✅ [新增] 付款表產製設定：logo 上傳（Firebase Storage）與 QR 預覽
+import { getStorage, ref as fbStorageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import QrcodeVue from 'qrcode.vue';
 import PaymentTermsSettings from './PaymentTermsSettings.vue';
 import PriceFormulaDialog from '@/components/PriceFormulaDialog.vue';
 import {
@@ -1631,6 +1702,130 @@ const project = ref(null);
 const projectLoading = ref(true);
 const isSavingProject = ref(false);
 const newContractType = ref('');
+
+/* ==========================================================
+ * ✅ [新增] 付款表產製設定（logo / 合約書範本 QR / 警語文字）
+ * ========================================================== */
+const PAYMENT_DOC_DEFAULT_LOAN_WARNING = '＊銀行貸款成數依個人信用狀況並由銀行審核，如有差額無法貸款時則由買方自行補足差額＊';
+const PAYMENT_DOC_DEFAULT_REMIT_NOTE = '＊請於匯款時備註【購買戶別】、【買方姓名】';
+
+const paymentLogoInput = ref(null);
+const isUploadingPaymentLogo = ref(false);
+
+// 三個文字欄位的 computed proxy（確保 paymentDocSettings 物件存在）
+const ensurePaymentDocSettings = () => {
+  if (project.value && !project.value.paymentDocSettings) {
+    project.value.paymentDocSettings = {
+      logoUrl: '', logoPath: '', contractTemplateUrl: '',
+      loanWarningText: PAYMENT_DOC_DEFAULT_LOAN_WARNING,
+      remitNoteText: PAYMENT_DOC_DEFAULT_REMIT_NOTE
+    };
+  }
+  return project.value?.paymentDocSettings;
+};
+const paymentDocContractUrl = computed({
+  get: () => project.value?.paymentDocSettings?.contractTemplateUrl || '',
+  set: (v) => { const s = ensurePaymentDocSettings(); if (s) s.contractTemplateUrl = v; }
+});
+const paymentDocLoanWarning = computed({
+  get: () => project.value?.paymentDocSettings?.loanWarningText || '',
+  set: (v) => { const s = ensurePaymentDocSettings(); if (s) s.loanWarningText = v; }
+});
+const paymentDocRemitNote = computed({
+  get: () => project.value?.paymentDocSettings?.remitNoteText || '',
+  set: (v) => { const s = ensurePaymentDocSettings(); if (s) s.remitNoteText = v; }
+});
+
+/**
+ * 將任意圖檔（png/jpg/webp/svg/gif）轉為 PNG Blob，最長邊限制 maxDim
+ * （pdfkit 僅支援 PNG/JPEG，統一轉存 PNG）
+ */
+function convertImageToPng(file, maxDim = 1200) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        let { width, height } = img;
+        // SVG 可能沒有內建尺寸，給預設值
+        if (!width || !height) { width = 800; height = 400; }
+        const scale = Math.min(1, maxDim / Math.max(width, height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(url);
+          if (blob) resolve(blob);
+          else reject(new Error('圖片轉換失敗'));
+        }, 'image/png');
+      } catch (e) {
+        URL.revokeObjectURL(url);
+        reject(e);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('無法讀取圖片檔案'));
+    };
+    img.src = url;
+  });
+}
+
+/** 上傳建案 logo：轉 PNG → Storage → 更新 Firestore paymentDocSettings */
+const handlePaymentLogoUpload = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    toast.error('圖片檔案大小不能超過 10MB');
+    return;
+  }
+  isUploadingPaymentLogo.value = true;
+  try {
+    const pngBlob = await convertImageToPng(file);
+    const settings = ensurePaymentDocSettings();
+    const storage = getStorage();
+    const newPath = `projects/${projectId.value}/paymentDoc/logo_${Date.now()}.png`;
+    const imageRef = fbStorageRef(storage, newPath);
+    await uploadBytes(imageRef, pngBlob, { contentType: 'image/png' });
+    const downloadURL = await getDownloadURL(imageRef);
+
+    // 刪除舊檔（失敗不阻斷）
+    if (settings.logoPath) {
+      try { await deleteObject(fbStorageRef(storage, settings.logoPath)); } catch (e) { /* 舊檔可能已不存在 */ }
+    }
+
+    settings.logoUrl = downloadURL;
+    settings.logoPath = newPath;
+    // 立即持久化，避免已上傳檔案與 Firestore 不同步
+    await updateProjectSalesSettings(project.value.id, { paymentDocSettings: { ...settings } });
+    toast.success('建案 logo 已上傳');
+  } catch (error) {
+    console.error('上傳建案 logo 失敗:', error);
+    toast.error(`上傳建案 logo 失敗: ${error.message}`);
+  } finally {
+    isUploadingPaymentLogo.value = false;
+    if (paymentLogoInput.value) paymentLogoInput.value.value = '';
+  }
+};
+
+/** 移除建案 logo */
+const removePaymentLogo = async () => {
+  const settings = ensurePaymentDocSettings();
+  if (!settings?.logoUrl) return;
+  try {
+    if (settings.logoPath) {
+      try { await deleteObject(fbStorageRef(getStorage(), settings.logoPath)); } catch (e) { /* 檔案可能已不存在 */ }
+    }
+    settings.logoUrl = '';
+    settings.logoPath = '';
+    await updateProjectSalesSettings(project.value.id, { paymentDocSettings: { ...settings } });
+    toast.success('建案 logo 已移除');
+  } catch (error) {
+    toast.error(`移除建案 logo 失敗: ${error.message}`);
+  }
+};
 
 // 房土比計算公式對話框
 const priceFormulaDialog = ref(false);
@@ -1741,6 +1936,18 @@ const loadProjectSettings = async () => {
     // ✅ [新增] 初始化「報價系統顯示優付」欄位，預設為 false
     if (project.value && project.value.showPreferredPaymentInQuote === undefined) {
         project.value.showPreferredPaymentInQuote = false;
+    }
+
+    // ✅ [新增] 初始化「付款表產製設定」（logo / 合約書 QR 網址 / 警語文字）
+    if (project.value) {
+      const defaults = {
+        logoUrl: '',
+        logoPath: '',
+        contractTemplateUrl: '',
+        loanWarningText: PAYMENT_DOC_DEFAULT_LOAN_WARNING,
+        remitNoteText: PAYMENT_DOC_DEFAULT_REMIT_NOTE
+      };
+      project.value.paymentDocSettings = { ...defaults, ...(project.value.paymentDocSettings || {}) };
     }
 
     // ✅ [新增] 初始化 Google Sheet Sync 表單
@@ -2739,5 +2946,18 @@ onUnmounted(() => {
 }
 .cursor-move:active {
   cursor: grabbing;
+}
+
+/* ✅ [新增] 付款表產製設定：logo 預覽框 */
+.payment-logo-preview {
+  min-width: 170px;
+  min-height: 90px;
+  border: 1px dashed #bdbdbd;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fafafa;
+  padding: 4px;
 }
 </style>

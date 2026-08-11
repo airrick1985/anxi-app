@@ -18629,6 +18629,63 @@ exports.salesApi = onCall({
 /**
 * [Cloud Function] 複製 Google Sheet 付款表模板，並回填資料
 */
+/* ==========================================================
+ * ✅ [新增] 付款明細表產製（PDF / EXCEL）
+ * 取代舊 Google Sheet 產製流程；版面依 docs/付款表範本.pdf。
+ * 前端：PaymentSchedulePreviewDialog.vue 傳入完整渲染資料。
+ * ========================================================== */
+exports.generatePaymentDocument = onCall({
+  region: "asia-east1",
+  timeoutSeconds: 120,
+  memory: "512MiB"
+}, async (request) => {
+  const { projectId, format, doc } = request.data || {};
+  if (!projectId || !doc || !['pdf', 'excel'].includes(format)) {
+    throw new HttpsError("invalid-argument", "缺少 projectId、format(pdf|excel) 或 doc 參數。");
+  }
+
+  // 基本複核：期款列、比例合計、金額合計（渲染本身信任前端計算結果）
+  const rows = Array.isArray(doc.rows) ? doc.rows : [];
+  if (rows.length === 0) {
+    throw new HttpsError("invalid-argument", "期款列不可為空。");
+  }
+  const percentSum = rows.reduce((s, r) => s + (Number(r.percent) || 0), 0);
+  const amountSum = rows.reduce((s, r) => {
+    if (r.type === 'group') return s + (r.children || []).reduce((cs, c) => cs + (Number(c.amount) || 0), 0);
+    return s + (Number(r.amount) || 0);
+  }, 0);
+  if (Math.abs(percentSum - 100) > 0.05) {
+    throw new HttpsError("invalid-argument", `期款比例合計須為 100%（目前 ${Math.round(percentSum * 100) / 100}%）。`);
+  }
+  if (Math.round(amountSum) !== Math.round(Number(doc.totalPrice) || 0)) {
+    throw new HttpsError("invalid-argument", `期款金額合計（${amountSum} 萬）須等於成交總價（${doc.totalPrice} 萬）。`);
+  }
+
+  try {
+    const { buildPaymentPdf, buildPaymentExcel } = require('./paymentDocument');
+    const isPdf = format === 'pdf';
+    const buffer = isPdf ? await buildPaymentPdf(doc) : await buildPaymentExcel(doc);
+
+    const today = formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyyMMdd');
+    const salesText = formatSalespersons(doc.salesperson, ',', '') || 'N/A';
+    const fileName = `${today}-${doc.projectName || ''}-付款表-${doc.unitId || ''}-${salesText}.${isPdf ? 'pdf' : 'xlsx'}`;
+
+    return {
+      status: 'success',
+      fileName,
+      mimeType: isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      base64: buffer.toString('base64')
+    };
+  } catch (error) {
+    console.error('[generatePaymentDocument] 產製失敗:', error);
+    throw new HttpsError("internal", `付款表產製失敗: ${error.message}`);
+  }
+});
+
+/* ⚠️ [棄用] 以下 Google Sheet 產製流程已由 generatePaymentDocument 取代，
+ * 前端已不再呼叫；保留一版觀察，穩定後可移除。 */
 exports.generatePaymentSheet = onCall({
   region: "asia-east1",
   secrets: driveSecrets, // ✓ 重用 driveSecrets

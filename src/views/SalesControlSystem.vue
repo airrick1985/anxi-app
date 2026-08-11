@@ -262,20 +262,7 @@
           <span>上傳戶別資料EXCEL</span>
         </v-tooltip>
 
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales' && project.paymentScheduleFolderUrl">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              :href="project.paymentScheduleFolderUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              icon="mdi-folder-google-drive"
-            ></v-btn>
-          </template>
-          <span>付款表資料夾</span>
-        </v-tooltip>
+        <!-- ✅ [移除] 付款表資料夾按鈕：付款表已改為系統內產製 PDF/EXCEL，不再使用 Google Drive -->
 
         <v-tooltip location="bottom">
           <template v-slot:activator="{ props }">
@@ -1090,18 +1077,6 @@
             <v-list-item-title>資料透視</v-list-item-title>
           </v-list-item>
 
-          <v-list-item
-            v-if="project.paymentScheduleFolderUrl"
-            :href="project.paymentScheduleFolderUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            @click="isMoreMenuOpen = false"
-          >
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-folder-google-drive</v-icon>
-            </template>
-            <v-list-item-title>付款表資料夾</v-list-item-title>
-          </v-list-item>
           <v-list-item @click="isMoreMenuOpen = false; navigateToSalesSettings()">
             <template v-slot:prepend>
               <v-icon>mdi-cog-outline</v-icon>

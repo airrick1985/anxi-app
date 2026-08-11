@@ -904,21 +904,18 @@ export async function fetchSalesOptions(projectName) {
 }
 
 
-// ✓ 新增：呼叫新的 Cloud Function
-// ✓ 新增：呼叫新的 Cloud Function
 /**
- * [API] 呼叫後端，複製 Google Sheet 付款表模板並回填資料
- * @param {object} payload - 包含 projectId, unitId, data 等...
- * @returns {Promise<object>} - { status, url }
+ * ✅ [新增] [API] 付款明細表產製（PDF / EXCEL，取代舊 Google Sheet 流程）
+ * @param {object} payload - { projectId, format: 'pdf'|'excel', doc: {...渲染資料} }
+ * @returns {Promise<object>} - { status, fileName, mimeType, base64 }
  */
-export const generatePaymentSheet = async (payload) => {
+export const generatePaymentDocument = async (payload) => {
   try {
-    const generateFunc = httpsCallable(functions, 'generatePaymentSheet');
-    const result = await generateFunc(payload);
-    return result.data; // 直接回傳後端 { status, url }
+    const func = httpsCallable(functions, 'generatePaymentDocument', { timeout: 120000 });
+    const result = await func(payload);
+    return result.data;
   } catch (error) {
-    console.error("API Error in generatePaymentSheet:", error);
-    // 將 HttpsError 的 message 提取出來拋出
+    console.error("API Error in generatePaymentDocument:", error);
     throw new Error(error.message || '產製付款表失敗');
   }
 };
