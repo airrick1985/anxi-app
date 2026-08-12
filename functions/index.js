@@ -8397,6 +8397,7 @@ exports.manualTriggerSendReminders = onCall({
 });
 
 
+
 /**
  * [API] 針對單一戶別（單筆預約）即時寄送「未上傳驗屋報告提醒」。
  * 供「戶別整合資訊」Modal 預覽後送出使用。
@@ -10185,7 +10186,77 @@ exports.driveProxySearch = onCall({ region: "asia-east1", secrets: driveSecrets 
  * @param {string} rootFolderId - 掃描的根目錄 Google Drive ID
  * @returns {Promise<object>} - 包含扁平化檔案列表的物件
  */
-exports.getReportFolderStructure = onCall({ region: "asia-east1", secrets: driveSecrets, timeoutSeconds: 300 }, async (request) => {
+const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+/**
+ * [共用] 掃描驗屋報告根資料夾，回傳扁平的報告資料夾清單。
+ * 同時相容三種實際存在的層級深度（以「報告資料夾」= 內含 PDF 的那一層為準）：
+ *   三層：根 → 棟別 (A/B/S) → 棟號 (A1) → 報告資料夾 (A1-02)
+ *   兩層：根 → 棟號 (B1) → 報告資料夾 (B1-16)         ← 例如 fuyu1015
+ *   一層：根 → 報告資料夾 (B1-16)                      ← 戶別未設定資料夾時的上傳容錯路徑
+ * 判斷方式：某層資料夾底下若有子資料夾就往下層走；若只有檔案，該資料夾本身即為報告資料夾。
+ * @param {object} drive - 已驗證的 Drive client
+ * @param {string} rootFolderId - 報告根資料夾 ID
+ * @returns {Promise<Array<{rowId: string, building: string, unitNumber: string, reportFolder: {id: string, name: string}, modifiedTime: string}>>}
+ */
+async function scanReportFolderStructure(drive, rootFolderId) {
+  const flatList = [];
+
+  const listChildren = async (folderId) => {
+    const res = await drive.files.list({
+      q: `'${folderId}' in parents and trashed=false`,
+      fields: 'files(id, name, mimeType, modifiedTime)',
+      pageSize: 1000,
+    });
+    const children = res.data?.files || [];
+    return {
+      folders: children.filter(f => f.mimeType === DRIVE_FOLDER_MIME),
+      hasFiles: children.some(f => f.mimeType !== DRIVE_FOLDER_MIME),
+    };
+  };
+
+  const pushReportFolder = (building, unitNumber, folder) => {
+    flatList.push({
+      rowId: `${building}_${unitNumber}_${folder.id}`,
+      building,
+      unitNumber,
+      reportFolder: { id: folder.id, name: folder.name },
+      modifiedTime: folder.modifiedTime,
+    });
+  };
+
+  // 第一層
+  const level1 = await listChildren(rootFolderId);
+
+  await Promise.all(level1.folders.map(async (l1Folder) => {
+    const level2 = await listChildren(l1Folder.id);
+
+    if (level2.folders.length === 0) {
+      // 一層結構：報告資料夾直接掛在根下
+      if (level2.hasFiles) pushReportFolder(l1Folder.name, l1Folder.name, l1Folder);
+      return;
+    }
+
+    await Promise.all(level2.folders.map(async (l2Folder) => {
+      const level3 = await listChildren(l2Folder.id);
+
+      if (level3.folders.length === 0) {
+        // 兩層結構：第二層即為報告資料夾（內含 PDF）
+        if (level3.hasFiles) pushReportFolder(l1Folder.name, l2Folder.name, l2Folder);
+        return;
+      }
+
+      // 三層結構：列出第三層報告資料夾
+      level3.folders.forEach(l3Folder => {
+        pushReportFolder(l1Folder.name, l2Folder.name, l3Folder);
+      });
+    }));
+  }));
+
+  return flatList;
+}
+
+exports.getReportFolderStructure = onCall({ region: "asia-east1", secrets: driveSecrets, timeoutSeconds: 300, memory: "512MiB" }, async (request) => {
   const { rootFolderId } = request.data;
   const functionName = `getReportFolderStructure (Root: ${rootFolderId})`;
 
@@ -10195,54 +10266,7 @@ exports.getReportFolderStructure = onCall({ region: "asia-east1", secrets: drive
 
   try {
     const drive = getAuthenticatedDriveClient();
-    const flatList = [];
-
-    // 掃描第一層：棟別 (A, B, S)
-    const level1Res = await drive.files.list({
-      q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-      fields: 'files(id, name)',
-    });
-    const level1Folders = level1Res.data.files;
-    if (!level1Folders || level1Folders.length === 0) {
-      return { status: 'success', files: [] };
-    }
-
-    // 使用 Promise.all 並行處理每一棟
-    await Promise.all(level1Folders.map(async (l1Folder) => {
-      // 掃描第二層：棟號 (A1, A2)
-      const level2Res = await drive.files.list({
-        q: `'${l1Folder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        fields: 'files(id, name)',
-      });
-      const level2Folders = level2Res.data.files;
-      if (!level2Folders || level2Folders.length === 0) return;
-
-      // 並行處理每一棟號
-      await Promise.all(level2Folders.map(async (l2Folder) => {
-        // 掃描第三層：驗屋報告資料夾 (A1-02, A1-02(已下載))
-        const level3Res = await drive.files.list({
-          q: `'${l2Folder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-          fields: 'files(id, name, modifiedTime)',
-        });
-        const level3Folders = level3Res.data.files;
-        if (!level3Folders || level3Folders.length === 0) return;
-
-        level3Folders.forEach(l3Folder => {
-          flatList.push({
-            // 為每一列產生一個唯一的 ID
-            rowId: `${l1Folder.name}_${l2Folder.name}_${l3Folder.id}`,
-            building: l1Folder.name,
-            unitNumber: l2Folder.name,
-            reportFolder: { // 將驗屋報告資料夾作為一個物件儲存
-              id: l3Folder.id,
-              name: l3Folder.name,
-            },
-            modifiedTime: l3Folder.modifiedTime,
-          });
-        });
-      }));
-    }));
-
+    const flatList = await scanReportFolderStructure(drive, rootFolderId);
     return { status: 'success', files: flatList };
 
   } catch (error) {
@@ -10351,6 +10375,70 @@ exports.sendNotDownloadedReportReminder = onCall({
 // ✓ END: 2. 手動觸發函式修改完成
 
 /**
+ * [API] 超級管理員測試：驗屋報告未下載 LINE 通知
+ * 立即執行指定建案的「未下載報告」檢查（與排程 executeReminderForProject 完全相同的掃描邏輯），
+ * 但通知僅發送給 roles 含「超級管理員/系統管理員」且已綁定 LINE 的使用者，不會發送給其他人員。
+ *
+ * request.data:
+ *   - projectId {string} 必填
+ *   - userKey   {string} 必填（操作者手機，用於驗證超管/系統管理員身分）
+ */
+exports.testNotDownloadedReminderToAdmins = onCall({
+  region: "asia-east1",
+  secrets: driveSecrets, // executeReminderForProject 需掃描 Google Drive
+  timeoutSeconds: 300,
+  memory: "512MiB",
+}, async (request) => {
+  const { projectId, userKey } = request.data || {};
+  const functionName = `testNotDownloadedReminderToAdmins (Project: ${projectId})`;
+
+  if (!projectId || !userKey) {
+    throw new HttpsError("invalid-argument", "缺少必要參數 (projectId / userKey)。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+
+  // --- 1. 驗證操作者身分：僅限超級管理員/系統管理員 ---
+  const operatorSnap = await db.collection("users").doc(userKey).get();
+  if (!operatorSnap.exists) {
+    throw new HttpsError("permission-denied", "找不到對應使用者資料。");
+  }
+  const operatorRoles = operatorSnap.data().roles || [];
+  if (!operatorRoles.includes("超級管理員") && !operatorRoles.includes("系統管理員")) {
+    throw new HttpsError("permission-denied", "此測試功能僅限超級管理員/系統管理員使用。");
+  }
+
+  try {
+    // --- 2. 找出收件對象：僅限超級管理員/系統管理員且已綁定 LINE ---
+    const adminsSnapshot = await db.collection("users")
+      .where("roles", "array-contains-any", ["超級管理員", "系統管理員"])
+      .get();
+    const lineIdRegex = /^U[0-9a-f]{32}$/;
+    const adminRecipients = adminsSnapshot.docs
+      .map(doc => ({ name: doc.data().name || doc.id, lineId: doc.data().lineId }))
+      .filter(u => u.lineId && typeof u.lineId === 'string' && lineIdRegex.test(u.lineId));
+
+    if (adminRecipients.length === 0) {
+      throw new HttpsError("failed-precondition", "找不到任何已綁定 LINE 的超級管理員/系統管理員，無法發送測試通知。");
+    }
+
+    // --- 3. 執行與排程相同的未下載掃描，只發送給管理員（isTest 會在訊息前加註測試標記） ---
+    const resultMessage = await executeReminderForProject(projectId, adminRecipients.map(u => u.lineId), true);
+
+    const recipientNames = adminRecipients.map(u => u.name).join('、');
+    console.log(`[${functionName}] 測試通知已發送給 ${adminRecipients.length} 位管理員：${recipientNames}`);
+    return {
+      status: "success",
+      message: `測試通知已發送給 ${adminRecipients.length} 位管理員（${recipientNames}）。${resultMessage}`,
+    };
+  } catch (error) {
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `發送測試 LINE 通知失敗: ${error.message}`);
+  }
+});
+
+/**
  * [排程函式] 每小時檢查一次，觸發符合條件的建案進行未下載報告提醒
  * 
  */
@@ -10446,9 +10534,10 @@ exports.scheduledReportReminder = onSchedule({
  * [內部核心邏輯] 執行單一建案的未下載報告提醒
  * @param {string} projectId - 要執行提醒的建案 ID
  * @param {Array<string>|null} selectedLineIds - 可選，若提供則僅對指定的 LINE ID 發送通知
+ * @param {boolean} isTest - 可選，測試模式：訊息前加註測試標記（供超級管理員測試用）
  * @returns {Promise<string>} - 返回執行的結果訊息
  */
-async function executeReminderForProject(projectId, selectedLineIds = null) {
+async function executeReminderForProject(projectId, selectedLineIds = null, isTest = false) {
   const functionName = `executeReminderForProject (Project: ${projectId})`;
   const db = new Firestore({ databaseId: "anxi-app" });
 
@@ -10507,38 +10596,16 @@ async function executeReminderForProject(projectId, selectedLineIds = null) {
       throw new Error("找不到任何有效的 LINE 通知對象。");
     }
 
-    // --- 步驟 3: 掃描 Google Drive (✓ 核心修改處) ---
+    // --- 步驟 3: 掃描 Google Drive（共用掃描邏輯，支援兩層/三層結構）---
     const rootFolderId = rootFolderUrl.match(/[-\w]{25,}/)?.[0];
     if (!rootFolderId) throw new Error("無效的雲端資料夾連結。");
 
     const drive = getAuthenticatedDriveClient();
-    const level1Res = await drive.files.list({ q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
+    const flatList = await scanReportFolderStructure(drive, rootFolderId);
 
-    // 使用可選鏈 (optional chaining) 和預設空陣列來確保安全
-    const level1Folders = level1Res.data?.files || [];
-
-    // 透過 Promise.all 並行處理第一層的每個資料夾
-    const nestedLevel3Folders = await Promise.all(level1Folders.map(async (l1) => {
-      const level2Res = await drive.files.list({ q: `'${l1.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
-      const level2Folders = level2Res.data?.files || [];
-      if (level2Folders.length === 0) {
-        return []; // 如果第二層是空的，明確回傳一個空陣列
-      }
-
-      // 並行處理第二層的每個資料夾
-      const level3FolderLists = await Promise.all(level2Folders.map(async (l2) => {
-        const level3Res = await drive.files.list({ q: `'${l2.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id, name)' });
-        return level3Res.data?.files || []; // 回傳第三層的檔案列表 (或空陣列)
-      }));
-
-      // 將第三層的結果展開 (從 [[a,b], [c,d]] 變成 [a,b,c,d])
-      return level3FolderLists.flat();
-    }));
-
-    // 最後，將所有結果完全展開成一個扁平的列表
-    const flatList = nestedLevel3Folders.flat();
-
-    const undownloadedFolders = flatList.filter(f => !f.name.includes("(已下載)") && !f.name.includes("(作廢)"));
+    const undownloadedFolders = flatList
+      .map(f => f.reportFolder)
+      .filter(f => !f.name.includes("(已下載)") && !f.name.includes("(作廢)"));
 
     // --- 步驟 4: 組合訊息並發送 ---
     const lineClient = new line.Client({ channelAccessToken: lineChannelAccessToken });
@@ -10557,6 +10624,11 @@ async function executeReminderForProject(projectId, selectedLineIds = null) {
       const liffUrl = `https://anxismart.com/?liff_path=report-folder-manager/${projectId}`;
       messageText = `${projectName} 驗屋報告未下載通知\n\n${folderNames}\n\n請至以下連結確認\n${liffUrl}`;
       resultMessage = "提醒訊息已成功發送。";
+    }
+
+    // 測試模式：訊息前加註標記，讓收件的管理員知道這是測試發送
+    if (isTest) {
+      messageText = `【測試通知-僅發送給超級管理員/系統管理員】\n\n${messageText}`;
     }
 
     // 無論是哪種情況，都發送 LINE 訊息（含指數退避重試機制）

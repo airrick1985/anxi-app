@@ -1594,12 +1594,19 @@
                         </v-sheet>
                       </v-card-text>
                       <v-divider></v-divider>
-                      <v-card-actions class="pa-4">
+                      <v-card-actions class="pa-4 flex-wrap">
                         <v-btn @click="handleManualLineNotification" :loading="isLoadingRecipients" color="green"
                           variant="elevated" prepend-icon="mdi-send">
                           手動通知 (LINE)
                         </v-btn>
+                        <v-btn v-if="isAdmin" @click="runAdminNotDownloadedTest" :loading="isTestingNotDownloaded"
+                          color="teal-darken-1" variant="elevated" prepend-icon="mdi-message-alert-outline" class="ml-2">
+                          超級管理員測試
+                        </v-btn>
                       </v-card-actions>
+                      <p v-if="isAdmin" class="text-caption text-medium-emphasis px-4 pb-3 mb-0">
+                        「超級管理員測試」：立即執行一次未下載報告檢查，LINE 通知僅發送給超級管理員/系統管理員，不會發送給其他人員。
+                      </p>
                     </v-card>
 
                     <!-- LINE 通知對象選擇 Dialog -->
@@ -3554,6 +3561,7 @@ import {
   fetchBookingBatches,
   deleteBookingBatch,
   manualTriggerSendReminders,
+  testNotDownloadedReminderToAdmins,
   triggerNotDownloadedReportReminder,
   getNotificationRecipients,
   uploadAttachmentImage,
@@ -3846,6 +3854,23 @@ const runManualTrigger = async () => {
     alert(`觸發失敗：${error.message}`);
   } finally {
     isTesting.value = false;
+  }
+};
+
+// 超級管理員測試：驗屋報告未下載 LINE 通知（僅發送給超級管理員/系統管理員，不通知其他人員）
+const isTestingNotDownloaded = ref(false);
+const runAdminNotDownloadedTest = async () => {
+  if (!confirm('確定要立即測試「驗屋報告未下載」LINE 通知嗎？\n\n系統會立刻執行一次未下載報告檢查，通知僅會發送給超級管理員/系統管理員，不會發送給其他人員。')) {
+    return;
+  }
+  isTestingNotDownloaded.value = true;
+  try {
+    const result = await testNotDownloadedReminderToAdmins(projectId.value, userStore.user?.key);
+    alert(`測試成功：${result.message}`);
+  } catch (error) {
+    alert(`測試失敗：${error.message}`);
+  } finally {
+    isTestingNotDownloaded.value = false;
   }
 };
 

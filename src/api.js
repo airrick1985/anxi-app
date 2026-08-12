@@ -5920,6 +5920,18 @@ export const manualTriggerSendReminders = async () => {
   }
 };
 
+// 超級管理員測試：驗屋報告未下載 LINE 通知（僅發送給超級管理員/系統管理員）
+export const testNotDownloadedReminderToAdmins = async (projectId, userKey) => {
+  try {
+    const triggerFunction = httpsCallable(functions, 'testNotDownloadedReminderToAdmins');
+    const result = await triggerFunction({ projectId, userKey });
+    return result.data;
+  } catch (error) {
+    console.error("API Error in testNotDownloadedReminderToAdmins:", error);
+    throw new Error(error.message);
+  }
+};
+
 
 // ✓ 在您的 src/api.js 檔案中加入這兩個新的函式
 

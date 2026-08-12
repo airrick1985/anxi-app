@@ -2978,6 +2978,9 @@ const handleFileChange = () => {
       headerMap.set('文件ID', '_docId');
       headerMap.set('戶號', 'unitId');
       headerMap.set('棟別', 'building'); // 非編輯欄位，但新增戶別時需要
+      // 驗屋報告資料夾／驗屋文件：Grid 內唯讀（避免誤點誤改），但開放透過 Excel 上傳批次設定連結
+      headerMap.set('驗屋報告資料夾', 'inspectionReportFolderUrl');
+      headerMap.set('驗屋文件', 'inspectionDocsUrl');
       finalColDefs.value.forEach(def => {
         if (def && def.editable === true && def.field) headerMap.set(def.headerName, def.field);
       });
