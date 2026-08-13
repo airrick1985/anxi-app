@@ -780,6 +780,7 @@ const paymentDocContext = computed(() => {
             ancillarySqm: data['附屬建物面積(平方公尺)'],
             commonPing: data['共用部分面積(坪)'],
             commonSqm: data['共用部分面積(平方公尺)'],
+            terracePing: data['露臺(坪)'],
             landSharePing: data['土地持分面積(坪)'],
             landShareSqm: data['土地持分面積(平方公尺)'],
             landShareRatio: data['土地持分']

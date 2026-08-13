@@ -473,6 +473,11 @@
                                             <span class="ps-area-val">{{ fmt2(context.areas?.commonPing) }}坪</span>
                                             <span class="ps-area-val">{{ fmt2(context.areas?.commonSqm) }} m²</span>
                                         </div>
+                                        <div v-if="Number(context.areas?.terracePing) > 0" class="ps-area-row">
+                                            <span class="ps-area-label">露臺(不計坪)：</span>
+                                            <span class="ps-area-val">{{ fmt2(context.areas?.terracePing) }}坪</span>
+                                            <span class="ps-area-val"></span>
+                                        </div>
                                         <div class="ps-area-row mt-2">
                                             <span class="ps-area-label">土地持分：</span>
                                             <span class="ps-area-val strong" style="flex: 2;">

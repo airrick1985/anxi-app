@@ -140,6 +140,7 @@ exports.generatePaymentDocument = onCall({
     parkingText: string,                    // "B5-40 (225萬)"；多車位逗號串接
     areas: { houseTotalPing, houseTotalSqm, mainPing, mainSqm,
              ancillaryPing, ancillarySqm, commonPing, commonSqm,
+             terracePing,                   // 露臺(不計坪)，僅坪數；空白/0 不顯示該列
              landSharePing, landShareSqm, landShareRatio },
     rows: [                                 // 期款列（依畫面最終值，含手動調整）
       { type: 'group', name, percent, children: [

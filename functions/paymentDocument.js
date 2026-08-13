@@ -10,6 +10,7 @@
  *   parkingText,        // "B5-40 (225萬)"，多車位逗號串接；無車位 = "無"
  *   areas: { houseTotalPing, houseTotalSqm, mainPing, mainSqm,
  *            ancillaryPing, ancillarySqm, commonPing, commonSqm,
+ *            terracePing,   // 露臺(不計坪)，僅坪數；空白/0 不顯示該列
  *            landSharePing, landShareSqm, landShareRatio },
  *   rows: [ { type:'group', name, percent, verticalLabel, children:[{seq,name,amount,note}] },
  *           { type:'single', name, percent, amount, note } ],
@@ -161,7 +162,7 @@ function drawPdfPage(pdf, docData, page, logoBuffer, qrBuffer) {
       .text(label, rLabelX, y, { width: rLabelW, align: "right" });
     pdf.font(bold ? "TC-Bold" : "TC").fontSize(labelSize)
       .text(`${ping}坪`, rValX, y, { width: halfW, align: "center" })
-      .text(`${sqm} m²`, rValX + halfW, y, { width: halfW, align: "center" });
+      .text(sqm === null ? "" : `${sqm} m²`, rValX + halfW, y, { width: halfW, align: "center" });
     // 底線
     pdf.moveTo(rValX, y + rowH - 6).lineTo(right, y + rowH - 6).lineWidth(0.5).strokeColor("#999999").stroke();
   };
@@ -171,6 +172,10 @@ function drawPdfPage(pdf, docData, page, logoBuffer, qrBuffer) {
   drawAreaRow(ry, "主建物：", fmt2(a.mainPing), fmt2(a.mainSqm), false, false); ry += rowH;
   drawAreaRow(ry, "陽台：", fmt2(a.ancillaryPing), fmt2(a.ancillarySqm), false, false); ry += rowH;
   drawAreaRow(ry, "共用部分：", fmt2(a.commonPing), fmt2(a.commonSqm), false, false); ry += rowH;
+  // 露臺不計坪、無平方公尺資料；面積為空白/0 時不列
+  if (Number(a.terracePing) > 0) {
+    drawAreaRow(ry, "露臺(不計坪)：", fmt2(a.terracePing), null, false, false); ry += rowH;
+  }
   ry += 8;
   // 土地持分
   pdf.fillColor(BLACK).font("TC").fontSize(labelSize)
@@ -515,6 +520,12 @@ function buildExcelSheet(wb, docData, page, sheetName, logoBuffer, qrBuffer) {
   setLabel("E8", "共用部分：");
   setVal("F8", `${fmt2(a.commonPing)}坪`);
   setVal("G8", `${fmt2(a.commonSqm)} m²`);
+
+  // 露臺不計坪、無平方公尺資料；面積為空白/0 時不列
+  if (Number(a.terracePing) > 0) {
+    setLabel("E9", "露臺(不計坪)：");
+    setVal("F9", `${fmt2(a.terracePing)}坪`);
+  }
 
   setLabel("E10", "土地持分：");
   ws.mergeCells("F10:G10");
