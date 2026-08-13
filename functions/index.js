@@ -1261,6 +1261,13 @@ exports.uploadHouseholds = onCall({
         }
       }
 
+      // ✅ [新增] 合約分戶圖位置：Google Drive 資料夾或圖檔連結，正規化為 trim 後字串。
+      // payload「沒有」此欄位時不寫入（merge: true 保留既有值）；空儲存格 → 清空為 null
+      if (Object.prototype.hasOwnProperty.call(dataToSave, 'contractDrawingFolderUrl')) {
+        const rawUrl = String(dataToSave.contractDrawingFolderUrl ?? '').trim();
+        dataToSave.contractDrawingFolderUrl = rawUrl === '' ? null : rawUrl;
+      }
+
       // ✓ START: 新增 - 處理銀行帳號和特定文字欄位
       // 正體中文註解：定義哪些欄位應被強制視為文字，以保留前導 0 或特殊格式。
       // (請確保您在 SalesControlSystem.vue 的 COLUMN_DEFINITIONS 中使用相同的英文 key)
@@ -9960,7 +9967,7 @@ exports.updateAppointmentByAdmin = onCall({ region: "asia-east1", cors: true, se
  * [優化版] 獲取 Google Drive 資料夾內的檔案與資料夾列表
  */
 exports.driveProxyList = onCall({ region: "asia-east1", secrets: driveSecrets }, async (request) => {
-  const { folderId, searchTerm } = request.data;
+  const { folderId, searchTerm, resolveId } = request.data;
   const functionName = `driveProxyList (Folder: ${folderId})`;
 
   if (!folderId) {
@@ -9971,6 +9978,31 @@ exports.driveProxyList = onCall({ region: "asia-east1", secrets: driveSecrets },
     // ✓ 使用快取輔助函式
     const drive = getAuthenticatedDriveClient();
 
+    // resolveId：ID 可能是資料夾或單一檔案（如 open?id=xxx 連結），先查 metadata 判別
+    if (resolveId) {
+      const meta = await drive.files.get({
+        fileId: folderId,
+        fields: 'id, name, mimeType, size, iconLink, webViewLink, thumbnailLink',
+        supportsAllDrives: true,
+      });
+      if (meta.data.mimeType !== 'application/vnd.google-apps.folder') {
+        return {
+          status: 'success',
+          files: [{
+            id: meta.data.id,
+            name: meta.data.name,
+            mimeType: meta.data.mimeType || '',
+            isFolder: false,
+            size: meta.data.size ? parseInt(meta.data.size, 10) : 0,
+            icon: meta.data.iconLink,
+            url: meta.data.webViewLink,
+            thumbnail: meta.data.thumbnailLink || null,
+          }],
+        };
+      }
+      // 是資料夾 → 往下走原本的列表邏輯
+    }
+
     let query = `'${folderId}' in parents and trashed=false`;
     if (searchTerm) {
       query += ` and name contains '${searchTerm}'`;
@@ -9980,12 +10012,15 @@ exports.driveProxyList = onCall({ region: "asia-east1", secrets: driveSecrets },
       q: query,
       fields: 'files(id, name, mimeType, modifiedTime, size, iconLink, webViewLink, thumbnailLink)',
       orderBy: 'folder, name',
-      pageSize: 500
+      pageSize: 500,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
     });
 
     const files = response.data.files.map(file => ({
       id: file.id,
       name: file.name,
+      mimeType: file.mimeType || '',
       isFolder: file.mimeType === 'application/vnd.google-apps.folder',
       modifiedTime: file.modifiedTime,
       size: file.size ? parseInt(file.size, 10) : 0,
@@ -18760,6 +18795,125 @@ exports.generatePaymentDocument = onCall({
   } catch (error) {
     console.error('[generatePaymentDocument] 產製失敗:', error);
     throw new HttpsError("internal", `付款表產製失敗: ${error.message}`);
+  }
+});
+
+/* ==========================================================
+ * ✅ [新增] 合約製作資料產製（PDF / EXCEL）
+ * docs/合約製作資料範本-spec.md §7
+ * 前端：ContractDocDialog.vue 傳入各頁完整渲染資料（信任前端計算，僅做基本複核）。
+ * secrets 僅供「合約附圖」頁自 Drive 下載檔案；無附圖頁時不觸發 Drive。
+ * ========================================================== */
+exports.generateContractDocument = onCall({
+  region: "asia-east1",
+  timeoutSeconds: 300,
+  memory: "512MiB",
+  secrets: driveSecrets
+}, async (request) => {
+  const { projectId, format, pages, fileNameParts } = request.data || {};
+  if (!projectId || !['pdf', 'excel'].includes(format) || !Array.isArray(pages) || pages.length === 0) {
+    throw new HttpsError("invalid-argument", "缺少 projectId、format(pdf|excel) 或 pages 參數。");
+  }
+
+  const VALID_TYPES = new Set(['breakdown', 'paymentDetail', 'bankAccounts', 'contractNotes', 'contractAttachments']);
+  for (const page of pages) {
+    if (!page || !VALID_TYPES.has(page.type)) {
+      throw new HttpsError("invalid-argument", `未知的頁面類型：${page && page.type}`);
+    }
+  }
+
+  // 基本複核：拆款表 / 付款明細表的房+土合計須等於總額（容差 0.05 萬）
+  for (const page of pages) {
+    const d = page.data || {};
+    if (page.type === 'breakdown' && d.installment) {
+      const sum = (Number(d.installment.houseTotal) || 0) + (Number(d.installment.landTotal) || 0);
+      if (Math.abs(sum - (Number(d.installment.grandTotal) || 0)) > 0.05) {
+        throw new HttpsError("invalid-argument", `拆款表房屋+土地合計（${sum} 萬）須等於期款總額（${d.installment.grandTotal} 萬）。`);
+      }
+    }
+    if (page.type === 'paymentDetail') {
+      const sum = (Number(d.houseTotal) || 0) + (Number(d.landTotal) || 0);
+      if (Math.abs(sum - (Number(d.grandTotal) || 0)) > 0.05) {
+        throw new HttpsError("invalid-argument", `付款明細表房屋+土地合計（${sum} 萬）須等於期款總額（${d.grandTotal} 萬）。`);
+      }
+    }
+  }
+
+  const warnings = [];
+
+  try {
+    const { buildContractPdf, buildContractExcel } = require('./contractDocument');
+    const isPdf = format === 'pdf';
+
+    let buffer;
+    if (isPdf) {
+      // 合約附圖：自 Drive 下載選定檔案（單檔失敗不中斷，記入 warnings）
+      const attachmentFiles = [];
+      const attachmentPages = pages.filter(p => p.type === 'contractAttachments');
+      for (const page of attachmentPages) {
+        const selection = (page.data && page.data.selection) || [];
+        if (!selection.length) continue;
+        const drive = getAuthenticatedDriveClient();
+        const pageFiles = [];
+        for (const sel of selection) {
+          try {
+            const meta = await drive.files.get({ fileId: sel.fileId, fields: 'id, name, mimeType, size', supportsAllDrives: true });
+            const sizeBytes = Number(meta.data.size) || 0;
+            if (sizeBytes > 8 * 1024 * 1024) {
+              warnings.push(`${sel.fileName || meta.data.name}（檔案過大，已略過）`);
+              continue;
+            }
+            const res = await drive.files.get(
+              { fileId: sel.fileId, alt: 'media', supportsAllDrives: true },
+              { responseType: 'arraybuffer' }
+            );
+            pageFiles.push({
+              fileId: sel.fileId,
+              fileName: sel.fileName || meta.data.name,
+              mimeType: meta.data.mimeType || '',
+              pageRange: sel.pageRange || null,
+              buffer: Buffer.from(res.data)
+            });
+          } catch (e) {
+            console.warn(`[generateContractDocument] 附圖下載失敗（${sel.fileName}）:`, e.message);
+            warnings.push(sel.fileName || sel.fileId);
+          }
+        }
+        // 重複頁數：附圖整組複製 N 次（同一 buffer 重複引用，不重複下載）
+        const pageCopies = Math.max(1, Math.min(10, Number(page.pageCopies) || 1));
+        for (let pc = 0; pc < pageCopies; pc++) {
+          attachmentFiles.push(...pageFiles);
+        }
+      }
+      buffer = await buildContractPdf({ pages }, attachmentFiles);
+    } else {
+      buffer = await buildContractExcel({ pages });
+    }
+
+    // onCall 回應上限 10MB，base64 後約 1.37 倍
+    if (buffer.length > 7 * 1024 * 1024) {
+      throw new HttpsError("resource-exhausted", "產出檔案過大（超過 7MB），請減少合約附圖頁數後重試。");
+    }
+
+    const today = formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyyMMdd');
+    const parts = fileNameParts || {};
+    const salesText = formatSalespersons(parts.salesperson, ',', '') || 'N/A';
+    const pageSuffix = parts.pageTitle ? `-${parts.pageTitle}` : '';
+    const fileName = `${today}-${parts.projectName || ''}-合約製作${pageSuffix}-${parts.unitId || ''}-${salesText}.${isPdf ? 'pdf' : 'xlsx'}`;
+
+    return {
+      status: 'success',
+      fileName,
+      mimeType: isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      base64: buffer.toString('base64'),
+      warnings
+    };
+  } catch (error) {
+    console.error('[generateContractDocument] 產製失敗:', error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `合約製作文件產製失敗: ${error.message}`);
   }
 });
 

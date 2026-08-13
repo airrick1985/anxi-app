@@ -669,6 +669,11 @@
                 <v-icon left>mdi-folder-google-drive</v-icon>
                 {{ unitData.unitId }} 資料夾
               </v-btn>
+              <v-btn v-if="viewMode === 'sales' && unitData && unitData.contractDrawingFolderUrl" color="indigo"
+                variant="flat" :href="unitData.contractDrawingFolderUrl" target="_blank">
+                <v-icon left>mdi-floor-plan</v-icon>
+                合約分戶圖
+              </v-btn>
               <v-btn v-if="viewMode === 'sales'" color="success" variant="flat" @click="downloadExcel">
                 <v-icon left>mdi-microsoft-excel</v-icon>
                 下載本戶資料
@@ -680,6 +685,10 @@
               <v-btn v-if="viewMode === 'sales'" color="secondary" variant="flat" @click="openPaymentSettings">
                 <v-icon left>mdi-cash-register</v-icon>
                 付款表設定
+              </v-btn>
+              <v-btn v-if="viewMode === 'sales'" color="deep-purple" variant="flat" @click="openContractDoc">
+                <v-icon left>mdi-file-document-edit-outline</v-icon>
+                合約製作設定
               </v-btn>
               <v-btn color="primary" variant="text" @click="close">關閉</v-btn>
             </template>
@@ -712,6 +721,12 @@
                   <v-icon>mdi-cash-register</v-icon>
                   <span class="text-caption">付款表</span>
                 </v-btn>
+                <!-- 主要操作：合約製作設定 -->
+                <v-btn v-if="viewMode === 'sales'" stacked variant="text" class="flex-grow-1"
+                  @click="openContractDoc">
+                  <v-icon>mdi-file-document-edit-outline</v-icon>
+                  <span class="text-caption">合約製作</span>
+                </v-btn>
                 <!-- 更多操作：退戶 / 實價登錄 / 資料夾 / 下載 -->
                 <v-menu location="top end" :close-on-content-click="true">
                   <template #activator="{ props: menuProps }">
@@ -728,6 +743,9 @@
                     <v-list-item v-if="viewMode === 'sales' && unitData && unitData.driveFolderUrl"
                       :href="unitData.driveFolderUrl" target="_blank"
                       prepend-icon="mdi-folder-google-drive" :title="`${unitData.unitId} 資料夾`" />
+                    <v-list-item v-if="viewMode === 'sales' && unitData && unitData.contractDrawingFolderUrl"
+                      :href="unitData.contractDrawingFolderUrl" target="_blank"
+                      prepend-icon="mdi-floor-plan" title="合約分戶圖" />
                     <v-list-item v-if="viewMode === 'sales'" @click="downloadExcel"
                       prepend-icon="mdi-microsoft-excel" title="下載本戶資料" />
                   </v-list>
@@ -776,6 +794,10 @@
     @update:show="paymentSettingsDialog = $event" :unit-data="enrichedUnitData" :project-name="projectName"
     :project-id="projectId" :all-data="allData" :contract-types="props.contractTypes"
     @request-open-slide="$emit('request-open-slide')" @parking-updated="handleParkingUpdate" />
+
+  <ContractDocDialog v-if="contractDocDialog" :show="contractDocDialog"
+    @update:show="contractDocDialog = $event" :unit-data="enrichedUnitData" :project-name="projectName"
+    :project-id="projectId" :all-data="allData" />
 
   <v-dialog v-model="fullscreenViewerDialog" fullscreen hide-overlay>
     <v-card class="fullscreen-viewer" :class="{ 'measuring': measureActive }">
@@ -972,6 +994,7 @@ import LandParcelsPanel from './LandParcelsPanel.vue';
 import { computeHouseLandPrices, buildDefaultFormulas, isSpecialContractType } from '@/composables/usePriceFormula';
 import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue';
+import ContractDocDialog from '@/components/contractDoc/ContractDocDialog.vue';
 import ConfirmationDialog from './ConfirmationDialog.vue';
 import CancelPurchaseDialog from './CancelPurchaseDialog.vue';
 import SalesStatusNotifyDialog from './SalesStatusNotifyDialog.vue';
@@ -1294,6 +1317,7 @@ const isEditing = ref(false);
 const isSaving = ref(false);
 const editingData = ref(null);
 const paymentSettingsDialog = ref(false);
+const contractDocDialog = ref(false);
 
 const calculatedUnitPrice = computed(() => {
   const price = props.unitData?.price_list_house_total;
@@ -1544,6 +1568,10 @@ const buyerInfoOptions = computed(() => {
 
 function openPaymentSettings() {
   paymentSettingsDialog.value = true;
+}
+
+function openContractDoc() {
+  contractDocDialog.value = true;
 }
 
 // ✅ [新增] 備註圖片：合併已存在圖片 + 待上傳圖片，給編輯模式預覽用

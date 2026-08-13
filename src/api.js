@@ -5553,6 +5553,78 @@ export const deletePaymentTermTemplate = (docId) => {
   return deleteDoc(docRef);
 };
 
+/* ==========================================================
+ * 合約製作資料範本（docs/合約製作資料範本-spec.md）
+ * ========================================================== */
+
+/** 讀取建案的合約製作設定（contractDocConfigs/{projectId}；不存在回 null） */
+export const fetchContractDocConfig = async (projectId) => {
+  const snap = await getDoc(doc(db, "contractDocConfigs", projectId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+};
+
+/** 儲存建案的合約製作設定（整份覆蓋） */
+export const setContractDocConfig = (projectId, configData) => {
+  const userStore = useUserStore();
+  return setDoc(doc(db, "contractDocConfigs", projectId), {
+    ...configData,
+    projectId,
+    updatedBy: userStore.user?.key || userStore.user?.name || '',
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/** 全域合約製作範本清單（超管/系管維護） */
+export const fetchContractDocTemplates = async () => {
+  const snapshot = await getDocs(query(collection(db, "contractDocTemplates"), orderBy("name", "asc")));
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+/** 新增/覆蓋全域合約製作範本 */
+export const setContractDocTemplate = (docId, templateData) => {
+  const userStore = useUserStore();
+  return setDoc(doc(db, "contractDocTemplates", docId), {
+    ...templateData,
+    updatedBy: userStore.user?.key || userStore.user?.name || '',
+    updatedAt: serverTimestamp(),
+  }, { merge: false });
+};
+
+/** 刪除全域合約製作範本 */
+export const deleteContractDocTemplate = (docId) => {
+  return deleteDoc(doc(db, "contractDocTemplates", docId));
+};
+
+/** 更新戶別的合約製作填寫資料（salesHouseholds/{docId}.contractDocData 整包覆蓋） */
+export const updateContractDocData = (householdDocId, contractDocData) => {
+  const userStore = useUserStore();
+  return updateDoc(doc(db, "salesHouseholds", householdDocId), {
+    contractDocData: {
+      ...contractDocData,
+      updatedBy: userStore.user?.key || userStore.user?.name || '',
+      updatedAt: Timestamp.now(),
+    },
+  });
+};
+
+/** 一次性抓取建案戶別（合約設定試算用的精簡清單） */
+export const fetchSalesHouseholdsOnce = async (projectId) => {
+  const snapshot = await getDocs(query(collection(db, "salesHouseholds"), where("projectId", "==", projectId)));
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+/** 合約製作文件產製（後端 PDF/EXCEL） */
+export const generateContractDocument = async (payload) => {
+  try {
+    const func = httpsCallable(functions, 'generateContractDocument', { timeout: 300000 });
+    const result = await func(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in generateContractDocument:", error);
+    throw new Error(error.message || '合約製作文件產製失敗');
+  }
+};
+
 /**
  * 從後端獲取指定專案的文字樣式
  * @param {string} projectId 專案 ID

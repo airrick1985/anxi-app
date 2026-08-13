@@ -77,10 +77,11 @@ export function buildDefaultFormulas() {
 }
 
 // ============ 顯示：token → 可讀字串 ============
-export function formulaToDisplayString(formula) {
+// refMap 可選：合約製作等擴充情境傳入自訂參照表；不傳則沿用房土比的 REF_MAP
+export function formulaToDisplayString(formula, refMap = REF_MAP) {
   if (!formula || !Array.isArray(formula.tokens) || formula.tokens.length === 0) return '(空)';
   const parts = formula.tokens.map(t => {
-    if (t.type === 'ref') return `[${REF_MAP[t.key]?.label || t.key}]`;
+    if (t.type === 'ref') return `[${refMap[t.key]?.label || t.key}]`;
     if (t.type === 'op') {
       const o = OP_OPTIONS.find(o => o.op === t.op);
       return o ? o.label : t.op;
@@ -260,6 +261,124 @@ export function computeHouseLandPrices(unitData, formulaSettings) {
 function usesRef(formula, key) {
   if (!formula || !Array.isArray(formula.tokens)) return false;
   return formula.tokens.some(t => t.type === 'ref' && t.key === key);
+}
+
+// ============================================================
+// 合約製作資料範本：價款公式擴充（見 docs/合約製作資料範本-spec.md §5）
+// 沿用同一套 token 引擎，擴充可用參照（面積變數 + 依序定義的價款項目）。
+// 既有房土比呼叫端（REF_DEFINITIONS / computeHouseLandPrices）行為不變。
+// ============================================================
+
+// 合約價款公式的基礎參照（房土比 6 個 + 面積 6 個）
+export const CONTRACT_BASE_REF_DEFINITIONS = [
+  ...REF_DEFINITIONS,
+  { key: 'houseAreaSqm',     label: '房屋總面積(㎡)',      group: 'area', unit: '㎡' },
+  { key: 'houseAreaPing',    label: '房屋總面積(坪)',      group: 'area', unit: '坪' },
+  { key: 'mainAreaSqm',      label: '主建物面積(㎡)',      group: 'area', unit: '㎡' },
+  { key: 'ancillaryAreaSqm', label: '附屬建物(陽台)面積(㎡)', group: 'area', unit: '㎡' },
+  { key: 'commonAreaSqm',    label: '共有部份面積(㎡)',    group: 'area', unit: '㎡' },
+  { key: 'landShareSqm',     label: '土地持分面積(㎡)',    group: 'area', unit: '㎡' },
+];
+
+// 期款房/土拆分公式的額外參照
+export const INSTALLMENT_SPLIT_REF_DEFINITIONS = [
+  { key: 'installmentAmount', label: '期款金額(該期)', group: 'primary', unit: '萬' },
+];
+
+/**
+ * 建立合約價款公式的完整參照定義清單。
+ * @param {Array} priceFormulas 合約 config 的 priceFormulas（有序）
+ * @param {number} uptoIndex 只納入此 index 之前（不含）的項目為可用參照；-1 或省略 = 全部納入
+ * @param {Array} extraRefs 額外參照（如期款拆分的 installmentAmount）
+ */
+export function buildContractRefDefinitions(priceFormulas = [], uptoIndex = -1, extraRefs = []) {
+  const fields = (uptoIndex >= 0 ? priceFormulas.slice(0, uptoIndex) : priceFormulas)
+    .filter(f => f && f.key && f.label)
+    .map(f => ({ key: f.key, label: f.label, group: 'field', unit: '萬' }));
+  return [...CONTRACT_BASE_REF_DEFINITIONS, ...extraRefs, ...fields];
+}
+
+export function refDefinitionsToMap(refDefs) {
+  return Object.fromEntries((refDefs || []).map(r => [r.key, r]));
+}
+
+/**
+ * 建立合約價款計算的基礎 context（含房土比計算結果）。
+ * @param {object} unitData 戶別資料（英文 key，含 持有車位）
+ * @param {object} priceFormulaSettings projects.priceFormulaSettings（房土比公式）
+ * @returns {{ context: object, error: string }}
+ */
+export function buildContractBaseContext(unitData, priceFormulaSettings) {
+  const { housePrice, landPrice, error } = computeHouseLandPrices(unitData, priceFormulaSettings);
+  const total = isSpecialContractType(unitData?.contractType)
+    ? (Number(unitData?.price_package_deal) || 0)
+    : (Number(unitData?.price_transaction_total) || 0);
+  const parking = Array.isArray(unitData?.['持有車位'])
+    ? unitData['持有車位'].reduce((s, p) => s + (Number(p?.['車位成交價'] ?? p?.price_transaction) || 0), 0)
+    : 0;
+  const context = {
+    total,
+    parking,
+    houseRatio: Number(unitData?.housePriceRatio) || 0,
+    landRatio: Number(unitData?.landPriceRatio) || 0,
+    housePrice: Number.isFinite(housePrice) ? housePrice : 0,
+    landPrice: Number.isFinite(landPrice) ? landPrice : 0,
+    houseAreaSqm: Number(unitData?.area_house_sqm) || 0,
+    houseAreaPing: Number(unitData?.area_house_ping) || 0,
+    mainAreaSqm: Number(unitData?.area_main_sqm) || 0,
+    ancillaryAreaSqm: Number(unitData?.area_ancillary_sqm) || 0,
+    commonAreaSqm: Number(unitData?.area_common_sqm) || 0,
+    landShareSqm: Number(unitData?.land_share_sqm) || 0,
+  };
+  return { context, error: error || '' };
+}
+
+/**
+ * 依序計算合約 config 的價款項目（前面項目結果自動成為後續可用參照）。
+ * @param {Array} priceFormulas [{ key, label, tokens, rounding }]
+ * @param {object} baseContext buildContractBaseContext 的 context
+ * @returns {{ values: object, errors: object }} values[key] = 金額(萬)；errors[key] = 錯誤訊息
+ */
+export function computeContractPriceFields(priceFormulas = [], baseContext = {}) {
+  const ctx = { ...baseContext };
+  const values = {};
+  const errors = {};
+  for (const field of priceFormulas) {
+    if (!field || !field.key) continue;
+    const v = evaluateFormulaWithContext({ tokens: field.tokens, rounding: field.rounding }, ctx);
+    if (Number.isFinite(v)) {
+      values[field.key] = v;
+      ctx[field.key] = v;
+    } else {
+      values[field.key] = NaN;
+      ctx[field.key] = 0;
+      errors[field.key] = '公式無效或參照缺值';
+    }
+  }
+  return { values, errors };
+}
+
+/**
+ * 計算各期款的房/土拆分。
+ * @param {Array} rows 期款列（攤平後）：[{ name, amount }]（amount 單位萬，母項含子項時請傳子項列）
+ * @param {object} splitRules { defaultLandTokens, rules: [{ itemName, landTokens }] }
+ * @param {object} baseContext 基礎 context（含 landPrice / housePrice / 價款項目結果）
+ * @returns {Array} [{ name, amount, landAmount, houseAmount }]
+ */
+export function computeInstallmentSplit(rows = [], splitRules = {}, baseContext = {}) {
+  const defaultTokens = Array.isArray(splitRules?.defaultLandTokens) && splitRules.defaultLandTokens.length
+    ? splitRules.defaultLandTokens
+    : [{ type: 'number', value: 0 }];
+  const rules = Array.isArray(splitRules?.rules) ? splitRules.rules : [];
+  return rows.map(row => {
+    const rule = rules.find(r => r.itemName === row.name);
+    const tokens = rule?.landTokens?.length ? rule.landTokens : defaultTokens;
+    const ctx = { ...baseContext, installmentAmount: Number(row.amount) || 0 };
+    let landAmount = evaluateFormulaWithContext({ tokens, rounding: rule?.rounding || { mode: 'round', decimals: 1 } }, ctx);
+    if (!Number.isFinite(landAmount)) landAmount = 0;
+    const houseAmount = (Number(row.amount) || 0) - landAmount;
+    return { ...row, landAmount, houseAmount };
+  });
 }
 
 // 給前端偵錯：一次輸出 context + 結果（除錯時可用）

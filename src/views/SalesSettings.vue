@@ -47,6 +47,10 @@
         <v-icon start>mdi-format-list-numbered</v-icon>
         期款設定
       </v-tab>
+      <v-tab value="contractDoc">
+        <v-icon start>mdi-file-document-edit-outline</v-icon>
+        合約製作範本
+      </v-tab>
       <v-tab value="images">
         <v-icon start>mdi-image-multiple</v-icon>
         銷控圖片管理
@@ -423,6 +427,10 @@
 
       <v-window-item value="paymentTerms">
         <PaymentTermsSettings />
+      </v-window-item>
+
+      <v-window-item value="contractDoc">
+        <ContractDocConfigEditor />
       </v-window-item>
 
       <v-window-item value="images">
@@ -1691,6 +1699,8 @@ import {
 
 
 const SalesPersonnelForm = defineAsyncComponent(() => import('./SalesPersonnelForm.vue'));
+// ✅ [新增] 合約製作範本設定（docs/合約製作資料範本-spec.md）
+const ContractDocConfigEditor = defineAsyncComponent(() => import('@/components/ContractDocConfigEditor.vue'));
 
 const route = useRoute();
 const router = useRouter(); 

@@ -719,6 +719,19 @@ const routes = [
     }
   },
 
+  // ✅ [新增] 合約製作範本管理（全域，docs/合約製作資料範本-spec.md §6.1）
+  {
+    path: '/contract-doc-templates',
+    name: 'ContractDocTemplateManager',
+    component: () => import('@/views/ContractDocTemplateManager.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredRoles: ['超級管理員', '系統管理員'],
+      layout: DefaultLayout,
+      title: '合約製作範本管理'
+    }
+  },
+
   {
     path: '/viewing-reservation-entry',
     name: 'ViewingReservationCalendarEntry',

@@ -2172,6 +2172,7 @@ const PIVOT_EXCLUDED_KEYS = new Set([
   'salesImages',          // 圖片物件，無法作為維度
   'svgName',              // SVG 圖檔名
   'driveFolderUrl',       // 資料夾連結
+  'contractDrawingFolderUrl', // 合約分戶圖連結
   'salesStatus_backend',  // 與「銷控狀態」重複
 ]);
 const pivotDimensionOptions = computed(() => {
@@ -3289,6 +3290,7 @@ const COLUMN_DEFINITIONS = [
     { key: 'salesImages', title: '戶別圖片' },
     { key: 'svgName', title: 'SVG圖檔' },
     { key: 'driveFolderUrl', title: '戶別資料夾位置' },
+    { key: 'contractDrawingFolderUrl', title: '合約分戶圖位置' },
 ];
 const exportableColumns = computed(() => COLUMN_DEFINITIONS.filter(c => c.exportable !== false));
 

@@ -778,7 +778,7 @@ const handleExport = () => {
   }
   ws['!freeze'] = { ySplit: 1 };
   ws['!cols'] = exportColumns.map(c => {
-    if (c.key === 'remarks' || c.key.includes('Address') || c.key === 'driveFolderUrl') return { wch: 24 };
+    if (c.key === 'remarks' || c.key.includes('Address') || c.key === 'driveFolderUrl' || c.key === 'contractDrawingFolderUrl') return { wch: 24 };
     return { wch: 12 };
   });
 
