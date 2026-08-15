@@ -44,8 +44,9 @@
             </template>
           </VueDatePicker>
         </v-col>
-        <v-col cols="12">
+        <v-col cols="12" class="d-flex align-center">
           <v-autocomplete
+            class="flex-grow-1"
             v-model="selectedSearchResult"
             v-model:search="searchQuery"
             :items="autocompleteItems"
@@ -85,8 +86,35 @@
               </v-list-item>
             </template>
           </v-autocomplete>
+          <!-- 與桌機版同一個進階篩選介面（手機自動改為全螢幕版型） -->
+          <v-badge :content="advFilterCount" :model-value="advFilterCount > 0" color="error" offset-x="2" offset-y="2" class="ml-2 flex-shrink-0">
+            <v-btn
+              :color="advFilterCount > 0 ? 'primary' : 'black'"
+              :variant="advFilterCount > 0 ? 'flat' : 'tonal'"
+              size="small"
+              prepend-icon="mdi-filter-variant"
+              @click="isAdvFilterDialogVisible = true"
+            >篩選</v-btn>
+          </v-badge>
         </v-col>
       </v-row>
+
+      <!-- 手機／平板：已套用的進階條件，不用開對話框就能看見並移除 -->
+      <div v-if="activeAdvChips.length > 0" class="d-flex d-md-none align-center flex-wrap ga-1 mb-3 px-1">
+        <v-chip
+          v-for="chip in activeAdvChips"
+          :key="chip.id"
+          size="small"
+          color="primary"
+          variant="flat"
+          closable
+          label
+          @click:close="removeAdvChip(chip)"
+        >
+          <v-icon start size="x-small">{{ chip.icon }}</v-icon>{{ chip.text }}
+        </v-chip>
+        <v-btn size="x-small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="clearAdvFilters">全部清除</v-btn>
+      </div>
 
       <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error"></v-alert>
 
@@ -1955,11 +1983,6 @@
           @click="isPivotDialogVisible = true"
         ></v-list-item>
         <v-list-item
-          prepend-icon="mdi-filter-variant"
-          title="進階篩選"
-          @click="isAdvFilterDialogVisible = true"
-        ></v-list-item>
-        <v-list-item
           prepend-icon="mdi-cog"
           title="顯示設定"
           @click="isFilterDialogVisible = true"
@@ -2962,7 +2985,6 @@ const isAnyOverlayActive = computed(() => {
          isDuplicateDialogVisible.value ||
          isForceSaveDialogVisible.value ||
          isBatchMismatchDialogVisible.value ||
-         isFilterDrawerVisible.value ||
          isFilterDialogVisible.value ||
          isAdvFilterDialogVisible.value ||
          isStatisticsDialogVisible.value ||
