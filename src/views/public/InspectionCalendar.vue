@@ -2085,12 +2085,17 @@ import { formatSalespersons, normalizeSalespersons } from '@/utils/salespersonUt
 
 
 // --- Store 和路由 ---
+// projectId 支援兩種來源：路由參數（主版本入口），或由父層以 prop 傳入
+// （LIFF 預約時間表 LiffInspectionCalendar.vue 以薄包裝方式共用本元件，兩處介面與功能永遠一致）
+const props = defineProps({
+  projectId: { type: String, default: null },
+});
 const route = useRoute();
 const router = useRouter(); // 驗屋預約管理 【新增】獲取 router 實例
 const userStore = useUserStore();
 const pageContextStore = usePageContextStore();
 const projectStore = useProjectStore(); // 驗屋預約管理 2. 建立 store 實例
-const projectId = ref(route.params.projectId);
+const projectId = ref(props.projectId || route.params.projectId);
 
 const systemName = '驗屋預約管理';
 useSystemPresence(projectId.value, systemName);

@@ -52,3 +52,6 @@ temp_skill_repo/
 gas_inspection_schedule.gs
 # Claude Code session lock (runtime file, not for version control)
 .claude/scheduled_tasks.lock
+
+# 客戶合約／文件 PDF 範本樣張（含客戶姓名等個資，本 repo 為公開，一律不進版控）
+docs/*.pdf
