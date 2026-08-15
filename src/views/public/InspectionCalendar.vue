@@ -899,6 +899,7 @@
       :calendar-data="calendarData"
       :inspector-leave-map="inspectorLeaveMap"
       @save="handleSaveChangesFromDialog"
+      @inline-save="handleInlineSaveFromDialog"
       @cancel-appointment="promptCancelBooking"
       @update-inspectors="handleUpdateInspectorsFromDialog"
       @request-calendar-data="handleRequestCalendarData"
@@ -3912,6 +3913,19 @@ function showSnackbar(text, color = 'success') {
   snackbarText.value = text;
   snackbar.value = true; 
 }
+
+// 對話框內快速編輯「預約備註／重要備註」走 inline-save（不關閉對話框、已直接寫入後端）：
+// 先記錄有變更，待對話框關閉時再重新載入資料，讓時間表立即顯示剛修改的備註
+const hasPendingInlineChanges = ref(false);
+function handleInlineSaveFromDialog() {
+  hasPendingInlineChanges.value = true;
+}
+watch(isDialogVisible, (visible) => {
+  if (!visible && hasPendingInlineChanges.value) {
+    hasPendingInlineChanges.value = false;
+    fetchData();
+  }
+});
 
 // ✅ 9. 修改 handleSaveChangesFromDialog
 async function handleSaveChangesFromDialog(payload) {

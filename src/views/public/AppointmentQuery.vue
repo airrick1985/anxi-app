@@ -104,6 +104,7 @@
     :booking-options="bookingOptions"
     :calendar-data="calendarData"
     @save="handleSaveAppointment"
+    @inline-save="handleInlineSaveFromDialog"
     @cancel-appointment="promptCancelBooking"
     @update-inspectors="handleUpdateInspectors"
   />
@@ -314,6 +315,19 @@ async function handleUpdateInspectors(payload) {
 }
 
 // ✓ 新增：處理儲存的函式
+// 對話框內快速編輯「預約備註／重要備註」走 inline-save（不關閉對話框、已直接寫入後端）：
+// 先記錄有變更，待對話框關閉時再重新執行搜尋，讓查詢結果立即顯示剛修改的備註
+const hasPendingInlineChanges = ref(false);
+function handleInlineSaveFromDialog() {
+  hasPendingInlineChanges.value = true;
+}
+watch(isDialogVisible, (visible) => {
+  if (!visible && hasPendingInlineChanges.value) {
+    hasPendingInlineChanges.value = false;
+    handleSearch();
+  }
+});
+
 async function handleSaveAppointment(payload) {
   try {
     const { appointmentId, bookingPayload, householdPayload, householdDocId } = payload;

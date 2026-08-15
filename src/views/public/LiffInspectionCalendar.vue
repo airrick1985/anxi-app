@@ -362,6 +362,7 @@
       :calendar-data="calendarData"
       :inspector-leave-map="inspectorLeaveMap"
       @save="handleSaveAppointment"
+      @inline-save="handleInlineSaveFromDialog"
       @cancel-appointment="promptCancelBooking"
       @update-inspectors="handleUpdateInspectors"
       @request-calendar-data="handleRequestCalendarData"
@@ -1156,6 +1157,20 @@ async function handleUpdateInspectors(payload) {
     showSnackbar(`更新驗屋人員失敗: ${err.message}`, 'error');
   }
 }
+
+// 對話框內快速編輯「預約備註／重要備註」走 inline-save（不關閉對話框、已直接寫入後端）：
+// 先記錄有變更，待對話框關閉時再重新載入資料，讓列表立即顯示剛修改的備註
+const hasPendingInlineChanges = ref(false);
+function handleInlineSaveFromDialog() {
+  hasPendingInlineChanges.value = true;
+}
+watch(isDialogVisible, async (visible) => {
+  if (!visible && hasPendingInlineChanges.value) {
+    hasPendingInlineChanges.value = false;
+    await fetchDayData(selectedProject.value, selectedDate.value);
+    await fetchAllProjectData(selectedProject.value);
+  }
+});
 
 async function handleSaveAppointment(payload) {
   try {
