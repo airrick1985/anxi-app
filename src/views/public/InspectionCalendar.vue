@@ -323,6 +323,32 @@
       </template>
     </v-tooltip>
 
+    <v-tooltip :text="isQuotaRowHidden ? '顯示名額列' : '隱藏名額列'" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn
+          v-if="!xs"
+          v-bind="props"
+          :icon="isQuotaRowHidden ? 'mdi-chart-box-outline' : 'mdi-chart-box'"
+          variant="text"
+          :color="isQuotaRowHidden ? 'grey' : 'teal-darken-2'"
+          @click="isQuotaRowHidden = !isQuotaRowHidden"
+        ></v-btn>
+      </template>
+    </v-tooltip>
+
+    <v-tooltip :text="isNoteRowHidden ? '顯示備註列' : '隱藏備註列'" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn
+          v-if="!xs"
+          v-bind="props"
+          :icon="isNoteRowHidden ? 'mdi-pin-off-outline' : 'mdi-pin'"
+          variant="text"
+          :color="isNoteRowHidden ? 'grey' : 'amber-darken-3'"
+          @click="isNoteRowHidden = !isNoteRowHidden"
+        ></v-btn>
+      </template>
+    </v-tooltip>
+
     <v-tooltip text="顯示設定" location="bottom">
       <template v-slot:activator="{ props }">
         <v-btn
@@ -676,13 +702,15 @@
                     <div v-if="day.isInRange">{{ day.dateLabel }}</div>
                   </th>
                 </tr>
-                <!-- 每日名額摘要：日期標題下第一列（該週無批次名額時不顯示） -->
-                <tr v-if="chunkHasQuota(chunk)" class="quota-row">
+                <!-- 每日名額摘要：日期標題下第一列（該週無批次名額時不顯示；可整列隱藏） -->
+                <tr v-if="chunkHasQuota(chunk) && !isQuotaRowHidden" class="quota-row">
                   <th class="quota-label" role="button" :title="isQuotaRowExpanded ? '收合名額列' : '展開名額列'"
                     @click="isQuotaRowExpanded = !isQuotaRowExpanded">
                     <v-icon size="small" color="teal-darken-2">mdi-chart-box-outline</v-icon>
                     <span>名額</span>
                     <v-icon size="14" class="row-toggle-icon">{{ isQuotaRowExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+                    <v-icon size="14" class="row-hide-icon" title="隱藏整列（可從上方工具列恢復）"
+                      @click.stop="isQuotaRowHidden = true">mdi-eye-off-outline</v-icon>
                   </th>
                   <th
                     v-for="day in chunk" :key="'quota-' + day.fullDate"
@@ -743,13 +771,15 @@
                     </template>
                   </th>
                 </tr>
-                <!-- 行事曆備註：緊貼在日期標題下方，整週皆無備註時不顯示 -->
-                <tr v-if="chunkHasCalendarNote(chunk)" class="calendar-note-row">
+                <!-- 行事曆備註：緊貼在日期標題下方，整週皆無備註時不顯示；可整列隱藏 -->
+                <tr v-if="chunkHasCalendarNote(chunk) && !isNoteRowHidden" class="calendar-note-row">
                   <th class="calendar-note-label" role="button" :title="isNoteRowExpanded ? '收合備註列' : '展開備註列'"
                     @click="isNoteRowExpanded = !isNoteRowExpanded">
                     <v-icon size="small" color="amber-darken-3">mdi-pin</v-icon>
                     <span>備註</span>
                     <v-icon size="14" class="row-toggle-icon">{{ isNoteRowExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+                    <v-icon size="14" class="row-hide-icon" title="隱藏整列（可從上方工具列恢復）"
+                      @click.stop="isNoteRowHidden = true">mdi-eye-off-outline</v-icon>
                   </th>
                   <th
                     v-for="day in chunk" :key="'note-' + day.fullDate"
@@ -2165,6 +2195,9 @@ const dailyQuotaByDate = ref({});
 // 桌機時間表的「名額」「備註」列收合狀態（預設展開，記憶在此裝置、依建案區分）
 const isQuotaRowExpanded = useStorage(`inspection_calendar_quota_row_expanded_${projectId.value}`, true);
 const isNoteRowExpanded = useStorage(`inspection_calendar_note_row_expanded_${projectId.value}`, true);
+// 桌機時間表的「名額」「備註」整列隱藏狀態（隱藏後連列位都不顯示，記憶在此裝置、依建案區分）
+const isQuotaRowHidden = useStorage(`inspection_calendar_quota_row_hidden_${projectId.value}`, false);
+const isNoteRowHidden = useStorage(`inspection_calendar_note_row_hidden_${projectId.value}`, false);
 const selectedEvent = ref(null);
 const calendarData = ref([]); // ★ 2. 新增 ref 來儲存日期標記
 const bookingHistory = ref([]); // ★ 3. 新增 ref 來儲存歷史紀錄
@@ -5459,6 +5492,7 @@ function navigateToHouseholdGrid() {
 
 .time-selector-btn {
   position: relative;
+  height: 24px !important; /* 配合緊湊的日期標題列（v-btn small 預設 28px） */
 }
 /* --- 全局樣式 --- */
 .primary-bg { background-color: #1a73e8; color: white; }
@@ -5486,6 +5520,7 @@ function navigateToHouseholdGrid() {
 .custom-calendar-table {
   table-layout: fixed;
   border-collapse: collapse;
+  --v-table-header-height: 28px; /* 日期標題列更緊湊（Vuetify 預設 56px；內容較高的名額/備註列仍會自動撐開） */
 }
 
 /* 基礎儲存格 */
@@ -5540,6 +5575,17 @@ function navigateToHouseholdGrid() {
 .event-cell {
   height: 120px;
   vertical-align: top;
+}
+/* 日期標題列更緊湊：縮小上下留白與字級 */
+.custom-calendar-table thead tr:first-child th {
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+.custom-calendar-table .day-header div {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 .day-header.weekend-column {
   background-color: var(--weekend-bg-color) !important;
@@ -5619,6 +5665,14 @@ function navigateToHouseholdGrid() {
 .row-toggle-icon {
   margin-left: 1px;
   opacity: 0.75;
+}
+/* 「名額」「備註」列標題的整列隱藏按鈕 */
+.row-hide-icon {
+  margin-left: 3px;
+  opacity: 0.5;
+}
+.row-hide-icon:hover {
+  opacity: 1;
 }
 /* 備註收合狀態：以色點提示該日備註數量 */
 .note-collapsed {
