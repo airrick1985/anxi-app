@@ -40,6 +40,10 @@
                 item-key="id"
                 class="draggable-container"
                 animation="300"
+                :delay="200"
+                :delay-on-touch-only="true"
+                :touch-start-threshold="5"
+                :fallback-tolerance="12"
               >
                 <template #item="{ element: project }">
                   <IconButton 

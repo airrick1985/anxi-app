@@ -70,7 +70,10 @@
             <div class="flex-grow-1">
               <strong>代填模式啟用中</strong>
               <span class="text-caption d-block">
-                已解除下列限制：未開放 ・ 已截止 ・ 名額已滿 ・ 已預約（等同開啟「可重複預約」）。
+                已解除下列限制：未開放 ・ 已截止 ・ 過去日期 ・ 客戶不可見項目 ・ 已預約（等同開啟「可重複預約」）。
+              </span>
+              <span class="text-caption d-block">
+                注意：時段名額已額滿仍無法送出，請改選其他時段。
               </span>
               <span class="text-caption d-block font-weight-medium">僅供內部人員為客戶代填使用，請審慎操作。</span>
             </div>
@@ -263,8 +266,9 @@
             <v-alert v-if="!projectConfig && !isLoading" type="error" border="start" prominent title="頁面錯誤">
               找不到對應的建案設定，請確認網址是否正確。
             </v-alert>
-            <!-- 系統狀態提示（僅 Step 0 時顯示全域狀態，Step 1 由批次提示取代） -->
-            <v-alert v-if="projectConfig && systemStatus.code !== 'OPEN' && !isLoading && step === 0"
+            <!-- 系統狀態提示（僅 Step 0 時顯示全域狀態，Step 1 由批次提示取代）
+                 內部代填模式已繞過未開放/已截止判斷，故不顯示此提示，改由頂部代填橫條說明 -->
+            <v-alert v-if="projectConfig && systemStatus.code !== 'OPEN' && !isLoading && step === 0 && !devMode"
               :type="systemStatus.code === 'NOT_STARTED' ? 'info' : (systemStatus.code === 'ENDED' ? 'error' : 'error')"
               :icon="systemStatus.icon" border="start" prominent variant="tonal" class="mb-4">
               <template v-slot:title>
@@ -555,6 +559,11 @@
                         @click="selectBookingType(type)">
                         <v-icon start size="32" class="mr-2">mdi-calendar-edit</v-icon>
                         {{ type }}
+                        <!-- 代填模式：標示此項目實際上未開放或客戶看不到，避免內部人員誤判 -->
+                        <v-chip v-if="devMode && !isTypeActuallyOpen(type)" size="x-small" color="warning"
+                          variant="flat" class="ml-2">未開放</v-chip>
+                        <v-chip v-if="devMode && !isTypeDisplayableOnFrontend(type)" size="x-small" color="grey"
+                          variant="flat" class="ml-2">客戶不可見</v-chip>
                       </v-btn>
                       <!-- 未開放：主色淺色 tonal 變體 + 狀態 chip + 開放時間 + 查看說明 CTA -->
                       <v-btn v-else block size="x-large" color="primary" variant="tonal"
@@ -2226,6 +2235,13 @@ const isTypeDisplayableOnFrontend = (typeName) => {
   return projectConfig.value?.pageSettingsByItem?.[typeName]?.visibleToCustomer !== false;
 };
 
+// 該項目「實際上」是否有開放中的批次（不受代填模式影響，僅供代填模式標示用）
+const isTypeActuallyOpen = (typeName) => {
+  const activeTypes = initialData.value?.activeBookingTypes;
+  if (!Array.isArray(activeTypes)) return true; // 舊快取無此資料時不標示
+  return activeTypes.includes(typeName);
+};
+
 // [新增] 取得所有設定的預約服務類型（依「客戶可見」設定過濾，用於 Step 0 常駐顯示）
 const allBookingTypes = computed(() => {
   if (!projectConfig.value) return [];
@@ -2240,6 +2256,9 @@ const allBookingTypes = computed(() => {
     // Fallback Legacy
     typeList = projectConfig.value.bookingTypes || [];
   }
+
+  // 內部代填模式：不套用「客戶可見」過濾，所有未刪除項目都可進入預約流程
+  if (devMode.value) return typeList;
 
   // 過濾掉「客戶可見」設為隱藏的項目
   return typeList.filter(type => isTypeDisplayableOnFrontend(type));
@@ -2576,7 +2595,9 @@ const availableTimeSlots = computed(() => {
 // --- Methods ---
 const isDateAllowed = (date) => {
   // 條件一：日期必須在今天之後
-  if (date <= today) {
+  // 內部代填模式：繞過此限制。已截止（或當日）批次的可預約日期多半已是今天或過去，
+  // 若仍套用此限制，代填人員將無任何日期可選、無法完成預約
+  if (date <= today && !devMode.value) {
     return false;
   }
 

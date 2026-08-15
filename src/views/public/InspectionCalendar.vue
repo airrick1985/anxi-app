@@ -1075,7 +1075,7 @@
 
           <!-- 狀態 -->
           <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
-            <div class="d-flex align-center mb-2">
+            <div class="d-flex align-center flex-wrap mb-2 adv-section-head">
               <v-avatar size="30" color="indigo-lighten-1" class="mr-2"><v-icon size="18" color="white">mdi-flag-variant</v-icon></v-avatar>
               <div class="flex-grow-1">
                 <div class="text-subtitle-2 font-weight-bold">狀態</div>
@@ -1091,7 +1091,7 @@
 
           <!-- 項目 -->
           <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
-            <div class="d-flex align-center mb-2">
+            <div class="d-flex align-center flex-wrap mb-2 adv-section-head">
               <v-avatar size="30" color="teal" class="mr-2"><v-icon size="18" color="white">mdi-format-list-bulleted-type</v-icon></v-avatar>
               <div class="flex-grow-1">
                 <div class="text-subtitle-2 font-weight-bold">項目</div>
@@ -1108,7 +1108,7 @@
 
           <!-- 選擇方式 -->
           <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
-            <div class="d-flex align-center mb-2">
+            <div class="d-flex align-center flex-wrap mb-2 adv-section-head">
               <v-avatar size="30" color="cyan-darken-1" class="mr-2"><v-icon size="18" color="white">mdi-call-split</v-icon></v-avatar>
               <div class="flex-grow-1">
                 <div class="text-subtitle-2 font-weight-bold">選擇方式</div>
@@ -1125,7 +1125,7 @@
 
           <!-- 進階篩選（與「下載EXCEL(列表)」的篩選條件相同，即時套用於時間表） -->
           <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
-            <div class="d-flex align-center mb-2">
+            <div class="d-flex align-center flex-wrap mb-2 adv-section-head">
               <v-avatar size="30" color="purple" class="mr-2"><v-icon size="18" color="white">mdi-filter-variant</v-icon></v-avatar>
               <div class="flex-grow-1">
                 <div class="text-subtitle-2 font-weight-bold">進階條件</div>
@@ -5452,6 +5452,40 @@ function navigateToHouseholdGrid() {
 
 
 <style>
+/* --- 進階篩選對話框（桌機／手機共用同一套 UI，手機自動轉為全螢幕版型） --- */
+.adv-filter-card {
+  max-height: 100%;
+}
+/* 已套用條件列：標題下方常駐，捲動內容時仍看得到目前條件 */
+.adv-active-bar {
+  background-color: #eef3fb;
+  border-bottom: 1px solid #d7e3f4;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.adv-filter-actions {
+  background-color: #fff;
+}
+/* 手機版：放大可點擊面積，避免 x-small 按鈕與 chip 難以按中 */
+@media (max-width: 959px) {
+  .adv-filter-card .v-card-text .v-chip.v-chip--size-small {
+    min-height: 34px;
+    font-size: 0.85rem;
+  }
+  .adv-filter-card .v-card-text .v-btn--size-x-small {
+    min-width: 52px;
+    height: 30px;
+    font-size: 0.78rem;
+  }
+  /* 區塊標題的「全選／清除」在窄螢幕換到下一行，避免擠壓標題文字 */
+  .adv-filter-card .adv-section-head {
+    row-gap: 4px;
+  }
+  .adv-active-bar .v-chip {
+    min-height: 32px;
+  }
+}
+
 /* --- 日期區間選擇器：起/迄 觸發器 --- */
 .range-trigger {
   display: flex;
