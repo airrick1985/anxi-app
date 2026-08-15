@@ -1,33 +1,42 @@
 <!-- src/components/UpdateDialog.vue -->
 <!-- ✅ [改版] 原本綁 PWA useRegisterSW（已停用、永不觸發），改為 props 驅動：
      由 App.vue 的 useVersionCheck 偵測新版本後開啟。persistent + 無關閉鈕 = 強制更新。 -->
+<!-- ✅ [權限] 更新明細（版本號 + CHANGELOG 內容）只給已登入的內部人員看；
+     未登入者（預約頁、報價頁、LIFF 等面向一般客戶的頁面）只顯示「請重新整理」的簡化提示，
+     且完全不去抓 release-notes.json，避免內部更新內容外流。 -->
 <template>
     <v-dialog :model-value="modelValue" persistent max-width="400">
       <v-card>
-        <v-card-title>新版本已推出</v-card-title>
+        <v-card-title>{{ canSeeReleaseNotes ? '新版本已推出' : '系統已更新' }}</v-card-title>
         <v-card-text>
-          <p v-if="release.version"><strong>版本：</strong> {{ release.version }}</p>
-          <p><strong>更新內容：</strong></p>
-          
-          <!-- 【關鍵修改】遍歷分類後的更新內容 -->
-          <div v-if="Object.keys(release.categories).length > 0">
-            <div v-for="(notes, category) in release.categories" :key="category" class="mb-2">
-              <h4 class="text-subtitle-1 font-weight-bold">{{ category }}</h4>
+          <!-- 已登入：顯示完整版本號與更新明細 -->
+          <template v-if="canSeeReleaseNotes">
+            <p v-if="release.version"><strong>版本：</strong> {{ release.version }}</p>
+            <p><strong>更新內容：</strong></p>
+
+            <!-- 【關鍵修改】遍歷分類後的更新內容 -->
+            <div v-if="Object.keys(release.categories).length > 0">
+              <div v-for="(notes, category) in release.categories" :key="category" class="mb-2">
+                <h4 class="text-subtitle-1 font-weight-bold">{{ category }}</h4>
+                <ul>
+                  <li v-for="(note, index) in notes" :key="index" v-html="note"></li>
+                </ul>
+              </div>
+            </div>
+            <!-- 如果沒有分類內容，顯示原始筆記或備用訊息 -->
+            <div v-else-if="release.rawNotes && release.rawNotes.length > 0">
               <ul>
-                <li v-for="(note, index) in notes" :key="index" v-html="note"></li>
+                <li v-for="(note, index) in release.rawNotes" :key="index" v-html="note"></li>
               </ul>
             </div>
-          </div>
-          <!-- 如果沒有分類內容，顯示原始筆記或備用訊息 -->
-          <div v-else-if="release.rawNotes && release.rawNotes.length > 0">
-            <ul>
-              <li v-for="(note, index) in release.rawNotes" :key="index" v-html="note"></li>
-            </ul>
-          </div>
-          <div v-else>
-            <p>有新版本可用！</p>
-          </div>
-          <!-- 【修改結束】 -->
+            <div v-else>
+              <p>有新版本可用！</p>
+            </div>
+            <!-- 【修改結束】 -->
+          </template>
+
+          <!-- 未登入（一般客戶）：只給簡化提示，不顯示版本號與更新明細 -->
+          <p v-else class="mb-0">系統已更新至最新版本，請點擊下方按鈕重新整理頁面，以確保功能正常運作。</p>
 
         </v-card-text>
         <v-card-actions>
@@ -39,14 +48,20 @@
   </template>
   
   <script setup>
-  import { ref, watch } from 'vue';
+  import { ref, computed, watch } from 'vue';
   import { forceReloadToLatest } from '@/composables/useVersionCheck';
+  import { useUserStore } from '@/store/user';
 
   const props = defineProps({
     modelValue: { type: Boolean, default: false },
     // 偵測到的新版本號（release-notes.json 抓不到時的備援顯示）
     latestVersion: { type: String, default: '' },
   });
+
+  const userStore = useUserStore();
+  // 只有已登入的內部人員能看到版本號與更新明細（user state 由 pinia-persistedstate 從
+  // sessionStorage 同步還原，重新整理後即可判斷，不會有先閃出明細再隱藏的問題）
+  const canSeeReleaseNotes = computed(() => userStore.isLoggedIn);
 
   // 【關鍵修改】初始化 release 物件以匹配新的 JSON 結構
   const release = ref({ version: '', date: '', categories: {}, rawNotes: [] });
@@ -87,9 +102,9 @@
     forceReloadToLatest();
   };
 
-  // 對話框開啟時抓取更新內容
+  // 對話框開啟時抓取更新內容（未登入不抓，避免內部更新內容出現在客戶端的網路請求中）
   watch(() => props.modelValue, (isOpen) => {
-    if (isOpen) fetchReleaseNotes();
+    if (isOpen && canSeeReleaseNotes.value) fetchReleaseNotes();
   });
   </script>
   
