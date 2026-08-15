@@ -133,10 +133,15 @@ export function buildUnitDocContext(unitData, opts = {}) {
     houseTransactionPrice: housePrice,      // 房屋成交價（不含車位，萬）
     packageDealPrice: Number(d.price_package_deal) || 0,
     // 配套合約（毛胚等）：配套價格 = 成交總價 − 配套房屋總價；非配套戶為 0
+    // 成交總價優先取 price_transaction_total（與戶別 Modal 口徑一致），未填才用即時計算值
     isPackageContract: isSpecialContractType(d.contractType, opts.packageTypes),
     packagePrice: isSpecialContractType(d.contractType, opts.packageTypes)
-      ? grandTotal - (Number(d.price_package_deal) || 0)
+      ? (Number(d.price_transaction_total) || grandTotal) - (Number(d.price_package_deal) || 0)
       : 0,
+    // 合約文件的「總價」基準：配套戶 = 配套房屋總價（含車位），一般戶 = 成交總價
+    contractTotalPrice: isSpecialContractType(d.contractType, opts.packageTypes)
+      ? (Number(d.price_package_deal) || 0)
+      : grandTotal,
     housePriceRatio: Number(d.housePriceRatio) || 0,
     landPriceRatio: Number(d.landPriceRatio) || 0,
 

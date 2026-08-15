@@ -25,7 +25,7 @@
       <thead>
         <tr>
           <th :colspan="3">期別名稱</th>
-          <th v-if="showHouse">房屋款</th>
+          <th v-if="showHouse">{{ amountLabel }}</th>
           <th v-if="showLand">土地款</th>
           <th v-if="data.showSignColumn">收款人簽章</th>
         </tr>
@@ -61,7 +61,7 @@
           </tr>
         </template>
         <tr v-else class="sum-row">
-          <td colspan="3" class="name">{{ data.mode === 'house' ? '房屋總價' : '土地總價' }}</td>
+          <td colspan="3" class="name">{{ totalLabel }}</td>
           <td class="num">{{ fmtYuan(data.pageTotal, true) }}</td>
           <td v-if="data.showSignColumn"></td>
         </tr>
@@ -80,12 +80,21 @@ const props = defineProps({
 });
 
 const showHouse = computed(() => props.data.mode !== 'land');
-const showLand = computed(() => props.data.mode !== 'house');
+const showLand = computed(() => props.data.mode !== 'house' && props.data.mode !== 'package');
+
+const amountLabel = computed(() => (props.data.mode === 'package' ? '配套款' : '房屋款'));
 
 const pageTitle = computed(() => {
   if (props.data.mode === 'house') return '房屋付款明細表';
   if (props.data.mode === 'land') return '土地付款明細表';
+  if (props.data.mode === 'package') return '配套款付款明細表';
   return '付款明細表';
+});
+
+const totalLabel = computed(() => {
+  if (props.data.mode === 'house') return '房屋總價';
+  if (props.data.mode === 'land') return '土地總價';
+  return '配套款總價';
 });
 
 function verticalText(text) {
@@ -102,7 +111,7 @@ function fmtYuan(wan, keepZero = false) {
 
 <style scoped>
 .pd-page {
-  font-family: 'Noto Serif TC', 'PMingLiU', serif;
+  font-family: var(--doc-font, 'Noto Serif TC', 'PMingLiU', serif);
   font-size: 13px; color: #000; max-width: 78%;
 }
 .pd-head { margin-bottom: 10px; padding-left: 6px; }

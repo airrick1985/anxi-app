@@ -9966,7 +9966,7 @@ exports.updateAppointmentByAdmin = onCall({ region: "asia-east1", cors: true, se
 /**
  * [優化版] 獲取 Google Drive 資料夾內的檔案與資料夾列表
  */
-exports.driveProxyList = onCall({ region: "asia-east1", secrets: driveSecrets }, async (request) => {
+exports.driveProxyList = onCall({ region: "asia-east1", memory: "512MiB", secrets: driveSecrets }, async (request) => {
   const { folderId, searchTerm, resolveId } = request.data;
   const functionName = `driveProxyList (Folder: ${folderId})`;
 
@@ -18807,7 +18807,7 @@ exports.generatePaymentDocument = onCall({
 exports.generateContractDocument = onCall({
   region: "asia-east1",
   timeoutSeconds: 300,
-  memory: "512MiB",
+  memory: "1GiB",   // 標楷體（TW-Kai 35MB、10萬+字符）解析/子集化需較高記憶體，512MiB 會 OOM
   secrets: driveSecrets
 }, async (request) => {
   const { projectId, format, pages, fileNameParts } = request.data || {};

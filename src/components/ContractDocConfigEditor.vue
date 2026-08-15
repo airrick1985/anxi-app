@@ -6,6 +6,11 @@
         <v-icon class="mr-1">mdi-file-document-edit-outline</v-icon>
         合約製作範本
       </div>
+      <v-chip v-if="config" size="small" variant="tonal"
+        :color="config.templateName ? 'primary' : 'grey'"
+        prepend-icon="mdi-tag-outline">
+        {{ config.templateName ? `目前範本：${config.templateName}` : '自訂設定（未套用範本）' }}
+      </v-chip>
       <v-spacer />
       <template v-if="canEdit">
         <v-menu>
@@ -124,11 +129,22 @@
                             density="compact" variant="outlined" hide-details :disabled="!canEdit"
                             hint="整頁複製 N 頁" />
                         </v-col>
+                        <v-col v-if="page.type !== 'contractAttachments'" cols="6" sm="3">
+                          <v-select :model-value="page.font || null"
+                            @update:model-value="page.font = $event"
+                            :items="[{ value: null, label: '預設（依頁型）' }, ...DOC_FONT_OPTIONS]"
+                            item-title="label" item-value="value" label="字體"
+                            density="compact" variant="outlined" hide-details :disabled="!canEdit" />
+                        </v-col>
                       </v-row>
 
                       <!-- ===== 拆款表選項 ===== -->
                       <template v-if="page.type === 'breakdown'">
                         <v-divider class="my-3" />
+                        <v-alert type="info" variant="tonal" density="compact" class="mb-3 text-caption">
+                          本頁總價基準自動判定：一般戶＝成交總價；配套合約戶別（如毛胚合約）＝配套房屋總價。
+                          「配套價格」的拆款表請另外新增「裝修工程會辦單」頁面（配套戶會同時產出兩張會辦單）。
+                        </v-alert>
                         <v-text-field v-model="page.options.headerTitle" label="表頭標題" density="compact"
                           variant="outlined" hide-details class="mb-3" style="max-width: 320px;" :disabled="!canEdit" />
 
@@ -208,9 +224,12 @@
                       <template v-else-if="page.type === 'paymentDetail'">
                         <v-divider class="my-3" />
                         <v-select v-model="page.options.mode"
-                          :items="[{ title: '房屋 + 土地同頁', value: 'combined' }, { title: '房屋版（僅房屋款）', value: 'house' }, { title: '土地版（僅土地款）', value: 'land' }]"
+                          :items="[{ title: '房屋 + 土地同頁', value: 'combined' }, { title: '房屋版（僅房屋款）', value: 'house' }, { title: '土地版（僅土地款）', value: 'land' }, { title: '配套款版（僅配套合約戶別）', value: 'package' }]"
                           label="版本" density="compact" variant="outlined" hide-details class="mb-3"
                           style="max-width: 320px;" :disabled="!canEdit" />
+                        <div v-if="page.options.mode === 'package'" class="text-caption text-grey mb-3">
+                          配套款版：期款取「配套期款」範本（裝修期款），總價 = 配套價格；僅配套合約戶別（如毛胚合約）會匯出本頁。
+                        </div>
                         <v-textarea v-model="page.options.noteText" label="頁尾備註文字" density="compact"
                           variant="outlined" rows="2" hide-details class="mb-3" :disabled="!canEdit" />
                         <v-switch v-model="page.options.showSignColumn" color="primary" density="compact" hide-details
@@ -314,7 +333,7 @@
               </template>
               <v-list density="compact">
                 <v-list-item v-for="pt in PAGE_TYPES" :key="pt.type" :prepend-icon="pt.icon"
-                  :title="pt.label" @click="addPage(pt.type)" />
+                  :title="pt.label" :subtitle="pt.description" @click="addPage(pt.type)" />
               </v-list>
             </v-menu>
           </v-expansion-panel-text>
@@ -604,6 +623,7 @@ import {
 } from '@/api';
 import {
   PAGE_TYPES, PAGE_TYPE_MAP, PAPER_SIZES, ORIENTATIONS, CLAUSE_CONDITIONS, BANK_SET_SOURCES,
+  DOC_FONT_OPTIONS,
   buildDefaultContractDocConfig, buildNewPage, newClause, newBankSet, newPriceFormulaField, newFreeField,
 } from '@/utils/contractDocDefaults';
 import {
@@ -735,6 +755,9 @@ async function commitSaveAsTemplate() {
       createdAt: new Date(),
     });
     toast.success(`全域範本「${saveAsDialog.name}」已儲存`);
+    // 本建案設定即與該範本對齊：更新目前範本標示（按「儲存設定」後持久化）
+    config.value.templateId = docId;
+    config.value.templateName = saveAsDialog.name;
     saveAsDialog.show = false;
     globalTemplatesLoaded.value = false;
     globalTemplates.value = [];

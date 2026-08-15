@@ -21,7 +21,7 @@ defineProps({
 
 <style scoped>
 .notes-page {
-  font-family: 'Noto Serif TC', 'PMingLiU', serif;
+  font-family: var(--doc-font, 'Noto Serif TC', 'PMingLiU', serif);
   color: #000;
   border: 1px dashed #bbb;
   padding: 14px 16px;

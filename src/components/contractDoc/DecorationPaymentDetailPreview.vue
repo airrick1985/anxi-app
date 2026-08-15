@@ -38,7 +38,7 @@ defineProps({
 
 <style scoped>
 .dpd-page {
-  font-family: 'Noto Serif TC', 'PMingLiU', serif;
+  font-family: var(--doc-font, 'Noto Serif TC', 'PMingLiU', serif);
   font-size: 13px; line-height: 1.7; color: #000;
   padding: 10px 14px;
 }

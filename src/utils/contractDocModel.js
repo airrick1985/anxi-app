@@ -136,9 +136,11 @@ export function defaultSelectedClauseIds(clauseLibrary = [], ctx = {}) {
  * 各頁面渲染模型
  * ============================================================ */
 
-/** 拆款表（簽約會辦單） */
+/** 拆款表（簽約會辦單）
+ *  總價基準：一般戶 = 成交總價；配套戶 = 配套房屋總價（ctx.contractTotalPrice，與期款基準一致） */
 export function buildBreakdownPageData(page, ctx, priceModel, splitModel, editRows, state) {
   const opts = page.options || {};
+  const contractTotal = Number(ctx.contractTotalPrice ?? ctx.totalPrice) || 0;
   const landTotal = splitModel.landSum;
   const houseTotal = splitModel.houseSum;
   const columns = buildInstallmentColumns(editRows, splitModel.rows);
@@ -161,8 +163,8 @@ export function buildBreakdownPageData(page, ctx, priceModel, splitModel, editRo
     buyerPhone: ctx.buyerPhone,
     address: ctx.buyerMailingAddress,
     signDate: state.signDateText || '',
-    totalPrice: ctx.totalPrice,
-    housePlusLandPrice: (Number(ctx.totalPrice) || 0) - (Number(ctx.parkingTotal) || 0),
+    totalPrice: contractTotal,
+    housePlusLandPrice: contractTotal - (Number(ctx.parkingTotal) || 0),
     parkingTotal: ctx.parkingTotal,
     parkingSpots: ctx.parkingSpots,
     areas: {
@@ -198,11 +200,15 @@ export function buildBreakdownPageData(page, ctx, priceModel, splitModel, editRo
   };
 }
 
-/** 付款明細表（combined / house / land；金額單位元） */
-export function buildPaymentDetailPageData(page, ctx, splitModel, editRows, state) {
+/** 付款明細表（combined / house / land / package；金額單位元）
+ *  package（配套款版）：期款取裝修期款列（decorationEditRows），單一金額欄，僅配套合約戶別適用 */
+export function buildPaymentDetailPageData(page, ctx, splitModel, editRows, state, decorationEditRows = []) {
   const opts = page.options || {};
   const mode = opts.mode || 'combined';
-  const columns = buildInstallmentColumns(editRows, splitModel.rows);
+  const isPackageMode = mode === 'package';
+  const columns = isPackageMode
+    ? buildInstallmentColumns(decorationEditRows, [])   // 無房土拆分：houseAmount 即期款金額
+    : buildInstallmentColumns(editRows, splitModel.rows);
 
   // 展開為列（母項含直排群組）
   const rows = [];
@@ -227,9 +233,10 @@ export function buildPaymentDetailPageData(page, ctx, splitModel, editRows, stat
     }
   }
 
-  const houseTotal = splitModel.houseSum;
-  const landTotal = splitModel.landSum;
-  const grandTotal = splitModel.amountSum;
+  const packageTotal = isPackageMode ? rows.reduce((s, r) => s + (Number(r.houseAmount) || 0), 0) : 0;
+  const houseTotal = isPackageMode ? packageTotal : splitModel.houseSum;
+  const landTotal = isPackageMode ? 0 : splitModel.landSum;
+  const grandTotal = isPackageMode ? packageTotal : splitModel.amountSum;
 
   return {
     projectName: state.projectName || '',
@@ -255,6 +262,7 @@ export function buildBankAccountsPageData(page, ctx, config, state, unitData) {
   return {
     unitId: ctx.unitId,
     projectName: state.projectName || '',   // QR 中央標籤（建案名 + 戶別）
+    pageTitle: page.title || '',            // 頁首：建案名 戶別 頁面名稱
     bankSets: sets,
     showQr: opts.showQr !== false,
     qrLabel: opts.qrLabel || '請填寫客戶資料卡',

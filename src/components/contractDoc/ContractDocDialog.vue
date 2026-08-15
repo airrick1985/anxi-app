@@ -94,6 +94,19 @@
               <v-card-text>
                 <v-skeleton-loader v-if="templatesLoading" type="list-item-two-line@2" />
                 <template v-else>
+                  <div v-if="isPackageContract" class="d-flex align-center mb-3 ga-2 flex-wrap">
+                    <v-chip size="small" color="deep-purple" variant="tonal">配套合約（{{ unitCtx.contractType }}）</v-chip>
+                    <v-chip size="small" color="primary" variant="tonal">配套房屋總價 {{ formatNumber(mainBase) }} 萬</v-chip>
+                    <v-chip size="small" color="indigo" variant="tonal">配套價格 {{ formatNumber(decorationBase) }} 萬</v-chip>
+                    <v-chip size="small" variant="tonal">成交總價 {{ formatNumber(unitCtx.totalPrice) }} 萬</v-chip>
+                  </div>
+                  <v-alert v-if="isPackageContract && mainBase <= 0" type="error" variant="tonal" density="compact" class="mb-3">
+                    戶別「配套房屋總價」未填寫，無法以配套基準計算，請先至戶別資料補齊。
+                  </v-alert>
+                  <v-alert v-if="packageMissingDecorationPages" type="warning" variant="tonal" density="compact" class="mb-3">
+                    本戶為配套合約，但建案合約範本尚未加入「裝修工程會辦單」（配套價格的拆款表）／「裝修付款明細表」頁面，
+                    本次僅會產出配套房屋總價的簽約會辦單。請超級管理員至「銷控設定 → 合約製作範本 → 頁面組合 → 新增頁面」加入。
+                  </v-alert>
                   <v-row dense>
                     <v-col cols="12" sm="5">
                       <v-select v-model="categoryModel" :items="categoryOptions" label="期款類別"
@@ -129,7 +142,7 @@
                     <v-table density="compact" class="edit-rows-table">
                       <thead>
                         <tr>
-                          <th style="width:72px">比例(%)</th>
+                          <th style="width:110px">比例(%)</th>
                           <th>期別名稱</th>
                           <th style="width:110px" class="text-right">金額(萬)</th>
                         </tr>
@@ -243,7 +256,7 @@
                     <v-table density="compact" class="edit-rows-table">
                       <thead>
                         <tr>
-                          <th style="width:72px">比例(%)</th>
+                          <th style="width:110px">比例(%)</th>
                           <th>期別名稱</th>
                           <th style="width:110px" class="text-right">金額(萬)</th>
                         </tr>
@@ -385,6 +398,11 @@
                 <v-text-field v-model="state.qrUrl" label="客戶資料卡 QR 網址（每戶輸入）"
                   density="compact" variant="outlined" hide-details clearable
                   prepend-inner-icon="mdi-qrcode" />
+                <div class="d-flex align-center mt-2 ga-3 flex-wrap">
+                  <v-btn size="small" variant="tonal" color="secondary" prepend-icon="mdi-form-select"
+                    @click="customFormsDialog = true">自訂表單管理</v-btn>
+                  <span class="text-caption text-grey">可直接開啟自訂表單複製連結網址，不需離開合約製作設定</span>
+                </div>
                 <div v-if="state.qrUrl" class="mt-2 d-flex align-center ga-3">
                   <qrcode-vue :value="state.qrUrl" :size="72" level="M" />
                   <span class="text-caption text-grey">QR 即時預覽</span>
@@ -470,7 +488,7 @@
             <div class="preview-wrapper">
               <template v-for="pv in previewPages" :key="pv.renderKey">
                 <template v-for="pc in (pv.page.pageCopies || 1)" :key="`${pv.renderKey}_p${pc}`">
-                  <div class="preview-sheet" :style="[paperStyle(pv.page), sheetZoomStyle(pv.page)]">
+                  <div class="preview-sheet" :style="[paperStyle(pv.page), sheetZoomStyle(pv.page), sheetFontStyle(pv.page)]">
                     <template v-if="pv.page.type === 'contractAttachments'">
                       <AttachmentsPreview :data="pv.data" :style="attInnerStyle(pv.page)" />
                     </template>
@@ -525,10 +543,26 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <!-- 自訂表單管理（不離開合約製作設定即可取用表單連結） -->
+  <v-dialog v-model="customFormsDialog" :fullscreen="isMobile" max-width="1250px" scrollable>
+    <v-card class="d-flex flex-column" :style="{ height: isMobile ? '100dvh' : '90vh' }">
+      <v-card-title class="pa-3 d-flex align-center">
+        <v-icon start>mdi-form-select</v-icon>
+        自訂表單管理 - {{ projectName }}
+        <v-spacer />
+        <v-btn icon="mdi-close" variant="text" @click="customFormsDialog = false" />
+      </v-card-title>
+      <v-divider />
+      <v-card-text style="overflow-y: auto; flex-grow: 1;" class="pa-3">
+        <CustomFormManager v-if="customFormsDialog" :project-id="projectId" :project-name="projectName" />
+      </v-card-text>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup>
-import { ref, computed, watch, reactive } from 'vue';
+import { ref, computed, watch, reactive, defineAsyncComponent } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useToast } from 'vue-toastification';
 import draggable from 'vuedraggable';
@@ -559,6 +593,9 @@ import AttachmentsPreview from './AttachmentsPreview.vue';
 import DecorationBreakdownPreview from './DecorationBreakdownPreview.vue';
 import DecorationPaymentDetailPreview from './DecorationPaymentDetailPreview.vue';
 
+// 自訂表單管理（於 Dialog 內開啟，取用表單連結；lazy 載入避免拖慢開啟）
+const CustomFormManager = defineAsyncComponent(() => import('@/components/CustomFormManager.vue'));
+
 const props = defineProps({
   show: Boolean,
   projectId: { type: String, required: true },
@@ -576,6 +613,7 @@ const mobileTab = ref('edit');
 const loading = ref(true);
 const saving = ref(false);
 const config = ref(null);
+const customFormsDialog = ref(false);
 
 /* ---------- 戶別 context ---------- */
 // 配套合約方式清單（建案設定；未設定時 undefined → isSpecialContractType 硬編碼 fallback）
@@ -627,14 +665,23 @@ const breakdownPage = computed(() => localPages.value.find(p => p.type === 'brea
 const bankPages = computed(() => localPages.value.filter(p => p.type === 'bankAccounts' && p.enabled));
 const notesPage = computed(() => localPages.value.find(p => p.type === 'contractNotes' && p.enabled) || null);
 const attachmentsPage = computed(() => localPages.value.find(p => p.type === 'contractAttachments') || null);
+// 付款明細表「配套款版」以裝修期款計算，不需要一般期款
+const isPackagePaymentDetail = (p) => p.type === 'paymentDetail' && p.options?.mode === 'package';
+
 const needsInstallment = computed(() =>
-  localPages.value.some(p => (p.type === 'breakdown' || p.type === 'paymentDetail') && p.enabled));
+  localPages.value.some(p => p.enabled &&
+    (p.type === 'breakdown' || (p.type === 'paymentDetail' && !isPackagePaymentDetail(p)))));
 
 // 裝修頁（僅配套戶啟用；非配套戶由 pageDisabled 鎖定）
 const decorationBreakdownPage = computed(() =>
   localPages.value.find(p => p.type === 'decorationBreakdown' && p.enabled) || null);
+
+// 配套戶但範本尚未加入裝修頁 → 提醒補範本設定
+const packageMissingDecorationPages = computed(() => isPackageContract.value &&
+  !localPages.value.some(p => p.type === 'decorationBreakdown' || p.type === 'decorationPaymentDetail'));
 const needsDecoration = computed(() => isPackageContract.value &&
-  localPages.value.some(p => (p.type === 'decorationBreakdown' || p.type === 'decorationPaymentDetail') && p.enabled));
+  localPages.value.some(p => p.enabled &&
+    (p.type === 'decorationBreakdown' || p.type === 'decorationPaymentDetail' || isPackagePaymentDetail(p))));
 
 const manualSignFields = computed(() =>
   (breakdownPage.value?.options?.signFields || []).filter(f => f.source !== 'salesperson'));
@@ -704,9 +751,8 @@ const manualCategory = ref(null);
 const manualTemplateId = ref(null);
 
 // 期款基準：配套合約（毛胚等）改用「配套房屋總價」，與付款表配套兩頁模式一致
-// （價款公式區的 total 亦為配套房屋總價，兩者口徑相同）
-const mainBase = computed(() => Math.round(Number(
-  isPackageContract.value ? unitCtx.value.packageDealPrice : unitCtx.value.totalPrice) || 0));
+// （拆款表頁首總價、價款公式區的 total 皆同一口徑：ctx.contractTotalPrice）
+const mainBase = computed(() => Math.round(Number(unitCtx.value.contractTotalPrice) || 0));
 
 // 裝修頁基準：配套價格 = 成交總價 − 配套房屋總價
 const decorationBase = computed(() =>
@@ -799,10 +845,10 @@ const editRows = ref([]);
 const correctionTargetKey = ref(null);
 let restoringRows = false;   // 還原已存列時避免 rebuild 蓋掉
 
-function buildRowsFromTemplate(template, baseValue) {
+function buildRowsFromTemplate(template, baseValue, baseVariable = '總價') {
   if (!template || !Array.isArray(template.items) || baseValue <= 0) return [];
   const items = template.items;
-  const results = runNewCalculationEngine(items, baseValue, '總價');
+  const results = runNewCalculationEngine(items, baseValue, baseVariable);
   const parents = items.filter(i => !i.parentId);
   return parents.map(p => {
     const children = items.filter(i => i.parentId === p.id);
@@ -842,7 +888,8 @@ const decoTemplates = computed(() => templates.value.filter(t => t.paymentCatego
 const decoAutoTemplate = computed(() => {
   const c = unitCtx.value;
   if (!decoTemplates.value.length) return null;
-  const base = decorationBase.value;
+  // 範本適用區間以「配套總價」比對（同付款表配套頁邏輯 PaymentSchedulePreviewDialog:777）
+  const base = mainBase.value;
   const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
   const currentPropertyType = c.propertyType || '住家';
   const applicable = decoTemplates.value.filter(t => {
@@ -850,7 +897,8 @@ const decoAutoTemplate = computed(() => {
     if (tPropType !== currentPropertyType) return false;
     return t.minPrice <= base && base <= t.maxPrice && t.buyerType === buyerType;
   });
-  return applicable.length > 0 ? applicable[0] : null;
+  // 條件不中時退而求其次：只要有配套期款範本就取第一個（配套範本通常僅一套）
+  return applicable.length > 0 ? applicable[0] : decoTemplates.value[0];
 });
 
 const decoActiveTemplate = computed(() => {
@@ -878,7 +926,8 @@ function decoResetToAuto() { decoManualTemplateId.value = null; }
 
 function rebuildDecoRows() {
   if (restoringDecoRows) return;
-  decoEditRows.value = buildRowsFromTemplate(decoActiveTemplate.value, decorationBase.value);
+  // 配套期款範本的公式參照「配套金額」變數（同付款表配套頁 PaymentSchedulePreviewDialog:856）
+  decoEditRows.value = buildRowsFromTemplate(decoActiveTemplate.value, decorationBase.value, '配套金額');
   decoCorrectionTargetKey.value = decoEditRows.value.length ? decoEditRows.value[decoEditRows.value.length - 1].key : null;
 }
 
@@ -1105,6 +1154,7 @@ function bankPageEmpty(page) {
 function pageDisabled(page) {
   if (page.type === 'contractAttachments' && !attachmentSourceUrl.value) return true;
   if (isPackageOnlyPageType(page.type) && !isPackageContract.value) return true;
+  if (isPackagePaymentDetail(page) && !isPackageContract.value) return true;
   if (page.type === 'bankAccounts' && config.value && bankPageEmpty(page)) return true;
   return false;
 }
@@ -1112,6 +1162,7 @@ function pageDisabled(page) {
 function pageDisabledReason(page) {
   if (page.type === 'contractAttachments' && !attachmentSourceUrl.value) return '無合約圖檔可匯出';
   if (isPackageOnlyPageType(page.type) && !isPackageContract.value) return '本頁僅適用配套合約戶別（如：毛胚合約）';
+  if (isPackagePaymentDetail(page) && !isPackageContract.value) return '本頁（配套款版）僅適用配套合約戶別（如：毛胚合約）';
   if (page.type === 'bankAccounts' && config.value && bankPageEmpty(page)) return '無可顯示的繳款帳戶資料';
   return '';
 }
@@ -1161,6 +1212,17 @@ function attInnerStyle(page) {
   return { height: `${h - 56}px` };
 }
 
+// 頁面字體 → 預覽 CSS 變數（各 Preview 元件以 var(--doc-font, 預設) 套用）
+const DOC_FONT_STACKS = {
+  ming: "'Noto Serif TC', 'PMingLiU', 'MingLiU', serif",
+  hei: "'Noto Sans TC', 'Microsoft JhengHei', sans-serif",
+  kai: "'DFKai-SB', '標楷體', 'BiauKai', 'TW-Kai', 'KaiTi', serif",
+};
+function sheetFontStyle(page) {
+  const stack = DOC_FONT_STACKS[page.font];
+  return stack ? { '--doc-font': stack } : {};
+}
+
 const builderState = computed(() => ({
   projectName: props.projectName,
   signDateText: signDateText.value,
@@ -1181,7 +1243,7 @@ function buildPageData(page) {
     return buildBreakdownPageData(page, ctx, priceModel.value, splitModel.value, editRows.value, builderState.value);
   }
   if (page.type === 'paymentDetail') {
-    return buildPaymentDetailPageData(page, ctx, splitModel.value, editRows.value, builderState.value);
+    return buildPaymentDetailPageData(page, ctx, splitModel.value, editRows.value, builderState.value, decoEditRows.value);
   }
   if (page.type === 'bankAccounts') {
     return buildBankAccountsPageData(page, ctx, config.value, builderState.value, props.unitData);
@@ -1452,6 +1514,7 @@ async function download(format, onlyPageId = null) {
         paper: { size: p.paper?.size || 'A4', orientation: p.paper?.orientation || 'portrait' },
         repeatCount: p.repeatCount || 1,
         pageCopies: p.pageCopies || 1,
+        font: p.font || null,
         data: p.type === 'bankAccounts'
           ? { ...buildPageData(p), qrDataUrl }
           : buildPageData(p),

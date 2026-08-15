@@ -337,7 +337,7 @@ function pct(v) {
 
 <style scoped>
 .bd-page {
-  font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  font-family: var(--doc-font, 'Noto Sans TC', 'Microsoft JhengHei', sans-serif);
   font-size: 11px; line-height: 1.45; color: #000;
 }
 .bd-frame { border: 2px solid #000; display: flex; flex-direction: column; min-height: 100%; }

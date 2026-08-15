@@ -2,20 +2,45 @@
 // 見 docs/合約製作資料範本-spec.md §3、§4
 
 export const PAGE_TYPES = [
-  { type: 'breakdown',           label: '拆款表（簽約會辦單）', icon: 'mdi-file-table-outline' },
-  { type: 'bankAccounts',        label: '繳款銀行帳戶名稱',     icon: 'mdi-bank-outline' },
-  { type: 'paymentDetail',       label: '付款明細表',           icon: 'mdi-cash-multiple' },
-  { type: 'contractNotes',       label: '合約加註',             icon: 'mdi-note-text-outline' },
-  { type: 'contractAttachments', label: '合約附圖',             icon: 'mdi-floor-plan' },
+  { type: 'breakdown',           label: '拆款表（簽約會辦單）', icon: 'mdi-file-table-outline',
+    description: '總價基準自動判定：一般戶＝成交總價、配套戶＝配套房屋總價' },
+  { type: 'bankAccounts',        label: '繳款銀行帳戶名稱',     icon: 'mdi-bank-outline',
+    description: '戶別的房屋款／土地款／配套款帳戶，依銀行組勾選' },
+  { type: 'paymentDetail',       label: '付款明細表',           icon: 'mdi-cash-multiple',
+    description: '金額單位元；版本：房土同頁／房屋版／土地版／配套款版' },
+  { type: 'contractNotes',       label: '合約加註',             icon: 'mdi-note-text-outline',
+    description: '磋商條款加註頁，預設同步拆款表勾選' },
+  { type: 'contractAttachments', label: '合約附圖',             icon: 'mdi-floor-plan',
+    description: '戶別雲端資料夾的圖檔／PDF，僅 PDF 匯出' },
   // 裝修合約頁型（僅配套合約戶別適用，見 docs/裝修合約製作範本-spec.md）
-  { type: 'decorationBreakdown',    label: '裝修工程會辦單', icon: 'mdi-hammer-wrench', packageOnly: true },
-  { type: 'decorationPaymentDetail', label: '裝修付款明細表', icon: 'mdi-cash-clock',    packageOnly: true },
+  { type: 'decorationBreakdown',    label: '裝修工程會辦單', icon: 'mdi-hammer-wrench', packageOnly: true,
+    description: '「配套價格」的拆款表（裝修期款單列）；僅配套合約戶別匯出' },
+  { type: 'decorationPaymentDetail', label: '裝修付款明細表', icon: 'mdi-cash-clock',    packageOnly: true,
+    description: '配套價格期款、金額國字大寫；僅配套合約戶別匯出' },
 ];
 
 // 僅配套合約戶別適用的頁型
 export function isPackageOnlyPageType(type) {
   return PAGE_TYPE_MAP[type]?.packageOnly === true;
 }
+
+// 頁面字體選項（PDF 楷體採政府開放授權「全字庫正楷體 TW-Kai」，外觀同標楷體）
+export const DOC_FONT_OPTIONS = [
+  { value: 'ming', label: '新細明體（明體）' },
+  { value: 'hei', label: 'Noto 黑體' },
+  { value: 'kai', label: '標楷體（全字庫正楷體）' },
+];
+
+// 各頁型的預設字體（null = 頁型內建混排；會辦單類黑體、明細表明體、帳戶頁黑體標題+明體表格）
+export const DEFAULT_PAGE_FONT = {
+  breakdown: 'hei',
+  decorationBreakdown: 'hei',
+  bankAccounts: null,
+  paymentDetail: 'ming',
+  contractNotes: 'ming',
+  decorationPaymentDetail: 'ming',
+  contractAttachments: null,
+};
 
 export const PAGE_TYPE_MAP = Object.fromEntries(PAGE_TYPES.map(p => [p.type, p]));
 
@@ -104,6 +129,7 @@ export function buildNewPage(type) {
     paper: { size: 'A4', orientation: 'portrait' },
     repeatCount: 1,   // 同頁重複份數（一頁內放多份，裁剪浮貼用）
     pageCopies: 1,    // 重複頁數（整頁複製 N 頁）
+    font: DEFAULT_PAGE_FONT[type] || null,   // 頁面字體（null = 各頁型內建預設）
     options: buildDefaultPageOptions(type),
   };
 }

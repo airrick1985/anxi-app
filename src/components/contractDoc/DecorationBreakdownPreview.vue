@@ -86,11 +86,11 @@
         </tbody>
       </table>
 
-      <!-- 付款明細（單列「裝修工程款」，無房土拆分/比例列） -->
+      <!-- 付款明細（單列「裝修工程款」＋備註併入同一區塊，直排標籤跨全區） -->
       <table class="bd-table bd-install" v-if="columns.length">
         <tbody>
           <tr>
-            <td class="vert" :rowspan="3">付<br />款<br />明<br />細</td>
+            <td class="vert" :rowspan="4">付<br />款<br />明<br />細</td>
             <td class="label unit-cell" rowspan="2">單位:萬</td>
             <template v-for="col in columns" :key="col.name">
               <td v-if="col.type === 'single'" class="label head" rowspan="2">{{ col.name }}</td>
@@ -115,11 +115,15 @@
             </template>
             <td class="num strong">{{ fmtWan(data.installment.grandTotal) }}</td>
           </tr>
+          <tr>
+            <td class="label rowlabel">備註</td>
+            <td class="remark-cell" :colspan="leafCount + 1">{{ data.remark }}</td>
+          </tr>
         </tbody>
       </table>
 
-      <!-- 備註（彈性區） -->
-      <table class="bd-table bd-remark">
+      <!-- 無期款資料時的備註（獨立列） -->
+      <table class="bd-table bd-remark" v-else>
         <colgroup><col style="width:13%" /><col /></colgroup>
         <tbody>
           <tr>
@@ -154,6 +158,8 @@ const props = defineProps({
 
 const a = computed(() => props.data.areas || {});
 const columns = computed(() => props.data.installment?.columns || []);
+const leafCount = computed(() =>
+  columns.value.reduce((s, c) => s + (c.type === 'group' ? c.children.length : 1), 0));
 
 function fmtWan(v) {
   const n = Number(v);
@@ -170,7 +176,7 @@ function fmtArea(v) {
 
 <style scoped>
 .bd-page {
-  font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  font-family: var(--doc-font, 'Noto Sans TC', 'Microsoft JhengHei', sans-serif);
   font-size: 11px; line-height: 1.45; color: #000;
 }
 .bd-frame { border: 2px solid #000; display: flex; flex-direction: column; min-height: 100%; }

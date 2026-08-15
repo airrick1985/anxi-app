@@ -20,7 +20,19 @@ const FONTS = {
   "MING-B": path.join(__dirname, "assets", "fonts", "NotoSerifTC-Bold.otf"),
   HEI: path.join(__dirname, "assets", "fonts", "NotoSansTC-Regular.otf"),
   "HEI-B": path.join(__dirname, "assets", "fonts", "NotoSansTC-Bold.otf"),
+  // 標楷體：全字庫正楷體 TW-Kai（政府開放授權）；楷體無粗體字重，粗體以同檔代替
+  KAI: path.join(__dirname, "assets", "fonts", "TW-Kai-98_1.ttf"),
+  "KAI-B": path.join(__dirname, "assets", "fonts", "TW-Kai-98_1.ttf"),
 };
+
+// 頁面字體覆蓋（config.pages[].font: 'ming' | 'hei' | 'kai'；null = 各頁型內建預設混排）
+const PAGE_FONT_FAMILY = { ming: "MING", hei: "HEI", kai: "KAI" };
+let pageFontOverride = null;   // buildContractPdf 渲染期間逐頁設定
+
+function F(name) {
+  if (!pageFontOverride) return name;
+  return String(name).endsWith("-B") ? `${pageFontOverride}-B` : pageFontOverride;
+}
 
 const BLACK = "#000000";
 
@@ -117,7 +129,7 @@ function cell(pdf, x, y, w, h, text, o = {}) {
   const t = text === null || text === undefined ? "" : String(text);
   if (t === "") return;
   const base = o.font || "HEI";
-  pdf.font(o.bold ? `${base}-B` : base).fontSize(o.size || 9).fillColor(BLACK);
+  pdf.font(F(o.bold ? `${base}-B` : base)).fontSize(o.size || 9).fillColor(BLACK);
   const padX = o.padX !== undefined ? o.padX : 3;
   const opts = { width: w - padX * 2, align: o.align || "center", lineGap: o.lineGap || 0 };
   if (o.charSpace) opts.characterSpacing = o.charSpace;
@@ -139,10 +151,10 @@ function labelValueCell(pdf, x, y, w, h, label, value, o = {}) {
   const base = o.font || "HEI";
   const lsize = o.labelSize || 9;
   const vsize = o.valueSize || 10;
-  pdf.font(`${base}-B`).fontSize(lsize).fillColor(BLACK);
+  pdf.font(F(`${base}-B`)).fontSize(lsize).fillColor(BLACK);
   const lh = pdf.heightOfString(label, { width: w - 8 });
   pdf.text(label, x + 5, y + (h - lh) / 2, { width: w - 8, align: "left" });
-  pdf.font(base).fontSize(vsize);
+  pdf.font(F(base)).fontSize(vsize);
   const vh = pdf.heightOfString(String(value), { width: w - 10 });
   pdf.text(String(value), x + 5, y + (h - vh) / 2, { width: w - 10, align: "right" });
 }
@@ -410,7 +422,7 @@ function drawBreakdown(pdf, d, slotTop) {
   const clauseText = clauses.map(c => c.content).join("\n\n");
   let clauseAreaH = pageBottom - y - freeH - signH;
   if (clauseText) {
-    pdf.font("HEI").fontSize(8.5).fillColor(BLACK);
+    pdf.font(F("HEI")).fontSize(8.5).fillColor(BLACK);
     const th = pdf.heightOfString(clauseText, { width: W - 12, lineGap: 1.5 }) + 10;
     if (th > clauseAreaH) clauseAreaH = th;   // 超出時往下擠（外框跟著加長）
     pdf.text(clauseText, L + 6, y + 5, { width: W - 12, lineGap: 1.5 });
@@ -461,19 +473,23 @@ function drawPaymentDetail(pdf, d, slotTop) {
 
   const mode = d.mode || "combined";
   const showHouse = mode !== "land";
-  const showLand = mode !== "house";
-  const title = mode === "house" ? "房屋付款明細表" : mode === "land" ? "土地付款明細表" : "付款明細表";
+  const showLand = mode !== "house" && mode !== "package";
+  const houseColLabel = mode === "package" ? "配套款" : "房屋款";
+  const title = mode === "house" ? "房屋付款明細表"
+    : mode === "land" ? "土地付款明細表"
+    : mode === "package" ? "配套款付款明細表"
+    : "付款明細表";
 
   const isCombined = (d.mode || "combined") === "combined";
   const tableW = W * (isCombined ? 0.94 : 0.78);
 
   // 表頭文字
-  pdf.font("MING").fontSize(11.5).fillColor(BLACK);
+  pdf.font(F("MING")).fontSize(11.5).fillColor(BLACK);
   pdf.text("工地名稱：", L + 8, y);
   pdf.text(d.projectName || "", L + 78, y);
-  pdf.font("MING").fontSize(12.5).text(title, L + tableW * 0.42, y - 1, { characterSpacing: 2 });
+  pdf.font(F("MING")).fontSize(12.5).text(title, L + tableW * 0.42, y - 1, { characterSpacing: 2 });
   y += 26;
-  pdf.font("MING").fontSize(11.5).text("房屋代號：", L + 8, y);
+  pdf.font(F("MING")).fontSize(11.5).text("房屋代號：", L + 8, y);
   pdf.text(d.unitId || "", L + 78, y);
   pdf.fontSize(9.5).text("單位:元", L + tableW - 52, y + 1);
   y += 24;
@@ -491,7 +507,7 @@ function drawPaymentDetail(pdf, d, slotTop) {
   // 表頭列
   cell(pdf, L, y, vertW + seqW + nameW, 22, "期別名稱", { ...M, size: 10.5 });
   let hx = L + vertW + seqW + nameW;
-  if (showHouse) { cell(pdf, hx, y, amtW, 22, "房屋款", { ...M, size: 10.5 }); hx += amtW; }
+  if (showHouse) { cell(pdf, hx, y, amtW, 22, houseColLabel, { ...M, size: 10.5 }); hx += amtW; }
   if (showLand) { cell(pdf, hx, y, amtW, 22, "土地款", { ...M, size: 10.5 }); hx += amtW; }
   if (d.showSignColumn) cell(pdf, hx, y, signW, 22, "收款人簽章", { ...M, size: 10.5 });
   y += 22;
@@ -537,7 +553,7 @@ function drawPaymentDetail(pdf, d, slotTop) {
     if (d.showSignColumn) cell(pdf, cx + amtW * amountCols, y, signW, RH, "", {});
     y += RH;
   } else {
-    const totalLabel = mode === "house" ? "房屋總價" : "土地總價";
+    const totalLabel = mode === "house" ? "房屋總價" : mode === "land" ? "土地總價" : "配套款總價";
     cell(pdf, L, y, vertW + seqW + nameW, RH, totalLabel, { ...M, size: 11 });
     let cx = L + vertW + seqW + nameW;
     cell(pdf, cx, y, amtW, RH, fmtYuan(d.pageTotal, true), { ...M, size: 10.5, align: "right", padX: 8 });
@@ -548,7 +564,7 @@ function drawPaymentDetail(pdf, d, slotTop) {
 
   if (d.noteText) {
     y += 8;
-    pdf.font("MING").fontSize(7.5).fillColor(BLACK).text(d.noteText, L + 2, y, { width: tableW });
+    pdf.font(F("MING")).fontSize(7.5).fillColor(BLACK).text(d.noteText, L + 2, y, { width: tableW });
     y += pdf.heightOfString(d.noteText, { width: tableW }) + 4;
   }
   return y;
@@ -563,10 +579,10 @@ function drawBankAccounts(pdf, d, slotTop, slotH, qrBuffer) {
   const x0 = L + 10;
   let y = slotTop + 8;
 
-  // 戶別
-  pdf.font("HEI-B").fontSize(13.5).fillColor(BLACK);
-  pdf.text("戶別", x0, y);
-  pdf.text(d.unitId || "", x0 + 56, y);
+  // 頁首：建案名稱 戶別 頁面名稱（例：富宇首馥 D-19 房屋繳款銀行帳戶）
+  const headerText = [d.projectName, d.unitId, d.pageTitle].filter(Boolean).join(" ") || `戶別 ${d.unitId || ""}`;
+  pdf.font(F("HEI-B")).fontSize(13.5).fillColor(BLACK);
+  pdf.text(headerText, x0, y, { width: pageMetrics(pdf).contentW - 20 });
   y += 30;
 
   const tw = 218;
@@ -577,7 +593,7 @@ function drawBankAccounts(pdf, d, slotTop, slotH, qrBuffer) {
 
   for (const set of sets) {
     if (showLabel) {
-      pdf.font("HEI-B").fontSize(10.5).text(set.label || "", x0, y);
+      pdf.font(F("HEI-B")).fontSize(10.5).text(set.label || "", x0, y);
       y += 16;
     }
     const rowsDef = [
@@ -595,7 +611,7 @@ function drawBankAccounts(pdf, d, slotTop, slotH, qrBuffer) {
     y += 12;
   }
   if (!sets.length) {
-    pdf.font("MING").fontSize(10.5).text("（無銀行帳戶資料）", x0, y);
+    pdf.font(F("MING")).fontSize(10.5).text("（無銀行帳戶資料）", x0, y);
     y += 18;
   }
 
@@ -604,7 +620,7 @@ function drawBankAccounts(pdf, d, slotTop, slotH, qrBuffer) {
     const qrSize = 106;
     const qx = x0 + tw + 52;
     let qy = tableTop + 14;
-    pdf.font("HEI-B").fontSize(10.5)
+    pdf.font(F("HEI-B")).fontSize(10.5)
       .text(d.qrLabel || "請填寫客戶資料卡", qx - 8, qy, { width: qrSize + 16, align: "center", characterSpacing: 1 });
     qy += 20;
     if (qrBuffer) {
@@ -619,7 +635,7 @@ function drawBankAccounts(pdf, d, slotTop, slotH, qrBuffer) {
     // 案名 / 戶別：置於 QR 下方（不覆蓋 QR 圖形）
     const qrCaption = [d.projectName, d.unitId].filter(Boolean).join("　");
     if (qrCaption) {
-      pdf.font("HEI").fontSize(9.5).fillColor(BLACK)
+      pdf.font(F("HEI")).fontSize(9.5).fillColor(BLACK)
         .text(qrCaption, qx - 12, qy + qrSize + 6, { width: qrSize + 24, align: "center" });
     }
   }
@@ -641,14 +657,14 @@ function drawContractNotes(pdf, d, slotTop, slotH) {
   let y = slotTop + 16;
   for (const n of d.notes || []) {
     const fs = Number(n.fontSize) || 12;
-    pdf.font("MING").fontSize(fs).fillColor(BLACK).text(String(n.content || ""), L + 16, y, {
+    pdf.font(F("MING")).fontSize(fs).fillColor(BLACK).text(String(n.content || ""), L + 16, y, {
       width: W - 32, lineGap: fs * 0.38,
     });
     y += pdf.heightOfString(String(n.content || ""), { width: W - 32, lineGap: fs * 0.38 }) + 14;
   }
   if (d.showBuyerSignLine && (d.notes || []).length) {
     y += 10;
-    pdf.font("MING").fontSize(12).text("買方簽名：＿＿＿＿＿＿＿＿＿", L + 16, y, { width: W - 56, align: "right" });
+    pdf.font(F("MING")).fontSize(12).text("買方簽名：＿＿＿＿＿＿＿＿＿", L + 16, y, { width: W - 56, align: "right" });
     y += 22;
   }
   return y;
@@ -741,8 +757,9 @@ function drawDecorationBreakdown(pdf, d, slotTop) {
   cell(pdf, X(AF.r0), areaTop + AH * 2, X(AF.u3) - X(AF.r0), AH * 4, "", {});
   y = areaTop + AH * areaRows;
 
-  // ---- 付款明細（單列「裝修工程款」，無房土拆分/比例列）----
+  // ---- 付款明細區塊（單列「裝修工程款」＋備註列併入同一區塊，直排標籤跨全區）----
   const columns = (d.installment && d.installment.columns) || [];
+  const remarkH = 60;
   if (columns.length) {
     const leaves = columns.reduce((s, c) => s + (c.type === "group" ? c.children.length : 1), 0);
     const vertW = 20;
@@ -751,7 +768,7 @@ function drawDecorationBreakdown(pdf, d, slotTop) {
     const leafW = (W - vertW - labelW - totalW) / Math.max(leaves, 1);
     const nfs = leafW < 26 ? 6.5 : leafW < 34 ? 7.2 : 8;
     const H1 = 17, H2 = 14, DH = 24;
-    const blockH = H1 + H2 + DH;
+    const blockH = H1 + H2 + DH + remarkH;   // 直排「付款明細」涵蓋期款列與備註列
     const bx = L + vertW;
 
     vCell(pdf, L, y, vertW, blockH, "付款明細", { bold: true, size: 10 });
@@ -785,17 +802,25 @@ function drawDecorationBreakdown(pdf, d, slotTop) {
     }
     cell(pdf, cx, y, totalW, DH, fmtWan(d.installment.grandTotal), { size: 8.5, bold: true, padX: 2 });
     y += DH;
-  }
 
-  // ---- 備註（較高，靠左上）----
-  const remarkH = 60;
-  cell(pdf, L, y, FW(0.13), remarkH, "備註", { bold: true, size: 10 });
-  pdf.lineWidth(0.7).rect(X(0.13), y, FW(0.87), remarkH).stroke(BLACK);
-  if (d.remark) {
-    pdf.font("HEI").fontSize(9).fillColor(BLACK)
-      .text(String(d.remark), X(0.13) + 5, y + 5, { width: FW(0.87) - 10 });
+    // 備註列（同區塊：標籤欄對齊「單位:萬」欄，內容跨其餘欄）
+    cell(pdf, bx, y, labelW, remarkH, "備註", { bold: true, size: 9 });
+    pdf.lineWidth(0.7).rect(bx + labelW, y, W - vertW - labelW, remarkH).stroke(BLACK);
+    if (d.remark) {
+      pdf.font(F("HEI")).fontSize(9).fillColor(BLACK)
+        .text(String(d.remark), bx + labelW + 5, y + 5, { width: W - vertW - labelW - 10 });
+    }
+    y += remarkH;
+  } else {
+    // 無期款資料：備註獨立列
+    cell(pdf, L, y, FW(0.13), remarkH, "備註", { bold: true, size: 10 });
+    pdf.lineWidth(0.7).rect(X(0.13), y, FW(0.87), remarkH).stroke(BLACK);
+    if (d.remark) {
+      pdf.font(F("HEI")).fontSize(9).fillColor(BLACK)
+        .text(String(d.remark), X(0.13) + 5, y + 5, { width: FW(0.87) - 10 });
+    }
+    y += remarkH;
   }
-  y += remarkH;
 
   // ---- 簽核欄（貼齊頁底，中間留白由外框涵蓋）----
   const signFields = d.signFields || [];
@@ -827,17 +852,17 @@ function drawDecorationPaymentDetail(pdf, d, slotTop) {
   let y = slotTop + 6;
 
   // 表頭：工地名稱 + 標題、房屋代號
-  pdf.font("MING").fontSize(11.5).fillColor(BLACK);
+  pdf.font(F("MING")).fontSize(11.5).fillColor(BLACK);
   pdf.text(`${d.siteLabel || "工地名稱"}：`, L + 8, y);
   pdf.text(d.projectName || "", L + 86, y);
-  pdf.font("MING-B").fontSize(13).text(d.headerTitle || "裝修付款明細表", L, y - 1, { width: W, align: "center", characterSpacing: 3 });
+  pdf.font(F("MING-B")).fontSize(13).text(d.headerTitle || "裝修付款明細表", L, y - 1, { width: W, align: "center", characterSpacing: 3 });
   y += 26;
-  pdf.font("MING").fontSize(11.5).text(`${d.unitLabel || "房屋代號"}：`, L + 8, y);
+  pdf.font(F("MING")).fontSize(11.5).text(`${d.unitLabel || "房屋代號"}：`, L + 8, y);
   pdf.text(d.unitId || "", L + 86, y);
   y += 34;
 
   // 工程總價（國字大寫）
-  pdf.font("MING-B").fontSize(12.5);
+  pdf.font(F("MING-B")).fontSize(12.5);
   pdf.text("工程總價", L + 8, y);
   pdf.text(`計新臺幣 ${d.zhTotal || ""}`, L + 96, y);
   y += 30;
@@ -846,7 +871,7 @@ function drawDecorationPaymentDetail(pdf, d, slotTop) {
   const rows = d.rows || [];
   const RH = 24;
   for (const row of rows) {
-    pdf.font("MING").fontSize(11.5).fillColor(BLACK);
+    pdf.font(F("MING")).fontSize(11.5).fillColor(BLACK);
     pdf.text(`${row.zhSeq}、`, L + 8, y, { width: 46, align: "right" });
     pdf.text(String(row.name || ""), L + 58, y);
     pdf.text(`：新台幣：${row.zhAmount || ""}`, L + 196, y);
@@ -855,7 +880,7 @@ function drawDecorationPaymentDetail(pdf, d, slotTop) {
 
   if (d.noteText) {
     y += 10;
-    pdf.font("MING").fontSize(8.5).fillColor(BLACK).text(String(d.noteText), L + 8, y, { width: W - 16 });
+    pdf.font(F("MING")).fontSize(8.5).fillColor(BLACK).text(String(d.noteText), L + 8, y, { width: W - 16 });
     y += pdf.heightOfString(String(d.noteText), { width: W - 16 }) + 4;
   }
   return y;
@@ -883,6 +908,7 @@ async function buildContractPdf(payload, attachmentFiles = []) {
     const size = PAPER_PT[page.paper?.size] ? (page.paper.size === "Letter" ? "LETTER" : page.paper.size) : "A4";
     const layout = page.paper?.orientation === "landscape" ? "landscape" : "portrait";
     const pageCopies = Math.max(1, Math.min(10, Number(page.pageCopies) || 1));
+    pageFontOverride = PAGE_FONT_FAMILY[page.font] || null;   // 本頁字體覆蓋
 
     // 重複頁數：整頁內容複製 N 頁
     for (let pc = 0; pc < pageCopies; pc++) {
@@ -904,6 +930,7 @@ async function buildContractPdf(payload, attachmentFiles = []) {
       }
     }
   }
+  pageFontOverride = null;
 
   pdf.end();
   const baseBuffer = await done;
@@ -975,6 +1002,11 @@ async function mergeAttachments(baseBuffer, attachmentFiles) {
 
 const FONT_HEI = "微軟正黑體";
 const FONT_MING = "新細明體";
+const FONT_KAI = "標楷體";
+
+// Excel 頁面字體覆蓋（同 PDF：config.pages[].font）
+const EXCEL_FONT_FAMILY = { ming: FONT_MING, hei: FONT_HEI, kai: FONT_KAI };
+let excelFontOverride = null;
 
 function borderAll(style = "thin") {
   return {
@@ -987,7 +1019,7 @@ function setCell(ws, row, col, value, opts = {}) {
   const cellRef = ws.getCell(row, col);
   cellRef.value = value;
   cellRef.font = {
-    name: opts.fontName || FONT_HEI,
+    name: excelFontOverride || opts.fontName || FONT_HEI,
     size: opts.size || 10,
     bold: !!opts.bold,
     color: { argb: "FF000000" },
@@ -1360,8 +1392,12 @@ function excelPaymentDetail(ws, d) {
   ws.columns = [{ width: 4 }, { width: 5 }, { width: 26 }, { width: 14 }, { width: 14 }, { width: 16 }];
   const mode = d.mode || "combined";
   const showHouse = mode !== "land";
-  const showLand = mode !== "house";
-  const title = mode === "house" ? "房屋付款明細表" : mode === "land" ? "土地付款明細表" : "付款明細表";
+  const showLand = mode !== "house" && mode !== "package";
+  const houseColLabel = mode === "package" ? "配套款" : "房屋款";
+  const title = mode === "house" ? "房屋付款明細表"
+    : mode === "land" ? "土地付款明細表"
+    : mode === "package" ? "配套款付款明細表"
+    : "付款明細表";
   const M = { fontName: FONT_MING };
 
   let r = 1;
@@ -1381,7 +1417,7 @@ function excelPaymentDetail(ws, d) {
   ws.getRow(r).height = 20;
   setMerged(ws, r, 1, r, 3, "期別名稱", { ...M, size: 11 });
   let c = 4;
-  if (showHouse) { setCell(ws, r, c, "房屋款", { ...M, size: 11 }); c += 1; }
+  if (showHouse) { setCell(ws, r, c, houseColLabel, { ...M, size: 11 }); c += 1; }
   if (showLand) { setCell(ws, r, c, "土地款", { ...M, size: 11 }); c += 1; }
   if (d.showSignColumn) setCell(ws, r, c, "收款人簽章", { ...M, size: 11 });
   r += 1;
@@ -1430,7 +1466,7 @@ function excelPaymentDetail(ws, d) {
     r += 1;
   } else {
     ws.getRow(r).height = 24;
-    setMerged(ws, r, 1, r, 3, mode === "house" ? "房屋總價" : "土地總價", { ...M, size: 11 });
+    setMerged(ws, r, 1, r, 3, mode === "house" ? "房屋總價" : mode === "land" ? "土地總價" : "配套款總價", { ...M, size: 11 });
     setCell(ws, r, 4, fmtYuan(d.pageTotal, true), { ...M, size: 10.5, align: "right" });
     if (d.showSignColumn) setCell(ws, r, 5, "", {});
     r += 1;
@@ -1462,7 +1498,8 @@ function excelBankAccounts(wb, ws, d, repeatCount) {
       r += 1;
     }
     ws.getRow(r).height = 24;
-    setCell(ws, r, 1, `戶別　${d.unitId || ""}`, { bold: true, size: 13, border: false, align: "left" });
+    const headerText = [d.projectName, d.unitId, d.pageTitle].filter(Boolean).join(" ") || `戶別　${d.unitId || ""}`;
+    setMerged(ws, r, 1, r, 3, headerText, { bold: true, size: 13, border: false, align: "left" });
     r += 1;
 
     const qrTopRow = r;
@@ -1642,6 +1679,7 @@ async function buildContractExcel(payload) {
   const pages = (payload.pages || []).filter(p => p.type !== "contractAttachments");
   pages.forEach((page, index) => {
     const pageCopies = Math.max(1, Math.min(10, Number(page.pageCopies) || 1));
+    excelFontOverride = EXCEL_FONT_FAMILY[page.font] || null;   // 本頁字體覆蓋
     for (let pc = 0; pc < pageCopies; pc++) {
       const ws = setupSheet(wb, page, index, pc);
       const d = page.data || {};
@@ -1656,6 +1694,7 @@ async function buildContractExcel(payload) {
       }
     }
   });
+  excelFontOverride = null;
   if (!wb.worksheets.length) {
     wb.addWorksheet("空白");
   }

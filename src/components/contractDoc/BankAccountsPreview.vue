@@ -1,8 +1,7 @@
 <template>
   <div class="bank-page">
     <div class="bank-unit">
-      <span class="u-label">戶別</span>
-      <span class="u-value">{{ data.unitId }}</span>
+      <span class="u-label">{{ headerText }}</span>
     </div>
 
     <div class="bank-body">
@@ -50,6 +49,10 @@ const props = defineProps({
 // 只有一組時不顯示組名（比照範例：直接列銀行資訊）
 const showSetLabel = computed(() => (props.data.bankSets || []).length > 1);
 
+// 頁首：建案名稱 戶別 頁面名稱（例：富宇首馥 D-19 房屋繳款銀行帳戶）
+const headerText = computed(() =>
+  [props.data.projectName, props.data.unitId, props.data.pageTitle].filter(Boolean).join(' '));
+
 // QR 下方標籤（建案名 + 戶別）
 const captionText = computed(() => {
   return [props.data.projectName, props.data.unitId].filter(Boolean).join('　');
@@ -57,14 +60,14 @@ const captionText = computed(() => {
 </script>
 
 <style scoped>
-.bank-page { font-family: 'Noto Serif TC', 'PMingLiU', serif; font-size: 13px; color: #000; padding: 4px 8px; }
-.bank-unit { margin-bottom: 16px; font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif; }
+.bank-page { font-family: var(--doc-font, 'Noto Serif TC', 'PMingLiU', serif); font-size: 13px; color: #000; padding: 4px 8px; }
+.bank-unit { margin-bottom: 16px; font-family: var(--doc-font, 'Noto Sans TC', 'Microsoft JhengHei', sans-serif); }
 .bank-unit .u-label { font-weight: 700; font-size: 15px; }
 .bank-unit .u-value { font-weight: 700; font-size: 15px; margin-left: 28px; }
 .bank-body { display: flex; gap: 44px; align-items: flex-start; }
 .bank-sets { width: 290px; flex-shrink: 0; }
 .bank-set { margin-bottom: 16px; }
-.bank-set-title { font-weight: 700; margin-bottom: 3px; font-family: 'Noto Sans TC', sans-serif; font-size: 12px; }
+.bank-set-title { font-weight: 700; margin-bottom: 3px; font-family: var(--doc-font, 'Noto Sans TC', sans-serif); font-size: 12px; }
 .bank-table { width: 100%; border-collapse: collapse; }
 .bank-table td {
   border: 1.2px solid #000; text-align: center; height: 39px;
@@ -74,12 +77,12 @@ const captionText = computed(() => {
 .qr-block { text-align: center; padding-top: 14px; min-width: 140px; }
 .qr-label {
   font-weight: 700; margin-bottom: 10px; letter-spacing: 1px;
-  font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif; font-size: 13px;
+  font-family: var(--doc-font, 'Noto Sans TC', 'Microsoft JhengHei', sans-serif); font-size: 13px;
 }
 .qr-wrap { display: inline-block; }
 .qr-caption {
   margin-top: 6px; font-size: 11px; letter-spacing: 1px;
-  font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  font-family: var(--doc-font, 'Noto Sans TC', 'Microsoft JhengHei', sans-serif);
 }
 .qr-placeholder {
   width: 104px; height: 104px; border: 1px dashed #999;
