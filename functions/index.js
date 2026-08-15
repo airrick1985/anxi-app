@@ -18815,7 +18815,8 @@ exports.generateContractDocument = onCall({
     throw new HttpsError("invalid-argument", "缺少 projectId、format(pdf|excel) 或 pages 參數。");
   }
 
-  const VALID_TYPES = new Set(['breakdown', 'paymentDetail', 'bankAccounts', 'contractNotes', 'contractAttachments']);
+  const VALID_TYPES = new Set(['breakdown', 'paymentDetail', 'bankAccounts', 'contractNotes', 'contractAttachments',
+    'decorationBreakdown', 'decorationPaymentDetail']);
   for (const page of pages) {
     if (!page || !VALID_TYPES.has(page.type)) {
       throw new HttpsError("invalid-argument", `未知的頁面類型：${page && page.type}`);
@@ -18835,6 +18836,23 @@ exports.generateContractDocument = onCall({
       const sum = (Number(d.houseTotal) || 0) + (Number(d.landTotal) || 0);
       if (Math.abs(sum - (Number(d.grandTotal) || 0)) > 0.05) {
         throw new HttpsError("invalid-argument", `付款明細表房屋+土地合計（${sum} 萬）須等於期款總額（${d.grandTotal} 萬）。`);
+      }
+    }
+    // 裝修頁：期款合計須等於配套價格（docs/裝修合約製作範本-spec.md §7.1）
+    if (page.type === 'decorationBreakdown' && d.installment) {
+      const cols = Array.isArray(d.installment.columns) ? d.installment.columns : [];
+      const sum = cols.reduce((s, c) => s + (c.type === 'group'
+        ? (c.children || []).reduce((cs, ch) => cs + (Number(ch.amount) || 0), 0)
+        : (Number(c.amount) || 0)), 0);
+      if (Math.abs(sum - (Number(d.installment.grandTotal) || 0)) > 0.05
+        || Math.abs(sum - (Number(d.totalPrice) || 0)) > 0.05) {
+        throw new HttpsError("invalid-argument", `裝修工程會辦單期款合計（${sum} 萬）須等於配套價格（${d.totalPrice} 萬）。`);
+      }
+    }
+    if (page.type === 'decorationPaymentDetail') {
+      const sum = (Array.isArray(d.rows) ? d.rows : []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      if (Math.abs(sum - (Number(d.total) || 0)) > 0.05) {
+        throw new HttpsError("invalid-argument", `裝修付款明細表期款合計（${sum} 萬）須等於工程總價（${d.total} 萬）。`);
       }
     }
   }

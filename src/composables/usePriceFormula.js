@@ -10,11 +10,14 @@
 
 // ============ 常數：特殊合約 ============
 // 特殊合約（毛胚/配套等）在房土比計算時，「成交總價」改用「配套房屋總價」(price_package_deal)
-// 未來擴充只需在集合中加入新的合約類型字串
+// 判定來源優先採建案設定 projects.packageContractTypes（第二參數傳入）；
+// 未傳入時 fallback 此硬編碼集合（既有呼叫端行為不變）
 export const SPECIAL_CONTRACT_TYPES = new Set(['毛胚合約', '配套合約']);
 
-export function isSpecialContractType(contractType) {
-  return SPECIAL_CONTRACT_TYPES.has(String(contractType || ''));
+export function isSpecialContractType(contractType, packageTypes) {
+  const type = String(contractType || '');
+  if (Array.isArray(packageTypes)) return packageTypes.includes(type);
+  return SPECIAL_CONTRACT_TYPES.has(type);
 }
 
 // ============ 常數：可用參照 ============
@@ -210,7 +213,7 @@ export function validateFormula(formula) {
 // 兩公式可能互相依賴。解法：先在不帶對方結果的情況下計算一次，
 // 若某公式依賴對方結果，則先算不依賴的那支，再算另一支。
 // 若兩者都相互依賴（循環），回傳 { housePrice: NaN, landPrice: NaN, error: '...' }。
-export function computeHouseLandPrices(unitData, formulaSettings) {
+export function computeHouseLandPrices(unitData, formulaSettings, options = {}) {
   const settings = formulaSettings && (formulaSettings.housePriceFormula || formulaSettings.landPriceFormula)
     ? formulaSettings
     : buildDefaultFormulas();
@@ -220,7 +223,7 @@ export function computeHouseLandPrices(unitData, formulaSettings) {
 
   // 基礎 context
   // 特殊合約（毛胚/配套）：total 改以「配套房屋總價」(price_package_deal) 作為房土比計算基礎
-  const total       = isSpecialContractType(unitData?.contractType)
+  const total       = isSpecialContractType(unitData?.contractType, options.packageTypes)
     ? (Number(unitData?.price_package_deal) || 0)
     : (Number(unitData?.price_transaction_total) || 0);
   const parking     = Array.isArray(unitData?.['持有車位'])
@@ -269,9 +272,11 @@ function usesRef(formula, key) {
 // 既有房土比呼叫端（REF_DEFINITIONS / computeHouseLandPrices）行為不變。
 // ============================================================
 
-// 合約價款公式的基礎參照（房土比 6 個 + 面積 6 個）
+// 合約價款公式的基礎參照（房土比 6 個 + 配套 2 個 + 面積 6 個）
 export const CONTRACT_BASE_REF_DEFINITIONS = [
   ...REF_DEFINITIONS,
+  { key: 'packageDealPrice', label: '配套房屋總價',        group: 'primary', unit: '萬' },
+  { key: 'packagePrice',     label: '配套價格',            group: 'primary', unit: '萬' },
   { key: 'houseAreaSqm',     label: '房屋總面積(㎡)',      group: 'area', unit: '㎡' },
   { key: 'houseAreaPing',    label: '房屋總面積(坪)',      group: 'area', unit: '坪' },
   { key: 'mainAreaSqm',      label: '主建物面積(㎡)',      group: 'area', unit: '㎡' },
@@ -306,19 +311,24 @@ export function refDefinitionsToMap(refDefs) {
  * 建立合約價款計算的基礎 context（含房土比計算結果）。
  * @param {object} unitData 戶別資料（英文 key，含 持有車位）
  * @param {object} priceFormulaSettings projects.priceFormulaSettings（房土比公式）
+ * @param {object} [options] { packageTypes: string[] } 建案設定的配套合約方式清單（未傳採硬編碼 fallback）
  * @returns {{ context: object, error: string }}
  */
-export function buildContractBaseContext(unitData, priceFormulaSettings) {
-  const { housePrice, landPrice, error } = computeHouseLandPrices(unitData, priceFormulaSettings);
-  const total = isSpecialContractType(unitData?.contractType)
-    ? (Number(unitData?.price_package_deal) || 0)
-    : (Number(unitData?.price_transaction_total) || 0);
+export function buildContractBaseContext(unitData, priceFormulaSettings, options = {}) {
+  const { housePrice, landPrice, error } = computeHouseLandPrices(unitData, priceFormulaSettings, options);
+  const isPackage = isSpecialContractType(unitData?.contractType, options.packageTypes);
+  const transactionTotal = Number(unitData?.price_transaction_total) || 0;
+  const packageDealPrice = Number(unitData?.price_package_deal) || 0;
+  const total = isPackage ? packageDealPrice : transactionTotal;
   const parking = Array.isArray(unitData?.['持有車位'])
     ? unitData['持有車位'].reduce((s, p) => s + (Number(p?.['車位成交價'] ?? p?.price_transaction) || 0), 0)
     : 0;
   const context = {
     total,
     parking,
+    // 配套合約：配套價格 = 成交總價 − 配套房屋總價；非配套戶兩者皆 0
+    packageDealPrice: isPackage ? packageDealPrice : 0,
+    packagePrice: isPackage ? transactionTotal - packageDealPrice : 0,
     houseRatio: Number(unitData?.housePriceRatio) || 0,
     landRatio: Number(unitData?.landPriceRatio) || 0,
     housePrice: Number.isFinite(housePrice) ? housePrice : 0,

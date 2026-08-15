@@ -244,6 +244,64 @@
                           僅 PDF 匯出包含本頁；EXCEL 匯出將自動跳過。戶別欄位空值時本頁不匯出。
                         </div>
                       </template>
+
+                      <!-- ===== 裝修工程會辦單選項 ===== -->
+                      <template v-else-if="page.type === 'decorationBreakdown'">
+                        <v-divider class="my-3" />
+                        <v-text-field v-model="page.options.headerTitle" label="表頭標題" density="compact"
+                          variant="outlined" hide-details class="mb-3" style="max-width: 320px;" :disabled="!canEdit" />
+                        <div class="text-subtitle-2 mb-1">簽核欄位（與拆款表共用填寫值）</div>
+                        <v-table density="compact" class="mb-2 option-table">
+                          <thead>
+                            <tr><th style="width:35%">欄位名稱</th><th style="width:25%">來源</th><th>預設值</th><th style="width:48px"></th></tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(f, fIdx) in page.options.signFields" :key="fIdx">
+                              <td><v-text-field v-model="f.label" density="compact" variant="plain" hide-details :disabled="!canEdit" /></td>
+                              <td>
+                                <v-select v-model="f.source"
+                                  :items="[{ title: '手動輸入', value: 'manual' }, { title: '系統帶入銷售人員（唯讀）', value: 'salesperson' }]"
+                                  density="compact" variant="plain" hide-details :disabled="!canEdit"
+                                  @update:model-value="f.readonly = ($event === 'salesperson')" />
+                              </td>
+                              <td>
+                                <v-text-field v-if="f.source === 'manual'" v-model="f.default"
+                                  density="compact" variant="plain" hide-details :disabled="!canEdit" />
+                                <span v-else class="text-caption text-grey">系統自動帶入</span>
+                              </td>
+                              <td>
+                                <v-btn v-if="canEdit" icon size="x-small" variant="text" color="error"
+                                  @click="page.options.signFields.splice(fIdx, 1)">
+                                  <v-icon>mdi-close</v-icon>
+                                </v-btn>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </v-table>
+                        <v-btn v-if="canEdit" size="small" variant="tonal" prepend-icon="mdi-plus"
+                          @click="page.options.signFields.push({ label: '', source: 'manual', default: '', readonly: false })">新增簽核欄</v-btn>
+                        <div class="text-caption text-grey mt-2">
+                          本頁僅配套合約戶別（銷控設定「配套合約方式」，如毛胚合約）匯出；總價與付款明細以「配套價格」（成交總價 − 配套房屋總價）計算，期款取「配套期款」範本。
+                        </div>
+                      </template>
+
+                      <!-- ===== 裝修付款明細表選項 ===== -->
+                      <template v-else-if="page.type === 'decorationPaymentDetail'">
+                        <v-divider class="my-3" />
+                        <div class="d-flex align-center ga-4 flex-wrap mb-3">
+                          <v-text-field v-model="page.options.headerTitle" label="表頭標題" density="compact"
+                            variant="outlined" hide-details style="max-width: 260px;" :disabled="!canEdit" />
+                          <v-text-field v-model="page.options.siteLabel" label="左上標籤（工地名稱）" density="compact"
+                            variant="outlined" hide-details style="max-width: 220px;" :disabled="!canEdit" />
+                          <v-text-field v-model="page.options.unitLabel" label="戶別標籤（房屋代號）" density="compact"
+                            variant="outlined" hide-details style="max-width: 220px;" :disabled="!canEdit" />
+                        </div>
+                        <v-textarea v-model="page.options.noteText" label="頁尾備註文字（空白不顯示）" density="compact"
+                          variant="outlined" rows="2" hide-details :disabled="!canEdit" />
+                        <div class="text-caption text-grey mt-2">
+                          金額以國字大寫（如「零 佰 貳 拾 陸 萬元整」）呈現；期別名稱（含日期）取自「配套期款」範本的期別名稱。本頁僅配套合約戶別匯出。
+                        </div>
+                      </template>
                     </div>
                   </v-expand-transition>
                 </v-card>

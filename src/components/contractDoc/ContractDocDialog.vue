@@ -64,7 +64,7 @@
                       <v-chip v-if="(page.pageCopies || 1) > 1" size="x-small" variant="tonal" color="indigo" class="ml-1">
                         {{ page.pageCopies }} 頁
                       </v-chip>
-                      <v-tooltip v-if="pageDisabled(page)" location="top" text="無合約圖檔可匯出">
+                      <v-tooltip v-if="pageDisabled(page)" location="top" :text="pageDisabledReason(page)">
                         <template #activator="{ props: tp }">
                           <v-icon v-bind="tp" size="small" color="warning" class="ml-1">mdi-alert-outline</v-icon>
                         </template>
@@ -191,6 +191,114 @@
                       請至「合約製作範本 → 期款拆分規則」調整，或確認戶別房/土比例。
                     </v-alert>
                   </template>
+                </template>
+              </v-card-text>
+            </v-card>
+
+            <!-- 裝修期款（配套戶） -->
+            <v-card elevation="2" class="mb-4" v-if="needsDecoration">
+              <v-card-item class="editor-header">
+                <v-card-title class="text-subtitle-1">
+                  <v-icon start size="small">mdi-hammer-wrench</v-icon>
+                  裝修期款（裝修工程會辦單 / 裝修付款明細表）
+                </v-card-title>
+              </v-card-item>
+              <v-divider />
+              <v-card-text>
+                <v-skeleton-loader v-if="templatesLoading" type="list-item-two-line@2" />
+                <template v-else>
+                  <div class="d-flex align-center mb-2 ga-2 flex-wrap">
+                    <v-chip size="small" color="indigo" variant="tonal">
+                      配套價格 {{ formatNumber(decorationBase) }} 萬
+                    </v-chip>
+                    <span class="text-caption text-grey">= 成交總價 − 配套房屋總價</span>
+                  </div>
+                  <v-alert v-if="decorationBase <= 0" type="error" variant="tonal" density="compact" class="mb-3">
+                    配套價格無效（請確認戶別「配套房屋總價」與成交總價已正確填寫），裝修頁無法匯出。
+                  </v-alert>
+                  <v-select v-model="decoTemplateIdModel" :items="decoTemplateOptions"
+                    item-title="templateName" item-value="id" label="裝修期款範本（配套期款）"
+                    variant="outlined" density="compact" hide-details>
+                    <template v-slot:item="{ props: itemProps, item }">
+                      <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle" />
+                    </template>
+                  </v-select>
+                  <div class="d-flex align-center mt-2">
+                    <v-chip v-if="decoIsAutoSelected" size="small" color="success" variant="tonal">
+                      <v-icon start size="x-small">mdi-auto-fix</v-icon>自動判斷
+                    </v-chip>
+                    <v-chip v-else size="small" color="orange" variant="tonal">
+                      <v-icon start size="x-small">mdi-hand-back-right-outline</v-icon>手動指定
+                    </v-chip>
+                    <v-btn v-if="!decoIsAutoSelected" size="x-small" variant="text" color="primary" class="ml-2"
+                      @click="decoResetToAuto">還原自動判斷</v-btn>
+                  </div>
+                  <v-alert v-if="!decoActiveTemplate" type="info" variant="tonal" density="compact" class="mt-3">
+                    無適用裝修期款範本（{{ decoAutoConditionText }}），請至「期款方式範本設定」建立「配套期款」範本，或手動指定。
+                  </v-alert>
+
+                  <!-- 裝修期款金額微調 -->
+                  <template v-if="decoEditRows.length">
+                    <v-divider class="my-3" />
+                    <v-table density="compact" class="edit-rows-table">
+                      <thead>
+                        <tr>
+                          <th style="width:72px">比例(%)</th>
+                          <th>期別名稱</th>
+                          <th style="width:110px" class="text-right">金額(萬)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <template v-for="row in decoEditRows" :key="row.key">
+                          <tr>
+                            <td :rowspan="row.type === 'group' ? row.children.length + 1 : 1">
+                              <v-text-field v-model.number="row.percent" type="number" density="compact"
+                                variant="outlined" hide-details
+                                @change="decoRecalcAmountFromPercent(row)" />
+                            </td>
+                            <td class="font-weight-bold">{{ row.name }}</td>
+                            <td class="text-right">
+                              <template v-if="row.type === 'group'">
+                                <span class="font-weight-bold">{{ formatNumber(groupAmount(row)) }}</span>
+                              </template>
+                              <v-text-field v-else v-model.number="row.amount" type="number" density="compact"
+                                variant="outlined" hide-details class="amount-input"
+                                @change="decoRecalcPercentFromAmount(row)" />
+                            </td>
+                          </tr>
+                          <template v-if="row.type === 'group'">
+                            <tr v-for="child in row.children" :key="child.key">
+                              <td class="pl-6 text-body-2">
+                                <span v-if="child.seq !== null" class="mr-1">{{ child.seq }}.</span>{{ child.name }}
+                              </td>
+                              <td class="text-right">
+                                <v-text-field v-model.number="child.amount" type="number" density="compact"
+                                  variant="outlined" hide-details class="amount-input"
+                                  @change="decoRecalcPercentFromAmount(row)" />
+                              </td>
+                            </tr>
+                          </template>
+                        </template>
+                      </tbody>
+                    </v-table>
+
+                    <div class="d-flex flex-wrap align-center ga-2 mt-2">
+                      <v-chip size="small" :color="decoAmountOk ? 'success' : 'error'" variant="tonal">
+                        金額合計 {{ formatNumber(decoAmountSum) }} / {{ formatNumber(decorationBase) }} 萬
+                      </v-chip>
+                    </div>
+                    <div v-if="!decoAmountOk" class="d-flex align-center ga-2 mt-2">
+                      <v-select v-model="decoCorrectionTargetKey" :items="decoCorrectionOptions"
+                        item-title="label" item-value="key" density="compact" variant="outlined" hide-details
+                        label="差額歸入" style="max-width: 220px;" />
+                      <v-btn size="small" color="warning" variant="tonal" @click="applyDecoCorrection">
+                        一鍵補正差額
+                      </v-btn>
+                    </div>
+                  </template>
+
+                  <v-text-field v-if="decorationBreakdownPage" v-model="state.decorationRemark"
+                    label="裝修工程會辦單備註" density="compact" variant="outlined" hide-details class="mt-3" />
                 </template>
               </v-card-text>
             </v-card>
@@ -373,6 +481,8 @@
                           <PaymentDetailPreview v-else-if="pv.page.type === 'paymentDetail'" :data="pv.data" />
                           <BankAccountsPreview v-else-if="pv.page.type === 'bankAccounts'" :data="pv.data" />
                           <ContractNotesPreview v-else-if="pv.page.type === 'contractNotes'" :data="pv.data" />
+                          <DecorationBreakdownPreview v-else-if="pv.page.type === 'decorationBreakdown'" :data="pv.data" />
+                          <DecorationPaymentDetailPreview v-else-if="pv.page.type === 'decorationPaymentDetail'" :data="pv.data" />
                         </div>
                       </template>
                     </template>
@@ -432,12 +542,13 @@ import {
   generateContractDocument, driveProxyList,
 } from '@/api.js';
 import { runNewCalculationEngine } from '@/utils/paymentCalculation';
-import { buildUnitDocContext } from '@/utils/unitDocContext';
-import { PAGE_TYPE_MAP } from '@/utils/contractDocDefaults';
+import { buildUnitDocContext, resolveBankSets } from '@/utils/unitDocContext';
+import { PAGE_TYPE_MAP, isPackageOnlyPageType } from '@/utils/contractDocDefaults';
 import {
   buildPriceModel, buildSplitModel, defaultSelectedClauseIds,
   buildBreakdownPageData, buildPaymentDetailPageData,
   buildBankAccountsPageData, buildContractNotesPageData,
+  buildDecorationBreakdownPageData, buildDecorationPaymentDetailPageData,
   mergePagesWithOverrides, pagesToOverrides,
 } from '@/utils/contractDocModel';
 import BreakdownPreview from './BreakdownPreview.vue';
@@ -445,6 +556,8 @@ import PaymentDetailPreview from './PaymentDetailPreview.vue';
 import BankAccountsPreview from './BankAccountsPreview.vue';
 import ContractNotesPreview from './ContractNotesPreview.vue';
 import AttachmentsPreview from './AttachmentsPreview.vue';
+import DecorationBreakdownPreview from './DecorationBreakdownPreview.vue';
+import DecorationPaymentDetailPreview from './DecorationPaymentDetailPreview.vue';
 
 const props = defineProps({
   show: Boolean,
@@ -465,10 +578,19 @@ const saving = ref(false);
 const config = ref(null);
 
 /* ---------- 戶別 context ---------- */
+// 配套合約方式清單（建案設定；未設定時 undefined → isSpecialContractType 硬編碼 fallback）
+const packageTypes = computed(() => {
+  const list = projectStore.getProjectById(props.projectId)?.packageContractTypes;
+  return Array.isArray(list) ? list : undefined;
+});
+
 const unitCtx = computed(() => buildUnitDocContext(props.unitData, {
   personnelList: props.allData?.['銷售人員'] || [],
   allParkings: props.allData?.['車位'] || [],
+  packageTypes: packageTypes.value,
 }));
+
+const isPackageContract = computed(() => unitCtx.value.isPackageContract === true);
 
 const householdDocId = computed(() =>
   props.unitData?.id || `${props.projectId}_${unitCtx.value.unitId}`);
@@ -483,6 +605,7 @@ const state = reactive({
   contractNotes: [],         // [{ id, content, fontSize }]
   notesEdited: false,        // 使用者是否編輯過合約加註（未編輯則自動跟隨拆款表勾選）
   breakdownRemark: '',
+  decorationRemark: '',      // 裝修工程會辦單備註（配套戶）
   qrUrl: '',
   attachmentSelection: [],   // [{ fileId, fileName, pageRange }]
 });
@@ -506,6 +629,12 @@ const notesPage = computed(() => localPages.value.find(p => p.type === 'contract
 const attachmentsPage = computed(() => localPages.value.find(p => p.type === 'contractAttachments') || null);
 const needsInstallment = computed(() =>
   localPages.value.some(p => (p.type === 'breakdown' || p.type === 'paymentDetail') && p.enabled));
+
+// 裝修頁（僅配套戶啟用；非配套戶由 pageDisabled 鎖定）
+const decorationBreakdownPage = computed(() =>
+  localPages.value.find(p => p.type === 'decorationBreakdown' && p.enabled) || null);
+const needsDecoration = computed(() => isPackageContract.value &&
+  localPages.value.some(p => (p.type === 'decorationBreakdown' || p.type === 'decorationPaymentDetail') && p.enabled));
 
 const manualSignFields = computed(() =>
   (breakdownPage.value?.options?.signFields || []).filter(f => f.source !== 'salesperson'));
@@ -574,7 +703,14 @@ const templatesLoading = ref(false);
 const manualCategory = ref(null);
 const manualTemplateId = ref(null);
 
-const mainBase = computed(() => Math.round(Number(unitCtx.value.totalPrice) || 0));
+// 期款基準：配套合約（毛胚等）改用「配套房屋總價」，與付款表配套兩頁模式一致
+// （價款公式區的 total 亦為配套房屋總價，兩者口徑相同）
+const mainBase = computed(() => Math.round(Number(
+  isPackageContract.value ? unitCtx.value.packageDealPrice : unitCtx.value.totalPrice) || 0));
+
+// 裝修頁基準：配套價格 = 成交總價 − 配套房屋總價
+const decorationBase = computed(() =>
+  isPackageContract.value ? Math.round(Number(unitCtx.value.packagePrice) || 0) : 0);
 
 async function loadTemplates() {
   templatesLoading.value = true;
@@ -695,6 +831,111 @@ function rebuildRows() {
 
 watch(activeTemplate, () => rebuildRows());
 
+/* ---------- 裝修期款（配套戶：配套期款範本，基準 = 配套價格） ---------- */
+const decoManualTemplateId = ref(null);
+const decoEditRows = ref([]);
+const decoCorrectionTargetKey = ref(null);
+let restoringDecoRows = false;
+
+const decoTemplates = computed(() => templates.value.filter(t => t.paymentCategory === '配套期款'));
+
+const decoAutoTemplate = computed(() => {
+  const c = unitCtx.value;
+  if (!decoTemplates.value.length) return null;
+  const base = decorationBase.value;
+  const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
+  const currentPropertyType = c.propertyType || '住家';
+  const applicable = decoTemplates.value.filter(t => {
+    const tPropType = t.propertyType || '住家';
+    if (tPropType !== currentPropertyType) return false;
+    return t.minPrice <= base && base <= t.maxPrice && t.buyerType === buyerType;
+  });
+  return applicable.length > 0 ? applicable[0] : null;
+});
+
+const decoActiveTemplate = computed(() => {
+  if (decoManualTemplateId.value) return decoTemplates.value.find(t => t.id === decoManualTemplateId.value) || null;
+  return decoAutoTemplate.value;
+});
+
+const decoIsAutoSelected = computed(() => !decoManualTemplateId.value);
+
+const decoTemplateOptions = computed(() =>
+  decoTemplates.value.map(t => ({ id: t.id, templateName: t.templateName, subtitle: templateSubtitle(t) })));
+
+const decoTemplateIdModel = computed({
+  get: () => decoManualTemplateId.value || decoActiveTemplate.value?.id || null,
+  set: (value) => { decoManualTemplateId.value = value; },
+});
+
+const decoAutoConditionText = computed(() => {
+  const c = unitCtx.value;
+  const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
+  return `配套期款／${c.propertyType || '住家'}／${buyerType}／基準 ${formatNumber(decorationBase.value)} 萬`;
+});
+
+function decoResetToAuto() { decoManualTemplateId.value = null; }
+
+function rebuildDecoRows() {
+  if (restoringDecoRows) return;
+  decoEditRows.value = buildRowsFromTemplate(decoActiveTemplate.value, decorationBase.value);
+  decoCorrectionTargetKey.value = decoEditRows.value.length ? decoEditRows.value[decoEditRows.value.length - 1].key : null;
+}
+
+watch(decoActiveTemplate, () => rebuildDecoRows());
+
+function decoRecalcAmountFromPercent(row) {
+  const base = decorationBase.value;
+  const percent = Number(row.percent) || 0;
+  const target = Math.round(percent / 100 * base);
+  if (row.type === 'group') {
+    const children = row.children || [];
+    if (!children.length) return;
+    const currentSum = groupAmount(row);
+    let allocated = 0;
+    children.forEach((child, idx) => {
+      if (idx === children.length - 1) {
+        child.amount = target - allocated;
+      } else {
+        const weight = currentSum > 0 ? (Math.round(Number(child.amount)) || 0) / currentSum : 1 / children.length;
+        const val = Math.round(target * weight);
+        child.amount = val;
+        allocated += val;
+      }
+    });
+  } else {
+    row.amount = target;
+  }
+}
+
+function decoRecalcPercentFromAmount(row) {
+  const base = decorationBase.value;
+  const sum = row.type === 'group' ? groupAmount(row) : (Math.round(Number(row.amount)) || 0);
+  row.percent = base > 0 ? Math.round(sum / base * 10000) / 100 : 0;
+}
+
+// 配套頁僅驗證金額合計（同付款表配套模式，不檢查比例）
+const decoAmountSum = computed(() =>
+  decoEditRows.value.reduce((s, r) => s + (r.type === 'group' ? groupAmount(r) : (Math.round(Number(r.amount)) || 0)), 0));
+const decoAmountOk = computed(() => decoAmountSum.value === decorationBase.value);
+
+const decoCorrectionOptions = computed(() => decoEditRows.value.map(r => ({ key: r.key, label: r.name })));
+
+function applyDecoCorrection() {
+  const row = decoEditRows.value.find(r => r.key === decoCorrectionTargetKey.value);
+  if (!row) return;
+  const diff = decorationBase.value - decoAmountSum.value;
+  if (row.type === 'group') {
+    const children = row.children || [];
+    if (!children.length) return;
+    const last = children[children.length - 1];
+    last.amount = (Math.round(Number(last.amount)) || 0) + diff;
+  } else {
+    row.amount = (Math.round(Number(row.amount)) || 0) + diff;
+  }
+  decoRecalcPercentFromAmount(row);
+}
+
 /* ---------- 雙向連動 / 驗證（單頁版，同付款表邏輯） ---------- */
 function groupAmount(row) {
   return (row.children || []).reduce((s, c) => s + (Math.round(Number(c.amount)) || 0), 0);
@@ -763,6 +1004,7 @@ const priceModel = computed(() => buildPriceModel(
   props.unitData || {},
   projectStore.getProjectById(props.projectId)?.priceFormulaSettings || null,
   config.value,
+  { packageTypes: packageTypes.value },
 ));
 
 const splitModel = computed(() => buildSplitModel(editRows.value, config.value, priceModel.value.fullContext));
@@ -852,8 +1094,26 @@ function setAttachmentPageRange(fileId, val) {
   if (a) a.pageRange = (val || '').trim() || null;
 }
 
+// 該帳戶頁解析後無任何可顯示的銀行組（如：僅勾配套款組但戶別配套欄位空白）
+function bankPageEmpty(page) {
+  const all = resolveBankSets(config.value?.bankSets || [], props.unitData || {});
+  const ids = page.options?.bankSetIds || [];
+  const sets = ids.length ? all.filter(s => ids.includes(s.id)) : all;
+  return sets.length === 0;
+}
+
 function pageDisabled(page) {
-  return page.type === 'contractAttachments' && !attachmentSourceUrl.value;
+  if (page.type === 'contractAttachments' && !attachmentSourceUrl.value) return true;
+  if (isPackageOnlyPageType(page.type) && !isPackageContract.value) return true;
+  if (page.type === 'bankAccounts' && config.value && bankPageEmpty(page)) return true;
+  return false;
+}
+
+function pageDisabledReason(page) {
+  if (page.type === 'contractAttachments' && !attachmentSourceUrl.value) return '無合約圖檔可匯出';
+  if (isPackageOnlyPageType(page.type) && !isPackageContract.value) return '本頁僅適用配套合約戶別（如：毛胚合約）';
+  if (page.type === 'bankAccounts' && config.value && bankPageEmpty(page)) return '無可顯示的繳款帳戶資料';
+  return '';
 }
 
 /* ---------- 簽約日期 ---------- */
@@ -910,6 +1170,7 @@ const builderState = computed(() => ({
   clauseLibrary: effectiveClauseLibrary.value,
   configPriceFormulas: config.value?.priceFormulas || [],
   breakdownRemark: state.breakdownRemark,
+  decorationRemark: state.decorationRemark,
   contractNotes: state.contractNotes,
   qrUrl: state.qrUrl,
 }));
@@ -927,6 +1188,12 @@ function buildPageData(page) {
   }
   if (page.type === 'contractNotes') {
     return buildContractNotesPageData(page, builderState.value);
+  }
+  if (page.type === 'decorationBreakdown') {
+    return buildDecorationBreakdownPageData(page, ctx, decoEditRows.value, builderState.value);
+  }
+  if (page.type === 'decorationPaymentDetail') {
+    return buildDecorationPaymentDetailPageData(page, ctx, decoEditRows.value, builderState.value);
   }
   if (page.type === 'contractAttachments') {
     return {
@@ -991,6 +1258,10 @@ const canDownload = computed(() => {
     if (!percentOk.value || !amountOk.value) return false;
     if (!splitModel.value.landOk) return false;
   }
+  if (needsDecoration.value) {
+    if (!decoEditRows.value.length || decorationBase.value <= 0) return false;
+    if (!decoAmountOk.value) return false;
+  }
   return true;
 });
 
@@ -1041,6 +1312,7 @@ function restoreDocData(cfg) {
   state.signFieldValues = { ...signDefaults, ...(saved.signFieldValues || {}) };
   state.clauseOverrides = { ...(saved.clauseOverrides || {}) };
   state.breakdownRemark = saved.breakdownRemark || '';
+  state.decorationRemark = saved.decorationRemark || '';
   state.qrUrl = saved.qrUrl || '';
   state.attachmentSelection = Array.isArray(saved.attachmentSelection) ? [...saved.attachmentSelection] : [];
 
@@ -1078,6 +1350,26 @@ function restoreDocData(cfg) {
       toast.info('期款範本結構已變更，已重新以範本計算（先前手動調整未套用）。');
     }
   }
+
+  // 裝修期款範本手動覆蓋 + 手動調整列（配套戶）
+  decoResetToAuto();
+  if (saved.decorationTemplateId && decoTemplates.value.some(t => t.id === saved.decorationTemplateId)) {
+    decoManualTemplateId.value = saved.decorationTemplateId;
+  }
+  rebuildDecoRows();
+  if (Array.isArray(saved.decorationManualRows) && saved.decorationManualRows.length
+    && saved.decorationManualRowsTemplateId === (decoActiveTemplate.value?.id || null)) {
+    const currentNames = JSON.stringify(decoEditRows.value.map(r => [r.name, (r.children || []).map(c => c.name)]));
+    const savedNames = JSON.stringify(saved.decorationManualRows.map(r => [r.name, (r.children || []).map(c => c.name)]));
+    if (currentNames === savedNames) {
+      restoringDecoRows = true;
+      decoEditRows.value = saved.decorationManualRows.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) }));
+      decoCorrectionTargetKey.value = decoEditRows.value.length ? decoEditRows.value[decoEditRows.value.length - 1].key : null;
+      restoringDecoRows = false;
+    } else if (isPackageContract.value) {
+      toast.info('裝修期款範本結構已變更，已重新以範本計算（先前手動調整未套用）。');
+    }
+  }
 }
 
 /* ---------- 儲存 ---------- */
@@ -1091,10 +1383,14 @@ function buildDocDataPayload() {
     contractNotes: state.contractNotes.map(n => ({ ...n })),
     notesEdited: state.notesEdited,
     breakdownRemark: state.breakdownRemark || '',
+    decorationRemark: state.decorationRemark || '',
     qrUrl: state.qrUrl || '',
     paymentTemplateId: manualTemplateId.value || null,
     manualRowsTemplateId: activeTemplate.value?.id || null,
     manualRows: editRows.value.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) })),
+    decorationTemplateId: decoManualTemplateId.value || null,
+    decorationManualRowsTemplateId: decoActiveTemplate.value?.id || null,
+    decorationManualRows: decoEditRows.value.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) })),
     pageOverrides: pagesToOverrides(localPages.value, config.value?.pages || []),
     attachmentSelection: state.attachmentSelection.map(a => ({ ...a })),
   };

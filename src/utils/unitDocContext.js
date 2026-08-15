@@ -6,6 +6,7 @@
 // 行為不同，維持原狀；本模組為合約製作 Dialog 專用的純函式版本。
 
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
+import { isSpecialContractType } from '@/composables/usePriceFormula';
 
 /** Firestore Timestamp / Date / 字串 → Date（無效回 null） */
 export function toDateSafe(value) {
@@ -93,7 +94,8 @@ export function buildUnitLabel(unitData) {
 /**
  * 組出合約製作 Dialog 所需的完整戶別 context。
  * @param {object} unitData salesHouseholds 戶別資料（含 持有車位 enrich）
- * @param {object} opts { personnelList: 銷售人員清單（含 name/phone/order）, allParkings: 車位備援 }
+ * @param {object} opts { personnelList: 銷售人員清單（含 name/phone/order）, allParkings: 車位備援,
+ *                        packageTypes: 建案設定 projects.packageContractTypes（配套判定；未傳採硬編碼 fallback） }
  */
 export function buildUnitDocContext(unitData, opts = {}) {
   const d = unitData || {};
@@ -130,6 +132,11 @@ export function buildUnitDocContext(unitData, opts = {}) {
     totalPrice: grandTotal,                 // 成交總價（含車位，萬）
     houseTransactionPrice: housePrice,      // 房屋成交價（不含車位，萬）
     packageDealPrice: Number(d.price_package_deal) || 0,
+    // 配套合約（毛胚等）：配套價格 = 成交總價 − 配套房屋總價；非配套戶為 0
+    isPackageContract: isSpecialContractType(d.contractType, opts.packageTypes),
+    packagePrice: isSpecialContractType(d.contractType, opts.packageTypes)
+      ? grandTotal - (Number(d.price_package_deal) || 0)
+      : 0,
     housePriceRatio: Number(d.housePriceRatio) || 0,
     landPriceRatio: Number(d.landPriceRatio) || 0,
 

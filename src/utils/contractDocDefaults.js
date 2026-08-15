@@ -7,7 +7,15 @@ export const PAGE_TYPES = [
   { type: 'paymentDetail',       label: '付款明細表',           icon: 'mdi-cash-multiple' },
   { type: 'contractNotes',       label: '合約加註',             icon: 'mdi-note-text-outline' },
   { type: 'contractAttachments', label: '合約附圖',             icon: 'mdi-floor-plan' },
+  // 裝修合約頁型（僅配套合約戶別適用，見 docs/裝修合約製作範本-spec.md）
+  { type: 'decorationBreakdown',    label: '裝修工程會辦單', icon: 'mdi-hammer-wrench', packageOnly: true },
+  { type: 'decorationPaymentDetail', label: '裝修付款明細表', icon: 'mdi-cash-clock',    packageOnly: true },
 ];
+
+// 僅配套合約戶別適用的頁型
+export function isPackageOnlyPageType(type) {
+  return PAGE_TYPE_MAP[type]?.packageOnly === true;
+}
 
 export const PAGE_TYPE_MAP = Object.fromEntries(PAGE_TYPES.map(p => [p.type, p]));
 
@@ -65,6 +73,23 @@ export function buildDefaultPageOptions(type) {
       return { defaultFontSize: 10, blockWidthMm: null, blockHeightMm: null, showBuyerSignLine: true };
     case 'contractAttachments':
       return { sourceField: 'contractDrawingFolderUrl', fitMode: 'fit' };
+    case 'decorationBreakdown':
+      return {
+        headerTitle: '裝修工程會辦單',
+        signFields: [
+          { label: '富宇主管', source: 'manual', default: '', readonly: false },
+          { label: '富宇承辦', source: 'manual', default: '', readonly: false },
+          { label: '專案經理', source: 'manual', default: '', readonly: false },
+          { label: '銷售人員', source: 'salesperson', default: '', readonly: true },
+        ],
+      };
+    case 'decorationPaymentDetail':
+      return {
+        headerTitle: '裝修付款明細表',
+        siteLabel: '工地名稱',
+        unitLabel: '房屋代號',
+        noteText: '',
+      };
     default:
       return {};
   }
@@ -152,6 +177,8 @@ export function buildDefaultBankSets() {
   return [
     { id: uid(), label: '房屋款', source: 'unit-house', bankName: '', accountName: '', account: '' },
     { id: uid(), label: '土地款', source: 'unit-land', bankName: '', accountName: '', account: '' },
+    // 配套款（毛胚等配套合約戶別；戶別配套款欄位空白時自動隱藏，不影響一般戶）
+    { id: uid(), label: '配套款', source: 'unit-package', bankName: '', accountName: '', account: '' },
   ];
 }
 

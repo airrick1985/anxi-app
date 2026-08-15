@@ -1010,9 +1010,9 @@
     </v-dialog>
 
     <!-- 進階篩選：狀態/項目/選擇方式 + 進階條件（自「篩選與顯示設定」拆出的獨立對話框） -->
-    <v-dialog v-model="isAdvFilterDialogVisible" max-width="640px" scrollable :fullscreen="xs">
-      <v-card class="d-flex flex-column">
-        <v-card-title class="d-flex align-center bg-primary text-white py-3 px-4">
+    <v-dialog v-model="isAdvFilterDialogVisible" max-width="640px" scrollable :fullscreen="smAndDown">
+      <v-card class="d-flex flex-column adv-filter-card">
+        <v-card-title class="d-flex align-center bg-primary text-white py-3 px-4 flex-shrink-0">
           <v-icon start>mdi-filter-variant</v-icon>
           <span class="text-subtitle-1 font-weight-bold">進階篩選</span>
           <v-chip v-if="advFilterCount > 0" size="x-small" color="error" variant="flat" class="ml-2" label>{{ advFilterCount }} 項條件</v-chip>
@@ -1020,10 +1020,29 @@
           <v-btn icon="mdi-close" variant="text" color="white" size="small" @click="isAdvFilterDialogVisible = false"></v-btn>
         </v-card-title>
 
-        <v-card-text class="pa-4" style="background-color:#f5f6f8;">
-          <div class="text-caption text-grey-darken-1 mb-4 d-flex align-center">
+        <!-- 已套用條件：手機版看不到全部欄位，這排標籤可一眼掌握並單獨移除 -->
+        <div v-if="activeAdvChips.length > 0" class="adv-active-bar flex-shrink-0 px-3 py-2">
+          <div class="d-flex align-center flex-wrap ga-1">
+            <v-chip
+              v-for="chip in activeAdvChips"
+              :key="chip.id"
+              size="small"
+              color="primary"
+              variant="flat"
+              closable
+              label
+              @click:close="removeAdvChip(chip)"
+            >
+              <v-icon start size="x-small">{{ chip.icon }}</v-icon>{{ chip.text }}
+            </v-chip>
+            <v-btn size="x-small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="clearAdvFilters">全部清除</v-btn>
+          </div>
+        </div>
+
+        <v-card-text class="pa-3 pa-sm-4" style="background-color:#f5f6f8;">
+          <div class="text-caption text-grey-darken-1 mb-3 d-flex align-start">
             <v-icon size="16" class="mr-1" color="grey">mdi-information-outline</v-icon>
-            調整後即時反映在時間表上；狀態／項目／選擇方式會記憶在此裝置，進階條件重新整理後自動重置。
+            <span>調整後即時反映在時間表上；狀態／項目／選擇方式會記憶在此裝置，進階條件重新整理後自動重置。</span>
           </div>
 
           <!-- 狀態 -->
@@ -1177,10 +1196,17 @@
         </v-card-text>
 
         <v-divider></v-divider>
-        <v-card-actions class="px-4 py-3">
-          <v-btn v-if="advFilterCount > 0" size="small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="clearAdvFilters">清除進階條件</v-btn>
-          <v-spacer></v-spacer>
-          <v-btn color="primary" variant="flat" @click="isAdvFilterDialogVisible = false">完成</v-btn>
+        <v-card-actions class="px-3 px-sm-4 py-2 py-sm-3 flex-shrink-0 adv-filter-actions">
+          <div class="d-flex align-center flex-wrap ga-1 w-100">
+            <!-- 結果筆數：手機版關閉對話框前就能確認條件是否篩過頭 -->
+            <v-chip size="small" label variant="tonal" :color="filteredAppointments.length === 0 ? 'error' : 'primary'">
+              <v-icon start size="x-small">mdi-calendar-check</v-icon>
+              顯示 {{ filteredAppointments.length }} 筆
+            </v-chip>
+            <v-btn v-if="advFilterCount > 0" size="small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="clearAdvFilters">清除條件</v-btn>
+            <v-spacer></v-spacer>
+            <v-btn color="primary" variant="flat" :block="xs" :class="{ 'mt-2': xs }" @click="isAdvFilterDialogVisible = false">完成</v-btn>
+          </div>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1801,66 +1827,6 @@
       </v-card>
     </v-dialog>
 
-    <v-navigation-drawer
-  v-if="isFilterDrawerVisible"
-  v-model="isFilterDrawerVisible"
-  location="right"
-  temporary
-  width="300"
->
-  <v-sheet class="d-flex flex-column h-100">
-    <v-list-item
-      title="篩選條件"
-      subtitle="請選擇行事曆要顯示的項目"
-      class="bg-grey-lighten-3"
-    >
-      <template v-slot:append>
-        <v-btn
-          variant="text"
-          icon="mdi-close"
-          @click="isFilterDrawerVisible = false"
-        ></v-btn>
-      </template>
-    </v-list-item>
-    <v-divider></v-divider>
-    <div class="pa-4" style="overflow-y: auto">
-      <div>
-        <v-label class="mb-2">預約狀態</v-label>
-        <v-checkbox v-model="selectedStatuses" label="預約中" value="預約中" density="compact" hide-details color="black"></v-checkbox>
-        <v-checkbox v-model="selectedStatuses" label="取消" value="取消" density="compact" hide-details color="black"></v-checkbox>
-        <v-checkbox v-model="selectedStatuses" label="已完成" value="已完成" density="compact" hide-details color="black"></v-checkbox>
-      </div>
-      <v-divider class="my-3"></v-divider>
-      <div>
-        <v-label class="mb-2">預約項目</v-label>
-        <v-checkbox v-for="itemType in currentTypeOptions" :key="itemType" v-model="selectedTypes" :label="itemType" :value="itemType" density="compact" hide-details color="black"></v-checkbox>
-      </div>
-      <v-divider class="my-3"></v-divider>
-      <div>
-        <v-label class="mb-2">選擇方式</v-label>
-        <v-checkbox v-for="method in currentMethodOptions" :key="method" v-model="selectedMethods" :label="method" :value="method" density="compact" hide-details color="black"></v-checkbox>
-      </div>
-      <v-divider class="my-3"></v-divider>
-      <div>
-        <v-label class="mb-2">預約記錄標籤</v-label>
-        <v-checkbox v-for="field in displayFieldOptions" :key="field.key" v-model="selectedDisplayFields" :label="field.label" :value="field.key" density="compact" hide-details color="black"></v-checkbox>
-      </div>
-    </div>
-    <v-spacer></v-spacer>
-    <div class="pa-2 bg-grey-lighten-4">
-      <v-btn variant="tonal" color="purple" block class="mb-2" prepend-icon="mdi-filter-variant"
-        @click="isFilterDrawerVisible = false; isAdvFilterDialogVisible = true">
-        進階篩選
-        <v-chip v-if="advFilterCount > 0" size="x-small" color="error" variant="flat" class="ml-1" label>{{ advFilterCount }}</v-chip>
-      </v-btn>
-      <v-btn variant="tonal" color="indigo" block class="mb-2" prepend-icon="mdi-cog"
-        @click="isFilterDrawerVisible = false; isFilterDialogVisible = true">顯示設定</v-btn>
-      <v-btn color="primary" block @click="isFilterDrawerVisible = false"
-        >完成</v-btn
-      >
-    </div>
-  </v-sheet>
-</v-navigation-drawer>
     
     <v-dialog v-model="isDuplicateDialogVisible" max-width="600px" persistent>
       <v-card v-if="duplicateInfo">
@@ -1958,7 +1924,7 @@
       <span>重整</span>
     </v-btn>
 
-    <v-btn @click="isFilterDrawerVisible = true">
+    <v-btn @click="isAdvFilterDialogVisible = true">
       <v-badge :content="advFilterCount" :model-value="advFilterCount > 0" color="error" offset-x="-4" offset-y="-2">
         <v-icon>mdi-filter-variant</v-icon>
       </v-badge>
@@ -2256,7 +2222,6 @@ const dateRange = ref([]);
 
 const isCancelConfirmDialogVisible = ref(false);
 const eventToCancel = ref(null);
-const isFilterDrawerVisible = ref(false);
 const snackbar = ref(false);
 const snackbarText = ref('');
 const panels = ref([]);
@@ -2479,6 +2444,44 @@ const advFilterCount = computed(() => {
 const ADV_DOW_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 const advWeekdayOptions = [1, 2, 3, 4, 5, 6, 0].map(d => ({ value: d, title: `星期${ADV_DOW_LABELS[d]}` }));
 const ADV_SOURCE_OPTIONS = ['前台預約', '後台新增'];
+
+// 已套用的進階條件攤平成可單獨移除的標籤（手機版看不到全部欄位，靠這排標籤掌握目前條件）
+const ADV_CHIP_GROUPS = [
+  { field: 'weekdays', icon: 'mdi-calendar-week', label: (v) => `星期${ADV_DOW_LABELS[v]}` },
+  { field: 'timeSlots', icon: 'mdi-clock-outline', label: (v) => v },
+  { field: 'sources', icon: 'mdi-import', label: (v) => v },
+  { field: 'checkInStatuses', icon: 'mdi-account-check-outline', label: (v) => v },
+  { field: 'inspectors', icon: 'mdi-account-hard-hat', label: (v) => v },
+  { field: 'companies', icon: 'mdi-domain', label: (v) => v },
+  { field: 'buildings', icon: 'mdi-office-building-outline', label: (v) => `${v} 棟` },
+];
+const activeAdvChips = computed(() => {
+  const chips = [];
+  if (advFilters.keyword && advFilters.keyword.trim()) {
+    chips.push({ id: 'keyword', field: 'keyword', icon: 'mdi-magnify', text: `「${advFilters.keyword.trim()}」` });
+  }
+  for (const g of ADV_CHIP_GROUPS) {
+    for (const v of advFilters[g.field]) {
+      chips.push({ id: `${g.field}:${v}`, field: g.field, value: v, icon: g.icon, text: g.label(v) });
+    }
+  }
+  if (advFilters.bookerName) {
+    chips.push({ id: 'bookerName', field: 'bookerName', icon: 'mdi-account-outline', text: `預約人:${advFilters.bookerName}` });
+  }
+  if (advFilters.buyerName) {
+    chips.push({ id: 'buyerName', field: 'buyerName', icon: 'mdi-account-star-outline', text: `買方:${advFilters.buyerName}` });
+  }
+  return chips;
+});
+function removeAdvChip(chip) {
+  const current = advFilters[chip.field];
+  if (Array.isArray(current)) {
+    const i = current.indexOf(chip.value);
+    if (i !== -1) current.splice(i, 1);
+  } else {
+    advFilters[chip.field] = '';
+  }
+}
 
 // 時段字串正規化為 HH:mm（資料可能是「09:30」或含後綴文字）
 function normalizeTimeSlotStr(raw) {
@@ -3191,7 +3194,8 @@ const groupedEvents = computed(() => {
 });
 
 // --- 手機版行事曆式視圖（日期橫條 + 當日行程） ---
-const { xs } = useDisplay();
+// smAndDown：手機與小平板；篩選對話框在此區間改為全螢幕版型（與底部導覽列 d-md-none 的斷點一致）
+const { xs, smAndDown } = useDisplay();
 const selectedMobileDate = ref('');
 
 const mobileDates = computed(() => {

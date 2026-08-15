@@ -655,6 +655,213 @@ function drawContractNotes(pdf, d, slotTop, slotH) {
 }
 
 /* ==========================================================
+ * 裝修工程會辦單（配套戶；docs/裝修合約製作範本-spec.md §4.1）
+ * 版面 = 簽約會辦單簡化版：無車位/土地持分/價款公式區，付款明細單列
+ * ========================================================== */
+
+function drawDecorationBreakdown(pdf, d, slotTop) {
+  const { left: L, contentW: W } = pageMetrics(pdf);
+  const pageBottom = pdf.page.height - MARGIN;
+  let y = slotTop;
+  const X = f => L + W * f;
+  const FW = f => W * f;
+
+  // ---- 標題 ----
+  cell(pdf, L, y, W, 34, d.headerTitle || "裝修工程會辦單", { bold: true, size: 18, charSpace: 8 });
+  y += 34;
+
+  // ---- 基本資訊（3 列，同簽約會辦單）----
+  const IF = [0, 0.13, 0.32, 0.435, 0.605, 0.74, 1];
+  const infoRow = (cells, h = 28) => {
+    for (const c of cells) {
+      cell(pdf, X(IF[c.i0]), y, X(IF[c.i1]) - X(IF[c.i0]), h, c.t, c.o || {});
+    }
+    y += h;
+  };
+  infoRow([
+    { i0: 0, i1: 1, t: "個案名稱", o: { bold: true, size: 10.5 } },
+    { i0: 1, i1: 2, t: d.projectName || "", o: { size: 13 } },
+    { i0: 2, i1: 3, t: "客戶姓名", o: { bold: true, size: 10.5 } },
+    { i0: 3, i1: 4, t: d.buyerName || "", o: { size: 11.5 } },
+    { i0: 4, i1: 5, t: "身分證字號", o: { bold: true, size: 10.5 } },
+    { i0: 5, i1: 6, t: d.buyerIdNumber || "", o: { size: 11 } },
+  ]);
+  infoRow([
+    { i0: 0, i1: 1, t: "房屋編號", o: { bold: true, size: 10.5 } },
+    { i0: 1, i1: 2, t: d.unitId || "", o: { size: 13 } },
+    { i0: 2, i1: 3, t: "總　價", o: { bold: true, size: 10.5 } },
+    { i0: 3, i1: 4, t: fmtWan(d.totalPrice), o: { size: 13 } },
+    { i0: 4, i1: 5, t: "聯絡電話", o: { bold: true, size: 10.5 } },
+    { i0: 5, i1: 6, t: d.buyerPhone || "", o: { size: 11 } },
+  ]);
+  infoRow([
+    { i0: 0, i1: 1, t: "地　址", o: { bold: true, size: 10.5 } },
+    { i0: 1, i1: 4, t: d.address || "", o: { size: 10.5 } },
+    { i0: 4, i1: 5, t: "簽約日期", o: { bold: true, size: 10.5 } },
+    { i0: 5, i1: 6, t: d.signDate || "", o: { size: 10.5 } },
+  ]);
+
+  // ---- 面積區（無車位/土地持分：右欄僅「共有部份」，其餘留白）----
+  const a = d.areas || {};
+  const AH = 25;
+  const areaRows = 6;
+  const AF = { l0: 0, l1: 0.13, v1: 0.235, u1: 0.275, m0: 0.275, m1: 0.39, s1: 0.475, v2: 0.58, u2: 0.62, r0: 0.62, r1: 0.77, v3: 0.96, u3: 1 };
+  const areaTop = y;
+  cell(pdf, X(AF.l0), y, X(AF.l1) - X(AF.l0), AH * areaRows, "房屋總面積", { bold: true, size: 10.5 });
+  cell(pdf, X(AF.l1), y, X(AF.v1) - X(AF.l1), AH * 3, fmtArea(a.houseTotalSqm), { size: 11 });
+  cell(pdf, X(AF.v1), y, X(AF.u1) - X(AF.v1), AH * 3, "㎡", { size: 8.5 });
+  cell(pdf, X(AF.l1), y + AH * 3, X(AF.v1) - X(AF.l1), AH * 3, fmtArea(a.houseTotalPing), { size: 11 });
+  cell(pdf, X(AF.v1), y + AH * 3, X(AF.u1) - X(AF.v1), AH * 3, "坪", { size: 8.5 });
+
+  const pairAt = (row, colDef) => {
+    const py = areaTop + AH * row;
+    const { x0, x1, sx, vx, ux, label, sub, sqm, ping, labelSize } = colDef;
+    if (sx !== null) {
+      cell(pdf, x0, py, x1 - x0, AH * 2, label, { bold: true, size: labelSize || 10 });
+      cell(pdf, x1, py, sx - x1, AH, sub && sub[0] !== undefined ? sub[0] : "", { size: 8.5 });
+      cell(pdf, x1, py + AH, sx - x1, AH, sub && sub[1] !== undefined ? sub[1] : "", { size: 8.5 });
+      cell(pdf, sx, py, vx - sx, AH, fmtArea(sqm), { size: 10.5 });
+      cell(pdf, vx, py, ux - vx, AH, "㎡", { size: 8.5 });
+      cell(pdf, sx, py + AH, vx - sx, AH, fmtArea(ping), { size: 10.5 });
+      cell(pdf, vx, py + AH, ux - vx, AH, "坪", { size: 8.5 });
+    } else {
+      cell(pdf, x0, py, x1 - x0, AH * 2, label, { bold: true, size: labelSize || 10 });
+      cell(pdf, x1, py, vx - x1, AH, fmtArea(sqm), { size: 10.5 });
+      cell(pdf, vx, py, ux - vx, AH, "㎡", { size: 8.5 });
+      cell(pdf, x1, py + AH, vx - x1, AH, fmtArea(ping), { size: 10.5 });
+      cell(pdf, vx, py + AH, ux - vx, AH, "坪", { size: 8.5 });
+    }
+  };
+
+  pairAt(0, { x0: X(AF.m0), x1: X(AF.m1), sx: X(AF.s1), vx: X(AF.v2), ux: X(AF.u2), label: "主建物", sub: ["占比", a.mainRatioText || ""], sqm: a.mainSqm, ping: a.mainPing });
+  pairAt(2, { x0: X(AF.m0), x1: X(AF.s1), sx: null, vx: X(AF.v2), ux: X(AF.u2), label: "附屬建物(陽台)", sqm: a.ancillarySqm, ping: a.ancillaryPing, labelSize: 9 });
+  pairAt(4, { x0: X(AF.m0), x1: X(AF.s1), sx: null, vx: X(AF.v2), ux: X(AF.u2), label: "專有部分(合計)", sqm: a.exclusiveSqm, ping: a.exclusivePing, labelSize: 9 });
+  // 右欄：僅共有部份，其餘留白
+  pairAt(0, { x0: X(AF.r0), x1: X(AF.r1), sx: null, vx: X(AF.v3), ux: X(AF.u3), label: "共有部份", sqm: a.commonSqm, ping: a.commonPing });
+  cell(pdf, X(AF.r0), areaTop + AH * 2, X(AF.u3) - X(AF.r0), AH * 4, "", {});
+  y = areaTop + AH * areaRows;
+
+  // ---- 付款明細（單列「裝修工程款」，無房土拆分/比例列）----
+  const columns = (d.installment && d.installment.columns) || [];
+  if (columns.length) {
+    const leaves = columns.reduce((s, c) => s + (c.type === "group" ? c.children.length : 1), 0);
+    const vertW = 20;
+    const labelW = 52;
+    const totalW = 47;
+    const leafW = (W - vertW - labelW - totalW) / Math.max(leaves, 1);
+    const nfs = leafW < 26 ? 6.5 : leafW < 34 ? 7.2 : 8;
+    const H1 = 17, H2 = 14, DH = 24;
+    const blockH = H1 + H2 + DH;
+    const bx = L + vertW;
+
+    vCell(pdf, L, y, vertW, blockH, "付款明細", { bold: true, size: 10 });
+
+    cell(pdf, bx, y, labelW, H1 + H2, "單位:萬", { bold: true, size: 8 });
+    let hx = bx + labelW;
+    for (const col of columns) {
+      if (col.type === "group") {
+        const gw = leafW * col.children.length;
+        cell(pdf, hx, y, gw, H1, col.name, { bold: true, size: 9 });
+        col.children.forEach((c2, j) => {
+          cell(pdf, hx + leafW * j, y + H1, leafW, H2, c2.seq !== null && c2.seq !== undefined ? String(c2.seq) : String(j + 1), { size: 7.5, bold: true });
+        });
+        hx += gw;
+      } else {
+        cell(pdf, hx, y, leafW, H1 + H2, col.name, { bold: true, size: nfs, padX: 1 });
+        hx += leafW;
+      }
+    }
+    cell(pdf, hx, y, totalW, H1 + H2, "總價", { bold: true, size: 9.5 });
+    y += H1 + H2;
+
+    cell(pdf, bx, y, labelW, DH, d.installment.rowLabel || "裝修工程款", { size: 8, bold: true, padX: 2 });
+    let cx = bx + labelW;
+    for (const col of columns) {
+      const leavesArr = col.type === "group" ? col.children : [col];
+      for (const lf of leavesArr) {
+        cell(pdf, cx, y, leafW, DH, fmtWan(lf.amount), { size: nfs, padX: 1 });
+        cx += leafW;
+      }
+    }
+    cell(pdf, cx, y, totalW, DH, fmtWan(d.installment.grandTotal), { size: 8.5, bold: true, padX: 2 });
+    y += DH;
+  }
+
+  // ---- 備註（較高，靠左上）----
+  const remarkH = 60;
+  cell(pdf, L, y, FW(0.13), remarkH, "備註", { bold: true, size: 10 });
+  pdf.lineWidth(0.7).rect(X(0.13), y, FW(0.87), remarkH).stroke(BLACK);
+  if (d.remark) {
+    pdf.font("HEI").fontSize(9).fillColor(BLACK)
+      .text(String(d.remark), X(0.13) + 5, y + 5, { width: FW(0.87) - 10 });
+  }
+  y += remarkH;
+
+  // ---- 簽核欄（貼齊頁底，中間留白由外框涵蓋）----
+  const signFields = d.signFields || [];
+  const signH = signFields.length ? 18 + 32 : 0;
+  let signTop = pageBottom - signH;
+  if (signTop < y) signTop = y;
+  if (signFields.length) {
+    const sw = W / signFields.length;
+    signFields.forEach((f, i) => {
+      cell(pdf, L + sw * i, signTop, sw, 18, f.label, { bold: true, size: 10.5 });
+    });
+    signFields.forEach((f, i) => {
+      cell(pdf, L + sw * i, signTop + 18, sw, 32, f.value || "", { size: 11 });
+    });
+  }
+  y = signTop + signH;
+
+  // ---- 整頁外框（加粗）----
+  pdf.lineWidth(1.3).rect(L, slotTop, W, y - slotTop).stroke(BLACK);
+  return y;
+}
+
+/* ==========================================================
+ * 裝修付款明細表（明體、國字大寫；docs/裝修合約製作範本-spec.md §4.2）
+ * ========================================================== */
+
+function drawDecorationPaymentDetail(pdf, d, slotTop) {
+  const { left: L, contentW: W } = pageMetrics(pdf);
+  let y = slotTop + 6;
+
+  // 表頭：工地名稱 + 標題、房屋代號
+  pdf.font("MING").fontSize(11.5).fillColor(BLACK);
+  pdf.text(`${d.siteLabel || "工地名稱"}：`, L + 8, y);
+  pdf.text(d.projectName || "", L + 86, y);
+  pdf.font("MING-B").fontSize(13).text(d.headerTitle || "裝修付款明細表", L, y - 1, { width: W, align: "center", characterSpacing: 3 });
+  y += 26;
+  pdf.font("MING").fontSize(11.5).text(`${d.unitLabel || "房屋代號"}：`, L + 8, y);
+  pdf.text(d.unitId || "", L + 86, y);
+  y += 34;
+
+  // 工程總價（國字大寫）
+  pdf.font("MING-B").fontSize(12.5);
+  pdf.text("工程總價", L + 8, y);
+  pdf.text(`計新臺幣 ${d.zhTotal || ""}`, L + 96, y);
+  y += 30;
+
+  // 期款清單（每期一列：國字序號、期別名稱：新台幣：國字大寫）
+  const rows = d.rows || [];
+  const RH = 24;
+  for (const row of rows) {
+    pdf.font("MING").fontSize(11.5).fillColor(BLACK);
+    pdf.text(`${row.zhSeq}、`, L + 8, y, { width: 46, align: "right" });
+    pdf.text(String(row.name || ""), L + 58, y);
+    pdf.text(`：新台幣：${row.zhAmount || ""}`, L + 196, y);
+    y += RH;
+  }
+
+  if (d.noteText) {
+    y += 10;
+    pdf.font("MING").fontSize(8.5).fillColor(BLACK).text(String(d.noteText), L + 8, y, { width: W - 16 });
+    y += pdf.heightOfString(String(d.noteText), { width: W - 16 }) + 4;
+  }
+  return y;
+}
+
+/* ==========================================================
  * PDF 主流程（repeatCount：等分頁面、槽間裁切虛線）
  * ========================================================== */
 
@@ -716,6 +923,10 @@ function drawPageContent(pdf, page, slotTop, slotH) {
       return drawBankAccounts(pdf, d, slotTop, slotH, dataUrlToBuffer(d.qrDataUrl));
     case "contractNotes":
       return drawContractNotes(pdf, d, slotTop, slotH);
+    case "decorationBreakdown":
+      return drawDecorationBreakdown(pdf, d, slotTop);
+    case "decorationPaymentDetail":
+      return drawDecorationPaymentDetail(pdf, d, slotTop);
     default:
       return slotTop;
   }
@@ -1327,6 +1538,105 @@ function excelContractNotes(ws, d, repeatCount) {
   }
 }
 
+/* ---------- 裝修工程會辦單（直式清單） ---------- */
+
+function excelDecorationBreakdown(ws, d) {
+  ws.columns = [{ width: 8 }, { width: 30 }, { width: 16 }, { width: 16 }];
+  let r = 1;
+  ws.getRow(r).height = 26;
+  setMerged(ws, r, 1, r, 4, d.headerTitle || "裝修工程會辦單", { bold: true, size: 15 });
+  r += 1;
+
+  const infoRows = [
+    ["個案名稱", d.projectName || "", "房屋編號", d.unitId || ""],
+    ["客戶姓名", d.buyerName || "", "身分證字號", d.buyerIdNumber || ""],
+    ["總價(萬)", fmtWan(d.totalPrice), "聯絡電話", d.buyerPhone || ""],
+    ["地址", d.address || "", "簽約日期", d.signDate || ""],
+  ];
+  for (const [l1, v1, l2, v2] of infoRows) {
+    ws.getRow(r).height = 20;
+    setCell(ws, r, 1, l1, { bold: true, size: 10 });
+    setCell(ws, r, 2, v1, { size: 10, align: "left" });
+    setCell(ws, r, 3, l2, { bold: true, size: 10 });
+    setCell(ws, r, 4, v2, { size: 10, align: "left" });
+    r += 1;
+  }
+  r += 1;
+
+  // 期款直式清單（Excel 不做橫式動態欄，同拆款表 Excel 慣例）
+  ws.getRow(r).height = 18;
+  setCell(ws, r, 1, "序", { bold: true, size: 10 });
+  setCell(ws, r, 2, "期別名稱", { bold: true, size: 10 });
+  setCell(ws, r, 3, "金額(萬)", { bold: true, size: 10 });
+  setCell(ws, r, 4, "", { border: false });
+  r += 1;
+  const columns = (d.installment && d.installment.columns) || [];
+  let seq = 1;
+  for (const col of columns) {
+    const leaves = col.type === "group" ? col.children : [col];
+    for (const lf of leaves) {
+      ws.getRow(r).height = 18;
+      setCell(ws, r, 1, seq, { size: 10 });
+      setCell(ws, r, 2, (col.type === "group" ? `${col.name}－${lf.name}` : lf.name), { size: 10, align: "left" });
+      setCell(ws, r, 3, Math.round(Number(lf.amount) * 100) / 100, { size: 10, align: "right" });
+      r += 1;
+      seq += 1;
+    }
+  }
+  ws.getRow(r).height = 20;
+  setCell(ws, r, 1, "", {});
+  setCell(ws, r, 2, `${d.installment && d.installment.rowLabel ? d.installment.rowLabel : "裝修工程款"}總價`, { bold: true, size: 10.5 });
+  setCell(ws, r, 3, Math.round(Number(d.installment && d.installment.grandTotal) * 100) / 100, { bold: true, size: 10.5, align: "right" });
+  r += 2;
+
+  ws.getRow(r).height = 20;
+  setCell(ws, r, 1, "備註", { bold: true, size: 10 });
+  setMerged(ws, r, 2, r, 4, d.remark || "", { size: 10, align: "left" });
+  r += 2;
+
+  const signFields = d.signFields || [];
+  if (signFields.length) {
+    signFields.forEach((f, i) => {
+      setCell(ws, r, i + 1, f.label, { bold: true, size: 10 });
+      setCell(ws, r + 1, i + 1, f.value || "", { size: 10 });
+    });
+    ws.getRow(r + 1).height = 28;
+  }
+}
+
+/* ---------- 裝修付款明細表（國字大寫） ---------- */
+
+function excelDecorationPaymentDetail(ws, d) {
+  ws.columns = [{ width: 8 }, { width: 22 }, { width: 44 }, { width: 12 }];
+  const M = { fontName: FONT_MING };
+  let r = 1;
+  ws.getRow(r).height = 22;
+  setMerged(ws, r, 1, r, 2, `${d.siteLabel || "工地名稱"}：${d.projectName || ""}`, { ...M, size: 11, border: false, align: "left" });
+  setMerged(ws, r, 3, r, 4, d.headerTitle || "裝修付款明細表", { ...M, bold: true, size: 12, border: false });
+  r += 1;
+  ws.getRow(r).height = 20;
+  setMerged(ws, r, 1, r, 2, `${d.unitLabel || "房屋代號"}：${d.unitId || ""}`, { ...M, size: 11, border: false, align: "left" });
+  r += 2;
+
+  ws.getRow(r).height = 22;
+  setMerged(ws, r, 1, r, 4, `工程總價　計新臺幣 ${d.zhTotal || ""}`, { ...M, bold: true, size: 12, border: false, align: "left" });
+  r += 2;
+
+  for (const row of d.rows || []) {
+    ws.getRow(r).height = 20;
+    setCell(ws, r, 1, `${row.zhSeq}、`, { ...M, size: 11, border: false, align: "right" });
+    setCell(ws, r, 2, row.name || "", { ...M, size: 11, border: false, align: "left" });
+    setCell(ws, r, 3, `：新台幣：${row.zhAmount || ""}`, { ...M, size: 11, border: false, align: "left" });
+    setCell(ws, r, 4, Math.round(Number(row.amount) * 100) / 100, { ...M, size: 10, border: false, align: "right" });
+    r += 1;
+  }
+
+  if (d.noteText) {
+    r += 1;
+    setMerged(ws, r, 1, r, 4, d.noteText, { ...M, size: 8.5, border: false, align: "left" });
+  }
+}
+
 async function buildContractExcel(payload) {
   const wb = new ExcelJS.Workbook();
   const pages = (payload.pages || []).filter(p => p.type !== "contractAttachments");
@@ -1340,6 +1650,8 @@ async function buildContractExcel(payload) {
         case "paymentDetail": excelPaymentDetail(ws, d); break;
         case "bankAccounts": excelBankAccounts(wb, ws, d, page.repeatCount); break;
         case "contractNotes": excelContractNotes(ws, d, page.repeatCount); break;
+        case "decorationBreakdown": excelDecorationBreakdown(ws, d); break;
+        case "decorationPaymentDetail": excelDecorationPaymentDetail(ws, d); break;
         default: break;
       }
     }

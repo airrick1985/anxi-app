@@ -1,0 +1,207 @@
+<template>
+  <div class="bd-page">
+    <div class="bd-frame">
+      <div class="bd-title">{{ data.headerTitle }}</div>
+
+      <!-- 基本資訊 -->
+      <table class="bd-table bd-info">
+        <colgroup>
+          <col style="width:13%" /><col style="width:19%" /><col style="width:11.5%" />
+          <col style="width:17%" /><col style="width:13.5%" /><col style="width:26%" />
+        </colgroup>
+        <tbody>
+          <tr class="info-row">
+            <td class="label">個案名稱</td>
+            <td class="big">{{ data.projectName }}</td>
+            <td class="label">客戶姓名</td>
+            <td class="mid">{{ data.buyerName }}</td>
+            <td class="label">身分證字號</td>
+            <td class="mid">{{ data.buyerIdNumber }}</td>
+          </tr>
+          <tr class="info-row">
+            <td class="label">房屋編號</td>
+            <td class="big">{{ data.unitId }}</td>
+            <td class="label">總　價</td>
+            <td class="big">{{ fmtWan(data.totalPrice) }}</td>
+            <td class="label">聯絡電話</td>
+            <td class="mid">{{ data.buyerPhone }}</td>
+          </tr>
+          <tr class="info-row">
+            <td class="label">地　址</td>
+            <td colspan="3">{{ data.address }}</td>
+            <td class="label">簽約日期</td>
+            <td>{{ data.signDate }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 面積（無車位/土地持分） -->
+      <table class="bd-table bd-area">
+        <colgroup>
+          <col style="width:13%" /><col style="width:10.5%" /><col style="width:4%" />
+          <col style="width:11.5%" /><col style="width:8.5%" /><col style="width:10.5%" /><col style="width:4%" />
+          <col style="width:15%" /><col style="width:19%" /><col style="width:4%" />
+        </colgroup>
+        <tbody>
+          <tr class="area-row">
+            <td class="label" rowspan="6">房屋總面積</td>
+            <td class="val" rowspan="3">{{ fmtArea(a.houseTotalSqm) }}</td>
+            <td class="unit" rowspan="3">㎡</td>
+            <td class="label" rowspan="2">主建物</td>
+            <td class="sub-cell">占比</td>
+            <td class="val">{{ fmtArea(a.mainSqm) }}</td>
+            <td class="unit">㎡</td>
+            <td class="label" rowspan="2">共有部份</td>
+            <td class="val">{{ fmtArea(a.commonSqm) }}</td>
+            <td class="unit">㎡</td>
+          </tr>
+          <tr class="area-row">
+            <td class="sub-cell">{{ a.mainRatioText }}</td>
+            <td class="val">{{ fmtArea(a.mainPing) }}</td>
+            <td class="unit">坪</td>
+            <td class="val">{{ fmtArea(a.commonPing) }}</td>
+            <td class="unit">坪</td>
+          </tr>
+          <tr class="area-row">
+            <td class="label sm" rowspan="2" colspan="2">附屬建物(陽台)</td>
+            <td class="val">{{ fmtArea(a.ancillarySqm) }}</td>
+            <td class="unit">㎡</td>
+            <td rowspan="4" colspan="3" class="blank-cell"></td>
+          </tr>
+          <tr class="area-row">
+            <td class="val" rowspan="3">{{ fmtArea(a.houseTotalPing) }}</td>
+            <td class="unit" rowspan="3">坪</td>
+            <td class="val">{{ fmtArea(a.ancillaryPing) }}</td>
+            <td class="unit">坪</td>
+          </tr>
+          <tr class="area-row">
+            <td class="label sm" rowspan="2" colspan="2">專有部分(合計)</td>
+            <td class="val">{{ fmtArea(a.exclusiveSqm) }}</td>
+            <td class="unit">㎡</td>
+          </tr>
+          <tr class="area-row">
+            <td class="val">{{ fmtArea(a.exclusivePing) }}</td>
+            <td class="unit">坪</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 付款明細（單列「裝修工程款」，無房土拆分/比例列） -->
+      <table class="bd-table bd-install" v-if="columns.length">
+        <tbody>
+          <tr>
+            <td class="vert" :rowspan="3">付<br />款<br />明<br />細</td>
+            <td class="label unit-cell" rowspan="2">單位:萬</td>
+            <template v-for="col in columns" :key="col.name">
+              <td v-if="col.type === 'single'" class="label head" rowspan="2">{{ col.name }}</td>
+              <td v-else class="label head" :colspan="col.children.length">{{ col.name }}</td>
+            </template>
+            <td class="label head" rowspan="2">總價</td>
+          </tr>
+          <tr>
+            <template v-for="col in columns" :key="col.name">
+              <template v-if="col.type === 'group'">
+                <td v-for="(c, j) in col.children" :key="c.name" class="seq-cell" :title="c.name">{{ c.seq ?? (j + 1) }}</td>
+              </template>
+            </template>
+          </tr>
+          <tr>
+            <td class="label rowlabel">{{ data.installment.rowLabel }}</td>
+            <template v-for="col in columns" :key="col.name">
+              <td v-if="col.type === 'single'" class="num">{{ fmtWan(col.amount) }}</td>
+              <template v-else>
+                <td v-for="c in col.children" :key="c.name" class="num" :title="c.name">{{ fmtWan(c.amount) }}</td>
+              </template>
+            </template>
+            <td class="num strong">{{ fmtWan(data.installment.grandTotal) }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 備註（彈性區） -->
+      <table class="bd-table bd-remark">
+        <colgroup><col style="width:13%" /><col /></colgroup>
+        <tbody>
+          <tr>
+            <td class="label">備註</td>
+            <td class="remark-cell">{{ data.remark }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="bd-spacer"></div>
+
+      <!-- 簽核欄 -->
+      <table class="bd-table" v-if="data.signFields.length">
+        <tbody>
+          <tr>
+            <td v-for="(f, i) in data.signFields" :key="i" class="label sign-head">{{ f.label }}</td>
+          </tr>
+          <tr>
+            <td v-for="(f, i) in data.signFields" :key="i" class="sign-value">{{ f.value }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { computed } from 'vue';
+
+const props = defineProps({
+  data: { type: Object, required: true },  // buildDecorationBreakdownPageData 輸出
+});
+
+const a = computed(() => props.data.areas || {});
+const columns = computed(() => props.data.installment?.columns || []);
+
+function fmtWan(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+function fmtArea(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n === 0) return '-';
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+</script>
+
+<style scoped>
+.bd-page {
+  font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  font-size: 11px; line-height: 1.45; color: #000;
+}
+.bd-frame { border: 2px solid #000; display: flex; flex-direction: column; min-height: 100%; }
+.bd-title {
+  text-align: center; font-size: 19px; font-weight: 700;
+  letter-spacing: 10px; padding: 6px 0; border-bottom: 1px solid #000;
+}
+.bd-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.bd-table td {
+  border: 1px solid #000; padding: 2px 4px;
+  vertical-align: middle; text-align: center; overflow: hidden;
+}
+.bd-table .label { font-weight: 700; }
+.bd-table .label.sm { font-size: 10px; }
+.info-row td { height: 30px; }
+.info-row .big { font-size: 14px; }
+.info-row .mid { font-size: 12px; }
+.area-row td { height: 24px; }
+.area-row .val { font-size: 11.5px; }
+.area-row .unit { font-size: 9px; padding: 0 1px; }
+.area-row .sub-cell { font-size: 9.5px; }
+.bd-install td { padding: 1px 2px; font-size: 9.5px; height: 20px; }
+.bd-install .vert { width: 20px; font-weight: 700; font-size: 11px; line-height: 1.6; }
+.bd-install .unit-cell { width: 46px; font-size: 8.5px; }
+.bd-install .head { font-size: 9.5px; padding: 1px 1px; }
+.bd-install .seq-cell { font-weight: 700; font-size: 8.5px; height: 14px; }
+.bd-install .rowlabel { font-size: 9px; white-space: nowrap; }
+.bd-install .num { text-align: center; }
+.bd-install .strong { font-weight: 700; }
+.remark-cell { height: 60px; text-align: left !important; vertical-align: top !important; white-space: pre-wrap; }
+.bd-spacer { flex: 1 1 auto; min-height: 20px; }
+.sign-head { height: 20px; }
+.sign-value { height: 34px; font-size: 12px; }
+</style>

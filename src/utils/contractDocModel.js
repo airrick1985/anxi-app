@@ -12,6 +12,7 @@ import {
   computeInstallmentSplit,
 } from '@/composables/usePriceFormula';
 import { resolveBankSets } from '@/utils/unitDocContext';
+import { toZhWanString, toZhOrdinal } from '@/utils/zhNumber';
 
 export const SQM_TO_PING = 0.3025;
 
@@ -52,8 +53,8 @@ export function flattenEditRows(editRows = []) {
  * 價款計算（房土比 + 合約價款項目）。
  * @returns {{ baseContext, baseError, fieldValues: {values, errors}, fullContext }}
  */
-export function buildPriceModel(unitData, priceFormulaSettings, config) {
-  const { context: baseContext, error: baseError } = buildContractBaseContext(unitData, priceFormulaSettings);
+export function buildPriceModel(unitData, priceFormulaSettings, config, options = {}) {
+  const { context: baseContext, error: baseError } = buildContractBaseContext(unitData, priceFormulaSettings, options);
   const fieldValues = computeContractPriceFields(config?.priceFormulas || [], baseContext);
   return {
     baseContext,
@@ -272,6 +273,73 @@ export function buildContractNotesPageData(page, state) {
     })),
     showBuyerSignLine: opts.showBuyerSignLine !== false,
     defaultFontSize: Number(opts.defaultFontSize) || 10,
+  };
+}
+
+/* ============================================================
+ * 裝修合約頁（僅配套合約戶別，docs/裝修合約製作範本-spec.md §4）
+ * ============================================================ */
+
+/** 裝修工程會辦單（範例 PDF 第 2 頁）：無車位/土地/價款公式區，付款明細單列無房土拆分 */
+export function buildDecorationBreakdownPageData(page, ctx, decorationEditRows, state) {
+  const opts = page.options || {};
+  const columns = buildInstallmentColumns(decorationEditRows, []);
+  const grandTotal = flattenEditRows(decorationEditRows).reduce((s, r) => s + r.amount, 0);
+
+  return {
+    headerTitle: opts.headerTitle || '裝修工程會辦單',
+    projectName: state.projectName || '',
+    unitId: ctx.unitId,
+    buyerName: ctx.buyerName,
+    buyerIdNumber: ctx.buyerIdNumber,
+    buyerPhone: ctx.buyerPhone,
+    address: ctx.buyerMailingAddress,
+    signDate: state.signDateText || '',
+    totalPrice: ctx.packagePrice,           // 配套價格（萬）
+    areas: {
+      ...ctx.areas,
+      mainRatioText: (Number(ctx.areas?.mainSqm) && Number(ctx.areas?.houseTotalSqm))
+        ? `${(Number(ctx.areas.mainSqm) / Number(ctx.areas.houseTotalSqm) * 100).toFixed(2)}%`
+        : '',
+      exclusiveSqm: (Number(ctx.areas?.mainSqm) || 0) + (Number(ctx.areas?.ancillarySqm) || 0) || null,
+      exclusivePing: (Number(ctx.areas?.mainPing) || 0) + (Number(ctx.areas?.ancillaryPing) || 0) || null,
+    },
+    installment: {
+      rowLabel: '裝修工程款',
+      columns,
+      grandTotal,
+    },
+    remark: state.decorationRemark || '',
+    signFields: (opts.signFields || []).map(f => ({
+      label: f.label,
+      value: f.source === 'salesperson' ? ctx.salespersonText : (state.signFieldValues?.[f.label] ?? f.default ?? ''),
+      readonly: f.source === 'salesperson',
+    })),
+  };
+}
+
+/** 裝修付款明細表（範例 PDF 第 4 頁）：期別國字序號 + 金額國字大寫（萬元整） */
+export function buildDecorationPaymentDetailPageData(page, ctx, decorationEditRows, state) {
+  const opts = page.options || {};
+  const leaves = flattenEditRows(decorationEditRows);
+  const total = leaves.reduce((s, r) => s + r.amount, 0);
+
+  return {
+    headerTitle: opts.headerTitle || '裝修付款明細表',
+    siteLabel: opts.siteLabel || '工地名稱',
+    unitLabel: opts.unitLabel || '房屋代號',
+    projectName: state.projectName || '',
+    unitId: ctx.unitId,
+    total,
+    zhTotal: toZhWanString(total),
+    rows: leaves.map((r, idx) => ({
+      seq: idx + 1,
+      zhSeq: toZhOrdinal(idx + 1),
+      name: r.name,
+      amount: r.amount,
+      zhAmount: toZhWanString(r.amount),
+    })),
+    noteText: opts.noteText || '',
   };
 }
 
