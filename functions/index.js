@@ -19431,6 +19431,12 @@ async function _handleFetchCustomerList(data, db) {
           'sourceProjectId': docData.projectId || '',
           'isLinked': docData.projectId !== projectId, // true = 此客戶來自其他建案的關聯
 
+          // ✅ [其他聯絡人] 帶出供前端關鍵字搜尋與列表顯示 (只保留 name/phone 精簡欄位)
+          'otherPhones': (Array.isArray(docData.otherPhones) && docData.otherPhones.length > 0
+            ? docData.otherPhones
+            : (Array.isArray(profileData.otherPhones) ? profileData.otherPhones : [])
+          ).map(p => ({ name: (p && p.name) || '', phone: (p && p.phone) || '' })),
+
           // 來自 interactionLogs 的最新資訊 (共用)
           '等級研判': latestRating,
           '未買原因': latestNoBuyReasons,

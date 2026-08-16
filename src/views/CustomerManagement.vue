@@ -132,7 +132,7 @@
     <v-col cols="12" sm="8" md="9">
       <v-text-field
         v-model="customerListSearch"
-        label="關鍵字搜尋 (姓名、電話...)"
+        label="關鍵字搜尋 (姓名、電話、其他聯絡人...)"
         prepend-inner-icon="mdi-magnify"
         variant="outlined"
         density="comfortable"
@@ -297,7 +297,7 @@
           <v-card-text class="pa-3">
             <div class="d-flex justify-space-between align-center mb-1">
               <span class="text-subtitle-1 font-weight-bold" :class="{'text-decoration-line-through text-grey': item.raw.isDeleted}">
-                {{ item.raw['姓名'] || '未知姓名' }}
+                {{ item.raw['姓名'] || '未知姓名' }}<span v-if="getOtherContactNames(item.raw)" class="text-caption text-grey-darken-1 font-weight-regular">({{ getOtherContactNames(item.raw) }})</span>
                 <v-chip v-if="item.raw.isDeleted" color="red" size="x-small" label class="ml-1">已刪除</v-chip>
               </span>
 
@@ -369,6 +369,11 @@
                 @click:row="openInteractionLog"
                 hover
               >
+              <template v-slot:item.姓名="{ item }">
+                <span :class="{'text-decoration-line-through text-grey': item.isDeleted}">{{ item['姓名'] }}</span>
+                <span v-if="getOtherContactNames(item)" class="text-caption text-grey-darken-1">({{ getOtherContactNames(item) }})</span>
+              </template>
+
               <template v-slot:item.updatedAt="{ item }">
                   <div class="text-caption text-grey-darken-1 d-flex flex-column">
                     <span>{{ formatFullDateTime(item.updatedAt) }}</span>
@@ -3656,6 +3661,12 @@ const sortedVipFields = computed(() => {
     .sort((a, b) => a.order - b.order);
 });
 
+// ✅ [其他聯絡人] 取出其他聯絡人姓名字串（多位以「、」串接），供列表姓名欄顯示
+const getOtherContactNames = (item) => {
+  const arr = Array.isArray(item?.otherPhones) ? item.otherPhones : [];
+  return arr.map(p => (p?.name || '').trim()).filter(Boolean).join('、');
+};
+
 // --- 多維度篩選計算屬性 ---
 const filteredCustomerList = computed(() => {
   let list = [...customerList.value];
@@ -3666,14 +3677,22 @@ const filteredCustomerList = computed(() => {
   }
 
 
-  // 1. 關鍵字過濾 (姓名、電話、銷售人員)
+  // 1. 關鍵字過濾 (姓名、電話、銷售人員、其他聯絡人姓名/電話)
   if (customerListSearch.value) {
     const s = customerListSearch.value.toLowerCase();
-    list = list.filter(item => 
-      (item['姓名'] || '').toLowerCase().includes(s) ||
-      (item['電話'] || '').includes(s) ||
-      (item['銷售人員'] || '').toLowerCase().includes(s)
-    );
+    list = list.filter(item => {
+      if (
+        (item['姓名'] || '').toLowerCase().includes(s) ||
+        (item['電話'] || '').includes(s) ||
+        (item['銷售人員'] || '').toLowerCase().includes(s)
+      ) return true;
+      // ✅ 其他聯絡人的姓名與電話也納入搜尋範圍
+      const otherPhones = Array.isArray(item.otherPhones) ? item.otherPhones : [];
+      return otherPhones.some(p =>
+        (p?.name || '').toLowerCase().includes(s) ||
+        (p?.phone || '').includes(s)
+      );
+    });
   }
 
   // 2. 拜訪日期範圍 (修正：確保日期格式一致)
