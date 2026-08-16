@@ -501,6 +501,7 @@
                           <ContractNotesPreview v-else-if="pv.page.type === 'contractNotes'" :data="pv.data" />
                           <DecorationBreakdownPreview v-else-if="pv.page.type === 'decorationBreakdown'" :data="pv.data" />
                           <DecorationPaymentDetailPreview v-else-if="pv.page.type === 'decorationPaymentDetail'" :data="pv.data" />
+                          <ContractNumberTablePreview v-else-if="pv.page.type === 'contractNumberTable' || pv.page.type === 'contractNumberTableCombined'" :data="pv.data" />
                         </div>
                       </template>
                     </template>
@@ -583,6 +584,7 @@ import {
   buildBreakdownPageData, buildPaymentDetailPageData,
   buildBankAccountsPageData, buildContractNotesPageData,
   buildDecorationBreakdownPageData, buildDecorationPaymentDetailPageData,
+  buildContractNumberTablePageData, buildContractNumberTableCombinedPageData,
   mergePagesWithOverrides, pagesToOverrides,
 } from '@/utils/contractDocModel';
 import BreakdownPreview from './BreakdownPreview.vue';
@@ -592,6 +594,7 @@ import ContractNotesPreview from './ContractNotesPreview.vue';
 import AttachmentsPreview from './AttachmentsPreview.vue';
 import DecorationBreakdownPreview from './DecorationBreakdownPreview.vue';
 import DecorationPaymentDetailPreview from './DecorationPaymentDetailPreview.vue';
+import ContractNumberTablePreview from './ContractNumberTablePreview.vue';
 
 // 自訂表單管理（於 Dialog 內開啟，取用表單連結；lazy 載入避免拖慢開啟）
 const CustomFormManager = defineAsyncComponent(() => import('@/components/CustomFormManager.vue'));
@@ -668,9 +671,11 @@ const attachmentsPage = computed(() => localPages.value.find(p => p.type === 'co
 // 付款明細表「配套款版」以裝修期款計算，不需要一般期款
 const isPackagePaymentDetail = (p) => p.type === 'paymentDetail' && p.options?.mode === 'package';
 
+// 合約數字對照表（兩版本）的貸款金額取自期款房/土拆分，故同樣需要期款
 const needsInstallment = computed(() =>
   localPages.value.some(p => p.enabled &&
-    (p.type === 'breakdown' || (p.type === 'paymentDetail' && !isPackagePaymentDetail(p)))));
+    (p.type === 'breakdown' || p.type === 'contractNumberTable' || p.type === 'contractNumberTableCombined'
+      || (p.type === 'paymentDetail' && !isPackagePaymentDetail(p)))));
 
 // 裝修頁（僅配套戶啟用；非配套戶由 pageDisabled 鎖定）
 const decorationBreakdownPage = computed(() =>
@@ -1143,12 +1148,27 @@ function setAttachmentPageRange(fileId, val) {
   if (a) a.pageRange = (val || '').trim() || null;
 }
 
-// 該帳戶頁解析後無任何可顯示的銀行組（如：僅勾配套款組但戶別配套欄位空白）
+// 配套款銀行組僅配套合約戶別適用（一般戶即使帳戶欄位有值也不匯出）
+function applicableBankSets() {
+  return (config.value?.bankSets || [])
+    .filter(s => s.source !== 'unit-package' || isPackageContract.value);
+}
+
+// 該帳戶頁解析後無任何可顯示的銀行組（如：僅勾配套款組但本戶非配套合約 / 戶別帳戶欄位空白）
 function bankPageEmpty(page) {
-  const all = resolveBankSets(config.value?.bankSets || [], props.unitData || {});
+  const all = resolveBankSets(applicableBankSets(), props.unitData || {});
   const ids = page.options?.bankSetIds || [];
   const sets = ids.length ? all.filter(s => ids.includes(s.id)) : all;
   return sets.length === 0;
+}
+
+// 帳戶頁停用是否因「僅剩配套款組被排除」（提示文案用）
+function bankPageOnlyPackage(page) {
+  const ids = page.options?.bankSetIds || [];
+  const chosen = ids.length
+    ? (config.value?.bankSets || []).filter(s => ids.includes(s.id))
+    : (config.value?.bankSets || []);
+  return chosen.length > 0 && chosen.every(s => s.source === 'unit-package') && !isPackageContract.value;
 }
 
 function pageDisabled(page) {
@@ -1163,7 +1183,11 @@ function pageDisabledReason(page) {
   if (page.type === 'contractAttachments' && !attachmentSourceUrl.value) return '無合約圖檔可匯出';
   if (isPackageOnlyPageType(page.type) && !isPackageContract.value) return '本頁僅適用配套合約戶別（如：毛胚合約）';
   if (isPackagePaymentDetail(page) && !isPackageContract.value) return '本頁（配套款版）僅適用配套合約戶別（如：毛胚合約）';
-  if (page.type === 'bankAccounts' && config.value && bankPageEmpty(page)) return '無可顯示的繳款帳戶資料';
+  if (page.type === 'bankAccounts' && config.value && bankPageEmpty(page)) {
+    return bankPageOnlyPackage(page)
+      ? '本頁銀行組僅含配套款，僅適用配套合約戶別（如：毛胚合約）'
+      : '無可顯示的繳款帳戶資料';
+  }
   return '';
 }
 
@@ -1256,6 +1280,12 @@ function buildPageData(page) {
   }
   if (page.type === 'decorationPaymentDetail') {
     return buildDecorationPaymentDetailPageData(page, ctx, decoEditRows.value, builderState.value);
+  }
+  if (page.type === 'contractNumberTable') {
+    return buildContractNumberTablePageData(page, ctx, priceModel.value, splitModel.value, props.unitData);
+  }
+  if (page.type === 'contractNumberTableCombined') {
+    return buildContractNumberTableCombinedPageData(page, ctx, priceModel.value, splitModel.value, props.unitData);
   }
   if (page.type === 'contractAttachments') {
     return {

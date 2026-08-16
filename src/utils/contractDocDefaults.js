@@ -12,6 +12,10 @@ export const PAGE_TYPES = [
     description: '磋商條款加註頁，預設同步拆款表勾選' },
   { type: 'contractAttachments', label: '合約附圖',             icon: 'mdi-floor-plan',
     description: '戶別雲端資料夾的圖檔／PDF，僅 PDF 匯出' },
+  { type: 'contractNumberTable', label: '合約數字對照表（房屋土地分開）', icon: 'mdi-stamper',
+    description: '蓋章對照表：房屋合約＋土地合約兩區；藍字＝需蓋章內容' },
+  { type: 'contractNumberTableCombined', label: '合約數字對照表（房屋土地合一）', icon: 'mdi-stamper',
+    description: '蓋章對照表：房地合一單一合約；藍字＝需蓋章內容' },
   // 裝修合約頁型（僅配套合約戶別適用，見 docs/裝修合約製作範本-spec.md）
   { type: 'decorationBreakdown',    label: '裝修工程會辦單', icon: 'mdi-hammer-wrench', packageOnly: true,
     description: '「配套價格」的拆款表（裝修期款單列）；僅配套合約戶別匯出' },
@@ -40,6 +44,8 @@ export const DEFAULT_PAGE_FONT = {
   contractNotes: 'ming',
   decorationPaymentDetail: 'ming',
   contractAttachments: null,
+  contractNumberTable: 'kai',           // 蓋章對照表：預設標楷體（近印章字體）
+  contractNumberTableCombined: 'kai',
 };
 
 export const PAGE_TYPE_MAP = Object.fromEntries(PAGE_TYPES.map(p => [p.type, p]));
@@ -98,6 +104,41 @@ export function buildDefaultPageOptions(type) {
       return { defaultFontSize: 10, blockWidthMm: null, blockHeightMm: null, showBuyerSignLine: true };
     case 'contractAttachments':
       return { sourceField: 'contractDrawingFolderUrl', fitMode: 'fit' };
+    case 'contractNumberTable':
+      return {
+        loanItemName: '',                  // 銀行貸款期別名稱；空 = 自動比對名稱含「銀行貸款」/「貸款」
+        constants: {                       // 契約書常數（藍字原樣輸出，每建案可調）
+          handoverDays: '三',              // 交屋日起 N 日
+          shortenYears: '七',              // 縮短償還期限 N 年
+          noticeDays: '三十',              // 接獲通知之日起 N 天
+          feePerTenThousand: '五',         // 房屋總價款萬分之 N 手續費
+          housePenaltyPercent: '十五',     // 賠償房屋總價款百分之 N
+          houseForfeitPercent: '十五',     // 沒收房屋總價款百分之 N
+          landPenaltyPercent: '十五',      // 賠償土地總價款百分之 N
+          landForfeitPercent: '十五',      // 沒收土地總價款百分之 N
+        },
+        pageLabels: {                      // 契約書頁碼標籤（黑字，每建案不同）
+          handover: 'P11', houseLoan: 'P12 P22', shorten: 'P13', notice: 'P13',
+          fee: 'P14', housePenalty: 'P15', houseForfeit: 'P15', houseUnitNo: 'P27 P28或P30 P31',
+          landLoan: 'P6 P15', landPenalty: 'P9', landForfeit: 'P9', landUnitNo: 'P17',
+        },
+      };
+    case 'contractNumberTableCombined':
+      return {
+        loanItemName: '',                  // 銀行貸款期別名稱；空 = 自動比對名稱含「銀行貸款」/「貸款」
+        constants: {                       // 契約書常數（藍字原樣輸出；房地合一版無土地專屬條款）
+          handoverDays: '三',
+          shortenYears: '七',
+          noticeDays: '三十',
+          feePerTenThousand: '五',
+          housePenaltyPercent: '十五',
+          houseForfeitPercent: '十五',
+        },
+        pageLabels: {                      // 契約書頁碼標籤（預設照富宇學森）
+          handover: 'P13', houseLoan: 'P14 P25', shorten: 'P15', notice: 'P15',
+          fee: 'P16', housePenalty: 'P17', houseForfeit: 'P17', houseUnitNo: 'P33 P34',
+        },
+      };
     case 'decorationBreakdown':
       return {
         headerTitle: '裝修工程會辦單',

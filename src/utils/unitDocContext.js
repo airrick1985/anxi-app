@@ -150,6 +150,8 @@ export function buildUnitDocContext(unitData, opts = {}) {
       label: formatParkingSpotLabel(p),
       price: parkingTransactionPrice(p),
       areaSqm: Number(p.area) || 0,
+      type: String(p.type ?? p['車位類型'] ?? '').trim(),   // 法定/自設（合約數字對照表勾選用）
+      size: String(p.size ?? p['車位尺寸'] ?? '').trim(),   // 如 550*250（公分）
     })),
     parkingTotal,
     parkingAreaSqm: parkingSpots.reduce((s, p) => s + (Number(p.area) || 0), 0),

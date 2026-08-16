@@ -218,6 +218,9 @@
                           <v-text-field v-if="page.options.showQr" v-model="page.options.qrLabel" label="QR 區塊標題"
                             density="compact" variant="outlined" hide-details style="max-width: 280px;" :disabled="!canEdit" />
                         </div>
+                        <div class="text-caption text-grey mt-2">
+                          「配套款」銀行組僅配套合約戶別（如毛胚合約）會顯示與匯出；一般戶自動排除，若本頁僅勾配套款組則整頁停用。
+                        </div>
                       </template>
 
                       <!-- ===== 付款明細表選項 ===== -->
@@ -320,6 +323,39 @@
                         <div class="text-caption text-grey mt-2">
                           金額以國字大寫（如「零 佰 貳 拾 陸 萬元整」）呈現；期別名稱（含日期）取自「配套期款」範本的期別名稱。本頁僅配套合約戶別匯出。
                         </div>
+                      </template>
+
+                      <!-- ===== 合約數字對照表選項（房屋土地分開 / 房屋土地合一） ===== -->
+                      <template v-else-if="page.type === 'contractNumberTable' || page.type === 'contractNumberTableCombined'">
+                        <v-divider class="my-3" />
+                        <v-alert type="info" variant="tonal" density="compact" class="mb-3 text-caption">
+                          <template v-if="page.type === 'contractNumberTable'">
+                            房屋土地【分開】合約版蓋章對照表：房屋合約＋土地合約兩區。
+                          </template>
+                          <template v-else>
+                            房屋土地【合一】合約版蓋章對照表：單一表格、貸款金額為房地合併整期金額。
+                          </template>
+                          藍字＝需蓋章內容，資料全部自動帶入，銷售端不需填寫。
+                        </v-alert>
+                        <v-text-field v-model="page.options.loanItemName" label="銀行貸款期別名稱（貸款金額來源）"
+                          density="compact" variant="outlined" hide-details class="mb-3" style="max-width: 380px;"
+                          placeholder="留空 = 自動比對名稱含「銀行貸款」的期別" :disabled="!canEdit" />
+
+                        <div class="text-subtitle-2 mb-1">契約書常數（藍字蓋章內容，國字小寫）</div>
+                        <v-row dense class="mb-2">
+                          <v-col v-for="f in cntConstantFields(page.type)" :key="f.key" cols="6" sm="3">
+                            <v-text-field v-model="page.options.constants[f.key]" :label="f.label"
+                              density="compact" variant="outlined" hide-details :disabled="!canEdit" />
+                          </v-col>
+                        </v-row>
+
+                        <div class="text-subtitle-2 mb-1">契約書頁碼標籤（黑字，每建案的合約書頁數不同）</div>
+                        <v-row dense>
+                          <v-col v-for="f in cntPageLabelFields(page.type)" :key="f.key" cols="6" sm="3">
+                            <v-text-field v-model="page.options.pageLabels[f.key]" :label="f.label"
+                              density="compact" variant="outlined" hide-details :disabled="!canEdit" />
+                          </v-col>
+                        </v-row>
                       </template>
                     </div>
                   </v-expand-transition>
@@ -772,6 +808,58 @@ async function commitSaveAsTemplate() {
 /* ---------- 頁面 ---------- */
 function pageTypeLabel(type) { return PAGE_TYPE_MAP[type]?.label || type; }
 function pageTypeIcon(type) { return PAGE_TYPE_MAP[type]?.icon || 'mdi-file-outline'; }
+
+// 合約數字對照表：常數 / 頁碼標籤欄位（docs/合約數字對照表-spec.md §4.2）
+// 房屋土地分開版
+const CNT_CONSTANT_FIELDS = [
+  { key: 'handoverDays', label: '交屋日起 N 日' },
+  { key: 'shortenYears', label: '縮短償還期限 N 年' },
+  { key: 'noticeDays', label: '接獲通知之日起 N 天' },
+  { key: 'feePerTenThousand', label: '手續費 萬分之 N' },
+  { key: 'housePenaltyPercent', label: '賠償房屋總價款 百分之 N' },
+  { key: 'houseForfeitPercent', label: '沒收房屋總價款 百分之 N' },
+  { key: 'landPenaltyPercent', label: '賠償土地總價款 百分之 N' },
+  { key: 'landForfeitPercent', label: '沒收土地總價款 百分之 N' },
+];
+const CNT_PAGE_LABEL_FIELDS = [
+  { key: 'handover', label: '交屋條款（P11）' },
+  { key: 'houseLoan', label: '房屋貸款金額（P12 P22）' },
+  { key: 'shorten', label: '縮短償還期限（P13）' },
+  { key: 'notice', label: '接獲通知（P13）' },
+  { key: 'fee', label: '手續費（P14）' },
+  { key: 'housePenalty', label: '房屋賠償（P15）' },
+  { key: 'houseForfeit', label: '房屋沒收（P15）' },
+  { key: 'houseUnitNo', label: '房屋住家編號（P27…）' },
+  { key: 'landLoan', label: '土地貸款金額（P6 P15）' },
+  { key: 'landPenalty', label: '土地賠償（P9）' },
+  { key: 'landForfeit', label: '土地沒收（P9）' },
+  { key: 'landUnitNo', label: '土地住家編號（P17）' },
+];
+// 房屋土地合一版：無土地專屬條款/頁碼
+const CNT_CONSTANT_FIELDS_COMBINED = [
+  { key: 'handoverDays', label: '交屋日起 N 日' },
+  { key: 'shortenYears', label: '縮短償還期限 N 年' },
+  { key: 'noticeDays', label: '接獲通知之日起 N 天' },
+  { key: 'feePerTenThousand', label: '手續費 萬分之 N' },
+  { key: 'housePenaltyPercent', label: '賠償房屋總價款 百分之 N' },
+  { key: 'houseForfeitPercent', label: '沒收房屋總價款 百分之 N' },
+];
+const CNT_PAGE_LABEL_FIELDS_COMBINED = [
+  { key: 'handover', label: '交屋條款（P13）' },
+  { key: 'houseLoan', label: '貸款金額（P14 P25）' },
+  { key: 'shorten', label: '縮短償還期限（P15）' },
+  { key: 'notice', label: '接獲通知（P15）' },
+  { key: 'fee', label: '手續費（P16）' },
+  { key: 'housePenalty', label: '賠償（P17）' },
+  { key: 'houseForfeit', label: '沒收（P17）' },
+  { key: 'houseUnitNo', label: '住家編號（P33 P34）' },
+];
+function cntConstantFields(type) {
+  return type === 'contractNumberTableCombined' ? CNT_CONSTANT_FIELDS_COMBINED : CNT_CONSTANT_FIELDS;
+}
+function cntPageLabelFields(type) {
+  return type === 'contractNumberTableCombined' ? CNT_PAGE_LABEL_FIELDS_COMBINED : CNT_PAGE_LABEL_FIELDS;
+}
 
 function addPage(type) {
   const page = buildNewPage(type);

@@ -50,6 +50,73 @@ export function toZhWanString(amountWan, opts = {}) {
   return `${body}${separator}萬元整`;
 }
 
+/* ============================================================
+ * 合約數字對照表用（docs/合約數字對照表-spec.md §3）
+ * ============================================================ */
+
+/**
+ * 非負整數 → 大寫數字串（694 → '陸玖肆'、0 → '零'）。
+ * @returns {string} 非法值回空字串
+ */
+export function toZhIntDigits(n) {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v) || v < 0) return '';
+  return String(v).split('').map(d => ZH_DIGITS[Number(d)]).join('');
+}
+
+/**
+ * 樓層數 → 大寫（4 → '肆'、12 → '壹拾貳'）；支援 1~99。
+ * @returns {string|null} 非法值回 null
+ */
+export function toZhFloor(n) {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v) || v < 1 || v > 99) return null;
+  if (v < 10) return ZH_DIGITS[v];
+  const tens = Math.floor(v / 10);
+  const ones = v % 10;
+  return `${ZH_DIGITS[tens]}拾${ones ? ZH_DIGITS[ones] : ''}`;
+}
+
+/**
+ * 數值 → 數字串式大寫（整數逐位串接 + 固定小數位）。
+ * 42.76 → { intText: '肆貳', decText: '柒陸' }
+ * @returns {object|null} 非法或 <=0 回 null（呼叫端以Ｘ佔位）
+ */
+export function toZhNumberParts(value, decimals = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const f = Math.pow(10, decimals);
+  const scaled = Math.round(n * f);
+  return {
+    intText: toZhIntDigits(Math.floor(scaled / f)),
+    decText: decimals > 0
+      ? String(scaled % f).padStart(decimals, '0').split('').map(d => ZH_DIGITS[Number(d)]).join('')
+      : '',
+  };
+}
+
+/**
+ * 數值 → 固定槽位大寫（契約書預印空格：整數固定 intSlots 位補零 + 固定小數位）。
+ * 141.36, 3, 2 → { intDigits: ['壹','肆','壹'], decText: '參陸', overflow: false }
+ *  92.60, 3, 2 → { intDigits: ['零','玖','貳'], decText: '陸零', overflow: false }
+ * 整數位數超出槽位時 intDigits 依實際位數（overflow: true，呼叫端警示）。
+ * @returns {object|null} 非法或負值回 null（呼叫端以Ｘ佔位）
+ */
+export function toZhSlotParts(value, intSlots, decimals) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  const f = Math.pow(10, decimals);
+  const scaled = Math.round(n * f);
+  const intStr = String(Math.floor(scaled / f)).padStart(intSlots, '0');
+  return {
+    intDigits: intStr.split('').map(d => ZH_DIGITS[Number(d)]),
+    decText: decimals > 0
+      ? String(scaled % f).padStart(decimals, '0').split('').map(d => ZH_DIGITS[Number(d)]).join('')
+      : '',
+    overflow: intStr.length > intSlots,
+  };
+}
+
 /**
  * 整數轉國字序號（一、二、…、十、十一、…、二十、九十九）。
  * @param {number} n 1-based 序號

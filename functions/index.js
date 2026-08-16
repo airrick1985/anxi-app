@@ -18816,7 +18816,7 @@ exports.generateContractDocument = onCall({
   }
 
   const VALID_TYPES = new Set(['breakdown', 'paymentDetail', 'bankAccounts', 'contractNotes', 'contractAttachments',
-    'decorationBreakdown', 'decorationPaymentDetail']);
+    'decorationBreakdown', 'decorationPaymentDetail', 'contractNumberTable', 'contractNumberTableCombined']);
   for (const page of pages) {
     if (!page || !VALID_TYPES.has(page.type)) {
       throw new HttpsError("invalid-argument", `未知的頁面類型：${page && page.type}`);

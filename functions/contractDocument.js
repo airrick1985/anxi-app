@@ -35,6 +35,8 @@ function F(name) {
 }
 
 const BLACK = "#000000";
+// 印泥藍（合約數字對照表蓋章內容；與前端 ContractNumberTablePreview.vue 同值）
+const STAMP_BLUE = "#1E50A2";
 
 // pdfkit 紙張（points）
 const PAPER_PT = {
@@ -120,7 +122,8 @@ function parsePageRange(rangeText, totalPages) {
 
 /**
  * 畫一個儲存格（框線 + 垂直置中文字）。
- * o: { font:'HEI'|'MING', bold, size, align, border, lineWidth, padX, charSpace, lineGap, dy }
+ * o: { font:'HEI'|'MING', bold, size, align, border, lineWidth, padX, charSpace, lineGap, dy, color,
+ *      noWrap（禁止換行，超寬不自動折行）, fauxBold（同色描邊仿粗體：楷體無粗體字重時用） }
  */
 function cell(pdf, x, y, w, h, text, o = {}) {
   if (o.border !== false) {
@@ -129,10 +132,16 @@ function cell(pdf, x, y, w, h, text, o = {}) {
   const t = text === null || text === undefined ? "" : String(text);
   if (t === "") return;
   const base = o.font || "HEI";
-  pdf.font(F(o.bold ? `${base}-B` : base)).fontSize(o.size || 9).fillColor(BLACK);
+  pdf.font(F(o.bold ? `${base}-B` : base)).fontSize(o.size || 9).fillColor(o.color || BLACK);
   const padX = o.padX !== undefined ? o.padX : 3;
   const opts = { width: w - padX * 2, align: o.align || "center", lineGap: o.lineGap || 0 };
   if (o.charSpace) opts.characterSpacing = o.charSpace;
+  if (o.noWrap) opts.lineBreak = false;
+  if (o.fauxBold) {
+    pdf.strokeColor(o.color || BLACK).lineWidth(o.fauxBoldWidth || 0.45);
+    opts.fill = true;
+    opts.stroke = true;
+  }
   const th = pdf.heightOfString(t, opts);
   let ty = y + (h - th) / 2 + (o.dy || 0);
   if (ty < y + 1) ty = y + 1;
@@ -887,6 +896,83 @@ function drawDecorationPaymentDetail(pdf, d, slotTop) {
 }
 
 /* ==========================================================
+ * 合約數字對照表（富宇首馥・房地分開合約；docs/合約數字對照表-spec.md）
+ * data.houseRows / landRows：每列 cells = [{ t, blue, bold, w }]（前端 contractDocModel 組好）
+ * 藍字 = 蓋章內容（印泥藍）；warnings 僅前端預覽顯示，此處不渲染
+ * ========================================================== */
+
+function drawStampRow(pdf, x, y, w, h, cells, sizes) {
+  const list = Array.isArray(cells) ? cells : [];
+  const totalW = list.reduce((s, c) => s + (Number(c.w) || 1), 0) || 1;
+  let cx = x;
+  list.forEach((c, i) => {
+    // 末格吃掉浮點誤差，貼齊右框線
+    const cw = i === list.length - 1 ? x + w - cx : w * (Number(c.w) || 1) / totalW;
+    const padX = 1;
+    // 字級自動縮放至格寬塞得下（禁止換行，避免多行撐爆列高觸發 pdfkit 自動換頁）
+    const baseSize = c.blue ? sizes.blue : sizes.black;
+    const fontName = F(c.blue || c.bold ? "HEI-B" : "HEI");
+    let size = baseSize;
+    pdf.font(fontName).fontSize(size);
+    while (size > 6 && pdf.widthOfString(c.t || "") > cw - padX * 2) {
+      size -= 0.5;
+      pdf.fontSize(size);
+    }
+    cell(pdf, cx, y, cw, h, c.t, {
+      size,
+      bold: c.blue || c.bold,
+      color: c.blue ? STAMP_BLUE : BLACK,
+      padX,
+      noWrap: true,
+      // 楷體無粗體字重（KAI-B 同檔），藍字以同色描邊仿粗體
+      fauxBold: c.blue,
+      fauxBoldWidth: 0.5,
+    });
+    cx += cw;
+  });
+}
+
+function drawContractNumberTable(pdf, d, slotTop) {
+  // 本頁型獨立縮小邊界（16pt），讓蓋章藍字放大呈現
+  const M2 = 16;
+  const L = M2;
+  const W = pdf.page.width - M2 * 2;
+  const TITLE_H = 22;
+  const GAP = 8;
+  let y = Math.max(M2, slotTop - (MARGIN - M2));
+
+  // pdfkit 於文字超過當頁 bottom margin 時會自動換頁（造成爆頁），本頁使用縮小邊界需同步下修
+  pdf.page.margins.bottom = 8;
+
+  // 區塊（房地分開＝2 區、房地合一＝1 區）；舊 payload（houseRows/landRows）相容
+  const sections = Array.isArray(d.sections) && d.sections.length
+    ? d.sections
+    : [
+      { title: d.houseTitle || "房屋合約 (一般合約)", rows: d.houseRows || [] },
+      { title: d.landTitle || "土地合約", rows: d.landRows || [] },
+    ];
+
+  // 列高依總列數自適應（3 個以上車位增列時自動縮小，避免爆頁）
+  const rowCount = sections.reduce((s, sec) => s + (sec.rows || []).length, 0);
+  const avail = pdf.page.height - M2 - y - TITLE_H * sections.length - GAP * (sections.length - 1);
+  const RH = Math.min(20.5, Math.max(14, Math.floor((avail / Math.max(rowCount, 1)) * 10) / 10));
+  const sizes = RH >= 18 ? { blue: 13, black: 9 } : { blue: 11.5, black: 8 };
+
+  sections.forEach((sec, si) => {
+    if (si > 0) y += GAP;
+    cell(pdf, L, y, W, TITLE_H, sec.title || "", { bold: true, size: 14, border: false, charSpace: 2 });
+    y += TITLE_H;
+    const top = y;
+    for (const row of sec.rows || []) {
+      drawStampRow(pdf, L, y, W, RH, row.cells, sizes);
+      y += RH;
+    }
+    pdf.lineWidth(1.2).rect(L, top, W, y - top).stroke(BLACK);
+  });
+  return y;
+}
+
+/* ==========================================================
  * PDF 主流程（repeatCount：等分頁面、槽間裁切虛線）
  * ========================================================== */
 
@@ -954,6 +1040,9 @@ function drawPageContent(pdf, page, slotTop, slotH) {
       return drawDecorationBreakdown(pdf, d, slotTop);
     case "decorationPaymentDetail":
       return drawDecorationPaymentDetail(pdf, d, slotTop);
+    case "contractNumberTable":
+    case "contractNumberTableCombined":
+      return drawContractNumberTable(pdf, d, slotTop);
     default:
       return slotTop;
   }
@@ -1022,7 +1111,7 @@ function setCell(ws, row, col, value, opts = {}) {
     name: excelFontOverride || opts.fontName || FONT_HEI,
     size: opts.size || 10,
     bold: !!opts.bold,
-    color: { argb: "FF000000" },
+    color: { argb: opts.color || "FF000000" },
   };
   cellRef.alignment = {
     horizontal: opts.align || "center",
@@ -1674,6 +1763,62 @@ function excelDecorationPaymentDetail(ws, d) {
   }
 }
 
+/* ---------- 合約數字對照表（比例式欄位範圍，藍字 = 蓋章內容） ---------- */
+
+function excelContractNumberTable(ws, d) {
+  const ncols = 160;
+  ws.columns = Array.from({ length: ncols }, () => ({ width: 0.62 }));
+  let r = 1;
+
+  const writeSection = (title, rows) => {
+    ws.getRow(r).height = 24;
+    setMerged(ws, r, 1, r, ncols, title, { bold: true, size: 14, border: false });
+    r += 1;
+    const top = r;
+    for (const row of rows || []) {
+      ws.getRow(r).height = 23;
+      const list = Array.isArray(row.cells) ? row.cells : [];
+      const totalW = list.reduce((s, c) => s + (Number(c.w) || 1), 0) || 1;
+      let f0 = 0;
+      list.forEach((c, i) => {
+        const f1 = f0 + (Number(c.w) || 1) / totalW;
+        const c1 = Math.min(ncols, Math.max(1, 1 + Math.round(f0 * ncols)));
+        let c2 = i === list.length - 1 ? ncols : Math.max(c1, Math.round(f1 * ncols));
+        if (c2 > ncols) c2 = ncols;
+        setMerged(ws, r, c1, r, c2, c.t, {
+          bold: !!(c.blue || c.bold),
+          size: c.blue ? 13 : 9.5,
+          color: c.blue ? "FF1E50A2" : undefined,
+        });
+        f0 = f1;
+      });
+      r += 1;
+    }
+    // 外框加粗
+    for (let cc = 1; cc <= ncols; cc++) {
+      const t = ws.getCell(top, cc);
+      t.border = { ...(t.border || {}), top: { style: "medium" } };
+      const b = ws.getCell(r - 1, cc);
+      b.border = { ...(b.border || {}), bottom: { style: "medium" } };
+    }
+    for (let rr = top; rr <= r - 1; rr++) {
+      const lft = ws.getCell(rr, 1);
+      lft.border = { ...(lft.border || {}), left: { style: "medium" } };
+      const rgt = ws.getCell(rr, ncols);
+      rgt.border = { ...(rgt.border || {}), right: { style: "medium" } };
+    }
+    r += 1;   // 區塊間空一列
+  };
+
+  const sections = Array.isArray(d.sections) && d.sections.length
+    ? d.sections
+    : [
+      { title: d.houseTitle || "房屋合約 (一般合約)", rows: d.houseRows || [] },
+      { title: d.landTitle || "土地合約", rows: d.landRows || [] },
+    ];
+  sections.forEach(sec => writeSection(sec.title || "", sec.rows));
+}
+
 async function buildContractExcel(payload) {
   const wb = new ExcelJS.Workbook();
   const pages = (payload.pages || []).filter(p => p.type !== "contractAttachments");
@@ -1690,6 +1835,8 @@ async function buildContractExcel(payload) {
         case "contractNotes": excelContractNotes(ws, d, page.repeatCount); break;
         case "decorationBreakdown": excelDecorationBreakdown(ws, d); break;
         case "decorationPaymentDetail": excelDecorationPaymentDetail(ws, d); break;
+        case "contractNumberTable":
+        case "contractNumberTableCombined": excelContractNumberTable(ws, d); break;
         default: break;
       }
     }
