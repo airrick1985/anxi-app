@@ -32,7 +32,7 @@
       </div>
 
       <v-card-text class="main-content">
-        <v-window v-model="tab">
+        <v-window v-model="tab" :touch="!isEditing">
           <v-window-item value="info">
             <template v-if="isEditing">
 

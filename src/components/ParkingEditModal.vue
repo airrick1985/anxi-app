@@ -1,19 +1,68 @@
 <template>
-  <v-dialog :model-value="show" @update:model-value="close" max-width="800px" persistent>
-    <v-card>
-      <v-card-title class="d-flex justify-space-between align-center">
-        <span>{{ title }}</span>
-        <v-btn 
-          prepend-icon="mdi-car-side" 
-          variant="tonal" 
-          color="info"
-          @click="openParkingEditor"
-        >
-          車位銷控
-        </v-btn>
+  <v-dialog :model-value="show" @update:model-value="close" :fullscreen="isMobile"
+    :max-width="isMobile ? '100%' : '800px'"
+    :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'" persistent>
+    <v-card :class="{ 'd-flex flex-column': isMobile }" :style="isMobile ? 'height: 100%;' : ''">
+      <v-card-title class="d-flex justify-space-between align-center flex-wrap ga-2">
+        <span class="parking-modal-title">{{ title }}</span>
+        <div class="d-flex align-center ga-1">
+          <v-btn
+            prepend-icon="mdi-car-side"
+            variant="tonal"
+            color="info"
+            :size="isMobile ? 'small' : 'default'"
+            @click="openParkingEditor"
+          >
+            車位銷控
+          </v-btn>
+          <v-btn v-if="isMobile" icon="mdi-close" variant="text" @click="close"></v-btn>
+        </div>
       </v-card-title>
-      <v-card-text>
-        <v-table v-if="localParking.length > 0" density="compact">
+      <v-card-text :class="{ 'flex-grow-1 overflow-y-auto': isMobile }">
+
+        <!-- 手機版：卡片式清單，成交價輸入框完整寬度 -->
+        <template v-if="isMobile">
+          <div v-if="localParking.length > 0">
+            <v-card v-for="(p, index) in localParking" :key="p.spotId || p['車位編號']"
+              variant="outlined" class="parking-mobile-card mb-3">
+              <div class="d-flex align-center justify-space-between pl-3 pr-1 pt-1">
+                <span class="parking-mobile-id">
+                  <v-icon size="small" color="info" class="mr-1">mdi-car</v-icon>{{ p.spotId || p['車位編號'] }}
+                </span>
+                <v-btn icon="mdi-close-circle-outline" size="small" variant="text" color="red"
+                  @click="removeParking(index)"></v-btn>
+              </div>
+              <div class="px-3 pb-3">
+                <template v-if="mode === 'sales'">
+                  <div class="parking-mobile-meta mb-2">
+                    <span>表價 <strong>{{ p.price_list || p['車位表價'] || p['表價'] || '—' }}</strong> 萬</span>
+                    <span>底價 <strong>{{ p.price_floor || p['車位底價'] || p['底價'] || '—' }}</strong> 萬</span>
+                  </div>
+                  <v-text-field
+                    v-model.number="p.price_transaction"
+                    label="成交價"
+                    suffix="萬"
+                    type="number"
+                    inputmode="decimal"
+                    density="comfortable"
+                    hide-details
+                    variant="outlined"
+                    bg-color="white"
+                  ></v-text-field>
+                </template>
+                <template v-else>
+                  <div class="parking-mobile-meta">
+                    <span>尺寸 <strong>{{ p.size || p['車位尺寸'] || p['坪數'] || '標準' }}</strong></span>
+                    <span>車位價格 <strong>{{ p.price_list || p['表價'] || p['車位表價'] }}</strong> 萬</span>
+                  </div>
+                </template>
+              </div>
+            </v-card>
+          </div>
+        </template>
+
+        <!-- 桌面版：維持表格呈現 -->
+        <v-table v-else-if="localParking.length > 0" density="compact">
           <thead>
             <tr>
               <th>車位編號</th>
@@ -49,7 +98,7 @@
             </tr>
           </tbody>
         </v-table>
-        <p v-else class="text-center text-grey my-4">尚未選擇任何車位</p>
+        <p v-if="localParking.length === 0" class="text-center text-grey my-4">尚未選擇任何車位</p>
         <v-divider class="my-4"></v-divider>
         <v-row align="center" dense>
           <v-col cols="12" sm="4">
@@ -59,11 +108,11 @@
               v-model="selectedFloor"
               hide-details
               no-data-text="無樓層可選"
-              density="compact"
+              :density="isMobile ? 'comfortable' : 'compact'"
               variant="outlined"
             ></v-select>
           </v-col>
-          
+
           <v-col cols="12" sm="5">
             <div>
               <v-select
@@ -76,25 +125,28 @@
                 hide-details
                 no-data-text="請先選擇樓層"
                 :disabled="!selectedFloor"
-                density="compact"
+                :density="isMobile ? 'comfortable' : 'compact'"
                 variant="outlined"
               ></v-select>
             </div>
           </v-col>
-          
-          <v-col cols="12" sm="1">
-            <v-btn variant="text" size="big" color="primary" @click="addParking" :disabled="!newParkingSelection" block><v-icon>mdi-plus-circle-outline</v-icon>加入</v-btn>
+
+          <v-col cols="12" sm="3">
+            <v-btn :variant="isMobile ? 'tonal' : 'text'" color="primary" @click="addParking"
+              :disabled="!newParkingSelection" block
+              prepend-icon="mdi-plus-circle-outline">加入</v-btn>
           </v-col>
         </v-row>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
         <v-btn variant="text" @click="close">關閉</v-btn>
-        
-        <v-btn 
-          color="success" 
-          @click="confirm" 
-          
+
+        <v-btn
+          color="success"
+          :variant="isMobile ? 'flat' : 'text'"
+          :class="{ 'px-6': isMobile }"
+          @click="confirm"
         >
           確定
         </v-btn>
@@ -151,6 +203,7 @@
 
 <script setup>
 import { ref, computed, watch, defineProps, defineEmits, onMounted, onUnmounted } from 'vue';
+import { useDisplay } from 'vuetify';
 
 // ✓ START: 匯入 ParkingCanvas 相關
 import ParkingCanvas from '@/components/ParkingCanvas.vue'; 
@@ -191,6 +244,9 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:show', 'confirm']);
+
+// 手機版判斷：與 UnitDetailModal 一致，使用 Vuetify useDisplay
+const { mobile: isMobile } = useDisplay();
 
 const localParking = ref([]);
 const newParkingSelection = ref(null);
@@ -450,3 +506,35 @@ onUnmounted(() => {
 
 
 </script>
+
+<style scoped>
+.parking-modal-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.parking-mobile-card {
+  border-color: #e0e0e0;
+  background-color: #fafafa;
+}
+
+.parking-mobile-id {
+  font-size: 1.05rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.parking-mobile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  row-gap: 4px;
+  font-size: 0.85rem;
+  color: #616161;
+}
+</style>
