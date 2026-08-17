@@ -32,7 +32,8 @@
       </div>
 
       <v-card-text class="main-content">
-        <v-window v-model="tab" :touch="!isEditing">
+        <!-- Vuetify Touch 指令僅在 mounted 綁定、無 updated hook，:touch 動態值不會生效，須靜態停用 -->
+        <v-window v-model="tab" :touch="false">
           <v-window-item value="info">
             <template v-if="isEditing">
 
@@ -1792,6 +1793,44 @@ function cancelEditing() {
   clearPriceRemarkLocalState();
 }
 
+// 🔒 [編輯畫面鎖定] 修改銷控時擋下「滑動返回上一頁」與「重新整理/關閉分頁」，避免誤觸整個退出編輯
+// 手機瀏覽器的邊緣滑動返回等同 history back：先塞一筆守衛紀錄，被返回吃掉時立刻補回並提示
+let isEditGuardActive = false;
+
+function handleEditPopstate() {
+  if (!isEditing.value) return;
+  history.pushState({ unitEditGuard: true }, '');
+  toast.warning('編輯銷控中，畫面已鎖定；請先儲存或取消編輯', { position: POSITION.TOP_CENTER, timeout: 2500 });
+}
+
+function handleEditBeforeUnload(e) {
+  e.preventDefault();
+  e.returnValue = ''; // 觸發瀏覽器原生「確定要離開嗎」提示
+}
+
+function teardownEditScreenLock() {
+  if (!isEditGuardActive) return;
+  isEditGuardActive = false;
+  window.removeEventListener('popstate', handleEditPopstate);
+  window.removeEventListener('beforeunload', handleEditBeforeUnload);
+  // 消化守衛用的多餘 history 紀錄，讓之後的「上一頁」行為恢復正常
+  if (history.state && history.state.unitEditGuard) {
+    history.back();
+  }
+}
+
+watch(isEditing, (editing) => {
+  if (editing) {
+    if (isEditGuardActive) return;
+    isEditGuardActive = true;
+    history.pushState({ unitEditGuard: true }, '');
+    window.addEventListener('popstate', handleEditPopstate);
+    window.addEventListener('beforeunload', handleEditBeforeUnload);
+  } else {
+    teardownEditScreenLock();
+  }
+});
+
 // ✅ [戶別繳款紀錄] 進入編輯時的原始欄位快照（id → {date, amount, note}），供判斷是否需同步 Drive 檔名
 let paymentRecordsSnapshot = new Map();
 
@@ -3232,6 +3271,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyPress);
+  teardownEditScreenLock(); // 🔒 元件卸載時解除編輯畫面鎖定，避免監聽器殘留
 });
 </script>
 
@@ -3253,6 +3293,8 @@ onUnmounted(() => {
   flex-grow: 1;
   overflow-y: auto;
   position: relative;
+  /* 🔒 阻止捲動串連到瀏覽器（下拉重新整理、左右滑動導覽），避免誤觸退出編輯 */
+  overscroll-behavior: contain;
 }
 
 .footer-section {
