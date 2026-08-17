@@ -748,6 +748,22 @@
             {{ formatNumber(item.total_transaction, 0) }}
             </span>
           </template>
+
+          <!-- ✅ [繳款紀錄] 繳款比例：點擊開啟該戶繳款紀錄一覽 -->
+          <template v-slot:item.payment_ratio="{ item }">
+            <v-chip
+              v-if="item.payment_records_count > 0 || (item.payment_ratio !== null && item.payment_ratio > 0)"
+              size="small"
+              label
+              variant="tonal"
+              :color="item.payment_ratio !== null && item.payment_ratio >= 100 ? 'green' : 'deep-orange'"
+              class="payment-ratio-chip"
+              @click.stop="openPaymentRecordsPopup(item)"
+            >
+              {{ item.payment_ratio !== null ? `${item.payment_ratio.toFixed(1)}%` : `${item.payment_records_count} 筆` }}
+            </v-chip>
+            <span v-else class="text-grey">-</span>
+          </template>
          
           <template v-slot:item.total_floor="{ item }">
           <span class="font-weight-bold text-red">
@@ -817,6 +833,10 @@
                   <span v-if="summaryRow.totalTransactionTotal > 0" class="text-success">{{ formatNumber(summaryRow.totalTransactionTotal, 0) }}</span>
                   <span v-else>-</span>
                 </template>
+                <template v-else-if="col.key === 'payment_ratio'">
+                  <span v-if="summaryRow.paymentRatioTotal !== null" class="text-teal font-weight-bold">{{ summaryRow.paymentRatioTotal.toFixed(1) }}%</span>
+                  <span v-else>-</span>
+                </template>
                 <template v-else-if="col.key === 'total_floor'">
                   <span class="text-red">{{ formatNumber(summaryRow.totalFloorTotal, 0) }}</span>
                 </template>
@@ -879,6 +899,10 @@
                 </template>
                 <template v-else-if="col.key === 'total_transaction'">
                   <span v-if="summaryRow.totalTransactionTotal > 0" class="text-success">{{ formatNumber(summaryRow.totalTransactionTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'payment_ratio'">
+                  <span v-if="summaryRow.paymentRatioTotal !== null" class="text-teal font-weight-bold">{{ summaryRow.paymentRatioTotal.toFixed(1) }}%</span>
                   <span v-else>-</span>
                 </template>
                 <template v-else-if="col.key === 'total_floor'">
@@ -1499,6 +1523,30 @@
       </v-card>
     </v-dialog>
 
+    <!-- ✅ [繳款紀錄] 列表模式：點繳款比例浮動顯示該戶繳款紀錄一覽（手機全螢幕 / 電腦置中視窗） -->
+    <v-dialog v-model="paymentPopup.open" :fullscreen="isMobile" :max-width="isMobile ? undefined : 680" scrollable>
+      <v-card>
+        <v-toolbar color="teal-darken-1" density="compact">
+          <v-toolbar-title class="text-subtitle-1">
+            <v-icon size="small" class="mr-1">mdi-cash-multiple</v-icon>
+            {{ paymentPopup.unit ? paymentPopup.unit.unitId : '' }} 繳款紀錄一覽
+          </v-toolbar-title>
+          <v-btn icon="mdi-close" variant="text" @click="paymentPopup.open = false"></v-btn>
+        </v-toolbar>
+        <v-card-text class="pa-3">
+          <PaymentRecordsPanel
+            v-if="paymentPopup.unit"
+            :model-value="paymentPopup.unit.paymentRecords || []"
+            :editable="false"
+            :default-expanded="true"
+            :total-price-wan="paymentPopup.unit.total_transaction"
+            :unit-id="paymentPopup.unit.unitId || ''"
+            :drive-folder-url="paymentPopup.unit.driveFolderUrl || ''"
+          />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
     <!-- 資料透視下鑽明細：點儲存格顯示對應戶別清單 -->
     <v-dialog v-model="isPivotDrillVisible" max-width="720px" scrollable>
       <v-card>
@@ -1843,6 +1891,7 @@ import SalesBotChat from '@/components/SalesBotChat.vue';
 import AnalyticsPanel from '@/components/AnalyticsPanel.vue';
 import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
 import UnitDataExportDialog from '@/components/UnitDataExportDialog.vue';
+import PaymentRecordsPanel from '@/components/PaymentRecordsPanel.vue';
 import { useUserStore } from '@/store/user';
 import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
@@ -2273,6 +2322,7 @@ const PIVOT_BINNED_DIM_KEYS = new Set([
   'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount',
   'parking_trans_total', 'parking_floor_total', 'total_transaction', 'total_floor', 'price_diff',
   'unit_price_list', 'unit_price_floor', 'unit_price_transaction',
+  'paid_total', 'payment_ratio',
 ]);
 // 值欄位選項：常用金額/面積置頂，其餘數值欄位接在後面
 const pivotValueFieldOptions = computed(() => {
@@ -2280,6 +2330,7 @@ const pivotValueFieldOptions = computed(() => {
   const priority = [
     'total_transaction', 'price_transaction_house', 'total_floor', 'price_floor_house_total', 'price_list_house_total',
     'parking_trans_total', 'parking_floor_total', 'price_diff',
+    'paid_total', 'payment_ratio',
     'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount',
     'area_house_ping', 'area_terrace_ping',
     'unit_price_list', 'unit_price_floor', 'unit_price_transaction',
@@ -3324,6 +3375,8 @@ const UNIT_EXPORT_COMPUTED_COLUMNS = [
     { key: 'unit_price_list', title: '表價單價' },
     { key: 'unit_price_floor', title: '底價單價' },
     { key: 'unit_price_transaction', title: '成交單價' },
+    { key: 'paid_total', title: '已繳款金額(萬)' },
+    { key: 'payment_ratio', title: '繳款比例(%)' },
 ];
 const unitExportColumns = computed(() => [...exportableColumns.value, ...UNIT_EXPORT_COMPUTED_COLUMNS]);
 
@@ -3670,6 +3723,7 @@ const tableHeaders = computed(() => {
         { title: '車位底價', key: 'parking_floor_total', align: 'end', width: '85px' },
         { title: '車位成交', key: 'parking_trans_total', align: 'end', width: '85px' },
         { title: '成交總價(含車)', key: 'total_transaction', align: 'end', width: '110px' },
+        { title: '繳款比例', key: 'payment_ratio', align: 'center', width: '90px', sort: customPriceSort },
         { title: '合計底價(含車)', key: 'total_floor', align: 'end', width: '110px' },
         { title: '溢差價', key: 'price_diff', align: 'end', width: '80px' },
         { title: '銷售人員', key: 'salesperson', align: 'start', width: '95px' },
@@ -3700,6 +3754,7 @@ const tableHeaders = computed(() => {
       { title: '車位底價', key: 'parking_floor_total', align: 'start' },
       { title: '車位成交', key: 'parking_trans_total', align: 'start' },
       { title: '成交總價(含車)', key: 'total_transaction', align: 'start' },
+      { title: '繳款比例', key: 'payment_ratio', align: 'center', sort: customPriceSort },
       { title: '合計底價(含車)', key: 'total_floor', align: 'start' },
       { title: '溢差價', key: 'price_diff', align: 'start' },
       { title: '銷售人員', key: 'salesperson', align: 'start' },
@@ -3767,6 +3822,15 @@ const enrichUnitItem = (unit, parkingMap) => {
         item.price_diff = null;
     }
 
+    // ✅ [繳款紀錄] 已繳款金額(萬) 與 繳款比例(%)：已繳合計(元) ÷ 成交總價(含車位, 萬)×10000
+    const paymentRecords = Array.isArray(unit.paymentRecords) ? unit.paymentRecords : [];
+    const paidYuan = paymentRecords.reduce((sum, r) => sum + (Number(r?.amount) || 0), 0);
+    item.payment_records_count = paymentRecords.length;
+    item.paid_total = Math.round(paidYuan / 10000 * 100) / 100; // 萬，與其他金額欄位單位一致
+    item.payment_ratio = item.total_transaction > 0
+        ? Math.round((paidYuan / (item.total_transaction * 10000)) * 1000) / 10
+        : null;
+
     // 單價計算
     const areaVal = Number(item.area_house_ping) || 0;
     const calcUnit = (totalPrice) => {
@@ -3822,8 +3886,10 @@ const summaryRow = computed(() => {
   let totalTransactionTotal = 0; // 成交總價(含車)加總
   let totalFloorTotal = 0;       // 合計底價(含車)加總
   let priceDiffTotal = 0;        // 溢差價加總（只計算有成交的戶別）
+  let paidWanTotal = 0;          // 已繳款金額(萬)加總
 
   items.forEach((item) => {
+    paidWanTotal += Number(item.paid_total) || 0;
     areaTotal += Number(item.area_house_ping) || 0;
     terraceTotal += Number(item.area_terrace_ping) || 0;
     priceListTotal += Number(item.price_list_house_total) || 0;
@@ -3843,6 +3909,11 @@ const summaryRow = computed(() => {
   const unitPriceFloor = areaTotal > 0 && priceFloorTotal > 0 ? priceFloorTotal / areaTotal : null;
   const unitPriceTrans = areaTotal > 0 && priceTransTotal > 0 ? priceTransTotal / areaTotal : null;
 
+  // ✅ [繳款紀錄] 整體繳款比例 = 已繳合計(萬) ÷ 成交總價(含車)加總(萬)
+  const paymentRatioTotal = totalTransactionTotal > 0 && paidWanTotal > 0
+    ? (paidWanTotal / totalTransactionTotal) * 100
+    : null;
+
   return {
     count: items.length,
     areaTotal,
@@ -3855,11 +3926,20 @@ const summaryRow = computed(() => {
     totalTransactionTotal,
     totalFloorTotal,
     priceDiffTotal,
+    paidWanTotal,
+    paymentRatioTotal,
     unitPriceList,
     unitPriceFloor,
     unitPriceTrans,
   };
 });
+
+// ✅ [繳款紀錄] 列表模式：點繳款比例浮動顯示該戶繳款紀錄一覽
+const paymentPopup = reactive({ open: false, unit: null });
+function openPaymentRecordsPopup(item) {
+  paymentPopup.unit = item;
+  paymentPopup.open = true;
+}
 
 // 5. 處理列表行點擊
 const handleRowClick = (event, { item }) => {
@@ -5346,6 +5426,11 @@ overflow: hidden;
 }
 .gap-1 {
   gap: 4px;
+}
+
+/* ✅ [繳款紀錄] 繳款比例 chip：可點擊開啟一覽 */
+.payment-ratio-chip {
+  cursor: pointer;
 }
 
 /* ✅ 列表模式：加總列樣式（淺灰背景 + 粗體） */

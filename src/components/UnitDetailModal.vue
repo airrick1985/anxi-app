@@ -234,6 +234,20 @@
                 :view-mode="props.viewMode" @request-open-slide="$emit('request-open-slide')"
                 @parking-updated="handleParkingUpdate" :contractTypeOptions="props.contractTypes"
                 :firstPurchaseOptions="firstPurchaseOptions" :planOptions="props.planOptions" />
+
+              <v-card v-if="editingData" variant="outlined" class="mt-4 mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
+                <div class="d-flex align-center mb-2">
+                  <v-icon color="teal" class="mr-2">mdi-cash-multiple</v-icon>
+                  <span class="text-subtitle-1 font-weight-bold" style="color: #00796B;">戶別繳款紀錄</span>
+                </div>
+                <PaymentRecordsPanel
+                  v-model="editingData.paymentRecords"
+                  :editable="true"
+                  :total-price-wan="editingData.price_transaction_total"
+                  :unit-id="editingData.unitId || ''"
+                  :drive-folder-url="editingData.driveFolderUrl || ''"
+                />
+              </v-card>
             </template>
 
             <template v-else>
@@ -625,6 +639,18 @@
                       </div>
                     </v-col>
                   </v-row>
+
+                  <!-- ✅ 戶別繳款紀錄（檢視模式：唯讀列表 + 免進編輯模式的快速新增） -->
+                  <PaymentRecordsPanel
+                    class="mt-2"
+                    :model-value="viewPaymentRecords"
+                    :editable="false"
+                    :allow-quick-add="true"
+                    :quick-add-handler="handleQuickAddPaymentRecord"
+                    :total-price-wan="grandTotalTransactionPrice"
+                    :unit-id="unitData.unitId || ''"
+                    :drive-folder-url="unitData.driveFolderUrl || ''"
+                  />
                 </div>
               </div>
               <div v-else class="text-center pa-5">
@@ -986,11 +1012,12 @@ import FloorplanSizingTool from '@/views/FloorplanSizingTool.vue';
 import { ref, watch, computed, defineProps, defineEmits, onUnmounted, onMounted, nextTick } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
-import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot } from '@/api';
+import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot, paymentProofApi } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 import SalesBotChat from './SalesBotChat.vue';
 import LandParcelsPanel from './LandParcelsPanel.vue';
+import PaymentRecordsPanel from './PaymentRecordsPanel.vue';
 import { computeHouseLandPrices, buildDefaultFormulas, isSpecialContractType } from '@/composables/usePriceFormula';
 import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue';
@@ -1711,6 +1738,14 @@ function startEditing() {
   }
   clearPriceRemarkLocalState();
 
+  // ✅ [戶別繳款紀錄] 以檢視模式本地列表為準（可能含剛快速新增、父層尚未重新載入的紀錄）+ 快照原始欄位
+  editingData.value.paymentRecords = JSON.parse(JSON.stringify(viewPaymentRecords.value || []));
+  paymentRecordsSnapshot = new Map(
+    editingData.value.paymentRecords
+      .filter(r => r && r.id)
+      .map(r => [r.id, { date: r.date, amount: r.amount, note: r.note }])
+  );
+
   // ✅ START: 新增 - 將 Timestamp 欄位轉換為 JavaScript Date 物件
   if (props.unitData) {
     // 輔助函式：將 Timestamp 物件轉換為 Date 物件
@@ -1750,9 +1785,144 @@ function startEditing() {
 
 function cancelEditing() {
   isEditing.value = false;
+  // ✅ [戶別繳款紀錄] 取消編輯時釋放本地預覽 URL，不動 Drive
+  clearPaymentRecordsPendingState();
   editingData.value = null;
   // ✅ [新增] 取消編輯時釋放預覽 URL、丟棄 pending 變動，不影響 Storage
   clearPriceRemarkLocalState();
+}
+
+// ✅ [戶別繳款紀錄] 進入編輯時的原始欄位快照（id → {date, amount, note}），供判斷是否需同步 Drive 檔名
+let paymentRecordsSnapshot = new Map();
+
+// ✅ [戶別繳款紀錄] 檢視模式本地列表：快速新增後即時反映，不必等父層重新載入
+const viewPaymentRecords = ref([]);
+watch(() => props.unitData, (val) => {
+  viewPaymentRecords.value = Array.isArray(val?.paymentRecords)
+    ? JSON.parse(JSON.stringify(val.paymentRecords))
+    : [];
+}, { immediate: true });
+
+/**
+ * [戶別繳款紀錄] 快速新增（檢視模式，不經修改銷控）：
+ * 有圖檔則後端一併上傳並命名，寫入成功後即時更新本地列表。
+ */
+async function handleQuickAddPaymentRecord({ date, amount, note, file }) {
+  let base64 = null;
+  if (file) {
+    base64 = await paymentProofFileToBase64(file);
+  }
+  const res = await paymentProofApi({
+    action: 'addRecord',
+    projectId: props.projectId,
+    unitId: props.unitData.unitId,
+    base64,
+    date,
+    amount,
+    note
+  });
+  if (res.status !== 'success' || !res.record) {
+    throw new Error(res.message || '請稍後再試');
+  }
+  viewPaymentRecords.value = [...viewPaymentRecords.value, res.record];
+  toast.success('繳款紀錄已新增');
+  emit('data-updated');
+}
+
+function clearPaymentRecordsPendingState() {
+  const list = editingData.value?.paymentRecords;
+  if (!Array.isArray(list)) return;
+  list.forEach(r => {
+    if (r && r._pendingPreviewUrl) {
+      try { URL.revokeObjectURL(r._pendingPreviewUrl); } catch (e) { /* noop */ }
+    }
+  });
+}
+
+function paymentProofFileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(new Error('讀取圖檔失敗'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * [戶別繳款紀錄] 儲存前處理：驗證 → 既有圖檔改名同步（失敗僅警告）→ 上傳待上傳憑證（失敗中止）→ 清理內部欄位。
+ * 已上傳成功的憑證資訊會即時寫回紀錄，儲存失敗重試時不會重複上傳。
+ */
+async function preparePaymentRecordsForSave() {
+  const list = editingData.value?.paymentRecords;
+  if (!Array.isArray(list) || list.length === 0) return;
+
+  // 1. 驗證：日期必填、金額為正整數（元）
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.date || ''))) {
+      throw new Error(`繳款 #${i + 1} 未選擇繳款日期。`);
+    }
+    const amountNum = Number(r.amount);
+    if (!Number.isInteger(amountNum) || amountNum <= 0) {
+      throw new Error(`繳款 #${i + 1} 金額必須為大於 0 的整數（元）。`);
+    }
+  }
+
+  const unitId = props.unitData.unitId;
+
+  // 2. 既有圖檔且日期/金額/備註有異動 → 同步 Drive 檔名（失敗僅警告，不中斷儲存）
+  for (const r of list) {
+    if (!r.file || !r.file.fileId || r._pendingFile) continue;
+    const snap = paymentRecordsSnapshot.get(r.id);
+    if (!snap) continue;
+    const changed = snap.date !== r.date
+      || Number(snap.amount) !== Number(r.amount)
+      || (snap.note || '') !== (r.note || '');
+    if (!changed) continue;
+    const res = await paymentProofApi({
+      action: 'rename',
+      projectId: props.projectId,
+      unitId,
+      fileId: r.file.fileId,
+      date: r.date,
+      amount: Number(r.amount),
+      note: r.note || ''
+    });
+    if (res.status === 'success' && res.file) {
+      r.file = { ...r.file, fileName: res.file.fileName, webViewLink: res.file.webViewLink || r.file.webViewLink };
+    } else {
+      toast.warning(`繳款憑證「${r.file.fileName}」檔名同步失敗，資料仍會照常儲存。`);
+    }
+  }
+
+  // 3. 上傳待上傳憑證
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i];
+    if (!r._pendingFile) continue;
+    savingText.value = `正在上傳繳款憑證 (繳款 #${i + 1})...`;
+    const base64 = await paymentProofFileToBase64(r._pendingFile);
+    const res = await paymentProofApi({
+      action: 'upload',
+      projectId: props.projectId,
+      unitId,
+      base64,
+      date: r.date,
+      amount: Number(r.amount),
+      note: r.note || ''
+    });
+    if (res.status !== 'success' || !res.file) {
+      throw new Error(`繳款 #${i + 1} 憑證上傳失敗：${res.message || '請稍後再試'}`);
+    }
+    r.file = res.file;
+    if (r._pendingPreviewUrl) {
+      try { URL.revokeObjectURL(r._pendingPreviewUrl); } catch (e) { /* noop */ }
+    }
+    delete r._pendingFile;
+    delete r._pendingPreviewUrl;
+  }
+
+  // 4. 防禦性清理：確保 File 物件與本地預覽 URL 不會進入 Firestore payload
+  editingData.value.paymentRecords = list.map(({ _pendingFile, _pendingPreviewUrl, ...rest }) => rest);
 }
 
 // 5. [修改] saveChanges：儲存成功後才執行車位寫入
@@ -1804,6 +1974,10 @@ async function executeSaveChanges() {
       savingText.value = '儲存中，請稍候...';
     }
 
+    // ✅ [戶別繳款紀錄] 驗證 → Drive 檔名同步 → 上傳待上傳憑證（失敗會 throw 中止儲存）
+    await preparePaymentRecordsForSave();
+    savingText.value = '儲存中，請稍候...';
+
     const data = editingData.value;
 
     // ✅ 露臺表價異動時同步重算「露臺單價(表價)」，避免銷控表欄位殘留舊值
@@ -1822,6 +1996,9 @@ async function executeSaveChanges() {
 
     const result = await updateSalesData(payload);
     if (result.status !== 'success') throw new Error(result.message);
+
+    // ✅ [戶別繳款紀錄] 儲存成功後同步檢視模式本地列表
+    viewPaymentRecords.value = JSON.parse(JSON.stringify(data.paymentRecords || []));
 
     // ✅ [新增] Firestore 寫入成功後，才從 Storage 真正刪除已標記的舊備註圖片
     if (priceRemarkPendingDeletions.value.length > 0) {

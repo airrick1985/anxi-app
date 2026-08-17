@@ -885,6 +885,22 @@ export async function updateSalesData(payload) {
 }
 
 /**
+ * 戶別繳款紀錄 - 繳款憑證圖檔上傳/改名 (SPEC_UnitPaymentRecords.md)
+ * @param {object} payload - { action: 'upload'|'rename', projectId, unitId, base64?, fileId?, date, amount, note }
+ * @returns {Promise<object>} { status, file: { fileId, fileName, webViewLink, uploadedAt? } }
+ */
+export async function paymentProofApi(payload) {
+  try {
+    const fn = httpsCallable(functions, 'paymentProofApi');
+    const result = await fn(payload);
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 paymentProofApi 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+/**
  * 獲取銷售下拉選單選項 (合約方式、是否首購)
  * @param {string} projectName 建案名稱
  * @returns {Promise<object>} API 響應

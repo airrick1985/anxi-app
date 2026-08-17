@@ -6076,6 +6076,166 @@ exports.uploadAuthLetter = onCall({
 });
 //  END: 新增 uploadAuthLetter 雲端函式
 
+// ✓ START: 戶別繳款紀錄 - 繳款憑證圖檔 Drive 上傳/改名 (SPEC_UnitPaymentRecords.md)
+/**
+ * [輔助] 組繳款憑證檔名：{YYYYMMDD}-{戶別}-{金額}-{備註}
+ * 備註會移除檔名不合法字元與換行、截斷 30 字；備註為空時省略末段。
+ */
+function buildPaymentProofFileName(date, unitId, amount, note, ext) {
+  const datePart = String(date || '').replace(/-/g, '');
+  const sanitizedNote = String(note || '')
+    .replace(/[\\/:*?"<>|\r\n]/g, '')
+    .trim()
+    .slice(0, 30);
+  const parts = [datePart, unitId, String(amount)];
+  if (sanitizedNote) parts.push(sanitizedNote);
+  return `${parts.join('-')}.${ext}`;
+}
+
+exports.paymentProofApi = onCall({
+  region: "asia-east1",
+  memory: "512MiB",
+  cors: true,
+  secrets: driveSecrets
+}, async (request) => {
+  const { action, projectId, unitId, base64, fileId, date, amount, note } = request.data;
+  const functionName = `paymentProofApi (Action: ${action})`;
+
+  if (!projectId || !unitId) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, unitId)。');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
+    throw new HttpsError('invalid-argument', '繳款日期格式必須為 YYYY-MM-DD。');
+  }
+  const amountNum = Number(amount);
+  if (!Number.isInteger(amountNum) || amountNum <= 0) {
+    throw new HttpsError('invalid-argument', '繳款金額必須為大於 0 的整數（元）。');
+  }
+
+  try {
+    const drive = getAuthenticatedDriveClient();
+
+    // --- action: rename（同步 Drive 檔名） ---
+    if (action === 'rename') {
+      if (!fileId) {
+        throw new HttpsError('invalid-argument', '缺少必要參數 (fileId)。');
+      }
+      // 保留原副檔名
+      const current = await drive.files.get({ fileId, fields: 'name' });
+      const extMatch = String(current.data.name || '').match(/\.(\w+)$/);
+      const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+      const newName = buildPaymentProofFileName(date, unitId, amountNum, note, ext);
+      const updated = await drive.files.update({
+        fileId,
+        requestBody: { name: newName },
+        fields: 'id, name, webViewLink'
+      });
+      console.log(`[${functionName}] 已改名為 "${newName}" (fileId: ${fileId})`);
+      return { status: 'success', file: { fileId: updated.data.id, fileName: updated.data.name, webViewLink: updated.data.webViewLink } };
+    }
+
+    // --- action: upload / addRecord ---
+    if (action !== 'upload' && action !== 'addRecord') {
+      throw new HttpsError('invalid-argument', `未知的 action: ${action}`);
+    }
+    if (action === 'upload' && !base64) {
+      throw new HttpsError('invalid-argument', '缺少必要參數 (base64)。');
+    }
+
+    const db = new Firestore({ databaseId: 'anxi-app' });
+    const docId = `${projectId}_${unitId}`;
+    const docRef = db.collection('salesHouseholds').doc(docId);
+
+    // 有帶圖檔才需要解析戶別資料夾並上傳（addRecord 的圖檔為選填）
+    let uploadedFileInfo = null;
+    if (base64) {
+      // 1. 從銷控戶別文件取得 Drive 資料夾 URL
+      const householdDoc = await docRef.get();
+      if (!householdDoc.exists) {
+        throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
+      }
+      const folderUrl = householdDoc.data().driveFolderUrl;
+      if (!folderUrl) {
+        throw new HttpsError('failed-precondition', `戶別 "${unitId}" 尚未設定「戶別資料夾位置」，無法上傳繳款憑證。`);
+      }
+      const folderIdMatch = String(folderUrl).match(/[-\w]{25,}/);
+      if (!folderIdMatch) {
+        throw new HttpsError('failed-precondition', `"${folderUrl}" 不是有效的 Google Drive 資料夾連結。`);
+      }
+      const targetFolderId = folderIdMatch[0];
+
+      // 2. Base64 轉 Buffer，以魔術數字嗅探真實格式（僅允許 JPG/PNG/WEBP）
+      const buffer = Buffer.from(base64, 'base64');
+      const MAX_SIZE = 10 * 1024 * 1024;
+      if (buffer.length > MAX_SIZE) {
+        throw new HttpsError('invalid-argument', '圖檔大小超過 10MB 上限。');
+      }
+      let mimeType = null;
+      let ext = null;
+      if (buffer.length >= 4) {
+        if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) { mimeType = 'image/jpeg'; ext = 'jpg'; }
+        else if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) { mimeType = 'image/png'; ext = 'png'; }
+        else if (buffer.length >= 12 && buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 12).toString('ascii') === 'WEBP') { mimeType = 'image/webp'; ext = 'webp'; }
+      }
+      if (!mimeType) {
+        throw new HttpsError('invalid-argument', '僅接受 JPG、PNG、WEBP 圖檔，請確認檔案內容。');
+      }
+
+      // 3. 上傳至戶別資料夾
+      const fileName = buildPaymentProofFileName(date, unitId, amountNum, note, ext);
+      const uploadedFile = await drive.files.create({
+        resource: { name: fileName, parents: [targetFolderId] },
+        media: { mimeType, body: Readable.from(buffer) },
+        fields: 'id, name, webViewLink'
+      });
+      console.log(`[${functionName}] 繳款憑證 "${fileName}" 已上傳至資料夾 ID: ${targetFolderId}`);
+      uploadedFileInfo = {
+        fileId: uploadedFile.data.id,
+        fileName: uploadedFile.data.name,
+        webViewLink: uploadedFile.data.webViewLink,
+        uploadedAt: new Date().toISOString()
+      };
+    }
+
+    if (action === 'upload') {
+      return { status: 'success', file: uploadedFileInfo };
+    }
+
+    // --- action: addRecord（快速新增：不經修改銷控，直接把紀錄附加進 paymentRecords）---
+    const nowIso = new Date().toISOString();
+    const newRecord = {
+      id: `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      date: String(date),
+      amount: amountNum,
+      note: String(note || ''),
+      file: uploadedFileInfo,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
+      }
+      const existing = Array.isArray(snap.data().paymentRecords) ? snap.data().paymentRecords : [];
+      tx.update(docRef, { paymentRecords: [...existing, newRecord] });
+    });
+    console.log(`[${functionName}] 已新增繳款紀錄 ${newRecord.id} (${unitId}, ${amountNum} 元)`);
+    return { status: 'success', record: newRecord };
+
+  } catch (error) {
+    console.error(`[${functionName}] 🔴 執行時發生錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    if (error.response && error.response.data && error.response.data.error === 'invalid_grant') {
+      driveClientInstance = null;
+      oauth2ClientInstance = null;
+      throw new HttpsError("unauthenticated", `Google Drive 認證失敗，Refresh Token 可能已過期，請聯繫系統管理員。`);
+    }
+    throw new HttpsError('internal', `處理繳款憑證時發生錯誤: ${error.message}`);
+  }
+});
+// ✓ END: 戶別繳款紀錄 paymentProofApi
+
 
 // ✓ START: 新增 - 獲取客戶最新預約資料 (供客戶端驗屋報告頁面預填)
 /**
