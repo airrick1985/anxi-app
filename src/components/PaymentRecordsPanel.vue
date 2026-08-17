@@ -254,24 +254,59 @@
   </v-dialog>
 
   <!-- ── 燈箱放大 ── -->
-  <v-dialog v-model="lightbox.open" max-width="900">
-    <v-card class="pr-lightbox-card" @click="lightbox.open = false">
+  <v-dialog v-model="lightbox.open" max-width="1000">
+    <v-card class="pr-lightbox-card">
       <v-btn icon size="small" variant="flat" class="pr-lightbox-close" @click.stop="lightbox.open = false">
         <v-icon>mdi-close</v-icon>
       </v-btn>
-      <v-img :src="lightbox.src" max-height="80vh" contain @click.stop>
-        <template v-slot:error>
-          <div class="text-center pa-10">
-            <v-icon size="64" color="grey">mdi-image-off-outline</v-icon>
-            <p class="text-caption text-grey mt-2">無法載入預覽圖</p>
-          </div>
-        </template>
-        <template v-slot:placeholder>
-          <div class="d-flex align-center justify-center fill-height">
-            <v-progress-circular indeterminate color="grey"></v-progress-circular>
-          </div>
-        </template>
-      </v-img>
+      <div
+        ref="lightboxStageRef"
+        class="pr-lightbox-stage"
+        :class="{ 'pr-lightbox-dragging': lbView.dragging }"
+        @wheel.prevent="onLightboxWheel"
+        @pointerdown="onLightboxPointerDown"
+        @pointermove="onLightboxPointerMove"
+        @pointerup="onLightboxPointerUp"
+        @pointercancel="onLightboxPointerUp"
+        @dblclick="onLightboxDblclick"
+      >
+        <img
+          v-if="!lbView.error"
+          :src="lightbox.src"
+          :style="lightboxImgStyle"
+          class="pr-lightbox-img"
+          draggable="false"
+          alt=""
+          @load="lbView.loading = false"
+          @error="lbView.loading = false; lbView.error = true"
+        />
+        <div v-if="lbView.error" class="text-center pa-10">
+          <v-icon size="64" color="grey">mdi-image-off-outline</v-icon>
+          <p class="text-caption text-grey mt-2">無法載入預覽圖</p>
+        </div>
+        <div v-else-if="lbView.loading" class="pr-lightbox-loading">
+          <v-progress-circular indeterminate color="grey"></v-progress-circular>
+        </div>
+      </div>
+      <div class="pr-lightbox-toolbar" @click.stop>
+        <v-btn icon size="small" variant="text" color="grey-lighten-1" title="縮小" @click="zoomLightboxAt(1 / 1.25)">
+          <v-icon>mdi-magnify-minus-outline</v-icon>
+        </v-btn>
+        <span class="pr-lightbox-zoom-label" title="重設檢視" @click="resetLightboxView">{{ Math.round(lbView.zoom * 100) }}%</span>
+        <v-btn icon size="small" variant="text" color="grey-lighten-1" title="放大" @click="zoomLightboxAt(1.25)">
+          <v-icon>mdi-magnify-plus-outline</v-icon>
+        </v-btn>
+        <v-divider vertical class="mx-1 pr-lightbox-divider" />
+        <v-btn icon size="small" variant="text" color="grey-lighten-1" title="向左旋轉" @click="lbView.rotate -= 90">
+          <v-icon>mdi-rotate-left</v-icon>
+        </v-btn>
+        <v-btn icon size="small" variant="text" color="grey-lighten-1" title="向右旋轉" @click="lbView.rotate += 90">
+          <v-icon>mdi-rotate-right</v-icon>
+        </v-btn>
+        <v-btn icon size="small" variant="text" color="grey-lighten-1" title="重設檢視" @click="resetLightboxView">
+          <v-icon>mdi-backup-restore</v-icon>
+        </v-btn>
+      </div>
       <v-card-actions class="justify-center" @click.stop>
         <span class="text-caption text-grey text-truncate mr-2">{{ lightbox.name }}</span>
         <v-btn
@@ -407,24 +442,115 @@ async function submitQuickAdd() {
 
 // ── 燈箱 ──
 const lightbox = reactive({ open: false, src: '', name: '', webViewLink: '' });
+const lbView = reactive({ zoom: 1, rotate: 0, panX: 0, panY: 0, loading: true, error: false, dragging: false });
+const lightboxStageRef = ref(null);
+const lightboxImgStyle = computed(() => ({
+  transform: `translate(${lbView.panX}px, ${lbView.panY}px) scale(${lbView.zoom}) rotate(${lbView.rotate}deg)`,
+}));
+function resetLightboxView() {
+  lbView.zoom = 1;
+  lbView.rotate = 0;
+  lbView.panX = 0;
+  lbView.panY = 0;
+}
+function clampZoom(z) {
+  return Math.min(8, Math.max(0.2, z));
+}
+// 以指定螢幕座標為錨點縮放（未給座標則以畫面中心）
+function zoomLightboxAt(factor, clientX = null, clientY = null) {
+  const oldZoom = lbView.zoom;
+  const newZoom = clampZoom(oldZoom * factor);
+  if (newZoom === oldZoom) return;
+  const stage = lightboxStageRef.value;
+  if (stage && clientX != null) {
+    const rect = stage.getBoundingClientRect();
+    const px = clientX - rect.left - rect.width / 2;
+    const py = clientY - rect.top - rect.height / 2;
+    const ratio = newZoom / oldZoom;
+    lbView.panX = px - ratio * (px - lbView.panX);
+    lbView.panY = py - ratio * (py - lbView.panY);
+  }
+  lbView.zoom = newZoom;
+}
+function onLightboxWheel(e) {
+  zoomLightboxAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
+}
+function onLightboxDblclick(e) {
+  if (lbView.zoom !== 1 || lbView.panX || lbView.panY) resetLightboxView();
+  else zoomLightboxAt(2.5, e.clientX, e.clientY);
+}
+// 單指拖曳平移、雙指捏合縮放
+const lbPointers = new Map();
+let lbPanStart = null;
+let lbPinchStart = null;
+function lbPointerDist() {
+  const pts = [...lbPointers.values()];
+  return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+}
+function onLightboxPointerDown(e) {
+  e.currentTarget.setPointerCapture?.(e.pointerId);
+  lbPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (lbPointers.size === 1) {
+    lbPanStart = { x: e.clientX, y: e.clientY, panX: lbView.panX, panY: lbView.panY };
+    lbView.dragging = true;
+  } else if (lbPointers.size === 2) {
+    lbPanStart = null;
+    lbPinchStart = { dist: lbPointerDist(), zoom: lbView.zoom };
+  }
+}
+function onLightboxPointerMove(e) {
+  if (!lbPointers.has(e.pointerId)) return;
+  lbPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (lbPointers.size === 2 && lbPinchStart) {
+    lbView.zoom = clampZoom(lbPinchStart.zoom * (lbPointerDist() / lbPinchStart.dist));
+  } else if (lbPointers.size === 1 && lbPanStart) {
+    lbView.panX = lbPanStart.panX + (e.clientX - lbPanStart.x);
+    lbView.panY = lbPanStart.panY + (e.clientY - lbPanStart.y);
+  }
+}
+function onLightboxPointerUp(e) {
+  lbPointers.delete(e.pointerId);
+  if (lbPointers.size < 2) lbPinchStart = null;
+  if (lbPointers.size === 0) {
+    lbPanStart = null;
+    lbView.dragging = false;
+  } else if (lbPointers.size === 1) {
+    const p = [...lbPointers.values()][0];
+    lbPanStart = { x: p.x, y: p.y, panX: lbView.panX, panY: lbView.panY };
+  }
+}
+function prepareLightbox(newSrc) {
+  resetLightboxView();
+  // 同一張圖重開時 <img> 不會再觸發 load 事件，只有換圖才顯示 loading
+  lbView.loading = newSrc !== lightbox.src;
+  lbView.error = false;
+  lbPointers.clear();
+  lbPanStart = null;
+  lbPinchStart = null;
+}
 function openRawLightbox(src, name) {
+  prepareLightbox(src);
   lightbox.src = src;
   lightbox.name = name || '';
   lightbox.webViewLink = '';
   lightbox.open = true;
 }
 function openLightbox(r) {
+  let src;
   if (r._pendingPreviewUrl) {
-    lightbox.src = r._pendingPreviewUrl;
+    src = r._pendingPreviewUrl;
+    prepareLightbox(src);
     lightbox.name = r._pendingFile ? r._pendingFile.name : '';
     lightbox.webViewLink = '';
   } else if (r.file) {
-    lightbox.src = driveThumb(r.file.fileId, 'w1600');
+    src = driveThumb(r.file.fileId, 'w1600');
+    prepareLightbox(src);
     lightbox.name = r.file.fileName || '';
     lightbox.webViewLink = r.file.webViewLink || '';
   } else {
     return;
   }
+  lightbox.src = src;
   lightbox.open = true;
 }
 
@@ -609,6 +735,55 @@ function formatMoney(v) {
   top: 8px;
   right: 8px;
   z-index: 2;
+}
+.pr-lightbox-stage {
+  position: relative;
+  height: 72vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pr-lightbox-stage.pr-lightbox-dragging {
+  cursor: grabbing;
+}
+.pr-lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  transition: transform 0.15s ease;
+  will-change: transform;
+  pointer-events: none;
+}
+.pr-lightbox-dragging .pr-lightbox-img {
+  transition: none;
+}
+.pr-lightbox-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pr-lightbox-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding-top: 4px;
+}
+.pr-lightbox-zoom-label {
+  font-size: 12px;
+  color: #bbb;
+  min-width: 44px;
+  text-align: center;
+  cursor: pointer;
+}
+.pr-lightbox-divider {
+  border-color: rgba(255, 255, 255, 0.3);
 }
 .pr-lightbox-card .v-card-actions .text-caption {
   color: #ccc;
