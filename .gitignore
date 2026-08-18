@@ -53,5 +53,11 @@ gas_inspection_schedule.gs
 # Claude Code session lock (runtime file, not for version control)
 .claude/scheduled_tasks.lock
 
+# 本地使用的第三方 skill，不進版控
+.claude/skills/ai-ad-prompt-guide/
+
 # 客戶合約／文件 PDF 範本樣張（含客戶姓名等個資，本 repo 為公開，一律不進版控）
 docs/*.pdf
+
+# 本機專用文件（資料備份、log、對話紀錄、行銷文案草稿），不進版控
+docs/local/

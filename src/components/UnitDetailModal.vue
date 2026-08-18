@@ -637,6 +637,20 @@
 
                           <v-list-item title="出生年月日 (民國)"
                             :subtitle="formatROCDate(unitData.buyerDateOfBirth)"></v-list-item> </v-list>
+
+                        <!-- ✅ [新增] 共同買方（coBuyers）唯讀摘要 -->
+                        <template v-if="Array.isArray(unitData.coBuyers) && unitData.coBuyers.length > 0">
+                          <v-divider class="my-2"></v-divider>
+                          <div class="text-subtitle-2 font-weight-bold mb-1">
+                            <v-icon size="small" class="mr-1">mdi-account-multiple-outline</v-icon>
+                            共同買方 ({{ unitData.coBuyers.length }})
+                          </div>
+                          <v-list dense>
+                            <v-list-item v-for="(cb, i) in unitData.coBuyers" :key="i" :title="cb.name || '未填姓名'">
+                              <v-list-item-subtitle style="white-space: pre-wrap;">{{ formatCoBuyerSummary(cb) }}</v-list-item-subtitle>
+                            </v-list-item>
+                          </v-list>
+                        </template>
                       </div>
                     </v-col>
                   </v-row>
@@ -3122,6 +3136,19 @@ async function commitParkingChanges(unitId, parkingList) {
 
 
 // ✅ [打勾] 新增：格式化民國日期函數
+// ✅ [新增] 共同買方唯讀摘要（電話/身分證/生日/地址，逐行顯示）
+function formatCoBuyerSummary(cb) {
+  if (!cb) return '-';
+  const lines = [];
+  if (cb.phone) lines.push(`電話：${cb.phone}`);
+  if (cb.idNumber) lines.push(`身分證：${cb.idNumber}`);
+  if (cb.email) lines.push(`EMAIL：${cb.email}`);
+  if (cb.dateOfBirth) lines.push(`生日：${formatROCDate(cb.dateOfBirth)}`);
+  const addr = `${cb.mailingAddressCity || ''}${cb.mailingAddressDistrict || ''}${cb.mailingAddressDetail || ''}`;
+  if (addr) lines.push(`地址：${addr}`);
+  return lines.length > 0 ? lines.join('\n') : '-';
+}
+
 function formatROCDate(dateInput) {
   if (!dateInput) return '-';
 

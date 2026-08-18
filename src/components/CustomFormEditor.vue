@@ -6,7 +6,9 @@
         {{ isEditMode ? '編輯表單' : '新增自訂表單' }}
       </v-toolbar-title>
       <v-spacer></v-spacer>
+      <!-- ✅ 手機版：預覽縮為 icon、儲存縮短文字，避免工具列擠壓 -->
       <v-btn
+        v-if="!isMobile"
         color="info"
         variant="text"
         prepend-icon="mdi-eye"
@@ -16,14 +18,21 @@
         預覽表單
       </v-btn>
       <v-btn
+        v-else
+        icon="mdi-eye"
+        color="info"
+        variant="text"
+        @click="openPreview"
+      ></v-btn>
+      <v-btn
         color="primary"
         variant="flat"
         :loading="saving"
         @click="saveForm"
-        prepend-icon="mdi-content-save"
-        class="mr-4"
+        :prepend-icon="isMobile ? undefined : 'mdi-content-save'"
+        :class="isMobile ? 'mr-2' : 'mr-4'"
       >
-        儲存表單
+        {{ isMobile ? '儲存' : '儲存表單' }}
       </v-btn>
     </v-toolbar>
 
@@ -100,8 +109,8 @@
     </v-dialog>
 
     <div class="d-flex flex-grow-1 overflow-hidden bg-grey-lighten-4">
-      <!-- Left: Form Configuration -->
-      <v-sheet class="flex-grow-1 ma-4 rounded-lg overflow-y-auto pa-6" elevation="1" max-width="800">
+      <!-- Left: Form Configuration（✅ 手機縮小外距/內距，爭取欄位卡片操作空間） -->
+      <v-sheet class="flex-grow-1 rounded-lg overflow-y-auto" :class="isMobile ? 'ma-1 pa-3' : 'ma-4 pa-6'" elevation="1" max-width="800">
 
         <template v-if="canEditNotify">
           <h3 class="text-h6 mb-4 font-weight-bold text-grey-darken-3 d-flex align-center">
@@ -208,8 +217,20 @@
           rows="3"
           hint="顯示在表單標題下方的說明文字"
           persistent-hint
-          class="mb-6"
+          class="mb-4"
         ></v-textarea>
+
+        <!-- ✅ [新增] 客戶資料卡標記：銷控「客資卡導入」的來源認定 -->
+        <v-switch
+          v-model="isCardSwitch"
+          color="teal"
+          hide-details
+          density="comfortable"
+          label="作為客戶資料卡（銷控戶別資料可由此表單的填寫紀錄導入買方資料）"
+        ></v-switch>
+        <div class="text-caption text-grey mb-6">
+          表單名稱含「客戶資料卡／客資卡／客戶資料」時預設開啟；切換此開關可手動納入或排除。
+        </div>
 
         <v-divider class="mb-6"></v-divider>
 
@@ -241,6 +262,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, defineAsyncComponent } from 'vue';
+import { useDisplay } from 'vuetify';
 import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useToast } from 'vue-toastification';
@@ -252,6 +274,7 @@ import TwCities from '@/assets/TwCities.json';
 import FormRenderItem from '@/components/FormRenderItem.vue';
 import { useUserStore } from '@/store/user';
 import { getFormNotificationCandidates } from '@/api';
+import { isCustomerDataCardForm } from '@/utils/customerCardImport';
 
 const props = defineProps<{
   projectId: string;
@@ -261,6 +284,9 @@ const props = defineProps<{
 const emit = defineEmits(['close', 'saved']);
 const toast = useToast();
 const userStore = useUserStore();
+
+const { mobile } = useDisplay();
+const isMobile = computed(() => mobile.value);
 
 const saving = ref(false);
 const isEditMode = ref(false);
@@ -359,6 +385,14 @@ const form = ref({
   notifyUnitSalesPerson: true,
   notificationExcludedUserKeys: [] as string[],
   requireLineLogin: false,
+  // ✅ [新增] 客戶資料卡標記：undefined = 未設定（依名稱關鍵字判斷）、true/false = 手動指定
+  isCustomerDataCard: undefined as boolean | undefined,
+});
+
+// ✅ [新增] 客戶資料卡開關：未手動設定時顯示名稱關鍵字判斷結果，切換後即寫入明確 boolean
+const isCardSwitch = computed({
+  get: () => isCustomerDataCardForm({ title: form.value.title, isCustomerDataCard: form.value.isCustomerDataCard }),
+  set: (val: boolean) => { form.value.isCustomerDataCard = val; },
 });
 
 const loadForm = async () => {
@@ -389,6 +423,8 @@ const loadForm = async () => {
         notificationExcludedUserKeys: Array.isArray(data.notificationExcludedUserKeys)
           ? data.notificationExcludedUserKeys : [],
         requireLineLogin: data.requireLineLogin ?? false,
+        // ✅ 只接受明確 boolean，其餘視為未設定（依名稱判斷）
+        isCustomerDataCard: typeof data.isCustomerDataCard === 'boolean' ? data.isCustomerDataCard : undefined,
       };
     } else {
       toast.error('找不到表單資料');
@@ -415,6 +451,11 @@ const saveForm = async () => {
       notifySalesAdmins: true,
       updatedAt: serverTimestamp()
     };
+
+    // ✅ 客戶資料卡標記未手動設定時不寫入（Firestore 不接受 undefined，且保留「依名稱判斷」語意）
+    if (payload.isCustomerDataCard === undefined) {
+      delete payload.isCustomerDataCard;
+    }
 
     // 無編輯通知設定權限者：移除通知/LINE 收集相關欄位以避免覆寫既有設定
     if (!canEditNotify.value) {

@@ -493,12 +493,36 @@ const autoFillFields = () => {
          case 'buyerPhone': val = data.buyerPhone || ''; break;
          case 'buyerAddress': val = formatAddress(data) || ''; break;
          case 'buyerIdNumber': val = data.buyerIdNumber || ''; break;
+         // ✅ [新增] 客戶資料卡導入銷控：EMAIL / 出生年月日（民國）/ 通訊地址
+         case 'buyerEmail': val = data.buyerEmail || ''; break;
+         case 'buyerDateOfBirth': val = formatRocDob(data.buyerDateOfBirth) || ''; break;
+         case 'buyerMailingAddress': val = formatMailingAddress(data) || ''; break;
          case 'salesPerson': val = formatSalespersons(data.salesperson, '、', ''); break;
          case 'unitId': val = data.unitId || ''; break;
        }
        formData[f.id] = val;
     }
   });
+};
+
+// ✅ [新增] 出生年月日：salesHouseholds 存民國物件 {year, month, day}，也相容舊 Timestamp/Date
+// 輸出「民國79年1月1日」格式，銷控端的客資卡導入可無損解析回民國物件
+const formatRocDob = (dob: any) => {
+  if (!dob) return '';
+  if (typeof dob === 'object' && 'year' in dob && 'month' in dob) {
+    return `民國${dob.year}年${dob.month}月${dob.day}日`;
+  }
+  const dateObj = typeof dob.toDate === 'function' ? dob.toDate() : new Date(dob);
+  if (isNaN(dateObj.getTime())) return '';
+  return `民國${dateObj.getFullYear() - 1911}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
+};
+
+// ✅ [新增] 通訊地址（只取通訊地址三欄，不混戶籍）
+const formatMailingAddress = (data: any) => {
+  const city = data.buyerMailingAddressCity || '';
+  const dist = data.buyerMailingAddressDistrict || '';
+  const street = data.buyerMailingAddressDetail || '';
+  return `${city}${dist}${street}`;
 };
 
 const formatAddress = (data: any) => {

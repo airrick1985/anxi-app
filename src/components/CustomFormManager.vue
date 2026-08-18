@@ -44,6 +44,16 @@
               <v-chip size="small" variant="outlined" class="mr-1">
                 {{ form.fields?.length || 0 }} 個欄位
               </v-chip>
+              <!-- ✅ [新增] 客戶資料卡標記（銷控「客資卡導入」的來源表單） -->
+              <v-chip
+                v-if="isCustomerDataCardForm(form)"
+                size="small"
+                color="teal"
+                variant="tonal"
+                prepend-icon="mdi-card-account-details-outline"
+              >
+                客戶資料卡
+              </v-chip>
             </div>
           </v-card-text>
           <v-divider></v-divider>
@@ -466,6 +476,7 @@ import {
 import { db } from '@/firebase'; // Adjust based on your project structure, e.g., '@/firebase/config' or just 'firebase/firestore'
 import { useToast } from 'vue-toastification';
 import { listGoogleSheets, syncCustomFormSubmissionsToSheet } from '@/api';
+import { isCustomerDataCardForm } from '@/utils/customerCardImport';
 
 // 假設 CustomFormEditor 是另一個要建立的組件
 const CustomFormEditor = defineAsyncComponent(() => import('./CustomFormEditor.vue'));

@@ -1,6 +1,6 @@
 <template>
   <div class="dynamic-field-editor">
-    <div class="d-flex align-center mb-4 bg-white py-2" :class="{ 'position-sticky top-0 z-index-10 border-b': !isNested }">
+    <div class="d-flex align-center flex-wrap mb-4 bg-white py-2 toolbar-gap" :class="{ 'position-sticky top-0 z-index-10 border-b': !isNested }">
        <v-menu>
         <template v-slot:activator="{ props }">
           <v-btn
@@ -36,13 +36,38 @@
             <v-list-item @click="addSystemField('buyerName')" prepend-icon="mdi-account" title="買方姓名"></v-list-item>
             <v-list-item @click="addSystemField('buyerPhone')" prepend-icon="mdi-phone" title="買方電話"></v-list-item>
             <v-list-item @click="addSystemField('buyerAddress')" prepend-icon="mdi-map-marker" title="買方地址"></v-list-item>
+            <v-list-item @click="addSystemField('buyerIdNumber')" prepend-icon="mdi-card-account-details" title="身分證字號"></v-list-item>
+            <v-list-item @click="addSystemField('buyerEmail')" prepend-icon="mdi-email-outline" title="EMAIL"></v-list-item>
+            <v-list-item @click="addSystemField('buyerDateOfBirth')" prepend-icon="mdi-cake-variant" title="出生年月日"></v-list-item>
+            <v-list-item @click="addSystemField('buyerMailingAddress')" prepend-icon="mdi-email-open-outline" title="買方通訊地址"></v-list-item>
              <v-list-item @click="addSystemField('salesPerson')" prepend-icon="mdi-badge-account" title="銷售人員"></v-list-item>
           </template>
         </v-list>
       </v-menu>
       
       <v-spacer></v-spacer>
-      <div class="text-caption text-grey">
+
+      <!-- ✅ [新增] 全部收合/展開：收合後卡片變小，主列表拖曳更容易 -->
+      <v-btn
+        v-if="localFields.length > 1"
+        size="small"
+        variant="text"
+        color="grey-darken-2"
+        :prepend-icon="allCollapsed ? 'mdi-arrow-expand-vertical' : 'mdi-arrow-collapse-vertical'"
+        @click="toggleCollapseAll"
+      >{{ allCollapsed ? '展開' : '收合' }}</v-btn>
+
+      <!-- ✅ [新增] 調整順序：精簡列表模式，長距離移動免拖整張卡片 -->
+      <v-btn
+        v-if="localFields.length > 1"
+        size="small"
+        variant="tonal"
+        color="primary"
+        prepend-icon="mdi-swap-vertical"
+        @click="reorderDialog = true"
+      >調整順序</v-btn>
+
+      <div class="text-caption text-grey d-none d-sm-block">
         共 {{ localFields.length }} 個元件
       </div>
     </div>
@@ -55,9 +80,10 @@
       animation="200"
     >
       <template #item="{ element: field, index }">
-        <v-card 
-          variant="outlined" 
+        <v-card
+          variant="outlined"
           class="mb-3 field-card"
+          :id="`field-card-${field.id}`"
           :class="{ 'system-field': field.type === 'system', 'layout-field': ['header', 'description', 'divider'].includes(field.type) }"
         >
           <div class="d-flex align-center px-4 py-3 bg-grey-lighten-5 cursor-pointer" @click="field.expanded = !field.expanded">
@@ -81,9 +107,18 @@
               <span v-if="field.required" class="text-error ml-1">*</span>
             </div>
 
-            <v-chip size="x-small" class="mr-2" variant="tonal">
+            <!-- 手機空間有限：型別 chip 僅桌機顯示 -->
+            <v-chip size="x-small" class="mr-2 d-none d-sm-flex" variant="tonal">
               {{ getFieldTypeName(field) }}
             </v-chip>
+
+            <!-- ✅ [新增] 上移/下移：小幅調整免拖曳（手機尤其好按） -->
+            <v-btn icon variant="text" size="small" color="grey-darken-1" :disabled="index === 0" @click.stop="moveField(index, -1)">
+              <v-icon>mdi-arrow-up-thin</v-icon>
+            </v-btn>
+            <v-btn icon variant="text" size="small" color="grey-darken-1" :disabled="index === localFields.length - 1" @click.stop="moveField(index, 1)">
+              <v-icon>mdi-arrow-down-thin</v-icon>
+            </v-btn>
 
             <v-btn icon variant="text" size="small" @click.stop="removeField(index)" color="grey">
               <v-icon>mdi-trash-can-outline</v-icon>
@@ -297,11 +332,70 @@
       <p>點擊上方「新增元件」</p>
     </div>
 
+    <!-- ✅ [新增] 調整順序 Dialog：精簡單行列表，拖曳距離短；手機全螢幕、桌機置中 -->
+    <v-dialog
+      v-model="reorderDialog"
+      :fullscreen="isMobile"
+      :max-width="isMobile ? undefined : 520"
+      scrollable
+      :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'"
+    >
+      <v-card>
+        <v-toolbar color="primary" density="compact">
+          <v-toolbar-title class="text-subtitle-1">
+            <v-icon start size="small">mdi-swap-vertical</v-icon>調整欄位順序
+          </v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" class="font-weight-bold" @click="reorderDialog = false">完成</v-btn>
+        </v-toolbar>
+        <v-card-text class="pa-2">
+          <div class="text-caption text-grey px-2 pb-2 d-flex align-center">
+            <v-icon size="x-small" class="mr-1">mdi-information-outline</v-icon>
+            拖曳 <v-icon size="x-small" class="mx-1">mdi-drag</v-icon> 或點箭頭調整位置，變更即時生效
+          </div>
+          <draggable
+            v-model="localFields"
+            item-key="id"
+            handle=".reorder-drag"
+            animation="200"
+            ghost-class="reorder-ghost"
+          >
+            <template #item="{ element: field, index }">
+              <div class="reorder-row d-flex align-center px-1">
+                <v-icon class="reorder-drag cursor-move text-grey-darken-1 pa-4">mdi-drag</v-icon>
+                <span class="reorder-index text-caption text-grey mr-2">{{ index + 1 }}</span>
+                <v-icon v-if="field.type === 'system'" color="indigo" size="x-small" class="mr-1">mdi-database</v-icon>
+                <v-icon v-else-if="['header', 'description', 'divider'].includes(field.type)" color="grey-darken-2" size="x-small" class="mr-1">mdi-view-dashboard-outline</v-icon>
+                <div class="flex-grow-1 text-truncate">
+                  <span class="text-body-2">{{ field.label || '未命名欄位' }}</span>
+                  <span class="text-caption text-grey ml-1 d-none d-sm-inline">{{ getFieldTypeName(field) }}</span>
+                </div>
+                <!-- 移到最頂/最底：桌機顯示；手機以短距離拖曳取代 -->
+                <v-btn icon variant="text" size="small" density="comfortable" class="d-none d-sm-inline-flex" :disabled="index === 0" @click="moveFieldTo(index, 'top')" title="移到最上面">
+                  <v-icon size="small">mdi-chevron-double-up</v-icon>
+                </v-btn>
+                <v-btn icon variant="text" size="small" density="comfortable" :disabled="index === 0" @click="moveField(index, -1)" title="上移一格">
+                  <v-icon size="small">mdi-chevron-up</v-icon>
+                </v-btn>
+                <v-btn icon variant="text" size="small" density="comfortable" :disabled="index === localFields.length - 1" @click="moveField(index, 1)" title="下移一格">
+                  <v-icon size="small">mdi-chevron-down</v-icon>
+                </v-btn>
+                <v-btn icon variant="text" size="small" density="comfortable" class="d-none d-sm-inline-flex" :disabled="index === localFields.length - 1" @click="moveFieldTo(index, 'bottom')" title="移到最下面">
+                  <v-icon size="small">mdi-chevron-double-down</v-icon>
+                </v-btn>
+              </div>
+            </template>
+          </draggable>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed, nextTick } from 'vue';
+import { useDisplay } from 'vuetify';
 
 // Use native browser UUID generator to avoid 'stream' module issues with uuid package
 const uuidv4 = () => crypto.randomUUID();
@@ -381,12 +475,51 @@ const updateFields = () => {
   emit('update:fields', localFields.value);
 };
 
+// ✅ [新增] 排序輔助：調整順序 Dialog、全部收合/展開、上下移
+const { mobile } = useDisplay();
+const isMobile = computed(() => mobile.value);
+const reorderDialog = ref(false);
+
+// expanded 預設 undefined 視為展開（v-show="field.expanded !== false"）
+const allCollapsed = computed(() =>
+  localFields.value.length > 0 && localFields.value.every(f => f.expanded === false)
+);
+
+const toggleCollapseAll = () => {
+  const target = allCollapsed.value; // 全收合 → 展開；否則收合
+  localFields.value.forEach(f => { f.expanded = target; });
+};
+
+const moveField = (index: number, delta: number) => {
+  const to = index + delta;
+  if (to < 0 || to >= localFields.value.length) return;
+  const [item] = localFields.value.splice(index, 1);
+  localFields.value.splice(to, 0, item);
+};
+
+const moveFieldTo = (index: number, position: 'top' | 'bottom') => {
+  const [item] = localFields.value.splice(index, 1);
+  if (position === 'top') localFields.value.unshift(item);
+  else localFields.value.push(item);
+};
+
+// 新增元件後捲動至該卡片（列表很長時，新元件加在底部容易「看不到」）
+const scrollToField = (id: string) => {
+  nextTick(() => {
+    document.getElementById(`field-card-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+};
+
 const systemKeyOptions = [
   { title: '戶別', value: 'unitId' },
   { title: '買方姓名', value: 'buyerName' },
   { title: '買方電話', value: 'buyerPhone' },
   { title: '買方戶籍地址', value: 'buyerAddress' },
   { title: '身分證字號', value: 'buyerIdNumber' },
+  // ✅ [新增] 客戶資料卡導入銷控：EMAIL / 出生年月日 / 通訊地址（對應 salesHouseholds 欄位）
+  { title: 'EMAIL', value: 'buyerEmail' },
+  { title: '出生年月日', value: 'buyerDateOfBirth' },
+  { title: '買方通訊地址', value: 'buyerMailingAddress' },
   { title: '銷售人員', value: 'salesPerson' },
 ];
 
@@ -426,12 +559,13 @@ const addField = (type: string) => {
   }
 
   localFields.value.push(newField);
+  scrollToField(newField.id);
   // updateFields();
 };
 
 const addSystemField = (key: string) => {
   const option = systemKeyOptions.find(o => o.value === key);
-  localFields.value.push({
+  const newField: DynamicField = {
     id: uuidv4(),
     type: 'system',
     label: option?.title || '系統欄位',
@@ -441,7 +575,9 @@ const addSystemField = (key: string) => {
     readOnly: true,
     placeholder: '',
     expanded: true
-  });
+  };
+  localFields.value.push(newField);
+  scrollToField(newField.id);
   // updateFields(); // handled by watcher now
 };
 
@@ -499,6 +635,36 @@ const removeSubFields = (option: FieldOption) => {
 .cursor-move {
   cursor: move;
   cursor: grab;
+}
+/* ✅ 拖曳把手：阻止觸控時觸發頁面捲動（手機拖曳穩定的關鍵），並放大觸控範圍 */
+.drag-handle,
+.reorder-drag {
+  touch-action: none;
+}
+.drag-handle {
+  padding: 8px 4px;
+  margin: -8px 0 -8px -4px;
+}
+/* ✅ 工具列按鈕換行時保持間距 */
+.toolbar-gap {
+  gap: 8px 4px;
+}
+/* ✅ 調整順序 Dialog 列 */
+.reorder-row {
+  min-height: 44px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+}
+.reorder-row:last-child {
+  border-bottom: none;
+}
+.reorder-index {
+  min-width: 20px;
+  text-align: right;
+}
+.reorder-ghost {
+  opacity: 0.5;
+  background: #E3F2FD;
 }
 .rotate-180 {
   transform: rotate(180deg);

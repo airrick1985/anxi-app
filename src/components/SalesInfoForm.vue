@@ -155,7 +155,17 @@
 
         <v-col cols="12" md="4">
           <div class="info-section">
-            <div class="section-title"><v-icon>mdi-account-details</v-icon>買方資訊</div>
+            <div class="section-title">
+              <v-icon>mdi-account-details</v-icon>買方資訊
+              <v-spacer></v-spacer>
+              <v-btn
+                size="small"
+                variant="tonal"
+                color="primary"
+                prepend-icon="mdi-card-account-details-outline"
+                @click="isImportDialogOpen = true"
+              >客資卡導入</v-btn>
+            </div>
             <v-text-field label="買方姓名" v-model="editableData.buyerName" class="mb-2"></v-text-field>
             <v-combobox 
               label="聯絡電話" 
@@ -263,20 +273,48 @@
                     :bg-color="isPermanentSameAsMailing ? 'grey-lighten-4' : undefined"
                   ></v-select> </v-col>
               </v-row>
-              <v-text-field 
-                label="詳細地址" 
-                v-model="editableData.buyerPermanentAddressDetail"  
+              <v-text-field
+                label="詳細地址"
+                v-model="editableData.buyerPermanentAddressDetail"
                 variant="outlined"
                 :readonly="isPermanentSameAsMailing"
                 :bg-color="isPermanentSameAsMailing ? 'grey-lighten-4' : undefined"
               ></v-text-field>
+            </div>
+
+            <!-- ✅ [新增] 共同買方：多筆客資卡導入或手動新增（存 coBuyers 陣列，主買方欄位不變） -->
+            <div class="mt-4">
+              <div class="d-flex align-center mb-2">
+                <label class="form-label mb-0">共同買方 ({{ coBuyersList.length }})</label>
+                <v-spacer></v-spacer>
+                <v-btn size="x-small" variant="text" color="primary" prepend-icon="mdi-plus" @click="addCoBuyer">新增共同買方</v-btn>
+              </div>
+              <div v-if="coBuyersList.length === 0" class="text-caption text-grey mb-2">
+                尚無共同買方，可手動新增或由客資卡導入。
+              </div>
+              <CoBuyerEditor
+                v-for="(cb, idx) in coBuyersList"
+                :key="cb.sourceSubmissionId || `manual-${idx}`"
+                :model-value="cb"
+                @remove="removeCoBuyer(idx)"
+              />
             </div>
             </div>
         </v-col>
       </v-row>
     </v-form>
     
-    <ParkingEditModal 
+    <!-- ✅ [新增] 從客戶資料卡導入買方資料 -->
+    <CustomerCardImportDialog
+      v-model:show="isImportDialogOpen"
+      :project-id="props.projectId"
+      :unit-id="editableData.unitId || ''"
+      :current-data="editableData"
+      :existing-co-buyers="coBuyersList"
+      @apply="handleImportApply"
+    />
+
+    <ParkingEditModal
       v-model:show="isParkingModalOpen"
       :allParkingData="allParkingData"
       :initialSelectedParking="ownedParkingSpots"
@@ -412,13 +450,14 @@
                 <span class="text-h6 font-weight-bold">新房屋成交價</span>
                 <span class="text-h5 font-weight-bold text-primary">{{ Math.round(priceNegotiationResult) }} 萬</span>
               </div>
-              <div class="text-caption text-grey mt-1">單價: {{ formatNumber(priceNegotiationResult / (Number(editableData.area_house_ping) || 1), 2) }} 萬/坪</div>
+              <div class="text-caption text-grey mt-1 text-right">單價: {{ formatNumber(priceNegotiationResult / (Number(editableData.area_house_ping) || 1), 2) }} 萬/坪</div>
 
               <!-- 房屋底價 -->
               <div class="d-flex justify-space-between align-center mt-3">
                 <span class="text-grey-darken-2">房屋底價</span>
                 <span class="font-weight-bold">{{ Math.round(Number(editableData.price_floor_house_total) || 0) }} 萬</span>
               </div>
+              <div class="text-caption text-grey mt-1 text-right">單價: {{ formatNumber((Number(editableData.price_floor_house_total) || 0) / (Number(editableData.area_house_ping) || 1), 2) }} 萬/坪</div>
 
               <!-- 溢差價 -->
               <div class="d-flex justify-space-between align-center mt-2">
@@ -427,6 +466,7 @@
                   {{ Math.round(priceNegotiationResult - (Number(editableData.price_floor_house_total) || 0)) }} 萬
                 </span>
               </div>
+              <div class="text-caption text-grey mt-1 text-right">單價: {{ formatNumber((priceNegotiationResult - (Number(editableData.price_floor_house_total) || 0)) / (Number(editableData.area_house_ping) || 1), 2) }} 萬/坪</div>
             </v-card>
           </div>
         </v-card-text>
@@ -454,6 +494,8 @@ import { useDisplay } from 'vuetify';
 import TwCitiesData from '@/assets/TwCities.json' with { type: 'json' };
 import { normalizeSalespersons } from '@/utils/salespersonUtils';
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
+const CustomerCardImportDialog = defineAsyncComponent(() => import('./CustomerCardImportDialog.vue'));
+const CoBuyerEditor = defineAsyncComponent(() => import('./CoBuyerEditor.vue'));
 
 const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },
@@ -488,6 +530,61 @@ function formatNumber(val, frac = 0) {
 
 const isParkingModalOpen = ref(false);
 const isPermanentSameAsMailing = ref(false);
+
+// ✅ [新增] 客戶資料卡導入
+const isImportDialogOpen = ref(false);
+
+// ✅ [新增] 共同買方清單（salesHouseholds.coBuyers 陣列；舊資料無此欄位時視為空）
+const coBuyersList = computed(() => (Array.isArray(editableData.value?.coBuyers) ? editableData.value.coBuyers : []));
+
+function addCoBuyer() {
+  if (!Array.isArray(editableData.value.coBuyers)) editableData.value.coBuyers = [];
+  editableData.value.coBuyers.push({
+    name: '', phone: '', idNumber: '', email: '', dateOfBirth: null,
+    mailingAddressCity: '', mailingAddressDistrict: '', mailingAddressDetail: '',
+    sourceSubmissionId: '', importedAt: '',
+  });
+}
+
+function removeCoBuyer(idx) {
+  if (Array.isArray(editableData.value.coBuyers)) editableData.value.coBuyers.splice(idx, 1);
+}
+
+// ✅ [新增] 套用客資卡導入結果（只改前端 editableData，按「儲存變更」才寫入）
+function handleImportApply({ primaryValues, coBuyers }) {
+  const d = editableData.value;
+  if (!d) return;
+
+  if (primaryValues.buyerName !== undefined) d.buyerName = primaryValues.buyerName;
+  if (primaryValues.buyerPhone !== undefined) d.buyerPhone = primaryValues.buyerPhone;
+  if (primaryValues.buyerIdNumber !== undefined) d.buyerIdNumber = primaryValues.buyerIdNumber;
+  if (primaryValues.buyerEmail !== undefined) d.buyerEmail = primaryValues.buyerEmail;
+  // buyerDateOfBirth 的 watch 會自動同步民國三欄顯示
+  if (primaryValues.buyerDateOfBirth !== undefined) d.buyerDateOfBirth = primaryValues.buyerDateOfBirth;
+
+  // 通訊地址：縣市/鄉鎮綁在本地 ref（其 watch 負責寫回 editableData），需經由 ref 更新
+  if (primaryValues.mailingAddress) {
+    const { city, district, detail } = primaryValues.mailingAddress;
+    if (city) {
+      mailingCounty.value = city; // watch 會重設 mailingTown 並載入鄉鎮清單
+      nextTick(() => { mailingTown.value = district || null; });
+    } else if (district) {
+      mailingTown.value = district;
+    }
+    d.buyerMailingAddressDetail = detail || '';
+  }
+
+  // 共同買方：同一筆客資卡（sourceSubmissionId）重複導入 → 更新既有紀錄，不重複新增
+  if (Array.isArray(coBuyers) && coBuyers.length > 0) {
+    const existing = Array.isArray(d.coBuyers) ? d.coBuyers : [];
+    coBuyers.forEach(cb => {
+      const idx = existing.findIndex(e => e.sourceSubmissionId && e.sourceSubmissionId === cb.sourceSubmissionId);
+      if (idx >= 0) existing.splice(idx, 1, cb);
+      else existing.push(cb);
+    });
+    d.coBuyers = existing;
+  }
+}
 
 // ✅ [新增] 房屋成交價調整相關狀態
 const isPriceNegotiationDialogVisible = ref(false);

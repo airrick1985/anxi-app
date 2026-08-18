@@ -162,7 +162,7 @@
                   <div v-for="field in form?.fields" :key="`${item._id}-${field.id}`" :class="getFieldWrapperClass(field.type)">
                     <FormRenderItem
                       v-if="!['header', 'description', 'divider', 'link'].includes(field.type)"
-                      :key="`edit-${item._id}-${field.id}-${JSON.stringify(editingData[item._id]?.[field.id] ?? editingData[item._id]?.[field.label])}`"
+                      :key="`edit-${item._id}-${field.id}`"
                       :field="getEditableField(field)"
                       :model-value="editingData[item._id]?.[field.label] ?? ''"
                       @update:model-value="updateEditingField(item._id, field.label, $event)"
