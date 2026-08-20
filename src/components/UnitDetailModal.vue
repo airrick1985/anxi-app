@@ -482,6 +482,19 @@
                     <v-col cols="12" md="4">
                       <div class="info-section">
                         <div class="section-title"> {{ unitData.unitId }} 成交總覽</div>
+                        <!-- ✅ 面積基準：讓使用者一眼看出單價計算基準為房屋總面積 -->
+                        <div class="deal-area-strip">
+                          <span class="deal-area-item">
+                            <span class="deal-area-label">房屋總面積</span>
+                            <strong>{{ formatNumber(unitData.area_house_ping, 2) }}</strong> 坪
+                            <span class="deal-area-sqm">({{ formatNumber(unitData.area_house_sqm, 2) }} m²)</span>
+                          </span>
+                          <span v-if="unitData.area_terrace_ping > 0" class="deal-area-item">
+                            <span class="deal-area-label">露臺</span>
+                            <strong>{{ formatNumber(unitData.area_terrace_ping, 2) }}</strong> 坪
+                            <span class="deal-area-sqm">(不計坪)</span>
+                          </span>
+                        </div>
                         <v-list dense>
                           <div class="total-block">
                             <div class="total-block-main">
@@ -544,8 +557,12 @@
                               <span class="total-block-label">合計底價</span>
                               <span class="highlight-price">{{ formatNumber(totalFloorPrice) }} 萬</span>
                             </div>
-                            <div class="total-block-sub">房屋 {{ formatNumber(houseFloorPrice) }} ＋ 車位 {{
-                              formatNumber(parkingTotalFloorPrice) }}</div>
+                            <div class="total-block-sub">
+                              <template v-if="showFloorTerraceSplit">房屋(不含露臺) {{ formatNumber(houseOnlyFloorPrice) }} ＋ 露臺 {{
+                                formatNumber(terraceFloorPrice) }} ＋ 車位 {{ formatNumber(parkingTotalFloorPrice) }}</template>
+                              <template v-else>房屋 {{ formatNumber(houseFloorPrice) }} ＋ 車位 {{
+                                formatNumber(parkingTotalFloorPrice) }}</template>
+                            </div>
                           </div>
                           <v-list-item title="溢差價" class="premium-price-item"><template v-slot:append><span
                                 :class="pricePremium >= 0 ? 'text-success' : 'text-error'"
@@ -553,7 +570,8 @@
                                 萬</span></template></v-list-item>
                         </v-list>
                         <div v-if="dealUnitPrice !== null || floorUnitPrice !== null" class="unit-price-strip">
-                          <div class="unit-price-strip-title">單價（萬/坪）</div>
+                          <div class="unit-price-strip-title">單價（萬/坪）<span class="unit-price-strip-basis">· 依房屋總面積 {{
+                            formatNumber(houseAreaPing, 2) }} 坪計</span></div>
                           <div class="unit-price-tiles">
                             <div class="unit-price-tile">
                               <div class="unit-price-tile-label">成交單價</div>
@@ -1538,6 +1556,13 @@ const parkingTotalFloorPrice = computed(() => {
   return assignedParkingLots.value.reduce((total, parking) => total + (Number(parking['車位底價']) || 0), 0);
 });
 const totalFloorPrice = computed(() => houseFloorPrice.value + parkingTotalFloorPrice.value);
+// ✅ 合計底價拆分：有露臺時將房屋底價拆為「房屋(不含露臺)＋露臺」，凸顯單價基準為房屋總面積
+const houseOnlyFloorPrice = computed(() => Number(props.unitData?.price_floor_house_only) || 0);
+const terraceFloorPrice = computed(() => Number(props.unitData?.price_floor_terrace) || 0);
+const showFloorTerraceSplit = computed(() =>
+  Number(props.unitData?.area_terrace_ping) > 0
+  && (houseOnlyFloorPrice.value > 0 || terraceFloorPrice.value > 0)
+);
 const pricePremium = computed(() => {
   if (grandTotalTransactionPrice.value > 0 && totalFloorPrice.value > 0) {
     return grandTotalTransactionPrice.value - totalFloorPrice.value;
@@ -3494,6 +3519,35 @@ onUnmounted(() => {
   z-index: 1;
 }
 
+/* 成交總覽：面積基準（房屋總面積／露臺） */
+.deal-area-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background-color: #f5f7fa;
+  border: 1px solid #e0e4ea;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #37474f;
+  font-variant-numeric: tabular-nums;
+}
+
+.deal-area-strip strong {
+  font-size: 0.95rem;
+}
+
+.deal-area-label {
+  color: #607d8b;
+  margin-right: 2px;
+}
+
+.deal-area-sqm {
+  color: #90a4ae;
+  font-size: 0.78rem;
+}
+
 /* 成交總覽：成交總價 / 合計底價 主列＋小字組成明細 */
 .total-block {
   padding: 10px 16px;
@@ -3653,6 +3707,12 @@ onUnmounted(() => {
   color: #607d8b;
   margin-bottom: 8px;
   letter-spacing: 0.5px;
+}
+
+.unit-price-strip-basis {
+  font-weight: 400;
+  color: #90a4ae;
+  letter-spacing: normal;
 }
 
 .unit-price-tiles {
