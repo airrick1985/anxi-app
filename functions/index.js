@@ -7539,28 +7539,62 @@ exports.updateUserPreferences = onCall(async (request) => {
 
 
 /**
- * 輔助函式：檢查文件中的任何字串欄位是否包含關鍵字（不分大小寫）
+ * 輔助函式：將 Firestore Timestamp / Date 轉為台灣時區的多種常用日期字串（供關鍵字搜尋比對）
+ * 例如 2026-08-20 會產生 "2026-08-20 2026/08/20 2026/8/20 8/20"
+ */
+const timestampToSearchText = (dateObj) => {
+  try {
+    const ymd = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(dateObj); // e.g. "2026-08-20"
+    const [y, m, d] = ymd.split("-");
+    return `${ymd} ${y}/${m}/${d} ${y}/${Number(m)}/${Number(d)} ${Number(m)}/${Number(d)}`;
+  } catch (e) {
+    return "";
+  }
+};
+
+// 關鍵字搜尋時略過的內部識別碼欄位，避免無意義的誤命中
+const SEARCH_IGNORED_KEYS = new Set(["id", "projectId", "docId"]);
+
+/**
+ * 輔助函式：遞迴攤平文件的所有欄位值成一個小寫字串
+ * 涵蓋字串、數字、日期（Timestamp）、陣列與巢狀物件（如自訂表單欄位），
+ * 略過網址字串與內部識別碼欄位以減少誤命中。
+ */
+const collectSearchableText = (value, depth = 0) => {
+  if (value === null || value === undefined || depth > 5) return "";
+  const t = typeof value;
+  if (t === "string") {
+    if (/^https?:\/\//i.test(value)) return "";
+    return value.toLowerCase();
+  }
+  if (t === "number") return String(value);
+  if (t !== "object") return "";
+  if (typeof value.toDate === "function") return timestampToSearchText(value.toDate());
+  if (value instanceof Date) return timestampToSearchText(value);
+  if (Array.isArray(value)) {
+    return value.map((v) => collectSearchableText(v, depth + 1)).join(" ");
+  }
+  let out = "";
+  for (const [k, v] of Object.entries(value)) {
+    if (depth === 0 && SEARCH_IGNORED_KEYS.has(k)) continue;
+    out += ` ${collectSearchableText(v, depth + 1)}`;
+  }
+  return out;
+};
+
+/**
+ * 輔助函式：檢查文件中的任何欄位（含巢狀物件、陣列、數字、日期）是否包含關鍵字（不分大小寫）
  * @param {object} data - Firestore 文件的資料物件
- * @param {string} lowerCaseKeyword - 已轉換為小寫的搜尋關鍵字
+ * @param {string} lowerCaseKeyword - 已轉換為小寫的搜尋關鍵字；可用空白分隔多組，須全部命中（AND）
  * @returns {boolean} - 如果找到匹配項則返回 true
  */
 const documentMatchesKeyword = (data, lowerCaseKeyword) => {
-  // 遍歷文件的所有欄位值
-  for (const value of Object.values(data)) {
-    // 只檢查字串類型的欄位
-    if (typeof value === "string" && value.toLowerCase().includes(lowerCaseKeyword)) {
-      return true;
-    }
-    // 可選：如果需要搜尋陣列中的字串
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        if (typeof item === "string" && item.toLowerCase().includes(lowerCaseKeyword)) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
+  const tokens = String(lowerCaseKeyword || "").trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return false;
+  const blob = collectSearchableText(data);
+  return tokens.every((tk) => blob.includes(tk));
 };
 
 
@@ -7569,7 +7603,7 @@ const documentMatchesKeyword = (data, lowerCaseKeyword) => {
  * - 根據 projectId 和 keyword 搜尋 appointments 和 households 集合
  * - 回傳符合條件的 appointment 文件列表
  */
-exports.globalAppointmentSearch = onCall(async (request) => {
+exports.globalAppointmentSearch = onCall({ memory: "512MiB" }, async (request) => {
   const { projectId, keyword } = request.data;
   const functionName = `globalAppointmentSearch (Project: ${projectId})`;
 
@@ -17823,44 +17857,34 @@ async function _handleSearchAppointmentsAndHouseholds_Optimized(data) {
       });
     }
 
-    const matchedHouseholdUnitIds = new Set();
-    householdsMap.forEach((householdData) => {
-      if (documentMatchesKeyword(householdData, lowerCaseKeyword)) {
-        if (householdData.unitId) {
-          matchedHouseholdUnitIds.add(householdData.unitId);
-        }
-      }
-    });
-
     //  2. 只查詢 appointments 集合
     const appointmentsSnapshot = await db.collection("appointments").where("projectId", "==", projectId).get();
 
-    //  3. 在記憶體中篩選和合併
+    //  3. 在記憶體中先合併戶別資料，再以合併後的完整資料比對關鍵字
+    //     （每一個欄位都可被搜尋，且多關鍵字可跨戶別與預約欄位命中，如「A1-2F 王小明」）
     const results = [];
     const addedAppointmentIds = new Set();
     appointmentsSnapshot.forEach(doc => {
       const appointment = { id: doc.id, ...doc.data() };
-      const appointmentMatches = documentMatchesKeyword(appointment, lowerCaseKeyword);
-      const householdMatches = matchedHouseholdUnitIds.has(appointment.unitId);
+      if (addedAppointmentIds.has(appointment.id)) return;
 
-      if ((appointmentMatches || householdMatches) && !addedAppointmentIds.has(appointment.id)) {
+      // 從 Map 中取出對應的戶別資料並合併
+      const householdKey = `${appointment.projectId}_${appointment.unitId}`;
+      const householdData = householdsMap.get(householdKey) || {};
+      const combinedData = { ...householdData, ...appointment, id: doc.id };
 
-        // 從 Map 中取出對應的戶別資料並合併
-        const householdKey = `${appointment.projectId}_${appointment.unitId}`;
-        const householdData = householdsMap.get(householdKey) || {};
-        const combinedData = { ...householdData, ...appointment, id: doc.id };
+      if (!documentMatchesKeyword(combinedData, lowerCaseKeyword)) return;
 
-        // 轉換日期
-        if (combinedData.appointmentDate && typeof combinedData.appointmentDate.toDate === 'function') {
-          combinedData.appointmentDate = combinedData.appointmentDate.toDate().toISOString();
-        }
-        if (combinedData.createdAt && typeof combinedData.createdAt.toDate === 'function') {
-          combinedData.createdAt = combinedData.createdAt.toDate().toISOString();
-        }
-
-        results.push(combinedData);
-        addedAppointmentIds.add(appointment.id);
+      // 轉換日期
+      if (combinedData.appointmentDate && typeof combinedData.appointmentDate.toDate === 'function') {
+        combinedData.appointmentDate = combinedData.appointmentDate.toDate().toISOString();
       }
+      if (combinedData.createdAt && typeof combinedData.createdAt.toDate === 'function') {
+        combinedData.createdAt = combinedData.createdAt.toDate().toISOString();
+      }
+
+      results.push(combinedData);
+      addedAppointmentIds.add(appointment.id);
     });
 
     console.log(`[${functionName}] 搜尋完成，共找到 ${results.length} 筆預約紀錄。`);

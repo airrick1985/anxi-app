@@ -1,6 +1,21 @@
 <template>
   <v-dialog v-model="dialogOpen" max-width="640" persistent>
-    <v-card>
+    <v-card style="position: relative;">
+      <!-- 後端執行中覆蓋層：發送通知 / 記錄不通知 -->
+      <v-overlay
+        :model-value="busy"
+        contained persistent
+        class="align-center justify-center"
+        scrim="#ffffff"
+        opacity="0.85"
+      >
+        <div class="d-flex flex-column align-center" style="gap: 12px;">
+          <v-progress-circular indeterminate size="48" width="4" color="primary" />
+          <div class="text-subtitle-1 font-weight-medium text-grey-darken-3">{{ busyText }}</div>
+          <div class="text-caption text-grey">請勿關閉視窗，處理完成後會自動繼續</div>
+        </div>
+      </v-overlay>
+
       <v-card-title
         class="text-white d-flex align-center"
         :style="{ background: style.color }"
@@ -120,10 +135,10 @@
 
       <v-card-actions class="pa-4">
         <v-spacer />
-        <v-btn variant="text" :disabled="sending" @click="onSkip">本次不通知</v-btn>
+        <v-btn variant="text" :disabled="busy" :loading="skipping" @click="onSkip">本次不通知</v-btn>
         <v-btn
           color="primary" variant="flat"
-          :disabled="sendCount === 0 || sending"
+          :disabled="sendCount === 0 || busy"
           :loading="sending"
           @click="onSend"
         >
@@ -136,6 +151,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { useToast } from 'vue-toastification';
 import { STATUS_STYLE, classifySalesStatus } from '@/utils/salesStatusGroups';
 import { sendSalesStatusNotification, logSalesStatusNotification } from '@/api';
 
@@ -165,7 +181,14 @@ const dialogOpen = computed({
   set: (v) => emit('update:show', v),
 });
 
+const toast = useToast();
+
 const sending = ref(false);
+const skipping = ref(false);
+const busy = computed(() => sending.value || skipping.value);
+const busyText = computed(() =>
+  sending.value ? `正在發送通知（${sendCount.value} 筆），請稍候…` : '正在記錄「本次不通知」…'
+);
 const selected = ref({}); // { [userKey]: { selected: bool, channels: { line: bool, email: bool } } }
 const customTag = ref('');
 const remark = ref('');
@@ -286,18 +309,24 @@ function buildPayload() {
 }
 
 async function onSend() {
-  if (sendCount.value === 0) return;
+  if (sendCount.value === 0 || busy.value) return;
   sending.value = true;
   try {
     const result = await sendSalesStatusNotification(buildPayload());
     emit('finished', { action: 'sent', result });
+    emit('update:show', false);
+  } catch (error) {
+    // 發送失敗時保留對話框，讓使用者可重試或改選「本次不通知」
+    console.error('銷控通知發送失敗:', error);
+    toast.error(`通知發送失敗：${error.message || '請稍後再試'}`);
   } finally {
     sending.value = false;
-    emit('update:show', false);
   }
 }
 
 async function onSkip() {
+  if (busy.value) return;
+  skipping.value = true;
   try {
     await logSalesStatusNotification({
       projectId: props.projectId,
@@ -308,7 +337,12 @@ async function onSkip() {
       triggerType: props.triggerType,
       reason: 'skipped',
     });
+  } catch (error) {
+    // 紀錄失敗不阻擋流程，僅提示
+    console.error('記錄不通知失敗:', error);
+    toast.warning('不通知紀錄寫入失敗，但不影響本次銷控變更');
   } finally {
+    skipping.value = false;
     emit('finished', { action: 'skipped' });
     emit('update:show', false);
   }

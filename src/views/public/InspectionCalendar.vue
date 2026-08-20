@@ -53,7 +53,7 @@
             :loading="isSearchingBackend"
             item-title="title"
             item-value="value"
-            label="關鍵字搜尋..."
+            label="關鍵字搜尋（任何欄位，可空白分隔多組）"
             prepend-inner-icon="mdi-magnify"
             density="compact"
             hide-details
@@ -157,7 +157,7 @@
       :loading="isSearchingBackend"
       item-title="title"
       item-value="value"
-      label="關鍵字搜尋..."
+      label="關鍵字搜尋（任何欄位，可空白分隔多組）"
       prepend-inner-icon="mdi-magnify"
       density="compact"
       hide-details
