@@ -210,9 +210,30 @@
 
       <v-divider></v-divider>
 
-      <v-card-actions class="pa-3">
-        <v-spacer></v-spacer>
+      <v-card-actions class="pa-3 flex-wrap justify-end ga-1">
         <v-btn variant="text" @click="show = false">取消</v-btn>
+        <v-spacer></v-spacer>
+        <!-- ✅ [新增] 預覽：iframe 渲染與列印完全相同的版面 -->
+        <v-btn
+          color="teal-darken-1"
+          variant="outlined"
+          prepend-icon="mdi-eye-outline"
+          :disabled="selectedIds.length === 0"
+          @click="openPdfPreview"
+        >
+          預覽
+        </v-btn>
+        <!-- ✅ [新增] 下載 PDF：逐頁轉圖嵌入 A4 PDF 下載 -->
+        <v-btn
+          color="red-darken-1"
+          variant="tonal"
+          prepend-icon="mdi-file-pdf-box"
+          :disabled="selectedIds.length === 0"
+          :loading="isDownloadingPdf"
+          @click="downloadPdf"
+        >
+          下載PDF
+        </v-btn>
         <v-btn
           color="teal-darken-1"
           variant="flat"
@@ -225,11 +246,33 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <!-- ✅ [新增] 報價單預覽（與列印/PDF 同一份版面），可直接下載 PDF -->
+  <v-dialog v-model="isPdfPreviewVisible" fullscreen transition="dialog-bottom-transition">
+    <v-card class="d-flex flex-column">
+      <v-toolbar color="teal-darken-1" density="compact">
+        <v-btn icon="mdi-close" variant="text" @click="isPdfPreviewVisible = false"></v-btn>
+        <v-toolbar-title>報價單預覽（{{ selectedIds.length }} 戶）</v-toolbar-title>
+        <v-spacer></v-spacer>
+        <v-btn
+          variant="text"
+          prepend-icon="mdi-file-pdf-box"
+          :loading="isDownloadingPdf"
+          @click="downloadPdf"
+        >
+          下載PDF
+        </v-btn>
+      </v-toolbar>
+      <iframe class="pdf-preview-frame flex-grow-1" :srcdoc="previewHtml" title="報價單預覽"></iframe>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useToast } from 'vue-toastification';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useProjectStore } from '@/store/projectStore';
 import { fetchQuoteRemark } from '@/api';
@@ -968,12 +1011,24 @@ const SHEET_CSS = `
   }
 `;
 
-function handlePrint() {
+// ✅ [重構] 組出完整報價單 HTML（列印視窗、預覽 iframe、PDF 截圖共用同一份版面）
+// autoPrint：載入後自動叫出列印；fitZoom：預覽用，頁寬超出視窗時整體縮放至可視大小
+function buildSheetsHtml({ autoPrint = false, fitZoom = false } = {}) {
   const items = quoteStore.items.filter(i => selectedIds.value.includes(i.internalId));
-  if (items.length === 0) return;
+  if (items.length === 0) return '';
 
   const sheets = items.map(item => renderSheet(item)).join('\n');
-  const html = `<!DOCTYPE html>
+  const printScript = autoPrint ? '\n  window.focus();\n  window.print();' : '';
+  const zoomScript = fitZoom ? `
+  (function () {
+    var first = document.querySelector('.sheet');
+    if (!first) return;
+    var w = first.getBoundingClientRect().width + 24;
+    var z = Math.min(1, window.innerWidth / w);
+    if (z < 1) document.body.style.zoom = z;
+  })();` : '';
+
+  return `<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
@@ -1004,13 +1059,16 @@ window.onload = function () {
       inner.style.width = (100 / s) + '%';
       inner.style.minHeight = (avail / s) + 'px';
     }
-  });
-  window.focus();
-  window.print();
+  });${zoomScript}${printScript}
 };
 <\/script>
 </body>
 </html>`;
+}
+
+function handlePrint() {
+  const html = buildSheetsHtml({ autoPrint: true });
+  if (!html) return;
 
   const win = window.open('', '_blank');
   if (!win) {
@@ -1021,9 +1079,82 @@ window.onload = function () {
   win.document.write(html);
   win.document.close();
 }
+
+// --- ✅ [新增] 預覽 + 下載 PDF ---
+const isPdfPreviewVisible = ref(false);
+const previewHtml = ref('');
+const isDownloadingPdf = ref(false);
+
+function openPdfPreview() {
+  const html = buildSheetsHtml({ fitZoom: true });
+  if (!html) return;
+  previewHtml.value = html;
+  isPdfPreviewVisible.value = true;
+}
+
+// A4 pt 尺寸（jsPDF）
+const A4_W_PT = 595.28;
+const A4_H_PT = 841.89;
+
+// 逐頁 html2canvas 截圖 → 嵌入 A4 PDF；以隱藏 iframe 全新渲染（不受預覽縮放影響）
+async function downloadPdf() {
+  const html = buildSheetsHtml({});
+  if (!html) return;
+  if (isDownloadingPdf.value) return;
+  isDownloadingPdf.value = true;
+
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:1400px;border:0;';
+  document.body.appendChild(iframe);
+
+  try {
+    await new Promise((resolve) => {
+      iframe.onload = () => resolve();
+      iframe.srcdoc = html;
+    });
+    // 等 iframe 內的單頁自適應腳本與版面繪製完成
+    await new Promise((r) => setTimeout(r, 500));
+
+    const doc = iframe.contentDocument;
+    const sheetEls = Array.from(doc?.querySelectorAll('.sheet') || []);
+    if (sheetEls.length === 0) throw new Error('無可輸出的報價單頁面');
+
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+    for (let i = 0; i < sheetEls.length; i++) {
+      const canvas = await html2canvas(sheetEls[i], {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      if (i > 0) pdf.addPage();
+      // 等比放入 A4（sheet 為 210×296mm，高度略短於 A4 屬正常，底部留白）
+      const imgH = A4_W_PT * (canvas.height / canvas.width);
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, A4_W_PT, Math.min(imgH, A4_H_PT));
+    }
+
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()).replace(/-/g, '');
+    pdf.save(`${today}-${props.projectName}-報價單.pdf`);
+    toast.success('報價單 PDF 已下載');
+  } catch (e) {
+    console.error('[QuotePrintDialog] 下載 PDF 失敗:', e);
+    toast.error('報價單 PDF 產生失敗，請稍後重試。');
+  } finally {
+    iframe.remove();
+    isDownloadingPdf.value = false;
+  }
+}
 </script>
 
 <style scoped>
+/* ✅ [新增] 報價單預覽 iframe：填滿剩餘空間 */
+.pdf-preview-frame {
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #e3e6e8;
+}
+
 .remark-panel {
   background: #fafbfc;
 }
