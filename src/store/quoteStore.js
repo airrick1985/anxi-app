@@ -154,7 +154,12 @@ function addItem(unitData) {
       },
       // ✅ [新增] 已套用方案快照（方案編輯器功能）：
       // [{ planId, planName, note, hasNegotiation, hasPayment, selectedPaymentTemplateId, negotiation }]
-      appliedPlans: []
+      appliedPlans: [],
+      // ✅ [新增] 公司借貸：使用者於報價當下臨時調整的參數（不回存範本）
+      // { templateId, annualRate, years, periods } | null = 使用範本預設
+      companyLoanOverride: null,
+      // ✅ [新增] 公司借貸參數快照（由 QuoteItem 同步；含臨時調整後生效值）
+      companyLoan: null
     });
 
     return true; // 保持回傳 true，以便 UnitDetailModal 顯示 toast
@@ -284,6 +289,22 @@ function addItem(unitData) {
     }
   }
 
+  // ✅ [新增] 公司借貸：更新報價當下的臨時調整參數（傳 null = 還原範本預設）
+  function updateItemCompanyLoanOverride(internalId, payload) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      item.companyLoanOverride = payload;
+    }
+  }
+
+  // ✅ [新增] 公司借貸：儲存參數快照（由 QuoteItem 同步；無附掛時為 null）
+  function updateItemCompanyLoan(internalId, snapshot) {
+    const item = items.value.find(i => i.internalId === internalId);
+    if (item) {
+      item.companyLoan = snapshot;
+    }
+  }
+
   // ✅ [新增] 更新手動指定的配套期款範本（category / templateId）
   // payload 可只帶其一，例如 { category } 或 { templateId }；傳 null 代表還原自動
   function updateItemManualPackageTemplate(internalId, payload) {
@@ -342,6 +363,8 @@ function addItem(unitData) {
     updateItemManualTemplate,
     updateItemManualPackageTemplate,
     updateItemPrintPaymentData,
+    updateItemCompanyLoanOverride,
+    updateItemCompanyLoan,
     updateItemAppliedPlans,
     resetAllToFirstTimeBuyer,
     clearQuote

@@ -204,6 +204,7 @@
               :payment-terms-data="paymentTermsData"
               :package-terms-data="packageTermsData"
               :payment-templates="paymentTemplates"
+              :company-loan-templates="companyLoanTemplates"
               :quote-plans="quotePlans"
               :show-package-deal="showPackageDealColumns"
               :is-loading="loading"
@@ -490,6 +491,7 @@ import {
   fetchQuotePersonnelList,
   fetchSalesPersonnelList, // 新增 Firestore 版本
   fetchPaymentTermTemplates, // 新增：期款範本 API
+  fetchCompanyLoanTemplates, // 公司借貸範本 API（期款範本附掛用）
   selectApplicableTemplates, // 新增：範本選擇邏輯
   listenToQuotePlans, // ✅ [新增] 方案編輯器：即時監聽方案清單
 } from '@/api';
@@ -570,6 +572,7 @@ const pickerUnits = ref([]);
 
 // --- 新增：期款範本選擇相關狀態 ---
 const paymentTemplates = ref([]); // 存放所有期款範本
+const companyLoanTemplates = ref([]); // 公司借貸範本（期款範本附掛時顯示攤還表）
 const templateSelectionDialog = ref(false); // 範本選擇對話框
 const availableTemplates = ref([]); // 符合條件的範本列表
 const selectedTemplateId = ref(''); // 使用者選擇的範本ID
@@ -864,9 +867,10 @@ async function loadPageData() {
     
     // 並行載入必要資料
     try {
-        const [salesControlRes, templatesRes] = await Promise.all([
+        const [salesControlRes, templatesRes, loanTemplatesRes] = await Promise.all([
             fetchSalesControlData(actualProjectName), // 載入戶別資料
-            fetchPaymentTermTemplates(projectId.value) // 載入期款範本
+            fetchPaymentTermTemplates(projectId.value), // 載入期款範本
+            fetchCompanyLoanTemplates(projectId.value) // 載入公司借貸範本
         ]);
         
         // 處理銷控資料 - 更新 unitDetails
@@ -896,6 +900,14 @@ async function loadPageData() {
             console.log(`載入了 ${templatesRes.data.length} 個期款範本`);
         } else {
             throw new Error(`載入期款範本失敗: ${templatesRes.message}`);
+        }
+
+        // 處理公司借貸範本（載入失敗不阻斷報價流程，僅不顯示攤還表）
+        if (loanTemplatesRes.status === 'success') {
+            companyLoanTemplates.value = loanTemplatesRes.data;
+        } else {
+            console.warn(`載入公司借貸範本失敗: ${loanTemplatesRes.message}`);
+            companyLoanTemplates.value = [];
         }
         
     } catch (err) {

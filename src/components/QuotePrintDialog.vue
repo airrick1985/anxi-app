@@ -76,6 +76,9 @@
                 優付
               </v-chip>
               <v-chip v-if="item.usePackageDeal" size="x-small" variant="tonal" color="green">配套</v-chip>
+              <v-chip v-if="item.printPaymentData?.companyLoan" size="x-small" variant="tonal" color="brown">
+                借貸{{ item.printPaymentData.companyLoan.ratioPercent }}%
+              </v-chip>
               <v-chip v-if="(item.selectedParking || []).length" size="x-small" variant="tonal" color="indigo">
                 車位×{{ item.selectedParking.length }}
               </v-chip>
@@ -124,6 +127,15 @@
           <v-switch
             v-model="optShowPlans"
             label="顯示採用方案"
+            color="teal-darken-1"
+            density="compact"
+            hide-details
+            class="mr-8"
+          ></v-switch>
+          <!-- 公司借貸攤還表（僅對有附掛借貸的戶別生效） -->
+          <v-switch
+            v-model="optShowLoan"
+            label="公司借貸攤還表"
             color="teal-darken-1"
             density="compact"
             hide-details
@@ -245,6 +257,7 @@ const show = computed({
 const optShowNegotiation = ref(true); // 顯示議價資訊（原價/優惠額），預設開啟
 const optShowNotes = ref(true);        // 列印期款說明（applyNote）
 const optShowPlans = ref(true);        // ✅ [新增] 顯示採用方案（方案名稱＋所選付款方式），預設開啟
+const optShowLoan = ref(true);         // 公司借貸攤還表（有附掛借貸的戶別），預設開啟
 const optShowApproval = ref(true);     // ✅ [新增] 主管簽核／用印欄，預設開啟
 const optShowQr = ref(true);           // ✅ [新增] 建案簡介 QR Code（僅在有設定網址時可切換）
 const optQuoteDate = ref('');          // 報價日期（可自訂）
@@ -324,6 +337,7 @@ watch(show, (visible) => {
   optShowApproval.value = true;
   optShowQr.value = true;
   optShowPlans.value = true; // ✅ [新增] 顯示採用方案預設開啟
+  optShowLoan.value = true;  // 公司借貸攤還表預設開啟
   optQuoteDate.value = isoTodayTW();
   optValidUntil.value = '';
   isRemarkExpanded.value = false;
@@ -407,6 +421,56 @@ function renderPayBlock(block, accent, title, totalLabel, totalValue, isFull = f
           <span>${fmt(totalValue)} 萬</span>
         </div>
       </div>`;
+}
+
+// --- 公司借貸攤還表區塊 HTML ---
+// 全寬模式：期數多時（>12）自動左右分成兩欄表格控制頁高
+// singleColumn：與付款方式左右並排時，右欄寬度有限，一律單欄表格
+function renderLoanBlock(loan, { singleColumn = false } = {}) {
+  if (!loan) return '';
+
+  const makeTable = (rows) => `
+      <table class="loan-tbl">
+        <thead>
+          <tr><th>期別</th><th>本金(元)</th><th>利息(元)</th><th>每期金額(元)</th><th>剩餘本金(元)</th></tr>
+        </thead>
+        <tbody>${rows.map(r => `
+          <tr>
+            <td>${r.period}</td>
+            <td>${fmt(r.principal)}</td>
+            <td>${fmt(r.interest)}</td>
+            <td class="pay">${fmt(r.payment)}</td>
+            <td class="rem">${fmt(r.remaining)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+  const rows = loan.rows || [];
+  let tablesHtml;
+  if (!singleColumn && rows.length > 12) {
+    const mid = Math.ceil(rows.length / 2);
+    tablesHtml = `<div class="loan-cols">${makeTable(rows.slice(0, mid))}${makeTable(rows.slice(mid))}</div>`;
+  } else {
+    tablesHtml = makeTable(rows);
+  }
+
+  const interval = Number(loan.intervalMonths) || 0;
+  const intervalText = Number.isInteger(interval) ? String(interval) : interval.toFixed(1);
+
+  return `
+    <div class="loan-block">
+      <div class="loan-head">
+        <span>${esc(loan.loanName || '')}</span>
+        <small>借貸金額 ${fmt(loan.loanAmount)} 元（總價×${esc(loan.ratioPercent)}%）｜年利率 ${esc(loan.annualRate)}%｜${esc(loan.years)}年${esc(loan.periods)}期（每期約${intervalText}個月）｜${esc(loan.amortizationType || '')}</small>
+      </div>
+      ${tablesHtml}
+      <div class="loan-totals">
+        <span>本金合計 <b>${fmt(loan.totals?.principal)}</b> 元</span>
+        <span>利息合計 <b>${fmt(loan.totals?.interest)}</b> 元</span>
+        <span>本利合計 <b class="grand">${fmt(loan.totals?.payment)}</b> 元</span>
+      </div>
+      ${loan.note ? `<div class="loan-note">${esc(loan.note)}</div>` : ''}
+    </div>`;
 }
 
 // --- 單一戶別 → 一頁 A4 ---
@@ -528,12 +592,37 @@ function renderSheet(item) {
   const generalAccent = pay.generalIsPreferred ? '#8a6d1c' : '#1a3c6e';
   const hasPackageBlock = !!pay.package;
   const bothBlocks = !!pay.general && hasPackageBlock;
-  // 兩表並存時一律左右並排（頁面高度取兩者較高者，遠低於上下堆疊的相加高度）
-  const payBlocks = [
-    renderPayBlock(pay.general, generalAccent, generalTitle, '總價', total, !hasPackageBlock),
-    renderPayBlock(pay.package, '#2e7d32', '配套期款', '配套金額', packagePrice, !pay.general),
-  ].filter(Boolean);
   const payFlexClass = bothBlocks ? 'pay-flex pair' : 'pay-flex';
+
+  // 公司借貸：有附掛時付款方式靠左、攤還表靠右並排，省下縱向空間維持大字級
+  const loanHtml = optShowLoan.value ? renderLoanBlock(pay.companyLoan, { singleColumn: true }) : '';
+  const hasLoanSide = !!loanHtml;
+
+  // 兩表並存時一律左右並排（頁面高度取兩者較高者，遠低於上下堆疊的相加高度）
+  // 與借貸並排時，期款表在左欄內上下堆疊（isFull=false 避免項目雙欄拆分）
+  const payBlocks = [
+    renderPayBlock(pay.general, generalAccent, generalTitle, '總價', total, hasLoanSide ? false : !hasPackageBlock),
+    renderPayBlock(pay.package, '#2e7d32', '配套期款', '配套金額', packagePrice, hasLoanSide ? false : !pay.general),
+  ].filter(Boolean);
+  const payBlocksHtml = payBlocks.length
+    ? payBlocks.join('')
+    : '<div class="no-pay">尚無適用的期款資料，請確認期款範本設定。</div>';
+
+  const payArea = hasLoanSide ? `
+    <div class="pay-loan-grid">
+      <div class="pl-col pl-left">
+        <div class="sec-title">付款方式</div>
+        ${payBlocksHtml}
+      </div>
+      <div class="pl-col pl-right">
+        <div class="sec-title loan-title">公司借貸</div>
+        ${loanHtml}
+      </div>
+    </div>` : `
+    <div class="sec-title">付款方式</div>
+    <div class="${payFlexClass}">
+      ${payBlocksHtml}
+    </div>`;
 
   // ✅ [新增] 採用方案帶：完整方案名稱＋所選付款方式，一目了然本報價單採用的方案組合
   const appliedPlans = optShowPlans.value ? (item.appliedPlans || []) : [];
@@ -603,10 +692,7 @@ function renderSheet(item) {
 
     ${planBand}
 
-    <div class="sec-title">付款方式</div>
-    <div class="${payFlexClass}">
-      ${payBlocks.length ? payBlocks.join('') : '<div class="no-pay">尚無適用的期款資料，請確認期款範本設定。</div>'}
-    </div>
+    ${payArea}
     ${notesHtml}
     ${remarkBlock}
     ${approvalBlock}
@@ -643,9 +729,9 @@ const SHEET_CSS = `
     background: #1a3c6e; color: #fff;
     padding: 5mm 7mm; border-radius: 1.5mm;
   }
-  .head .proj { font-size: 17pt; font-weight: 700; letter-spacing: 1px; }
-  .head .sub { font-size: 9pt; opacity: .85; margin-top: 1.5mm; }
-  .head .doc-title { font-size: 13.5pt; font-weight: 700; letter-spacing: 5px; margin-right: -5px; }
+  .head .proj { font-size: 18pt; font-weight: 700; letter-spacing: 1px; }
+  .head .sub { font-size: 9.5pt; opacity: .85; margin-top: 1.5mm; }
+  .head .doc-title { font-size: 14.5pt; font-weight: 700; letter-spacing: 5px; margin-right: -5px; }
   .info {
     display: grid; grid-template-columns: 1fr 1fr;
     border: 1px solid #cfd8dc; border-radius: 1.5mm; overflow: hidden;
@@ -657,15 +743,15 @@ const SHEET_CSS = `
   .lbl {
     width: 25mm; align-self: stretch; display: flex; align-items: center;
     background: #f4f7fa; color: #546e7a;
-    font-size: 9.5pt; padding: 2.6mm 3mm; flex-shrink: 0;
+    font-size: 10pt; padding: 2.6mm 3mm; flex-shrink: 0;
   }
-  .val { flex: 1; padding: 2.6mm 3mm; font-size: 10.5pt; }
-  .val b { font-size: 11.5pt; color: #1a3c6e; }
-  .val .pk-price { font-size: 8.5pt; color: #78909c; }
-  .val .orig-price { text-decoration: line-through; color: #90a4ae; font-size: 8.5pt; margin-left: 1.5mm; }
-  .val .disc { color: #2e7d32; font-size: 8.5pt; font-weight: 700; margin-left: 1mm; }
+  .val { flex: 1; padding: 2.6mm 3mm; font-size: 11pt; }
+  .val b { font-size: 12.5pt; color: #1a3c6e; }
+  .val .pk-price { font-size: 9pt; color: #78909c; }
+  .val .orig-price { text-decoration: line-through; color: #90a4ae; font-size: 9pt; margin-left: 1.5mm; }
+  .val .disc { color: #2e7d32; font-size: 9pt; font-weight: 700; margin-left: 1mm; }
   .val .disc.up { color: #c62828; }
-  .val .sub-note { color: #90a4ae; font-size: 8.5pt; margin-left: 1.5mm; }
+  .val .sub-note { color: #90a4ae; font-size: 9pt; margin-left: 1.5mm; }
   .wide-strip {
     display: flex; align-items: stretch;
     border: 1px solid #cfd8dc; border-radius: 1.5mm; overflow: hidden;
@@ -673,15 +759,15 @@ const SHEET_CSS = `
   }
   .wide-strip .lbl {
     width: 25mm; flex-shrink: 0; display: flex; align-items: center;
-    background: #f4f7fa; color: #546e7a; font-size: 9.5pt; padding: 2.6mm 3mm;
+    background: #f4f7fa; color: #546e7a; font-size: 10pt; padding: 2.6mm 3mm;
   }
   .strip-item {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
     padding: 1.8mm 1mm; text-align: center;
   }
   .strip-item + .strip-item { border-left: 1px solid #eceff1; }
-  .strip-item em { font-style: normal; font-size: 8pt; color: #78909c; white-space: nowrap; }
-  .strip-item b { font-size: 10pt; color: #263238; margin-top: .6mm; font-weight: 600; white-space: nowrap; }
+  .strip-item em { font-style: normal; font-size: 8.5pt; color: #78909c; white-space: nowrap; }
+  .strip-item b { font-size: 10.5pt; color: #263238; margin-top: .6mm; font-weight: 600; white-space: nowrap; }
   /* 平方公尺：小字淡色、獨立一行，凸顯坪數主值 */
   .sqm { display: block; font-size: 7.5pt; color: #9e9e9e; font-weight: 400; line-height: 1.15; }
   .total-band {
@@ -689,16 +775,16 @@ const SHEET_CSS = `
     background: #eef4fb; border: 1px solid #b4cdec; border-radius: 1.5mm;
     margin-top: 4mm; padding: 3mm 6mm;
   }
-  .total-band .t-label { font-size: 12pt; font-weight: 700; color: #1a3c6e; letter-spacing: 4px; margin-right: -4px; }
+  .total-band .t-label { font-size: 13pt; font-weight: 700; color: #1a3c6e; letter-spacing: 4px; margin-right: -4px; }
   .total-band .tvals { display: flex; align-items: baseline; gap: 3mm; }
-  .total-band .tvals > b { font-size: 17pt; color: #c62828; }
-  .total-band .tvals > b i { font-style: normal; font-size: 10pt; }
-  .total-band .pkg-extra { font-size: 10.5pt; font-weight: 700; color: #2e7d32; white-space: nowrap; }
-  .total-band .pkg-extra b { font-size: 13pt; }
-  .total-band .pkg-extra small { font-size: 8pt; font-weight: 400; color: #607d8b; }
+  .total-band .tvals > b { font-size: 19pt; color: #c62828; }
+  .total-band .tvals > b i { font-style: normal; font-size: 11pt; }
+  .total-band .pkg-extra { font-size: 11pt; font-weight: 700; color: #2e7d32; white-space: nowrap; }
+  .total-band .pkg-extra b { font-size: 14pt; }
+  .total-band .pkg-extra small { font-size: 8.5pt; font-weight: 400; color: #607d8b; }
   .sec-title {
     margin-top: 6mm; margin-bottom: 3mm;
-    font-size: 11.5pt; font-weight: 700; color: #1a3c6e;
+    font-size: 12.5pt; font-weight: 700; color: #1a3c6e;
     border-left: 4px solid #1a3c6e; padding-left: 2.5mm;
   }
   .pay-flex { display: flex; flex-wrap: wrap; gap: 5mm; align-items: flex-start; }
@@ -710,31 +796,73 @@ const SHEET_CSS = `
   .pay-rows.two-col { column-count: 2; column-gap: 8mm; }
   .pgroup { break-inside: avoid; }
   /* 並排模式：字級略降，避免窄欄折行 */
-  .pay-flex.pair .prow { font-size: 9.5pt; }
-  .pay-flex.pair .prow.child { font-size: 8.5pt; }
+  .pay-flex.pair .prow { font-size: 10.5pt; }
+  .pay-flex.pair .prow.child { font-size: 9.5pt; }
   .pay-head {
     display: flex; justify-content: space-between; align-items: baseline; gap: 2mm;
-    padding: 2.4mm 3.5mm; color: #fff; font-size: 10.5pt; font-weight: 700;
+    padding: 2.4mm 3.5mm; color: #fff; font-size: 12pt; font-weight: 700;
   }
-  .pay-head small { font-weight: 400; font-size: 8.5pt; opacity: .92; text-align: right; }
+  .pay-head small { font-weight: 400; font-size: 9.5pt; opacity: .92; text-align: right; }
   .pay-rows { padding: 1mm 3.5mm 2mm; }
-  .prow { display: flex; align-items: baseline; padding: 1.7mm 0; border-bottom: 1px dashed #e0e6ea; font-size: 10pt; }
+  .prow { display: flex; align-items: baseline; padding: 1.7mm 0; border-bottom: 1px dashed #e0e6ea; font-size: 11.5pt; }
   .pgroup:last-child .prow:last-child { border-bottom: none; }
   .prow:not(.child) .pname { font-weight: 600; }
-  .prow.child { font-size: 9pt; }
+  .prow.child { font-size: 10pt; }
   .prow.child .pname { padding-left: 5mm; color: #78909c; }
-  .prow .hint { font-size: 8pt; color: #78909c; margin-left: 1.5mm; }
+  .prow .hint { font-size: 9pt; color: #78909c; margin-left: 1.5mm; }
   .prow .lead { flex: 1; border-bottom: 1px dotted #b0bec5; margin: 0 2mm; transform: translateY(-1mm); }
   .prow .pval { font-weight: 700; color: #263238; white-space: nowrap; }
-  .prow .pval i { font-style: normal; font-size: 8pt; color: #78909c; margin-left: .5mm; }
-  .prow.child .pval { font-weight: 400; font-style: italic; color: #90a4ae; font-size: 8.5pt; }
-  .child-note { padding: 0 3.5mm 2mm; font-size: 7.5pt; color: #90a4ae; }
+  .prow .pval i { font-style: normal; font-size: 9pt; color: #78909c; margin-left: .5mm; }
+  .prow.child .pval { font-weight: 400; font-style: italic; color: #90a4ae; font-size: 9.5pt; }
+  .child-note { padding: 0 3.5mm 2mm; font-size: 8.5pt; color: #90a4ae; }
   .ptotal {
     display: flex; justify-content: space-between;
     padding: 2.2mm 3.5mm; border-top: 1px solid #cfd8dc;
-    background: #fafbfc; font-weight: 700; font-size: 10.5pt;
+    background: #fafbfc; font-weight: 700; font-size: 12pt;
   }
   .no-pay { width: 100%; text-align: center; color: #b71c1c; font-size: 10pt; padding: 6mm 0; }
+  /* 付款方式（左）＋公司借貸（右）並排：省縱向空間、維持大字級 */
+  .pay-loan-grid { display: flex; gap: 4mm; align-items: flex-start; margin-top: 6mm; }
+  .pay-loan-grid .pl-col { min-width: 0; }
+  .pay-loan-grid .pl-left { flex: 1 1 42%; }
+  .pay-loan-grid .pl-right { flex: 1.35 1 58%; }
+  .pay-loan-grid .sec-title { margin-top: 0; }
+  .pl-left .pay-block { width: 100%; margin-bottom: 3mm; }
+  .pl-left .pay-block:last-child { margin-bottom: 0; }
+  /* 公司借貸攤還表：棕色系區塊 */
+  .sec-title.loan-title { color: #6d4c41; border-left-color: #6d4c41; margin-top: 4mm; }
+  .loan-block { border: 1px solid #d7ccc8; border-radius: 1.5mm; overflow: hidden; }
+  .loan-head {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 2mm; flex-wrap: wrap;
+    background: #6d4c41; color: #fff; padding: 2.4mm 3.5mm;
+    font-size: 11.5pt; font-weight: 700;
+  }
+  .loan-head small { font-weight: 400; font-size: 9.5pt; opacity: .92; }
+  .loan-cols { display: flex; align-items: flex-start; }
+  .loan-cols .loan-tbl { flex: 1; }
+  .loan-cols .loan-tbl + .loan-tbl { border-left: 1px solid #d7ccc8; }
+  .loan-tbl { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  .loan-tbl th {
+    background: #efebe9; color: #5d4037;
+    padding: 1.5mm 1.8mm; border-bottom: 1px solid #d7ccc8;
+    font-weight: 700; text-align: right; white-space: nowrap;
+  }
+  .loan-tbl th:first-child { text-align: center; }
+  .loan-tbl td { padding: 1.2mm 1.8mm; border-bottom: 1px dashed #eceff1; text-align: right; white-space: nowrap; }
+  .loan-tbl td:first-child { text-align: center; color: #8d6e63; }
+  .loan-tbl td.pay { font-weight: 700; color: #263238; }
+  .loan-tbl td.rem { color: #90a4ae; }
+  .loan-totals {
+    display: flex; justify-content: flex-end; gap: 5mm; flex-wrap: wrap;
+    padding: 2.2mm 3.5mm; background: #fafbfc; border-top: 1px solid #d7ccc8;
+    font-size: 11.5pt; font-weight: 700;
+  }
+  .loan-totals b { color: #4e342e; font-size: 12pt; }
+  .loan-totals b.grand { color: #c62828; }
+  .loan-note { padding: 1.5mm 3.5mm; font-size: 9pt; color: #8d6e63; border-top: 1px dashed #e0e0e0; }
+  .sheet.compact .loan-tbl { font-size: 9pt; }
+  .sheet.compact .loan-tbl td { padding: 0.8mm 1.4mm; }
+  .sheet.compact .loan-totals { padding: 1.6mm 3mm; font-size: 10.5pt; }
   /* ✅ [新增] 採用方案帶：紫色系醒目條，完整列出方案名稱與所選付款方式 */
   .plan-band {
     display: flex; align-items: center; flex-wrap: wrap; gap: 2mm;
@@ -756,15 +884,15 @@ const SHEET_CSS = `
   }
   .plan-band .plan-plus { font-size: 10pt; font-weight: 700; color: #5e35b1; }
   .notes { margin-top: 5mm; background: #fffdf3; border: 1px solid #efe6c1; border-radius: 1.5mm; padding: 3mm 4mm; }
-  .notes-title { font-size: 9.5pt; font-weight: 700; color: #8a6d1c; margin-bottom: 1.5mm; }
+  .notes-title { font-size: 10.5pt; font-weight: 700; color: #8a6d1c; margin-bottom: 1.5mm; }
   .notes ol { padding-left: 5mm; }
-  .notes li { font-size: 9pt; color: #5d4f1e; line-height: 1.7; }
+  .notes li { font-size: 10pt; color: #5d4f1e; line-height: 1.7; }
   .remark { margin-top: 5mm; border: 1px solid #cfd8dc; border-radius: 1.5mm; overflow: hidden; }
   .remark-title {
     background: #eceff1; color: #37474f;
-    font-size: 9.5pt; font-weight: 700; padding: 2mm 4mm;
+    font-size: 10.5pt; font-weight: 700; padding: 2mm 4mm;
   }
-  .remark-body { padding: 2.5mm 4mm; font-size: 9.5pt; line-height: 1.8; color: #37474f; }
+  .remark-body { padding: 2.5mm 4mm; font-size: 10.5pt; line-height: 1.8; color: #37474f; }
   .remark-body ul, .remark-body ol { padding-left: 6mm; }
   /* ✅ [新增] 主管簽核／用印欄：右側大面積留白，供簽名或蓋章 */
   .approval {
@@ -792,7 +920,7 @@ const SHEET_CSS = `
     display: flex; justify-content: space-between; align-items: center; gap: 4mm;
     font-size: 8.5pt; color: #78909c;
   }
-  .foot .foot-person { flex: 1; font-size: 11pt; color: #263238; }
+  .foot .foot-person { flex: 1; font-size: 11.5pt; color: #263238; }
   .foot .foot-person b { font-weight: 700; color: #1a3c6e; }
   /* ✅ [新增] 建案簡介 QR Code（右下角）；未設定網址時此區塊不輸出，不佔版面 */
   .foot-qr {
@@ -807,23 +935,25 @@ const SHEET_CSS = `
   /* ✅ 階梯式壓縮第一段：緊湊模式（間距與字級小幅收斂） */
   .sheet.compact .head { padding: 3.5mm 6mm; }
   .sheet.compact .info { margin-top: 3mm; }
-  .sheet.compact .lbl { padding: 1.7mm 3mm; font-size: 9pt; }
-  .sheet.compact .val { padding: 1.7mm 3mm; font-size: 9.5pt; }
+  .sheet.compact .lbl { padding: 1.7mm 3mm; font-size: 9.5pt; }
+  .sheet.compact .val { padding: 1.7mm 3mm; font-size: 10.5pt; }
   .sheet.compact .strip-item { padding: 1.1mm 1mm; }
   .sheet.compact .total-band { margin-top: 2.5mm; padding: 2mm 5mm; }
   .sheet.compact .sec-title { margin-top: 3.5mm; margin-bottom: 2mm; }
+  .sheet.compact .pay-loan-grid { margin-top: 3.5mm; gap: 3mm; }
+  .sheet.compact .pay-loan-grid .sec-title { margin-top: 0; }
   .sheet.compact .pay-flex { gap: 3mm; }
   .sheet.compact .pay-rows { padding: 0.5mm 3mm 1.5mm; }
-  .sheet.compact .prow { padding: 0.9mm 0; font-size: 9pt; }
-  .sheet.compact .prow.child { font-size: 8.5pt; }
-  .sheet.compact .ptotal { padding: 1.6mm 3.5mm; font-size: 10pt; }
+  .sheet.compact .prow { padding: 0.9mm 0; font-size: 10.5pt; }
+  .sheet.compact .prow.child { font-size: 9.5pt; }
+  .sheet.compact .ptotal { padding: 1.6mm 3.5mm; font-size: 11pt; }
   .sheet.compact .plan-band { margin-top: 2.5mm; padding: 1.6mm 3mm; }
   .sheet.compact .plan-band .plan-item b { font-size: 9pt; }
   .sheet.compact .plan-band .plan-item em { font-size: 8pt; }
   .sheet.compact .notes { margin-top: 3mm; padding: 2mm 3mm; }
-  .sheet.compact .notes li { font-size: 8.5pt; line-height: 1.55; }
+  .sheet.compact .notes li { font-size: 9.5pt; line-height: 1.55; }
   .sheet.compact .remark { margin-top: 3mm; }
-  .sheet.compact .remark-body { padding: 2mm 4mm; font-size: 8.5pt; line-height: 1.6; }
+  .sheet.compact .remark-body { padding: 2mm 4mm; font-size: 9.5pt; line-height: 1.6; }
   .sheet.compact .approval { margin-top: 2.5mm; min-height: 18mm; }
   .sheet.compact .approval .ap-label { font-size: 9pt; }
   .sheet.compact .ap-warn { margin-top: 1mm; font-size: 8.5pt; }

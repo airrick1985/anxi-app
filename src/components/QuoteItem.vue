@@ -488,6 +488,112 @@
 
       </div>
 
+      <!-- 公司借貸攤還表（實際採用的期款範本有附掛借貸範本時顯示） -->
+      <v-card v-if="effectiveLoanParams" flat border class="mb-2">
+        <v-card-title class="bg-orange-lighten-5 text-brown-darken-2 py-2 text-subtitle-1 d-flex align-center flex-wrap">
+          <v-icon start>mdi-bank-outline</v-icon>
+          公司借貸
+          <span class="text-body-2 ml-2">{{ effectiveLoanParams.loanName }}</span>
+          <v-chip v-if="companyLoanSchedule" size="x-small" color="brown-darken-1" variant="flat" class="ml-2">
+            總價 {{ effectiveLoanParams.ratioPercent }}% ＝ {{ companyLoanSchedule.loanAmount.toLocaleString() }} 元
+          </v-chip>
+          <v-chip v-if="isLoanOverridden" size="x-small" color="orange-darken-2" variant="flat" class="ml-2">
+            已臨時調整
+          </v-chip>
+          <v-spacer></v-spacer>
+          <v-btn
+            v-if="isLoanOverridden"
+            icon="mdi-restore"
+            size="x-small"
+            variant="text"
+            color="grey-darken-1"
+            title="還原範本預設"
+            @click="resetLoanOverride"
+          ></v-btn>
+        </v-card-title>
+
+        <!-- 臨時調整參數列：僅影響本次報價，不回存範本 -->
+        <div class="pa-2 d-flex flex-wrap ga-2 align-center">
+          <v-text-field
+            v-model.number="loanAnnualRateModel"
+            label="年利率"
+            type="number"
+            suffix="%"
+            density="compact"
+            variant="outlined"
+            hide-details
+            style="max-width: 130px;"
+          ></v-text-field>
+          <v-text-field
+            v-model.number="loanYearsModel"
+            label="年數"
+            type="number"
+            suffix="年"
+            density="compact"
+            variant="outlined"
+            hide-details
+            style="max-width: 110px;"
+          ></v-text-field>
+          <v-text-field
+            v-model.number="loanPeriodsModel"
+            label="期數"
+            type="number"
+            suffix="期"
+            density="compact"
+            variant="outlined"
+            hide-details
+            style="max-width: 110px;"
+          ></v-text-field>
+          <span class="text-caption text-grey-darken-1">
+            <template v-if="loanIntervalText">每期間隔約 {{ loanIntervalText }} 個月｜</template>{{ effectiveLoanParams.amortizationType }}｜臨時調整僅影響本次報價
+          </span>
+        </div>
+        <v-divider></v-divider>
+
+        <v-card-text class="pa-2">
+          <template v-if="companyLoanSchedule">
+            <div class="loan-table-wrap">
+              <v-table density="compact" class="loan-table">
+                <thead>
+                  <tr>
+                    <th class="text-center">期別</th>
+                    <th class="text-right">本金 (元)</th>
+                    <th class="text-right">利息 (元)</th>
+                    <th class="text-right">每期金額 (元)</th>
+                    <th class="text-right">剩餘本金 (元)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in companyLoanSchedule.rows" :key="row.period">
+                    <td class="text-center">{{ row.period }}</td>
+                    <td class="text-right">{{ row.principal.toLocaleString() }}</td>
+                    <td class="text-right">{{ row.interest.toLocaleString() }}</td>
+                    <td class="text-right font-weight-medium">{{ row.payment.toLocaleString() }}</td>
+                    <td class="text-right text-grey">{{ row.remaining.toLocaleString() }}</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr class="loan-total-row">
+                    <td class="text-center font-weight-bold">合計</td>
+                    <td class="text-right font-weight-bold">{{ companyLoanSchedule.totals.principal.toLocaleString() }}</td>
+                    <td class="text-right font-weight-bold">{{ companyLoanSchedule.totals.interest.toLocaleString() }}</td>
+                    <td class="text-right font-weight-bold">{{ companyLoanSchedule.totals.payment.toLocaleString() }}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </v-table>
+            </div>
+            <div v-if="effectiveLoanParams.note" class="text-caption text-grey-darken-1 mt-1">
+              {{ effectiveLoanParams.note }}
+            </div>
+          </template>
+          <div v-else class="text-center text-grey pa-3">
+            <v-icon size="20" class="mb-1">mdi-alert-circle-outline</v-icon>
+            <div class="text-body-2">借貸參數無效（成數、年數、期數須大於 0），請調整上方參數。</div>
+          </div>
+        </v-card-text>
+      </v-card>
+
       <!-- 向後相容性：舊版本的 PaymentDetails -->
       <div v-if="!generalPaymentCalculation.hasData && !packagePaymentCalculation.hasData && paymentTermsData && paymentTermsData.length > 0">
         <PaymentDetails
@@ -708,12 +814,15 @@ import QuotePlanPickerDialog from './QuotePlanPickerDialog.vue';
 import { useProjectStore } from '@/store/projectStore';
 // ✅ [重構] 期款公式計算引擎抽出為共用模組（與付款表產製共用）
 import { runNewCalculationEngine } from '@/utils/paymentCalculation';
+// 公司借貸攤還表計算（期款範本附掛借貸範本時顯示）
+import { buildCompanyLoanSchedule } from '@/utils/companyLoanCalculation';
 
 const props = defineProps({
   item: { type: Object, required: true },
   paymentTermsData: { type: Array, default: () => [] }, // 保留向後相容性
   packageTermsData: { type: Array, default: () => [] }, // 保留向後相容性
   paymentTemplates: { type: Array, default: () => [] }, // 新增：Firestore 期款範本
+  companyLoanTemplates: { type: Array, default: () => [] }, // 公司借貸範本（附掛顯示攤還表）
   showPackageDeal: { type: Boolean, default: true },
   isLoading: { type: Boolean, default: false },
   allParkingData: { type: Array, default: () => [] },
@@ -1296,6 +1405,102 @@ watch(appliedPaymentNotes, (notes) => {
   deep: true
 });
 
+// ★★★ 公司借貸攤還表（期款範本附掛借貸範本時顯示） ★★★
+
+// 附掛的借貸範本：以實際採用的總價期款範本 companyLoanTemplateId 查找；範本已刪除時視同不附掛
+const effectiveLoanTemplate = computed(() => {
+  const loanId = effectiveGeneralTemplate.value?.companyLoanTemplateId;
+  if (!loanId) return null;
+  const found = (props.companyLoanTemplates || []).find(l => l.id === loanId);
+  if (!found) {
+    console.warn(`[QuoteItem] 期款範本附掛的借貸範本不存在 (id: ${loanId})，視同不附掛`);
+    return null;
+  }
+  return found;
+});
+
+// 報價當下生效的借貸參數：範本預設＋臨時調整（利率/年數/期數可調；換範本即失效）
+const effectiveLoanParams = computed(() => {
+  const tpl = effectiveLoanTemplate.value;
+  if (!tpl) return null;
+  const ov = props.item.companyLoanOverride;
+  const useOverride = !!(ov && ov.templateId === tpl.id);
+  return {
+    templateId: tpl.id,
+    loanName: tpl.loanName,
+    ratioPercent: Number(tpl.ratioPercent) || 0,
+    years: useOverride ? Number(ov.years) : (Number(tpl.years) || 0),
+    periods: useOverride ? Number(ov.periods) : (Number(tpl.periods) || 0),
+    annualRate: useOverride ? Number(ov.annualRate) : (Number(tpl.annualRate) || 0),
+    amortizationType: tpl.amortizationType || '本金平均攤還',
+    roundingMethod: tpl.roundingMethod || '四捨五入',
+    roundingValue: tpl.roundingValue || 1,
+    note: tpl.note || '',
+  };
+});
+
+const isLoanOverridden = computed(() => {
+  const ov = props.item.companyLoanOverride;
+  return !!(ov && ov.templateId === effectiveLoanTemplate.value?.id);
+});
+
+// 寫入臨時調整（不回存範本預設值）
+function updateLoanOverrideField(field, value) {
+  const tpl = effectiveLoanTemplate.value;
+  if (!tpl) return;
+  const current = (props.item.companyLoanOverride?.templateId === tpl.id)
+    ? { ...props.item.companyLoanOverride }
+    : {
+        templateId: tpl.id,
+        annualRate: Number(tpl.annualRate) || 0,
+        years: Number(tpl.years) || 0,
+        periods: Number(tpl.periods) || 0,
+      };
+  current[field] = Number(value) || 0;
+  quoteStore.updateItemCompanyLoanOverride(props.item.internalId, current);
+}
+
+const loanAnnualRateModel = computed({
+  get: () => effectiveLoanParams.value?.annualRate ?? 0,
+  set: (v) => updateLoanOverrideField('annualRate', v),
+});
+const loanYearsModel = computed({
+  get: () => effectiveLoanParams.value?.years ?? 0,
+  set: (v) => updateLoanOverrideField('years', v),
+});
+const loanPeriodsModel = computed({
+  get: () => effectiveLoanParams.value?.periods ?? 0,
+  set: (v) => updateLoanOverrideField('periods', v),
+});
+
+function resetLoanOverride() {
+  quoteStore.updateItemCompanyLoanOverride(props.item.internalId, null);
+}
+
+// 攤還表：總價（萬）換算為元後計算
+const companyLoanSchedule = computed(() => {
+  const params = effectiveLoanParams.value;
+  if (!params) return null;
+  const priceYuan = (Number(finalTotalPrice.value) || 0) * 10000;
+  return buildCompanyLoanSchedule(priceYuan, params);
+});
+
+// 每期間隔月數（顯示參考）
+const loanIntervalText = computed(() => {
+  const p = effectiveLoanParams.value;
+  if (!p || !(p.years > 0) || !(p.periods > 0)) return '';
+  const months = p.years * 12 / p.periods;
+  return Number.isInteger(months) ? String(months) : months.toFixed(1);
+});
+
+// 借貸參數快照隨報價項目儲存（重開報價以快照重現；無附掛時清空）
+watch(effectiveLoanParams, (params) => {
+  quoteStore.updateItemCompanyLoan(
+    props.item.internalId,
+    params ? JSON.parse(JSON.stringify(params)) : null
+  );
+}, { immediate: true, deep: true });
+
 // ★★★ 新增：列印報價單(含期款) 用資料 ★★★
 
 // 組裝列印用付款資料：general(實際採用的總價/優付期款) / package(配套期款) / notes
@@ -1314,10 +1519,26 @@ const printPaymentData = computed(() => {
         };
     };
 
+    // 公司借貸攤還表（附掛且參數有效時才有值）
+    const loanBlock = (companyLoanSchedule.value && effectiveLoanParams.value) ? {
+        loanName: effectiveLoanParams.value.loanName,
+        ratioPercent: effectiveLoanParams.value.ratioPercent,
+        annualRate: effectiveLoanParams.value.annualRate,
+        years: effectiveLoanParams.value.years,
+        periods: effectiveLoanParams.value.periods,
+        amortizationType: effectiveLoanParams.value.amortizationType,
+        note: effectiveLoanParams.value.note,
+        loanAmount: companyLoanSchedule.value.loanAmount,
+        intervalMonths: companyLoanSchedule.value.intervalMonths,
+        rows: companyLoanSchedule.value.rows,
+        totals: companyLoanSchedule.value.totals,
+    } : null;
+
     return {
         general: buildBlock(generalPaymentCalculation.value),
         generalIsPreferred: isGeneralUsingPreferred.value, // true 時列印標題用「優付期款」
         package: buildBlock(packagePaymentCalculation.value),
+        companyLoan: loanBlock,
         notes: appliedPaymentNotes.value
     };
 });
@@ -1969,5 +2190,26 @@ function isPlanModified(appliedPlan) {
   font-size: 0.7rem;
   height: 20px !important;
   vertical-align: middle;
+}
+
+/* 公司借貸攤還表 */
+.loan-table-wrap {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+}
+
+.loan-table thead th {
+  background: rgba(121, 85, 72, 0.08);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.loan-total-row td {
+  border-top: 2px solid rgba(121, 85, 72, 0.4);
+  background: rgba(121, 85, 72, 0.05);
 }
 </style>

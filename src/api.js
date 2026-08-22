@@ -5570,6 +5570,99 @@ export const deletePaymentTermTemplate = (docId) => {
 };
 
 /* ==========================================================
+ * 公司借貸範本（docs/公司借貸期款設定-spec.md）
+ * companyLoanTemplates 集合，模式比照 paymentTermTemplates
+ * ========================================================== */
+
+/**
+ * 一次性讀取專案的公司借貸範本清單（供報價設定載入）
+ * @param {string} projectId
+ * @returns {Promise<{status: string, data?: Array, message?: string}>}
+ */
+export async function fetchCompanyLoanTemplates(projectId) {
+  if (!projectId) {
+    return { status: 'error', message: '前端錯誤：呼叫 fetchCompanyLoanTemplates 時缺少 projectId。' };
+  }
+  try {
+    const q = query(
+      collection(db, 'companyLoanTemplates'),
+      where('projectId', '==', projectId)
+    );
+    const querySnapshot = await getDocs(q);
+    const templates = [];
+    querySnapshot.forEach((d) => {
+      templates.push({ id: d.id, ...d.data() });
+    });
+    return { status: 'success', data: templates };
+  } catch (error) {
+    console.error('[api.js] fetchCompanyLoanTemplates error:', error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+/**
+ * 即時監聽專案的公司借貸範本（供期款設定頁管理）
+ * @param {string} projectId
+ * @param {function} onDataChange
+ * @returns {function} unsubscribe
+ */
+export const listenToCompanyLoanTemplates = (projectId, onDataChange) => {
+  // 僅用 where 等值查詢（不加 orderBy），避免需要複合索引；排序改由前端處理
+  const q = query(
+    collection(db, "companyLoanTemplates"),
+    where("projectId", "==", projectId)
+  );
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const templates = snapshot.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => String(a.loanName || '').localeCompare(String(b.loanName || ''), 'zh-Hant'));
+    onDataChange(templates);
+  }, (error) => {
+    console.error(`監聽公司借貸範本時發生錯誤 (Project: ${projectId}):`, error);
+  });
+  return unsubscribe;
+};
+
+/**
+ * 新增或完整覆蓋一筆公司借貸範本（自訂文件 ID）
+ * @param {string} docId
+ * @param {object} templateData
+ * @returns {Promise<void>}
+ */
+export const setCompanyLoanTemplate = (docId, templateData) => {
+  const docRef = doc(db, "companyLoanTemplates", docId);
+  return setDoc(docRef, {
+    ...templateData,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * 更新一筆公司借貸範本
+ * @param {string} docId
+ * @param {object} dataToUpdate
+ * @returns {Promise<void>}
+ */
+export const updateCompanyLoanTemplate = (docId, dataToUpdate) => {
+  const docRef = doc(db, "companyLoanTemplates", docId);
+  return updateDoc(docRef, {
+    ...dataToUpdate,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * 刪除一筆公司借貸範本（呼叫端須先處理期款範本的附掛解除）
+ * @param {string} docId
+ * @returns {Promise<void>}
+ */
+export const deleteCompanyLoanTemplate = (docId) => {
+  const docRef = doc(db, "companyLoanTemplates", docId);
+  return deleteDoc(docRef);
+};
+
+/* ==========================================================
  * 合約製作資料範本（docs/合約製作資料範本-spec.md）
  * ========================================================== */
 

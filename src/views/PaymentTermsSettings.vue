@@ -3,8 +3,22 @@
     <v-card-title class="text-h5 text-green-darken-2">
       期款方式範本設定
     </v-card-title>
-    <v-card-subtitle>管理不同合約類型的付款期款計算範本</v-card-subtitle>
-    
+    <v-card-subtitle>管理不同合約類型的付款期款計算範本與公司借貸方案</v-card-subtitle>
+
+    <v-tabs v-model="activeTab" color="green-darken-2" class="mt-2">
+      <v-tab value="payment">
+        <v-icon start>mdi-format-list-numbered</v-icon>期款範本
+      </v-tab>
+      <v-tab value="loan">
+        <v-icon start>mdi-bank-outline</v-icon>公司借貸範本
+      </v-tab>
+    </v-tabs>
+    <v-divider></v-divider>
+
+    <v-window v-model="activeTab">
+      <!-- ============ Tab 1：期款範本 ============ -->
+      <v-window-item value="payment">
+
     <div class="d-flex justify-space-between align-center my-4">
       <span class="text-subtitle-1">已建立的期款範本</span>
       <v-btn color="green-darken-2" @click="openTemplateDialog()" prepend-icon="mdi-plus">新增範本</v-btn>
@@ -55,6 +69,16 @@
                 </template>
                 <v-chip size="small" :color="template.buyerType === '首購' ? 'success' : 'info'" variant="flat">
                   {{ template.buyerType || '非首購' }}
+                </v-chip>
+                <!-- 附掛的公司借貸範本 -->
+                <v-chip
+                  v-if="getLoanName(template.companyLoanTemplateId)"
+                  size="small"
+                  color="brown-darken-1"
+                  variant="flat"
+                  prepend-icon="mdi-bank-outline"
+                >
+                  {{ getLoanName(template.companyLoanTemplateId) }}
                 </v-chip>
               </div>
               <div class="text-caption text-grey-darken-1">{{ template.items?.length || 0 }} 個期款項目</div>
@@ -265,6 +289,117 @@
       請先新增或選擇一個範本來進行編輯。
     </v-alert>
 
+      </v-window-item>
+
+      <!-- ============ Tab 2：公司借貸範本 ============ -->
+      <v-window-item value="loan">
+
+        <div class="d-flex justify-space-between align-center my-4">
+          <span class="text-subtitle-1">已建立的公司借貸範本</span>
+          <v-btn color="brown-darken-1" @click="openLoanEditor()" prepend-icon="mdi-plus">新增借貸範本</v-btn>
+        </div>
+
+        <v-row>
+          <v-col
+            v-for="loan in loanTemplates"
+            :key="loan.id"
+            cols="12"
+            md="6"
+            lg="4"
+          >
+            <v-card
+              :variant="isEditingLoan(loan.id) ? 'elevated' : 'outlined'"
+              :elevation="isEditingLoan(loan.id) ? 8 : 0"
+              :class="['template-card', isEditingLoan(loan.id) ? 'template-card--loan-active' : 'template-card--inactive']"
+              @click="openLoanEditor(loan)"
+            >
+              <div v-if="isEditingLoan(loan.id)" class="card-status-bar card-status-bar--loan-active">
+                <span class="editing-dot mr-2"></span>
+                <v-icon size="14" class="mr-1">mdi-pencil</v-icon>
+                正在編輯此範本
+              </div>
+              <div v-else class="card-status-bar card-status-bar--idle">
+                <v-icon size="14" class="mr-1">mdi-bank-outline</v-icon>
+                借貸範本
+              </div>
+
+              <v-card-item>
+                <div>
+                  <div class="text-h6 mb-2">{{ loan.loanName }}</div>
+                  <div class="d-flex flex-wrap gap-2 mb-1">
+                    <v-chip size="small" color="brown-darken-1" variant="flat">
+                      成數 {{ loan.ratioPercent }}%
+                    </v-chip>
+                    <v-chip size="small" color="brown" variant="outlined">
+                      {{ loan.years }}年 / {{ loan.periods }}期
+                    </v-chip>
+                    <v-chip size="small" color="brown" variant="outlined">
+                      年利率 {{ loan.annualRate }}%
+                    </v-chip>
+                    <v-chip size="small" color="deep-purple-lighten-1" variant="flat">
+                      {{ loan.amortizationType || '本金平均攤還' }}
+                    </v-chip>
+                  </div>
+                  <div class="text-caption text-grey-darken-1">
+                    {{ loanUsageCount(loan.id) > 0 ? `${loanUsageCount(loan.id)} 個期款範本使用中` : '尚未被附掛' }}
+                  </div>
+                </div>
+              </v-card-item>
+
+              <v-card-actions>
+                <v-chip
+                  v-if="isEditingLoan(loan.id)"
+                  size="small"
+                  color="brown-darken-1"
+                  variant="flat"
+                  prepend-icon="mdi-check-circle"
+                >
+                  編輯中
+                </v-chip>
+                <v-btn
+                  v-else
+                  size="small"
+                  variant="tonal"
+                  color="brown-darken-1"
+                  prepend-icon="mdi-pencil-outline"
+                  @click.stop="openLoanEditor(loan)"
+                >
+                  切換編輯
+                </v-btn>
+                <v-spacer></v-spacer>
+                <v-btn size="small" icon="mdi-content-copy" @click.stop="copyLoanTemplate(loan)" title="複製範本"></v-btn>
+                <v-btn size="small" icon="mdi-delete-outline" @click.stop="confirmDeleteLoan(loan)" title="刪除"></v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <v-alert v-if="!loanTemplates.length" type="info" variant="tonal" class="mt-2">
+          尚未建立公司借貸範本。點擊「新增借貸範本」設定成數、年期與利率後，即可讓期款範本附掛使用。
+        </v-alert>
+
+        <v-divider class="my-4"></v-divider>
+
+        <!-- 借貸範本編輯區（桌機內嵌；手機為全螢幕 dialog） -->
+        <template v-if="mdAndUp">
+          <CompanyLoanEditor
+            v-if="loanEditorVisible"
+            :item="editingLoan"
+            @save="handleLoanSave"
+            @cancel="closeLoanEditor"
+          />
+          <v-card v-else variant="outlined" class="editor-placeholder">
+            <div class="text-center text-grey">
+              <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-cursor-default-click-outline</v-icon>
+              <div>點擊上方借貸範本卡片進行編輯</div>
+              <div class="text-caption">或點擊「新增借貸範本」建立新的借貸方案</div>
+            </div>
+          </v-card>
+        </template>
+
+      </v-window-item>
+    </v-window>
+
 
     <v-dialog v-model="templateDialog.show" persistent max-width="400px">
       <v-card>
@@ -356,6 +491,19 @@
             persistent-hint
           ></v-combobox>
 
+          <!-- 附掛公司借貸範本：報價套用此期款範本時，會一併顯示借貸攤還表 -->
+          <v-select
+            v-model="templateDialog.companyLoanTemplateId"
+            label="附掛公司借貸範本"
+            :items="loanSelectItems"
+            item-title="title"
+            item-value="value"
+            variant="outlined"
+            class="mt-4"
+            hint="附掛後，報價單套用此範本時會顯示借貸攤還表；於「公司借貸範本」分頁管理"
+            persistent-hint
+          ></v-select>
+
           <!-- ✅ [新增] 套用期款時的說明：報價單套用此範本時，會在表格下方顯示這排小字；留空則不顯示 -->
           <v-textarea
             v-model="templateDialog.applyNote"
@@ -392,6 +540,21 @@
         :existing-items="existingItems"
         @save="handleItemSave"
         @cancel="closeEditor"
+      />
+    </v-dialog>
+
+    <!-- 手機版：公司借貸範本全螢幕編輯頁 -->
+    <v-dialog
+      :model-value="!mdAndUp && loanEditorVisible"
+      fullscreen
+      transition="dialog-bottom-transition"
+      @update:model-value="val => !val && closeLoanEditor()"
+    >
+      <CompanyLoanEditor
+        v-if="editingLoan"
+        :item="editingLoan"
+        @save="handleLoanSave"
+        @cancel="closeLoanEditor"
       />
     </v-dialog>
 
@@ -514,11 +677,16 @@ import { useToast } from 'vue-toastification';
 import { useDisplay } from 'vuetify';
 import draggable from 'vuedraggable';
 import PaymentItemEditor from '@/components/PaymentItemEditor.vue';
+import CompanyLoanEditor from '@/components/CompanyLoanEditor.vue';
 import {
   listenToPaymentTermTemplates,
   setPaymentTermTemplate,
   updatePaymentTermTemplate,
   deletePaymentTermTemplate,
+  listenToCompanyLoanTemplates,
+  setCompanyLoanTemplate,
+  updateCompanyLoanTemplate,
+  deleteCompanyLoanTemplate,
 } from '@/api';
 
 // --- 核心 State ---
@@ -530,6 +698,15 @@ const templates = ref([]);
 const templatesLoading = ref(true);
 const selectedTemplateId = ref(null);
 let unsubscribeTemplates = null;
+
+// --- 分頁：期款範本 / 公司借貸範本 ---
+const activeTab = ref('payment');
+
+// --- 公司借貸範本 State ---
+const loanTemplates = ref([]);
+let unsubscribeLoans = null;
+const loanEditorVisible = ref(false);
+const editingLoan = ref(null);
 
 // --- 範本管理 Dialog State ---
 const templateDialog = ref({ 
@@ -545,7 +722,9 @@ const templateDialog = ref({
   propertyType: '住家',
   customPropertyType: '',
   // ✅ [新增] 套用期款時的說明
-  applyNote: ''
+  applyNote: '',
+  // 附掛的公司借貸範本 id（null = 不附掛）
+  companyLoanTemplateId: null
 });
 
 // ✅ [新增] 重複檢查 Dialog State
@@ -625,6 +804,28 @@ const parentOrder = (itemId) => {
 // 該項目是否正在右側編輯區編輯中
 const isEditingItem = (itemId) => editorVisible.value && editingItem.value?.id === itemId;
 
+// --- 公司借貸範本相關 ---
+
+// 該借貸範本是否編輯中
+const isEditingLoan = (loanId) => loanEditorVisible.value && editingLoan.value?.id === loanId;
+
+// 依 id 取得借貸範本名稱（不存在回 null，容忍已刪除的引用）
+const getLoanName = (loanId) => {
+  if (!loanId) return null;
+  return loanTemplates.value.find(l => l.id === loanId)?.loanName || null;
+};
+
+// 借貸範本被幾個期款範本附掛
+const loanUsageCount = (loanId) => {
+  return templates.value.filter(t => t.companyLoanTemplateId === loanId).length;
+};
+
+// 期款範本 dialog 的附掛選項
+const loanSelectItems = computed(() => [
+  { title: '不附掛', value: null },
+  ...loanTemplates.value.map(l => ({ title: l.loanName, value: l.id })),
+]);
+
 // 獲取期款類別對應的顏色
 const getPaymentCategoryColor = (category) => {
   switch(category) {
@@ -680,7 +881,9 @@ const openTemplateDialog = (template = null) => {
       propertyType: dialogType,
       customPropertyType: customType,
       // ✅ [新增] 載入套用期款時的說明
-      applyNote: template.applyNote || ''
+      applyNote: template.applyNote || '',
+      // 載入附掛的公司借貸範本（容忍舊資料 undefined）
+      companyLoanTemplateId: template.companyLoanTemplateId || null
     };
   } else {
     // 新增模式
@@ -697,7 +900,9 @@ const openTemplateDialog = (template = null) => {
       propertyType: '住家',
       customPropertyType: '',
       // ✅ [新增] 初始化套用期款時的說明
-      applyNote: ''
+      applyNote: '',
+      // 初始化附掛的公司借貸範本
+      companyLoanTemplateId: null
     };
   }
 };
@@ -736,6 +941,8 @@ const handleCopyConfirm = async () => {
       propertyType: copyDialog.value.sourceTemplate.propertyType || '住家',
       // ✅ [新增] 複製套用期款時的說明
       applyNote: copyDialog.value.sourceTemplate.applyNote || '',
+      // 複製附掛的公司借貸範本
+      companyLoanTemplateId: copyDialog.value.sourceTemplate.companyLoanTemplateId || null,
     };
     // 儲存新範本
     await setPaymentTermTemplate(docId, newTemplate);
@@ -783,6 +990,8 @@ const handleTemplateSave = async () => {
     propertyType: finalPropertyType,
     // ✅ [新增] 套用期款時的說明（trim 後存；空字串代表不顯示）
     applyNote: (templateDialog.value.applyNote || '').trim(),
+    // 附掛的公司借貸範本 id（null = 不附掛）
+    companyLoanTemplateId: templateDialog.value.companyLoanTemplateId || null,
   };
 
   // ✅ [新增] 重複檢查邏輯
@@ -936,6 +1145,99 @@ watch(selectedTemplateId, () => {
   closeEditor();
 });
 
+// --- 公司借貸範本 CRUD ---
+
+const setupLoansListener = () => {
+  unsubscribeLoans = listenToCompanyLoanTemplates(projectId.value, (data) => {
+    loanTemplates.value = data;
+  });
+};
+
+// 開啟借貸範本編輯區（傳入深拷貝副本）
+const openLoanEditor = (loan = null) => {
+  if (loan) {
+    editingLoan.value = { ...JSON.parse(JSON.stringify(loan)), isNew: false };
+  } else {
+    editingLoan.value = {
+      isNew: true,
+      loanName: '',
+      ratioPercent: 15,
+      years: 3,
+      periods: 12,
+      annualRate: 0,
+      amortizationType: '本金平均攤還',
+      roundingMethod: '四捨五入',
+      roundingValue: 1,
+      note: ''
+    };
+  }
+  loanEditorVisible.value = true;
+};
+
+// 複製借貸範本：以來源資料開啟「新增」編輯
+const copyLoanTemplate = (loan) => {
+  const copy = JSON.parse(JSON.stringify(loan));
+  delete copy.id;
+  delete copy.createdAt;
+  delete copy.updatedAt;
+  editingLoan.value = { ...copy, isNew: true, loanName: `${loan.loanName} - 複製` };
+  loanEditorVisible.value = true;
+};
+
+const closeLoanEditor = () => {
+  loanEditorVisible.value = false;
+  editingLoan.value = null;
+};
+
+const handleLoanSave = async (loanData) => {
+  try {
+    const payload = { ...loanData };
+    const isNew = payload.isNew;
+    delete payload.isNew;
+    delete payload.id;
+    delete payload.createdAt;
+    delete payload.updatedAt;
+
+    if (isNew) {
+      const timestamp = getTimestampString();
+      const docId = `${projectId.value}_${payload.loanName}_${timestamp}`;
+      await setCompanyLoanTemplate(docId, { projectId: projectId.value, ...payload });
+      toast.success('已新增借貸範本');
+    } else {
+      await updateCompanyLoanTemplate(loanData.id, payload);
+      toast.success('借貸範本已更新');
+    }
+    closeLoanEditor();
+  } catch (error) {
+    console.error(error);
+    toast.error(`儲存失敗: ${error.message}`);
+  }
+};
+
+// 刪除借貸範本：若被期款範本附掛，警示並於確認後一併解除附掛
+const confirmDeleteLoan = async (loan) => {
+  const usingTemplates = templates.value.filter(t => t.companyLoanTemplateId === loan.id);
+  const message = usingTemplates.length > 0
+    ? `此範本已被 ${usingTemplates.length} 個期款範本附掛（${usingTemplates.map(t => t.templateName).join('、')}），刪除後該些範本將解除附掛。\n\n確定要刪除「${loan.loanName}」嗎？`
+    : `您確定要刪除借貸範本「${loan.loanName}」嗎？`;
+
+  if (!confirm(message)) return;
+
+  try {
+    // 先解除所有附掛引用，再刪除範本
+    for (const t of usingTemplates) {
+      await updatePaymentTermTemplate(t.id, { companyLoanTemplateId: null });
+    }
+    await deleteCompanyLoanTemplate(loan.id);
+    toast.info('借貸範本已刪除');
+    if (editingLoan.value?.id === loan.id) {
+      closeLoanEditor();
+    }
+  } catch (e) {
+    toast.error(`刪除失敗: ${e.message}`);
+  }
+};
+
 const saveTemplate = async () => {
   try {
     await updatePaymentTermTemplate(selectedTemplate.value.id, { items: selectedTemplate.value.items });
@@ -966,6 +1268,7 @@ function getTimestampString() {
 onMounted(() => {
   if (projectId.value) {
     setupTemplatesListener();
+    setupLoansListener();
   } else {
     toast.error('錯誤：未提供專案 ID！');
   }
@@ -973,6 +1276,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (unsubscribeTemplates) unsubscribeTemplates();
+  if (unsubscribeLoans) unsubscribeLoans();
 });
 </script>
 
@@ -1020,6 +1324,17 @@ onUnmounted(() => {
 .card-status-bar--idle {
   background: rgba(0,0,0,0.04);
   color: rgba(0,0,0,0.45);
+}
+
+/* 公司借貸範本：編輯中改用棕色系識別 */
+.card-status-bar--loan-active {
+  background: linear-gradient(90deg, #4E342E, #795548);
+  color: #fff;
+}
+
+.template-card--loan-active {
+  border: 2px solid #6D4C41;
+  box-shadow: 0 4px 16px rgba(109, 76, 65, 0.25) !important;
 }
 
 /* 編輯中呼吸燈 */
