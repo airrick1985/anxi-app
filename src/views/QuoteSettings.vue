@@ -16,134 +16,145 @@
       </div>
     </v-overlay>
 
-   <div class="page-header d-flex align-center">
-  <!-- 從「列印報價」(?pick=1) 進入時不提供返回（避免回到報價系統銷控模式） -->
-  <v-btn v-if="!isPickEntry" variant="outlined" @click="goBack" class="mr-4">返回銷控</v-btn>
+   <!-- ✅ [優化] 功能列改為「標題列＋動作列」兩層結構：桌機動作靠右一列，手機動作自動排版不混亂 -->
+   <div class="page-header">
+  <div class="header-main d-flex align-center">
+    <!-- 從「列印報價」(?pick=1) 進入時不提供返回（避免回到報價系統銷控模式） -->
+    <v-btn
+      v-if="!isPickEntry"
+      variant="outlined"
+      :size="smAndDown ? 'small' : 'default'"
+      @click="goBack"
+      class="mr-2 mr-md-4 flex-shrink-0"
+    >返回銷控</v-btn>
 
-  <div class="title-block">
-    <h1 class="text-h5 text-md-h4 font-weight-bold text-primary d-flex align-center">
-      <v-icon color="primary" class="mr-2">mdi-file-document-edit-outline</v-icon>
-      報價單設定
-    </h1>
-    <v-menu location="bottom start">
-      <template #activator="{ props }">
-        <v-chip
+    <div class="title-block">
+      <h1 class="text-h6 text-md-h4 font-weight-bold text-primary d-flex align-center">
+        <v-icon color="primary" class="mr-2">mdi-file-document-edit-outline</v-icon>
+        報價單設定
+      </h1>
+      <v-menu location="bottom start">
+        <template #activator="{ props }">
+          <v-chip
+            v-bind="props"
+            class="mt-2 project-chip"
+            color="primary"
+            variant="flat"
+            :size="smAndDown ? 'default' : 'large'"
+            label
+            link
+          >
+            <v-icon start>mdi-office-building-marker</v-icon>
+            建案：{{ projectName }}
+            <v-icon end>mdi-chevron-down</v-icon>
+          </v-chip>
+        </template>
+        <v-list density="comfortable" class="project-switch-list" max-height="60vh">
+          <v-list-subheader>切換建案</v-list-subheader>
+          <v-list-item
+            v-for="p in authorizedProjects"
+            :key="p.id"
+            :active="p.id === projectId"
+            :disabled="p.id === projectId"
+            @click="switchProject(p)"
+          >
+            <template #prepend>
+              <v-icon :color="p.id === projectId ? 'primary' : undefined">
+                {{ p.id === projectId ? 'mdi-check-circle' : 'mdi-office-building-outline' }}
+              </v-icon>
+            </template>
+            <v-list-item-title>{{ p.name }}</v-list-item-title>
+          </v-list-item>
+          <v-list-item v-if="authorizedProjects.length === 0" disabled>
+            <v-list-item-title class="text-grey">無可切換的建案</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+    </div>
+
+    <v-spacer></v-spacer>
+
+    <!-- 活動訊息（icon，桌機手機都固定在標題列右側） -->
+    <v-tooltip text="活動訊息" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn
           v-bind="props"
-          class="mt-2 project-chip"
-          color="primary"
-          variant="flat"
-          size="large"
-          label
-          link
-        >
-          <v-icon start>mdi-office-building-marker</v-icon>
-          建案：{{ projectName }}
-          <v-icon end>mdi-chevron-down</v-icon>
-        </v-chip>
+          icon="mdi-bullhorn-outline"
+          color="red"
+          variant="tonal"
+          :size="smAndDown ? 'small' : 'default'"
+          @click="handleOpenActivityMessage"
+        ></v-btn>
       </template>
-      <v-list density="comfortable" class="project-switch-list" max-height="60vh">
-        <v-list-subheader>切換建案</v-list-subheader>
-        <v-list-item
-          v-for="p in authorizedProjects"
-          :key="p.id"
-          :active="p.id === projectId"
-          :disabled="p.id === projectId"
-          @click="switchProject(p)"
-        >
-          <template #prepend>
-            <v-icon :color="p.id === projectId ? 'primary' : undefined">
-              {{ p.id === projectId ? 'mdi-check-circle' : 'mdi-office-building-outline' }}
-            </v-icon>
-          </template>
-          <v-list-item-title>{{ p.name }}</v-list-item-title>
-        </v-list-item>
-        <v-list-item v-if="authorizedProjects.length === 0" disabled>
-          <v-list-item-title class="text-grey">無可切換的建案</v-list-item-title>
-        </v-list-item>
-      </v-list>
-    </v-menu>
+    </v-tooltip>
   </div>
 
-  <v-spacer></v-spacer>
-
-  <!-- ✅ [新增] 報價單備註編輯器：僅銷控管理權限人員可見 -->
-  <v-btn
-    v-if="canEditQuoteRemark"
-    color="blue-grey-darken-2"
-    variant="tonal"
-    prepend-icon="mdi-note-edit-outline"
-    class="mr-4"
-    @click="isRemarkEditorVisible = true"
-  >報價單備註</v-btn>
-
-  <!-- ✅ [新增] 方案編輯器：僅銷控管理權限人員可見 -->
-  <v-btn
-    v-if="canEditQuoteRemark"
-    color="deep-purple-darken-1"
-    variant="tonal"
-    prepend-icon="mdi-star-box-multiple"
-    class="mr-4"
-    @click="isPlanEditorVisible = true"
-  >方案編輯器</v-btn>
-
-  <!-- ✅ [新增] 配套總價門檻設定：僅銷控管理權限人員可見 -->
-  <v-tooltip v-if="canEditQuoteRemark" text="配套總價門檻設定" location="bottom">
-    <template v-slot:activator="{ props }">
-      <v-btn
-        v-bind="props"
-        icon="mdi-cash-lock"
-        color="blue-grey-darken-2"
-        variant="tonal"
-        class="mr-4"
-        @click="isPackageLimitDialogVisible = true"
-      ></v-btn>
-    </template>
-  </v-tooltip>
-
-  <!-- ✅ [新增] 建案簡介網址（報價單 QR Code）：僅銷控管理權限人員可見 -->
-  <v-tooltip v-if="canEditQuoteRemark" text="建案簡介網址（報價單 QR Code）" location="bottom">
-    <template v-slot:activator="{ props }">
-      <v-btn
-        v-bind="props"
-        icon="mdi-qrcode"
-        color="blue-grey-darken-2"
-        variant="tonal"
-        class="mr-4"
-        @click="isIntroUrlDialogVisible = true"
-      ></v-btn>
-    </template>
-  </v-tooltip>
-
-  <v-btn
-    color="primary"
-    variant="tonal"
-    prepend-icon="mdi-home-plus"
-    class="mr-4"
-    @click="openUnitPicker"
-  >新增戶別</v-btn>
-
-  <v-btn
-    v-if="quoteStore.items.length > 0"
-    color="error"
-    variant="tonal"
-    prepend-icon="mdi-delete-sweep"
-    class="mr-4"
-    @click="confirmClearDialog = true"
-  >移除全部戶別</v-btn>
-
-<v-tooltip text="活動訊息" location="bottom">
-  <template v-slot:activator="{ props }">
+  <div class="header-actions">
     <v-btn
-      v-bind="props"
-      icon="mdi-bullhorn-outline"
-      color="red"
+      color="primary"
       variant="tonal"
-      class="mr-4"
-      @click="handleOpenActivityMessage"
-    >
-    </v-btn>
-  </template>
-</v-tooltip>
+      prepend-icon="mdi-home-plus"
+      :size="smAndDown ? 'small' : 'default'"
+      @click="openUnitPicker"
+    >新增戶別</v-btn>
+
+    <v-btn
+      v-if="quoteStore.items.length > 0"
+      color="error"
+      variant="tonal"
+      prepend-icon="mdi-delete-sweep"
+      :size="smAndDown ? 'small' : 'default'"
+      @click="confirmClearDialog = true"
+    >移除全部戶別</v-btn>
+
+    <!-- ✅ 報價單備註編輯器：僅銷控管理權限人員可見 -->
+    <v-btn
+      v-if="canEditQuoteRemark"
+      color="blue-grey-darken-2"
+      variant="tonal"
+      prepend-icon="mdi-note-edit-outline"
+      :size="smAndDown ? 'small' : 'default'"
+      @click="isRemarkEditorVisible = true"
+    >報價單備註</v-btn>
+
+    <!-- ✅ 方案編輯器：僅銷控管理權限人員可見 -->
+    <v-btn
+      v-if="canEditQuoteRemark"
+      color="deep-purple-darken-1"
+      variant="tonal"
+      prepend-icon="mdi-star-box-multiple"
+      :size="smAndDown ? 'small' : 'default'"
+      @click="isPlanEditorVisible = true"
+    >方案編輯器</v-btn>
+
+    <!-- ✅ 配套總價門檻設定：僅銷控管理權限人員可見 -->
+    <v-tooltip v-if="canEditQuoteRemark" text="配套總價門檻設定" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn
+          v-bind="props"
+          icon="mdi-cash-lock"
+          color="blue-grey-darken-2"
+          variant="tonal"
+          :size="smAndDown ? 'small' : 'default'"
+          @click="isPackageLimitDialogVisible = true"
+        ></v-btn>
+      </template>
+    </v-tooltip>
+
+    <!-- ✅ 建案簡介網址（報價單 QR Code）：僅銷控管理權限人員可見 -->
+    <v-tooltip v-if="canEditQuoteRemark" text="建案簡介網址（報價單 QR Code）" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn
+          v-bind="props"
+          icon="mdi-qrcode"
+          color="blue-grey-darken-2"
+          variant="tonal"
+          :size="smAndDown ? 'small' : 'default'"
+          @click="isIntroUrlDialogVisible = true"
+        ></v-btn>
+      </template>
+    </v-tooltip>
+  </div>
 </div>
 
       <v-dialog
@@ -242,13 +253,14 @@
                   readonly
                   :loading="loading"  ></v-text-field>
           </v-col>
-          <v-col cols="12" md="8" class="text-right">
-          <!-- ✅ [新增] 列印報價單(含期款)：勾選戶別後每戶產生一頁 A4 報價單 -->
+          <v-col cols="12" md="8" class="text-center text-md-right">
+          <!-- ✅ [新增] 列印報價單(含期款)：勾選戶別後每戶產生一頁 A4 報價單；手機版滿版按鈕 -->
           <v-btn
           color="teal-darken-1"
-          size="x-large"
+          :size="smAndDown ? 'large' : 'x-large'"
+          :block="smAndDown"
           class="mb-2 mb-md-0"
-          :class="{ 'mr-3': showLegacyQuotePrintButton }"
+          :class="{ 'mr-3': showLegacyQuotePrintButton && !smAndDown }"
           @click="isQuotePrintDialogVisible = true" prepend-icon="mdi-printer-outline"
         >
           列印報價單(含期款) </v-btn>
@@ -480,6 +492,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useDisplay } from 'vuetify';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
@@ -515,6 +528,7 @@ const showLegacyQuotePrintButton = false;
 
 const route = useRoute();
 const router = useRouter();
+const { smAndDown } = useDisplay(); // ✅ [優化] 手機版功能列/按鈕尺寸
 const quoteStore = useQuoteStore();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
@@ -1153,7 +1167,21 @@ function onPickerCancel() {
 
 <style scoped>
 
-.page-header { padding: 4px 0 16px; border-bottom: 2px solid #e0e0e0; gap: 8px; flex-wrap: wrap; }
+/* ✅ [優化] 功能列：標題列＋動作列兩層，動作列以 gap 均勻排版（取代原 mr-4） */
+.page-header { padding: 4px 0 12px; border-bottom: 2px solid #e0e0e0; display: flex; flex-direction: column; gap: 10px; }
+.header-main { min-width: 0; gap: 4px; }
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+/* 手機：文字按鈕改兩欄網格排列，icon 按鈕維持原尺寸插在其後，不再參差混亂 */
+@media (max-width: 959px) {
+  .header-actions { justify-content: flex-start; }
+  .header-actions > .v-btn:not(.v-btn--icon) { flex: 1 1 calc(50% - 4px); min-width: 0; }
+}
 .title-block { min-width: 0; }
 .project-chip {
   font-size: 1.05rem;

@@ -69,38 +69,36 @@
     <v-list-item class="pl-0"><v-list-item-title>車位價格</v-list-item-title><template v-slot:append><strong class="highlight-dark">{{ formattedParkingPrice }}</strong></template></v-list-item>
     <v-divider class="my-2"></v-divider>
     
-    <v-list-item class="pl-0">
-     <template v-if="showPackageDeal" v-slot:prepend>
-    <v-switch
-            class="mr-4"
-            v-model="usePackageDealModel"
-            label="配套"
-            color="primary"
-            hide-details
-            inset
-            :disabled="!isPackageDealAllowed"
-            :title="packageDisabledHint"
-        ></v-switch>
-     </template>
+    <!-- ✅ [優化] 配套/優付/首購改為自動換行的選項列，窄螢幕不再擠壓溢位 -->
+    <div class="mobile-options">
+     <v-switch
+        v-if="showPackageDeal"
+        v-model="usePackageDealModel"
+        label="配套"
+        color="primary"
+        hide-details
+        inset
+        density="compact"
+        :disabled="!isPackageDealAllowed"
+        :title="packageDisabledHint"
+     ></v-switch>
 
      <v-checkbox
         v-if="showPreferredPaymentOption"
         v-model="usePreferredPaymentModel"
         label="優付"
-        
         color="black"
         hide-details
-        class="mr-4"
+        density="compact"
         :disabled="!isPreferredPaymentEligible"
      ></v-checkbox>
 
-
-     <div class="d-flex align-center" style="gap: 10px;">
-       <span class="text-body-2">首購:</span>
+     <div class="d-flex align-center ga-2">
+       <span class="text-body-2 text-grey-darken-1">首購</span>
        <v-btn-toggle
          v-model="isFirstTimeBuyerModel"
          mandatory
-         density="comfortable"
+         density="compact"
          color="primary"
          variant="outlined"
          divided
@@ -109,15 +107,36 @@
          <v-btn value="否" size="small">非首購</v-btn>
        </v-btn-toggle>
      </div>
-    </v-list-item>
+    </div>
     
     <v-divider class="my-2"></v-divider>
     <v-list-item v-if="showPackageDeal" class="pl-0"><v-list-item-title>配套價</v-list-item-title><template v-slot:append><strong class="final-price">{{ packagePrice.toLocaleString() }} 萬</strong></template></v-list-item>
     <v-list-item class="pl-0"><v-list-item-title class="font-weight-bold">總價</v-list-item-title><template v-slot:append><strong class="final-price">{{ finalTotalPrice.toLocaleString() }} 萬</strong></template></v-list-item>
    </v-list>
-   <v-btn block @click="isPaymentDetailsVisible = !isPaymentDetailsVisible" :append-icon="isPaymentDetailsVisible ? 'mdi-chevron-up' : 'mdi-chevron-down'" class="mt-2" size="small">
-    付款方式
-   </v-btn>
+   <!-- ✅ [優化] 手機版補上「選擇方案」按鈕（原僅桌機版有），與付款方式並排 -->
+   <div class="d-flex ga-2 mt-2">
+    <v-btn class="flex-grow-1" size="small" @click="isPaymentDetailsVisible = !isPaymentDetailsVisible" :append-icon="isPaymentDetailsVisible ? 'mdi-chevron-up' : 'mdi-chevron-down'">
+     付款方式
+    </v-btn>
+    <v-btn
+      class="flex-grow-1 plan-select-btn"
+      size="small"
+      prepend-icon="mdi-star-box-multiple"
+      @click="isPlanPickerVisible = true"
+    >選擇方案</v-btn>
+   </div>
+   <div v-if="appliedPlansList.length > 0" class="d-flex flex-wrap justify-center ga-1 mt-2">
+    <v-chip
+      v-for="ap in appliedPlansList"
+      :key="ap.planId"
+      size="x-small"
+      color="deep-purple-darken-1"
+      :variant="isPlanModified(ap) ? 'outlined' : 'flat'"
+      :class="{ 'plan-chip-modified': isPlanModified(ap) }"
+      closable
+      @click:close="removeAppliedPlan(ap)"
+    >{{ ap.planName }}{{ isPlanModified(ap) ? '（已修改）' : '' }}</v-chip>
+   </div>
     </div>
 
     <div v-else class="quote-item-row">
@@ -544,7 +563,7 @@
             hide-details
             style="max-width: 110px;"
           ></v-text-field>
-          <span class="text-caption text-grey-darken-1">
+          <span class="text-caption text-grey-darken-1 loan-param-note">
             <template v-if="loanIntervalText">每期間隔約 {{ loanIntervalText }} 個月｜</template>{{ effectiveLoanParams.amortizationType }}｜臨時調整僅影響本次報價
           </span>
         </div>
@@ -2002,6 +2021,18 @@ function isPlanModified(appliedPlan) {
 .item-cell > .v-input { flex: none; }
 .quote-item-mobile { border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px 12px; margin-bottom: 16px; background-color: #fafafa; }
 .quote-item-mobile .v-list-item { padding-left: 0; padding-right: 0; min-height: 40px; }
+/* ✅ [優化] 手機版：append 區允許收縮、露臺拆分可換行，避免窄螢幕溢位 */
+.quote-item-mobile :deep(.v-list-item__append) { min-width: 0; }
+.quote-item-mobile .terrace-split { white-space: normal; text-align: right; }
+/* ✅ [優化] 手機版配套/優付/首購選項列：自動換行、間距一致 */
+.mobile-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 4px 0;
+  min-height: 44px;
+}
 .highlight-dark { 
   font-weight: 600; 
   color: #c62828; 
@@ -2192,12 +2223,34 @@ function isPlanModified(appliedPlan) {
   vertical-align: middle;
 }
 
-/* 公司借貸攤還表 */
+/* 公司借貸攤還表（✅ 加 overflow-x：手機 5 欄數字可橫向捲動不溢位） */
 .loan-table-wrap {
   max-height: 320px;
   overflow-y: auto;
+  overflow-x: auto;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 4px;
+}
+
+/* ✅ [優化] 窄螢幕：期款明細名稱欄由固定 14em 改為彈性收縮，金額靠右，不再水平溢位 */
+@media (max-width: 600px) {
+  .payment-item {
+    gap: 8px;
+    padding: 6px 8px;
+    flex-wrap: wrap;
+  }
+  .payment-name {
+    flex: 1 1 55%;
+  }
+  .payment-amount {
+    margin-left: auto;
+  }
+  .payment-items-grid {
+    max-height: 420px;
+  }
+  .loan-param-note {
+    flex-basis: 100%;
+  }
 }
 
 .loan-table thead th {
