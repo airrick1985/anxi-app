@@ -5,13 +5,13 @@
         <div class="d-flex align-center flex-wrap" style="gap: 6px;">
           <v-icon size="small" color="teal">mdi-cash-multiple</v-icon>
           <span class="font-weight-medium">戶別繳款紀錄</span>
-          <v-chip size="x-small" :color="records.length > 0 ? 'primary' : 'grey'" variant="tonal">
+          <v-chip size="small" class="pr-title-chip" :color="records.length > 0 ? 'primary' : 'grey'" variant="tonal">
             {{ records.length }} 筆
           </v-chip>
-          <v-chip v-if="records.length > 0" size="x-small" color="teal" variant="tonal">
+          <v-chip v-if="records.length > 0" size="small" class="pr-title-chip" color="teal" variant="tonal">
             合計 {{ formatMoney(totalPaid) }} 元
           </v-chip>
-          <v-chip size="x-small" :color="ratioText === '—' ? 'grey' : 'deep-orange'" variant="tonal">
+          <v-chip size="small" class="pr-title-chip" :color="ratioText === '—' ? 'grey' : 'deep-orange'" variant="tonal">
             繳款比例 {{ ratioText }}
           </v-chip>
         </div>
@@ -32,13 +32,14 @@
           <div v-if="records.length === 0" class="text-caption text-grey text-center py-3">
             尚無繳款紀錄
           </div>
-          <div v-else class="pr-view-table">
+          <div v-else class="pr-view-table" :class="{ 'pr-view-table--actions': showRowActions }">
             <div class="pr-row pr-header">
               <div class="pr-col-idx">#</div>
               <div class="pr-col-date">日期</div>
               <div class="pr-col-amount">金額(元)</div>
               <div class="pr-col-note">備註</div>
               <div class="pr-col-img">憑證</div>
+              <div v-if="showRowActions" class="pr-col-actions">操作</div>
             </div>
             <div v-for="(r, idx) in records" :key="r.id || idx" class="pr-row">
               <div class="pr-col-idx">{{ idx + 1 }}</div>
@@ -62,6 +63,32 @@
                   </template>
                 </v-img>
                 <span v-else class="text-caption text-grey">—</span>
+              </div>
+              <div v-if="showRowActions" class="pr-col-actions">
+                <v-btn
+                  v-if="quickUpdateHandler"
+                  icon
+                  size="x-small"
+                  variant="text"
+                  color="primary"
+                  title="編輯"
+                  :disabled="deletingId === r.id"
+                  @click.stop="openQuickEdit(r)"
+                >
+                  <v-icon size="small">mdi-pencil</v-icon>
+                </v-btn>
+                <v-btn
+                  v-if="quickDeleteHandler"
+                  icon
+                  size="x-small"
+                  variant="text"
+                  color="error"
+                  title="刪除"
+                  :loading="deletingId === r.id"
+                  @click.stop="confirmQuickDelete(r, idx)"
+                >
+                  <v-icon size="small">mdi-delete</v-icon>
+                </v-btn>
               </div>
             </div>
           </div>
@@ -193,12 +220,12 @@
     </v-expansion-panel>
   </v-expansion-panels>
 
-  <!-- ── 快速新增（檢視模式，即時儲存） ── -->
+  <!-- ── 快速新增／編輯（檢視模式，即時儲存） ── -->
   <v-dialog v-model="quickAdd.open" max-width="520" persistent>
     <v-card>
       <v-card-title class="text-subtitle-1 font-weight-bold">
-        <v-icon color="teal" size="small" class="mr-1">mdi-cash-plus</v-icon>
-        新增繳款紀錄{{ unitId ? `（${unitId}）` : '' }}
+        <v-icon color="teal" size="small" class="mr-1">{{ quickAdd.mode === 'edit' ? 'mdi-cash-edit' : 'mdi-cash-plus' }}</v-icon>
+        {{ quickAdd.mode === 'edit' ? '編輯繳款紀錄' : '新增繳款紀錄' }}{{ unitId ? `（${unitId}）` : '' }}
       </v-card-title>
       <v-card-text class="pt-2">
         <v-row dense>
@@ -220,11 +247,15 @@
               請先於銷控設定此戶別的「戶別資料夾位置」，才能上傳繳款憑證
             </div>
             <template v-else>
+              <!-- 新選擇的本地圖檔（新增或編輯換圖） -->
               <div v-if="quickAdd.file" class="d-flex align-center" style="gap: 12px;">
                 <v-img :src="quickAdd.previewUrl" width="64" height="64" cover class="pr-thumb rounded"
                   @click.stop="openRawLightbox(quickAdd.previewUrl, quickAdd.file.name)" />
                 <div class="d-flex flex-column" style="gap: 4px; min-width: 0;">
-                  <span class="text-caption text-truncate">{{ quickAdd.file.name }}</span>
+                  <div class="d-flex align-center" style="gap: 6px;">
+                    <v-chip v-if="quickAdd.mode === 'edit' && quickAdd.existingFile" size="x-small" color="orange" variant="flat" label>儲存後替換</v-chip>
+                    <span class="text-caption text-truncate">{{ quickAdd.file.name }}</span>
+                  </div>
                   <div class="d-flex" style="gap: 6px;">
                     <v-btn size="x-small" variant="tonal" prepend-icon="mdi-image-sync" @click="triggerQuickAddFileSelect">
                       更換圖檔
@@ -234,6 +265,34 @@
                     </v-btn>
                   </div>
                 </div>
+              </div>
+              <!-- 既有 Drive 憑證（編輯模式，未標記移除） -->
+              <div v-else-if="quickAdd.existingFile && !quickAdd.removeFile" class="d-flex align-center" style="gap: 12px;">
+                <v-img :src="driveThumb(quickAdd.existingFile.fileId, 'w200')" width="64" height="64" cover
+                  class="pr-thumb rounded" @click.stop="openExistingFileLightbox">
+                  <template v-slot:error>
+                    <div class="pr-thumb-fallback" @click.stop="openExistingFileLightbox">
+                      <v-icon size="32" color="grey">mdi-file-image</v-icon>
+                    </div>
+                  </template>
+                </v-img>
+                <div class="d-flex flex-column" style="gap: 4px; min-width: 0;">
+                  <span class="text-caption text-truncate">{{ quickAdd.existingFile.fileName }}</span>
+                  <div class="d-flex" style="gap: 6px;">
+                    <v-btn size="x-small" variant="tonal" prepend-icon="mdi-image-sync" @click="triggerQuickAddFileSelect">
+                      更換圖檔
+                    </v-btn>
+                    <v-btn size="x-small" variant="tonal" color="error" prepend-icon="mdi-image-remove" @click="quickAdd.removeFile = true">
+                      移除憑證
+                    </v-btn>
+                  </div>
+                </div>
+              </div>
+              <!-- 既有憑證已標記移除 -->
+              <div v-else-if="quickAdd.existingFile && quickAdd.removeFile" class="d-flex align-center flex-wrap" style="gap: 8px;">
+                <v-chip size="x-small" color="error" variant="tonal" label>儲存後將移除憑證（Drive 圖檔保留）</v-chip>
+                <v-btn size="x-small" variant="tonal" prepend-icon="mdi-undo" @click="quickAdd.removeFile = false">復原</v-btn>
+                <v-btn size="x-small" variant="outlined" prepend-icon="mdi-image-plus" @click="triggerQuickAddFileSelect">選擇新圖檔</v-btn>
               </div>
               <v-btn v-else size="small" variant="outlined" prepend-icon="mdi-image-plus" @click="triggerQuickAddFileSelect">
                 選擇繳款憑證圖檔
@@ -336,6 +395,8 @@ const props = defineProps({
   driveFolderUrl: { type: String, default: '' },
   allowQuickAdd: { type: Boolean, default: false }, // 檢視模式是否顯示「新增繳款紀錄」（即時儲存）
   quickAddHandler: { type: Function, default: null }, // async ({date, amount, note, file}) => void，由父層執行上傳與寫入
+  quickUpdateHandler: { type: Function, default: null }, // async ({recordId, date, amount, note, file, removeFile}) => void，檢視模式直接編輯（即時儲存）
+  quickDeleteHandler: { type: Function, default: null }, // async ({recordId}) => void，檢視模式直接刪除（即時儲存）
   defaultExpanded: { type: Boolean, default: false }, // 是否預設展開（浮動一覽用）
 });
 const emit = defineEmits(['update:modelValue']);
@@ -369,17 +430,64 @@ function editThumbSrc(r) {
   return thumbSrc(r);
 }
 
-// ── 快速新增（檢視模式，即時儲存；上傳與寫入由父層 quickAddHandler 執行）──
+// ── 快速新增／編輯／刪除（檢視模式，即時儲存；上傳與寫入由父層 handler 執行）──
 const quickAddFileInputRef = ref(null);
-const quickAdd = reactive({ open: false, saving: false, date: '', amount: null, note: '', file: null, previewUrl: '' });
+const quickAdd = reactive({
+  open: false, saving: false, mode: 'add', recordId: '',
+  date: '', amount: null, note: '', file: null, previewUrl: '',
+  existingFile: null, removeFile: false,
+});
+const deletingId = ref('');
+const showRowActions = computed(() =>
+  !props.editable
+  && (typeof props.quickUpdateHandler === 'function' || typeof props.quickDeleteHandler === 'function')
+);
 
 function openQuickAdd() {
+  quickAdd.mode = 'add';
+  quickAdd.recordId = '';
+  quickAdd.existingFile = null;
+  quickAdd.removeFile = false;
   quickAdd.date = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
   quickAdd.amount = null;
   quickAdd.note = '';
   removeQuickAddFile();
   quickAdd.saving = false;
   quickAdd.open = true;
+}
+function openQuickEdit(r) {
+  quickAdd.mode = 'edit';
+  quickAdd.recordId = r.id;
+  quickAdd.existingFile = r.file || null;
+  quickAdd.removeFile = false;
+  quickAdd.date = r.date || '';
+  quickAdd.amount = r.amount;
+  quickAdd.note = r.note || '';
+  removeQuickAddFile();
+  quickAdd.saving = false;
+  quickAdd.open = true;
+}
+function openExistingFileLightbox() {
+  const f = quickAdd.existingFile;
+  if (!f) return;
+  const src = driveThumb(f.fileId, 'w1600');
+  prepareLightbox(src);
+  lightbox.src = src;
+  lightbox.name = f.fileName || '';
+  lightbox.webViewLink = f.webViewLink || '';
+  lightbox.open = true;
+}
+async function confirmQuickDelete(r, idx) {
+  if (typeof props.quickDeleteHandler !== 'function') return;
+  if (!window.confirm(`確定要刪除繳款 #${idx + 1}（${formatMoney(r.amount)} 元）嗎？已上傳的 Drive 憑證圖檔會保留。`)) return;
+  deletingId.value = r.id;
+  try {
+    await props.quickDeleteHandler({ recordId: r.id });
+  } catch (error) {
+    window.alert(`刪除繳款紀錄失敗：${error.message}`);
+  } finally {
+    deletingId.value = '';
+  }
 }
 function closeQuickAdd() {
   if (quickAdd.saving) return;
@@ -406,6 +514,7 @@ function onQuickAddFileSelected(event) {
   if (quickAdd.previewUrl) URL.revokeObjectURL(quickAdd.previewUrl);
   quickAdd.file = file;
   quickAdd.previewUrl = URL.createObjectURL(file);
+  quickAdd.removeFile = false; // 選了新圖即取代「移除憑證」標記
 }
 function removeQuickAddFile() {
   if (quickAdd.previewUrl) URL.revokeObjectURL(quickAdd.previewUrl);
@@ -422,19 +531,23 @@ async function submitQuickAdd() {
     window.alert('金額必須為大於 0 的整數（元）。');
     return;
   }
-  if (typeof props.quickAddHandler !== 'function') return;
+  const isEdit = quickAdd.mode === 'edit';
+  const handler = isEdit ? props.quickUpdateHandler : props.quickAddHandler;
+  if (typeof handler !== 'function') return;
   quickAdd.saving = true;
   try {
-    await props.quickAddHandler({
+    await handler({
+      recordId: quickAdd.recordId,
       date: quickAdd.date,
       amount: amountNum,
       note: quickAdd.note || '',
       file: quickAdd.file,
+      removeFile: isEdit && quickAdd.removeFile,
     });
     removeQuickAddFile();
     quickAdd.open = false;
   } catch (error) {
-    window.alert(`新增繳款紀錄失敗：${error.message}`);
+    window.alert(`${isEdit ? '更新' : '新增'}繳款紀錄失敗：${error.message}`);
   } finally {
     quickAdd.saving = false;
   }
@@ -658,8 +771,13 @@ function formatMoney(v) {
 
 <style scoped>
 .payment-records-panel :deep(.v-expansion-panel-title) {
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 12px;
+}
+/* 標題列 chip（筆數/合計/繳款比例）：加大字級並加粗，提升可讀性 */
+.payment-records-panel :deep(.pr-title-chip) {
+  font-size: 14px;
+  font-weight: 600;
 }
 .payment-records-panel :deep(.v-expansion-panel-text__wrapper) {
   padding: 8px 12px 12px;
@@ -688,9 +806,20 @@ function formatMoney(v) {
 }
 .pr-col-idx { color: #999; text-align: center; }
 .pr-col-amount { text-align: right; font-variant-numeric: tabular-nums; }
+/* 有操作欄（檢視模式可直接編輯/刪除）時多一欄 */
+.pr-view-table--actions .pr-row {
+  grid-template-columns: 36px 1.2fr 1.2fr 2fr 64px 72px;
+}
+.pr-col-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
 
 @media (max-width: 768px) {
-  .pr-row {
+  .pr-row,
+  .pr-view-table--actions .pr-row {
     grid-template-columns: 1fr 1fr;
     row-gap: 4px;
   }
@@ -699,6 +828,11 @@ function formatMoney(v) {
   .pr-col-date::before { content: '日期: '; color: #999; }
   .pr-col-amount::before { content: '金額: '; color: #999; }
   .pr-col-note::before { content: '備註: '; color: #999; }
+  .pr-col-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    gap: 8px;
+  }
 }
 
 /* ── 縮圖 ── */

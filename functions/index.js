@@ -6098,17 +6098,20 @@ exports.paymentProofApi = onCall({
   cors: true,
   secrets: driveSecrets
 }, async (request) => {
-  const { action, projectId, unitId, base64, fileId, date, amount, note } = request.data;
+  const { action, projectId, unitId, base64, fileId, date, amount, note, recordId, removeFile } = request.data;
   const functionName = `paymentProofApi (Action: ${action})`;
 
   if (!projectId || !unitId) {
     throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, unitId)。');
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
-    throw new HttpsError('invalid-argument', '繳款日期格式必須為 YYYY-MM-DD。');
+  // deleteRecord 只需 recordId，不驗證日期/金額
+  if (action !== 'deleteRecord') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
+      throw new HttpsError('invalid-argument', '繳款日期格式必須為 YYYY-MM-DD。');
+    }
   }
   const amountNum = Number(amount);
-  if (!Number.isInteger(amountNum) || amountNum <= 0) {
+  if (action !== 'deleteRecord' && (!Number.isInteger(amountNum) || amountNum <= 0)) {
     throw new HttpsError('invalid-argument', '繳款金額必須為大於 0 的整數（元）。');
   }
 
@@ -6134,17 +6137,40 @@ exports.paymentProofApi = onCall({
       return { status: 'success', file: { fileId: updated.data.id, fileName: updated.data.name, webViewLink: updated.data.webViewLink } };
     }
 
-    // --- action: upload / addRecord ---
-    if (action !== 'upload' && action !== 'addRecord') {
+    const db = new Firestore({ databaseId: 'anxi-app' });
+    const docId = `${projectId}_${unitId}`;
+    const docRef = db.collection('salesHouseholds').doc(docId);
+
+    // --- action: deleteRecord（檢視模式直接刪除；Drive 憑證圖檔保留不刪） ---
+    if (action === 'deleteRecord') {
+      if (!recordId) {
+        throw new HttpsError('invalid-argument', '缺少必要參數 (recordId)。');
+      }
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(docRef);
+        if (!snap.exists) {
+          throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
+        }
+        const existing = Array.isArray(snap.data().paymentRecords) ? snap.data().paymentRecords : [];
+        if (!existing.some(r => r && r.id === recordId)) {
+          throw new HttpsError('not-found', '找不到指定的繳款紀錄，可能已被其他人刪除，請重新整理。');
+        }
+        tx.update(docRef, { paymentRecords: existing.filter(r => !(r && r.id === recordId)) });
+      });
+      console.log(`[${functionName}] 已刪除繳款紀錄 ${recordId} (${unitId})，Drive 憑證保留`);
+      return { status: 'success', removedId: recordId };
+    }
+
+    // --- action: upload / addRecord / updateRecord ---
+    if (action !== 'upload' && action !== 'addRecord' && action !== 'updateRecord') {
       throw new HttpsError('invalid-argument', `未知的 action: ${action}`);
     }
     if (action === 'upload' && !base64) {
       throw new HttpsError('invalid-argument', '缺少必要參數 (base64)。');
     }
-
-    const db = new Firestore({ databaseId: 'anxi-app' });
-    const docId = `${projectId}_${unitId}`;
-    const docRef = db.collection('salesHouseholds').doc(docId);
+    if (action === 'updateRecord' && !recordId) {
+      throw new HttpsError('invalid-argument', '缺少必要參數 (recordId)。');
+    }
 
     // 有帶圖檔才需要解析戶別資料夾並上傳（addRecord 的圖檔為選填）
     let uploadedFileInfo = null;
@@ -6202,26 +6228,103 @@ exports.paymentProofApi = onCall({
     }
 
     // --- action: addRecord（快速新增：不經修改銷控，直接把紀錄附加進 paymentRecords）---
+    if (action === 'addRecord') {
+      const nowIso = new Date().toISOString();
+      const newRecord = {
+        id: `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        date: String(date),
+        amount: amountNum,
+        note: String(note || ''),
+        file: uploadedFileInfo,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(docRef);
+        if (!snap.exists) {
+          throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
+        }
+        const existing = Array.isArray(snap.data().paymentRecords) ? snap.data().paymentRecords : [];
+        tx.update(docRef, { paymentRecords: [...existing, newRecord] });
+      });
+      console.log(`[${functionName}] 已新增繳款紀錄 ${newRecord.id} (${unitId}, ${amountNum} 元)`);
+      return { status: 'success', record: newRecord };
+    }
+
+    // --- action: updateRecord（檢視模式直接編輯：可換圖/移除圖，內容異動自動同步 Drive 檔名）---
+    // 1. 先讀既有紀錄：判斷是否需同步 Drive 檔名、決定最終 file 欄位
+    const preSnap = await docRef.get();
+    if (!preSnap.exists) {
+      throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
+    }
+    const preList = Array.isArray(preSnap.data().paymentRecords) ? preSnap.data().paymentRecords : [];
+    const preRecord = preList.find(r => r && r.id === recordId);
+    if (!preRecord) {
+      throw new HttpsError('not-found', '找不到指定的繳款紀錄，可能已被其他人刪除，請重新整理。');
+    }
+
+    let nextFile = preRecord.file || null;
+    let renameWarning = false;
+    if (uploadedFileInfo) {
+      // 換新圖：舊圖依規格保留於 Drive，僅替換 file 欄位
+      nextFile = uploadedFileInfo;
+    } else if (removeFile) {
+      nextFile = null;
+    } else if (preRecord.file && preRecord.file.fileId) {
+      // 無新圖且未移除 → 日期/金額/備註有異動時同步 Drive 檔名（失敗不中斷，僅回報警告）
+      const changed = String(preRecord.date || '') !== String(date)
+        || Number(preRecord.amount) !== amountNum
+        || String(preRecord.note || '') !== String(note || '');
+      if (changed) {
+        try {
+          const current = await drive.files.get({ fileId: preRecord.file.fileId, fields: 'name' });
+          const extMatch = String(current.data.name || '').match(/\.(\w+)$/);
+          const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+          const newName = buildPaymentProofFileName(date, unitId, amountNum, note, ext);
+          const updated = await drive.files.update({
+            fileId: preRecord.file.fileId,
+            requestBody: { name: newName },
+            fields: 'id, name, webViewLink'
+          });
+          nextFile = {
+            ...preRecord.file,
+            fileName: updated.data.name,
+            webViewLink: updated.data.webViewLink || preRecord.file.webViewLink
+          };
+        } catch (renameError) {
+          console.warn(`[${functionName}] ⚠️ Drive 檔名同步失敗 (fileId: ${preRecord.file.fileId}):`, renameError.message);
+          renameWarning = true;
+        }
+      }
+    }
+
+    // 2. Transaction 寫回更新後的紀錄
     const nowIso = new Date().toISOString();
-    const newRecord = {
-      id: `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      date: String(date),
-      amount: amountNum,
-      note: String(note || ''),
-      file: uploadedFileInfo,
-      createdAt: nowIso,
-      updatedAt: nowIso
-    };
+    let updatedRecord = null;
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(docRef);
       if (!snap.exists) {
         throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
       }
       const existing = Array.isArray(snap.data().paymentRecords) ? snap.data().paymentRecords : [];
-      tx.update(docRef, { paymentRecords: [...existing, newRecord] });
+      const idx = existing.findIndex(r => r && r.id === recordId);
+      if (idx === -1) {
+        throw new HttpsError('not-found', '找不到指定的繳款紀錄，可能已被其他人刪除，請重新整理。');
+      }
+      updatedRecord = {
+        ...existing[idx],
+        date: String(date),
+        amount: amountNum,
+        note: String(note || ''),
+        file: nextFile,
+        updatedAt: nowIso
+      };
+      const next = existing.slice();
+      next[idx] = updatedRecord;
+      tx.update(docRef, { paymentRecords: next });
     });
-    console.log(`[${functionName}] 已新增繳款紀錄 ${newRecord.id} (${unitId}, ${amountNum} 元)`);
-    return { status: 'success', record: newRecord };
+    console.log(`[${functionName}] 已更新繳款紀錄 ${recordId} (${unitId}, ${amountNum} 元)`);
+    return { status: 'success', record: updatedRecord, renameWarning };
 
   } catch (error) {
     console.error(`[${functionName}] 🔴 執行時發生錯誤:`, error);
@@ -18979,6 +19082,54 @@ exports.generatePaymentDocument = onCall({
   } catch (error) {
     console.error('[generatePaymentDocument] 產製失敗:', error);
     throw new HttpsError("internal", `付款表產製失敗: ${error.message}`);
+  }
+});
+
+/* ==========================================================
+ * ✅ [新增] 銷控網格下載 PDF
+ * docs/銷控網格下載PDF-spec.md
+ * 前端 SalesGridDownloadDialog.vue 以 salesGridLayout.js 算好完整 page plan 傳入，
+ * 後端照畫不重算（僅做基本結構複核）。
+ * ========================================================== */
+exports.generateSalesGridPdf = onCall({
+  region: "asia-east1",
+  timeoutSeconds: 120,
+  memory: "512MiB"
+}, async (request) => {
+  const { projectId, doc } = request.data || {};
+  if (!projectId || !doc || !doc.layout || !Array.isArray(doc.pages) || doc.pages.length === 0) {
+    throw new HttpsError("invalid-argument", "缺少 projectId、doc.layout 或 doc.pages 參數。");
+  }
+  for (const page of doc.pages) {
+    if (!Array.isArray(page.buildings) || !Array.isArray(page.floors)
+      || !Array.isArray(page.cells)
+      || page.cells.length !== page.buildings.length * page.floors.length) {
+      throw new HttpsError("invalid-argument", "頁面格子數量與棟別×樓層不符。");
+    }
+  }
+
+  try {
+    const { buildSalesGridPdf } = require('./salesGridDocument');
+    const buffer = await buildSalesGridPdf(doc);
+    // onCall 回應上限 10MB（base64 膨脹 ~1.37 倍），保護值 7MB
+    if (buffer.length > 7 * 1024 * 1024) {
+      throw new HttpsError("resource-exhausted", "PDF 檔案過大，請減少頁數或格子內容。");
+    }
+
+    const today = formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyyMMdd');
+    const suffix = doc.titleSuffix ? '-店面' : '';
+    const fileName = `${today}-${doc.projectName || ''}-銷控表${suffix}.pdf`;
+
+    return {
+      status: 'success',
+      fileName,
+      mimeType: 'application/pdf',
+      base64: buffer.toString('base64')
+    };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error('[generateSalesGridPdf] 產製失敗:', error);
+    throw new HttpsError("internal", `銷控表產製失敗: ${error.message}`);
   }
 });
 

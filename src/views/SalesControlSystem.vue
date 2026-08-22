@@ -77,6 +77,21 @@
           <v-btn value="transaction" size="small">成交價</v-btn>
         </v-btn-toggle>
 
+        <!-- ✅ [新增] 下載銷控表 PDF（docs/銷控網格下載PDF-spec.md） -->
+        <v-tooltip location="bottom" v-if="viewFormat === 'grid'">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              icon="mdi-file-pdf-box"
+              :disabled="filteredHouseholds.length === 0"
+              @click="isGridDownloadDialogVisible = true"
+            ></v-btn>
+          </template>
+          <span>下載銷控表 (PDF)</span>
+        </v-tooltip>
+
         <v-badge
           :content="itemCount"
           :model-value="itemCount > 0"
@@ -1123,9 +1138,28 @@
       :contract-types="project.contractTypes || []"
       :price-formulas="project.priceFormulaSettings || null"
       :plan-options="quotePlansList"
+      @data-updated="handleRefreshData"
       @request-open-slide="handleOpenSlideViewer" />
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
+
+    <!-- ✅ [新增] 下載銷控表 PDF 對話框 -->
+    <SalesGridDownloadDialog
+      v-model:show="isGridDownloadDialogVisible"
+      :buildings="buildingHeaders"
+      :floors="floorHeaders"
+      :grid-data="gridData"
+      :status-color-map="statusColorMap"
+      :sales-parameters="salesParameters"
+      :view-mode="currentViewMode"
+      :price-display-mode="priceDisplayMode"
+      :price-display-label="priceDisplayLabel"
+      :project-name="projectName"
+      :project-id="projectId"
+      :display-type="displayType"
+      :get-total-price="getDisplayTotalPrice"
+      :get-unit-price="calculateUnitPrice"
+    />
 
     <CancelledPurchaseManager
       v-model:show="isCancelledPurchaseDialogVisible"
@@ -1539,6 +1573,10 @@
             :model-value="paymentPopup.unit.paymentRecords || []"
             :editable="false"
             :default-expanded="true"
+            :allow-quick-add="canQuickEditPayments"
+            :quick-add-handler="canQuickEditPayments ? popupQuickAddPaymentRecord : null"
+            :quick-update-handler="canQuickEditPayments ? popupQuickUpdatePaymentRecord : null"
+            :quick-delete-handler="canQuickEditPayments ? popupQuickDeletePaymentRecord : null"
             :total-price-wan="paymentPopup.unit.total_transaction"
             :unit-id="paymentPopup.unit.unitId || ''"
             :drive-folder-url="paymentPopup.unit.driveFolderUrl || ''"
@@ -1864,7 +1902,8 @@ import {
   getFloorPlansAPI,
   updateSalesData,
   updateSingleField,
-  listenToQuotePlans
+  listenToQuotePlans,
+  paymentProofApi
  } from '@/api';
 
 import { useToast, POSITION } from 'vue-toastification';
@@ -1891,6 +1930,7 @@ import SalesBotChat from '@/components/SalesBotChat.vue';
 import AnalyticsPanel from '@/components/AnalyticsPanel.vue';
 import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
 import UnitDataExportDialog from '@/components/UnitDataExportDialog.vue';
+import SalesGridDownloadDialog from '@/components/SalesGridDownloadDialog.vue';
 import PaymentRecordsPanel from '@/components/PaymentRecordsPanel.vue';
 import { useUserStore } from '@/store/user';
 import { useTextStyleStore } from '@/store/textStyleStore';
@@ -3508,6 +3548,7 @@ const mainGridRef = ref(null);
 const isModalVisible = ref(false);
 const selectedUnitData = ref(null);
 const isQuoteSidebarOpen = ref(false);
+const isGridDownloadDialogVisible = ref(false); // ✅ [新增] 下載銷控表 PDF 對話框
 const displayType = ref('住家');
 const priceDisplayMode = ref('list');
 
@@ -3934,11 +3975,83 @@ const summaryRow = computed(() => {
   };
 });
 
-// ✅ [繳款紀錄] 列表模式：點繳款比例浮動顯示該戶繳款紀錄一覽
+// ✅ [繳款紀錄] 列表模式：點繳款比例浮動顯示該戶繳款紀錄一覽（銷控模式可直接新增/編輯/刪除）
 const paymentPopup = reactive({ open: false, unit: null });
 function openPaymentRecordsPopup(item) {
   paymentPopup.unit = item;
   paymentPopup.open = true;
+}
+const canQuickEditPayments = computed(() => currentViewMode.value === 'sales');
+
+function paymentProofFileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(new Error('讀取圖檔失敗'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// CRUD 成功後同步 store 原始資料與彈窗列表：列表「繳款比例」chip 與資料透視即時重算，免重新載入
+function applyPaymentRecordsLocally(unitId, updater) {
+  const raw = (salesHouseholds.value || []).find(u => u.unitId === unitId);
+  if (raw) {
+    raw.paymentRecords = updater(Array.isArray(raw.paymentRecords) ? raw.paymentRecords : []);
+  }
+  if (paymentPopup.unit && paymentPopup.unit.unitId === unitId) {
+    const current = Array.isArray(paymentPopup.unit.paymentRecords) ? paymentPopup.unit.paymentRecords : [];
+    paymentPopup.unit = { ...paymentPopup.unit, paymentRecords: updater(current) };
+  }
+}
+
+async function popupQuickAddPaymentRecord({ date, amount, note, file }) {
+  const unit = paymentPopup.unit;
+  if (!unit) return;
+  const base64 = file ? await paymentProofFileToBase64(file) : null;
+  const res = await paymentProofApi({
+    action: 'addRecord',
+    projectId: projectId.value,
+    unitId: unit.unitId,
+    base64, date, amount, note
+  });
+  if (res.status !== 'success' || !res.record) throw new Error(res.message || '請稍後再試');
+  applyPaymentRecordsLocally(unit.unitId, list => [...list, res.record]);
+  toast.success('繳款紀錄已新增', { position: POSITION.BOTTOM_CENTER });
+}
+
+async function popupQuickUpdatePaymentRecord({ recordId, date, amount, note, file, removeFile }) {
+  const unit = paymentPopup.unit;
+  if (!unit) return;
+  const base64 = file ? await paymentProofFileToBase64(file) : null;
+  const res = await paymentProofApi({
+    action: 'updateRecord',
+    projectId: projectId.value,
+    unitId: unit.unitId,
+    recordId,
+    base64,
+    removeFile: !!removeFile,
+    date, amount, note
+  });
+  if (res.status !== 'success' || !res.record) throw new Error(res.message || '請稍後再試');
+  applyPaymentRecordsLocally(unit.unitId, list => list.map(r => (r.id === recordId ? res.record : r)));
+  if (res.renameWarning) {
+    toast.warning('憑證 Drive 檔名同步失敗，紀錄內容仍已更新', { position: POSITION.BOTTOM_CENTER });
+  }
+  toast.success('繳款紀錄已更新', { position: POSITION.BOTTOM_CENTER });
+}
+
+async function popupQuickDeletePaymentRecord({ recordId }) {
+  const unit = paymentPopup.unit;
+  if (!unit) return;
+  const res = await paymentProofApi({
+    action: 'deleteRecord',
+    projectId: projectId.value,
+    unitId: unit.unitId,
+    recordId
+  });
+  if (res.status !== 'success') throw new Error(res.message || '請稍後再試');
+  applyPaymentRecordsLocally(unit.unitId, list => list.filter(r => r.id !== recordId));
+  toast.success('繳款紀錄已刪除（Drive 憑證圖檔保留）', { position: POSITION.BOTTOM_CENTER });
 }
 
 // 5. 處理列表行點擊

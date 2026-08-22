@@ -885,9 +885,10 @@ export async function updateSalesData(payload) {
 }
 
 /**
- * 戶別繳款紀錄 - 繳款憑證圖檔上傳/改名 (SPEC_UnitPaymentRecords.md)
- * @param {object} payload - { action: 'upload'|'rename', projectId, unitId, base64?, fileId?, date, amount, note }
- * @returns {Promise<object>} { status, file: { fileId, fileName, webViewLink, uploadedAt? } }
+ * 戶別繳款紀錄 - 繳款憑證圖檔上傳/改名與紀錄快速 CRUD (SPEC_UnitPaymentRecords.md)
+ * @param {object} payload - { action: 'upload'|'rename'|'addRecord'|'updateRecord'|'deleteRecord',
+ *   projectId, unitId, base64?, fileId?, recordId?, removeFile?, date?, amount?, note? }
+ * @returns {Promise<object>} { status, file?|record?|removedId?, renameWarning? }
  */
 export async function paymentProofApi(payload) {
   try {
@@ -933,6 +934,23 @@ export const generatePaymentDocument = async (payload) => {
   } catch (error) {
     console.error("API Error in generatePaymentDocument:", error);
     throw new Error(error.message || '產製付款表失敗');
+  }
+};
+
+
+/**
+ * ✅ [新增] [API] 銷控網格下載 PDF（docs/銷控網格下載PDF-spec.md）
+ * @param {object} payload - { projectId, doc: { layout, legend, pages, ... } }
+ * @returns {Promise<object>} - { status, fileName, mimeType, base64 }
+ */
+export const generateSalesGridPdf = async (payload) => {
+  try {
+    const func = httpsCallable(functions, 'generateSalesGridPdf', { timeout: 120000 });
+    const result = await func(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in generateSalesGridPdf:", error);
+    throw new Error(error.message || '產製銷控表失敗');
   }
 };
 

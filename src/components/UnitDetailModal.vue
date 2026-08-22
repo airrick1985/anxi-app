@@ -673,13 +673,15 @@
                     </v-col>
                   </v-row>
 
-                  <!-- ✅ 戶別繳款紀錄（檢視模式：唯讀列表 + 免進編輯模式的快速新增） -->
+                  <!-- ✅ 戶別繳款紀錄（檢視模式：免進編輯模式即可新增/編輯/刪除，即時儲存） -->
                   <PaymentRecordsPanel
                     class="mt-2"
                     :model-value="viewPaymentRecords"
                     :editable="false"
                     :allow-quick-add="true"
                     :quick-add-handler="handleQuickAddPaymentRecord"
+                    :quick-update-handler="handleQuickUpdatePaymentRecord"
+                    :quick-delete-handler="handleQuickDeletePaymentRecord"
                     :total-price-wan="grandTotalTransactionPrice"
                     :unit-id="unitData.unitId || ''"
                     :drive-folder-url="unitData.driveFolderUrl || ''"
@@ -1904,6 +1906,53 @@ async function handleQuickAddPaymentRecord({ date, amount, note, file }) {
   }
   viewPaymentRecords.value = [...viewPaymentRecords.value, res.record];
   toast.success('繳款紀錄已新增');
+  emit('data-updated');
+}
+
+/**
+ * [戶別繳款紀錄] 快速編輯（檢視模式，不經修改銷控）：
+ * 可換圖（舊圖保留於 Drive）或移除憑證；無換圖時內容異動由後端自動同步 Drive 檔名。
+ */
+async function handleQuickUpdatePaymentRecord({ recordId, date, amount, note, file, removeFile }) {
+  let base64 = null;
+  if (file) {
+    base64 = await paymentProofFileToBase64(file);
+  }
+  const res = await paymentProofApi({
+    action: 'updateRecord',
+    projectId: props.projectId,
+    unitId: props.unitData.unitId,
+    recordId,
+    base64,
+    removeFile: !!removeFile,
+    date,
+    amount,
+    note
+  });
+  if (res.status !== 'success' || !res.record) {
+    throw new Error(res.message || '請稍後再試');
+  }
+  viewPaymentRecords.value = viewPaymentRecords.value.map(r => (r.id === recordId ? res.record : r));
+  if (res.renameWarning) {
+    toast.warning('憑證 Drive 檔名同步失敗，紀錄內容仍已更新');
+  }
+  toast.success('繳款紀錄已更新');
+  emit('data-updated');
+}
+
+/** [戶別繳款紀錄] 快速刪除（檢視模式）：Drive 憑證圖檔依規格保留不刪。 */
+async function handleQuickDeletePaymentRecord({ recordId }) {
+  const res = await paymentProofApi({
+    action: 'deleteRecord',
+    projectId: props.projectId,
+    unitId: props.unitData.unitId,
+    recordId
+  });
+  if (res.status !== 'success') {
+    throw new Error(res.message || '請稍後再試');
+  }
+  viewPaymentRecords.value = viewPaymentRecords.value.filter(r => r.id !== recordId);
+  toast.success('繳款紀錄已刪除（Drive 憑證圖檔保留）');
   emit('data-updated');
 }
 

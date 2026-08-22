@@ -204,3 +204,18 @@ exports.paymentProofApi = onCall({
 | 圖檔同步 | 改紀錄自動改名 Drive 檔案；刪紀錄不刪圖 |
 | 無 `driveFolderUrl` | 停用圖檔欄位並提示，純文字紀錄仍可新增 |
 | 快速新增（2026-08-16 追加） | 檢視模式免進修改銷控即可直接新增（即時儲存）；編輯／刪除仍在修改銷控內 |
+
+## 10. 檢視模式完整 CRUD（2026-08-22 追加）
+
+檢視模式（戶別整合 Modal 與列表模式「繳款紀錄一覽」浮動視窗）免進修改銷控即可完整 CRUD，逐筆即時儲存：
+
+- **列表操作欄**：`PaymentRecordsPanel` 檢視模式新增「操作」欄（編輯 ✏️／刪除 🗑️），僅在父層傳入 `quickUpdateHandler` / `quickDeleteHandler` 時顯示；手機版操作鈕靠右整列顯示。
+- **編輯**：複用快速新增對話框（`mode: 'add' | 'edit'`），可改日期／金額／備註，憑證支援「更換圖檔」（舊圖保留於 Drive，僅換 `file` 欄位）與「移除憑證」（`file` 設 null，Drive 圖檔保留，標記後可復原）；無換圖時內容異動由後端自動同步 Drive 檔名（失敗回 `renameWarning`，僅 toast 警告）。
+- **刪除**：`confirm` 確認後即時刪除該筆，Drive 憑證圖檔保留。
+- **新後端 action**（`paymentProofApi`）：
+  - `updateRecord`：`{ projectId, unitId, recordId, base64?, removeFile?, date, amount, note }`，先處理圖檔（上傳新圖／移除標記／自動改名），再以 transaction 依 `recordId` 覆寫該筆，回 `{ status, record, renameWarning }`。
+  - `deleteRecord`：`{ projectId, unitId, recordId }`，transaction 過濾移除該筆（不驗證日期／金額），回 `{ status, removedId }`。
+- **同步機制**：
+  - 戶別 Modal：本地 `viewPaymentRecords` 即時更新並 emit `data-updated`；`SalesControlSystem` 已接 `@data-updated="handleRefreshData"` 背景刷新列表。
+  - 列表浮動視窗：CRUD 後同步更新 store 原始戶別的 `paymentRecords`（`applyPaymentRecordsLocally`），列表「繳款比例」chip 與資料透視即時重算，免重新載入。
+- **權限**：與快速新增相同，限銷控模式（`viewMode === 'sales'`）；報價模式浮動視窗維持唯讀。
