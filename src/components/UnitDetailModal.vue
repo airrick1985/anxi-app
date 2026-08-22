@@ -342,7 +342,8 @@
                   <v-col cols="12" md="4">
                     <div class="info-section">
                       <div class="section-title d-flex justify-space-between align-center">
-                        <span>{{ unitData.unitId }} 價格資訊</span>
+                        <!-- 🔐 手機版隱藏解鎖：連點戶別 8 次切換已售報價顯示 -->
+                        <span><span class="tap-unlock-target" @click="tapUnlockPriceQuote">{{ unitData.unitId }}</span> 價格資訊</span>
                         <v-chip v-if="unitData.isPreferredPayment" color="primary" size="small" label
                           class="font-weight-bold">
                           <v-icon start icon="mdi-check-circle" size="small"></v-icon>
@@ -1062,6 +1063,7 @@ import CancelPurchaseDialog from './CancelPurchaseDialog.vue';
 import SalesStatusNotifyDialog from './SalesStatusNotifyDialog.vue';
 import RealPriceReportExportDialog from './RealPriceReport/ExportDialog.vue';
 import { useToast, POSITION } from 'vue-toastification';
+import { useTapUnlock } from '@/composables/useTapUnlock';
 import * as XLSX from 'xlsx';
 import { storage } from '@/firebase';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -1105,6 +1107,11 @@ const editingParkingSelection = ref(null);   // 用於「修改銷控」暫存
 // 🔐 [隱藏功能] 連續按 8 次 'a' 鍵來顯示已售不提供報價
 const keySequence = ref('');
 const showHiddenPriceQuote = ref(false);
+
+// 🔐 [隱藏功能] 手機版無鍵盤：連續點按「價格資訊的戶別」8 次，效果同連按 8 次 'a'
+const { tap: tapUnlockPriceQuote } = useTapUnlock(() => {
+  showHiddenPriceQuote.value = !showHiddenPriceQuote.value;
+});
 const handleKeyPress = (e) => {
   if (e.key.toLowerCase() === 'a') {
     keySequence.value += 'a';
@@ -3377,6 +3384,14 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 🔐 手機版隱藏解鎖點按目標：不顯示任何可點擊暗示，並防止連點選取文字 */
+.tap-unlock-target {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: default;
+}
+
 .header-section {
   flex-shrink: 0;
   position: relative;

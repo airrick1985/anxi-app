@@ -4,7 +4,8 @@
     :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'" persistent>
     <v-card :class="{ 'd-flex flex-column': isMobile }" :style="isMobile ? 'height: 100%;' : ''">
       <v-card-title class="d-flex justify-space-between align-center flex-wrap ga-2">
-        <span class="parking-modal-title">{{ title }}</span>
+        <!-- 🔐 手機版隱藏解鎖：連點標題（含戶別）8 次解除已售車位禁用（效果同連按 8 次 A） -->
+        <span class="parking-modal-title tap-unlock-target" @click="tapUnlockSoldParking">{{ title }}</span>
         <div class="d-flex align-center ga-1">
           <v-btn
             prepend-icon="mdi-car-side"
@@ -209,6 +210,7 @@ import { useDisplay } from 'vuetify';
 import ParkingCanvas from '@/components/ParkingCanvas.vue'; 
 import { getFloorPlansAPI } from '@/api'; 
 import { useToast } from 'vue-toastification';
+import { useTapUnlock } from '@/composables/useTapUnlock';
 
 // ✓ START: 匯入樣式 Store
 import { useTextStyleStore } from '@/store/textStyleStore';
@@ -301,6 +303,7 @@ watch(() => props.show, (newVal) => {
       aKeyPressTimer = null;
     }
     aKeyPressCount = 0;
+    resetTapUnlockSoldParking();
   }
 });
 
@@ -482,9 +485,8 @@ const handleKeyPress = (event) => {
 
     // 如果達到 8 次，解除已售車位禁用
     if (aKeyPressCount >= 8) {
-      canSelectSoldParking.value = true;
+      unlockSoldParking();
       aKeyPressCount = 0;
-      toast.success('✨ 已售車位已解除禁用');
     } else {
       // 3 秒內沒有按下 A 鍵，則重置計數
       aKeyPressTimer = setTimeout(() => {
@@ -493,6 +495,16 @@ const handleKeyPress = (event) => {
     }
   }
 };
+
+// 解鎖動作（鍵盤連按 A 與手機連點標題共用）
+function unlockSoldParking() {
+  if (canSelectSoldParking.value) return;
+  canSelectSoldParking.value = true;
+  toast.success('✨ 已售車位已解除禁用');
+}
+
+// 🔐 手機版無鍵盤：連點標題「為 {戶別} 選擇車位」8 次解除已售車位禁用
+const { tap: tapUnlockSoldParking, reset: resetTapUnlockSoldParking } = useTapUnlock(unlockSoldParking);
 
 // 生命週期：卸載時的清理工作
 onUnmounted(() => {
@@ -513,6 +525,14 @@ onUnmounted(() => {
   overflow-wrap: anywhere;
   white-space: normal;
   line-height: 1.3;
+}
+
+/* 🔐 手機版隱藏解鎖點按目標：無可點擊暗示、防連點選取 */
+.tap-unlock-target {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: default;
 }
 
 .parking-mobile-card {

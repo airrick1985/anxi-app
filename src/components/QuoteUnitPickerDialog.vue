@@ -7,7 +7,8 @@
   >
     <v-card>
       <v-card-title class="d-flex align-center bg-primary text-white">
-        <v-icon start>mdi-home-search</v-icon>
+        <!-- 🔐 手機版隱藏解鎖：連點房子 icon 8 次解鎖已售戶別（效果同鍵盤輸入解鎖碼） -->
+        <v-icon start class="tap-unlock-target" @click="tapUnlock">mdi-home-search</v-icon>
         選擇戶別（最多 5 戶）
       </v-card-title>
 
@@ -135,6 +136,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useToast, POSITION } from 'vue-toastification';
+import { useTapUnlock } from '@/composables/useTapUnlock';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -277,20 +279,26 @@ function onKeydownBlock(e) {
   }
 }
 
+function doUnlock() {
+  if (unlocked.value) return;
+  unlocked.value = true;
+  toast.success('已解鎖', {
+    position: POSITION.BOTTOM_CENTER,
+    timeout: 1500,
+  });
+}
+
 function onKeyupDetect(e) {
   if (typeof e.key !== 'string' || e.key.length !== 1) return;
   keyBuffer = (keyBuffer + normalizeChar(e.key)).slice(-UNLOCK_CODE.length);
   if (keyBuffer === UNLOCK_CODE) {
     keyBuffer = '';
-    if (!unlocked.value) {
-      unlocked.value = true;
-      toast.success('已解鎖', {
-        position: POSITION.BOTTOM_CENTER,
-        timeout: 1500,
-      });
-    }
+    doUnlock();
   }
 }
+
+// 🔐 手機版無鍵盤：連點標題房子 icon 8 次解鎖（與鍵盤解鎖碼等效）
+const { tap: tapUnlock, reset: resetTapUnlock } = useTapUnlock(doUnlock);
 
 function attachListener() {
   // keydown：window+document capture 擋 typeahead（已用 stopImmediatePropagation 去重）
@@ -317,6 +325,7 @@ watch(
       rows.value = [{ key: uid(), building: null, unitId: null }];
       unlocked.value = false;
       keyBuffer = '';
+      resetTapUnlock();
       attachListener();
       // 修正 BUG：開啟時不讓游標停留在任何選單，避免按鍵被選單吃掉
       nextTick(() => {
@@ -335,6 +344,14 @@ onBeforeUnmount(detachListener);
 </script>
 
 <style scoped>
+/* 🔐 手機版隱藏解鎖點按目標：無可點擊暗示、防連點選取 */
+.tap-unlock-target {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: default;
+}
+
 .unit-opt {
   min-height: 44px;
 }

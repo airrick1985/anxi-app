@@ -937,6 +937,19 @@ const SHEET_CSS = `
   }
   .remark-body { padding: 2.5mm 4mm; font-size: 10.5pt; line-height: 1.8; color: #37474f; }
   .remark-body ul, .remark-body ol { padding-left: 6mm; }
+  /* ✅ [修復] 備註富文本樣式：編輯器輸出 legacy font 標籤，明確定義使
+     手機預覽 / 列印 / PDF 截圖皆一致渲染（不依賴瀏覽器 UA 樣式） */
+  .remark-body b, .remark-body strong { font-weight: 700; }
+  .remark-body i, .remark-body em { font-style: italic; }
+  .remark-body u { text-decoration: underline; }
+  .remark-body s, .remark-body strike { text-decoration: line-through; }
+  .remark-body font[size="1"] { font-size: 7.5pt; }
+  .remark-body font[size="2"] { font-size: 9pt; }
+  .remark-body font[size="3"] { font-size: 10.5pt; }
+  .remark-body font[size="4"] { font-size: 12pt; }
+  .remark-body font[size="5"] { font-size: 14pt; }
+  .remark-body font[size="6"] { font-size: 18pt; }
+  .remark-body font[size="7"] { font-size: 24pt; }
   /* ✅ [新增] 主管簽核／用印欄：右側大面積留白，供簽名或蓋章 */
   .approval {
     display: flex; align-items: stretch;
@@ -1019,13 +1032,19 @@ function buildSheetsHtml({ autoPrint = false, fitZoom = false } = {}) {
 
   const sheets = items.map(item => renderSheet(item)).join('\n');
   const printScript = autoPrint ? '\n  window.focus();\n  window.print();' : '';
+  // ✅ [修復] 預覽縮放改用 transform scale：純視覺縮放不觸發重排，
+  // 手機預覽版面與電腦/列印完全一致（zoom 會 reflow 導致期款區移位）
   const zoomScript = fitZoom ? `
   (function () {
     var first = document.querySelector('.sheet');
     if (!first) return;
-    var w = first.getBoundingClientRect().width + 24;
+    var w = first.getBoundingClientRect().width + 16;
     var z = Math.min(1, window.innerWidth / w);
-    if (z < 1) document.body.style.zoom = z;
+    if (z < 1) {
+      document.body.style.transformOrigin = 'top left';
+      document.body.style.transform = 'scale(' + z + ')';
+      document.body.style.width = (100 / z) + '%';
+    }
   })();` : '';
 
   return `<!DOCTYPE html>
