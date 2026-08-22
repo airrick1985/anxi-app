@@ -19,17 +19,25 @@
         lg="4"
       >
         <v-card
-          :variant="selectedTemplateId === template.id ? 'tonal' : 'outlined'"
-          :color="selectedTemplateId === template.id ? 'green-darken-3' : undefined"
+          :variant="isActiveTemplate(template.id) ? 'elevated' : 'outlined'"
+          :elevation="isActiveTemplate(template.id) ? 8 : 0"
+          :class="['template-card', isActiveTemplate(template.id) ? 'template-card--active' : 'template-card--inactive']"
           @click="selectedTemplateId = template.id"
-          class="template-card"
         >
+          <!-- 卡片狀態列：編輯中 / 未編輯 -->
+          <div v-if="isActiveTemplate(template.id)" class="card-status-bar card-status-bar--active">
+            <span class="editing-dot mr-2"></span>
+            <v-icon size="14" class="mr-1">mdi-pencil</v-icon>
+            正在編輯此範本
+          </div>
+          <div v-else class="card-status-bar card-status-bar--idle">
+            <v-icon size="14" class="mr-1">mdi-file-document-outline</v-icon>
+            期款範本
+          </div>
+
           <v-card-item>
             <div>
-              <div class="text-overline mb-1">
-                {{ selectedTemplateId === template.id ? '正在編輯' : '期款範本' }}
-              </div>
-              <div class="text-h6 mb-1">{{ template.templateName }}</div>
+              <div class="text-h6 mb-2">{{ template.templateName }}</div>
               <div class="d-flex flex-wrap gap-2 mb-1">
                 <v-chip size="small" :color="getPaymentCategoryColor(template.paymentCategory)" variant="flat">
                   {{ template.paymentCategory || '一般期款' }}
@@ -49,16 +57,29 @@
                   {{ template.buyerType || '非首購' }}
                 </v-chip>
               </div>
-              <div class="text-caption">{{ template.items?.length || 0 }} 個項目</div>
+              <div class="text-caption text-grey-darken-1">{{ template.items?.length || 0 }} 個期款項目</div>
             </div>
           </v-card-item>
 
           <v-card-actions>
-            <v-btn 
-              :prepend-icon="selectedTemplateId === template.id ? 'mdi-pencil-box-multiple-outline' : 'mdi-format-list-bulleted'"
-              @click.stop
+            <v-chip
+              v-if="isActiveTemplate(template.id)"
+              size="small"
+              color="green-darken-2"
+              variant="flat"
+              prepend-icon="mdi-check-circle"
             >
-              {{ selectedTemplateId === template.id ? '編輯中...' : '查看項目' }}
+              編輯中
+            </v-chip>
+            <v-btn
+              v-else
+              size="small"
+              variant="tonal"
+              color="green-darken-2"
+              prepend-icon="mdi-pencil-outline"
+              @click.stop="selectedTemplateId = template.id"
+            >
+              切換編輯
             </v-btn>
             <v-spacer></v-spacer>
             <v-btn size="small" icon="mdi-content-copy" @click.stop="copyTemplate(template)" title="複製範本"></v-btn>
@@ -74,6 +95,15 @@
     <v-skeleton-loader v-if="templatesLoading" type="list-item-two-line@5"></v-skeleton-loader>
     
     <div v-else-if="selectedTemplate">
+      <!-- 編輯區識別標頭：與上方「編輯中」卡片視覺連貫 -->
+      <div class="editing-header d-flex align-center flex-wrap mb-4">
+        <v-icon class="mr-2" color="green-darken-3">mdi-pencil-box-multiple</v-icon>
+        <span class="text-subtitle-1 font-weight-bold mr-3">
+          正在編輯：{{ selectedTemplate.templateName }}
+        </span>
+        <span class="text-caption text-grey-darken-1">以下期款項目的變更會即時儲存至此範本</span>
+      </div>
+
       <!-- 期款總覽區域 -->
       <v-card class="mb-4" variant="outlined">
         <v-card-title class="text-subtitle-1">
@@ -113,118 +143,122 @@
         </v-card-text>
       </v-card>
 
-      <v-list subheader>
-        <v-list-subheader>
-          期款項目 (可拖曳排序)
-          <v-btn size="small" class="ml-4" color="primary" @click="openItemDialog(null, null)">新增母項目</v-btn>
-        </v-list-subheader>
-
-        <draggable
-          v-model="selectedTemplate.items"
-          item-key="id"
-          handle=".drag-handle"
-          @end="saveTemplate"
-        >
-          <template #item="{ element: item }">
-            <div v-if="!item.parentId">
-              <v-list-item class="mb-2 py-2 list-item-custom" elevation="1" border>
-                <template v-slot:prepend>
-                  <v-icon class="drag-handle hidden-mobile" style="cursor: move;">mdi-drag-horizontal-variant</v-icon>
-                </template>
-                <div class="d-flex flex-column w-100">
-                  <!-- 標題列 -->
-                  <div class="d-flex align-center flex-wrap mb-1">
-                    <div class="d-flex align-center">
-                      <v-btn
-                        v-if="getChildren(item.id).length > 0"
-                        icon="mdi-chevron-right"
-                        variant="text"
-                        size="small"
-                        :class="{'rotate-90': isExpanded(item.id)}"
-                        @click.stop="toggleExpand(item.id)"
-                      ></v-btn>
-                      <div class="font-weight-bold text-h6">{{ item.name }}</div>
-                    </div>
-                    <v-chip size="small" color="primary" class="ml-2">{{ item.conditionalValue }}%</v-chip>
-                  </div>
-                  
-                  <!-- 計算公式與進位設定 -->
-                  <div class="d-flex flex-column flex-md-row align-start gap-2">
-                    <div class="flex-grow-1">
-                      <div class="text-caption text-grey-darken-1">計算公式：</div>
-                      <div class="formula-hint text-wrap">{{ item.formula }}</div>
-                    </div>
-                    <div class="rounding-info">
-                      <div class="text-caption text-grey-darken-1">進位設定：</div>
-                      <div>{{ item.roundingMethod }} ({{ item.roundingValue }} 位)</div>
-                    </div>
-                  </div>
-
-                  <!-- 操作按鈕 移動到底部 -->
-                  <div class="d-flex flex-wrap gap-2 mt-2">
-                    <v-btn size="small" color="blue-grey" variant="tonal" prepend-icon="mdi-plus" @click="openItemDialog(null, item.id)">
-                      新增子項目
-                    </v-btn>
-                    <v-btn size="small" variant="tonal" prepend-icon="mdi-pencil" @click="openItemDialog(item, null)">
-                      編輯
-                    </v-btn>
-                    <v-btn size="small" variant="tonal" color="error" prepend-icon="mdi-delete" @click="deleteItem(item.id)">
-                      刪除
-                    </v-btn>
-                  </div>
-                </div>
-              </v-list-item>
-              
-              <draggable
-                v-if="getChildren(item.id).length && isExpanded(item.id)"
-                :list="getChildren(item.id)"
-                item-key="id"
-                handle=".drag-handle"
-                class="ml-10"
-                @end="saveTemplate"
-              >
-                <template #item="{ element: child }">
-                  <v-list-item class="mb-2 py-2 list-item-custom" elevation="0" border>
-                     <template v-slot:prepend>
-                        <v-icon class="drag-handle hidden-mobile" style="cursor: move;">mdi-drag-horizontal-variant</v-icon>
-                     </template>
-                    <div class="d-flex flex-column w-100">
-                      <!-- 標題列 -->
-                      <div class="d-flex align-center flex-wrap mb-1">
-                        <div class="font-weight-bold">{{ child.name }}</div>
-                        <v-chip size="small" color="primary" variant="outlined" class="ml-2">{{ child.conditionalValue }}%</v-chip>
-                      </div>
-                      
-                      <!-- 計算公式與進位設定 -->
-                      <div class="d-flex flex-column flex-md-row align-start gap-2">
-                        <div class="flex-grow-1">
-                          <div class="text-caption text-grey-darken-1">計算公式：</div>
-                          <div class="formula-hint text-wrap">{{ child.formula }}</div>
-                        </div>
-                        <div class="rounding-info">
-                          <div class="text-caption text-grey-darken-1">進位設定：</div>
-                          <div>{{ child.roundingMethod }} ({{ child.roundingValue }} 位)</div>
-                        </div>
-                      </div>
-
-                      <!-- 操作按鈕 -->
-                      <div class="d-flex flex-wrap gap-2 mt-2">
-                        <v-btn size="small" variant="tonal" prepend-icon="mdi-pencil" @click="openItemDialog(child, item.id)">
-                          編輯
-                        </v-btn>
-                        <v-btn size="small" variant="tonal" color="error" prepend-icon="mdi-delete" @click="deleteItem(child.id)">
-                          刪除
-                        </v-btn>
-                      </div>
-                    </div>
-                  </v-list-item>
-                </template>
-              </draggable>
+      <v-row>
+        <!-- 左：期款項目排序清單 -->
+        <v-col cols="12" md="5" lg="4">
+          <v-card variant="outlined" class="item-list-panel">
+            <v-card-title class="d-flex align-center text-subtitle-1 py-2">
+              期款項目
+              <v-spacer></v-spacer>
+              <v-btn size="small" color="primary" prepend-icon="mdi-plus" @click="openItemEditor(null, null)">
+                新增母項目
+              </v-btn>
+            </v-card-title>
+            <v-divider></v-divider>
+            <div class="text-caption text-grey-darken-1 px-4 py-2 d-flex align-center">
+              <v-icon size="14" class="mr-1">mdi-drag-horizontal-variant</v-icon>
+              拖曳調整順序，點擊項目進行編輯
             </div>
-          </template>
-        </draggable>
+            <v-divider></v-divider>
 
-      </v-list>
+            <draggable
+              v-model="selectedTemplate.items"
+              item-key="id"
+              handle=".drag-handle"
+              @end="saveTemplate"
+            >
+              <template #item="{ element: item }">
+                <div v-if="!item.parentId">
+                  <div
+                    :class="['item-row', isEditingItem(item.id) && 'item-row--active']"
+                    @click="openItemEditor(item, null)"
+                  >
+                    <v-icon class="drag-handle" size="18" color="grey">mdi-drag-horizontal-variant</v-icon>
+                    <span class="order-badge">{{ parentOrder(item.id) }}</span>
+                    <div class="item-row-main">
+                      <div class="item-row-name">{{ item.name }}</div>
+                      <div v-if="getChildren(item.id).length" class="text-caption text-grey">
+                        含 {{ getChildren(item.id).length }} 個子項目
+                      </div>
+                    </div>
+                    <v-chip size="small" color="primary" variant="flat">{{ item.conditionalValue }}%</v-chip>
+                    <v-btn
+                      icon="mdi-plus"
+                      size="x-small"
+                      variant="text"
+                      title="新增子項目"
+                      @click.stop="openItemEditor(null, item.id)"
+                    ></v-btn>
+                    <v-btn
+                      icon="mdi-delete-outline"
+                      size="x-small"
+                      variant="text"
+                      color="error"
+                      title="刪除"
+                      @click.stop="deleteItem(item.id)"
+                    ></v-btn>
+                  </div>
+
+                  <draggable
+                    v-if="getChildren(item.id).length"
+                    :list="getChildren(item.id)"
+                    item-key="id"
+                    handle=".drag-handle"
+                    @end="saveTemplate"
+                  >
+                    <template #item="{ element: child }">
+                      <div
+                        :class="['item-row', 'item-row--child', isEditingItem(child.id) && 'item-row--active']"
+                        @click="openItemEditor(child, item.id)"
+                      >
+                        <v-icon class="drag-handle" size="16" color="grey">mdi-drag-horizontal-variant</v-icon>
+                        <v-icon size="14" color="grey-lighten-1">mdi-subdirectory-arrow-right</v-icon>
+                        <div class="item-row-main">
+                          <div class="item-row-name">{{ child.name }}</div>
+                        </div>
+                        <v-chip size="small" color="primary" variant="outlined">{{ child.conditionalValue }}%</v-chip>
+                        <v-btn
+                          icon="mdi-delete-outline"
+                          size="x-small"
+                          variant="text"
+                          color="error"
+                          title="刪除"
+                          @click.stop="deleteItem(child.id)"
+                        ></v-btn>
+                      </div>
+                    </template>
+                  </draggable>
+                </div>
+              </template>
+            </draggable>
+
+            <div v-if="!selectedTemplate.items?.length" class="pa-6 text-center text-grey">
+              尚未建立期款項目<br>
+              <span class="text-caption">點擊上方「新增母項目」開始建立</span>
+            </div>
+          </v-card>
+        </v-col>
+
+        <!-- 右：編輯區（桌機內嵌） -->
+        <v-col v-if="mdAndUp" cols="12" md="7" lg="8">
+          <div class="editor-sticky">
+            <PaymentItemEditor
+              v-if="editorVisible"
+              :item="editingItem"
+              :existing-items="existingItems"
+              @save="handleItemSave"
+              @cancel="closeEditor"
+            />
+            <v-card v-else variant="outlined" class="editor-placeholder">
+              <div class="text-center text-grey">
+                <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-cursor-default-click-outline</v-icon>
+                <div>點擊左側期款項目進行編輯</div>
+                <div class="text-caption">或點擊「新增母項目」建立新的期款</div>
+              </div>
+            </v-card>
+          </div>
+        </v-col>
+      </v-row>
     </div>
     
     <v-alert v-else-if="!templatesLoading" type="info" variant="tonal" class="mt-4">
@@ -345,92 +379,20 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="itemDialog.show" persistent max-width="800px">
-      <v-card v-if="itemDialog.show">
-        <v-card-title class="bg-primary">
-          {{ selectedTemplate?.templateName }} - {{ editingItem.isNew ? '新增期款項目' : `編輯: ${editingItem.name}` }}
-        </v-card-title>
-        <v-card-text class="pt-4">
-          <v-row>
-            <v-col cols="12" md="6">
-              <v-text-field v-model="editingItem.name" label="項目名稱" required :rules="[v => !!v || '必填']"></v-text-field>
-              <v-text-field v-model.number="editingItem.conditionalValue" label="比例 (%)" type="number" suffix="%"></v-text-field>
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-select v-model="editingItem.roundingMethod" :items="['無條件進位', '四捨五入', '無條件捨去']" label="進位方式"></v-select>
-              <v-text-field v-model.number="editingItem.roundingValue" label="進位值 (小數位數)" type="number"></v-text-field>
-            </v-col>
-          </v-row>
-
-          <v-divider class="my-4"></v-divider>
-          
-          <label class="v-label mb-2">計算方式</label>
-          <v-sheet border rounded class="pa-2 d-flex flex-wrap align-center ga-1" min-height="56px">
-            <v-chip
-              v-for="(token, index) in formulaTokens"
-              :key="index"
-              :color="token.color"
-              label
-              closable
-              @click:close="removeToken(index)"
-            >
-              {{ token.text }}
-            </v-chip>
-          </v-sheet>
-          
-          <div class="d-flex flex-column ga-2 mt-2">
-            <div class="d-flex align-center ga-2">
-              <v-menu>
-                <template v-slot:activator="{ props }">
-                  <v-btn v-bind="props" color="primary" prepend-icon="mdi-plus">加入項目</v-btn>
-                </template>
-                <v-list>
-                  <v-list-subheader>基本變數</v-list-subheader>
-                  <v-list-item @click="addToken({type: 'variable', value: '總價', text: '總價', color: 'blue'})">
-                    <v-list-item-title>總價</v-list-item-title>
-                  </v-list-item>
-                  <v-list-item @click="addToken({type: 'variable', value: '配套金額', text: '配套金額', color: 'blue'})">
-                    <v-list-item-title>配套金額</v-list-item-title>
-                  </v-list-item>
-                  
-                  <v-divider></v-divider>
-                  <v-list-subheader>已建立的期款項目</v-list-subheader>
-                  <v-list-item
-                    v-for="item in existingItems"
-                    :key="item.id"
-                    @click="addToken({
-                      type: 'reference',
-                      value: item.name,
-                      text: item.name,
-                      color: 'grey-darken-1'
-                    })"
-                  >
-                    <v-list-item-title>{{ item.name }}</v-list-item-title>
-                  </v-list-item>
-                  <v-list-item v-if="!existingItems.length" disabled>
-                    <v-list-item-title class="text-caption">尚未建立任何期款項目</v-list-item-title>
-                  </v-list-item>
-                </v-list>
-              </v-menu>
-            </div>
-
-            <v-text-field
-              v-model="formulaInput"
-              label="計算公式"
-              :rules="[validateFormula]"
-              placeholder="可直接輸入數字、%及運算符號 (例如: 總價*10%)"
-              @input="handleFormulaInput"
-              hide-details="auto"
-            ></v-text-field>
-          </div>
-
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn text @click="itemDialog.show = false">取消</v-btn>
-          <v-btn color="primary" text @click="handleItemSave">儲存項目</v-btn>
-        </v-card-actions>
-      </v-card>
+    <!-- 手機版：由下往上滑出的全螢幕編輯頁 -->
+    <v-dialog
+      :model-value="!mdAndUp && editorVisible"
+      fullscreen
+      transition="dialog-bottom-transition"
+      @update:model-value="val => !val && closeEditor()"
+    >
+      <PaymentItemEditor
+        v-if="editingItem"
+        :item="editingItem"
+        :existing-items="existingItems"
+        @save="handleItemSave"
+        @cancel="closeEditor"
+      />
     </v-dialog>
 
     <!-- 複製範本確認對話框 -->
@@ -549,7 +511,9 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useToast } from 'vue-toastification';
+import { useDisplay } from 'vuetify';
 import draggable from 'vuedraggable';
+import PaymentItemEditor from '@/components/PaymentItemEditor.vue';
 import {
   listenToPaymentTermTemplates,
   setPaymentTermTemplate,
@@ -598,11 +562,14 @@ const copyDialog = ref({
   sourceTemplate: null
 });
 
-// --- 項目管理 Dialog State ---
-const itemDialog = ref({ show: false });
-const editingItem = ref({});
-const formulaTokens = ref([]);
-const formulaInput = ref('');
+// --- 項目編輯區 State ---
+// 桌機顯示於右側面板；手機以全螢幕 dialog 呈現
+const { mdAndUp } = useDisplay();
+const editorVisible = ref(false);
+const editingItem = ref(null);
+
+// 判斷卡片是否為目前編輯中的範本
+const isActiveTemplate = (templateId) => selectedTemplateId.value === templateId;
 
 // --- Computed Properties ---
 const selectedTemplate = computed({
@@ -642,12 +609,21 @@ const existingItems = computed(() => {
   // 獲取當前範本中的所有期款項目，排除正在編輯的項目
   return selectedTemplate.value?.items?.filter(i => {
     // 如果是編輯模式，排除當前正在編輯的項目
-    if (editingItem.value.id) {
+    if (editingItem.value?.id) {
       return i.id !== editingItem.value.id;
     }
     return true;
   }) || [];
 });
+
+// 母項目在清單中的順序（1 起算）
+const parentOrder = (itemId) => {
+  const parents = selectedTemplate.value?.items?.filter(i => !i.parentId) || [];
+  return parents.findIndex(i => i.id === itemId) + 1;
+};
+
+// 該項目是否正在右側編輯區編輯中
+const isEditingItem = (itemId) => editorVisible.value && editingItem.value?.id === itemId;
 
 // 獲取期款類別對應的顏色
 const getPaymentCategoryColor = (category) => {
@@ -892,105 +868,52 @@ const confirmDeleteTemplate = async (template) => {
   }
 };
 
-// --- 項目 CRUD & 公式編輯器 Methods ---
+// --- 項目 CRUD Methods ---
 
-// 將公式字串解析為 token 陣列
-const parseFormulaToTokens = (formula) => {
-  if (!formula) return [];
-  
-  // 先分隔運算符和括號，保持項目名稱的完整性
-  const parts = formula.split(/([+\-*/()])/);
-  const tokens = [];
-  
-  parts.forEach(part => {
-    part = part.trim();
-    if (!part) return;
-    
-    if (/^[+\-*/()]$/.test(part)) {
-      // 運算符和括號
-      const color = /^[()]$/.test(part) ? 'indigo' : 'orange'; // 括號用靛藍色，運算符用橙色
-      tokens.push({ type: 'operator', value: part, text: part, color: color });
-    } else if (part === '總價' || part === '配套金額') {
-      // 基本變數
-      tokens.push({ type: 'variable', value: part, text: part, color: 'blue' });
-    } else if (/^\d+(\.\d+)?$/.test(part)) {
-      // 純數字（包含小數）
-      tokens.push({ type: 'number', value: part, text: part, color: 'purple' });
-    } else {
-      // 項目名稱（包含帶序號的名稱）
-      tokens.push({ type: 'reference', value: part, text: part, color: 'grey-darken-1' });
-    }
-  });
-  
-  return tokens;
-};
-
-// 存儲項目展開狀態
-const expandedItems = ref(new Set());
-
-// 切換項目展開狀態
-const toggleExpand = (itemId) => {
-  if (expandedItems.value.has(itemId)) {
-    expandedItems.value.delete(itemId);
-  } else {
-    expandedItems.value.add(itemId);
-  }
-};
-
-// 檢查項目是否展開
-const isExpanded = (itemId) => {
-  return expandedItems.value.has(itemId);
-};
-
-const openItemDialog = (item, parentId) => {
+// 開啟編輯區：傳給編輯器的是深拷貝副本，編輯過程不影響左側清單
+const openItemEditor = (item, parentId) => {
   if (item) { // 編輯
-    editingItem.value = JSON.parse(JSON.stringify(item));
-    editingItem.value.isNew = false;
-    formulaTokens.value = parseFormulaToTokens(item.formula);
-    formulaInput.value = item.formula || ''; // 設置編輯時的公式
+    editingItem.value = { ...JSON.parse(JSON.stringify(item)), isNew: false };
   } else { // 新增
     editingItem.value = {
       isNew: true,
-      name: '', 
+      name: '',
       parentId: parentId || null,
-      formula: '', 
-      conditionalValue: 0, 
-      roundingMethod: '四捨五入', 
+      formula: '',
+      conditionalValue: 0,
+      roundingMethod: '四捨五入',
       roundingValue: 0
     };
-    formulaTokens.value = [];
-    formulaInput.value = ''; // 清空公式輸入欄位
   }
-  itemDialog.value.show = true;
+  editorVisible.value = true;
 };
 
-const handleItemSave = async () => {
-  // 將 tokens 陣列轉回公式字串
-  editingItem.value.formula = formulaTokens.value.map(t => t.value).join('');
-  
+const closeEditor = () => {
+  editorVisible.value = false;
+  editingItem.value = null;
+};
+
+// 接收編輯器回傳的資料並寫回範本
+const handleItemSave = async (itemData) => {
   const currentItems = selectedTemplate.value.items || [];
-  if (editingItem.value.isNew) {
+  if (itemData.isNew) {
     // 新增
-    const newItem = { ...editingItem.value };
+    const newItem = { ...itemData };
     delete newItem.isNew;
-    if(!newItem.name) {
-      toast.error("項目名稱為必填");
-      return;
-    }
     // 生成隨機id
     newItem.id = Date.now().toString();
     currentItems.push(newItem);
   } else {
     // 編輯
-    const index = currentItems.findIndex(i => i.id === editingItem.value.id);
+    const index = currentItems.findIndex(i => i.id === itemData.id);
     if (index !== -1) {
-      currentItems[index] = { ...editingItem.value };
+      currentItems[index] = { ...itemData };
       delete currentItems[index].isNew;
     }
   }
   selectedTemplate.value.items = currentItems;
   await saveTemplate();
-  itemDialog.value.show = false;
+  closeEditor();
 };
 
 const deleteItem = async (itemId) => {
@@ -1000,9 +923,18 @@ const deleteItem = async (itemId) => {
     children.forEach(c => itemsToDelete.push(c.id));
 
     selectedTemplate.value.items = selectedTemplate.value.items.filter(i => !itemsToDelete.includes(i.id));
+    // 若刪除的是編輯中的項目，一併關閉編輯區
+    if (editingItem.value && itemsToDelete.includes(editingItem.value.id)) {
+      closeEditor();
+    }
     await saveTemplate();
   }
 };
+
+// 切換範本時關閉編輯區，避免編輯到錯誤範本的項目
+watch(selectedTemplateId, () => {
+  closeEditor();
+});
 
 const saveTemplate = async () => {
   try {
@@ -1012,101 +944,6 @@ const saveTemplate = async () => {
     toast.error("儲存失敗：" + e.message);
   }
 };
-
-// 公式編輯器操作
-const addToken = (token) => {
-  let currentFormula = (formulaInput.value || '').trim();
-  
-  if (currentFormula) {
-    // 檢查是否以運算符結尾
-    if (/[+\-*/]$/.test(currentFormula)) {
-      // 如果以運算符結尾，直接添加新值
-      formulaInput.value = `${currentFormula}${token.value}`;
-    } else {
-      // 如果不以運算符結尾，添加運算符和新值
-      formulaInput.value = `${currentFormula}-${token.value}`;
-    }
-  } else {
-    // 如果公式為空，直接設置新值
-    formulaInput.value = token.value;
-  }
-
-  // 觸發輸入處理
-  handleFormulaInput();
-};
-
-const removeToken = (index) => {
-  if (index >= 0 && index < formulaTokens.value.length) {
-    const tokensArray = [...formulaTokens.value];
-    tokensArray.splice(index, 1);
-    
-    // 重建公式字串
-    let newFormula = tokensArray.map(t => t.value).join('');
-    
-    // 如果需要，修正連續的運算符
-    newFormula = newFormula.replace(/[+\-*/]{2,}/g, '-');
-    
-    formulaInput.value = newFormula;
-    handleFormulaInput();
-  }
-};
-
-const validateFormula = (value) => {
-  if (!value) return true;
-  
-  // 修正連續的運算符
-  value = value.replace(/[+\-*/]{2,}/g, '-');
-  
-  // 基本語法檢查：允許總價、運算符、數字、項目名稱和括號
-  const parts = value.split(/([+\-*/()])/);
-  
-  for (let part of parts) {
-    part = part.trim();
-    if (!part) continue;
-    
-    // 如果是運算符或括號，跳過
-    if (/^[+\-*/()]$/.test(part)) continue;
-    
-    // 檢查運算元
-    const isValid = 
-      part === '總價' || 
-      part === '配套金額' ||
-      /^\d+(\.\d+)?%?$/.test(part) ||  // 數字（可能帶有百分比）
-      /^\d+\.[^+\-*/()]+$/.test(part) ||  // 帶序號的項目名稱
-      existingItems.value.some(item => item.name === part); // 一般項目名稱
-    
-    if (!isValid) {
-      return `運算元「${part}」不是有效的值或期款項目名稱`;
-    }
-  }
-  
-  // 簡單的括號配對檢查
-  const openBrackets = (value.match(/\(/g) || []).length;
-  const closeBrackets = (value.match(/\)/g) || []).length;
-  if (openBrackets !== closeBrackets) {
-    return '括號不配對，請檢查公式';
-  }
-  
-  return true;
-};
-
-const handleFormulaInput = () => {
-  let value = formulaInput.value.trim();
-  if (!value) {
-    formulaTokens.value = [];
-    return;
-  }
-
-  // 修正連續的運算符
-  value = value.replace(/[+\-*/]{2,}/g, '-');
-  formulaInput.value = value;
-
-  // 使用相同的解析邏輯
-  formulaTokens.value = parseFormulaToTokens(value);
-};
-
-
-
 
 /**
  * 獲取 YYYYMMDDHHMMSS 格式的時間字串
@@ -1143,69 +980,163 @@ onUnmounted(() => {
 .template-card {
   cursor: pointer;
   transition: all 0.2s ease-in-out;
+  overflow: hidden;
 }
 
-.template-card:hover {
+/* 編輯中：綠色粗邊框 + 陰影強化 */
+.template-card--active {
+  border: 2px solid #2E7D32;
+  box-shadow: 0 4px 16px rgba(46, 125, 50, 0.25) !important;
+}
+
+/* 未編輯：降低不透明度與彩度弱化，hover 時恢復 */
+.template-card--inactive {
+  opacity: 0.6;
+  filter: grayscale(0.35);
+}
+
+.template-card--inactive:hover {
+  opacity: 1;
+  filter: none;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+}
+
+/* 卡片頂部狀態列 */
+.card-status-bar {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 5px 14px;
+}
+
+.card-status-bar--active {
+  background: linear-gradient(90deg, #1B5E20, #43A047);
+  color: #fff;
+}
+
+.card-status-bar--idle {
+  background: rgba(0,0,0,0.04);
+  color: rgba(0,0,0,0.45);
+}
+
+/* 編輯中呼吸燈 */
+.editing-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #B9F6CA;
+  flex-shrink: 0;
+  animation: editing-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes editing-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(185, 246, 202, 0.6);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 0 5px rgba(185, 246, 202, 0);
+  }
+}
+
+/* 下方編輯區識別標頭 */
+.editing-header {
+  background: rgba(46, 125, 50, 0.08);
+  border-left: 4px solid #2E7D32;
+  border-radius: 4px;
+  padding: 10px 16px;
+  color: #1B5E20;
 }
 
 .drag-handle {
   cursor: move;
 }
 
-.ml-10 {
-  margin-left: 40px;
-}
-
-.formula-hint {
-  white-space: normal !important;
-  overflow-wrap: break-word !important;
-  word-break: break-word !important;
-  line-height: 1.4;
-  min-height: 1.4em;
-  padding-top: 4px;
-  padding-bottom: 4px;
-  background-color: rgba(0,0,0,0.03);
-  border-radius: 4px;
-  padding: 8px;
-}
-
-.list-item-custom {
-  min-height: 80px !important;
-  height: auto !important;
-  align-items: flex-start !important;
-}
-
-.rounding-info {
-  min-width: 150px;
-  background-color: rgba(0,0,0,0.03);
-  border-radius: 4px;
-  padding: 8px;
-}
-
 .gap-2 {
   gap: 8px;
 }
 
-.rotate-90 {
-  transform: rotate(90deg);
-  transition: transform 0.3s ease;
+/* --- 左側期款項目清單 --- */
+.item-list-panel {
+  overflow: hidden;
 }
 
-/* 手機版特定樣式 */
-@media (max-width: 600px) {
-  .hidden-mobile {
-    display: none !important;
-  }
-  
-  .list-item-custom {
-    padding: 12px !important;
-  }
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  transition: background 0.15s ease;
+}
 
-  .rounding-info {
-    width: 100%;
-    margin-top: 8px;
-  }
+.item-row:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* 正在右側編輯的項目：綠底 + 左側綠條 */
+.item-row--active {
+  background: rgba(46, 125, 50, 0.10);
+  border-left: 3px solid #2E7D32;
+  padding-left: 9px;
+}
+
+.item-row--active:hover {
+  background: rgba(46, 125, 50, 0.14);
+}
+
+.item-row--child {
+  padding-left: 36px;
+  background: rgba(0, 0, 0, 0.015);
+}
+
+.item-row--child.item-row--active {
+  padding-left: 33px;
+  background: rgba(46, 125, 50, 0.10);
+}
+
+.order-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #E8F5E9;
+  color: #2E7D32;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.item-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-row-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- 右側編輯區（桌機） --- */
+.editor-sticky {
+  position: sticky;
+  top: 16px;
+}
+
+.editor-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  border-style: dashed;
 }
 </style>
