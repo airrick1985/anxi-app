@@ -87,6 +87,15 @@ const initializeAuth = async () => {
     // 共用客資系統入口的 LIFF ID
     await liff.init({ liffId: '2008257338-n5Gp6pT3' });
 
+    // ✅ LIFF 自動登入僅限 LINE 內建瀏覽器（isInClient）：
+    //    外部瀏覽器（電腦/一般手機瀏覽器）的 liff.login 跳轉回跳會遺失 hash 路徑，
+    //    導致落在首頁，因此改走一般登入（帶 redirect，登入後自動回裁決頁）。
+    if (!liff.isInClient()) {
+      statusMessage.value = '正在導向登入頁...';
+      goManualLogin();
+      return;
+    }
+
     if (!liff.isLoggedIn()) {
       statusMessage.value = '正在導向 LINE 登入...';
       liff.login({ redirectUri: window.location.href });
@@ -124,10 +133,10 @@ const initializeAuth = async () => {
   }
 };
 
-// LIFF 失敗時的後路：帶 redirect 走一般登入，登入後自動回裁決頁
+// 外部瀏覽器 / LIFF 失敗時的後路：帶 redirect 走一般登入，登入後自動回裁決頁
 const goManualLogin = () => {
   const target = router.resolve(arbitrationRoute());
-  router.push({ name: 'Login', query: { redirect: target.fullPath } });
+  router.replace({ name: 'Login', query: { redirect: target.fullPath } });
 };
 
 const retry = () => {
