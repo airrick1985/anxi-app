@@ -324,8 +324,8 @@
       :project-id="props.projectId"
       :sales-control-view-mode="props.viewMode" />
 
-    <!-- ✅ [新增] 房屋成交價調整對話框 -->
-    <v-dialog v-model="isPriceNegotiationDialogVisible" max-width="500">
+    <!-- ✅ [新增] 房屋成交價調整對話框（電腦版左右配置：左為調整方式、右為調整預覽） -->
+    <v-dialog v-model="isPriceNegotiationDialogVisible" :max-width="isMobile ? 500 : 880">
       <v-card>
         <v-card-title class="bg-primary text-white d-flex align-center gap-2">
           <v-icon>mdi-calculator</v-icon>
@@ -333,142 +333,117 @@
         </v-card-title>
 
         <v-card-text class="pt-6">
-          <div class="mb-6">
-            <div class="text-caption text-grey-darken-1 mb-2">房屋表價</div>
-            <div class="text-h5 font-weight-bold text-primary">{{ Math.round(Number(editableData.price_list_house_total) || 0) }} 萬元</div>
-            <div class="text-caption text-grey">房屋總面積: {{ formatNumber(editableData.area_house_ping, 2) }} 坪</div>
-          </div>
-
-          <v-divider class="my-4"></v-divider>
-
-          <!-- 調整方式 -->
-          <div class="mb-6">
-            <div class="text-subtitle-2 font-weight-bold mb-4">調整方式</div>
-
-            <!-- 第一欄：每坪調整 -->
-            <div class="mb-4">
-              <label class="text-caption text-grey-darken-1 d-block mb-2">每坪調整 (萬/坪)</label>
-              <v-text-field
-                v-model="priceNegotiationPerTsuboValue"
-                type="number"
-                suffix="萬/坪"
-                placeholder="例如: -1.5 (減) 或 +0.5 (加)"
-                variant="outlined"
-                density="compact"
-                hint="輸入負數表示每坪減少"
-                persistent-hint
-                @update:model-value="onPriceNegotiationAdjustmentInput"
-              ></v-text-field>
-            </div>
-
-            <!-- 第二欄：直接調整 -->
-            <div class="mb-4">
-              <label class="text-caption text-grey-darken-1 d-block mb-2">直接調整總價 (萬)</label>
-              <v-text-field
-                v-model="priceNegotiationDirectAmountValue"
-                type="number"
-                suffix="萬"
-                placeholder="例如: -15 (減) 或 +10 (加)"
-                variant="outlined"
-                density="compact"
-                hint="輸入負數表示總價減少"
-                persistent-hint
-                @update:model-value="onPriceNegotiationAdjustmentInput"
-              ></v-text-field>
-            </div>
-
-            <!-- 第三欄：直接輸入總價 -->
-            <div class="mb-4">
-              <label class="text-caption text-grey-darken-1 d-block mb-2">直接輸入總價 (萬)</label>
-              <v-text-field
-                v-model="priceNegotiationTotalPriceValue"
-                type="number"
-                suffix="萬"
-                placeholder="例如: 3000"
-                variant="outlined"
-                density="compact"
-                hint="直接以此金額作為成交總價，與上方調整欄位互斥"
-                persistent-hint
-                @update:model-value="onPriceNegotiationTotalPriceInput"
-              ></v-text-field>
-            </div>
-          </div>
-
-          <v-divider class="my-4"></v-divider>
-
-          <!-- 預覽結果 -->
-          <div class="mb-4">
-            <div class="text-subtitle-2 font-weight-bold mb-3">調整預覽</div>
-            <v-card variant="outlined" class="pa-4 bg-grey-lighten-5">
-              <!-- 原房屋表價 -->
-              <div class="d-flex justify-space-between align-center mb-3">
-                <span class="text-grey-darken-2">原房屋表價</span>
-                <span class="font-weight-bold">{{ Math.round(Number(editableData.price_list_house_total) || 0) }} 萬</span>
-              </div>
-              <v-divider class="my-2"></v-divider>
-
-              <!-- 每坪調整 (僅在有值時顯示) -->
-              <div v-if="priceNegotiationPerTsuboValue !== ''" class="d-flex justify-space-between align-center mb-3">
-                <span class="text-grey-darken-2">
-                  每坪調整 ({{ priceNegotiationPerTsuboValue }} × {{ formatNumber(editableData.area_house_ping, 2) }} 坪)
-                </span>
-                <span :class="(Number(priceNegotiationPerTsuboValue) * Number(editableData.area_house_ping)) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
-                  {{ (Number(priceNegotiationPerTsuboValue) * Number(editableData.area_house_ping)) > 0 ? '+' : '' }}{{ Math.round(Number(priceNegotiationPerTsuboValue) * Number(editableData.area_house_ping)) }} 萬
-                </span>
+          <v-row>
+            <!-- 左：調整方式 -->
+            <v-col cols="12" md="5">
+              <div class="text-subtitle-2 font-weight-bold mb-1">調整方式</div>
+              <div class="text-caption text-grey-darken-1 mb-4">
+                房屋總面積 {{ formatNumber(pnArea, 2) }} 坪
               </div>
 
-              <!-- 直接調整 (僅在有值時顯示) -->
-              <div v-if="priceNegotiationDirectAmountValue !== ''" class="d-flex justify-space-between align-center mb-3">
-                <span class="text-grey-darken-2">直接調整</span>
-                <span :class="Number(priceNegotiationDirectAmountValue) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
-                  {{ Number(priceNegotiationDirectAmountValue) > 0 ? '+' : '' }}{{ priceNegotiationDirectAmountValue }} 萬
-                </span>
+              <!-- 第一欄：每坪調整 -->
+              <div class="mb-4">
+                <label class="text-caption text-grey-darken-1 d-block mb-2">每坪調整 (萬/坪)</label>
+                <v-text-field
+                  v-model="priceNegotiationPerTsuboValue"
+                  type="number"
+                  suffix="萬/坪"
+                  placeholder="例如: -1.5 (減) 或 +0.5 (加)"
+                  variant="outlined"
+                  density="compact"
+                  hint="輸入負數表示每坪減少"
+                  persistent-hint
+                  @update:model-value="onPriceNegotiationAdjustmentInput"
+                ></v-text-field>
               </div>
 
-              <!-- 直接輸入總價 (僅在有值時顯示) -->
-              <div v-if="priceNegotiationTotalPriceValue !== ''" class="d-flex justify-space-between align-center mb-3">
-                <span class="text-grey-darken-2">直接輸入總價</span>
-                <span class="font-weight-bold">{{ Math.round(Number(priceNegotiationTotalPriceValue) || 0) }} 萬</span>
+              <!-- 第二欄：直接調整 -->
+              <div class="mb-4">
+                <label class="text-caption text-grey-darken-1 d-block mb-2">直接調整總價 (萬)</label>
+                <v-text-field
+                  v-model="priceNegotiationDirectAmountValue"
+                  type="number"
+                  suffix="萬"
+                  placeholder="例如: -15 (減) 或 +10 (加)"
+                  variant="outlined"
+                  density="compact"
+                  hint="輸入負數表示總價減少"
+                  persistent-hint
+                  @update:model-value="onPriceNegotiationAdjustmentInput"
+                ></v-text-field>
               </div>
 
-              <!-- 分隔線 (若有任一調整) -->
-              <div v-if="priceNegotiationPerTsuboValue !== '' || priceNegotiationDirectAmountValue !== '' || priceNegotiationTotalPriceValue !== ''">
-                <v-divider class="my-2"></v-divider>
+              <!-- 第三欄：直接輸入總價 -->
+              <div class="mb-4">
+                <label class="text-caption text-grey-darken-1 d-block mb-2">直接輸入總價 (萬)</label>
+                <v-text-field
+                  v-model="priceNegotiationTotalPriceValue"
+                  type="number"
+                  suffix="萬"
+                  placeholder="例如: 3000"
+                  variant="outlined"
+                  density="compact"
+                  hint="直接以此金額作為成交總價，與上方調整欄位互斥"
+                  persistent-hint
+                  @update:model-value="onPriceNegotiationTotalPriceInput"
+                ></v-text-field>
               </div>
+            </v-col>
 
-              <!-- 調整合計 -->
-              <div v-if="priceNegotiationPerTsuboValue !== '' || priceNegotiationDirectAmountValue !== '' || priceNegotiationTotalPriceValue !== ''" class="d-flex justify-space-between align-center mb-3">
-                <span class="text-grey-darken-2 font-weight-bold">調整合計</span>
-                <span :class="(priceNegotiationResult - (Number(editableData.price_list_house_total) || 0)) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
-                  {{ (priceNegotiationResult - (Number(editableData.price_list_house_total) || 0)) > 0 ? '+' : '' }}{{ Math.round(priceNegotiationResult - (Number(editableData.price_list_house_total) || 0)) }} 萬
-                </span>
-              </div>
-              <v-divider class="my-2"></v-divider>
+            <!-- 右：調整預覽 -->
+            <v-col cols="12" md="7">
+              <div class="text-subtitle-2 font-weight-bold mb-3">調整預覽</div>
+              <v-card variant="outlined" class="pa-4 bg-grey-lighten-5">
+                <!-- 房屋表價 -->
+                <div class="d-flex justify-space-between align-center">
+                  <span class="text-grey-darken-2">房屋表價</span>
+                  <div class="text-right">
+                    <div class="font-weight-bold">{{ formatNumber(Math.round(pnListPrice)) }} 萬</div>
+                    <div class="text-caption text-grey">單價 {{ formatNumber(pnUnitOf(pnListPrice), 2) }} 萬/坪</div>
+                  </div>
+                </div>
+                <v-divider class="my-3"></v-divider>
 
-              <!-- 新房屋成交價 -->
-              <div class="d-flex justify-space-between align-center">
-                <span class="text-h6 font-weight-bold">新房屋成交價</span>
-                <span class="text-h5 font-weight-bold text-primary">{{ Math.round(priceNegotiationResult) }} 萬</span>
-              </div>
-              <div class="text-caption text-grey mt-1 text-right">單價: {{ formatNumber(priceNegotiationResult / (Number(editableData.area_house_ping) || 1), 2) }} 萬/坪</div>
+                <!-- 房屋底價 -->
+                <div class="d-flex justify-space-between align-center">
+                  <span class="text-grey-darken-2">房屋底價</span>
+                  <div class="text-right">
+                    <div class="font-weight-bold">{{ formatNumber(Math.round(pnFloorPrice)) }} 萬</div>
+                    <div class="text-caption text-grey">單價 {{ formatNumber(pnUnitOf(pnFloorPrice), 2) }} 萬/坪</div>
+                  </div>
+                </div>
+                <v-divider class="my-3"></v-divider>
 
-              <!-- 房屋底價 -->
-              <div class="d-flex justify-space-between align-center mt-3">
-                <span class="text-grey-darken-2">房屋底價</span>
-                <span class="font-weight-bold">{{ Math.round(Number(editableData.price_floor_house_total) || 0) }} 萬</span>
-              </div>
-              <div class="text-caption text-grey mt-1 text-right">單價: {{ formatNumber((Number(editableData.price_floor_house_total) || 0) / (Number(editableData.area_house_ping) || 1), 2) }} 萬/坪</div>
+                <!-- 房屋成交價 -->
+                <div class="d-flex justify-space-between align-center">
+                  <span class="text-subtitle-1 font-weight-bold">房屋成交價</span>
+                  <div class="text-right">
+                    <div class="text-h5 font-weight-bold text-primary">{{ formatNumber(pnDealPrice) }} 萬</div>
+                    <div class="text-caption text-grey">單價 {{ formatNumber(pnUnitOf(pnDealPrice), 2) }} 萬/坪</div>
+                  </div>
+                </div>
+                <v-divider class="my-3"></v-divider>
 
-              <!-- 溢差價 -->
-              <div class="d-flex justify-space-between align-center mt-2">
-                <span class="text-h6 font-weight-bold">溢差價</span>
-                <span :class="(priceNegotiationResult - (Number(editableData.price_floor_house_total) || 0)) >= 0 ? 'text-success font-weight-bold text-h6' : 'text-error font-weight-bold text-h6'">
-                  {{ Math.round(priceNegotiationResult - (Number(editableData.price_floor_house_total) || 0)) }} 萬
-                </span>
-              </div>
-              <div class="text-caption text-grey mt-1 text-right">單價: {{ formatNumber((priceNegotiationResult - (Number(editableData.price_floor_house_total) || 0)) / (Number(editableData.area_house_ping) || 1), 2) }} 萬/坪</div>
-            </v-card>
-          </div>
+                <!-- 成交價 vs 表價 -->
+                <div class="d-flex justify-space-between align-center mb-2">
+                  <span class="text-grey-darken-2">與表價價差</span>
+                  <div class="text-right" :class="pnListDiff > 0 ? 'text-error' : (pnListDiff < 0 ? 'text-success' : '')">
+                    <div class="font-weight-bold">{{ formatSigned(pnListDiff) }} 萬</div>
+                    <div class="text-caption">單價差 {{ formatSigned(pnUnitOf(pnListDiff), 2) }} 萬/坪</div>
+                  </div>
+                </div>
+
+                <!-- 成交價 vs 底價 -->
+                <div class="d-flex justify-space-between align-center">
+                  <span class="text-grey-darken-2">與底價價差</span>
+                  <div class="text-right" :class="pnFloorDiff > 0 ? 'text-success' : (pnFloorDiff < 0 ? 'text-error' : '')">
+                    <div class="font-weight-bold">{{ formatSigned(pnFloorDiff) }} 萬</div>
+                    <div class="text-caption">單價差 {{ formatSigned(pnUnitOf(pnFloorDiff), 2) }} 萬/坪</div>
+                  </div>
+                </div>
+              </v-card>
+            </v-col>
+          </v-row>
         </v-card-text>
 
         <v-card-actions>
@@ -592,6 +567,26 @@ const priceNegotiationPerTsuboValue = ref('');    // 每坪調整值
 const priceNegotiationDirectAmountValue = ref(''); // 直接調整值
 const priceNegotiationTotalPriceValue = ref('');   // 直接輸入總價
 const priceNegotiationResult = ref(0);             // 調整後的價格
+
+// ✅ [優化] 調整預覽：表價/底價/成交價與價差的計算基礎
+const pnListPrice = computed(() => Number(editableData.value?.price_list_house_total) || 0);
+const pnFloorPrice = computed(() => Number(editableData.value?.price_floor_house_total) || 0);
+const pnArea = computed(() => Number(editableData.value?.area_house_ping) || 0);
+const pnDealPrice = computed(() => Math.round(priceNegotiationResult.value) || 0);
+const pnListDiff = computed(() => pnDealPrice.value - Math.round(pnListPrice.value));   // 成交價 − 表價
+const pnFloorDiff = computed(() => pnDealPrice.value - Math.round(pnFloorPrice.value)); // 成交價 − 底價
+
+// 總價換算單價（萬/坪）；面積為 0 時避免除以零
+function pnUnitOf(total) {
+  return (Number(total) || 0) / (pnArea.value || 1);
+}
+
+// 帶正負號的數字格式（正數補 +），供價差顯示
+function formatSigned(val, frac = 0) {
+  const num = Number(val) || 0;
+  const prefix = num > 0 ? '+' : (num < 0 ? '-' : '');
+  return prefix + formatNumber(Math.abs(num), frac);
+}
 
 // ✅ 
 const localContractOptions = computed(() => {
