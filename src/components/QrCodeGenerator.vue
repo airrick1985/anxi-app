@@ -176,7 +176,11 @@ import QRCode from 'qrcode';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  targetUrl: { type: String, default: '' }
+  targetUrl: { type: String, default: '' },
+  // 開啟時預設帶入的中央文字（有值時自動切到文字模式）
+  defaultOverlayText: { type: String, default: '' },
+  // 下載檔名基底（不含副檔名），未提供則為 qrcode
+  downloadFileName: { type: String, default: '' }
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -206,9 +210,9 @@ const sizeMap = { small: 200, medium: 300, large: 400 };
 watch(dialogVisible, async (val) => {
   if (val) {
     url.value = props.targetUrl || '';
-    // 重置狀態
-    overlayMode.value = 'none';
-    overlayText.value = '';
+    // 重置狀態（有預設中央文字時直接進入文字模式）
+    overlayMode.value = props.defaultOverlayText ? 'text' : 'none';
+    overlayText.value = props.defaultOverlayText || '';
     overlayImagePreview.value = null;
     overlayImageElement.value = null;
     isGenerated.value = false;
@@ -378,12 +382,12 @@ const downloadImage = (format) => {
     tempCtx.drawImage(canvas, 0, 0);
     
     const dataUrl = tempCanvas.toDataURL(mimeType, 0.95);
-    triggerDownload(dataUrl, `qrcode.${extension}`);
+    triggerDownload(dataUrl, `${props.downloadFileName || 'qrcode'}.${extension}`);
   } else {
     mimeType = 'image/png';
     extension = 'png';
     const dataUrl = canvas.toDataURL(mimeType);
-    triggerDownload(dataUrl, `qrcode.${extension}`);
+    triggerDownload(dataUrl, `${props.downloadFileName || 'qrcode'}.${extension}`);
   }
 };
 

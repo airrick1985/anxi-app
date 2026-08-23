@@ -125,7 +125,34 @@
                 </v-btn>
               </template>
             </v-tooltip>
+            <!-- ✅ 銷售專屬表單連結按鈕（限櫃台權限） -->
+            <v-tooltip v-if="isCurrentUserCounter" text="銷售專屬表單連結" location="bottom">
+              <template v-slot:activator="{ props: tipProps }">
+                <v-btn
+                  v-bind="tipProps"
+                  color="indigo"
+                  variant="flat"
+                  :size="isMobile ? 'small' : 'default'"
+                  :icon="isMobile"
+                  :prepend-icon="isMobile ? undefined : 'mdi-qrcode-plus'"
+                  @click="openVipFormLinkDialog"
+                  class="mr-1"
+                >
+                  <v-icon v-if="isMobile">mdi-qrcode-plus</v-icon>
+                  <template v-if="!isMobile">專屬連結</template>
+                </v-btn>
+              </template>
+            </v-tooltip>
           </v-toolbar>
+
+          <!-- ✅ 銷售專屬表單連結 Dialog -->
+          <VipFormSalesLinkDialog
+            v-model="vipFormLinkDialog"
+            :project-id="props.projectId"
+            :project-name="projectName"
+            :staff-list="projectStaffList"
+            :loading="isLoadingProjectStaff"
+          />
 
 <v-card-text>
   <v-row dense align="center" class="mb-2">
@@ -1764,6 +1791,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } fro
 import { merge } from 'lodash-es';
 import draggable from 'vuedraggable';
 import CustomerInteractionLog from '@/components/CustomerInteractionLog.vue'; // 引入組件
+import VipFormSalesLinkDialog from '@/components/VipFormSalesLinkDialog.vue'; // ✅ 銷售專屬表單連結
 
 const props = defineProps({
   projectId: {
@@ -2081,6 +2109,17 @@ async function loadProjectStaff() {
     console.error('讀取建案人員失敗:', error);
   } finally {
     isLoadingProjectStaff.value = false;
+  }
+}
+
+// ✅ 銷售專屬表單連結 Dialog
+const vipFormLinkDialog = ref(false);
+
+function openVipFormLinkDialog() {
+  vipFormLinkDialog.value = true;
+  // 尚未讀取人員清單時，讀取一次
+  if (projectStaffList.value.length === 0) {
+    loadProjectStaff();
   }
 }
 

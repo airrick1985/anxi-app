@@ -195,6 +195,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { fetchVipFormSettings, submitVipForm } from '@/api';
 import QrCode from 'qrcode.vue';
 
@@ -204,6 +205,12 @@ const props = defineProps({
     required: true,
   },
 });
+
+const route = useRoute();
+
+// ✅ [銷售專屬連結] 由網址帶入的歸屬銷售人員 (sp=電話, sn=姓名)，後端會再驗證
+const salesPhoneFromUrl = route.query.sp ? String(route.query.sp) : '';
+const salesNameFromUrl = route.query.sn ? String(route.query.sn) : '';
 
 // --- State ---
 const currentLang = ref('zh-TW'); // 預設中文
@@ -282,13 +289,21 @@ const copySuccess = ref(false);
 // --- Computed ---
 const pageTitle = computed(() => `${projectName.value} ${t.value.formTitleSuffix}`);
 // ✅ [修改] 強制產生乾淨的公開連結，不使用當前帶有參數的網址
+// ✅ [銷售專屬連結] 例外：sp/sn 歸屬參數需保留，銷售在自己專屬頁面分享 QR 時才不會掉歸屬
 const currentUrl = computed(() => {
   // 1. 取得網站根目錄 (例如 https://anxismart.com)
   const origin = window.location.origin;
-  
+
   // 2. 手動組合成標準的 Hash 模式 URL
   // 結果會是: https://anxismart.com/#/vip-form/{projectId}
-  return `${origin}/#/vip-form/${props.projectId}`;
+  let url = `${origin}/#/vip-form/${props.projectId}`;
+  if (salesPhoneFromUrl) {
+    url += `?sp=${encodeURIComponent(salesPhoneFromUrl)}`;
+    if (salesNameFromUrl) {
+      url += `&sn=${encodeURIComponent(salesNameFromUrl)}`;
+    }
+  }
+  return url;
 });
 
 // --- Validation Rules ---
@@ -434,6 +449,14 @@ const handleSubmit = async () => {
     }
   }
 // ✓ END: 新增
+
+  // ✅ [銷售專屬連結] 網址帶有歸屬銷售時一併送出（後端驗證 users 存在後才寫入歸屬）
+  if (salesPhoneFromUrl) {
+    processedFormData['銷售人員電話'] = salesPhoneFromUrl;
+    if (salesNameFromUrl) {
+      processedFormData['銷售人員'] = salesNameFromUrl;
+    }
+  }
 
   try {
     // 8. 改為傳送處理過的 processedFormData

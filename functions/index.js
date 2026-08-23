@@ -19998,6 +19998,12 @@ exports.customerApi = onCall({
       case 'unlinkProject':
         return await _handleUnlinkProject(data, db);
 
+      // ✅ [新增] 客資歸屬裁決
+      case 'fetchVipGuestArbitration':
+        return await _handleFetchVipGuestArbitration(data, db);
+      case 'arbitrateVipGuestSales':
+        return await _handleArbitrateVipGuestSales(data, db);
+
       default:
         console.error(`[${functionName}] 錯誤：未知的 action: ${action}`);
         throw new HttpsError('invalid-argument', `未知的 API 動作: ${action}`);
@@ -20014,6 +20020,165 @@ exports.customerApi = onCall({
   }
 });
 
+
+/**
+ * [內部輔助] 客資歸屬裁決權限驗證：系統管理員/超級管理員，或該建案「客資系統-櫃台」
+ * 通過驗證則回傳操作者的 users 資料
+ */
+async function _assertVipArbitrationPermission(db, projectId, operatorKey) {
+  if (!operatorKey) throw new HttpsError('permission-denied', '缺少操作者身分 (operatorKey)。');
+  const operatorSnap = await db.collection('users').doc(String(operatorKey)).get();
+  if (!operatorSnap.exists) throw new HttpsError('permission-denied', '找不到操作者資料。');
+  const operatorData = operatorSnap.data();
+  const roles = operatorData.roles || [];
+  const isAdmin = roles.includes('系統管理員') || roles.includes('超級管理員');
+  if (!isAdmin) {
+    const permSnap = await db.collection('userPermissions').doc(String(operatorKey)).get();
+    const systems = permSnap.exists ? (permSnap.data().permissions?.[projectId]?.systems || []) : [];
+    if (!systems.includes('客資系統-櫃台')) {
+      throw new HttpsError('permission-denied', '權限不足：僅限該建案「客資系統-櫃台」人員操作。');
+    }
+  }
+  return operatorData;
+}
+
+/**
+ * [內部輔助] 將 Firestore Timestamp（或序列化物件）轉為毫秒數，供前端顯示
+ */
+function _tsToMillis(ts) {
+  if (!ts) return null;
+  if (typeof ts.toMillis === 'function') return ts.toMillis();
+  if (typeof ts._seconds === 'number') return ts._seconds * 1000;
+  if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+  return null;
+}
+
+/**
+ * [內部函式] 讀取客資歸屬裁決頁所需資料
+ * data: { projectId, docId, operatorKey }
+ */
+async function _handleFetchVipGuestArbitration(data, db) {
+  const { projectId, docId, operatorKey } = data;
+  const functionName = '_handleFetchVipGuestArbitration';
+  if (!projectId || !docId) {
+    throw new HttpsError('invalid-argument', '缺少 projectId 或 docId 參數。');
+  }
+  await _assertVipArbitrationPermission(db, projectId, operatorKey);
+
+  const docSnap = await db.collection('vipGuests').doc(docId).get();
+  if (!docSnap.exists) {
+    throw new HttpsError('not-found', '找不到指定的客戶資料。');
+  }
+  const guest = docSnap.data();
+
+  const projectDoc = await db.collection('projects').doc(projectId).get();
+  const projectName = projectDoc.exists ? (projectDoc.data().name || projectId) : projectId;
+
+  // 候選清單：submissions 出現過的銷售（以電話去重，記錄最近一次提交時間）
+  const candidateMap = new Map();
+  (guest.submissions || []).forEach(sub => {
+    const p = sub['銷售人員電話'];
+    const n = sub['銷售人員'];
+    if (!p && !n) return;
+    const key = p ? String(p) : `name:${n}`;
+    const submittedAtMs = _tsToMillis(sub.submittedAt);
+    const existing = candidateMap.get(key);
+    if (!existing || (submittedAtMs && submittedAtMs > (existing.lastSubmittedAt || 0))) {
+      candidateMap.set(key, {
+        phone: p ? String(p) : null,
+        name: n || (existing?.name) || String(p || ''),
+        lastSubmittedAt: submittedAtMs || existing?.lastSubmittedAt || null
+      });
+    }
+  });
+
+  // 該建案全部具客資權限的人員（供例外指派）
+  const staffPhones = new Set();
+  const permissionsRef = db.collection('userPermissions');
+  for (const system of ['客資系統-銷售', '客資系統-櫃台']) {
+    const snap = await permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', system).get();
+    snap.forEach(doc => staffPhones.add(doc.id));
+  }
+  const allSalesOptions = [];
+  const staffArray = Array.from(staffPhones);
+  for (let i = 0; i < staffArray.length; i += 30) {
+    const chunk = staffArray.slice(i, i + 30);
+    const usersSnap = await db.collection('users').where(FieldPath.documentId(), 'in', chunk).get();
+    usersSnap.forEach(doc => {
+      if (doc.data().name) {
+        allSalesOptions.push({ phone: doc.id, name: doc.data().name });
+      }
+    });
+  }
+  allSalesOptions.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+
+  console.log(`[${functionName}] ${docId} 候選 ${candidateMap.size} 位，裁決紀錄 ${(guest.arbitrationLog || []).length} 筆。`);
+
+  return {
+    status: 'success',
+    projectName,
+    customer: {
+      latestName: guest.latestName || '未知',
+      phone: guest.phone,
+      latestSalesName: guest.latestSalesName || null,
+      latestSalesPhone: guest.latestSalesPhone || null
+    },
+    candidates: Array.from(candidateMap.values()),
+    allSalesOptions,
+    arbitrationLog: (guest.arbitrationLog || []).map(entry => ({
+      ...entry,
+      decidedAt: _tsToMillis(entry.decidedAt)
+    }))
+  };
+}
+
+/**
+ * [內部函式] 執行客資歸屬裁決（更新既有文件的歸屬銷售，不建立新文件）
+ * data: { projectId, docId, targetSalesPhone, operatorKey }
+ */
+async function _handleArbitrateVipGuestSales(data, db) {
+  const { projectId, docId, targetSalesPhone, operatorKey } = data;
+  const functionName = '_handleArbitrateVipGuestSales';
+  if (!projectId || !docId || !targetSalesPhone) {
+    throw new HttpsError('invalid-argument', '缺少 projectId、docId 或 targetSalesPhone 參數。');
+  }
+  const operatorData = await _assertVipArbitrationPermission(db, projectId, operatorKey);
+
+  const targetSnap = await db.collection('users').doc(String(targetSalesPhone)).get();
+  if (!targetSnap.exists) {
+    throw new HttpsError('not-found', '找不到指定的銷售人員資料。');
+  }
+  const targetName = targetSnap.data().name || String(targetSalesPhone);
+
+  const docRef = db.collection('vipGuests').doc(docId);
+  await db.runTransaction(async (transaction) => {
+    const docSnap = await transaction.get(docRef);
+    if (!docSnap.exists) {
+      throw new HttpsError('not-found', '找不到指定的客戶資料。');
+    }
+    const guest = docSnap.data();
+    // arrayUnion 內不可用 serverTimestamp，改用 Timestamp.now()
+    const logEntry = {
+      decidedByKey: String(operatorKey),
+      decidedByName: operatorData.name || String(operatorKey),
+      decidedAt: Timestamp.now(),
+      fromSalesPhone: guest.latestSalesPhone || null,
+      fromSalesName: guest.latestSalesName || null,
+      toSalesPhone: String(targetSalesPhone),
+      toSalesName: targetName
+    };
+    // 只更新歸屬與紀錄，不動 submissions / 電話欄位，避免觸發重複通知 trigger
+    transaction.update(docRef, {
+      latestSalesName: targetName,
+      latestSalesPhone: String(targetSalesPhone),
+      updatedAt: FieldValue.serverTimestamp(),
+      arbitrationLog: FieldValue.arrayUnion(logEntry)
+    });
+  });
+
+  console.log(`[${functionName}] ${docId} 已裁決歸屬給 ${targetName} (${targetSalesPhone})，操作者 ${operatorKey}。`);
+  return { status: 'success', toSalesPhone: String(targetSalesPhone), toSalesName: targetName };
+}
 
 /**
  * [內部函式] 客戶資料冷刪除 (將指定銷售人員加入 deletedSales 陣列)
@@ -20571,6 +20736,18 @@ async function _handleSubmitVipForm(data, db) {
     throw new HttpsError("invalid-argument", "formData 中缺少「電話」欄位。");
   }
 
+  // ✅ [銷售專屬連結] 驗證網址帶入的銷售人員：須存在於 users，姓名以系統資料為準（防網址竄改）
+  if (formData['銷售人員電話']) {
+    const salesDoc = await db.collection("users").doc(String(formData['銷售人員電話'])).get();
+    if (salesDoc.exists) {
+      formData['銷售人員'] = salesDoc.data().name || formData['銷售人員'] || null;
+    } else {
+      console.warn(`[_handleSubmitVipForm] 查無銷售人員 ${formData['銷售人員電話']}，忽略歸屬參數。`);
+      delete formData['銷售人員'];
+      delete formData['銷售人員電話'];
+    }
+  }
+
   const docId = `${projectId}_${phone.replace(/[.#$[\]/]/g, '_')}`;
   const docRef = db.collection("vipGuests").doc(docId);
 
@@ -20643,16 +20820,21 @@ async function _handleSubmitVipForm(data, db) {
           });
         }
 
-        transaction.update(docRef, {
+        // ✅ [銷售專屬連結] 歸屬規則：已有歸屬銷售時不覆蓋（交由櫃台裁決），無歸屬時才自動歸給本次銷售
+        const hasExistingSales = !!(oldData.latestSalesPhone || oldData.latestSalesName);
+        const updatePayload = {
           latestName: name || oldData.latestName,
-          latestSalesName: formData['銷售人員'] || oldData.latestSalesName,
-          latestSalesPhone: formData['銷售人員電話'] || oldData.latestSalesPhone || null,
           updatedAt: rootTimestamp,
           profile: newProfile,
           submissions: updatedSubmissions,
 
           searchablePhones: Array.from(allPhones) // ✅ [新增] 更新搜尋欄位
-        });
+        };
+        if (!hasExistingSales && (formData['銷售人員'] || formData['銷售人員電話'])) {
+          updatePayload.latestSalesName = formData['銷售人員'] || null;
+          updatePayload.latestSalesPhone = formData['銷售人員電話'] || null;
+        }
+        transaction.update(docRef, updatePayload);
       }
     });
 
@@ -21548,6 +21730,54 @@ exports.onVipGuestDuplicate = onDocumentWritten({
       await sendLineNotification(anxiDb, allPids, countMessage);
     }
   }
+
+  // ============================================================
+  // 任務 C: 櫃台歸屬裁決通知 (同文件歷次提交出現多位不同銷售)
+  // ============================================================
+  try {
+    // 收集 submissions 中出現過的銷售人員（以電話去重；舊資料只有姓名時以姓名為 key）
+    const collectSalesMap = (subs) => {
+      const map = new Map();
+      (subs || []).forEach(sub => {
+        const p = sub['銷售人員電話'];
+        const n = sub['銷售人員'];
+        if (p) map.set(String(p), n || String(p));
+        else if (n) map.set(`name:${n}`, n);
+      });
+      return map;
+    };
+    const beforeSalesMap = collectSalesMap(beforeSubmissions);
+    const afterSalesMap = collectSalesMap(afterSubmissions);
+
+    // 只在「本次新增了一位新銷售」且去重後 >= 2 位時發送，避免同一銷售重複提交轟炸
+    const hasNewSales = [...afterSalesMap.keys()].some(k => !beforeSalesMap.has(k));
+
+    if (afterSalesMap.size >= 2 && hasNewSales) {
+      console.log(`[${functionName}] 偵測到多位銷售歸屬衝突 (${afterSalesMap.size} 位)，發送櫃台裁決通知...`);
+
+      if (!projectNameCache[projectId]) {
+        await preloadProjectNames([projectId]);
+      }
+      const currentProjectName = projectNameCache[projectId] || projectId;
+
+      const salesLines = [...afterSalesMap.values()].map(n => `・${n}`).join('\n');
+      const ownerSuffix = afterData.latestSalesName ? `－${afterData.latestSalesName}` : '';
+      const arbitrationUrl = `https://anxismart.com/#/vip-guest-arbitration/${projectId}/${encodeURIComponent(docId)}`;
+
+      let arbMessage = `🔔 客資歸屬裁決通知`;
+      arbMessage += `\n📋 建案: ${currentProjectName}`;
+      arbMessage += `\n客戶: ${currentName}（${currentPhone}）${ownerSuffix}`;
+      arbMessage += `\n該筆資料與以下銷售人員重複：`;
+      arbMessage += `\n${salesLines}`;
+      arbMessage += `\n\n請前往選擇歸屬人員：`;
+      arbMessage += `\n${arbitrationUrl}`;
+
+      // 僅發送給櫃台（沿用 counterDuplicate.lineNotify 開關）
+      await sendLineNotification(anxiDb, allPids, arbMessage, { audience: 'counterOnly' });
+    }
+  } catch (e) {
+    console.error(`[${functionName}] 任務 C 裁決通知失敗:`, e);
+  }
 });
 
 /**
@@ -21556,9 +21786,11 @@ exports.onVipGuestDuplicate = onDocumentWritten({
  * @param {Firestore} db
  * @param {string|Array<string>} projectIds - 單一建案 ID 或建案 ID 陣列
  * @param {string} messageText
+ * @param {Object} [options] - { audience: 'both' | 'counterOnly' } 預設 'both'；'counterOnly' 只發櫃台
  */
-async function sendLineNotification(db, projectIds, messageText) {
+async function sendLineNotification(db, projectIds, messageText, options = {}) {
   try {
+    const audience = options.audience || 'both';
     // 向下相容：允許傳入單一字串或陣列
     const pids = Array.isArray(projectIds) ? projectIds : [projectIds];
     if (pids.length === 0) return;
@@ -21569,7 +21801,7 @@ async function sendLineNotification(db, projectIds, messageText) {
     const settings = settingsDoc.data();
 
     const notifyCounter = settings.reminderSettings?.counterDuplicate?.lineNotify === true;
-    const notifySales = settings.reminderSettings?.salesDuplicate?.lineNotify === true;
+    const notifySales = audience !== 'counterOnly' && settings.reminderSettings?.salesDuplicate?.lineNotify === true;
     if (!notifyCounter && !notifySales) return;
 
     const tokenSecretName = settings.anxiSystemConfig?.lineCrmChannelAccessTokenSecretName;
@@ -22339,7 +22571,7 @@ exports.onVipGuestSubmission = onDocumentWritten({
   region: 'asia-east1',
   secrets: ["ANXISMART_LINE_CRM_TOKEN"],
   timeoutSeconds: 60,
-  memory: "256MiB"
+  memory: "512MiB"
 }, async (event) => {
   const functionName = "onVipGuestSubmission";
   const anxiDb = new Firestore({ databaseId: "anxi-app" });
@@ -22433,15 +22665,23 @@ exports.onVipGuestSubmission = onDocumentWritten({
     // 情境 A: 客戶掃描 QR Code (VipForm)
     // ============================================================
     if (source === 'public_form') {
-      // 對象：櫃台 + 所有銷售 (遍歷所有關聯建案)
-      for (const pid of allPids) {
-        const counterQuery = permissionsRef.where(`permissions.${pid}.systems`, 'array-contains', '客資系統-櫃台');
+      if (salesPhone) {
+        // ✅ [銷售專屬連結] 已有歸屬銷售：只通知當前建案櫃台 + 歸屬銷售本人 (比照情境 B)
+        const counterQuery = permissionsRef.where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台');
         const counterSnap = await counterQuery.get();
         counterSnap.forEach(doc => lineIdsToSend.add(doc.id));
+        lineIdsToSend.add(salesPhone);
+      } else {
+        // 對象：櫃台 + 所有銷售 (遍歷所有關聯建案)
+        for (const pid of allPids) {
+          const counterQuery = permissionsRef.where(`permissions.${pid}.systems`, 'array-contains', '客資系統-櫃台');
+          const counterSnap = await counterQuery.get();
+          counterSnap.forEach(doc => lineIdsToSend.add(doc.id));
 
-        const salesQuery = permissionsRef.where(`permissions.${pid}.systems`, 'array-contains', '客資系統-銷售');
-        const salesSnap = await salesQuery.get();
-        salesSnap.forEach(doc => lineIdsToSend.add(doc.id));
+          const salesQuery = permissionsRef.where(`permissions.${pid}.systems`, 'array-contains', '客資系統-銷售');
+          const salesSnap = await salesQuery.get();
+          salesSnap.forEach(doc => lineIdsToSend.add(doc.id));
+        }
       }
 
       // {第一則} 格式

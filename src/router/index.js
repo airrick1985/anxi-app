@@ -631,6 +631,20 @@ const routes = [
     }
   },
 
+  // ✅ 客資歸屬裁決頁（LINE 裁決通知連結導向，限櫃台）
+  {
+    path: '/vip-guest-arbitration/:projectId/:docId',
+    name: 'VipGuestArbitration',
+    component: () => import('@/views/VipGuestArbitration.vue'),
+    props: true,
+    meta: {
+      requiresAuth: true,
+      requiredAnySystem: ['客資系統-櫃台'],
+      layout: DefaultLayout,
+      title: '客資歸屬裁決'
+    }
+  },
+
   {
     path: '/booking-sync/:projectId',
     name: 'BookingSync',

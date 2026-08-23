@@ -8367,6 +8367,46 @@ export const submitVipForm = async (projectId, formData) => {
 };
 // ✓ END: 修改
 
+/**
+ * [API] 讀取客資歸屬裁決頁資料（限櫃台）
+ * (由 VipGuestArbitration.vue 使用)
+ */
+export const fetchVipGuestArbitration = async (projectId, docId, operatorKey) => {
+  if (!projectId || !docId) {
+    return { status: 'error', message: '缺少 projectId 或 docId' };
+  }
+  try {
+    const result = await customerApiRouter({
+      action: 'fetchVipGuestArbitration',
+      data: { projectId, docId, operatorKey }
+    });
+    return result.data;
+  } catch (error) {
+    console.error(`[api.js] 讀取客資歸屬裁決資料時發生錯誤:`, error);
+    return { status: "error", message: error.message };
+  }
+};
+
+/**
+ * [API] 執行客資歸屬裁決（限櫃台）
+ * (由 VipGuestArbitration.vue 使用)
+ */
+export const arbitrateVipGuestSales = async (projectId, docId, targetSalesPhone, operatorKey) => {
+  if (!projectId || !docId || !targetSalesPhone) {
+    return { status: 'error', message: '缺少必要參數' };
+  }
+  try {
+    const result = await customerApiRouter({
+      action: 'arbitrateVipGuestSales',
+      data: { projectId, docId, targetSalesPhone, operatorKey }
+    });
+    return result.data;
+  } catch (error) {
+    console.error(`[api.js] 執行客資歸屬裁決時發生錯誤:`, error);
+    return { status: "error", message: error.message };
+  }
+};
+
 
 // =================================================================
 // /  【新增】客戶資料表 API
