@@ -152,8 +152,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'; 
-import { useRouter } from 'vue-router';
+import { ref, computed, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { useUserStore } from '../store/user';
 import { loginUser, forgotPasswordUser } from '../api';
 
@@ -167,6 +167,7 @@ const password = ref('');
 const error = ref('');
 const loading = ref(false);
 const router = useRouter();
+const route = useRoute();
 const userStore = useUserStore();
 
 const backgroundImageUrl = ref(myBackgroundImage);
@@ -195,7 +196,13 @@ const submit = async () => {
       // 步驟 C: 登入成功後，將使用者資料和 sessionId 一同存入 store
       userStore.setUser(result.user, sessionId);
       emit('notify', '登入成功');
-      router.push('/home');
+      // ✅ 支援 redirect 回跳：由路由守衛帶入的原目標頁（僅接受站內路徑）
+      const redirect = route.query.redirect;
+      if (redirect && typeof redirect === 'string' && redirect.startsWith('/')) {
+        router.push(redirect);
+      } else {
+        router.push('/home');
+      }
     } else {
       error.value = (result && result.message) || '登入失敗，請稍後再試';
     }

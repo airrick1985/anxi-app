@@ -20105,9 +20105,12 @@ async function _handleFetchVipGuestArbitration(data, db) {
     const chunk = staffArray.slice(i, i + 30);
     const usersSnap = await db.collection('users').where(FieldPath.documentId(), 'in', chunk).get();
     usersSnap.forEach(doc => {
-      if (doc.data().name) {
-        allSalesOptions.push({ phone: doc.id, name: doc.data().name });
-      }
+      const userData = doc.data();
+      if (!userData.name) return;
+      // 過濾管理員帳號（比照前端 loadProjectStaff）
+      const userRoles = userData.roles || [];
+      if (userRoles.includes('系統管理員') || userRoles.includes('超級管理員')) return;
+      allSalesOptions.push({ phone: doc.id, name: userData.name });
     });
   }
   allSalesOptions.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
@@ -21762,7 +21765,8 @@ exports.onVipGuestDuplicate = onDocumentWritten({
 
       const salesLines = [...afterSalesMap.values()].map(n => `・${n}`).join('\n');
       const ownerSuffix = afterData.latestSalesName ? `－${afterData.latestSalesName}` : '';
-      const arbitrationUrl = `https://anxismart.com/#/vip-guest-arbitration/${projectId}/${encodeURIComponent(docId)}`;
+      // 導向 LIFF 入口頁：在 LINE 內點擊可自動登入後轉入裁決頁
+      const arbitrationUrl = `https://anxismart.com/#/vip-arbitration-entry/${projectId}/${encodeURIComponent(docId)}`;
 
       let arbMessage = `🔔 客資歸屬裁決通知`;
       arbMessage += `\n📋 建案: ${currentProjectName}`;

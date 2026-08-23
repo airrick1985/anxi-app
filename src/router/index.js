@@ -631,6 +631,19 @@ const routes = [
     }
   },
 
+  // ✅ 客資歸屬裁決入口頁（LINE 通知連結導向；LIFF 自動登入後轉入裁決頁）
+  {
+    path: '/vip-arbitration-entry/:projectId/:docId',
+    name: 'VipArbitrationEntry',
+    component: () => import('@/views/VipArbitrationEntry.vue'),
+    props: true,
+    meta: {
+      requiresAuth: false, // 避開全域登入，由組件內 LIFF 驗證
+      layout: PublicLayout,
+      title: '客資歸屬裁決'
+    }
+  },
+
   // ✅ 客資歸屬裁決頁（LINE 裁決通知連結導向，限櫃台）
   {
     path: '/vip-guest-arbitration/:projectId/:docId',
