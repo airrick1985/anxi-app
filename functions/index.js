@@ -20160,6 +20160,22 @@ async function _handleArbitrateVipGuestSales(data, db) {
       throw new HttpsError('not-found', '找不到指定的客戶資料。');
     }
     const guest = docSnap.data();
+
+    // ✅ 歸屬唯一化：客戶列表是依 submissions 的銷售人員分組、每位銷售各一列，
+    //    因此裁決除了改 latestSales*，還須用既有冷刪除機制 (deletedSales) 移除其他銷售的關聯，
+    //    讓該筆客資只顯示在裁決目標銷售名下（誤裁可透過既有還原功能或再次裁決復原）。
+    const allSalesNames = new Set();
+    (guest.submissions || []).forEach(sub => {
+      const n = sub['銷售人員'];
+      if (n) allSalesNames.add(n);
+    });
+    if (guest.latestSalesName) allSalesNames.add(guest.latestSalesName);
+    const removedSales = [...allSalesNames].filter(n => n !== targetName);
+
+    const newDeletedSales = new Set(Array.isArray(guest.deletedSales) ? guest.deletedSales : []);
+    removedSales.forEach(n => newDeletedSales.add(n));
+    newDeletedSales.delete(targetName); // 目標銷售若曾被冷刪除，一併恢復
+
     // arrayUnion 內不可用 serverTimestamp，改用 Timestamp.now()
     const logEntry = {
       decidedByKey: String(operatorKey),
@@ -20168,12 +20184,14 @@ async function _handleArbitrateVipGuestSales(data, db) {
       fromSalesPhone: guest.latestSalesPhone || null,
       fromSalesName: guest.latestSalesName || null,
       toSalesPhone: String(targetSalesPhone),
-      toSalesName: targetName
+      toSalesName: targetName,
+      removedSales
     };
     // 只更新歸屬與紀錄，不動 submissions / 電話欄位，避免觸發重複通知 trigger
     transaction.update(docRef, {
       latestSalesName: targetName,
       latestSalesPhone: String(targetSalesPhone),
+      deletedSales: [...newDeletedSales],
       updatedAt: FieldValue.serverTimestamp(),
       arbitrationLog: FieldValue.arrayUnion(logEntry)
     });

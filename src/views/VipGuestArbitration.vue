@@ -120,6 +120,10 @@
               </v-expansion-panel-text>
             </v-expansion-panel>
           </v-expansion-panels>
+
+          <v-alert type="warning" variant="tonal" density="compact" class="mt-3">
+            確認後該筆客戶資料將只歸屬於所選銷售人員，其他銷售人員名下的這筆客資會移至「已刪除」（可還原，也可再次裁決改回）。
+          </v-alert>
         </v-card-text>
         <v-card-actions class="px-4 pb-4">
           <v-spacer></v-spacer>

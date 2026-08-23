@@ -20,7 +20,7 @@ export function forceReloadToLatest() {
 }
 
 /** 抓取線上 manifest.json 的版本號；失敗回傳 null（視為無新版本） */
-async function fetchLatestVersion() {
+export async function fetchLatestVersion() {
   try {
     const url = `${import.meta.env.BASE_URL}manifest.json?_t=${Date.now()}`;
     const res = await fetch(url, { cache: 'no-store' });

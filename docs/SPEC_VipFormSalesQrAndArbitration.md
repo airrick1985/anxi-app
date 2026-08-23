@@ -197,7 +197,8 @@ meta: { layout: DefaultLayout, title: '客資歸屬裁決', requiredAnySystem: [
   1. 讀 `vipGuests/{docId}`，不存在 → error。
   2. 讀 `users/{targetSalesPhone}` 取 `name`，查無 → error。
   3. 更新 `latestSalesName`/`latestSalesPhone`、`updatedAt`。
-  4. `arbitrationLog` 以 `FieldValue.arrayUnion` 追加一筆（結構見 8.）。**不建立新文件**（Q4/需求原文）。
+  4. **歸屬唯一化**：客戶列表依 submissions 的銷售人員分組、每位銷售各一列，因此裁決同時把「非目標銷售」全部加入既有冷刪除欄位 `deletedSales`（目標銷售若曾被冷刪除則移除恢復），使該筆客資只顯示於目標銷售名下；誤裁可用既有還原功能或再次裁決復原。
+  5. `arbitrationLog` 以 `FieldValue.arrayUnion` 追加一筆（結構見 8.）。**不建立新文件**（Q4/需求原文）。
 - 併發：後裁決者覆蓋前者，全部留痕即可（Q4 決策）。
 - ⚠️ 裁決造成的文件更新**不得觸發**任務 A/B/C 重發通知：裁決只改 `latestSales*` 與 `arbitrationLog`，不動 `submissions` 與電話欄位，依 6.2 條件 1（submissions 長度未增加）自然不會觸發，實作時以此驗證。
 
@@ -214,7 +215,8 @@ arbitrationLog: [
     fromSalesPhone: '0911111111' | null,
     fromSalesName: '李小花' | null,
     toSalesPhone: '0912222222',
-    toSalesName: '王小明'
+    toSalesName: '王小明',
+    removedSales: ['李小花']       // 本次裁決移入 deletedSales 的其他銷售
   }
 ]
 ```

@@ -828,7 +828,14 @@ const routes = [
 
 
 
-  { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: { name: 'Home' } }
+  // ✅ 未知路由：先檢查是否為「新版才有的路由 + 舊版快取」，有新版就帶原網址自動更新，
+  //    否則導回首頁（處理邏輯見 NotFoundHandler.vue）
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('@/views/NotFoundHandler.vue'),
+    meta: { requiresAuth: false, layout: PublicLayout, title: '頁面載入中' }
+  }
 
 ];
 
