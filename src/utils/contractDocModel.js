@@ -257,6 +257,62 @@ export function buildPaymentDetailPageData(page, ctx, splitModel, editRows, stat
   };
 }
 
+/** 會辦單（拆款表）負數欄位檢查：面積 / 價款 / 付款明細不得為負。
+ *  label 含「溢差」的價款項目除外（溢差價本來就可能為負）。
+ *  回傳 [{ label, value }]，空陣列 = 無異常。預覽標示與下載攔截共用同一份判定。 */
+export function collectBreakdownNegatives(data) {
+  const found = [];
+  const add = (label, value) => {
+    const n = Number(value);
+    if (Number.isFinite(n) && n < 0) found.push({ label, value: n });
+  };
+  if (!data) return found;
+
+  // 價款相關
+  add('總價', data.totalPrice);
+  add('房地價款', data.housePlusLandPrice);
+  add('車位價款', data.parkingTotal);
+  (data.parkingSpots || []).forEach(p => add(`車位 ${p.label || ''} 價款`.trim(), p.price));
+  (data.priceFields || []).forEach(f => {
+    if (String(f.label || '').includes('溢差')) return;
+    add(f.label, f.value);
+  });
+
+  // 面積
+  const a = data.areas || {};
+  const AREA_LABELS = {
+    houseTotalSqm: '房屋總面積(㎡)', houseTotalPing: '房屋總面積(坪)',
+    mainSqm: '主建物面積(㎡)', mainPing: '主建物面積(坪)',
+    ancillarySqm: '附屬建物面積(㎡)', ancillaryPing: '附屬建物面積(坪)',
+    commonSqm: '共有部份面積(㎡)', commonPing: '共有部份面積(坪)',
+    exclusiveSqm: '專有部分面積(㎡)', exclusivePing: '專有部分面積(坪)',
+    parkingAreaSqm: '車位面積(㎡)', parkingAreaPing: '車位面積(坪)',
+    landShareSqm: '土地持分面積(㎡)', landSharePing: '土地持分面積(坪)',
+    terracePing: '露臺(坪)',
+  };
+  Object.entries(AREA_LABELS).forEach(([key, label]) => add(label, a[key]));
+
+  // 付款明細（各期金額 / 房屋款 / 土地款 + 合計列）
+  const inst = data.installment || {};
+  const addLeaf = (name, leaf) => {
+    add(`期款「${name}」金額`, leaf.amount);
+    add(`期款「${name}」房屋款`, leaf.houseAmount);
+    add(`期款「${name}」土地款`, leaf.landAmount);
+  };
+  (inst.columns || []).forEach(col => {
+    if (col.type === 'group') {
+      (col.children || []).forEach(c => addLeaf(`${col.name}-${c.name}`, c));
+    } else {
+      addLeaf(col.name, col);
+    }
+  });
+  add('付款明細 房屋款合計', inst.houseTotal);
+  add('付款明細 土地款合計', inst.landTotal);
+  add('付款明細 總價', inst.grandTotal);
+
+  return found;
+}
+
 /** 繳款銀行帳戶名稱
  *  配套款銀行組（source: unit-package）僅配套合約戶別適用；一般戶即使帳戶欄位有值也不顯示 */
 export function buildBankAccountsPageData(page, ctx, config, state, unitData) {

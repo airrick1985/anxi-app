@@ -22,7 +22,7 @@
             <td class="label">房屋編號</td>
             <td class="big">{{ data.unitId }}</td>
             <td class="label">總　價</td>
-            <td class="big">{{ fmtWan(data.totalPrice) }}</td>
+            <td class="big" :class="negCls(data.totalPrice)">{{ fmtWan(data.totalPrice) }}</td>
             <td class="label">聯絡電話</td>
             <td class="mid">{{ data.buyerPhone }}</td>
           </tr>
@@ -45,9 +45,9 @@
           <tr v-for="(p, i) in parkingRows" :key="i" class="park-row">
             <td v-if="i === 0" class="label" :rowspan="parkingRows.length">車位編號</td>
             <td>{{ p.label }}</td>
-            <td class="small">{{ p.price !== null ? `價款 ${fmtWan(p.price)} 萬` : '' }}</td>
+            <td class="small" :class="negCls(p.price)">{{ p.price !== null ? `價款 ${fmtWan(p.price)} 萬` : '' }}</td>
             <td class="label rlabel">{{ i === 0 ? '房地價款' : (i === 1 ? '車位價款' : '') }}</td>
-            <td class="mid">
+            <td class="mid" :class="i === 0 ? negCls(data.housePlusLandPrice) : (i === 1 ? negCls(data.parkingTotal) : '')">
               <template v-if="i === 0">{{ fmtWan(data.housePlusLandPrice) }}</template>
               <template v-else-if="i === 1">{{ fmtWan(data.parkingTotal) }}</template>
             </td>
@@ -66,56 +66,56 @@
         <tbody>
           <tr class="area-row">
             <td class="label" rowspan="6">房屋總面積</td>
-            <td class="val" rowspan="3">{{ fmtArea(a.houseTotalSqm) }}</td>
+            <td class="val" rowspan="3" :class="negCls(a.houseTotalSqm)">{{ fmtArea(a.houseTotalSqm) }}</td>
             <td class="unit" rowspan="3">㎡</td>
             <td class="label" rowspan="2">主建物</td>
             <td class="sub-cell">占比</td>
-            <td class="val">{{ fmtArea(a.mainSqm) }}</td>
+            <td class="val" :class="negCls(a.mainSqm)">{{ fmtArea(a.mainSqm) }}</td>
             <td class="unit">㎡</td>
             <td class="label" rowspan="2">共有部份</td>
-            <td class="val">{{ fmtArea(a.commonSqm) }}</td>
+            <td class="val" :class="negCls(a.commonSqm)">{{ fmtArea(a.commonSqm) }}</td>
             <td class="unit">㎡</td>
           </tr>
           <tr class="area-row">
             <td class="sub-cell">{{ a.mainRatioText }}</td>
-            <td class="val">{{ fmtArea(a.mainPing) }}</td>
+            <td class="val" :class="negCls(a.mainPing)">{{ fmtArea(a.mainPing) }}</td>
             <td class="unit">坪</td>
-            <td class="val">{{ fmtArea(a.commonPing) }}</td>
+            <td class="val" :class="negCls(a.commonPing)">{{ fmtArea(a.commonPing) }}</td>
             <td class="unit">坪</td>
           </tr>
           <tr class="area-row">
             <td class="label sm" rowspan="2" colspan="2">附屬建物(陽台)</td>
-            <td class="val">{{ fmtArea(a.ancillarySqm) }}</td>
+            <td class="val" :class="negCls(a.ancillarySqm)">{{ fmtArea(a.ancillarySqm) }}</td>
             <td class="unit">㎡</td>
             <td class="label" rowspan="2">車位</td>
-            <td class="val">{{ fmtArea(a.parkingAreaSqm) }}</td>
+            <td class="val" :class="negCls(a.parkingAreaSqm)">{{ fmtArea(a.parkingAreaSqm) }}</td>
             <td class="unit">㎡</td>
           </tr>
           <tr class="area-row">
-            <td class="val" rowspan="3">{{ fmtArea(a.houseTotalPing) }}</td>
+            <td class="val" rowspan="3" :class="negCls(a.houseTotalPing)">{{ fmtArea(a.houseTotalPing) }}</td>
             <td class="unit" rowspan="3">坪</td>
-            <td class="val">{{ fmtArea(a.ancillaryPing) }}</td>
+            <td class="val" :class="negCls(a.ancillaryPing)">{{ fmtArea(a.ancillaryPing) }}</td>
             <td class="unit">坪</td>
-            <td class="val">{{ fmtArea(a.parkingAreaPing) }}</td>
+            <td class="val" :class="negCls(a.parkingAreaPing)">{{ fmtArea(a.parkingAreaPing) }}</td>
             <td class="unit">坪</td>
           </tr>
           <tr class="area-row">
             <td class="label sm" rowspan="2" colspan="2">專有部分(合計)</td>
-            <td class="val">{{ fmtArea(a.exclusiveSqm) }}</td>
+            <td class="val" :class="negCls(a.exclusiveSqm)">{{ fmtArea(a.exclusiveSqm) }}</td>
             <td class="unit">㎡</td>
             <td class="label sm" rowspan="2">土地持分<br /><span v-if="a.landShareRatio" class="ratio">{{ a.landShareRatio }}/100000</span></td>
-            <td class="val">{{ fmtArea(a.landShareSqm) }}</td>
+            <td class="val" :class="negCls(a.landShareSqm)">{{ fmtArea(a.landShareSqm) }}</td>
             <td class="unit">㎡</td>
           </tr>
           <tr class="area-row">
-            <td class="val">{{ fmtArea(a.exclusivePing) }}</td>
+            <td class="val" :class="negCls(a.exclusivePing)">{{ fmtArea(a.exclusivePing) }}</td>
             <td class="unit">坪</td>
-            <td class="val">{{ fmtArea(a.landSharePing) }}</td>
+            <td class="val" :class="negCls(a.landSharePing)">{{ fmtArea(a.landSharePing) }}</td>
             <td class="unit">坪</td>
           </tr>
           <tr v-if="hasTerrace" class="area-row">
             <td class="label sm" colspan="4">露臺(不計坪)</td>
-            <td class="val" colspan="3">{{ fmtArea(a.terracePing) }} 坪</td>
+            <td class="val" colspan="3" :class="negCls(a.terracePing)">{{ fmtArea(a.terracePing) }} 坪</td>
             <td colspan="3"></td>
           </tr>
         </tbody>
@@ -126,17 +126,17 @@
         <tbody>
           <template v-if="knownLayout">
             <tr>
-              <td class="pcell w-22" rowspan="2"><span class="plabel">房屋款：</span><span class="pval">{{ pv(byKey.houseAmount) }}</span></td>
-              <td class="pcell w-30"><span class="plabel sm">{{ byKey.mainAmount.label }}：</span><span class="pval">{{ pv(byKey.mainAmount) }}</span></td>
-              <td class="pcell w-24" rowspan="2"><span class="plabel sm">{{ byKey.exclusiveAmount.label }}：</span><span class="pval">{{ pv(byKey.exclusiveAmount) }}</span></td>
-              <td class="pcell w-24" rowspan="2"><span class="plabel sm">{{ byKey.commonAmount.label }}：</span><span class="pval">{{ pv(byKey.commonAmount) }}</span></td>
+              <td class="pcell w-22" rowspan="2"><span class="plabel">房屋款：</span><span class="pval" :class="pfNegCls(byKey.houseAmount)">{{ pv(byKey.houseAmount) }}</span></td>
+              <td class="pcell w-30"><span class="plabel sm">{{ byKey.mainAmount.label }}：</span><span class="pval" :class="pfNegCls(byKey.mainAmount)">{{ pv(byKey.mainAmount) }}</span></td>
+              <td class="pcell w-24" rowspan="2"><span class="plabel sm">{{ byKey.exclusiveAmount.label }}：</span><span class="pval" :class="pfNegCls(byKey.exclusiveAmount)">{{ pv(byKey.exclusiveAmount) }}</span></td>
+              <td class="pcell w-24" rowspan="2"><span class="plabel sm">{{ byKey.commonAmount.label }}：</span><span class="pval" :class="pfNegCls(byKey.commonAmount)">{{ pv(byKey.commonAmount) }}</span></td>
             </tr>
             <tr>
-              <td class="pcell"><span class="plabel sm">{{ byKey.ancillaryAmount.label }}：</span><span class="pval">{{ pv(byKey.ancillaryAmount) }}</span></td>
+              <td class="pcell"><span class="plabel sm">{{ byKey.ancillaryAmount.label }}：</span><span class="pval" :class="pfNegCls(byKey.ancillaryAmount)">{{ pv(byKey.ancillaryAmount) }}</span></td>
             </tr>
             <tr v-if="extraPriceFields.length">
               <td class="pcell" :colspan="4">
-                <span v-for="f in extraPriceFields" :key="f.key" class="extra-price" :class="{ 'error-text': f.error }">
+                <span v-for="f in extraPriceFields" :key="f.key" class="extra-price" :class="[{ 'error-text': f.error }, pfNegCls(f)]">
                   {{ f.label }}：{{ pv(f) }}
                 </span>
               </td>
@@ -145,7 +145,7 @@
           <template v-else>
             <tr>
               <td class="pcell">
-                <span v-for="f in data.priceFields" :key="f.key" class="extra-price" :class="{ 'error-text': f.error }">
+                <span v-for="f in data.priceFields" :key="f.key" class="extra-price" :class="[{ 'error-text': f.error }, pfNegCls(f)]">
                   {{ f.label }}：{{ pv(f) }}
                 </span>
               </td>
@@ -176,32 +176,32 @@
           <tr>
             <td class="label rowlabel">房屋 {{ pct(data.housePriceRatio) }}</td>
             <template v-for="col in data.installment.columns" :key="col.name">
-              <td v-if="col.type === 'single'" class="num">{{ fmtWan(col.houseAmount) }}</td>
+              <td v-if="col.type === 'single'" class="num" :class="negCls(col.houseAmount)">{{ fmtWan(col.houseAmount) }}</td>
               <template v-else>
-                <td v-for="c in col.children" :key="c.name" class="num" :title="c.name">{{ fmtWan(c.houseAmount) }}</td>
+                <td v-for="c in col.children" :key="c.name" class="num" :class="negCls(c.houseAmount)" :title="c.name">{{ fmtWan(c.houseAmount) }}</td>
               </template>
             </template>
-            <td class="num strong">{{ fmtWan(data.installment.houseTotal) }}</td>
+            <td class="num strong" :class="negCls(data.installment.houseTotal)">{{ fmtWan(data.installment.houseTotal) }}</td>
           </tr>
           <tr>
             <td class="label rowlabel">土地 {{ pct(data.landPriceRatio) }}</td>
             <template v-for="col in data.installment.columns" :key="col.name">
-              <td v-if="col.type === 'single'" class="num">{{ fmtWan(col.landAmount) }}</td>
+              <td v-if="col.type === 'single'" class="num" :class="negCls(col.landAmount)">{{ fmtWan(col.landAmount) }}</td>
               <template v-else>
-                <td v-for="c in col.children" :key="c.name" class="num">{{ fmtWan(c.landAmount) }}</td>
+                <td v-for="c in col.children" :key="c.name" class="num" :class="negCls(c.landAmount)">{{ fmtWan(c.landAmount) }}</td>
               </template>
             </template>
-            <td class="num strong">{{ fmtWan(data.installment.landTotal) }}</td>
+            <td class="num strong" :class="negCls(data.installment.landTotal)">{{ fmtWan(data.installment.landTotal) }}</td>
           </tr>
           <tr>
             <td class="label rowlabel">合計</td>
             <template v-for="col in data.installment.columns" :key="col.name">
-              <td v-if="col.type === 'single'" class="num strong">{{ fmtWan(col.amount) }}</td>
+              <td v-if="col.type === 'single'" class="num strong" :class="negCls(col.amount)">{{ fmtWan(col.amount) }}</td>
               <template v-else>
-                <td v-for="c in col.children" :key="c.name" class="num strong">{{ fmtWan(c.amount) }}</td>
+                <td v-for="c in col.children" :key="c.name" class="num strong" :class="negCls(c.amount)">{{ fmtWan(c.amount) }}</td>
               </template>
             </template>
-            <td class="num strong">{{ fmtWan(data.installment.grandTotal) }}</td>
+            <td class="num strong" :class="negCls(data.installment.grandTotal)">{{ fmtWan(data.installment.grandTotal) }}</td>
           </tr>
           <tr>
             <td class="pct-cell"></td>
@@ -291,6 +291,7 @@ const knownLayout = computed(() => KNOWN_KEYS.every(k => byKey.value[k]));
 const extraPriceFields = computed(() => (props.data.priceFields || []).filter(f => !KNOWN_KEYS.includes(f.key)));
 
 // 比例列：前導連續 single 合併（範本：訂金+簽約金 5%）
+// 只合併到「第一個有比例的期別」為止，避免全 single 期款方式被整排合併成單一 100%
 const leadingSingles = computed(() => {
   const cols = props.data.installment?.columns || [];
   let count = 0, percent = 0;
@@ -298,6 +299,7 @@ const leadingSingles = computed(() => {
     if (col.type !== 'single') break;
     count += 1;
     percent += Number(col.percent) || 0;
+    if (percent > 0) break;
   }
   return { count, percent };
 });
@@ -332,6 +334,17 @@ function fmtArea(v) {
 function pct(v) {
   const n = Number(v) || 0;
   return `${Number.isInteger(n) ? n : Math.round(n * 100) / 100}%`;
+}
+
+// 負數欄位標示：面積/價款/付款明細不得為負（與 collectBreakdownNegatives 同判定）
+function negCls(v) {
+  const n = Number(v);
+  return (Number.isFinite(n) && n < 0) ? 'neg-cell' : '';
+}
+// 價款項目：label 含「溢差」者可為負，不標示
+function pfNegCls(f) {
+  if (!f || String(f.label || '').includes('溢差')) return '';
+  return negCls(f.value);
 }
 </script>
 
@@ -373,6 +386,15 @@ function pct(v) {
 .bd-price .extra-price { margin-right: 18px; font-size: 10.5px; }
 .w-22 { width: 22%; } .w-30 { width: 30%; } .w-24 { width: 24%; }
 .error-text { color: #c00000; }
+/* 負數異常欄位：明顯標紅（此狀態下無法下載，見 ContractDocDialog 攔截） */
+.bd-table td.neg-cell,
+.bd-price span.neg-cell {
+  background: #ffe0e0;
+  color: #c00000 !important;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 2px #c00000;
+}
+.bd-price span.neg-cell { padding: 0 3px; border-radius: 2px; }
 .bd-install td { padding: 1px 2px; font-size: 9.5px; height: 20px; }
 .bd-install .vert { width: 20px; font-weight: 700; font-size: 11px; line-height: 1.6; }
 .bd-install .unit-cell { width: 46px; font-size: 8.5px; }

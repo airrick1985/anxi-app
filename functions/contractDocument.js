@@ -391,6 +391,7 @@ function drawBreakdown(pdf, d, slotTop) {
     dataRow("合計", c => c.amount, d.installment.grandTotal, TH, true);
 
     // 比例列：開頭連續 single 合併為一格（範本：訂金+簽約金 5%）
+    // 只合併到「第一個有比例的期別」為止，避免全 single 期款方式被整排合併成單一 100%
     cell(pdf, bx, y, labelW, PCH, "", {});
     let px = bx + labelW;
     let idx = 0;
@@ -400,6 +401,7 @@ function drawBreakdown(pdf, d, slotTop) {
       leadPercent += Number(columns[idx].percent) || 0;
       leadWidth += leafW;
       idx += 1;
+      if (leadPercent > 0) break;
     }
     if (leadWidth > 0) {
       cell(pdf, px, y, leadWidth, PCH, fmtPercent(leadPercent), { size: 8 });
@@ -1381,6 +1383,7 @@ function excelBreakdown(ws, d) {
     dataRowXl("合計", x => x.amount, d.installment.grandTotal, true);
 
     // 比例列（前導 single 合併）
+    // 只合併到「第一個有比例的期別」為止，避免全 single 期款方式被整排合併成單一 100%
     ws.getRow(r).height = 14;
     const [p1, p2] = seg(VF, LF);
     setMerged(ws, r, p1, r, p2, "");
@@ -1391,6 +1394,7 @@ function excelBreakdown(ws, d) {
       leadPercent += Number(columns[idx].percent) || 0;
       leadCount += 1;
       idx += 1;
+      if (leadPercent > 0) break;
     }
     if (leadCount > 0) {
       const [s1] = leafSeg(0);

@@ -254,6 +254,14 @@
         <v-btn icon="mdi-close" variant="text" @click="isPdfPreviewVisible = false"></v-btn>
         <v-toolbar-title>報價單預覽（{{ selectedIds.length }} 戶）</v-toolbar-title>
         <v-spacer></v-spacer>
+        <!-- ✅ [新增] 預覽完可直接列印（與「列印」按鈕同一份版面） -->
+        <v-btn
+          variant="text"
+          prepend-icon="mdi-printer"
+          @click="handlePrint"
+        >
+          列印
+        </v-btn>
         <v-btn
           variant="text"
           prepend-icon="mdi-file-pdf-box"

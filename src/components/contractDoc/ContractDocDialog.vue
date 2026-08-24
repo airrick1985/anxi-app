@@ -521,6 +521,17 @@
       </v-card-text>
 
       <v-divider />
+      <!-- 會辦單負數異常：預覽已標紅，禁止下載並列出異常欄位 -->
+      <v-alert v-if="breakdownNegatives.length" type="error" variant="tonal" density="compact"
+        class="ma-3 mb-0 negatives-alert" icon="mdi-alert-octagon">
+        <div class="font-weight-bold">會辦單出現負數欄位，已停用下載。請先修正戶別資料（成交價 / 車位 / 面積 / 房土比）後再匯出。</div>
+        <div class="negatives-chips mt-1">
+          <v-chip v-for="f in breakdownNegatives" :key="f.label" size="small" color="error" variant="flat"
+            class="mr-1 mb-1">
+            {{ f.label }}：{{ f.value.toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
+          </v-chip>
+        </div>
+      </v-alert>
       <v-card-actions class="pa-3 flex-wrap">
         <v-btn color="secondary" variant="tonal" prepend-icon="mdi-content-save" :loading="saving"
           :disabled="!config" @click="saveDocData()">儲存</v-btn>
@@ -683,6 +694,7 @@ import {
   buildDecorationBreakdownPageData, buildDecorationPaymentDetailPageData,
   buildContractNumberTablePageData, buildContractNumberTableCombinedPageData,
   mergePagesWithOverrides, pagesToOverrides,
+  collectBreakdownNegatives,
 } from '@/utils/contractDocModel';
 import BreakdownPreview from './BreakdownPreview.vue';
 import PaymentDetailPreview from './PaymentDetailPreview.vue';
@@ -1451,8 +1463,19 @@ const previewPages = computed(() => {
 const exportablePages = computed(() => localPages.value.filter(p => p.enabled && !pageDisabled(p)));
 
 /* ---------- 驗證（可否下載） ---------- */
+// 會辦單負數欄位檢查：面積/價款/付款明細不得為負（溢差價除外）；有異常時預覽標紅並禁止下載
+const breakdownNegatives = computed(() => {
+  const entry = previewPages.value.find(e => e.page.type === 'breakdown');
+  return entry ? collectBreakdownNegatives(entry.data) : [];
+});
+const breakdownNegativeText = computed(() =>
+  breakdownNegatives.value
+    .map(f => `${f.label}（${f.value.toLocaleString('en-US', { maximumFractionDigits: 2 })}）`)
+    .join('、'));
+
 const canDownload = computed(() => {
   if (!config.value || !exportablePages.value.length) return false;
+  if (breakdownNegatives.value.length) return false;
   if (needsInstallment.value) {
     if (!editRows.value.length || mainBase.value <= 0) return false;
     if (!percentOk.value || !amountOk.value) return false;
@@ -1624,6 +1647,11 @@ function base64ToBlob(base64, mimeType) {
 }
 
 async function download(format, onlyPageId = null) {
+  // 會辦單有負數異常欄位：明確提醒並拒絕產製（按鈕已 disabled，此為雙重保險）
+  if (breakdownNegatives.value.length) {
+    toast.error(`會辦單以下欄位為負數，無法匯出，請先修正戶別資料：${breakdownNegativeText.value}`);
+    return;
+  }
   if (!canDownload.value) return;
   downloading[format] = true;
   try {
@@ -1799,6 +1827,8 @@ function formatNumber(value) {
   flex-direction: column;
   align-items: center;
   gap: 16px;
+  /* 上方留白：sheet-label 突出紙張上緣 10px，避免第一頁標籤被捲動容器截斷 */
+  padding-top: 14px;
   padding-bottom: 24px;
 }
 .preview-sheet {
@@ -1809,6 +1839,16 @@ function formatNumber(value) {
   font-family: 'Noto Serif TC', 'Times New Roman', serif;
   flex-shrink: 0;
 }
+/* 負數異常警示：scrollable dialog 的 flex 版面會壓縮 card-text 以外的子元素，
+   固定不可壓縮、文字可換行，欄位太多時警示內部自行捲動 */
+.negatives-alert {
+  flex-shrink: 0;
+  max-height: 132px;
+  overflow-y: auto;
+  white-space: normal;
+  word-break: break-word;
+}
+.negatives-chips { display: flex; flex-wrap: wrap; }
 .repeat-block {
   border-bottom: 1px dashed #999;
   padding-bottom: 12px;
@@ -1824,5 +1864,10 @@ function formatNumber(value) {
   font-size: 11px;
   border-radius: 4px;
   padding: 1px 8px;
+  /* 長標題防溢位：不超過紙張寬度，超過以… 收尾 */
+  max-width: calc(100% - 16px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
