@@ -435,7 +435,7 @@
 <div
    v-if="isHouseholdDetailVisible && selectedHouseholdForDetail"
    class="household-detail-modal"
-   :class="{ 'is-edit-mode': isModalEditMode }"
+   :class="{ 'is-edit-mode': isModalEditMode, 'hdm-wide': isHdmDesktopLayout }"
    :style="{ top: detailModalPos.y + 'px', left: detailModalPos.x + 'px' }"
 >
    <div class="hdm-header" @mousedown="startDetailDrag">
@@ -476,9 +476,49 @@
       </v-btn>
       <v-btn icon="mdi-close" variant="text" size="small" color="white" @click.stop="closeHouseholdDetail" @mousedown.stop></v-btn>
    </div>
-   <div class="hdm-body">
+   <div class="hdm-body" :class="{ 'hdm-body-split': isHdmDesktopLayout }">
+      <!-- 電腦版左側「項目」導覽（點選後右側顯示對應內容；窄螢幕隱藏、內容直向堆疊） -->
+      <nav v-if="isHdmDesktopLayout" class="hdm-nav">
+         <button
+            v-for="s in hdmSections"
+            :key="s.id"
+            type="button"
+            class="hdm-nav-item"
+            :class="{ 'is-active': effectiveHdmSection === s.id }"
+            @click.stop="hdmActiveSection = s.id"
+            @mousedown.stop
+         >
+            <v-icon size="small" class="hdm-nav-icon">{{ s.icon }}</v-icon>
+            <span class="hdm-nav-texts">
+               <span class="hdm-nav-label">{{ s.label }}</span>
+               <!-- 預約項目：最新預約日期 / 未預約 -->
+               <span v-if="s.bookingType" class="hdm-nav-caption" :class="{ 'is-empty': detailBookingsForType(s.bookingType).length === 0 }">
+                  {{ detailBookingsForType(s.bookingType).length > 0
+                     ? (formatDetailDate(detailBookingInfo[s.bookingType]?.date) || '未填日期')
+                     : '未預約' }}
+               </span>
+               <span v-else-if="s.id === 'auth'" class="hdm-nav-caption" :class="{ 'is-empty': authLetters.length === 0 }">
+                  {{ authLetters.length > 0 ? `已授權 ${authLetters.length} 份` : '未授權' }}
+               </span>
+               <span v-else-if="s.id === 'messages'" class="hdm-nav-caption" :class="{ 'is-empty': modalCustomerMessages.length === 0 }">
+                  {{ modalCustomerMessages.length > 0 ? `${modalCustomerMessages.length} 則訊息` : '無訊息' }}
+               </span>
+               <span v-else-if="s.id === 'reports'" class="hdm-nav-caption" :class="{ 'is-empty': inspectionReports.length === 0 }">
+                  {{ inspectionReports.length > 0 ? `報告 ${inspectionReports.length} 份` : '無報告' }}
+               </span>
+            </span>
+            <!-- 同一項目多筆重複預約：醒目筆數徽章 -->
+            <span
+               v-if="s.bookingType && detailBookingsForType(s.bookingType).length > 1"
+               class="hdm-nav-badge"
+               title="此項目同時有多筆有效預約">
+               {{ detailBookingsForType(s.bookingType).length }}
+            </span>
+         </button>
+      </nav>
+      <div class="hdm-content">
       <!-- 功能開關 -->
-      <v-card variant="outlined" class="mb-3">
+      <v-card v-show="isHdmSectionVisible('switches')" variant="outlined" class="mb-3">
          <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-green-lighten-5">
             <v-icon size="small" class="mr-1" color="success">mdi-toggle-switch-outline</v-icon>功能開關
          </v-card-title>
@@ -517,7 +557,7 @@
       </v-card>
 
       <!-- 基本資料 -->
-      <v-card variant="outlined" class="mb-3">
+      <v-card v-show="isHdmSectionVisible('basic')" variant="outlined" class="mb-3">
          <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-grey-lighten-4">
             <v-icon size="small" class="mr-1" color="primary">mdi-account-outline</v-icon>基本資料
          </v-card-title>
@@ -609,6 +649,7 @@
       <!-- 預約資訊（依 type） -->
       <v-card
          v-for="type in detailBookingTypes"
+         v-show="isHdmSectionVisible(`booking:${type}`)"
          :key="`bt-${type}`"
          variant="outlined"
          class="mb-3"
@@ -616,84 +657,175 @@
          <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-blue-lighten-5 d-flex align-center">
             <v-icon size="small" class="mr-1" color="primary">mdi-calendar-clock-outline</v-icon>
             <span>{{ type }} 預約資訊</span>
+            <v-chip
+               v-if="detailBookingsForType(type).length > 1"
+               size="x-small" color="deep-orange" variant="flat" class="ml-2 font-weight-bold"
+               title="此項目同時有多筆有效預約">
+               <v-icon start size="x-small">mdi-alert-circle-outline</v-icon>
+               {{ detailBookingsForType(type).length }} 筆預約
+            </v-chip>
             <v-spacer></v-spacer>
             <v-btn
-               v-if="detailBookingInfo[type]?.appointmentId"
+               v-if="detailBookingsForType(type).length === 1"
                size="x-small" variant="tonal" color="error"
                prepend-icon="mdi-calendar-remove"
-               @click.stop="openCancelApptDialog(type)" @mousedown.stop
+               @click.stop="openCancelApptDialog(type, detailBookingsForType(type)[0])" @mousedown.stop
                title="取消此筆預約（將通知預約人）">
                取消預約
             </v-btn>
          </v-card-title>
          <v-card-text class="pt-2 pb-2">
-            <div class="hdm-row">
-               <label>預約日期</label>
-               <span>{{ formatDetailDate(detailBookingInfo[type]?.date) || '—' }}</span>
+            <!-- 無有效預約 -->
+            <div v-if="detailBookingsForType(type).length === 0" class="hdm-row">
+               <label>預約狀態</label>
+               <span class="text-grey">尚無有效預約</span>
             </div>
-            <div class="hdm-row">
-               <label>時段</label>
-               <span>{{ detailBookingInfo[type]?.timeSlot || '—' }}</span>
-            </div>
-            <div class="hdm-row">
-               <label>選擇方式</label>
-               <span>{{ detailBookingInfo[type]?.method || '—' }}</span>
-            </div>
-            <div v-if="typesWithSubOptions.has(type)" class="hdm-row">
-               <label>子項目</label>
-               <span>{{ detailBookingInfo[type]?.subOption || '—' }}</span>
-            </div>
+            <!-- 每筆有效預約一個區塊（同一項目重複預約時全部並列） -->
             <div
-               v-for="f in (detailExtraFieldsByType[type] || [])"
-               :key="`mf-${type}-${f.id}`"
-               class="hdm-row"
-               :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[type] }"
+               v-for="(bk, bkIdx) in detailBookingsForType(type)"
+               :key="bk.appointmentId || `bk-${type}-${bkIdx}`"
+               class="hdm-booking-block"
+               :class="{ 'hdm-booking-multi': detailBookingsForType(type).length > 1 }"
             >
-               <label>{{ f.label }}</label>
-               <v-text-field v-if="isModalEditMode && _bookingEditDrafts[type]"
-                  v-model="_bookingEditDrafts[type].bookingMethodDetails[f.id]"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
-               <span v-else>{{ detailBookingInfo[type]?.bookingMethodDetails?.[f.id] || '—' }}</span>
+               <!-- 多筆時：每筆的序號 / 狀態 / 取消按鈕 -->
+               <div v-if="detailBookingsForType(type).length > 1" class="hdm-booking-head">
+                  <v-chip size="x-small" color="deep-orange" variant="tonal" class="font-weight-bold">
+                     第 {{ bkIdx + 1 }} 筆
+                  </v-chip>
+                  <v-chip
+                     size="x-small" variant="tonal"
+                     :color="bk.status === '已完成' ? 'success' : 'primary'">
+                     {{ bk.status || '預約中' }}
+                  </v-chip>
+                  <span class="hdm-booking-head-date">
+                     {{ formatDetailDate(bk.date) || '未填日期' }}<template v-if="bk.timeSlot">・{{ bk.timeSlot }}</template>
+                  </span>
+                  <v-spacer></v-spacer>
+                  <v-btn
+                     v-if="bk.appointmentId"
+                     size="x-small" variant="text" color="error" density="comfortable"
+                     prepend-icon="mdi-calendar-remove"
+                     @click.stop="openCancelApptDialog(type, bk)" @mousedown.stop
+                     title="取消這一筆預約（將通知預約人）">
+                     取消
+                  </v-btn>
+               </div>
+               <div class="hdm-row">
+                  <label>預約日期</label>
+                  <span>{{ formatDetailDate(bk.date) || '—' }}</span>
+               </div>
+               <div class="hdm-row">
+                  <label>時段</label>
+                  <span>{{ bk.timeSlot || '—' }}</span>
+               </div>
+               <div class="hdm-row">
+                  <label>選擇方式</label>
+                  <span>{{ bk.method || '—' }}</span>
+               </div>
+               <div v-if="typesWithSubOptions.has(type)" class="hdm-row">
+                  <label>子項目</label>
+                  <span>{{ bk.subOption || '—' }}</span>
+               </div>
+               <div
+                  v-for="f in (detailExtraFieldsByType[type] || [])"
+                  :key="`mf-${bk.appointmentId || bkIdx}-${f.id}`"
+                  class="hdm-row"
+                  :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[bk.appointmentId] }"
+               >
+                  <label>{{ f.label }}</label>
+                  <v-text-field v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
+                     v-model="_bookingEditDrafts[bk.appointmentId].bookingMethodDetails[f.id]"
+                     variant="plain" density="compact" hide-details class="hdm-edit-field"
+                     placeholder="—"></v-text-field>
+                  <span v-else>{{ bk.bookingMethodDetails?.[f.id] || '—' }}</span>
+               </div>
+               <!-- 預約人聯絡資訊 -->
+               <div class="hdm-booker-divider"></div>
+               <div class="hdm-row" :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[bk.appointmentId] }">
+                  <label>預約人姓名</label>
+                  <v-text-field v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
+                     v-model="_bookingEditDrafts[bk.appointmentId].bookerName"
+                     variant="plain" density="compact" hide-details class="hdm-edit-field"
+                     placeholder="—"></v-text-field>
+                  <span v-else :class="{ 'text-grey': !bk.bookerName }">
+                     {{ bk.bookerName || '—' }}
+                  </span>
+               </div>
+               <div class="hdm-row" :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[bk.appointmentId] }">
+                  <label>預約人電話</label>
+                  <v-text-field v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
+                     v-model="_bookingEditDrafts[bk.appointmentId].bookerPhone"
+                     variant="plain" density="compact" hide-details class="hdm-edit-field"
+                     placeholder="—"></v-text-field>
+                  <span v-else :class="{ 'text-grey': !bk.bookerPhone }">
+                     <a v-if="bk.bookerPhone" :href="`tel:${bk.bookerPhone}`">
+                        {{ bk.bookerPhone }}
+                     </a>
+                     <template v-else>—</template>
+                  </span>
+               </div>
+               <div class="hdm-row" :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[bk.appointmentId] }">
+                  <label>預約人 Email</label>
+                  <v-text-field v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
+                     v-model="_bookingEditDrafts[bk.appointmentId].bookerEmail"
+                     variant="plain" density="compact" hide-details class="hdm-edit-field"
+                     placeholder="—"></v-text-field>
+                  <span v-else :class="{ 'text-grey': !bk.bookerEmail }">
+                     <a v-if="bk.bookerEmail" :href="`mailto:${bk.bookerEmail}`">
+                        {{ bk.bookerEmail }}
+                     </a>
+                     <template v-else>—</template>
+                  </span>
+               </div>
+               <!-- 驗屋報告未上傳提醒通知：未上傳天數 + 發送 + 寄出紀錄（逐筆預約獨立） -->
+               <div v-if="shouldShowReminderBlock(type, bk)" class="hdm-row hdm-row-block">
+                  <label>
+                     <v-icon size="small" color="orange-darken-2" class="mr-1">mdi-email-alert-outline</v-icon>
+                     未上傳驗屋報告提醒
+                     <v-chip
+                        v-if="getReminderRecords(bk).length > 0"
+                        size="x-small" color="orange-darken-2" variant="tonal" class="ml-1">
+                        已寄 {{ getReminderRecords(bk).length }} 次
+                     </v-chip>
+                  </label>
+
+                  <!-- 未上傳天數 + 發送按鈕 -->
+                  <div v-if="daysSinceNoUpload(bk) !== null" class="hdm-reminder-head">
+                     <div class="hdm-reminder-days">
+                        <v-icon size="small" :color="daysSinceNoUpload(bk) >= 0 ? 'red-darken-1' : 'grey'" class="mr-1">mdi-clock-alert-outline</v-icon>
+                        <template v-if="daysSinceNoUpload(bk) >= 0">
+                           驗屋後 <strong class="mx-1">{{ daysSinceNoUpload(bk) }}</strong> 天未上傳報告
+                        </template>
+                        <template v-else>尚未到驗屋日</template>
+                     </div>
+                     <v-btn
+                        v-if="isTypeReminderEligible(type, bk)"
+                        size="x-small" variant="flat" color="orange-darken-2"
+                        prepend-icon="mdi-email-fast-outline"
+                        @click.stop="openReminderDialog(type, bk)" @mousedown.stop
+                        title="預覽通知內容後寄送給預約人">
+                        發送提醒通知
+                     </v-btn>
+                  </div>
+
+                  <!-- 寄出紀錄 -->
+                  <div class="hdm-reminder-list">
+                     <div
+                        v-if="getReminderRecords(bk).length === 0"
+                        class="text-caption text-grey">
+                        {{ bk.reportUploaded ? '報告已上傳，無提醒紀錄' : '尚未寄送提醒' }}
+                     </div>
+                     <div
+                        v-for="(sentAt, idx) in getReminderRecords(bk)"
+                        :key="`rmd-${bk.appointmentId || bkIdx}-${idx}`"
+                        class="hdm-reminder-item">
+                        <v-icon size="x-small" color="orange-darken-2" class="mr-1">mdi-email-fast-outline</v-icon>
+                        <span>{{ sentAt }}</span>
+                     </div>
+                  </div>
+               </div>
             </div>
-            <!-- 預約人聯絡資訊 -->
-            <div class="hdm-booker-divider"></div>
-            <div class="hdm-row" :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[type] }">
-               <label>預約人姓名</label>
-               <v-text-field v-if="isModalEditMode && _bookingEditDrafts[type]"
-                  v-model="_bookingEditDrafts[type].bookerName"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
-               <span v-else :class="{ 'text-grey': !detailBookingInfo[type]?.bookerName }">
-                  {{ detailBookingInfo[type]?.bookerName || '—' }}
-               </span>
-            </div>
-            <div class="hdm-row" :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[type] }">
-               <label>預約人電話</label>
-               <v-text-field v-if="isModalEditMode && _bookingEditDrafts[type]"
-                  v-model="_bookingEditDrafts[type].bookerPhone"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
-               <span v-else :class="{ 'text-grey': !detailBookingInfo[type]?.bookerPhone }">
-                  <a v-if="detailBookingInfo[type]?.bookerPhone" :href="`tel:${detailBookingInfo[type].bookerPhone}`">
-                     {{ detailBookingInfo[type].bookerPhone }}
-                  </a>
-                  <template v-else>—</template>
-               </span>
-            </div>
-            <div class="hdm-row" :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[type] }">
-               <label>預約人 Email</label>
-               <v-text-field v-if="isModalEditMode && _bookingEditDrafts[type]"
-                  v-model="_bookingEditDrafts[type].bookerEmail"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
-               <span v-else :class="{ 'text-grey': !detailBookingInfo[type]?.bookerEmail }">
-                  <a v-if="detailBookingInfo[type]?.bookerEmail" :href="`mailto:${detailBookingInfo[type].bookerEmail}`">
-                     {{ detailBookingInfo[type].bookerEmail }}
-                  </a>
-                  <template v-else>—</template>
-               </span>
-            </div>
+            <!-- 批次（戶別層級，每個項目一組，與筆數無關） -->
             <div class="hdm-row hdm-row-edit">
                <label>{{ type }}批次</label>
                <v-text-field
@@ -703,58 +835,11 @@
                   variant="plain" density="compact" hide-details class="hdm-edit-field"
                   placeholder="—"></v-text-field>
             </div>
-            <!-- 驗屋報告未上傳提醒通知：未上傳天數 + 發送 + 寄出紀錄 -->
-            <div v-if="shouldShowReminderBlock(type)" class="hdm-row hdm-row-block">
-               <label>
-                  <v-icon size="small" color="orange-darken-2" class="mr-1">mdi-email-alert-outline</v-icon>
-                  未上傳驗屋報告提醒
-                  <v-chip
-                     v-if="getReminderRecordsForType(type).length > 0"
-                     size="x-small" color="orange-darken-2" variant="tonal" class="ml-1">
-                     已寄 {{ getReminderRecordsForType(type).length }} 次
-                  </v-chip>
-               </label>
-
-               <!-- 未上傳天數 + 發送按鈕 -->
-               <div v-if="daysSinceNoUpload(type) !== null" class="hdm-reminder-head">
-                  <div class="hdm-reminder-days">
-                     <v-icon size="small" :color="daysSinceNoUpload(type) >= 0 ? 'red-darken-1' : 'grey'" class="mr-1">mdi-clock-alert-outline</v-icon>
-                     <template v-if="daysSinceNoUpload(type) >= 0">
-                        驗屋後 <strong class="mx-1">{{ daysSinceNoUpload(type) }}</strong> 天未上傳報告
-                     </template>
-                     <template v-else>尚未到驗屋日</template>
-                  </div>
-                  <v-btn
-                     v-if="isTypeReminderEligible(type)"
-                     size="x-small" variant="flat" color="orange-darken-2"
-                     prepend-icon="mdi-email-fast-outline"
-                     @click.stop="openReminderDialog(type)" @mousedown.stop
-                     title="預覽通知內容後寄送給預約人">
-                     發送提醒通知
-                  </v-btn>
-               </div>
-
-               <!-- 寄出紀錄 -->
-               <div class="hdm-reminder-list">
-                  <div
-                     v-if="getReminderRecordsForType(type).length === 0"
-                     class="text-caption text-grey">
-                     {{ detailBookingInfo[type]?.reportUploaded ? '報告已上傳，無提醒紀錄' : '尚未寄送提醒' }}
-                  </div>
-                  <div
-                     v-for="(sentAt, idx) in getReminderRecordsForType(type)"
-                     :key="`rmd-${type}-${idx}`"
-                     class="hdm-reminder-item">
-                     <v-icon size="x-small" color="orange-darken-2" class="mr-1">mdi-email-fast-outline</v-icon>
-                     <span>{{ sentAt }}</span>
-                  </div>
-               </div>
-            </div>
          </v-card-text>
       </v-card>
 
       <!-- 報告 / 其他 -->
-      <v-card variant="outlined" class="mb-3">
+      <v-card v-show="isHdmSectionVisible('reports')" variant="outlined" class="mb-3">
          <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-grey-lighten-4">
             <v-icon size="small" class="mr-1" color="primary">mdi-file-document-outline</v-icon>報告 / 其他
          </v-card-title>
@@ -796,7 +881,7 @@
       </v-card>
 
       <!-- 驗屋授權書 -->
-      <v-card variant="outlined" class="mb-3">
+      <v-card v-show="isHdmSectionVisible('auth')" variant="outlined" class="mb-3">
          <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-teal-lighten-5 d-flex align-center">
             <v-icon size="small" class="mr-1" color="teal-darken-2">mdi-file-sign</v-icon>
             <span>驗屋授權書</span>
@@ -838,7 +923,7 @@
       </v-card>
 
       <!-- 客戶回傳訊息 -->
-      <v-card variant="outlined" class="mb-3">
+      <v-card v-show="isHdmSectionVisible('messages')" variant="outlined" class="mb-3">
          <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-info-lighten-5 d-flex align-center">
             <v-icon size="small" class="mr-1" color="info">mdi-message-text-outline</v-icon>
             <span>客戶回傳訊息</span>
@@ -896,6 +981,7 @@
             </v-expansion-panels>
          </v-card-text>
       </v-card>
+      </div>
    </div>
 </div>
 
@@ -1255,10 +1341,29 @@ const isConfirmingSave = ref(false);
 // --- 處理預約資料的函數 ---
 /**
  * 將 appointments 資料轉換為按 unitId × bookingType 索引的 Map
- * 每個單位 × 類型只保留 appointmentDate 最新的一筆有效預約
+ * 頂層欄位維持「appointmentDate 最新的一筆」（供 grid 欄位/匯出沿用），
+ * 另以 all 陣列保留該單位 × 類型的「所有」有效預約（依日期由舊→新排序），
+ * 供戶別整合 Modal 完整檢視同一項目的重複預約
  */
 const buildAppointmentMap = (appointmentsList) => {
   const map = {};
+
+  const toEntry = (appt) => ({
+    date: appt.appointmentDate || null,
+    timeSlot: appt.appointmentTimeSlot || '',
+    method: appt.inspectionMethod || '',                       // 純方式（不再與 subOption 合併）
+    subOption: appt.bookingSubOption || '',                    // 子項目獨立屬性
+    bookingMethodDetails: appt.bookingMethodDetails || {},     // 方式額外資訊（依 method.customFields）
+    // 預約人聯絡資訊
+    bookerName: appt.bookerName || '',
+    bookerPhone: appt.bookerPhone || '',
+    bookerEmail: appt.bookerEmail || '',
+    // 驗屋報告未上傳提醒通知：寄出紀錄（Firestore Timestamp 陣列）與目前上傳狀態
+    reminderSentAt: Array.isArray(appt.reminderSentAt) ? appt.reminderSentAt : [],
+    reportUploaded: appt.reportUploaded === true,
+    status: appt.status || '',
+    appointmentId: appt._docId || null
+  });
 
   appointmentsList.forEach(appt => {
     const unitId = appt.unitId;
@@ -1266,35 +1371,25 @@ const buildAppointmentMap = (appointmentsList) => {
 
     if (!unitId || !bookingType) return; // 跳過無效資料
 
-    // 初始化該 unitId 的對象
-    if (!map[unitId]) {
-      map[unitId] = {};
-    }
-
-    // 取得當前該類型的最新預約（依 appointmentDate 比較）
-    const current = map[unitId][bookingType];
-    const currentDate = current?.appointmentDate instanceof Date ? current.appointmentDate : null;
-    const newDate = appt.appointmentDate instanceof Date ? appt.appointmentDate : null;
-
-    // 若無當前預約，或新預約的日期更新，則更新該類型的預約
-    if (!current || (newDate && (!currentDate || newDate > currentDate))) {
-      map[unitId][bookingType] = {
-        date: appt.appointmentDate || null,
-        timeSlot: appt.appointmentTimeSlot || '',
-        method: appt.inspectionMethod || '',                       // 純方式（不再與 subOption 合併）
-        subOption: appt.bookingSubOption || '',                    // 子項目獨立屬性
-        bookingMethodDetails: appt.bookingMethodDetails || {},     // 方式額外資訊（依 method.customFields）
-        // 預約人聯絡資訊
-        bookerName: appt.bookerName || '',
-        bookerPhone: appt.bookerPhone || '',
-        bookerEmail: appt.bookerEmail || '',
-        // 驗屋報告未上傳提醒通知：寄出紀錄（Firestore Timestamp 陣列）與目前上傳狀態
-        reminderSentAt: Array.isArray(appt.reminderSentAt) ? appt.reminderSentAt : [],
-        reportUploaded: appt.reportUploaded === true,
-        appointmentId: appt._docId || null
-      };
-    }
+    if (!map[unitId]) map[unitId] = {};
+    if (!map[unitId][bookingType]) map[unitId][bookingType] = { all: [] };
+    map[unitId][bookingType].all.push(toEntry(appt));
   });
+
+  // 各桶排序（日期由舊→新，無日期排最後），並將「日期最新的一筆」攤平到頂層欄位（維持既有讀取介面）
+  for (const unitId of Object.keys(map)) {
+    for (const type of Object.keys(map[unitId])) {
+      const bucket = map[unitId][type];
+      bucket.all.sort((a, b) => {
+        const ta = a.date instanceof Date ? a.date.getTime() : Infinity;
+        const tb = b.date instanceof Date ? b.date.getTime() : Infinity;
+        return ta - tb;
+      });
+      const dated = bucket.all.filter(e => e.date instanceof Date);
+      const primary = dated.length > 0 ? dated[dated.length - 1] : bucket.all[0];
+      Object.assign(bucket, primary);
+    }
+  }
 
   return map;
 };
@@ -1534,12 +1629,17 @@ const openMessageDialog = (householdData) => {
 const isHouseholdDetailVisible = ref(false);
 const selectedHouseholdForDetail = ref(null);
 const detailModalPos = ref({ x: 120, y: 80 });
+// 電腦版左右分欄排版：左側「項目」導覽、右側顯示選中項目的「內容」；窄螢幕維持直向堆疊
+const _hdmViewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280);
+const _onHdmResize = () => { _hdmViewportWidth.value = window.innerWidth; };
+const isHdmDesktopLayout = computed(() => _hdmViewportWidth.value >= 900);
+const hdmActiveSection = ref('basic');
 const isModalEditMode = ref(false); // 編輯模式總開關（預設關閉，避免誤觸修改）
 const _editModeSnapshot = ref(null); // 進入編輯時的原值快照（用於退出時 diff）
 const _isSavingModalEdits = ref(false);
-// 預約資訊 inline 編輯草稿（依 type；只含可編輯欄位：預約人聯絡資訊＋方式額外資訊）
+// 預約資訊 inline 編輯草稿（依 appointmentId，同一項目多筆重複預約可各自編輯；只含可編輯欄位：預約人聯絡資訊＋方式額外資訊）
 // 不直接綁 detailBookingInfo（那是共用的 appointments map），避免污染原始資料
-const _bookingEditDrafts = ref({});   // { [type]: { appointmentId, bookerName, bookerPhone, bookerEmail, bookingMethodDetails:{...} } }
+const _bookingEditDrafts = ref({});   // { [appointmentId]: { appointmentId, type, bookerName, bookerPhone, bookerEmail, bookingMethodDetails:{...} } }
 const _bookingEditSnapshot = ref({}); // 進入編輯時的預約原值快照（退出時 diff，只寫有變更的 type）
 let _detailDragStart = null;
 
@@ -1563,10 +1663,11 @@ const openHouseholdDetail = (clickedRow) => {
    _editModeSnapshot.value = null;
    _bookingEditDrafts.value = {};
    _bookingEditSnapshot.value = {};
+   hdmActiveSection.value = 'basic'; // 電腦版分欄：每次開啟預設停在「基本資料」
    isHouseholdDetailVisible.value = true;
    // 預設位置：水平置中、距頂 80px
    if (typeof window !== 'undefined') {
-      const modalWidth = 600;
+      const modalWidth = isHdmDesktopLayout.value ? 1000 : 720;
       detailModalPos.value = {
          x: Math.max(20, Math.floor((window.innerWidth - modalWidth) / 2)),
          y: 80
@@ -1651,6 +1752,15 @@ const detailBookingInfo = computed(() => {
    return h._bookingInfo || {};
 });
 
+// 某預約項目的「所有」有效預約（同一項目重複預約時全部列出；由舊→新排序）
+// 舊資料的 _bookingInfo 可能沒有 all 陣列，fallback 以頂層那筆包成單元素陣列
+const detailBookingsForType = (type) => {
+   const info = detailBookingInfo.value?.[type];
+   if (!info) return [];
+   if (Array.isArray(info.all) && info.all.length > 0) return info.all;
+   return info.appointmentId ? [info] : [];
+};
+
 // 哪些 type 至少有一個未刪除 method 設了 subOptions（用於判斷是否要顯示「子項目」欄位）
 const typesWithSubOptions = computed(() => {
    const result = new Set();
@@ -1695,6 +1805,25 @@ const detailExtraFieldsByType = computed(() => {
    return result;
 });
 
+// 電腦版左右分欄：左側導覽的「項目」清單（固定區塊 + 動態預約項目）
+const hdmSections = computed(() => ([
+   { id: 'switches', label: '功能開關', icon: 'mdi-toggle-switch-outline' },
+   { id: 'basic', label: '基本資料', icon: 'mdi-account-outline' },
+   ...detailBookingTypes.value.map(t => ({
+      id: `booking:${t}`, label: `${t} 預約`, icon: 'mdi-calendar-clock-outline', bookingType: t
+   })),
+   { id: 'reports', label: '報告 / 其他', icon: 'mdi-file-document-outline' },
+   { id: 'auth', label: '驗屋授權書', icon: 'mdi-file-sign' },
+   { id: 'messages', label: '客戶回傳訊息', icon: 'mdi-message-text-outline' },
+]));
+
+// 目前選中的項目（若因 bookingMenu 變動導致 id 失效，退回「基本資料」）
+const effectiveHdmSection = computed(() =>
+   hdmSections.value.some(s => s.id === hdmActiveSection.value) ? hdmActiveSection.value : 'basic');
+
+// 各內容卡片是否顯示：窄螢幕全部顯示（直向堆疊）；電腦版只顯示選中的項目
+const isHdmSectionVisible = (id) => !isHdmDesktopLayout.value || effectiveHdmSection.value === id;
+
 const formatDetailDate = (val) => {
    if (!val) return '';
    try {
@@ -1720,9 +1849,9 @@ const toJsDate = (val) => {
    }
 };
 
-// 驗屋報告未上傳提醒通知 — 取某預約項目的寄出紀錄（由新→舊，附完整時間字串）
-const getReminderRecordsForType = (type) => {
-   const arr = detailBookingInfo.value?.[type]?.reminderSentAt;
+// 驗屋報告未上傳提醒通知 — 取某一筆預約的寄出紀錄（由新→舊，附完整時間字串）
+const getReminderRecords = (bk) => {
+   const arr = bk?.reminderSentAt;
    if (!Array.isArray(arr) || arr.length === 0) return [];
    return arr
       .map(ts => toJsDate(ts))
@@ -1737,33 +1866,31 @@ const uploadReminderConditions = computed(() => {
    return Array.isArray(c) ? c : [];
 });
 
-// 某預約項目（含驗屋方式）是否落在「未上傳提醒」條件設定範圍內
-const isTypeConfiguredForReminder = (type) => {
-   const info = detailBookingInfo.value?.[type];
-   if (!info) return false;
+// 某一筆預約（含驗屋方式）是否落在「未上傳提醒」條件設定範圍內
+const isTypeConfiguredForReminder = (type, bk) => {
+   if (!bk) return false;
    return uploadReminderConditions.value.some(c =>
       c && c.bookingType === type &&
-      Array.isArray(c.methods) && c.methods.includes(info.method)
+      Array.isArray(c.methods) && c.methods.includes(bk.method)
    );
 };
 
 // 是否可實際寄送提醒（符合條件 + 尚未上傳 + 未交屋 + 有預約人 Email）
-const isTypeReminderEligible = (type) => {
-   const info = detailBookingInfo.value?.[type];
-   if (!info) return false;
-   if (info.reportUploaded === true) return false; // 已上傳不需提醒
+const isTypeReminderEligible = (type, bk) => {
+   if (!bk) return false;
+   if (bk.reportUploaded === true) return false; // 已上傳不需提醒
    if (selectedHouseholdForDetail.value?.['交屋'] === true) return false; // 已交屋不再提醒
-   if (!info.bookerEmail) return false; // 無收件人
-   return isTypeConfiguredForReminder(type);
+   if (!bk.bookerEmail) return false; // 無收件人
+   return isTypeConfiguredForReminder(type, bk);
 };
 
 // 是否要顯示「未上傳提醒」區塊（符合條件設定，或曾經寄送過）
-const shouldShowReminderBlock = (type) =>
-   isTypeConfiguredForReminder(type) || getReminderRecordsForType(type).length > 0;
+const shouldShowReminderBlock = (type, bk) =>
+   isTypeConfiguredForReminder(type, bk) || getReminderRecords(bk).length > 0;
 
-// 某預約項目「驗屋後幾天未上傳報告」（以預約日為基準，僅在未上傳時計算）
-const daysSinceNoUpload = (type) => {
-   const info = detailBookingInfo.value?.[type];
+// 某一筆預約「驗屋後幾天未上傳報告」（以預約日為基準，僅在未上傳時計算）
+const daysSinceNoUpload = (bk) => {
+   const info = bk;
    if (!info || info.reportUploaded === true) return null;
    const d = toJsDate(info.date);
    if (!d) return null;
@@ -1828,9 +1955,9 @@ const reminderPreviewHtml = computed(() => {
 
 const reminderPreviewSubject = computed(() => fillReminderVars(reminderDialog.subject));
 
-// 開啟「預覽後送出」對話框，預填建案範本
-const openReminderDialog = (type) => {
-   const info = detailBookingInfo.value?.[type];
+// 開啟「預覽後送出」對話框，預填建案範本（針對指定的那一筆預約）
+const openReminderDialog = (type, bk) => {
+   const info = bk;
    if (!info) return;
    const tpl = projectConfig.value?.reportSettings?.uploadReminderEmail || {};
    reminderDialog.type = type;
@@ -1895,8 +2022,8 @@ const cancelApptDialog = reactive({
 // 取消通知信收件對象勾選結果（由 CancelNotifyPicker 以 v-model 回傳）
 const cancelNotifySelection = ref({ ready: false, toBooker: false, cc: [] });
 
-const openCancelApptDialog = (type) => {
-   const info = detailBookingInfo.value?.[type];
+const openCancelApptDialog = (type, bk) => {
+   const info = bk;
    if (!info || !info.appointmentId) return;
    cancelApptDialog.type = type;
    cancelApptDialog.appointmentId = info.appointmentId;
@@ -2018,24 +2145,25 @@ const enterModalEditMode = () => {
       _editModeSnapshot.value = { ...selectedHouseholdForDetail.value };
    }
    _salespersonEditText.value = formatSalespersons(selectedHouseholdForDetail.value.salesperson, '、', '');
-   // 為每個「已有實際預約」的 type 建立可編輯草稿（沒有 appointmentId 的 type 不可編輯）
+   // 為每一筆「已有實際預約」建立可編輯草稿（同一項目多筆重複預約各自一份；沒有 appointmentId 的不可編輯）
    const drafts = {};
-   const info = detailBookingInfo.value || {};
    for (const type of detailBookingTypes.value) {
-      const bi = info[type];
-      if (!bi || !bi.appointmentId) continue;
-      const bmd = { ...(bi.bookingMethodDetails || {}) };
-      // 預先補上此 type 所有方式額外資訊欄位的鍵，確保 v-model 有對應槽位
-      for (const f of (detailExtraFieldsByType.value[type] || [])) {
-         if (!(f.id in bmd)) bmd[f.id] = '';
+      for (const bi of detailBookingsForType(type)) {
+         if (!bi || !bi.appointmentId) continue;
+         const bmd = { ...(bi.bookingMethodDetails || {}) };
+         // 預先補上此 type 所有方式額外資訊欄位的鍵，確保 v-model 有對應槽位
+         for (const f of (detailExtraFieldsByType.value[type] || [])) {
+            if (!(f.id in bmd)) bmd[f.id] = '';
+         }
+         drafts[bi.appointmentId] = {
+            appointmentId: bi.appointmentId,
+            type,
+            bookerName: bi.bookerName || '',
+            bookerPhone: bi.bookerPhone || '',
+            bookerEmail: bi.bookerEmail || '',
+            bookingMethodDetails: bmd
+         };
       }
-      drafts[type] = {
-         appointmentId: bi.appointmentId,
-         bookerName: bi.bookerName || '',
-         bookerPhone: bi.bookerPhone || '',
-         bookerEmail: bi.bookerEmail || '',
-         bookingMethodDetails: bmd
-      };
    }
    _bookingEditDrafts.value = drafts;
    _bookingEditSnapshot.value = JSON.parse(JSON.stringify(drafts));
@@ -2098,14 +2226,15 @@ const exitModalEditMode = async () => {
       if (o !== n) payload[`customBatches.${k}`] = n;
    }
 
-   // 預約資訊 diff（寫回 appointments；只處理有 appointmentId 且實際有變更的 type）
+   // 預約資訊 diff（寫回 appointments；以 appointmentId 逐筆處理，只寫實際有變更的預約）
    const bookingUpdates = [];
    const drafts = _bookingEditDrafts.value || {};
    const bSnap = _bookingEditSnapshot.value || {};
-   for (const type of Object.keys(drafts)) {
-      const cur = drafts[type];
-      const old = bSnap[type];
+   for (const apptId of Object.keys(drafts)) {
+      const cur = drafts[apptId];
+      const old = bSnap[apptId];
       if (!cur || !cur.appointmentId || !old) continue;
+      const type = cur.type;
       const bp = {};
       // 預約人聯絡資訊（純文字）
       for (const f of ['bookerName', 'bookerPhone', 'bookerEmail']) {
@@ -2697,7 +2826,7 @@ const dynamicColDefs = computed(() => {
     }
 
     availableTypes.forEach(type => {
-      // 預約日期欄位
+      // 預約日期欄位（同一項目有多筆有效預約時，於日期後加 +N 徽章提示；篩選/匯出仍用最新一筆的日期值）
       _bookingInfoCols.push({
         headerName: `${type}(預約日期)`,
         field: `_booking_${type}_date`,
@@ -2707,6 +2836,14 @@ const dynamicColDefs = computed(() => {
           return params.data?._bookingInfo?.[type]?.date || '';
         },
         valueFormatter: dateFormatter,
+        cellRenderer: params => {
+          const formatted = params.valueFormatted ?? dateFormatter(params);
+          const count = params.data?._bookingInfo?.[type]?.all?.length || 0;
+          if (count > 1) {
+            return `${formatted} <span title="此項目同時有 ${count} 筆有效預約，開啟戶別整合資訊可檢視全部" style="display:inline-block;margin-left:4px;padding:0 6px;border-radius:10px;background:#ff7043;color:#fff;font-size:0.7rem;font-weight:700;line-height:1.5;vertical-align:middle;">+${count - 1}</span>`;
+          }
+          return formatted;
+        },
         filter: 'agDateColumnFilter',
       });
 
@@ -3354,6 +3491,7 @@ async function onCellValueChanged(event) {
 
 // 修改生命週期鉤子以載入兩種資料 ---
 onMounted(async () => {
+  window.addEventListener('resize', _onHdmResize);
   if (projectId.value) {
     await projectStore.fetchProjects();
 
@@ -3434,6 +3572,7 @@ watch([rowData, hasFieldsLoaded], ([newRowData, newFieldsLoaded]) => {
 
 
 onUnmounted(() => {
+  window.removeEventListener('resize', _onHdmResize);
   if (unsubscribeHouseholds) {
     console.log('停止監聽戶別總表');
     unsubscribeHouseholds();
@@ -3493,6 +3632,103 @@ onUnmounted(() => {
    padding: 12px;
    overflow-y: auto;
    background: #fafafa;
+   flex: 1 1 auto;
+   min-height: 0;
+}
+/* 電腦版：Modal 加寬 + 左右分欄（左側項目導覽、右側選中項目的內容） */
+.household-detail-modal.hdm-wide {
+   width: 1000px;
+}
+.hdm-body-split {
+   display: flex;
+   align-items: stretch;
+   padding: 0;
+   overflow: hidden;
+}
+.hdm-body-split .hdm-content {
+   flex: 1 1 auto;
+   min-width: 0;
+   overflow-y: auto;
+   padding: 12px;
+}
+.hdm-nav {
+   flex: 0 0 200px;
+   overflow-y: auto;
+   background: #f4f6fa;
+   border-right: 1px solid #e0e0e0;
+   padding: 10px 8px;
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+}
+.hdm-nav-item {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+   width: 100%;
+   padding: 8px 10px;
+   border: 1px solid transparent;
+   border-radius: 8px;
+   background: transparent;
+   cursor: pointer;
+   text-align: left;
+   font: inherit;
+   color: #37474f;
+   transition: background 0.15s ease, border-color 0.15s ease;
+}
+.hdm-nav-item:hover {
+   background: #e8eef7;
+}
+.hdm-nav-item.is-active {
+   background: #ffffff;
+   border-color: #90caf9;
+   box-shadow: 0 1px 4px rgba(21, 101, 192, 0.15);
+   color: #1565c0;
+}
+.hdm-nav-item.is-active .hdm-nav-label {
+   font-weight: 700;
+}
+.hdm-nav-icon {
+   flex: 0 0 auto;
+}
+.hdm-nav-texts {
+   display: flex;
+   flex-direction: column;
+   min-width: 0;
+   flex: 1 1 auto;
+}
+.hdm-nav-label {
+   font-size: 0.85rem;
+   font-weight: 500;
+   line-height: 1.3;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.hdm-nav-caption {
+   font-size: 0.72rem;
+   color: #78909c;
+   line-height: 1.3;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.hdm-nav-caption.is-empty {
+   color: #b0bec5;
+}
+.hdm-nav-badge {
+   flex: 0 0 auto;
+   min-width: 20px;
+   height: 20px;
+   border-radius: 10px;
+   background: #ff7043;
+   color: #ffffff;
+   font-size: 0.72rem;
+   font-weight: 700;
+   display: inline-flex;
+   align-items: center;
+   justify-content: center;
+   padding: 0 5px;
 }
 .hdm-row {
    display: flex;
@@ -3608,6 +3844,30 @@ onUnmounted(() => {
    height: 1px;
    background: #eeeeee;
    margin: 6px 0 4px;
+}
+/* 同一預約項目有多筆重複預約時：每筆預約獨立成一個可辨識的區塊 */
+.hdm-booking-block + .hdm-booking-block {
+   margin-top: 10px;
+}
+.hdm-booking-multi {
+   padding: 6px 10px 8px;
+   background: #fffdf9;
+   border: 1px solid #ffe0b2;
+   border-left: 3px solid #ff7043;
+   border-radius: 6px;
+}
+.hdm-booking-head {
+   display: flex;
+   align-items: center;
+   gap: 6px;
+   padding-bottom: 4px;
+   margin-bottom: 4px;
+   border-bottom: 1px dashed #ffe0b2;
+}
+.hdm-booking-head-date {
+   font-size: 0.8125rem;
+   font-weight: 600;
+   color: #5d4037;
 }
 .hdm-row a {
    color: #1976d2;
