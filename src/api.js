@@ -5752,6 +5752,28 @@ export const generateContractDocument = async (payload) => {
   }
 };
 
+/** 合約製作：預熱產製函式（開啟視窗時呼叫，消除按下載時的冷啟動；失敗靜默） */
+export const warmupContractDocument = () => {
+  try {
+    const func = httpsCallable(functions, 'generateContractDocument');
+    func({ action: 'warmup' }).catch(() => {});
+  } catch (e) { /* 預熱失敗不影響主流程 */ }
+};
+
+/** 合約製作：列出該戶別已產製的歷史檔案（同時兼預熱） */
+export const listContractDocFiles = async (projectId, unitId) => {
+  const func = httpsCallable(functions, 'generateContractDocument');
+  const result = await func({ action: 'list', projectId, unitId });
+  return result.data;
+};
+
+/** 合約製作：刪除該戶別的一個歷史檔案 */
+export const deleteContractDocFile = async (projectId, unitId, path) => {
+  const func = httpsCallable(functions, 'generateContractDocument');
+  const result = await func({ action: 'delete', projectId, unitId, path });
+  return result.data;
+};
+
 /**
  * 從後端獲取指定專案的文字樣式
  * @param {string} projectId 專案 ID

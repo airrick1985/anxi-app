@@ -19143,9 +19143,66 @@ exports.generateContractDocument = onCall({
   region: "asia-east1",
   timeoutSeconds: 300,
   memory: "1GiB",   // 標楷體（TW-Kai 35MB、10萬+字符）解析/子集化需較高記憶體，512MiB 會 OOM
+  cpu: 2,           // 字型子集化 / pdf-lib 合併為 CPU 密集，2 核可明顯縮短產製時間
   secrets: driveSecrets
 }, async (request) => {
-  const { projectId, format, pages, fileNameParts } = request.data || {};
+  const { projectId, format, pages, fileNameParts, action } = request.data || {};
+
+  // 預熱：開啟合約製作視窗時呼叫，僅為喚醒實例、消除按下載時的冷啟動
+  if (action === 'warmup') return { status: 'warm' };
+
+  // 歷史檔案：列出 / 刪除該戶別已產製的檔案（列表呼叫同時兼預熱）
+  if (action === 'list' || action === 'delete') {
+    const unitId = request.data?.unitId;
+    if (!projectId || !unitId) {
+      throw new HttpsError("invalid-argument", "缺少 projectId 或 unitId 參數。");
+    }
+    const bucket = getStorage().bucket();
+    const prefix = `contractDocs/${projectId}/${unitId}/`;
+
+    if (action === 'delete') {
+      const filePath = String(request.data?.path || '');
+      if (!filePath.startsWith(prefix) || filePath.includes('..')) {
+        throw new HttpsError("invalid-argument", "檔案路徑不合法。");
+      }
+      try {
+        await bucket.file(filePath).delete();
+      } catch (e) {
+        if (e.code === 404) throw new HttpsError("not-found", "檔案不存在或已被刪除。");
+        throw new HttpsError("internal", `刪除失敗：${e.message}`);
+      }
+      return { status: 'success' };
+    }
+
+    try {
+      const [files] = await bucket.getFiles({ prefix });
+      const list = await Promise.all(files.map(async (f) => {
+        // download token URL 走 firebasestorage 端點（自帶 CORS，前端可 fetch/預覽）；無 token 舊檔退回簽名 URL
+        const token = f.metadata?.metadata?.firebaseStorageDownloadTokens;
+        let url;
+        if (token) {
+          url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(f.name)}?alt=media&token=${String(token).split(',')[0]}`;
+        } else {
+          const [signed] = await f.getSignedUrl({ action: 'read', expires: Date.now() + 60 * 60 * 1000 });
+          url = signed;
+        }
+        return {
+          path: f.name,
+          fileName: f.name.slice(prefix.length),
+          size: Number(f.metadata?.size) || 0,
+          updated: f.metadata?.timeCreated || f.metadata?.updated || '',
+          contentType: f.metadata?.contentType || '',
+          url,
+        };
+      }));
+      list.sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
+      return { status: 'success', files: list.slice(0, 50) };
+    } catch (e) {
+      console.error('[generateContractDocument] 歷史檔案列表失敗:', e);
+      throw new HttpsError("internal", `讀取歷史檔案失敗：${e.message}`);
+    }
+  }
+
   if (!projectId || !['pdf', 'excel'].includes(format) || !Array.isArray(pages) || pages.length === 0) {
     throw new HttpsError("invalid-argument", "缺少 projectId、format(pdf|excel) 或 pages 參數。");
   }
@@ -19207,30 +19264,36 @@ exports.generateContractDocument = onCall({
         const selection = (page.data && page.data.selection) || [];
         if (!selection.length) continue;
         const drive = getAuthenticatedDriveClient();
-        const pageFiles = [];
-        for (const sel of selection) {
+        // 各檔案並行下載（Promise.all 保序），單檔失敗不中斷
+        const settled = await Promise.all(selection.map(async (sel) => {
           try {
             const meta = await drive.files.get({ fileId: sel.fileId, fields: 'id, name, mimeType, size', supportsAllDrives: true });
             const sizeBytes = Number(meta.data.size) || 0;
             if (sizeBytes > 8 * 1024 * 1024) {
-              warnings.push(`${sel.fileName || meta.data.name}（檔案過大，已略過）`);
-              continue;
+              return { warning: `${sel.fileName || meta.data.name}（檔案過大，已略過）` };
             }
             const res = await drive.files.get(
               { fileId: sel.fileId, alt: 'media', supportsAllDrives: true },
               { responseType: 'arraybuffer' }
             );
-            pageFiles.push({
-              fileId: sel.fileId,
-              fileName: sel.fileName || meta.data.name,
-              mimeType: meta.data.mimeType || '',
-              pageRange: sel.pageRange || null,
-              buffer: Buffer.from(res.data)
-            });
+            return {
+              file: {
+                fileId: sel.fileId,
+                fileName: sel.fileName || meta.data.name,
+                mimeType: meta.data.mimeType || '',
+                pageRange: sel.pageRange || null,
+                buffer: Buffer.from(res.data)
+              }
+            };
           } catch (e) {
             console.warn(`[generateContractDocument] 附圖下載失敗（${sel.fileName}）:`, e.message);
-            warnings.push(sel.fileName || sel.fileId);
+            return { warning: sel.fileName || sel.fileId };
           }
+        }));
+        const pageFiles = [];
+        for (const s of settled) {
+          if (s.file) pageFiles.push(s.file);
+          else if (s.warning) warnings.push(s.warning);
         }
         // 重複頁數：附圖整組複製 N 次（同一 buffer 重複引用，不重複下載）
         const pageCopies = Math.max(1, Math.min(10, Number(page.pageCopies) || 1));
@@ -19243,23 +19306,41 @@ exports.generateContractDocument = onCall({
       buffer = await buildContractExcel({ pages });
     }
 
-    // onCall 回應上限 10MB，base64 後約 1.37 倍
-    if (buffer.length > 7 * 1024 * 1024) {
-      throw new HttpsError("resource-exhausted", "產出檔案過大（超過 7MB），請減少合約附圖頁數後重試。");
-    }
-
     const today = formatInTimeZone(new Date(), 'Asia/Taipei', 'yyyyMMdd');
     const parts = fileNameParts || {};
     const salesText = formatSalespersons(parts.salesperson, ',', '') || 'N/A';
     const pageSuffix = parts.pageTitle ? `-${parts.pageTitle}` : '';
     const fileName = `${today}-${parts.projectName || ''}-合約製作${pageSuffix}-${parts.unitId || ''}-${salesText}.${isPdf ? 'pdf' : 'xlsx'}`;
+    const mimeType = isPdf
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+    // 上傳 Storage 回傳簽名連結（免除 onCall 10MB / base64 開銷，並留存為戶別歷史檔案；同名覆蓋）
+    try {
+      const storageUnitId = parts.unitId || 'unknown';
+      const filePath = `contractDocs/${projectId}/${storageUnitId}/${fileName}`;
+      const bucket = getStorage().bucket();
+      const file = bucket.file(filePath);
+      // download token URL 走 firebasestorage 端點（自帶 CORS，前端可 fetch/預覽）
+      const downloadToken = crypto.randomUUID();
+      await file.save(buffer, {
+        resumable: false,
+        metadata: { contentType: mimeType, metadata: { firebaseStorageDownloadTokens: downloadToken } }
+      });
+      const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filePath)}?alt=media&token=${downloadToken}`;
+      return { status: 'success', fileName, mimeType, url, path: filePath, size: buffer.length, warnings };
+    } catch (e) {
+      console.warn('[generateContractDocument] 上傳 Storage 失敗，回退 base64 傳輸:', e.message);
+    }
+
+    // Fallback：Storage 不可用時沿用 base64（受 onCall 回應上限 10MB 限制，base64 後約 1.37 倍）
+    if (buffer.length > 7 * 1024 * 1024) {
+      throw new HttpsError("resource-exhausted", "產出檔案過大（超過 7MB），請減少合約附圖頁數後重試。");
+    }
     return {
       status: 'success',
       fileName,
-      mimeType: isPdf
-        ? 'application/pdf'
-        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      mimeType,
       base64: buffer.toString('base64'),
       warnings
     };
@@ -24117,7 +24198,7 @@ async function _sendReminderText(token, to, name, items, projectName) {
 exports.checkLeadDuplicates = onCall({
   region: "asia-east1",
   cors: true,
-  memory: "256MiB",
+  memory: "512MiB",
   timeoutSeconds: 60
 }, async (request) => {
   const functionName = "checkLeadDuplicates";
@@ -24167,12 +24248,18 @@ exports.checkLeadDuplicates = onCall({
           const source = profile['從何得知本建案'] || profile.source || guest.source || '未知';
           const budget = profile['購屋預算'] || profile.budget || guest.budget || '未填寫';
 
+          // 客資最近互動時間（millis），供與聯絡名單最後分配時間比較，決定預設指派銷售
+          const latestActivityMillis = sortedLogs.length
+            ? (sortedLogs[0].createdAt?.toMillis ? sortedLogs[0].createdAt.toMillis() : (new Date(sortedLogs[0].date || 0).getTime() || 0))
+            : (new Date(guest.submissions?.[0]?.拜訪日期 || 0).getTime() || 0);
+
           results[matchedPhone] = {
             type: "vip",
             data: {
               latestName: guest.latestName || "未知",
               latestSalesName: guest.latestSalesName || "未指派",
               latestSalesPhone: guest.latestSalesPhone || "", // 分配的 KEY
+              latestActivityMillis,
               visitDate: guest.submissions?.[0]?.拜訪日期 || "",
 
               // 擴充欄位供詳情對話框使用
@@ -24197,8 +24284,8 @@ exports.checkLeadDuplicates = onCall({
     }
 
     // 3. 第二階段：比對 leads (既有名單)
-    // 僅檢查目前還是 "none" 的電話
-    const remainingPhones = cleanPhones.filter(p => results[p].type === "none");
+    // "none" 與 "vip" 都要檢查：vip 命中者仍需知道聯絡名單是否也有重複分配紀錄
+    const remainingPhones = cleanPhones.filter(p => results[p].type === "none" || results[p].type === "vip");
 
     for (let i = 0; i < remainingPhones.length; i += 30) {
       const chunk = remainingPhones.slice(i, i + 30);
@@ -24271,26 +24358,53 @@ exports.checkLeadDuplicates = onCall({
           // 錯誤不阻斷主流程，僅 log
         }
 
-        results[phone] = {
-          type: "lead",
-          data: {
-            count: group.length,
-            name: latest.name || "未知",
-            assignedName: latest.assignedName || "未指派",
-            assignedTo: latest.assignedTo || "", // 業務手機
-            assignedAt: latest.assignedAt ? latest.assignedAt.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) : "",
+        const leadData = {
+          count: group.length,
+          name: latest.name || "未知",
+          assignedName: latest.assignedName || "未指派",
+          assignedTo: latest.assignedTo || "", // 業務手機
+          assignedAt: latest.assignedAt ? latest.assignedAt.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) : "",
+          assignedAtMillis: latest.assignedAt?.toMillis() || 0,
 
-            // 擴充欄位
-            source: latest.source || "未知",
-            budget: latest.budget || "未填寫",
-            date: latest.date || "",
-            status: latest.statusText || latest.status || "重複名單",
-            note: latest.note || "",
+          // 擴充欄位
+          source: latest.source || "未知",
+          budget: latest.budget || "未填寫",
+          date: latest.date || "",
+          status: latest.statusText || latest.status || "重複名單",
+          note: latest.note || "",
 
-            // 新增: 互動紀錄
-            interactionLogs: allLogs
-          }
+          // 新增: 互動紀錄
+          interactionLogs: allLogs
         };
+
+        if (results[phone].type === "vip") {
+          // 既有客資同時也有重複名單：附掛名單資訊，並比較兩邊「最後一筆」時間決定預設指派銷售
+          const vipData = results[phone].data;
+          vipData.leadDup = leadData;
+
+          const vipHasSales = !!vipData.latestSalesPhone;
+          const leadHasSales = !!leadData.assignedTo;
+
+          if (leadHasSales && (!vipHasSales || leadData.assignedAtMillis > (vipData.latestActivityMillis || 0))) {
+            vipData.autoAssign = {
+              source: "lead",
+              salesId: leadData.assignedTo,
+              salesName: leadData.assignedName,
+              basisLabel: "名單最後分配",
+              basisDate: leadData.assignedAt || ""
+            };
+          } else if (vipHasSales) {
+            vipData.autoAssign = {
+              source: "customer",
+              salesId: vipData.latestSalesPhone,
+              salesName: vipData.latestSalesName,
+              basisLabel: "客資最近互動",
+              basisDate: vipData.date || ""
+            };
+          }
+        } else {
+          results[phone] = { type: "lead", data: leadData };
+        }
       }));
     }
 

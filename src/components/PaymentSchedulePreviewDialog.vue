@@ -490,7 +490,7 @@
                                             <span class="ps-area-val strong">{{ fmt2(context.areas?.landShareSqm) }} m²</span>
                                         </div>
                                         <div v-if="hasParkingArea" class="ps-area-row ps-area-gray">
-                                            <span class="ps-area-label">車位面積：</span>
+                                            <span class="ps-area-label">車位持分面積：</span>
                                             <span class="ps-area-val strong">{{ fmt2(context.areas?.parkingPing) }}坪</span>
                                             <span class="ps-area-val strong">{{ fmt2(context.areas?.parkingSqm) }} m²</span>
                                         </div>

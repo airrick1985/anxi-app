@@ -188,7 +188,7 @@ function drawPdfPage(pdf, docData, page, logoBuffer, qrBuffer) {
   // 車位面積：有面積資料才列（無車位或未填面積時不佔版面）
   if (Number(a.parkingPing) > 0 || Number(a.parkingSqm) > 0) {
     ry += rowH;
-    drawAreaRow(ry, "車位面積：", fmt2(a.parkingPing), fmt2(a.parkingSqm), true, true);
+    drawAreaRow(ry, "車位持分面積：", fmt2(a.parkingPing), fmt2(a.parkingSqm), true, true);
   }
   const infoBottom = ry + rowH;
 
@@ -543,7 +543,7 @@ function buildExcelSheet(wb, docData, page, sheetName, logoBuffer, qrBuffer) {
 
   // 車位面積：有面積資料才列（無車位或未填面積時不佔版面）
   if (Number(a.parkingPing) > 0 || Number(a.parkingSqm) > 0) {
-    setLabel("E12", "車位面積：");
+    setLabel("E12", "車位持分面積：");
     setVal("F12", `${fmt2(a.parkingPing)}坪`, { gray: true, bold: true });
     setVal("G12", `${fmt2(a.parkingSqm)} m²`, { gray: true, bold: true });
   }

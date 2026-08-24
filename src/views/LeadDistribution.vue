@@ -1090,16 +1090,38 @@
                             <span class="font-weight-bold me-2">{{ duplicateResults[lead.phone].data.latestSalesName }}</span>
                             <span class="text-grey">{{ duplicateResults[lead.phone].data.date || '--' }}</span>
                         </div>
-                        <v-btn 
-                            size="x-small" 
-                            variant="tonal" 
-                            color="orange-darken-2" 
+                        <v-btn
+                            size="x-small"
+                            variant="tonal"
+                            color="orange-darken-2"
                             class="px-2"
                             prepend-icon="mdi-magnify"
                             @click="openDetail(lead.phone, duplicateResults[lead.phone], 'vip')"
                         >
                             詳情
                         </v-btn>
+
+                        <!-- 同一電話在聯絡名單也有分配紀錄 -->
+                        <template v-if="duplicateResults[lead.phone].data.leadDup">
+                            <v-divider class="my-2"></v-divider>
+                            <v-chip color="blue-grey-lighten-4" class="text-blue-grey-darken-3 font-weight-bold mb-1" size="small" label>
+                                <v-icon start icon="mdi-alert-circle" size="x-small"></v-icon> 重複名單
+                            </v-chip>
+                            <div class="text-caption text-grey-darken-1 mb-1 d-flex align-center">
+                                <span class="font-weight-bold me-2">{{ duplicateResults[lead.phone].data.leadDup.assignedName }}</span>
+                                <span class="text-grey">{{ duplicateResults[lead.phone].data.leadDup.assignedAt || '--' }}</span>
+                            </div>
+                            <v-btn
+                                size="x-small"
+                                variant="tonal"
+                                color="blue-grey-darken-2"
+                                class="px-2"
+                                prepend-icon="mdi-magnify"
+                                @click="openDetail(lead.phone, { data: duplicateResults[lead.phone].data.leadDup }, 'lead')"
+                            >
+                                詳情
+                            </v-btn>
+                        </template>
                     </div>
 
                     <!-- Lead: Duplicate (Compact Mode) -->
@@ -1181,8 +1203,17 @@
                       variant="outlined"
                       class="mt-1 font-weight-bold"
                       style="max-width: 260px;"
-                      @update:model-value="(val) => { updateAssignedInfo(lead, val); applySorting(); }"
+                      @update:model-value="(val) => { updateAssignedInfo(lead, val); lead.autoAssignInfo = null; applySorting(); }"
                     ></v-select>
+                    <div
+                      v-if="lead.assignedTo && lead.autoAssignInfo"
+                      class="text-caption mt-1"
+                      :class="AUTO_SOURCE_META[lead.autoAssignInfo.source]?.color"
+                      style="max-width: 260px;"
+                    >
+                      <v-icon size="x-small" icon="mdi-auto-fix" class="me-1"></v-icon>自動帶入「{{ AUTO_SOURCE_META[lead.autoAssignInfo.source]?.label }}」銷售
+                      <div class="text-grey" v-if="lead.autoAssignInfo.basisDate">依據：{{ lead.autoAssignInfo.basisLabel }} {{ lead.autoAssignInfo.basisDate }}</div>
+                    </div>
                   </td>
 
             <td class="pa-4">
@@ -1247,18 +1278,29 @@
                                         📋 歷史回報：{{ lead.status }}
                                      </v-chip>
                                      <template v-if="duplicateResults[lead.phone]">
-                                        <v-chip 
-                                            v-if="duplicateResults[lead.phone].type === 'vip'" 
-                                            color="orange-lighten-4" 
-                                            class="text-orange-darken-4 font-weight-bold" 
-                                            size="x-small" 
-                                            label
-                                            @click="openDetail(lead.phone, duplicateResults[lead.phone], 'vip')"
-                                        >
-                                            <v-icon start icon="mdi-crown" size="x-small"></v-icon> 既有客資 ({{ duplicateResults[lead.phone].data.latestSalesName }}) 詳情 >
-                                        </v-chip>
+                                        <template v-if="duplicateResults[lead.phone].type === 'vip'">
+                                            <v-chip
+                                                color="orange-lighten-4"
+                                                class="text-orange-darken-4 font-weight-bold"
+                                                size="x-small"
+                                                label
+                                                @click="openDetail(lead.phone, duplicateResults[lead.phone], 'vip')"
+                                            >
+                                                <v-icon start icon="mdi-crown" size="x-small"></v-icon> 既有客資 ({{ duplicateResults[lead.phone].data.latestSalesName }}) 詳情 >
+                                            </v-chip>
+                                            <v-chip
+                                                v-if="duplicateResults[lead.phone].data.leadDup"
+                                                color="blue-grey-lighten-4"
+                                                class="text-blue-grey-darken-3 font-weight-bold"
+                                                size="x-small"
+                                                label
+                                                @click="openDetail(lead.phone, { data: duplicateResults[lead.phone].data.leadDup }, 'lead')"
+                                            >
+                                                <v-icon start icon="mdi-alert-circle" size="x-small"></v-icon> 重複名單 ({{ duplicateResults[lead.phone].data.leadDup.assignedName }}) 詳情 >
+                                            </v-chip>
+                                        </template>
 
-                                        <v-chip 
+                                        <v-chip
                                             v-else-if="duplicateResults[lead.phone].type === 'lead'" 
                                             color="blue-grey-lighten-4" 
                                             class="text-blue-grey-darken-3 font-weight-bold" 
@@ -1305,10 +1347,19 @@
                                   density="compact"
                                   hide-details="auto"
                                   variant="outlined"
-                                  class="mb-3 font-weight-bold"
+                                  class="mb-1 font-weight-bold"
                                   bg-color="white"
-                                  @update:model-value="(val) => { updateAssignedInfo(lead, val); applySorting(); }"
+                                  @update:model-value="(val) => { updateAssignedInfo(lead, val); lead.autoAssignInfo = null; applySorting(); }"
                                 ></v-select>
+                                <div
+                                  v-if="lead.assignedTo && lead.autoAssignInfo"
+                                  class="text-caption mb-3"
+                                  :class="AUTO_SOURCE_META[lead.autoAssignInfo.source]?.color"
+                                >
+                                  <v-icon size="x-small" icon="mdi-auto-fix" class="me-1"></v-icon>自動帶入「{{ AUTO_SOURCE_META[lead.autoAssignInfo.source]?.label }}」銷售
+                                  <span class="text-grey" v-if="lead.autoAssignInfo.basisDate">（{{ lead.autoAssignInfo.basisLabel }} {{ lead.autoAssignInfo.basisDate }}）</span>
+                                </div>
+                                <div v-else class="mb-2"></div>
 
                                 <!-- 4. Fields -->
                                 <v-row dense>
@@ -2361,10 +2412,7 @@ const enterExcelPreview = async (newLeads) => {
 
   previewLeads.value.forEach(lead => {
     if (!lead.assignedTo) {
-      const res = duplicateResults.value[lead.phone];
-      if (res?.data?.latestSalesPhone || res?.data?.assignedTo) {
-        quickAssignInPreview(lead, res.data.latestSalesPhone || res.data.assignedTo);
-      }
+      autoAssignByDuplicate(lead);
     }
   });
   applySorting();
@@ -3050,10 +3098,59 @@ const runCheck = async (phones) => {
   }
 };
 
-const quickAssignInPreview = (lead, salesId) => {
+const quickAssignInPreview = (lead, salesId, autoInfo = null) => {
   if (!salesId) return;
   lead.assignedTo = salesId;
   updateAssignedInfo(lead, salesId);
+  lead.autoAssignInfo = autoInfo; // { source, salesName, basisLabel, basisDate } 或 null（手動）
+};
+
+// ✅ 自動指派來源標示（讓用戶一眼看出系統帶入的是名單銷售還是客資銷售）
+const AUTO_SOURCE_META = {
+  customer: { label: '客戶資料', color: 'text-orange-darken-3' },
+  lead: { label: '聯絡名單', color: 'text-blue-grey-darken-2' },
+  reservation: { label: '賞屋預約', color: 'text-purple-darken-2' }
+};
+
+// ✅ 共用：依查重結果自動指派銷售
+// 既有客資(vip)優先採用後端 autoAssign（比較「客資最近互動」vs「名單最後分配」較新的一筆）
+const autoAssignByDuplicate = (lead) => {
+  const res = duplicateResults.value[lead.phone];
+  if (!res) return;
+
+  if (res.type === 'vip') {
+    const auto = res.data?.autoAssign;
+    if (auto?.salesId) {
+      quickAssignInPreview(lead, auto.salesId, {
+        source: auto.source,
+        salesName: auto.salesName,
+        basisLabel: auto.basisLabel,
+        basisDate: auto.basisDate
+      });
+    } else if (res.data?.latestSalesPhone) {
+      // 相容舊版後端（無 autoAssign 欄位）：沿用客資銷售
+      quickAssignInPreview(lead, res.data.latestSalesPhone, {
+        source: 'customer',
+        salesName: res.data.latestSalesName,
+        basisLabel: '客資最近互動',
+        basisDate: res.data.date || ''
+      });
+    }
+  } else if (res.type === 'lead' && res.data?.assignedTo) {
+    quickAssignInPreview(lead, res.data.assignedTo, {
+      source: 'lead',
+      salesName: res.data.assignedName,
+      basisLabel: '名單最後分配',
+      basisDate: res.data.assignedAt || res.data.date || ''
+    });
+  } else if (res.type === 'reservation' && res.data?.assignedTo) {
+    quickAssignInPreview(lead, res.data.assignedTo, {
+      source: 'reservation',
+      salesName: res.data.assignedName,
+      basisLabel: '預約時間',
+      basisDate: res.data.date || ''
+    });
+  }
 };
 
 const updateAssignedInfo = (lead, salesId) => {
@@ -3067,7 +3164,10 @@ const summaryCount = computed(() => {
   previewLeads.value.forEach(l => {
     // 1. 檢查查重狀態 (已有客資/重複名單/賞屋預約/全新/已購戶)
     const res = duplicateResults.value[l.phone];
-    if (res?.type === 'vip') counts.vip++;
+    if (res?.type === 'vip') {
+      counts.vip++;
+      if (res.data?.leadDup) counts.lead++; // 既有客資同時也重複名單，兩者都計
+    }
     else if (res?.type === 'lead') counts.lead++;
     else if (res?.type === 'reservation') counts.reservation++;
     else if (res?.type === 'purchased') counts.purchased++;
@@ -3388,23 +3488,8 @@ const handleParsing = async () => {
   uploadStep.value = 2;
   await runCheck(leads.map(l => l.phone).filter(p => p));
 
-  // --- 修改段落：查重後自動指派銷售人員 ---
-  previewLeads.value.forEach(lead => {
-    const res = duplicateResults.value[lead.phone];
-    if (res) {
-      if (res.type === 'vip' && res.data.latestSalesPhone) {
-        // 情況 A：成交客戶，自動選擇「原成交銷售」(對應 latestSalesPhone)
-        quickAssignInPreview(lead, res.data.latestSalesPhone);
-      } else if (res.type === 'lead' && res.data.assignedTo) {
-        // 情況 B：重複名單，自動選擇「最後指派銷售」(對應 assignedTo)
-        quickAssignInPreview(lead, res.data.assignedTo);
-      } else if (res.type === 'reservation' && res.data.assignedTo) {
-        // 情況 C：賞屋預約，自動選擇「預約時的業務」(對應 assignedTo)
-        quickAssignInPreview(lead, res.data.assignedTo);
-      }
-    }
-  });
-  // --- 修改結束 ---
+  // --- 查重後自動指派銷售人員（含來源標示） ---
+  previewLeads.value.forEach(lead => autoAssignByDuplicate(lead));
 };
 
 const isImporting = ref(false);
@@ -3421,6 +3506,9 @@ const buildLeadsWithStatus = () => {
     if (res?.type === 'vip') {
       const salesName = res.data?.latestSalesName || '未知';
       statusText = `🚩 既有客資 (來客: ${res.data?.name || '無名'} / 銷售: ${salesName})`;
+      if (res.data?.leadDup) {
+        statusText += ` ＋ ⚠️ 重複名單 (共 ${res.data.leadDup.count || 0} 筆 / 銷售: ${res.data.leadDup.assignedName || '未指派'})`;
+      }
     } else if (res?.type === 'purchased') {
       const salesName = res.data?.assignedName || '未知';
       statusText = `🏡 本案已購戶 (銷售: ${salesName} | 戶別: ${res.data?.unitId || '未知'})`;

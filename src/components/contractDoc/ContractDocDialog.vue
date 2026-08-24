@@ -521,9 +521,13 @@
       </v-card-text>
 
       <v-divider />
-      <v-card-actions class="pa-3">
+      <v-card-actions class="pa-3 flex-wrap">
         <v-btn color="secondary" variant="tonal" prepend-icon="mdi-content-save" :loading="saving"
           :disabled="!config" @click="saveDocData()">儲存</v-btn>
+        <v-btn variant="tonal" color="blue-grey" prepend-icon="mdi-history" :loading="historyLoading"
+          @click="historyDialog = true">
+          歷史檔案<template v-if="historyFiles.length">（{{ historyFiles.length }}）</template>
+        </v-btn>
         <v-spacer />
         <v-menu v-if="config">
           <template #activator="{ props: mp }">
@@ -542,6 +546,98 @@
           :disabled="!canDownload" @click="download('excel')">下載 EXCEL</v-btn>
         <v-btn variant="text" @click="$emit('update:show', false)">關閉</v-btn>
       </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- 歷史檔案：該戶別已產製的合約文件（免重複產製） -->
+  <v-dialog v-model="historyDialog" max-width="720px" scrollable>
+    <v-card>
+      <v-card-title class="pa-3 d-flex align-center bg-blue-grey-lighten-5">
+        <v-icon start color="blue-grey">mdi-history</v-icon>
+        <span class="text-subtitle-1 font-weight-bold">歷史檔案 - {{ unitCtx.unitId }}</span>
+        <v-spacer />
+        <v-btn icon="mdi-refresh" variant="text" size="small" :loading="historyLoading" @click="loadHistoryFiles" />
+        <v-btn icon="mdi-close" variant="text" size="small" @click="historyDialog = false" />
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pa-0" style="max-height: 60vh;">
+        <v-alert v-if="!historyLoading && !historyFiles.length" type="info" variant="tonal" class="ma-4">
+          此戶別尚無已產製的檔案。按「下載 PDF / EXCEL」產製後會自動保存於此，下次可直接取用。
+        </v-alert>
+        <v-list v-else density="comfortable" lines="two">
+          <v-list-item v-for="f in historyFiles" :key="f.path">
+            <template #prepend>
+              <v-icon :color="isHistoryPdf(f) ? 'red-darken-1' : 'green-darken-2'" size="large">
+                {{ isHistoryPdf(f) ? 'mdi-file-pdf-box' : 'mdi-file-excel' }}
+              </v-icon>
+            </template>
+            <v-list-item-title class="text-body-2 font-weight-bold" style="white-space: normal;">
+              {{ f.fileName }}
+            </v-list-item-title>
+            <v-list-item-subtitle class="text-caption">
+              {{ formatFileTime(f.updated) }}｜{{ formatFileSize(f.size) }}
+            </v-list-item-subtitle>
+            <template #append>
+              <div class="d-flex align-center ga-1">
+                <v-btn v-if="isHistoryPdf(f)" icon="mdi-eye" variant="text" size="small" color="primary"
+                  title="檢視" @click="openPdfViewer(f)" />
+                <v-btn icon="mdi-download" variant="text" size="small" color="blue-grey"
+                  title="下載" @click="downloadHistoryFile(f)" />
+                <v-btn icon="mdi-trash-can-outline" variant="text" size="small" color="error"
+                  title="刪除" @click="historyDeleteTarget = f" />
+              </div>
+            </template>
+          </v-list-item>
+        </v-list>
+      </v-card-text>
+      <v-divider />
+      <v-card-text class="pa-3 text-caption text-grey">
+        產製新檔案時，同名檔案（同日期、同頁面組合）會自動覆蓋為最新版。
+      </v-card-text>
+    </v-card>
+  </v-dialog>
+
+  <!-- 歷史檔案：刪除確認 -->
+  <v-dialog :model-value="!!historyDeleteTarget" max-width="420px" @update:model-value="historyDeleteTarget = null">
+    <v-card v-if="historyDeleteTarget">
+      <v-card-title class="text-subtitle-1 font-weight-bold">確認刪除檔案？</v-card-title>
+      <v-card-text class="text-body-2">
+        「{{ historyDeleteTarget.fileName }}」刪除後無法復原。
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="historyDeleteTarget = null">取消</v-btn>
+        <v-btn color="error" variant="flat" :loading="historyDeleting" @click="confirmDeleteHistoryFile">刪除</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- 歷史檔案：PDF 檢視器（縮放/旋轉） -->
+  <v-dialog v-model="pdfViewer.show" :fullscreen="isMobile" max-width="1000px" scrollable>
+    <v-card class="d-flex flex-column" :style="{ height: isMobile ? '100dvh' : '90vh' }">
+      <v-card-title class="pa-2 d-flex align-center bg-grey-darken-3">
+        <span class="text-body-2 text-white text-truncate me-2" style="max-width: 45%;">{{ pdfViewer.fileName }}</span>
+        <v-spacer />
+        <v-btn icon="mdi-magnify-minus-outline" variant="text" size="small" color="white"
+          :disabled="pdfViewer.zoom <= 50" @click="pdfViewer.zoom -= 25" title="縮小" />
+        <span class="text-caption text-white mx-1" style="min-width: 42px; text-align: center;">{{ pdfViewer.zoom }}%</span>
+        <v-btn icon="mdi-magnify-plus-outline" variant="text" size="small" color="white"
+          :disabled="pdfViewer.zoom >= 300" @click="pdfViewer.zoom += 25" title="放大" />
+        <v-btn icon="mdi-rotate-right" variant="text" size="small" color="white" @click="rotatePdf" title="旋轉 90°" />
+        <v-btn icon="mdi-download" variant="text" size="small" color="white"
+          @click="downloadHistoryFile({ url: pdfViewer.url, fileName: pdfViewer.fileName })" title="下載" />
+        <v-btn icon="mdi-close" variant="text" size="small" color="white" @click="pdfViewer.show = false" />
+      </v-card-title>
+      <v-card-text class="pa-2 bg-grey-lighten-2" style="overflow: auto; flex-grow: 1;">
+        <div class="d-flex justify-center">
+          <v-progress-circular v-if="pdfViewer.loading" indeterminate color="primary" class="my-8" />
+        </div>
+        <div :style="{ width: `${pdfViewer.zoom}%`, margin: '0 auto' }">
+          <VuePdfEmbed v-if="pdfViewer.show && pdfViewer.url" :source="pdfViewer.url" :rotation="pdfViewer.rotation"
+            class="elevation-3 bg-white" @loaded="pdfViewer.loading = false"
+            @loading-failed="pdfViewer.loading = false; toast.error('PDF 載入失敗，請改用下載')" />
+        </div>
+      </v-card-text>
     </v-card>
   </v-dialog>
 
@@ -575,6 +671,7 @@ import { useProjectStore } from '@/store/projectStore';
 import {
   fetchContractDocConfig, fetchPaymentTermTemplates, updateContractDocData,
   generateContractDocument, driveProxyList,
+  listContractDocFiles, deleteContractDocFile, warmupContractDocument,
 } from '@/api.js';
 import { runNewCalculationEngine } from '@/utils/paymentCalculation';
 import { buildUnitDocContext, resolveBankSets } from '@/utils/unitDocContext';
@@ -598,6 +695,8 @@ import ContractNumberTablePreview from './ContractNumberTablePreview.vue';
 
 // 自訂表單管理（於 Dialog 內開啟，取用表單連結；lazy 載入避免拖慢開啟）
 const CustomFormManager = defineAsyncComponent(() => import('@/components/CustomFormManager.vue'));
+// PDF 預覽（歷史檔案檢視；lazy 載入）
+const VuePdfEmbed = defineAsyncComponent(() => import('vue-pdf-embed'));
 
 const props = defineProps({
   show: Boolean,
@@ -617,6 +716,15 @@ const loading = ref(true);
 const saving = ref(false);
 const config = ref(null);
 const customFormsDialog = ref(false);
+
+/* ---------- 歷史檔案狀態（宣告須在開窗 watch 之前，函式本體在檔案後段） ---------- */
+const historyDialog = ref(false);
+const historyFiles = ref([]);
+const historyLoading = ref(false);
+const historyDeleteTarget = ref(null);   // 待確認刪除的檔案
+const historyDeleting = ref(false);
+// PDF 檢視器（縮放/旋轉）
+const pdfViewer = reactive({ show: false, url: '', fileName: '', rotation: 0, zoom: 100, loading: false });
 
 /* ---------- 戶別 context ---------- */
 // 配套合約方式清單（建案設定；未設定時 undefined → isSpecialContractType 硬編碼 fallback）
@@ -1364,6 +1472,8 @@ watch(() => props.show, async (val) => {
   mobileTab.value = 'edit';
   attachmentFiles.value = [];
   attachmentsLoaded.value = false;
+  historyFiles.value = [];
+  loadHistoryFiles(); // 不阻塞開啟：載入該戶別歷史檔案，同時兼預熱產製函式（消除下載時的冷啟動）
   try {
     projectStore.setCurrentProject(props.projectId);
     const [cfg] = await Promise.all([
@@ -1568,8 +1678,16 @@ async function download(format, onlyPageId = null) {
     };
 
     const result = await generateContractDocument(payload);
-    if (result.status === 'success' && result.base64) {
-      saveAs(base64ToBlob(result.base64, result.mimeType), result.fileName);
+    if (result.status === 'success' && (result.url || result.base64)) {
+      if (result.url) {
+        // Storage 下載連結（新版後端）：抓取後另存，並刷新歷史檔案列表
+        const resp = await fetch(result.url);
+        if (!resp.ok) throw new Error(`下載檔案失敗（HTTP ${resp.status}）`);
+        saveAs(await resp.blob(), result.fileName);
+        loadHistoryFiles();
+      } else {
+        saveAs(base64ToBlob(result.base64, result.mimeType), result.fileName);
+      }
       if (Array.isArray(result.warnings) && result.warnings.length) {
         toast.warning(`部分附圖無法載入：${result.warnings.join('、')}`);
       }
@@ -1582,6 +1700,77 @@ async function download(format, onlyPageId = null) {
     toast.error(`下載失敗：${e.message}`);
   } finally {
     downloading[format] = false;
+  }
+}
+
+/* ---------- 歷史檔案（Storage 已產製的合約文件；狀態宣告於檔案前段） ---------- */
+async function loadHistoryFiles() {
+  const unitId = unitCtx.value?.unitId;
+  if (!unitId) { warmupContractDocument(); return; }   // 無戶別時仍預熱產製函式
+  historyLoading.value = true;
+  try {
+    const res = await listContractDocFiles(props.projectId, unitId);
+    historyFiles.value = res?.files || [];
+  } catch (e) {
+    console.warn('載入合約歷史檔案失敗:', e.message);
+  } finally {
+    historyLoading.value = false;
+  }
+}
+
+function isHistoryPdf(f) {
+  return (f.contentType || '').includes('pdf') || /\.pdf$/i.test(f.fileName || '');
+}
+
+function formatFileSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  if (n >= 1024) return `${Math.round(n / 1024)} KB`;
+  return `${n} B`;
+}
+
+function formatFileTime(iso) {
+  if (!iso) return '';
+  try { return formatInTimeZone(new Date(iso), 'Asia/Taipei', 'yyyy/MM/dd HH:mm'); }
+  catch { return ''; }
+}
+
+function openPdfViewer(file) {
+  pdfViewer.url = file.url;
+  pdfViewer.fileName = file.fileName;
+  pdfViewer.rotation = 0;
+  pdfViewer.zoom = 100;
+  pdfViewer.loading = true;
+  pdfViewer.show = true;
+}
+
+function rotatePdf() {
+  pdfViewer.rotation = (pdfViewer.rotation + 90) % 360;
+}
+
+async function downloadHistoryFile(file) {
+  try {
+    const resp = await fetch(file.url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    saveAs(await resp.blob(), file.fileName);
+  } catch (e) {
+    toast.error(`下載失敗：${e.message}`);
+  }
+}
+
+async function confirmDeleteHistoryFile() {
+  const file = historyDeleteTarget.value;
+  if (!file) return;
+  historyDeleting.value = true;
+  try {
+    await deleteContractDocFile(props.projectId, unitCtx.value.unitId, file.path);
+    historyFiles.value = historyFiles.value.filter(f => f.path !== file.path);
+    toast.success(`已刪除「${file.fileName}」`);
+    historyDeleteTarget.value = null;
+  } catch (e) {
+    toast.error(`刪除失敗：${e.message}`);
+  } finally {
+    historyDeleting.value = false;
   }
 }
 
