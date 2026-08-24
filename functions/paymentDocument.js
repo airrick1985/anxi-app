@@ -11,7 +11,8 @@
  *   areas: { houseTotalPing, houseTotalSqm, mainPing, mainSqm,
  *            ancillaryPing, ancillarySqm, commonPing, commonSqm,
  *            terracePing,   // 露臺(不計坪)，僅坪數；空白/0 不顯示該列
- *            landSharePing, landShareSqm, landShareRatio },
+ *            landSharePing, landShareSqm, landShareRatio,
+ *            parkingPing, parkingSqm },  // 車位面積合計；空白/0 不顯示該列
  *   rows: [ { type:'group', name, percent, verticalLabel, children:[{seq,name,amount,note}] },
  *           { type:'single', name, percent, amount, note } ],
  *   totalPrice,         // 第 1 頁基準（一般：成交總價；配套模式：配套總價）
@@ -184,6 +185,11 @@ function drawPdfPage(pdf, docData, page, logoBuffer, qrBuffer) {
   pdf.moveTo(rValX, ry + rowH - 6).lineTo(right, ry + rowH - 6).lineWidth(0.5).strokeColor("#999999").stroke();
   ry += rowH;
   drawAreaRow(ry, "土地買賣面積：", fmt2(a.landSharePing), fmt2(a.landShareSqm), true, true);
+  // 車位面積：有面積資料才列（無車位或未填面積時不佔版面）
+  if (Number(a.parkingPing) > 0 || Number(a.parkingSqm) > 0) {
+    ry += rowH;
+    drawAreaRow(ry, "車位面積：", fmt2(a.parkingPing), fmt2(a.parkingSqm), true, true);
+  }
   const infoBottom = ry + rowH;
 
   // 左欄（戶別 / 車位）
@@ -534,6 +540,13 @@ function buildExcelSheet(wb, docData, page, sheetName, logoBuffer, qrBuffer) {
   setLabel("E11", "土地買賣面積：");
   setVal("F11", `${fmt2(a.landSharePing)}坪`, { gray: true, bold: true });
   setVal("G11", `${fmt2(a.landShareSqm)} m²`, { gray: true, bold: true });
+
+  // 車位面積：有面積資料才列（無車位或未填面積時不佔版面）
+  if (Number(a.parkingPing) > 0 || Number(a.parkingSqm) > 0) {
+    setLabel("E12", "車位面積：");
+    setVal("F12", `${fmt2(a.parkingPing)}坪`, { gray: true, bold: true });
+    setVal("G12", `${fmt2(a.parkingSqm)} m²`, { gray: true, bold: true });
+  }
 
   /* ---------- 列表日期（列 13）---------- */
   const dateCell = ws.getCell("A13");

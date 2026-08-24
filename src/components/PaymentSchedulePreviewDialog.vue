@@ -489,6 +489,11 @@
                                             <span class="ps-area-val strong">{{ fmt2(context.areas?.landSharePing) }}坪</span>
                                             <span class="ps-area-val strong">{{ fmt2(context.areas?.landShareSqm) }} m²</span>
                                         </div>
+                                        <div v-if="hasParkingArea" class="ps-area-row ps-area-gray">
+                                            <span class="ps-area-label">車位面積：</span>
+                                            <span class="ps-area-val strong">{{ fmt2(context.areas?.parkingPing) }}坪</span>
+                                            <span class="ps-area-val strong">{{ fmt2(context.areas?.parkingSqm) }} m²</span>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1018,6 +1023,10 @@ function nameColspan(row, child) {
     if (child.seq !== null) span -= 1;
     return span;
 }
+
+// 車位面積列：有面積資料才顯示（無車位或未填面積時整列隱藏）
+const hasParkingArea = computed(() =>
+    Number(props.context?.areas?.parkingPing) > 0 || Number(props.context?.areas?.parkingSqm) > 0);
 
 const parkingText = computed(() => {
     const spots = props.context?.parkingSpots || [];

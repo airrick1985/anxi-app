@@ -772,6 +772,10 @@ const paymentDocContext = computed(() => {
             price_transaction: p.price_transaction
         })),
         areas: {
+            // 車位面積合計：坪優先取車位資料 area_ping，未填時以 m² × 0.3025 換算
+            parkingSqm: (ownedParkingSpots.value || []).reduce((s, p) => s + (Number(p.area) || 0), 0),
+            parkingPing: (ownedParkingSpots.value || []).reduce((s, p) =>
+                s + (Number(p.area_ping) || Math.round((Number(p.area) || 0) * 0.3025 * 100) / 100), 0),
             houseTotalPing: data['房屋面積(坪)'],
             houseTotalSqm: data['房屋面積(平方公尺)'],
             mainPing: data['主建物面積(坪)'],
