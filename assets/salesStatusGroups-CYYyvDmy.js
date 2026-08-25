@@ -1,0 +1,1 @@
+const r=["小訂","補足","簽約","成交","已售","保留","售出","銷控"],l=["退戶","退訂","解約","取消","刪除","釋出","退簽約","退小訂","退補足"];function n(e){return e?r.includes(e)?"deal":l.includes(e)?"released":"neutral":"neutral"}const o={deal:{color:"#2E7D32",tag:"已售出，請勿重複介紹",emoji:"✅"},released:{color:"#C62828",tag:"已釋出，已開放介紹",emoji:"🔓"},neutral:{color:"#616161",tag:"",emoji:"ℹ️"}};export{o as S,n as c};
