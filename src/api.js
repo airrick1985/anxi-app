@@ -9121,3 +9121,144 @@ export const askSalesBotAPI = async (data) => {
     throw error;
   }
 };
+// =================================================================
+// /  ✅ [新增] 請佣獎金系統 API（docs/請佣獎金系統-spec.md）
+// =================================================================
+
+/** 讀取建案請佣設定（單一文件，不存在回 null） */
+export const fetchCommissionSettings = async (projectId) => {
+  const snap = await getDoc(doc(db, 'commissionSettings', projectId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+};
+
+/** 儲存建案請佣設定 */
+export const setCommissionSettings = (projectId, data) => {
+  return setDoc(doc(db, 'commissionSettings', projectId), {
+    ...data,
+    projectId,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
+/** 讀取建案全部請佣紀錄（排序由前端處理） */
+export const fetchCommissionRecords = async (projectId) => {
+  const q = query(collection(db, 'commissionRecords'), where('projectId', '==', projectId));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+/** 讀取建案全部獎金明細（排序由前端處理） */
+export const fetchBonusRecords = async (projectId) => {
+  const q = query(collection(db, 'bonusRecords'), where('projectId', '==', projectId));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+/** 讀取指定人員（跨建案）的獎金明細，personKey = 電話 */
+export const fetchBonusRecordsByPerson = async (personKey) => {
+  const q = query(collection(db, 'bonusRecords'), where('personKey', '==', personKey));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+/** 讀取建案每戶已請比例 ledger */
+export const fetchCommissionLedgers = async (projectId) => {
+  const q = query(collection(db, 'commissionUnitLedgers'), where('projectId', '==', projectId));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+/** 跨建案搜尋銷售人員（姓名或電話前綴），供他案人員選擇器使用 */
+export const searchSalesPersonnelAcrossProjects = async (term) => {
+  const t = String(term || '').trim();
+  if (!t) return [];
+  const end = t + '\uf8ff';
+  const byName = query(collection(db, 'salesPersonnel'), where('name', '>=', t), where('name', '<=', end), limit(30));
+  const byPhone = query(collection(db, 'salesPersonnel'), where('phone', '>=', t), where('phone', '<=', end), limit(30));
+  const [nameSnap, phoneSnap] = await Promise.all([getDocs(byName), getDocs(byPhone)]);
+  const map = new Map();
+  [...nameSnap.docs, ...phoneSnap.docs].forEach(d => { map.set(d.id, { id: d.id, ...d.data() }); });
+  return Array.from(map.values());
+};
+
+/** 讀取建案的匯出版型（claim / bonus） */
+export const fetchCommissionExportConfigs = async (projectId) => {
+  const q = query(collection(db, 'commissionExportConfigs'), where('projectId', '==', projectId));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+/** 新增/覆寫一組建案匯出版型 */
+export const setCommissionExportConfig = (docId, data) => {
+  return setDoc(doc(db, 'commissionExportConfigs', docId), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
+export const deleteCommissionExportConfig = (docId) => {
+  return deleteDoc(doc(db, 'commissionExportConfigs', docId));
+};
+
+/** 全域匯出範本庫 */
+export const fetchCommissionExportTemplates = async () => {
+  const snap = await getDocs(collection(db, 'commissionExportTemplates'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+export const setCommissionExportTemplate = (docId, data) => {
+  return setDoc(doc(db, 'commissionExportTemplates', docId), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
+export const deleteCommissionExportTemplate = (docId) => {
+  return deleteDoc(doc(db, 'commissionExportTemplates', docId));
+};
+
+/** 保留款發還登記 */
+export const fetchRetentionPayouts = async (projectId) => {
+  const q = query(collection(db, 'retentionPayouts'), where('projectId', '==', projectId));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+export const addRetentionPayout = (data) => {
+  return addDoc(collection(db, 'retentionPayouts'), {
+    ...data,
+    createdAt: serverTimestamp(),
+  });
+};
+
+export const deleteRetentionPayout = (docId) => {
+  return deleteDoc(doc(db, 'retentionPayouts', docId));
+};
+
+/** 送出請佣（後端 transaction 驗證與重算） */
+export const submitCommissionEntriesAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'submitCommissionEntries');
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 作廢請佣紀錄 */
+export const voidCommissionRecordAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'voidCommissionRecord');
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 歷史資料批次匯入 */
+export const importCommissionHistoryAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'importCommissionHistory', { timeout: 540000 });
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 請佣總表 / 獎金表 PDF 產製 */
+export const generateCommissionPdfAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'generateCommissionPdf', { timeout: 120000 });
+  const result = await fn(payload);
+  return result.data;
+};

@@ -563,7 +563,7 @@
     <v-dialog
       v-model="dialogVisible"
       persistent
-      :max-width="isMobile ? '100%' : '1000px'"
+      :max-width="isMobile ? '100%' : '1440px'"
       :fullscreen="isMobile"
       scrollable
     >
@@ -602,9 +602,17 @@
           </div>
 
           <div v-if="!loadingDetails">
+            <v-row>
+              <!-- 左欄：基本資料 -->
+              <v-col cols="12" md="4" class="edit-basic-col">
+                <div class="d-flex align-center mb-3">
+                  <v-icon color="indigo" size="small" class="mr-2">mdi-account-box-outline</v-icon>
+                  <span class="text-subtitle-1 font-weight-bold">基本資料</span>
+                  <v-divider class="ml-3 flex-grow-1"></v-divider>
+                </div>
             <v-form ref="basicInfoForm" v-model="isFormValid">
-              <v-row v-if="targetUser">
-                <v-col v-if="getFieldPermission('phone') !== 'H'" cols="12" sm="6">
+              <v-row v-if="targetUser" dense>
+                <v-col v-if="getFieldPermission('phone') !== 'H'" cols="12" sm="6" md="12">
                   <v-text-field
                     v-model="targetUser.basicInfo.phone"
                     label="手機號碼 (登入帳號)"
@@ -619,7 +627,7 @@
                   :success-messages="phoneValidationSuccess"
                   ></v-text-field>
                 </v-col>
-                <v-col v-if="getFieldPermission('name') !== 'H'" cols="12" sm="6">
+                <v-col v-if="getFieldPermission('name') !== 'H'" cols="12" sm="6" md="12">
                   <v-text-field
                     v-model="targetUser.basicInfo.name"
                     label="姓名"
@@ -629,7 +637,7 @@
                    
                   ></v-text-field>
                 </v-col>
-                <v-col v-if="getFieldPermission('email') !== 'H'" cols="12" sm="6">
+                <v-col v-if="getFieldPermission('email') !== 'H'" cols="12" sm="6" md="12">
                   <v-text-field
                     v-model="targetUser.basicInfo.email"
                     label="Email"
@@ -638,7 +646,7 @@
                   
                 ></v-text-field>
               </v-col>
-               <v-col v-if="getFieldPermission('password') !== 'H'" cols="12" sm="6">
+               <v-col v-if="getFieldPermission('password') !== 'H'" cols="12" sm="6" md="12">
                    <v-text-field
                       v-if="!isNewUser && getFieldPermission('password') === 'C'"
                     label="密碼"
@@ -658,7 +666,7 @@
                     :placeholder="isNewUser ? '' : '若不修改請留空'"
                   ></v-text-field>
                 </v-col>
-                <v-col v-if="getFieldPermission('companyName') !== 'H'" cols="12" sm="6">
+                <v-col v-if="getFieldPermission('companyName') !== 'H'" cols="12" sm="6" md="12">
                   <v-text-field
                     v-model="targetUser.basicInfo.companyName"
                   label="公司名稱"
@@ -667,7 +675,7 @@
                   
                   ></v-text-field>
                 </v-col>
-                <v-col v-if="getFieldPermission('companyTaxId') !== 'H'" cols="12" sm="6">
+                <v-col v-if="getFieldPermission('companyTaxId') !== 'H'" cols="12" sm="6" md="12">
                   <v-text-field
                     v-model="targetUser.basicInfo.companyTaxId"
                     label="統一編號"
@@ -690,26 +698,31 @@
               </v-col>
             </v-row>
             </v-form>
+              </v-col>
 
-          <v-divider class="my-4"></v-divider>
-          
-         <div v-if="getFieldPermission('permissions') !== 'H'">
-              <h3 class="mb-2">系統權限設定</h3>
-              <v-toolbar  class="mb-4" flat color="grey-lighten-4" rounded>
-                <v-text-field
-                v-model="projectSearchQuery"
-                label="搜尋建案"
-                variant="solo"
-                
-                hide-details
-                prepend-inner-icon="mdi-magnify"
-                class="mx-2"
-                clearable
-             ></v-text-field>
-                <v-btn @click="expandAll" class="ml-2" variant="tonal" size="small">全部展開</v-btn>
-                <v-btn @click="collapseAll" class="ml-2" variant="tonal" size="small">全部收合</v-btn>
-              </v-toolbar>
-            
+              <!-- 右欄：系統權限設定 -->
+              <v-col v-if="getFieldPermission('permissions') !== 'H'" cols="12" md="8">
+                <v-divider class="mb-4 d-md-none"></v-divider>
+                <div class="d-flex align-center mb-3">
+                  <v-icon color="indigo" size="small" class="mr-2">mdi-shield-key-outline</v-icon>
+                  <span class="text-subtitle-1 font-weight-bold">系統權限設定</span>
+                  <v-divider class="ml-3 flex-grow-1"></v-divider>
+                </div>
+                <div class="d-flex align-center mb-3 flex-wrap ga-2">
+                  <v-text-field
+                    v-model="projectSearchQuery"
+                    label="搜尋建案"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    prepend-inner-icon="mdi-magnify"
+                    clearable
+                    class="flex-grow-1"
+                    style="min-width: 200px;"
+                  ></v-text-field>
+                  <v-btn @click="expandAll" variant="tonal" size="small">全部展開</v-btn>
+                  <v-btn @click="collapseAll" variant="tonal" size="small">全部收合</v-btn>
+                </div>
 
             <div v-if="targetUser && permissionMatrix" class="permission-panels-container">
                 <v-expansion-panels multiple v-model="panels">
@@ -749,7 +762,7 @@
                       <v-col
                         v-for="system in group.items"
                         :key="system"
-                        cols="12" sm="6" md="4"
+                        cols="12" sm="6" md="4" lg="3"
                       >
                         <v-tooltip
                             location="top"
@@ -792,7 +805,8 @@
                     找不到符合條件的建案
                 </div>
               </div>
-            </div>
+              </v-col>
+            </v-row>
           </div>
         </v-card-text>
 
@@ -818,7 +832,7 @@
     <v-dialog
       v-model="batchDialogVisible"
       persistent
-      :max-width="isMobile ? '100%' : '900px'"
+      :max-width="isMobile ? '100%' : '1360px'"
       :fullscreen="isMobile"
       scrollable
     >
@@ -836,7 +850,7 @@
             <v-alert v-if="batchResult.granted.length > 0" type="success" variant="tonal" class="mb-3">
               <div class="font-weight-bold mb-1">成功授權 {{ batchResult.granted.length }} 人</div>
               <div v-for="g in batchResult.granted" :key="g.name" class="text-caption">
-                {{ g.name }}：{{ g.systems.join('、') }}
+                {{ g.name }}：{{ g.detail }}
               </div>
             </v-alert>
             <v-alert v-if="batchResult.unchanged.length > 0" type="info" variant="tonal" class="mb-3">
@@ -859,56 +873,94 @@
 
           <!-- 設定畫面 -->
           <div v-else>
-            <!-- 步驟一：選擇建案 -->
+            <v-row>
+              <!-- 左欄：選擇建案與權限 -->
+              <v-col cols="12" md="6" class="batch-col batch-left-col">
+            <!-- 步驟一：選擇建案（可複選） -->
             <div class="text-subtitle-1 font-weight-bold mb-2">
               <v-icon size="small" color="teal-darken-1" class="mr-1">mdi-numeric-1-circle</v-icon>
               選擇建案
+              <span v-if="batchProjects.length > 0" class="text-caption text-teal-darken-1">（已選 {{ batchProjects.length }} 個建案）</span>
             </div>
             <v-select
-              v-model="batchProject"
+              v-model="batchProjects"
               :items="batchGrantableProjects"
-              label="建案"
+              label="建案（可複選）"
               variant="outlined"
               density="comfortable"
+              multiple
+              chips
+              closable-chips
               hide-details
-              class="mb-4"
+              class="mb-4 flex-shrink-0"
               :disabled="batchSaving"
             ></v-select>
 
-            <!-- 步驟二：選擇權限 -->
+            <!-- 步驟二：各建案分別選擇權限 -->
             <div class="text-subtitle-1 font-weight-bold mb-2">
               <v-icon size="small" color="teal-darken-1" class="mr-1">mdi-numeric-2-circle</v-icon>
               選擇要授予的權限
-              <span v-if="batchSelectedSystems.length > 0" class="text-caption text-teal-darken-1">（已選 {{ batchSelectedSystems.length }} 項）</span>
+              <span v-if="batchTotalSelectedCount > 0" class="text-caption text-teal-darken-1">（共 {{ batchTotalSelectedCount }} 項）</span>
             </div>
-            <div v-if="!batchProject" class="text-grey text-body-2 mb-4 ml-7">請先選擇建案</div>
+            <div v-if="batchProjects.length === 0" class="batch-section-container mb-4 d-flex align-center justify-center text-grey text-body-2">請先選擇建案</div>
             <div v-else class="batch-section-container mb-4">
-              <div v-for="group in batchGroupedSystems" :key="group.id" class="mb-3">
-                <div class="d-flex align-center mb-1">
-                  <v-icon :color="group.color" size="small" class="mr-2">{{ group.icon }}</v-icon>
-                  <span class="text-subtitle-2 font-weight-bold" :style="{ color: group.color }">{{ group.label }}</span>
-                  <v-divider class="ml-3 flex-grow-1"></v-divider>
-                </div>
-                <v-row dense>
-                  <v-col v-for="system in group.items" :key="system" cols="12" sm="6" md="4">
-                    <v-checkbox
-                      v-model="batchSelectedSystems"
-                      :value="system"
-                      :label="system"
-                      hide-details
-                      density="compact"
+              <v-expansion-panels v-model="batchOpenPanels" multiple>
+                <v-expansion-panel
+                  v-for="pp in batchProjectPanels"
+                  :key="pp.project"
+                  :value="pp.project"
+                >
+                  <v-expansion-panel-title>
+                    <span class="font-weight-bold mr-2">{{ pp.project }}</span>
+                    <v-chip
+                      v-if="(batchSystemsByProject[pp.project] || []).length > 0"
+                      size="x-small" color="teal-darken-1" label
+                    >已選 {{ batchSystemsByProject[pp.project].length }} 項</v-chip>
+                    <v-chip v-else size="x-small" color="warning" variant="tonal" label>未選權限</v-chip>
+                    <v-spacer></v-spacer>
+                    <v-btn
+                      v-if="batchProjects.length > 1 && (batchSystemsByProject[pp.project] || []).length > 0"
+                      size="x-small"
+                      variant="tonal"
+                      color="teal-darken-1"
+                      class="mr-3"
                       :disabled="batchSaving"
-                    ></v-checkbox>
-                    <div v-if="getQuotaLimit(system, batchProject) > 0" class="batch-quota-hint">
-                      名額 {{ getQuotaUsed(system, batchProject) }}/{{ getQuotaLimit(system, batchProject) }} 人
+                      @click.stop="applyBatchSystemsToAll(pp.project)"
+                    >套用到其他建案</v-btn>
+                  </v-expansion-panel-title>
+                  <v-expansion-panel-text>
+                    <div v-for="group in pp.groups" :key="group.id" class="mb-3">
+                      <div class="d-flex align-center mb-1">
+                        <v-icon :color="group.color" size="small" class="mr-2">{{ group.icon }}</v-icon>
+                        <span class="text-subtitle-2 font-weight-bold" :style="{ color: group.color }">{{ group.label }}</span>
+                        <v-divider class="ml-3 flex-grow-1"></v-divider>
+                      </div>
+                      <v-row dense>
+                        <v-col v-for="system in group.items" :key="system" cols="12" sm="6" md="4">
+                          <v-checkbox
+                            v-model="batchSystemsByProject[pp.project]"
+                            :value="system"
+                            :label="system"
+                            hide-details
+                            density="compact"
+                            :disabled="batchSaving"
+                          ></v-checkbox>
+                          <div v-if="getQuotaLimit(system, pp.project) > 0" class="batch-quota-hint">
+                            名額 {{ getQuotaUsed(system, pp.project) }}/{{ getQuotaLimit(system, pp.project) }} 人
+                          </div>
+                        </v-col>
+                      </v-row>
                     </div>
-                  </v-col>
-                </v-row>
-              </div>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+              </v-expansion-panels>
             </div>
 
-            <v-divider class="my-4"></v-divider>
+              </v-col>
 
+              <!-- 右欄：勾選人員 -->
+              <v-col cols="12" md="6" class="batch-col">
+                <v-divider class="mb-4 d-md-none"></v-divider>
             <!-- 步驟三：勾選人員 -->
             <div class="text-subtitle-1 font-weight-bold mb-2">
               <v-icon size="small" color="teal-darken-1" class="mr-1">mdi-numeric-3-circle</v-icon>
@@ -964,17 +1016,19 @@
                 <v-spacer></v-spacer>
                 <v-chip v-if="u.disabledReason" size="x-small" color="grey" label class="ml-1">{{ u.disabledReason }}</v-chip>
                 <v-chip v-else-if="u.hasAll" size="x-small" color="green" label class="ml-1">已具備所選權限</v-chip>
-                <v-chip v-else-if="batchSelectedSystems.length > 0 && u.ownedCount > 0" size="x-small" color="blue-grey" label class="ml-1">
-                  已有 {{ u.ownedCount }}/{{ batchSelectedSystems.length }} 項
+                <v-chip v-else-if="batchTotalSelectedCount > 0 && u.ownedCount > 0" size="x-small" color="blue-grey" label class="ml-1">
+                  已有 {{ u.ownedCount }}/{{ batchTotalSelectedCount }} 項
                 </v-chip>
               </div>
               <div v-if="batchUserList.length === 0" class="text-center text-grey py-4">找不到符合條件的人員</div>
             </div>
 
-            <div v-if="batchSaving" class="text-center mt-4">
+            <div v-if="batchSaving" class="text-center mt-2">
               <v-progress-circular indeterminate color="teal-darken-1" size="24" class="mr-2"></v-progress-circular>
               <span class="text-body-2">{{ batchProgress }}</span>
             </div>
+              </v-col>
+            </v-row>
           </div>
         </v-card-text>
 
@@ -988,7 +1042,7 @@
               variant="flat"
               size="large"
               :loading="batchSaving"
-              :disabled="!batchProject || batchSelectedSystems.length === 0 || batchSelectedUsers.length === 0"
+              :disabled="batchTotalSelectedCount === 0 || batchSelectedUsers.length === 0"
               @click="handleBatchGrant"
             >
               批次授權（{{ batchSelectedUsers.length }} 人）
@@ -1273,8 +1327,9 @@ const projectSearchQuery = ref('');
 // --- 批次授權相關 State ---
 const batchDialogVisible = ref(false);
 const batchSaving = ref(false);
-const batchProject = ref(null);
-const batchSelectedSystems = ref([]);
+const batchProjects = ref([]);
+const batchSystemsByProject = ref({}); // { 建案名稱: [權限名稱] }
+const batchOpenPanels = ref([]);
 const batchSelectedUsers = ref([]);
 const batchUserSearch = ref('');
 const batchCompanyFilter = ref(null);
@@ -1537,7 +1592,7 @@ const permissionCategories = [
     label: '銷售系統',
     icon: 'mdi-home-city',
     color: 'blue-darken-2',
-    keywords: ['銷控', '報價', '銷售StandBy']
+    keywords: ['銷控', '報價', '銷售StandBy', '請佣']
   },
   {
     id: 'inspection',
@@ -2341,24 +2396,53 @@ const batchGrantableProjects = computed(() => {
   return managedProjects.value.filter(p => adminStore.adminScope[p]?.includes('人員管理'));
 });
 
-// 所選建案下可授予的權限：一般管理員不能授予自己沒有的權限
-const batchGrantableSystems = computed(() => {
-  if (!batchProject.value) return [];
+// 各建案下可授予的權限：一般管理員不能授予自己沒有的權限
+const batchGrantableSystemsFor = (projectName) => {
   if (isGodModeAdmin.value) return allFunctionNames.value;
-  return (adminStore.adminScope[batchProject.value] || []).slice().sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-});
+  return (adminStore.adminScope[projectName] || []).slice().sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+};
 
-const batchGroupedSystems = computed(() => {
+const groupSystemsForBatch = (systems) => {
   const groups = permissionCategories.map(cat => ({ ...cat, items: [] }));
   const otherGroup = { id: 'other', label: '其他功能', icon: 'mdi-dots-horizontal', color: 'grey-darken-1', items: [] };
-  batchGrantableSystems.value.forEach(funcName => {
+  systems.forEach(funcName => {
     const group = groups.find(g => g.keywords.some(k => funcName.includes(k)));
     (group || otherGroup).items.push(funcName);
   });
   const result = groups.filter(g => g.items.length > 0);
   if (otherGroup.items.length > 0) result.push(otherGroup);
   return result;
+};
+
+// 每個已選建案一個面板，各自帶可授予的權限分組
+const batchProjectPanels = computed(() =>
+  batchProjects.value.map(p => ({ project: p, groups: groupSystemsForBatch(batchGrantableSystemsFor(p)) }))
+);
+
+// 所有已勾選的「建案 × 權限」組合
+const batchSelectedPairs = computed(() => {
+  const pairs = [];
+  for (const p of batchProjects.value) {
+    const projectId = projectStore.nameToIdMap[p];
+    for (const sys of (batchSystemsByProject.value[p] || [])) {
+      pairs.push({ project: p, projectId, sys });
+    }
+  }
+  return pairs;
 });
+
+const batchTotalSelectedCount = computed(() => batchSelectedPairs.value.length);
+
+// 將某建案的權限勾選套用到其他已選建案（僅套用該建案可授予的權限）
+const applyBatchSystemsToAll = (sourceProject) => {
+  const src = batchSystemsByProject.value[sourceProject] || [];
+  batchProjects.value.forEach(p => {
+    if (p === sourceProject) return;
+    const grantable = batchGrantableSystemsFor(p);
+    batchSystemsByProject.value[p] = src.filter(s => grantable.includes(s));
+  });
+  toast.success(`已將「${sourceProject}」的權限勾選套用到其他建案`);
+};
 
 // 公司篩選選項：從人員名單彙整不重複的公司名稱；'__none__' 代表未設定公司者
 const batchCompanyOptions = computed(() => {
@@ -2376,7 +2460,6 @@ const batchCompanyOptions = computed(() => {
 });
 
 const batchUserList = computed(() => {
-  const projectId = projectStore.nameToIdMap[batchProject.value];
   const q = batchUserSearch.value?.toLowerCase().trim();
   let list = usersWithProjectData.value;
   if (batchCompanyFilter.value) {
@@ -2390,8 +2473,10 @@ const batchUserList = computed(() => {
   return list.map(u => {
     const roles = u.roles || [];
     const isTargetAdminRole = roles.includes('超級管理員') || roles.includes('系統管理員');
-    const existingSystems = (projectId && adminStore.allUserPermissionsMap.get(u.phone)?.[projectId]?.systems) || [];
-    const ownedCount = batchSelectedSystems.value.filter(s => existingSystems.includes(s)).length;
+    const userPerms = adminStore.allUserPermissionsMap.get(u.phone) || {};
+    const ownedCount = batchSelectedPairs.value.filter(pair =>
+      (pair.projectId && userPerms[pair.projectId]?.systems || []).includes(pair.sys)
+    ).length;
     let disabledReason = '';
     if (!isGodModeAdmin.value) {
       if (u.phone === userStore.user?.key) disabledReason = '不可授權自己';
@@ -2402,20 +2487,28 @@ const batchUserList = computed(() => {
       name: u.name,
       companyName: u.companyName || '',
       ownedCount,
-      hasAll: batchSelectedSystems.value.length > 0 && ownedCount === batchSelectedSystems.value.length,
+      hasAll: batchSelectedPairs.value.length > 0 && ownedCount === batchSelectedPairs.value.length,
       disabledReason
     };
   }).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant'));
 });
 
-// 切換建案時，移除新建案下不可授予的權限勾選
-watch(batchProject, () => {
-  batchSelectedSystems.value = batchSelectedSystems.value.filter(s => batchGrantableSystems.value.includes(s));
+// 建案選擇變動時，同步各建案的權限勾選容器，並自動展開新加入的建案面板
+watch(batchProjects, (newList, oldList) => {
+  const map = { ...batchSystemsByProject.value };
+  Object.keys(map).forEach(p => { if (!newList.includes(p)) delete map[p]; });
+  newList.forEach(p => { if (!(p in map)) map[p] = []; });
+  batchSystemsByProject.value = map;
+  const added = newList.filter(p => !(oldList || []).includes(p));
+  if (added.length > 0) {
+    batchOpenPanels.value = Array.from(new Set([...batchOpenPanels.value, ...added]));
+  }
 });
 
 const openBatchGrantDialog = () => {
-  batchProject.value = batchGrantableProjects.value.length === 1 ? batchGrantableProjects.value[0] : null;
-  batchSelectedSystems.value = [];
+  batchProjects.value = batchGrantableProjects.value.length === 1 ? [...batchGrantableProjects.value] : [];
+  batchSystemsByProject.value = {};
+  batchOpenPanels.value = [...batchProjects.value];
   batchSelectedUsers.value = [];
   batchUserSearch.value = '';
   batchCompanyFilter.value = null;
@@ -2436,9 +2529,12 @@ const selectAllBatchUsers = () => {
 };
 
 const handleBatchGrant = async () => {
-  const projectName = batchProject.value;
-  const projectId = projectStore.nameToIdMap[projectName];
-  if (!projectId) {
+  // 僅處理有勾選權限的建案；未勾任何權限的建案自動略過
+  const projectTargets = batchProjects.value
+    .map(name => ({ name, id: projectStore.nameToIdMap[name], systems: batchSystemsByProject.value[name] || [] }))
+    .filter(p => p.systems.length > 0);
+  if (projectTargets.length === 0) return;
+  if (projectTargets.some(p => !p.id)) {
     toast.error('找不到建案資料，請重新整理後再試。');
     return;
   }
@@ -2449,11 +2545,13 @@ const handleBatchGrant = async () => {
   const failed = [];
   const quotaSkipped = {};
 
-  // 預先計算各權限的剩餘名額，批次過程中以本地計數遞減（快取資料在迴圈中不會更新）
+  // 預先計算各建案各權限的剩餘名額，批次過程中以本地計數遞減（快取資料在迴圈中不會更新）
   const remaining = {};
-  for (const sys of batchSelectedSystems.value) {
-    const limit = getQuotaLimit(sys, projectName);
-    remaining[sys] = (!limit || limit <= 0) ? Infinity : Math.max(0, limit - getQuotaUsed(sys, projectName));
+  for (const p of projectTargets) {
+    for (const sys of p.systems) {
+      const limit = getQuotaLimit(sys, p.name);
+      remaining[`${p.name}|${sys}`] = (!limit || limit <= 0) ? Infinity : Math.max(0, limit - getQuotaUsed(sys, p.name));
+    }
   }
 
   // 從完整名單取目標，避免搜尋過濾影響已勾選者
@@ -2476,7 +2574,7 @@ const handleBatchGrant = async () => {
         }
       }
 
-      // 逐人取最新權限再合併，避免整份覆寫時弄丟其他建案的既有權限
+      // 逐人取最新權限再合併，多個建案一次寫入，避免整份覆寫時弄丟其他建案的既有權限
       const detailResult = await fetchUserDetailsForAdmin(target.phone, adminKey.value);
       if (detailResult.status !== 'success') {
         failed.push({ name: target.name, message: detailResult.message || '讀取人員資料失敗' });
@@ -2486,30 +2584,37 @@ const handleBatchGrant = async () => {
       const perms = JSON.parse(JSON.stringify(detail.permissions || {}));
       const targetRoles = detail.basicInfo.roles || [];
       const targetIsAdmin = targetRoles.includes('超級管理員') || targetRoles.includes('系統管理員');
-      const existingSystems = perms[projectId]?.systems || [];
 
-      const systemsToAdd = [];
-      for (const sys of batchSelectedSystems.value) {
-        if (existingSystems.includes(sys)) continue;
-        if (!targetIsAdmin && remaining[sys] <= 0) {
-          if (!quotaSkipped[sys]) quotaSkipped[sys] = [];
-          quotaSkipped[sys].push(target.name);
-          continue;
+      const addedByProject = [];
+      for (const p of projectTargets) {
+        const existingSystems = perms[p.id]?.systems || [];
+        const systemsToAdd = [];
+        for (const sys of p.systems) {
+          if (existingSystems.includes(sys)) continue;
+          if (!targetIsAdmin && remaining[`${p.name}|${sys}`] <= 0) {
+            const skipKey = `${p.name}／${sys}`;
+            if (!quotaSkipped[skipKey]) quotaSkipped[skipKey] = [];
+            quotaSkipped[skipKey].push(target.name);
+            continue;
+          }
+          systemsToAdd.push(sys);
         }
-        systemsToAdd.push(sys);
+        if (systemsToAdd.length === 0) continue;
+        if (!perms[p.id]) {
+          perms[p.id] = { projectName: p.name, systems: [] };
+        }
+        perms[p.id].systems = [...existingSystems, ...systemsToAdd];
+        addedByProject.push({ projectName: p.name, systemsToAdd });
       }
 
-      if (systemsToAdd.length === 0) {
-        if (batchSelectedSystems.value.every(sys => existingSystems.includes(sys))) {
-          unchanged.push(target.name);
-        }
+      if (addedByProject.length === 0) {
+        const ownsAll = projectTargets.every(p => {
+          const existingSystems = perms[p.id]?.systems || [];
+          return p.systems.every(sys => existingSystems.includes(sys));
+        });
+        if (ownsAll) unchanged.push(target.name);
         continue;
       }
-
-      if (!perms[projectId]) {
-        perms[projectId] = { projectName, systems: [] };
-      }
-      perms[projectId].systems = [...existingSystems, ...systemsToAdd];
 
       const updateResult = await updateUserDetailsForAdmin({
         targetUserKey: target.phone,
@@ -2521,9 +2626,15 @@ const handleBatchGrant = async () => {
       });
 
       if (updateResult.status === 'success') {
-        granted.push({ name: target.name, systems: systemsToAdd });
+        granted.push({
+          name: target.name,
+          detail: addedByProject.map(a => `${a.projectName}：${a.systemsToAdd.join('、')}`).join('；')
+        });
         if (!targetIsAdmin) {
-          systemsToAdd.forEach(sys => { if (remaining[sys] !== Infinity) remaining[sys]--; });
+          addedByProject.forEach(a => a.systemsToAdd.forEach(sys => {
+            const remKey = `${a.projectName}|${sys}`;
+            if (remaining[remKey] !== Infinity) remaining[remKey]--;
+          }));
         }
       } else {
         failed.push({ name: target.name, message: updateResult.message || '儲存失敗' });
@@ -2742,6 +2853,33 @@ const handleSendEmail = async () => {
   padding-left: 32px;
   margin-top: -4px;
   margin-bottom: 4px;
+}
+/* 電腦版：編輯人員權限 / 批次授權 改為左右雙欄橫向配置 */
+@media (min-width: 960px) {
+  .edit-basic-col {
+    border-right: 1px solid #e0e0e0;
+  }
+  .permission-panels-container {
+    height: 62vh;
+  }
+  .batch-col {
+    display: flex;
+    flex-direction: column;
+    height: 62vh;
+  }
+  .batch-left-col {
+    border-right: 1px solid #e0e0e0;
+  }
+  .batch-col .batch-section-container {
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: 0;
+  }
+  .batch-col .batch-user-list {
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: 0;
+  }
 }
 .field-permission-row {
   border-bottom: 1px solid #eee;

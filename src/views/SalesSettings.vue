@@ -356,27 +356,97 @@
           </v-card-title>
           <v-card-subtitle>管理此建案的銷售人員資料 (可拖曳排序)</v-card-subtitle>
           <v-divider class="my-4"></v-divider>
-          
+
           <v-skeleton-loader v-if="personnelLoading" type="list-item-two-line@5"></v-skeleton-loader>
 
-          <div v-if="!personnelLoading">
-            
-            <v-list lines="two">
-              <draggable 
-                v-model="personnelList" 
-                item-key="id" 
-                handle=".drag-handle"
-                @end="onPersonnelDragEnd"
+          <!-- ✅ [改版] 電腦版左右配置：左側人員清單、右側整合編輯區（手機維持 dialog） -->
+          <v-row v-if="!personnelLoading">
+            <!-- 左：人員清單 -->
+            <v-col cols="12" md="5" lg="4">
+              <v-btn
+                color="blue-darken-2"
+                @click="openPersonnelDialog()"
+                prepend-icon="mdi-plus"
+                class="mb-3"
+                block
               >
-                <template #item="{ element: person }">
+                新增銷售人員
+              </v-btn>
+
+              <v-text-field
+                v-model="personnelSearch"
+                label="搜尋姓名 / 電話 / 職位"
+                variant="outlined"
+                density="compact"
+                prepend-inner-icon="mdi-magnify"
+                clearable
+                hide-details
+                class="mb-3"
+              ></v-text-field>
+
+              <v-list lines="two" class="personnel-scroll-list pa-0 bg-transparent">
+                <!-- 無搜尋：完整清單可拖曳排序 -->
+                <draggable
+                  v-if="!personnelSearch"
+                  v-model="personnelList"
+                  item-key="id"
+                  handle=".drag-handle"
+                  @end="onPersonnelDragEnd"
+                >
+                  <template #item="{ element: person }">
+                    <v-list-item
+                      class="mb-2"
+                      elevation="1"
+                      border
+                      rounded="lg"
+                      :active="personnelPanelOpen && editingPersonnel.id === person.id"
+                      color="blue-darken-2"
+                      @click="openPersonnelDialog(person)"
+                    >
+                      <template v-slot:prepend>
+                        <v-icon class="drag-handle cursor-move mr-4 text-grey" @click.stop>mdi-drag</v-icon>
+                      </template>
+
+                      <v-list-item-title class="font-weight-bold">{{ person.name }}</v-list-item-title>
+                      <v-list-item-subtitle>
+                        {{ person.phone }} <span v-if="person.email">| {{ person.email }}</span>
+                      </v-list-item-subtitle>
+
+                      <div class="py-1">
+                        <v-chip
+                          v-for="pos in person.positions"
+                          :key="pos"
+                          size="small"
+                          class="mr-2"
+                          label
+                        >
+                          {{ pos }}
+                        </v-chip>
+                      </div>
+
+                      <template v-slot:append>
+                        <v-btn icon="mdi-delete" variant="text" color="error" size="small" @click.stop="confirmPersonnelDelete(person)"></v-btn>
+                      </template>
+                    </v-list-item>
+                  </template>
+                </draggable>
+
+                <!-- 搜尋中：顯示過濾結果（暫停拖曳排序） -->
+                <template v-else>
                   <v-list-item
+                    v-for="person in filteredPersonnelList"
+                    :key="person.id"
                     class="mb-2"
                     elevation="1"
                     border
+                    rounded="lg"
+                    :active="personnelPanelOpen && editingPersonnel.id === person.id"
+                    color="blue-darken-2"
+                    @click="openPersonnelDialog(person)"
                   >
                     <template v-slot:prepend>
-                      <v-icon class="drag-handle cursor-move mr-4 text-grey">mdi-drag</v-icon>
-                      </template>
+                      <v-icon class="mr-4 text-grey">mdi-account</v-icon>
+                    </template>
 
                     <v-list-item-title class="font-weight-bold">{{ person.name }}</v-list-item-title>
                     <v-list-item-subtitle>
@@ -394,34 +464,58 @@
                         {{ pos }}
                       </v-chip>
                     </div>
-                    
+
                     <template v-slot:append>
-                      <v-btn icon="mdi-pencil" variant="text" size="small" @click="openPersonnelDialog(person)"></v-btn>
-                      <v-btn icon="mdi-delete" variant="text" color="error" size="small" @click="confirmPersonnelDelete(person)"></v-btn>
+                      <v-btn icon="mdi-delete" variant="text" color="error" size="small" @click.stop="confirmPersonnelDelete(person)"></v-btn>
                     </template>
                   </v-list-item>
                 </template>
-              </draggable>
-            </v-list>
+              </v-list>
 
-             <v-alert
-              v-if="personnelList.length === 0"
-              type="info"
-              variant="tonal"
-            >
-              目前尚無銷售人員資料。
-            </v-alert>
+              <v-alert
+                v-if="personnelList.length === 0"
+                type="info"
+                variant="tonal"
+              >
+                目前尚無銷售人員資料。
+              </v-alert>
+              <v-alert
+                v-else-if="personnelSearch && filteredPersonnelList.length === 0"
+                type="info"
+                variant="tonal"
+                density="compact"
+              >
+                找不到符合「{{ personnelSearch }}」的人員。
+              </v-alert>
+            </v-col>
 
-            <v-btn
-              color="blue-darken-2"
-              @click="openPersonnelDialog()"
-              prepend-icon="mdi-plus"
-              class="mt-4"
-              block
-            >
-              新增銷售人員
-            </v-btn>
-          </div>
+            <!-- 右：整合編輯區（僅電腦版顯示；手機以 dialog 編輯） -->
+            <v-col cols="12" md="7" lg="8" class="d-none d-md-block">
+              <div class="personnel-editor-sticky">
+                <SalesPersonnelForm
+                  v-if="personnelPanelOpen"
+                  :key="editingPersonnel.id || 'new'"
+                  v-model="editingPersonnel"
+                  :loading="isSavingPersonnel"
+                  :project-id="projectId"
+                  :team-groups="commissionTeamGroups"
+                  @cancel="closePersonnelDialog"
+                  @save="savePersonnel"
+                />
+                <v-sheet
+                  v-else
+                  border
+                  rounded="lg"
+                  class="d-flex flex-column justify-center align-center text-center pa-8"
+                  min-height="320"
+                >
+                  <v-icon size="56" color="grey-lighten-1">mdi-account-edit-outline</v-icon>
+                  <p class="text-grey mt-3 mb-1">點選左側人員即可在此編輯</p>
+                  <p class="text-caption text-grey mb-0">或按「新增銷售人員」建立新資料</p>
+                </v-sheet>
+              </div>
+            </v-col>
+          </v-row>
         </v-card>
       </v-window-item>
 
@@ -1569,6 +1663,8 @@
       <SalesPersonnelForm
         v-model="editingPersonnel"
         :loading="isSavingPersonnel"
+        :project-id="projectId"
+        :team-groups="commissionTeamGroups"
         @cancel="closePersonnelDialog"
         @save="savePersonnel"
       />
@@ -1657,6 +1753,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick, defineAsyncComponent } from 'vue';
+import { useDisplay } from 'vuetify';
 import { useRoute, useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import { useToast } from 'vue-toastification';
@@ -1682,6 +1779,8 @@ import {
   updateSalesPersonnel,
   deleteSalesPersonnel,
   updateSalesPersonnelOrders,
+  fetchCommissionSettings, // ✅ [新增] 請佣獎金團獎分組選項
+
   listGoogleSheets, // ✅ 新增
   syncSalesHouseholdsToSheet, // ✅ 新增
   syncCancelledPurchasesToSheet, // ✅ 新增
@@ -1717,6 +1816,19 @@ let unsubscribePersonnel = null;
 const personnelDialog = ref(false);
 const editingPersonnel = ref({});
 const isSavingPersonnel = ref(false);
+// ✅ [改版] 電腦版左右配置：右側整合編輯面板狀態＋清單搜尋
+const { mdAndUp } = useDisplay();
+const personnelPanelOpen = ref(false);
+const personnelSearch = ref('');
+const filteredPersonnelList = computed(() => {
+  const q = String(personnelSearch.value || '').trim().toLowerCase();
+  if (!q) return personnelList.value;
+  return personnelList.value.filter(p =>
+    String(p.name || '').toLowerCase().includes(q) ||
+    String(p.phone || '').includes(q) ||
+    (Array.isArray(p.positions) && p.positions.some(pos => String(pos).toLowerCase().includes(q)))
+  );
+});
 const deletePersonnelDialog = ref(false);
 const personnelToDelete = ref({});
 const isDeletingPersonnel = ref(false);
@@ -2450,7 +2562,21 @@ const setupPersonnelListener = () => {
   });
 };
 
+// ✅ [新增] 請佣獎金團獎分組選項：首次開啟人員視窗時載入一次（傳入表單，免每次開窗重讀）
+const commissionTeamGroups = ref(null);
+const loadCommissionTeamGroups = async () => {
+  if (commissionTeamGroups.value !== null) return;
+  try {
+    const settings = await fetchCommissionSettings(projectId.value);
+    commissionTeamGroups.value = Array.isArray(settings?.teamGroups) ? settings.teamGroups : [];
+  } catch (e) {
+    console.warn('[SalesSettings] 載入請佣獎金團獎分組失敗:', e);
+    commissionTeamGroups.value = [];
+  }
+};
+
 const openPersonnelDialog = (person = null) => {
+  loadCommissionTeamGroups();
   if (person) {
     // 編輯模式，深拷貝一份資料
     editingPersonnel.value = JSON.parse(JSON.stringify(person));
@@ -2463,11 +2589,18 @@ const openPersonnelDialog = (person = null) => {
       email: ''
     };
   }
-  personnelDialog.value = true;
+  // ✅ [改版] 電腦版改用右側整合編輯區，手機維持 dialog
+  if (mdAndUp.value) {
+    personnelPanelOpen.value = true;
+    personnelDialog.value = false;
+  } else {
+    personnelDialog.value = true;
+  }
 };
 
 const closePersonnelDialog = () => {
   personnelDialog.value = false;
+  personnelPanelOpen.value = false;
   editingPersonnel.value = {};
 };
 
@@ -2541,6 +2674,10 @@ const executePersonnelDelete = async () => {
   try {
     await deleteSalesPersonnel(personnelToDelete.value.id);
     toast.info(`「${personnelToDelete.value.name}」已刪除`);
+    // 若刪除的是右側編輯區正在編輯的人員，一併關閉編輯區
+    if (editingPersonnel.value?.id === personnelToDelete.value.id) {
+      closePersonnelDialog();
+    }
     deletePersonnelDialog.value = false;
   } catch (error) {
     toast.error(`刪除失敗: ${error.message}`);
@@ -2982,6 +3119,18 @@ onUnmounted(() => {
 }
 .cursor-move:active {
   cursor: grabbing;
+}
+
+/* ✅ [改版] 銷售人員管理：電腦版左右配置 */
+@media (min-width: 960px) {
+  .personnel-scroll-list {
+    max-height: calc(100vh - 320px);
+    overflow-y: auto;
+  }
+  .personnel-editor-sticky {
+    position: sticky;
+    top: 80px;
+  }
 }
 
 /* ✅ [新增] 付款表產製設定：logo 預覽框 */

@@ -26,6 +26,17 @@
             mdi-star
           </v-icon>
           <span>{{ item.name }}</span>
+          <v-tooltip v-if="item.inSystem === false" text="此人員不在系統銷售人員名單內，僅出現在成交/退戶紀錄上" location="top">
+            <template #activator="{ props: tipProps }">
+              <v-chip
+                v-bind="tipProps"
+                size="x-small"
+                color="warning"
+                variant="tonal"
+                label
+              >非系統名單</v-chip>
+            </template>
+          </v-tooltip>
         </div>
       </template>
 

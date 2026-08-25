@@ -535,8 +535,18 @@ export const calculatePersonnelStats = (households, parkings, personnel, dateRan
 
   const soldHouseholds = filtered
 
-  const stats = personnel.map(person => {
-    const personHouseholds = soldHouseholds.filter(h => salespersonsInclude(h.salesperson, person.name))
+  // 名單 = 系統銷售人員 ∪ 成交戶別上出現的所有銷售人員
+  // Why: 戶別上填寫的成交人員可能不在系統人員名單內，若只依系統名單統計會漏列
+  const systemNames = new Set(personnel.map(p => p.name))
+  const allNames = personnel.map(p => p.name)
+  soldHouseholds.forEach(h => {
+    normalizeSalespersons(h.salesperson).forEach(name => {
+      if (!allNames.includes(name)) allNames.push(name)
+    })
+  })
+
+  const stats = allNames.map(name => {
+    const personHouseholds = soldHouseholds.filter(h => salespersonsInclude(h.salesperson, name))
 
     // 按狀態分組（同一戶別可能在多個狀態中出現）
     const byStatus = {}
@@ -585,7 +595,8 @@ export const calculatePersonnelStats = (households, parkings, personnel, dateRan
     )
 
     return {
-      name: person.name,
+      name,
+      inSystem: systemNames.has(name),
       soldCount,
       totalAmount,
       premiumAmount,

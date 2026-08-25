@@ -250,6 +250,20 @@
           <span>資料透視</span>
         </v-tooltip>
 
+        <!-- ✅ [新增] 請佣獎金系統入口（需「請佣獎金」獨立權限） -->
+        <v-tooltip location="bottom" v-if="currentViewMode === 'sales' && canAccessCommission">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              color="black"
+              variant="tonal"
+              @click="goToCommissionBonus"
+              icon="mdi-cash-multiple"
+            ></v-btn>
+          </template>
+          <span>請佣獎金</span>
+        </v-tooltip>
+
         <span class="toolbar-divider" aria-hidden="true" v-if="currentViewMode === 'sales'"></span>
 
         <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
@@ -3638,6 +3652,16 @@ const canDirectEnterQuoteSettings = computed(() => {
   if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
   return userStore.hasProjectPermission('銷控系統', project.value?.name);
 });
+
+// ✅ [新增] 請佣獎金系統入口：需「請佣獎金」獨立權限（與銷控系統權限分開控管）
+// 注意：路由守衛的 requiredSystem 檢查沒有管理員角色 bypass，
+// 此處刻意與守衛一致（僅看建案權限），避免按鈕可見但進入被守衛擋下。
+const canAccessCommission = computed(() =>
+  userStore.hasProjectPermission('請佣獎金', project.value?.name)
+);
+function goToCommissionBonus() {
+  router.push({ name: 'CommissionBonus', params: { projectId: projectId.value } });
+}
 
 // ✅ [新增] 直接前往報價單設定（保留現有報價單資料，返回鍵可回銷控）
 function goToQuoteSettingsDirect() {

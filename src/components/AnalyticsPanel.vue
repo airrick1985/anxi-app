@@ -1568,6 +1568,24 @@ const loadStatistics = async () => {
             ...personnel,
             cancelledCount: byPersonnel[personnel.name] || 0
           }))
+
+          // 只有退戶、無成交且不在排行名單內的人員也要列出（可能不在系統名單）
+          const existingNames = new Set(statistics.value.personnel.map(p => p.name))
+          const systemNames = new Set((projectData.value.personnel || []).map(p => p.name))
+          Object.entries(byPersonnel).forEach(([name, count]) => {
+            if (existingNames.has(name)) return
+            statistics.value.personnel.push({
+              name,
+              inSystem: systemNames.has(name),
+              soldCount: 0,
+              totalAmount: 0,
+              premiumAmount: 0,
+              householdCount: 0,
+              byStatus: {},
+              byStatusAmount: {},
+              cancelledCount: count,
+            })
+          })
         }
 
         // 將退戶數據添加到 statistics.households 的 byStatus 中（銷況明細）

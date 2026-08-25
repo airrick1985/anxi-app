@@ -202,6 +202,30 @@ const routes = [
     }
   },
   {
+    // ✅ [新增] 請佣獎金系統（docs/請佣獎金系統-spec.md）
+    path: '/commission-bonus/:projectId',
+    name: 'CommissionBonus',
+    component: () => import('@/views/CommissionBonus.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '請佣獎金',
+      layout: DefaultLayout,
+      title: '請佣獎金'
+    }
+  },
+  {
+    // ✅ [新增] 請佣獎金 匯出版型全域範本管理（限超管/系管）
+    path: '/commission-export-templates',
+    name: 'CommissionTemplateManager',
+    component: () => import('@/views/CommissionTemplateManager.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredRoles: ['超級管理員', '系統管理員'],
+      layout: DefaultLayout,
+      title: '請佣獎金版型範本管理'
+    }
+  },
+  {
     path: '/quote-summary',
     name: 'QuoteSummary',
     component: () => import('@/views/QuoteSummary.vue'),

@@ -29520,3 +29520,14 @@ exports.manualTriggerSubscriptionPaymentReminder = onCall({
     throw new HttpsError("internal", `執行繳款提醒任務失敗: ${error.message}`);
   }
 });
+
+
+/* ==========================================================
+ * ✅ [新增] 請佣獎金系統（docs/請佣獎金系統-spec.md）
+ * 實作位於 functions/commissionClaims.js（送出/作廢/歷史匯入/PDF）
+ * ========================================================== */
+const commissionClaims = require("./commissionClaims");
+exports.submitCommissionEntries = commissionClaims.submitCommissionEntries;
+exports.voidCommissionRecord = commissionClaims.voidCommissionRecord;
+exports.importCommissionHistory = commissionClaims.importCommissionHistory;
+exports.generateCommissionPdf = commissionClaims.generateCommissionPdf;
