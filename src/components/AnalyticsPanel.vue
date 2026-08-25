@@ -1,6 +1,6 @@
 <template>
   <v-dialog :model-value="show" @update:model-value="emit('update:show', $event)" max-width="90vw" fullscreen>
-    <v-card class="analytics-dialog">
+    <v-card class="analytics-dialog" ref="analyticsCardRef">
       <!-- Header -->
       <v-card-title class="d-flex justify-space-between align-center py-4">
         <div class="d-flex align-center">
@@ -20,26 +20,65 @@
         </div>
       </v-card-title>
 
-      <!-- Project Selector -->
-      <div v-if="availableProjects.length > 0" class="px-4 py-3 project-selector-section">
-        <v-select
-          :model-value="projectId"
-          @update:model-value="emit('update:projectId', $event)"
-          :items="availableProjects"
-          item-title="name"
-          item-value="id"
-          label="選擇建案"
-          variant="outlined"
-          density="compact"
-          style="max-width: 300px"
-          prepend-icon="mdi-home-city"
-        />
-      </div>
-
       <v-divider></v-divider>
 
-      <!-- Content -->
-      <v-card-text class="analytics-content px-4 py-6">
+      <!-- 左右配置：左側項目導覽 / 右側內容 -->
+      <div class="analytics-layout">
+        <!-- 左側：項目 -->
+        <aside class="analytics-sidebar">
+          <div v-if="availableProjects.length > 0" class="sidebar-project">
+            <v-select
+              :model-value="projectId"
+              @update:model-value="emit('update:projectId', $event)"
+              :items="availableProjects"
+              item-title="name"
+              item-value="id"
+              label="選擇建案"
+              variant="outlined"
+              density="compact"
+              hide-details
+              prepend-inner-icon="mdi-home-city"
+            />
+          </div>
+
+          <nav class="sidebar-nav">
+            <button
+              v-for="item in navSections"
+              :key="item.key"
+              type="button"
+              class="nav-item"
+              :class="{ 'nav-item--active': activeSection === item.key }"
+              @click="activeSection = item.key"
+            >
+              <v-icon size="20" class="nav-icon">{{ item.icon }}</v-icon>
+              <span class="nav-label">{{ item.label }}</span>
+              <span v-if="getNavBadge(item.key) !== null" class="nav-badge">{{ getNavBadge(item.key) }}</span>
+            </button>
+          </nav>
+
+          <div class="sidebar-actions">
+            <v-btn
+              :text="copyButtonText"
+              size="small"
+              variant="outlined"
+              block
+              @click="showCopyDialog('full')"
+              class="copy-btn"
+            />
+            <v-btn
+              :text="copySimpleButtonText"
+              size="small"
+              variant="outlined"
+              color="info"
+              block
+              @click="showCopyDialog('simple')"
+              class="copy-btn"
+            />
+          </div>
+        </aside>
+
+        <!-- 右側：內容 -->
+        <div class="analytics-content">
         <!-- 時間粒度切換 -->
         <div class="period-info mb-4">
           <AnalyticsPeriodToggle
@@ -80,23 +119,6 @@
                 {{ formatDate(statistics.dateRange.start) }} ~ {{ formatDate(statistics.dateRange.end) }}
               </v-chip>
             </template>
-          </div>
-          <div class="copy-buttons mt-3">
-            <v-btn
-              :text="copyButtonText"
-              size="large"
-              variant="outlined"
-              @click="showCopyDialog('full')"
-              class="copy-btn"
-            />
-            <v-btn
-              :text="copySimpleButtonText"
-              size="large"
-              variant="outlined"
-              color="info"
-              @click="showCopyDialog('simple')"
-              class="copy-btn"
-            />
           </div>
         </div>
 
@@ -148,7 +170,8 @@
 
         <!-- 統計面板 (無加載時顯示) -->
         <template v-if="statistics && !isLoading">
-          <!-- Section 0: 來人概況 -->
+          <!-- Section: 來人概況 -->
+          <section v-show="activeSection === 'visitors'" class="content-section">
           <div v-if="vipGuestStats" class="d-flex align-center justify-space-between mb-6">
             <div class="section-title">👥 來人概況</div>
             <v-btn
@@ -335,19 +358,56 @@
               (暫無來訪紀錄)
             </div>
           </div>
+          <v-alert v-if="!vipGuestStats" type="info" variant="tonal">
+            暫無來人資料
+          </v-alert>
+          </section>
 
-          <!-- Section 1: 銷售狀況 + 銷況明細 -->
-          <v-row class="mb-6" no-gutters>
-            <!-- 左側：銷售狀況卡片 -->
-            <v-col cols="12" lg="6" class="mb-lg-0 mb-4 pr-lg-2">
+          <!-- Section: 銷售狀況 -->
+          <section v-show="activeSection === 'sales'" class="content-section">
               <div class="section-header mb-4">
                 <div class="section-title">📊 銷售狀況</div>
               </div>
+
+              <!-- 整體總銷總覽：戶別＋車位加總與去化占比 -->
+              <div v-if="combinedStats" class="sales-overview mb-6">
+                <div class="overview-header">
+                  <div class="overview-title">🎯 整體總銷（戶別＋車位）</div>
+                  <div class="overview-total">{{ formatAmount(combinedStats.totalAmount) }} 萬</div>
+                </div>
+                <div class="overview-progress">
+                  <div class="progress-caption">
+                    <span>金額去化率</span>
+                    <span class="progress-pct">{{ combinedStats.soldPct }}%</span>
+                  </div>
+                  <div class="progress-track">
+                    <div class="progress-fill" :style="{ width: `${Math.min(Number(combinedStats.soldPct), 100)}%` }"></div>
+                  </div>
+                </div>
+                <div class="overview-split">
+                  <div class="overview-item overview-item--sold">
+                    <div class="item-label">✅ 已售總銷</div>
+                    <div class="item-amount item-amount--sold">{{ formatAmount(combinedStats.soldAmount) }} 萬</div>
+                    <div class="item-pct">占總銷 {{ combinedStats.soldPct }}%</div>
+                    <div class="item-count">{{ statistics.households.sold }}戶・{{ statistics.parkings.sold }}車位</div>
+                  </div>
+                  <div class="overview-item overview-item--unsold">
+                    <div class="item-label">⚠️ 未售總銷</div>
+                    <div class="item-amount item-amount--unsold">{{ formatAmount(combinedStats.unsoldAmount) }} 萬</div>
+                    <div class="item-pct">占總銷 {{ combinedStats.unsoldPct }}%</div>
+                    <div class="item-count">{{ statistics.households.unsold }}戶・{{ statistics.parkings.unsold }}車位</div>
+                  </div>
+                </div>
+                <div class="overview-footer">
+                  總數 {{ statistics.households.total }}戶・{{ statistics.parkings.total }}車位
+                </div>
+              </div>
+
               <!-- 分組 1: 本日/周/月銷售 (非累計時顯示) -->
-              <div v-if="selectedPeriod !== 'all'" class="metric-group mb-6">
+              <div v-if="selectedPeriod !== 'all'" class="metric-group metric-group--period mb-6">
                 <div class="group-header">✨ {{ getPeriodLabel() }}銷售</div>
                 <v-row>
-                  <v-col cols="12" sm="6">
+                  <v-col cols="12" sm="4">
                     <MetricCard
                       :title="`${getPeriodLabel()}銷售戶數`"
                       :value="statistics.households.periodSold"
@@ -357,7 +417,7 @@
                       value-color="h5 text-info"
                     />
                   </v-col>
-                  <v-col cols="12" sm="6">
+                  <v-col cols="12" sm="4">
                     <MetricCard
                       :title="`${getPeriodLabel()}銷售車位`"
                       :value="statistics.parkings.periodSold"
@@ -367,11 +427,22 @@
                       value-color="h5 text-info"
                     />
                   </v-col>
+                  <v-col cols="12" sm="4">
+                    <MetricCard
+                      :title="`${getPeriodLabel()}銷售總銷`"
+                      :value="combinedStats.periodSoldAmount"
+                      format="currency"
+                      :subtitle="`占總銷 ${combinedStats.periodPct}%`"
+                      icon="mdi-sigma"
+                      icon-color="info"
+                      value-color="h5 text-info"
+                    />
+                  </v-col>
                 </v-row>
               </div>
 
               <!-- 分組 1.5: 本日/周/月退戶 (非累計時顯示) -->
-              <div v-if="selectedPeriod !== 'all' && cancelledStats !== null" class="metric-group mb-6">
+              <div v-if="selectedPeriod !== 'all' && cancelledStats !== null" class="metric-group metric-group--cancelled mb-6">
                 <div class="group-header">🚫 {{ getPeriodLabel() }}退戶</div>
                 <v-row>
                   <v-col cols="12" sm="6">
@@ -388,10 +459,10 @@
               </div>
 
               <!-- 分組 2: 已售 (累計) -->
-              <div class="metric-group mb-6">
+              <div class="metric-group metric-group--sold mb-6">
                 <div class="group-header">✅ 已售 (累計)</div>
                 <v-row>
-                  <v-col cols="12" sm="6">
+                  <v-col cols="12" sm="4">
                     <MetricCard
                       title="已售戶數"
                       :value="statistics.households.sold"
@@ -401,7 +472,7 @@
                       value-color="h5 text-success"
                     />
                   </v-col>
-                  <v-col cols="12" sm="6">
+                  <v-col cols="12" sm="4">
                     <MetricCard
                       title="已售車位"
                       :value="statistics.parkings.sold"
@@ -411,14 +482,25 @@
                       value-color="h5 text-success"
                     />
                   </v-col>
+                  <v-col cols="12" sm="4">
+                    <MetricCard
+                      title="已售總銷"
+                      :value="combinedStats.soldAmount"
+                      format="currency"
+                      :subtitle="`占總銷 ${combinedStats.soldPct}%`"
+                      icon="mdi-sigma"
+                      icon-color="success"
+                      value-color="h5 text-success"
+                    />
+                  </v-col>
                 </v-row>
               </div>
 
               <!-- 分組 3: 未售 -->
-              <div class="metric-group mb-6">
+              <div class="metric-group metric-group--unsold mb-6">
                 <div class="group-header">⚠️ 未售</div>
                 <v-row>
-                  <v-col cols="12" sm="6">
+                  <v-col cols="12" sm="4">
                     <MetricCard
                       title="未售戶數"
                       :value="statistics.households.unsold"
@@ -428,7 +510,7 @@
                       value-color="h5 text-warning"
                     />
                   </v-col>
-                  <v-col cols="12" sm="6">
+                  <v-col cols="12" sm="4">
                     <MetricCard
                       title="未售車位"
                       :value="statistics.parkings.unsold"
@@ -438,14 +520,25 @@
                       value-color="h5 text-error"
                     />
                   </v-col>
+                  <v-col cols="12" sm="4">
+                    <MetricCard
+                      title="未售總銷"
+                      :value="combinedStats.unsoldAmount"
+                      format="currency"
+                      :subtitle="`占總銷 ${combinedStats.unsoldPct}%`"
+                      icon="mdi-sigma"
+                      icon-color="warning"
+                      value-color="h5 text-warning"
+                    />
+                  </v-col>
                 </v-row>
               </div>
 
               <!-- 分組 4: 總數 -->
-              <div class="metric-group">
+              <div class="metric-group metric-group--total">
                 <div class="group-header">📊 總數</div>
                 <v-row>
-                  <v-col cols="12" sm="6">
+                  <v-col cols="12" sm="4">
                     <MetricCard
                       title="總戶數"
                       :value="statistics.households.total"
@@ -455,7 +548,7 @@
                       value-color="h5 text-primary"
                     />
                   </v-col>
-                  <v-col cols="12" sm="6">
+                  <v-col cols="12" sm="4">
                     <MetricCard
                       title="總車位數"
                       :value="statistics.parkings.total"
@@ -465,12 +558,23 @@
                       value-color="h5 text-info"
                     />
                   </v-col>
+                  <v-col cols="12" sm="4">
+                    <MetricCard
+                      title="總銷"
+                      :value="combinedStats.totalAmount"
+                      format="currency"
+                      subtitle="戶別＋車位"
+                      icon="mdi-sigma"
+                      icon-color="primary"
+                      value-color="h5 text-primary"
+                    />
+                  </v-col>
                 </v-row>
               </div>
-            </v-col>
+          </section>
 
-            <!-- 右側：銷況明細 -->
-            <v-col cols="12" lg="6" class="pl-lg-2">
+          <!-- Section: 銷況明細 -->
+          <section v-show="activeSection === 'detail'" class="content-section">
               <div class="section-title mb-4">📋 銷況明細</div>
               <v-expansion-panels multiple>
                 <v-expansion-panel
@@ -505,25 +609,27 @@
               <div v-if="Object.keys(getFilteredByStatus()).length === 0" class="text-center text-grey py-4">
                 (無有效銷售紀錄)
               </div>
-            </v-col>
-          </v-row>
+          </section>
 
-          <!-- Section 3: 銷售人員排行 -->
-          <div class="section-title mb-6">👥 銷售人員排行</div>
-          <PersonnelRanking
-            v-if="statistics.personnel && statistics.personnel.length > 0"
-            :personnel-stats="statistics.personnel"
-          />
-          <v-alert v-else type="info" class="mb-6">
-            暫無銷售人員資料
-          </v-alert>
+          <!-- Section: 銷售人員排行 -->
+          <section v-show="activeSection === 'personnel'" class="content-section">
+            <div class="section-title mb-6">👥 銷售人員排行</div>
+            <PersonnelRanking
+              v-if="statistics.personnel && statistics.personnel.length > 0"
+              :personnel-stats="statistics.personnel"
+            />
+            <v-alert v-else type="info" class="mb-6">
+              暫無銷售人員資料
+            </v-alert>
+          </section>
         </template>
 
         <!-- 無數據提示 -->
         <v-alert v-else-if="!isLoading" type="info">
           暫無統計數據，請確保項目有銷售資料。
         </v-alert>
-      </v-card-text>
+        </div>
+      </div>
     </v-card>
 
     <!-- 複製文本預覽對話框 -->
@@ -749,6 +855,16 @@ const formatDateToInput = (date) => {
 }
 
 const selectedPeriod = ref('today')
+
+// 左側項目導覽
+const activeSection = ref('sales')
+const navSections = [
+  { key: 'sales', label: '銷售狀況', icon: 'mdi-chart-donut' },
+  { key: 'detail', label: '銷況明細', icon: 'mdi-format-list-bulleted' },
+  { key: 'visitors', label: '來人概況', icon: 'mdi-account-group' },
+  { key: 'personnel', label: '銷售人員排行', icon: 'mdi-trophy' },
+]
+const analyticsCardRef = ref(null)
 const isLoading = ref(false)
 // 載入進度分步驟（讓用戶明確感知後端 function 正在執行）
 const loadingSteps = [
@@ -817,6 +933,51 @@ const calculatePercentage = (part, total) => {
   if (!total || total === 0) return '0.0'
   return ((part / total) * 100).toFixed(1)
 }
+
+/**
+ * 導覽項目徽章（顯示各項目的關鍵數字）
+ */
+const getNavBadge = (key) => {
+  if (!statistics.value) return null
+  if (key === 'sales') return combinedStats.value ? `${combinedStats.value.soldPct}%` : null
+  if (key === 'detail') {
+    const total = Object.values(getFilteredByStatus()).reduce((a, b) => a + b, 0)
+    return total > 0 ? total : null
+  }
+  if (key === 'visitors') return vipGuestStats.value?.totalVisitors ?? null
+  if (key === 'personnel') return statistics.value.personnel?.length || null
+  return null
+}
+
+// 切換項目時將內容捲回頂部（手機瀏覽長內容後切換不需手動回捲）
+watch(activeSection, () => {
+  const el = analyticsCardRef.value?.$el
+  if (el && typeof el.scrollTo === 'function') {
+    el.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+})
+
+/**
+ * 戶別＋車位加總統計（總銷金額、已售/未售總銷占比）
+ */
+const combinedStats = computed(() => {
+  if (!statistics.value) return null
+  const h = statistics.value.households
+  const p = statistics.value.parkings
+  const totalAmount = (h.totalAmount || 0) + (p.totalAmount || 0)
+  const soldAmount = (h.soldAmount || 0) + (p.soldAmount || 0)
+  const unsoldAmount = (h.unsoldAmount || 0) + (p.unsoldAmount || 0)
+  const periodSoldAmount = (h.periodSoldAmount || 0) + (p.periodSoldAmount || 0)
+  return {
+    totalAmount,
+    soldAmount,
+    unsoldAmount,
+    periodSoldAmount,
+    soldPct: calculatePercentage(soldAmount, totalAmount),
+    unsoldPct: calculatePercentage(unsoldAmount, totalAmount),
+    periodPct: calculatePercentage(periodSoldAmount, totalAmount),
+  }
+})
 
 /**
  * 計算單價（萬/坪）
@@ -1827,10 +1988,169 @@ watch(
   overflow-y: auto;
 }
 
-.analytics-content {
-  background: #f5f7fa;
+/* 左右配置：左側項目導覽 / 右側內容 */
+.analytics-layout {
+  display: flex;
+  align-items: stretch;
   min-height: 80vh;
+  background: #f5f7fa;
+}
+
+.analytics-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid #e8eaed;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100vh;
+  overflow-y: auto;
+  min-height: 80vh;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  color: #444;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.nav-item:hover {
+  background: #f0f4fa;
+}
+
+.nav-item--active {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.nav-icon {
+  flex-shrink: 0;
+}
+
+.nav-label {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.nav-badge {
+  font-size: 11px;
+  font-weight: 700;
+  background: #eceff1;
+  color: #555;
+  border-radius: 10px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+.nav-item--active .nav-badge {
+  background: #1565c0;
+  color: #ffffff;
+}
+
+.sidebar-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analytics-content {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  background: #f5f7fa;
   padding: 16px 20px;
+}
+
+.content-section {
+  max-width: 1100px;
+}
+
+/* 手機/平板：改為上下配置，導覽變為水平膠囊列 */
+@media (max-width: 959px) {
+  .analytics-layout {
+    flex-direction: column;
+  }
+
+  .analytics-sidebar {
+    width: 100%;
+    position: static;
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+    border-right: none;
+    border-bottom: 1px solid #e8eaed;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .sidebar-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-item {
+    width: auto;
+    flex-shrink: 0;
+    padding: 8px 14px;
+    border-radius: 20px;
+    background: #f5f7fa;
+    font-size: 13px;
+    gap: 6px;
+  }
+
+  .nav-item--active {
+    background: #1565c0;
+    color: #ffffff;
+  }
+
+  .nav-item--active .nav-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+  }
+
+  .sidebar-actions {
+    margin-top: 0;
+    flex-direction: row;
+  }
+
+  .sidebar-actions .copy-btn {
+    flex: 1;
+  }
+
+  .analytics-content {
+    padding: 12px;
+  }
 }
 
 .section-header {
@@ -1946,20 +2266,158 @@ watch(
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.metric-group:nth-of-type(1) {
+.metric-group--period {
   border-left-color: #1565c0; /* 本日銷售 - 深藍 */
 }
 
-.metric-group:nth-of-type(2) {
-  border-left-color: #00bcd4; /* 已售 - 青 */
+.metric-group--cancelled {
+  border-left-color: #d32f2f; /* 退戶 - 紅 */
 }
 
-.metric-group:nth-of-type(3) {
+.metric-group--sold {
+  border-left-color: #2e7d32; /* 已售 - 綠 */
+}
+
+.metric-group--unsold {
   border-left-color: #ff9800; /* 未售 - 橙 */
 }
 
-.metric-group:nth-of-type(4) {
+.metric-group--total {
   border-left-color: #1976d2; /* 總數 - 藍 */
+}
+
+.sales-overview {
+  background: linear-gradient(135deg, #f5f9ff 0%, #ffffff 100%);
+  border: 1px solid #d6e4f5;
+  border-left: 4px solid #1976d2;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.overview-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.5px;
+}
+
+.overview-total {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1976d2;
+  letter-spacing: -0.5px;
+}
+
+.overview-progress {
+  margin-bottom: 12px;
+}
+
+.progress-caption {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.progress-pct {
+  color: #2e7d32;
+  font-weight: 800;
+}
+
+.progress-track {
+  height: 12px;
+  border-radius: 6px;
+  background: #ffe0b2; /* 未售部分 - 橙 */
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #43a047, #66bb6a); /* 已售部分 - 綠 */
+  border-radius: 6px;
+  transition: width 0.6s ease;
+}
+
+.overview-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 599px) {
+  .overview-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.overview-item {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #e8eaed;
+}
+
+.overview-item--sold {
+  border-top: 3px solid #2e7d32;
+}
+
+.overview-item--unsold {
+  border-top: 3px solid #ff9800;
+}
+
+.item-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #666;
+  margin-bottom: 2px;
+}
+
+.item-amount {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+
+.item-amount--sold {
+  color: #2e7d32;
+}
+
+.item-amount--unsold {
+  color: #ef6c00;
+}
+
+.item-pct {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.item-count {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.overview-footer {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #d6e4f5;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  text-align: right;
 }
 
 .metric-group:hover {

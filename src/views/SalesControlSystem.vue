@@ -64,8 +64,22 @@
 
       <!-- 群組 3：操作按鈕（推到右側） -->
       <div class="toolbar-group toolbar-group-actions">
+        <!-- ✅ [新增] 網格主要顯示內容切換：總價 / 單價 / 簽約日期 -->
         <v-btn-toggle
           v-if="currentViewMode === 'sales' && viewFormat === 'grid'"
+          v-model="gridContentMode"
+          color="primary"
+          variant="outlined"
+          density="compact"
+          mandatory
+        >
+          <v-btn value="total" size="small">總價</v-btn>
+          <v-btn value="unit" size="small">單價</v-btn>
+          <v-btn value="date" size="small">簽約日</v-btn>
+        </v-btn-toggle>
+
+        <v-btn-toggle
+          v-if="currentViewMode === 'sales' && viewFormat === 'grid' && gridContentMode !== 'date'"
           v-model="priceDisplayMode"
           color="info"
           variant="outlined"
@@ -546,6 +560,18 @@
                   <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
                   <span class="unit-per-price"></span>
                 </template>
+                <!-- ✅ [新增] 網格主要顯示內容：簽約日期 -->
+                <template v-else-if="effectiveGridContentMode === 'date'">
+                  <span class="unit-total-price contract-date-text">{{ getContractDateDisplay(item.data) }}</span>
+                  <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
+                  <span class="unit-per-price"></span>
+                </template>
+                <!-- ✅ [新增] 網格主要顯示內容：單價（主）＋總價（副） -->
+                <template v-else-if="effectiveGridContentMode === 'unit'">
+                  <span class="unit-total-price">{{ calculateUnitPrice(item.data) }} 萬/坪</span>
+                  <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
+                  <span class="unit-per-price">{{ getDisplayTotalPrice(item.data) }} 萬</span>
+                </template>
                 <template v-else>
                   <span class="unit-total-price">{{ getDisplayTotalPrice(item.data) }} 萬</span>
                   <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
@@ -1016,6 +1042,19 @@
           <v-list-item @click="priceDisplayMode = 'transaction'">
             <v-list-item-title>顯示成交價</v-list-item-title>
           </v-list-item>
+          <!-- ✅ [新增] 網格主要顯示內容切換：總價 / 單價 / 簽約日期 -->
+          <template v-if="viewFormat === 'grid'">
+            <v-divider></v-divider>
+            <v-list-item @click="gridContentMode = 'total'">
+              <v-list-item-title :class="{ 'text-primary font-weight-bold': gridContentMode === 'total' }">網格顯示總價</v-list-item-title>
+            </v-list-item>
+            <v-list-item @click="gridContentMode = 'unit'">
+              <v-list-item-title :class="{ 'text-primary font-weight-bold': gridContentMode === 'unit' }">網格顯示單價</v-list-item-title>
+            </v-list-item>
+            <v-list-item @click="gridContentMode = 'date'">
+              <v-list-item-title :class="{ 'text-primary font-weight-bold': gridContentMode === 'date' }">網格顯示簽約日期</v-list-item-title>
+            </v-list-item>
+          </template>
         </v-list>
       </v-menu>
 
@@ -3551,6 +3590,12 @@ const isQuoteSidebarOpen = ref(false);
 const isGridDownloadDialogVisible = ref(false); // ✅ [新增] 下載銷控表 PDF 對話框
 const displayType = ref('住家');
 const priceDisplayMode = ref('list');
+// ✅ [新增] 網格主要顯示內容：total 總價（預設）/ unit 單價 / date 簽約日期
+const gridContentMode = ref('total');
+// 報價模式一律顯示總價，切換僅在銷控模式生效
+const effectiveGridContentMode = computed(() =>
+  currentViewMode.value === 'sales' ? gridContentMode.value : 'total'
+);
 
 const isActivityDialogVisible = ref(false);
 const userStore = useUserStore();
@@ -4085,6 +4130,12 @@ const calculateUnitPrice = (itemData) => {
   const area = parseFloat(itemData.area_house_ping);
   if (isNaN(totalPriceInWan) || isNaN(area) || area === 0) return '-';
   return (totalPriceInWan / area).toFixed(1);
+};
+
+// ✅ [新增] 網格「簽約日期」顯示：未簽約（無日期）顯示 '-'
+const getContractDateDisplay = (itemData) => {
+  const d = formatDate(itemData.payment_contract_date);
+  return d || '-';
 };
 
 const formatNumber = (val, precision = 0) => {
@@ -5286,6 +5337,11 @@ overflow: hidden;
   font-weight: 700;
   color: #424242;
   letter-spacing: 2px;
+}
+/* ✅ [新增] 網格顯示簽約日期：與價格區隔的色系、稍縮字級避免溢出 */
+.contract-date-text {
+  font-size: 0.85rem;
+  color: #00695c;
 }
 .status-overlay {
   position: absolute;
