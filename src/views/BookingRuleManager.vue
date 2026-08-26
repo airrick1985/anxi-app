@@ -1387,6 +1387,27 @@
 
                     <v-divider class="my-6"></v-divider>
 
+                    <p class="text-subtitle-1 font-weight-bold mb-2">資格驗證欄位文字</p>
+                    <p class="text-body-2 text-medium-emphasis mb-3">
+                      設定上傳頁步驟一「資格驗證」輸入框顯示的欄位名稱與提示文字。
+                    </p>
+                    <v-row>
+                      <v-col cols="12" sm="6">
+                        <v-text-field v-model="projectSettings.reportUploadIntro.idFieldLabel"
+                          label="欄位名稱 (Label)" variant="outlined" density="compact"
+                          placeholder="身分證或驗證碼" persistent-placeholder
+                          hint="留空時顯示預設「身分證或驗證碼」" persistent-hint></v-text-field>
+                      </v-col>
+                      <v-col cols="12" sm="6">
+                        <v-text-field v-model="projectSettings.reportUploadIntro.idFieldPlaceholder"
+                          label="提示文字 (Placeholder)" variant="outlined" density="compact"
+                          placeholder="例如：請輸入買方身分證字號" persistent-placeholder
+                          hint="顯示在輸入框內的灰色提示文字，可留空" persistent-hint></v-text-field>
+                      </v-col>
+                    </v-row>
+
+                    <v-divider class="my-6"></v-divider>
+
                     <div class="d-flex align-center mb-2">
                       <p class="text-subtitle-1 font-weight-bold">上傳須知提示框</p>
                       <v-btn size="small" variant="tonal" class="ml-4" @click="isAlertPreviewDialogVisible = true"
@@ -4292,6 +4313,8 @@ const defaultSettings = computed(() => ({
   },
   reportUploadIntro: {
     body: '<p>請填寫以下資訊並上傳您的驗屋報告電子檔(PDF)。</p>',
+    idFieldLabel: '身分證或驗證碼',
+    idFieldPlaceholder: '',
     alert: {
       show: true,
       title: '上傳須知',

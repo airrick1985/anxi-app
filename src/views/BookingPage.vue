@@ -113,8 +113,9 @@
                     <v-select v-model="uploadForm.unit" :items="uploadUnitList" item-title="unit" item-value="unit"
                       label="戶別" variant="outlined" :rules="[v => !!v || '必填']" :disabled="!uploadForm.building"
                       no-data-text="請先選擇棟別"></v-select>
-                    <v-text-field v-model="uploadForm.idNumber" label="身分證或驗證碼" variant="outlined"
-                      :rules="[v => !!v || '必填']"></v-text-field>
+                    <v-text-field v-model="uploadForm.idNumber" :label="uploadIdFieldLabel"
+                      :placeholder="uploadIdFieldPlaceholder" :persistent-placeholder="!!uploadIdFieldPlaceholder"
+                      variant="outlined" :rules="[v => !!v || '必填']"></v-text-field>
                   </v-form>
                 </v-card-text>
                 <div class="step-nav-actions step-nav-actions--single">
@@ -1806,6 +1807,12 @@ const confirmationMessage = ref(''); // 確認對話框要顯示的訊息
 const appointmentDetails = ref(null); // 預約詳情（用於驗證成功時顯示）
 const uploadStep1FormRef = ref(null); // 給步驟一的 v-form 一個 ref
 // ✓ END: 新增
+
+// 上傳頁驗證欄位的 label / placeholder（後台「上傳頁面設定」可編輯）
+const uploadIdFieldLabel = computed(() =>
+  projectConfig.value?.reportUploadIntro?.idFieldLabel || '身分證或驗證碼');
+const uploadIdFieldPlaceholder = computed(() =>
+  projectConfig.value?.reportUploadIntro?.idFieldPlaceholder || '');
 
 // ✓ START: 新增 - 處理上傳流程步驟一的送出邏輯
 const handleUploadStep1Submit = async () => {
