@@ -49,7 +49,7 @@
             rounded="pill"
             @click="isUploadDialogOpen = true"
           >
-            上傳圖檔
+            上傳檔案
           </v-btn>
           <v-btn
             variant="text"
@@ -61,6 +61,29 @@
             完成
           </v-btn>
         </template>
+
+        <v-btn
+          v-if="currentMessage"
+          icon="mdi-printer"
+          variant="text"
+          color="white"
+          class="mr-1"
+          :loading="isPrinting"
+          :title="currentIsPdf ? '列印這份 PDF' : '列印這張圖'"
+          @click="printCurrent"
+        />
+
+        <v-btn
+          v-if="currentIsPdf && currentMessage"
+          icon="mdi-open-in-new"
+          variant="text"
+          color="white"
+          class="mr-1"
+          title="在新分頁開啟 PDF"
+          :href="currentMessage.downloadURL"
+          target="_blank"
+          rel="noopener"
+        />
 
         <v-btn
           v-if="thumbnailAvailable"
@@ -95,17 +118,17 @@
             <v-icon size="80" color="grey-lighten-1">mdi-image-off-outline</v-icon>
             <p class="mt-4 text-h6">目前尚無活動訊息</p>
             <p v-if="canUpload && manageMode" class="text-body-1 text-grey-lighten-1">
-              請點擊右上角「上傳圖檔」開始建立活動訊息。
+              請點擊右上角「上傳檔案」開始建立活動訊息。
             </p>
             <p v-else-if="!canUpload" class="text-body-1 text-grey-lighten-1">
-              請聯絡有「銷控系統」權限的人員上傳活動圖檔。
+              請聯絡有「銷控系統」權限的人員上傳活動圖檔／PDF。
             </p>
           </div>
 
           <template v-else>
             <div class="lightbox-stage flex-grow-1" ref="stageRef">
               <div
-                v-if="currentMessage"
+                v-if="currentMessage && !currentIsPdf"
                 ref="panRef"
                 class="lightbox-pan-target"
                 @dblclick="toggleZoom"
@@ -118,6 +141,37 @@
                   class="lightbox-image"
                   draggable="false"
                   @load="onImageLoaded"
+                />
+              </div>
+
+              <!-- PDF 分頁瀏覽（vue-pdf-embed 逐頁渲染，寬度符合容器，縮放改變渲染寬度） -->
+              <div v-else-if="currentMessage" ref="pdfScrollRef" class="pdf-stage">
+                <div v-if="pdfLoadFailed" class="pdf-status-hint">
+                  <v-icon size="44" class="mb-2">mdi-file-alert-outline</v-icon>
+                  <div class="mb-3">PDF 預覽載入失敗</div>
+                  <v-btn
+                    color="teal"
+                    variant="flat"
+                    size="small"
+                    prepend-icon="mdi-open-in-new"
+                    :href="currentMessage.downloadURL"
+                    target="_blank"
+                    rel="noopener"
+                  >在新分頁開啟</v-btn>
+                </div>
+                <div v-else-if="isPdfLoading" class="pdf-status-hint">
+                  <v-progress-circular indeterminate color="#008cff" size="40" class="mb-3"></v-progress-circular>
+                  <div>PDF 載入中...</div>
+                </div>
+                <VuePdfEmbed
+                  v-if="pdfBaseWidth > 0 && !pdfLoadFailed"
+                  :key="currentMessage.id"
+                  :source="currentMessage.downloadURL"
+                  :width="pdfRenderWidth"
+                  class="pdf-embed-pages"
+                  @rendered="onPdfRendered"
+                  @loading-failed="onPdfLoadFailed"
+                  @rendering-failed="onPdfLoadFailed"
                 />
               </div>
 
@@ -198,7 +252,12 @@
                       :class="{ 'is-active': idx === currentIndex, 'is-hidden': item.hidden }"
                       @click="selectThumbnail(idx)"
                     >
+                      <div v-if="isPdfItem(item)" class="thumbnail-pdf rounded">
+                        <v-icon size="30" color="red-lighten-1">mdi-file-pdf-box</v-icon>
+                        <span class="thumbnail-pdf-name">{{ item.fileName }}</span>
+                      </div>
                       <v-img
+                        v-else
                         :src="item.downloadURL"
                         :alt="item.fileName"
                         cover
@@ -248,20 +307,20 @@
       <v-card>
         <v-card-title class="bg-teal text-white d-flex align-center">
           <v-icon start>mdi-cloud-upload</v-icon>
-          上傳活動訊息圖檔
+          上傳活動訊息檔案
         </v-card-title>
         <v-card-text class="pt-4">
           <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-            支援 JPG / PNG / WEBP，單檔最大 2MB。
+            支援 JPG / PNG / WEBP（單檔最大 2MB）與 PDF（單檔最大 7MB）。
           </v-alert>
 
           <v-file-input
             v-model="filePickerModel"
-            label="點擊選擇圖檔 (可多選)"
+            label="點擊選擇圖檔／PDF (可多選)"
             variant="outlined"
             multiple
-            accept="image/jpeg, image/png, image/webp"
-            prepend-icon="mdi-image-plus-outline"
+            accept="image/jpeg, image/png, image/webp, application/pdf, .pdf"
+            prepend-icon="mdi-file-plus-outline"
             density="compact"
             clearable
             chips
@@ -280,13 +339,14 @@
               class="d-flex align-start"
               :class="{ 'mb-3': idx < stagedFiles.length - 1 }"
             >
-              <v-avatar rounded="lg" size="56" class="mr-3 elevation-1">
-                <v-img :src="item.previewUrl" cover></v-img>
+              <v-avatar rounded="lg" size="56" class="mr-3 elevation-1" :color="item.isPdf ? 'red-lighten-5' : undefined">
+                <v-icon v-if="item.isPdf" size="32" color="red-darken-1">mdi-file-pdf-box</v-icon>
+                <v-img v-else :src="item.previewUrl" cover></v-img>
               </v-avatar>
               <div class="flex-grow-1">
                 <div class="text-body-2 font-weight-medium">{{ item.file.name }}</div>
                 <div class="text-caption text-grey">
-                  {{ formatSize(item.file.size) }} | {{ item.file.type || '未知格式' }}
+                  {{ formatSize(item.file.size) }} | {{ item.contentType || '未知格式' }}
                 </div>
                 <div v-if="item.error" class="text-caption text-error mt-1">
                   <v-icon size="x-small" color="error">mdi-alert-circle</v-icon>
@@ -330,7 +390,7 @@
           確認刪除
         </v-card-title>
         <v-card-text class="pt-4">
-          確定要刪除這張活動訊息嗎？此動作無法復原。
+          確定要刪除這則活動訊息嗎？此動作無法復原。
           <div v-if="pendingDeleteItem" class="mt-2 text-caption text-grey">
             檔名：{{ pendingDeleteItem.fileName }}
           </div>
@@ -350,7 +410,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue';
 import { useToast } from 'vue-toastification';
 import draggable from 'vuedraggable';
 import { useUserStore } from '@/store/user';
@@ -364,6 +424,9 @@ import {
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
 
+// pdfjs 體積大（約 2.4MB），改為動態載入：只有真的瀏覽／上傳 PDF 時才會下載
+const VuePdfEmbed = defineAsyncComponent(() => import('vue-pdf-embed'));
+
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   projectId: { type: String, required: true },
@@ -376,8 +439,16 @@ const emit = defineEmits(['update:modelValue']);
 const toast = useToast();
 const userStore = useUserStore();
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_SIZE = 2 * 1024 * 1024;
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const PDF_TYPE = 'application/pdf';
+const MAX_SIZE = 2 * 1024 * 1024;        // 圖檔上限 2MB
+const PDF_MAX_SIZE = 7 * 1024 * 1024;    // PDF 上限 7MB（base64 後約 9.4MB，不超過 onCall 10MB 請求上限）
+
+// 判斷一則活動訊息是否為 PDF（優先看 contentType，舊資料則退回副檔名）
+function isPdfItem(item) {
+  if (!item) return false;
+  return item.contentType === PDF_TYPE || /\.pdf$/i.test(item.fileName || '');
+}
 
 const messages = ref([]);
 const isLoading = ref(false);
@@ -411,7 +482,22 @@ const stageRef = ref(null);
 const panRef = ref(null);
 const imgRef = ref(null);
 const currentScale = ref(1);
-const scalePercent = computed(() => Math.round(currentScale.value * 100));
+
+// --- PDF 檢視狀態（vue-pdf-embed 以「渲染寬度」表現縮放，與 panzoom 各走各的）---
+const pdfScrollRef = ref(null);
+const pdfBaseWidth = ref(0);
+const pdfScale = ref(1);
+const isPdfLoading = ref(false);
+const pdfLoadFailed = ref(false);
+const PDF_SCALE_MIN = 0.5;
+const PDF_SCALE_MAX = 4;
+const pdfRenderWidth = computed(() =>
+  pdfBaseWidth.value > 0 ? Math.round(pdfBaseWidth.value * pdfScale.value) : undefined
+);
+
+const scalePercent = computed(() =>
+  Math.round((currentIsPdf.value ? pdfScale.value : currentScale.value) * 100)
+);
 let panzoomInstance = null;
 let PanzoomCtor = null;
 let wheelBound = null;
@@ -429,6 +515,7 @@ const displayMessages = computed({
 });
 
 const currentMessage = computed(() => displayMessages.value[currentIndex.value] || null);
+const currentIsPdf = computed(() => isPdfItem(currentMessage.value));
 
 // 縮圖列：一般情況超過 1 張才出現；管理模式下只要有 1 張就出現（才能刪除/隱藏唯一一張）
 const hasManageTools = computed(() => props.canUpload && manageMode.value);
@@ -500,14 +587,64 @@ function onImageLoaded() {
   initPanzoom();
 }
 
-function zoomIn() { panzoomInstance?.zoomIn(); }
-function zoomOut() { panzoomInstance?.zoomOut(); }
-function resetZoom() { panzoomInstance?.reset(); }
+function setPdfScale(next) {
+  pdfScale.value = Math.min(PDF_SCALE_MAX, Math.max(PDF_SCALE_MIN, next));
+}
+
+function zoomIn() {
+  if (currentIsPdf.value) setPdfScale(pdfScale.value * 1.25);
+  else panzoomInstance?.zoomIn();
+}
+function zoomOut() {
+  if (currentIsPdf.value) setPdfScale(pdfScale.value / 1.25);
+  else panzoomInstance?.zoomOut();
+}
+function resetZoom() {
+  if (currentIsPdf.value) pdfScale.value = 1;
+  else panzoomInstance?.reset();
+}
 function toggleZoom() {
   if (!panzoomInstance) return;
   if (currentScale.value > 1.05) panzoomInstance.reset();
   else panzoomInstance.zoom(2.5, { animate: true });
 }
+
+// --- PDF 量測與載入狀態 ---
+function onPdfRendered() {
+  isPdfLoading.value = false;
+}
+function onPdfLoadFailed() {
+  isPdfLoading.value = false;
+  pdfLoadFailed.value = true;
+}
+
+// Dialog 有開場動畫，容器寬度可能一開始量不到，需重試
+function measurePdfBaseWidth() {
+  const attempt = (retries) => {
+    const w = pdfScrollRef.value?.clientWidth || 0;
+    if (w > 0) {
+      pdfBaseWidth.value = Math.max(280, w - 32); // 扣除左右內距
+    } else if (retries > 0) {
+      setTimeout(() => attempt(retries - 1), 100);
+    }
+  };
+  nextTick(() => attempt(10));
+}
+
+// 切換到 PDF 時：關閉 panzoom、重置縮放與載入狀態並重新量測容器寬度
+watch(
+  () => currentMessage.value?.id,
+  () => {
+    if (!currentIsPdf.value) return;
+    destroyPanzoom();
+    pdfScale.value = 1;
+    isPdfLoading.value = true;
+    pdfLoadFailed.value = false;
+    // 不歸零 pdfBaseWidth：沿用上次量到的寬度可避免切頁時空白閃爍，量到新值後再更新
+    measurePdfBaseWidth();
+  },
+  { immediate: true }
+);
 
 function prev() {
   const len = displayMessages.value.length;
@@ -564,14 +701,27 @@ async function toggleVisibility(item) {
   }
 }
 
-// 切換縮圖列可見性後，主圖區寬度會變 → 重新初始化 panzoom 邊界
+// 切換縮圖列可見性後，主圖區寬度會變 → 重新初始化 panzoom 邊界 / 重新量測 PDF 寬度
 watch(isThumbnailVisible, async () => {
   await nextTick();
-  if (panzoomInstance) initPanzoom();
+  if (currentIsPdf.value) measurePdfBaseWidth();
+  else if (panzoomInstance) initPanzoom();
 });
+
+// 視窗尺寸變動時同步重算 PDF 渲染寬度
+function onWindowResize() {
+  if (props.modelValue && currentIsPdf.value) measurePdfBaseWidth();
+}
+onMounted(() => window.addEventListener('resize', onWindowResize));
 
 function onKeydown(e) {
   if (!props.modelValue) return;
+  // 燈箱是 fullscreen dialog，原生 Ctrl/Cmd+P 會把整個系統介面一起印出來，攔下來只印目前這則
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+    e.preventDefault();
+    printCurrent();
+    return;
+  }
   if (e.key === 'ArrowLeft') prev();
   else if (e.key === 'ArrowRight') next();
   else if (e.key === '+' || e.key === '=') zoomIn();
@@ -666,6 +816,7 @@ onUnmounted(() => {
   destroyPanzoom();
   document.removeEventListener('keydown', onKeydown);
   window.removeEventListener('keyup', onUnlockKeyup, true);
+  window.removeEventListener('resize', onWindowResize);
 });
 
 function close() {
@@ -680,21 +831,37 @@ watch(filePickerModel, (newFiles) => {
   }
 });
 
+// 部分瀏覽器選 PDF 時 file.type 可能為空字串，改以副檔名補判，避免後端因 contentType 缺失而退件
+function resolveFileType(file) {
+  if (file.type) return file.type;
+  return /\.pdf$/i.test(file.name) ? PDF_TYPE : '';
+}
+
 function addStagedFiles(files) {
   for (const file of files) {
-    const error = validateFile(file);
+    const contentType = resolveFileType(file);
+    const isPdf = contentType === PDF_TYPE;
     stagedFiles.value.push({
       id: `${Date.now()}_${Math.random()}`,
       file,
-      previewUrl: URL.createObjectURL(file),
-      error,
+      contentType,
+      isPdf,
+      // PDF 無縮圖，不建立 objectURL（避免無謂佔用記憶體）
+      previewUrl: isPdf ? '' : URL.createObjectURL(file),
+      error: validateFile(file, contentType),
     });
   }
 }
 
-function validateFile(file) {
-  if (!ALLOWED_TYPES.includes(file.type)) {
-    return `不支援的格式（${file.type || '未知'}），僅允許 JPG / PNG / WEBP`;
+function validateFile(file, contentType) {
+  if (contentType === PDF_TYPE) {
+    if (file.size > PDF_MAX_SIZE) {
+      return `PDF 大小 ${formatSize(file.size)} 超過 7MB 上限`;
+    }
+    return null;
+  }
+  if (!IMAGE_TYPES.includes(contentType)) {
+    return `不支援的格式（${contentType || '未知'}），僅允許 JPG / PNG / WEBP / PDF`;
   }
   if (file.size > MAX_SIZE) {
     return `檔案大小 ${formatSize(file.size)} 超過 2MB 上限`;
@@ -704,7 +871,7 @@ function validateFile(file) {
 
 function removeStagedFile(id) {
   const target = stagedFiles.value.find(f => f.id === id);
-  if (target) URL.revokeObjectURL(target.previewUrl);
+  if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
   stagedFiles.value = stagedFiles.value.filter(f => f.id !== id);
 }
 
@@ -719,7 +886,7 @@ const canSubmitUpload = computed(() => validStagedCount.value > 0 && !isUploadin
 
 function closeUploadDialog() {
   if (isUploading.value) return;
-  stagedFiles.value.forEach(item => URL.revokeObjectURL(item.previewUrl));
+  stagedFiles.value.forEach(item => { if (item.previewUrl) URL.revokeObjectURL(item.previewUrl); });
   stagedFiles.value = [];
   isUploadDialogOpen.value = false;
 }
@@ -755,7 +922,7 @@ async function handleUpload() {
         userKey,
         fileName: item.file.name,
         fileBase64: base64,
-        contentType: item.file.type,
+        contentType: item.contentType,
       });
 
       await addActivityMessageMetadata({
@@ -763,7 +930,7 @@ async function handleUpload() {
         fileName: item.file.name,
         downloadURL,
         storagePath,
-        contentType: item.file.type,
+        contentType: item.contentType,
         fileSize: item.file.size,
         sortOrder: Date.now(),
         uploadedBy: userKey || '',
@@ -784,6 +951,115 @@ async function handleUpload() {
   failures.forEach(msg => toast.error(msg));
 
   if (failures.length === 0) closeUploadDialog();
+}
+
+// ---------- 列印 ----------
+// 一律以隱藏 iframe 列印，避免 window.open 被彈窗阻擋、也不會把整個燈箱介面印進去。
+const isPrinting = ref(false);
+
+function escapeHtml(text) {
+  return String(text || '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
+function createPrintFrame() {
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  document.body.appendChild(frame);
+  return frame;
+}
+
+// 列印對話框是同步阻塞的，關掉後才會回來；延遲移除 iframe 以免 Safari 印到一半就被抽掉
+function disposePrintFrame(frame, delay = 1000) {
+  setTimeout(() => frame.remove(), delay);
+}
+
+function triggerPrint(frame) {
+  const win = frame.contentWindow;
+  if (!win) throw new Error('無法建立列印視窗');
+  win.focus();
+  win.print();
+}
+
+// 圖檔：把圖寫進 iframe 文件後列印（img 不需 CORS，直接吃公開網址即可）
+function printImage(item) {
+  return new Promise((resolve, reject) => {
+    const frame = createPrintFrame();
+    const doc = frame.contentDocument;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(item.fileName || '活動訊息')}</title>
+<style>
+  @page { margin: 10mm; }
+  html, body { margin: 0; padding: 0; }
+  img { display: block; margin: 0 auto; max-width: 100%; max-height: 100vh; }
+</style>
+</head><body><img src="${escapeHtml(item.downloadURL)}" alt=""></body></html>`);
+    doc.close();
+
+    const img = doc.querySelector('img');
+    const done = (err) => {
+      disposePrintFrame(frame);
+      if (err) reject(err); else resolve();
+    };
+    // 圖已在燈箱顯示過，通常已在快取中；仍需等 iframe 內的 img 解碼完成才印，否則會印出空白
+    if (img.complete && img.naturalWidth > 0) {
+      try { triggerPrint(frame); done(); } catch (e) { done(e); }
+      return;
+    }
+    img.onload = () => {
+      try { triggerPrint(frame); done(); } catch (e) { done(e); }
+    };
+    img.onerror = () => done(new Error('圖檔載入失敗'));
+  });
+}
+
+// PDF：先取回 blob（token 網址自帶 CORS），再以同源 blob URL 載入 iframe 列印
+async function printPdf(item) {
+  const res = await fetch(item.downloadURL);
+  if (!res.ok) throw new Error(`取得 PDF 失敗（HTTP ${res.status}）`);
+  const blobUrl = URL.createObjectURL(await res.blob());
+
+  await new Promise((resolve, reject) => {
+    const frame = createPrintFrame();
+    // 部分瀏覽器（如 iOS Safari）不支援 iframe 內嵌 PDF 列印，逾時就走另開分頁的退路
+    const timer = setTimeout(() => {
+      frame.remove();
+      URL.revokeObjectURL(blobUrl);
+      reject(new Error('此瀏覽器不支援直接列印 PDF'));
+    }, 8000);
+
+    frame.onload = () => {
+      clearTimeout(timer);
+      try {
+        triggerPrint(frame);
+        resolve();
+      } catch (e) {
+        reject(e);
+      } finally {
+        // PDF 需保留較久，列印預覽是由外掛非同步接手渲染的
+        setTimeout(() => { frame.remove(); URL.revokeObjectURL(blobUrl); }, 60000);
+      }
+    };
+    frame.src = blobUrl;
+  });
+}
+
+async function printCurrent() {
+  const item = currentMessage.value;
+  if (!item || isPrinting.value) return;
+  isPrinting.value = true;
+  try {
+    if (isPdfItem(item)) await printPdf(item);
+    else await printImage(item);
+  } catch (err) {
+    // 退路：直接開新分頁，讓使用者用瀏覽器內建檢視器列印
+    toast.warning(`${err.message}，已改為另開分頁，請於該分頁列印。`, { timeout: 4000 });
+    window.open(item.downloadURL, '_blank', 'noopener');
+  } finally {
+    isPrinting.value = false;
+  }
 }
 
 // ---------- 刪除 ----------
@@ -889,6 +1165,60 @@ async function executeDelete() {
   justify-content: center;
   /* 預設游標：fit 時 default、放大後變 grab（panzoom 套件會自動切換） */
   touch-action: none;
+}
+
+/* ---------- PDF 檢視區（逐頁垂直捲動） ---------- */
+.pdf-stage {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pdf-status-hint {
+  margin: auto;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+  font-size: 14px;
+}
+
+.pdf-embed-pages :deep(.vue-pdf-embed__page) {
+  margin-bottom: 12px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
+}
+.pdf-embed-pages :deep(.vue-pdf-embed__page canvas) {
+  display: block;
+  max-width: none; /* 放大時允許超出容器寬度，由外層捲動 */
+}
+
+/* PDF 縮圖：無預覽圖，以圖示 + 檔名呈現 */
+.thumbnail-pdf {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  background: #2b2b2b;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.thumbnail-pdf-name {
+  font-size: 9px;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.75);
+  text-align: center;
+  width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
 }
 
 .lightbox-image {

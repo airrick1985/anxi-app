@@ -2545,8 +2545,12 @@ exports.handleSalesImageDelete = onCall(async (request) => {
 // 【新增】活動訊息圖片管理代理 Cloud Functions
 // =================================================================
 
-const ACTIVITY_MESSAGE_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const ACTIVITY_MESSAGE_MAX_BYTES = 2 * 1024 * 1024; // 2MB
+const ACTIVITY_MESSAGE_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ACTIVITY_MESSAGE_PDF_TYPE = 'application/pdf';
+const ACTIVITY_MESSAGE_ALLOWED_TYPES = [...ACTIVITY_MESSAGE_IMAGE_TYPES, ACTIVITY_MESSAGE_PDF_TYPE];
+const ACTIVITY_MESSAGE_MAX_BYTES = 2 * 1024 * 1024; // 2MB（圖檔）
+// 7MB：base64 後約 9.4MB，仍在 onCall 請求上限 10MB 內
+const ACTIVITY_MESSAGE_PDF_MAX_BYTES = 7 * 1024 * 1024;
 
 /**
  * 驗證使用者是否擁有指定建案的「銷控系統」管理權限。
@@ -2688,7 +2692,7 @@ function _safeActivityFileName(rawName) {
 }
 
 /**
- * 代理上傳活動訊息圖片
+ * 代理上傳活動訊息檔案（圖檔 JPG/PNG/WEBP 上限 2MB；PDF 上限 7MB）
  * 入參：{ projectId, userKey, fileName, fileBase64, contentType }
  * 回傳：{ status, downloadURL, storagePath }
  */
@@ -2700,15 +2704,21 @@ exports.handleActivityMessageUpload = onCall({ region: "asia-east1", memory: "51
     throw new HttpsError("invalid-argument", "缺少上傳所需的參數 (projectId/fileName/fileBase64/contentType)。");
   }
   if (!ACTIVITY_MESSAGE_ALLOWED_TYPES.includes(contentType)) {
-    throw new HttpsError("invalid-argument", `不支援的圖片格式：${contentType}，僅允許 JPG / PNG / WEBP。`);
+    throw new HttpsError("invalid-argument", `不支援的檔案格式：${contentType}，僅允許 JPG / PNG / WEBP / PDF。`);
   }
+
+  const isPdf = contentType === ACTIVITY_MESSAGE_PDF_TYPE;
+  const maxBytes = isPdf ? ACTIVITY_MESSAGE_PDF_MAX_BYTES : ACTIVITY_MESSAGE_MAX_BYTES;
 
   const buffer = Buffer.from(fileBase64, 'base64');
   if (buffer.length === 0) {
     throw new HttpsError("invalid-argument", "檔案內容為空或 Base64 解碼失敗。");
   }
-  if (buffer.length > ACTIVITY_MESSAGE_MAX_BYTES) {
-    throw new HttpsError("invalid-argument", `圖檔大小 ${(buffer.length / 1024 / 1024).toFixed(2)}MB 超過 2MB 上限。`);
+  if (buffer.length > maxBytes) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${isPdf ? 'PDF' : '圖檔'}大小 ${(buffer.length / 1024 / 1024).toFixed(2)}MB 超過 ${Math.round(maxBytes / 1024 / 1024)}MB 上限。`
+    );
   }
 
   const anxiDb = new Firestore({ databaseId: "anxi-app" });
@@ -2720,10 +2730,16 @@ exports.handleActivityMessageUpload = onCall({ region: "asia-east1", memory: "51
     const bucket = admin.storage().bucket();
     const file = bucket.file(storagePath);
 
+    // PDF 預覽由 pdf.js 以 fetch 取檔，需要 CORS；storage.googleapis.com 公開網址沒有 CORS，
+    // 因此一律附上 download token，PDF 改回傳自帶 CORS 的 firebasestorage 端點網址。
+    const downloadToken = crypto.randomUUID();
     const stream = Readable.from(buffer);
     await new Promise((resolve, reject) => {
       stream.pipe(file.createWriteStream({
-        metadata: { contentType },
+        metadata: {
+          contentType,
+          metadata: { firebaseStorageDownloadTokens: downloadToken }
+        },
         resumable: false
       }))
         .on('error', (err) => reject(err))
@@ -2731,9 +2747,11 @@ exports.handleActivityMessageUpload = onCall({ region: "asia-east1", memory: "51
     });
 
     await file.makePublic();
-    const publicUrl = file.publicUrl();
+    const publicUrl = isPdf
+      ? `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${downloadToken}`
+      : file.publicUrl();
 
-    console.log(`[${functionName}] 活動訊息圖檔上傳成功: ${publicUrl}`);
+    console.log(`[${functionName}] 活動訊息檔案上傳成功: ${publicUrl}`);
     return {
       status: "success",
       downloadURL: publicUrl,
@@ -2741,7 +2759,7 @@ exports.handleActivityMessageUpload = onCall({ region: "asia-east1", memory: "51
     };
   } catch (error) {
     console.error(`[${functionName}] 上傳失敗:`, error);
-    throw new HttpsError("internal", `後端上傳活動訊息圖檔時發生錯誤: ${error.message}`);
+    throw new HttpsError("internal", `後端上傳活動訊息檔案時發生錯誤: ${error.message}`);
   }
 });
 
