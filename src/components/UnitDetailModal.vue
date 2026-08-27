@@ -33,12 +33,30 @@
 
       <v-card-text class="main-content">
         <!-- Vuetify Touch 指令僅在 mounted 綁定、無 updated hook，:touch 動態值不會生效，須靜態停用 -->
-        <v-window v-model="tab" :touch="false">
+        <v-window v-model="tab" :touch="false"
+          :class="{ 'edit-window-visible': isEditing && !isMobile }">
           <v-window-item value="info">
             <template v-if="isEditing">
+              <div class="edit-shell" :class="{ 'edit-shell--desktop': !isMobile }">
+
+              <!-- 🖥️ [電腦版] 左側項目導覽：點選切換右側內容，一次只看一個區塊，免長捲動 -->
+              <nav v-if="!isMobile" class="edit-nav">
+                <button v-for="sec in editSections" :key="sec.key" type="button"
+                  class="edit-nav-item" :class="{ 'edit-nav-item--active': activeEditSection === sec.key }"
+                  @click="activeEditSection = sec.key">
+                  <v-icon size="20" :color="activeEditSection === sec.key ? sec.color : 'grey-darken-1'">{{ sec.icon }}</v-icon>
+                  <span class="edit-nav-text">
+                    <span class="edit-nav-title">{{ sec.title }}</span>
+                    <span class="edit-nav-summary">{{ sec.summary }}</span>
+                  </span>
+                  <v-icon v-if="sec.alert" size="16" color="error" class="edit-nav-alert">mdi-alert-circle</v-icon>
+                </button>
+              </nav>
+
+              <div class="edit-panes">
 
               <!-- 面積資訊 (唯讀展示) -->
-              <v-card variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
+              <v-card v-show="isEditSectionVisible('area')" variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
                 <div class="d-flex align-center mb-2">
                   <v-icon color="teal" class="mr-2">mdi-floor-plan</v-icon>
                   <span class="text-subtitle-1 font-weight-bold text-teal">面積資訊</span>
@@ -76,7 +94,7 @@
                 </v-row>
               </v-card>
 
-              <v-card variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
+              <v-card v-show="isEditSectionVisible('area')" variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
                 <div class="d-flex align-center mb-2">
                   <v-icon color="brown" class="mr-2">mdi-map-marker-multiple</v-icon>
                   <span class="text-subtitle-1 font-weight-bold" style="color: #795548;">土地標的清冊</span>
@@ -87,7 +105,7 @@
                 />
               </v-card>
 
-              <v-card variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
+              <v-card v-show="isEditSectionVisible('price')" variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
                 <div class="d-flex align-center justify-space-between mb-2">
                   <div class="d-flex align-center">
                     <v-icon color="primary" class="mr-2">mdi-cash-multiple</v-icon>
@@ -143,6 +161,26 @@
                       persistent-hint></v-text-field>
                   </v-col>
 
+                  <!-- 配套房屋總價：合約上的房屋總價，配套價格＝成交總價 − 此值 -->
+                  <v-col cols="12" md="3" v-if="viewMode === 'sales'">
+                    <v-text-field v-model="editingData.price_package_deal" label="配套房屋總價" suffix="萬" type="number"
+                      variant="outlined" :bg-color="!isPriceEditable ? '#f5f5f5' : 'white'"
+                      class="input-price-package" :readonly="!isPriceEditable"
+                      :rules="[val => !val || val >= 0 || '金額不可小於 0']"
+                      :hint="editingPackagePriceHint" persistent-hint>
+                      <template #append-inner>
+                        <v-tooltip location="top" max-width="300" open-on-click>
+                          <template #activator="{ props: tipProps }">
+                            <v-icon v-bind="tipProps" size="18" color="grey-darken-1"
+                              style="cursor: help;">mdi-information-outline</v-icon>
+                          </template>
+                          <span>配套價格：為避開高價住宅門檻（例如 4,000 萬以上）時使用。<br />
+                            此處填合約上的「配套房屋總價」，配套價格＝成交總價 − 配套房屋總價，合約製作與付款表會自動採用。</span>
+                        </v-tooltip>
+                      </template>
+                    </v-text-field>
+                  </v-col>
+
                   <v-col cols="12" md="3" v-if="viewMode === 'sales'" class="d-flex align-center">
                     <v-switch v-model="editingData.isPreferredPayment" label="優付" color="primary" hide-details
                       density="compact" class="ml-2" inset></v-switch>
@@ -184,7 +222,7 @@
               </v-card>
 
               <!-- 房土比設定（兩比例加總必須=100） -->
-              <v-card variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
+              <v-card v-show="isEditSectionVisible('ratio')" variant="outlined" class="mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
                 <div class="d-flex align-center mb-2">
                   <v-icon color="deep-orange" class="mr-2">mdi-chart-donut</v-icon>
                   <span class="text-subtitle-1 font-weight-bold" style="color: #e65100;">房土比</span>
@@ -229,14 +267,17 @@
                 </v-row>
               </v-card>
 
-              <SalesInfoForm v-if="editingData" v-model="editingData" :statusOptions="statusOptions"
-                :personnelOptions="personnelOptions" :allSalesImages="allProjectImages"
-                :allParkingData="allData['車位'] || []" :projectName="projectName" :project-id="projectId"
-                :view-mode="props.viewMode" @request-open-slide="$emit('request-open-slide')"
-                @parking-updated="handleParkingUpdate" :contractTypeOptions="props.contractTypes"
-                :firstPurchaseOptions="firstPurchaseOptions" :planOptions="props.planOptions" />
+              <div v-show="isSalesFormVisible">
+                <SalesInfoForm v-if="editingData" v-model="editingData" :statusOptions="statusOptions"
+                  :personnelOptions="personnelOptions" :allSalesImages="allProjectImages"
+                  :allParkingData="allData['車位'] || []" :projectName="projectName" :project-id="projectId"
+                  :view-mode="props.viewMode" @request-open-slide="$emit('request-open-slide')"
+                  @parking-updated="handleParkingUpdate" :contractTypeOptions="props.contractTypes"
+                  :firstPurchaseOptions="firstPurchaseOptions" :planOptions="props.planOptions"
+                  :visible-sections="salesFormVisibleSections" />
+              </div>
 
-              <v-card v-if="editingData" variant="outlined" class="mt-4 mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
+              <v-card v-if="editingData" v-show="isEditSectionVisible('payments')" variant="outlined" class="mt-4 mb-4 pa-3 bg-grey-lighten-5" style="border-color: #ddd;">
                 <div class="d-flex align-center mb-2">
                   <v-icon color="teal" class="mr-2">mdi-cash-multiple</v-icon>
                   <span class="text-subtitle-1 font-weight-bold" style="color: #00796B;">戶別繳款紀錄</span>
@@ -249,6 +290,9 @@
                   :drive-folder-url="editingData.driveFolderUrl || ''"
                 />
               </v-card>
+
+              </div><!-- /edit-panes -->
+              </div><!-- /edit-shell -->
             </template>
 
             <template v-else>
@@ -1121,6 +1165,8 @@ function openRealPriceReportDialog() {
   showRealPriceReportDialog.value = true;
 }
 const isPriceEditable = ref(false); // ✅ [新增] 控制價格欄位是否可編輯
+// 🖥️ [新增] 電腦版「修改銷控」左側項目導覽：目前選取的區塊（手機版維持全部堆疊顯示）
+const activeEditSection = ref('sales');
 
 // ✅ [新增] 備註圖片：上傳/刪除狀態（延遲到儲存才動 Storage）
 const PRICE_REMARK_MAX_IMAGES = 5;
@@ -1164,6 +1210,70 @@ const handleKeyPress = (e) => {
 };
 
 
+
+// ── 🖥️ [新增] 電腦版「修改銷控」左側項目導覽 ──
+// 左邊點項目、右邊只顯示對應內容；手機版不變（全部區塊由上而下堆疊）
+const SALES_FORM_SECTION_KEYS = ['sales', 'deal', 'buyer'];
+const editSections = computed(() => {
+  const d = editingData.value || {};
+  const persons = Array.isArray(d.salesperson) ? d.salesperson.filter(Boolean).join('、') : (d.salesperson || '');
+  const statusText = d.salesStatus_backend || '尚未設定狀態';
+  const ratioH = Number(d.housePriceRatio) || 0;
+  const ratioL = Number(d.landPriceRatio) || 0;
+  const parcelCount = Array.isArray(d.landParcels) ? d.landParcels.length : 0;
+  const recordCount = Array.isArray(d.paymentRecords) ? d.paymentRecords.length : 0;
+  return [
+    {
+      key: 'sales', title: '銷售資訊', icon: 'mdi-information-outline', color: 'primary',
+      summary: persons ? `${statusText} · ${persons}` : statusText,
+    },
+    {
+      key: 'deal', title: '成交資訊', icon: 'mdi-currency-usd', color: 'green-darken-2',
+      summary: `成交總價 ${formatNumber(Number(d.price_transaction_total) || 0)} 萬`,
+    },
+    {
+      key: 'buyer', title: '買方資訊', icon: 'mdi-account-details', color: 'indigo',
+      summary: d.buyerName ? d.buyerName : '尚未填寫買方',
+    },
+    {
+      key: 'price', title: '價格設定', icon: 'mdi-cash-multiple', color: 'primary',
+      summary: `表價 ${formatNumber(Number(d.price_list_house_total) || 0)} 萬`,
+    },
+    {
+      key: 'ratio', title: '房土比', icon: 'mdi-chart-donut', color: 'deep-orange',
+      summary: (ratioH + ratioL) > 0 ? `房 ${ratioH}% / 地 ${ratioL}%` : '尚未設定',
+      // 加總 ≠ 100 會擋儲存，導覽列直接標紅提醒（該區塊可能沒被打開）
+      alert: editingRatioSum.value !== 0 && Math.abs(editingRatioSum.value - 100) > 0.001,
+    },
+    {
+      key: 'area', title: '面積與土地', icon: 'mdi-floor-plan', color: 'teal',
+      summary: `${formatNumber(Number(d.area_house_ping) || 0, 2)} 坪 · 地號 ${parcelCount} 筆`,
+    },
+    {
+      key: 'payments', title: '戶別繳款紀錄', icon: 'mdi-receipt-text-outline', color: 'teal-darken-2',
+      summary: recordCount > 0 ? `${recordCount} 筆` : '尚無紀錄',
+    },
+  ];
+});
+// 手機版一律顯示（維持原本堆疊捲動），電腦版只顯示選取項目
+function isEditSectionVisible(key) {
+  return isMobile.value || activeEditSection.value === key;
+}
+const isSalesFormVisible = computed(() =>
+  isMobile.value || SALES_FORM_SECTION_KEYS.includes(activeEditSection.value)
+);
+// 傳給 SalesInfoForm：null = 三欄並排（手機版），否則只顯示選取的那一欄
+const salesFormVisibleSections = computed(() =>
+  isMobile.value ? null : [activeEditSection.value]
+);
+
+// ✅ [新增] 編輯模式即時提示 - 配套價格（＝成交總價 − 配套房屋總價，與合約製作／付款表同口徑）
+const editingPackagePriceHint = computed(() => {
+  const total = Number(editingData.value?.price_transaction_total) || 0;
+  const packageDeal = Number(editingData.value?.price_package_deal) || 0;
+  if (!packageDeal) return '避開高價住宅門檻時填寫，未填則不啟用配套拆分';
+  return `配套價格: ${formatNumber(total - packageDeal, 2)} 萬（成交總價 ${formatNumber(total, 2)} − 配套房屋總價）`;
+});
 
 // ✅ [新增] 編輯模式即時計算 - 表價單價
 const editingListUnitPrice = computed(() => {
@@ -1818,6 +1928,7 @@ async function deletePriceRemarkMarkedImages() {
 
 function startEditing() {
   isPriceEditable.value = false; // ✅ 每次進入編輯模式時，重置為預設不可編輯狀態
+  activeEditSection.value = 'sales'; // 🖥️ 左側項目導覽回到第一項
   editingData.value = JSON.parse(JSON.stringify(props.unitData || {}));
   if (!editingData.value) {
     editingData.value = {};
@@ -2113,6 +2224,7 @@ async function saveChanges() {
   const l = Number(editingData.value.landPriceRatio) || 0;
   const sum = Math.round((h + l) * 100) / 100;
   if (sum !== 0 && Math.abs(sum - 100) > 0.001) {
+    activeEditSection.value = 'ratio'; // 🖥️ 直接把使用者帶到出問題的區塊
     toast.error(`房土比加總 ${sum}% 不等於 100%，無法儲存。請調整「房屋價款比例」或「土地價款比例」。`);
     return;
   }
@@ -3460,6 +3572,94 @@ onUnmounted(() => {
 
 .footer-section {
   flex-shrink: 0;
+}
+
+/* ── 🖥️ [電腦版] 修改銷控：左邊項目 / 右邊內容 ── */
+/* v-window 預設 overflow:hidden 會讓左側導覽的 sticky 失效；編輯中不會切換分頁，可安全放行 */
+.edit-window-visible,
+.edit-window-visible :deep(.v-window__container),
+.edit-window-visible :deep(.v-window-item) {
+  overflow: visible;
+}
+
+.edit-shell--desktop {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.edit-nav {
+  flex: 0 0 224px;
+  width: 224px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: calc(100vh - 230px);
+  overflow-y: auto;
+  padding: 2px 8px 2px 0;
+  border-right: 1px solid #e0e0e0;
+  background-color: #fff;
+  z-index: 1;
+}
+
+.edit-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-color: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.edit-nav-item:hover {
+  background-color: #f1f5f9;
+}
+
+.edit-nav-item--active {
+  background-color: #e8f1ff;
+  border-color: #bbd6f7;
+}
+
+.edit-nav-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.edit-nav-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #37474f;
+  line-height: 1.3;
+}
+
+.edit-nav-item--active .edit-nav-title {
+  color: #1a3a6e;
+}
+
+.edit-nav-summary {
+  font-size: 0.75rem;
+  color: #90a4ae;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.edit-nav-alert {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.edit-panes {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .info-section {

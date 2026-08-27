@@ -1,8 +1,8 @@
 <template>
-  <div class="pa-2" :class="{ 'mb-8': isMobile }">
+  <div class="pa-2" :class="{ 'mb-8': isMobile, 'single-section': shownSections.length === 1 }">
     <v-form>
        <v-row>
-        <v-col cols="12" md="4">
+        <v-col cols="12" :md="sectionColMd" v-show="isSectionShown('sales')">
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-information-outline</v-icon>銷售資訊</div>
             <v-select 
@@ -79,7 +79,7 @@
           </div>
         </v-col>
 
-        <v-col cols="12" md="4">
+        <v-col cols="12" :md="sectionColMd" v-show="isSectionShown('deal')">
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-currency-usd</v-icon>成交資訊</div>
             <!-- 合約方式 -->
@@ -153,7 +153,7 @@
           </div>
         </v-col>
 
-        <v-col cols="12" md="4">
+        <v-col cols="12" :md="sectionColMd" v-show="isSectionShown('buyer')">
           <div class="info-section">
             <div class="section-title">
               <v-icon>mdi-account-details</v-icon>買方資訊
@@ -488,12 +488,26 @@ const props = defineProps({
   allSalesImages: { type: Array, default: () => [] },
   // ✅ [新增] 建案方案清單（方案編輯器功能，「可選方案」複選選項）
   planOptions: { type: Array, default: () => [] },
+  // 🖥️ [新增] 電腦版「修改銷控」左側項目導覽：指定只顯示哪些區塊（'sales' | 'deal' | 'buyer'），null = 全顯示
+  visibleSections: { type: Array, default: null },
 });
 
 const emit = defineEmits(['update:modelValue', 'request-open-slide', 'parking-updated']);
 
 const { mobile } = useDisplay();
 const isMobile = computed(() => mobile.value);
+
+// 🖥️ [新增] 區塊顯示控制：父層（修改銷控左側項目）可指定只顯示某一區塊，未指定時三區塊並排
+const ALL_FORM_SECTIONS = ['sales', 'deal', 'buyer'];
+const shownSections = computed(() => {
+  const picked = (props.visibleSections || []).filter(k => ALL_FORM_SECTIONS.includes(k));
+  return picked.length > 0 ? picked : ALL_FORM_SECTIONS;
+});
+function isSectionShown(key) {
+  return shownSections.value.includes(key);
+}
+// 只顯示一個區塊時欄位撐滿（另以 CSS 限制最大寬度），兩個時各半，三個時維持 1/3
+const sectionColMd = computed(() => Math.floor(12 / shownSections.value.length));
 
 // ✅ [新增] 格式化數字函數
 function formatNumber(val, frac = 0) {
@@ -1074,6 +1088,10 @@ function savePriceNegotiation() {
   border: 1px solid #e0e0e0; 
   border-radius: 8px; 
   height: 100%;
+}
+/* 🖥️ 電腦版單一區塊顯示（修改銷控左側項目切換）：限制表單寬度，避免欄位被拉得過長不好讀 */
+.single-section .info-section {
+  max-width: 860px;
 }
 .section-title { font-size: 1.1rem; font-weight: 600; color: #1a3a6e; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; display: flex; align-items: center; gap: 8px; }
 .form-label { font-size: 0.9rem; color: #555; font-weight: 500; margin-bottom: 4px; display: block; }
