@@ -161,9 +161,15 @@
               {{ formatDate(item.cancellationDate) }}
             </template>
 
-            <!-- 備註 -->
+            <!-- 備註（留言式：badge + 最新一則摘要，展開列可完整檢視與 CRUD） -->
             <template v-slot:item.remarks="{ item }">
-              <span v-if="item.remarks" class="text-body-2">{{ item.remarks }}</span>
+              <template v-if="remarkCellInfo(item).count > 0">
+                <span class="text-body-2 d-inline-flex align-center">
+                  <v-icon size="small" color="primary" class="mr-1">mdi-comment-text-outline</v-icon>
+                  <span class="text-primary font-weight-bold mr-1">{{ remarkCellInfo(item).count }}</span>
+                  {{ remarkCellInfo(item).preview }}
+                </span>
+              </template>
               <span v-else class="text-grey text-caption">—</span>
             </template>
 
@@ -323,25 +329,14 @@
                       </div>
                     </template>
 
-                    <!-- 備註 -->
+                    <!-- 備註（留言式：免進編輯即可 CRUD，與銷控端共用元件） -->
                     <v-divider class="my-3"></v-divider>
-                    <div class="d-flex align-center justify-space-between mb-2">
-                      <div class="section-title">
-                        <v-icon size="small" class="mr-1" color="info">mdi-note-text</v-icon>
-                        備註
-                      </div>
-                      <v-btn icon size="x-small" variant="text" @click="handleEditRemarks(item)">
-                        <v-icon size="small">mdi-pencil</v-icon>
-                        <v-tooltip activator="parent">修改備註</v-tooltip>
-                      </v-btn>
-                    </div>
-                    <div v-if="item.remarks" class="pa-2 bg-blue-lighten-5 rounded text-body-2">
-                      {{ item.remarks }}
-                    </div>
-                    <div v-else class="text-caption text-grey">
-                      <v-icon size="x-small" class="mr-1">mdi-information-outline</v-icon>
-                      未填寫備註
-                    </div>
+                    <RemarkNotesPanel
+                      :notes="item.remarkNotes || []"
+                      :legacy-remarks="item.remarks || ''"
+                      :persist-handler="(newNotes) => persistCancelledRemarkNotes(item, newNotes)"
+                      :storage-path-prefix="`cancelledPurchases/${projectId}/${item.docId}/remarkNotes`"
+                    />
 
                     <!-- 文件 ID 顯示 -->
                     <v-divider class="my-3"></v-divider>
@@ -539,46 +534,6 @@
       </v-card>
     </v-dialog>
 
-    <!-- 修改退戶備註 Dialog -->
-    <v-dialog v-model="editRemarksDialog.show" max-width="560" persistent>
-      <v-card>
-        <v-card-title class="d-flex align-center">
-          <v-icon left class="mr-2">mdi-note-text</v-icon>
-          修改備註
-        </v-card-title>
-        <v-card-text class="py-4">
-          <p class="text-body-2 text-grey mb-4">
-            戶別：<strong>【{{ editRemarksDialog.targetItem?.unitId }}】</strong>
-            買方：<strong>{{ editRemarksDialog.targetItem?.buyerName || '—' }}</strong>
-          </p>
-          <v-textarea
-            v-model="editRemarksDialog.inputRemarks"
-            label="備註內容"
-            placeholder="請輸入備註..."
-            variant="outlined"
-            density="compact"
-            rows="4"
-            no-resize
-            counter
-            maxlength="500"
-            hide-details="auto"
-          ></v-textarea>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="editRemarksDialog.show = false">取消</v-btn>
-          <v-btn
-            color="primary"
-            variant="flat"
-            :loading="editRemarksDialog.loading"
-            @click="executeUpdateRemarks"
-          >
-            確認修改
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
     <!-- 冷刪除確認 Dialog -->
     <v-dialog v-model="softDeleteDialog.show" max-width="500" persistent>
       <v-card>
@@ -721,6 +676,8 @@ import { useUserStore } from '@/store/user';
 import { useToast, POSITION } from 'vue-toastification';
 import CancelledPurchaseStatistics from './CancelledPurchaseStatistics.vue';
 import { formatSalespersons } from '@/utils/salespersonUtils';
+import RemarkNotesPanel from './RemarkNotesPanel.vue';
+import { resolveDisplayNotes } from '@/utils/remarkNotes';
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -833,13 +790,6 @@ const editDateDialog = reactive({
   loading: false,
   targetItem: null,
   selectedDate: '',
-});
-
-const editRemarksDialog = reactive({
-  show: false,
-  loading: false,
-  targetItem: null,
-  inputRemarks: '',
 });
 
 const softDeleteDialog = reactive({
@@ -1102,42 +1052,33 @@ async function executeUpdateDate() {
   }
 }
 
-function handleEditRemarks(item) {
-  editRemarksDialog.targetItem = item;
-  editRemarksDialog.inputRemarks = item.remarks || '';
-  editRemarksDialog.show = true;
+// ✅ [備註留言] 表格備註欄摘要（置頂優先、新到舊取第一則）
+function remarkCellInfo(item) {
+  const notes = resolveDisplayNotes(item.remarkNotes, item.remarks);
+  if (notes.length === 0) return { count: 0, preview: '' };
+  const first = notes[0];
+  const author = first.type === 'legacy' ? '舊備註' : (first.type === 'system' ? '系統' : (first.authorName || ''));
+  const text = String(first.content || '').replace(/\s+/g, ' ');
+  const preview = `${author ? author + '：' : ''}${text}`;
+  return { count: notes.length, preview: preview.length > 20 ? preview.slice(0, 20) + '…' : preview };
 }
 
-async function executeUpdateRemarks() {
-  const item = editRemarksDialog.targetItem;
-  if (!item) return;
-
-  editRemarksDialog.loading = true;
-
-  try {
-    const result = await updateRemarks(
-      props.projectId,
-      item.docId,
-      editRemarksDialog.inputRemarks,
-      userStore.user?.name || '未知用戶'
-    );
-
-    if (result.status === 'success') {
-      toast.success(result.message, { position: POSITION.BOTTOM_CENTER });
-      // 即時更新列表中該筆記錄的 remarks
-      const itemIndex = items.value.findIndex(i => i.docId === item.docId);
-      if (itemIndex !== -1) {
-        items.value[itemIndex].remarks = editRemarksDialog.inputRemarks;
-      }
-      editRemarksDialog.show = false;
-    } else {
-      toast.error(`修改失敗：${result.message}`, { position: POSITION.BOTTOM_CENTER });
-    }
-  } catch (error) {
-    console.error('修改退戶備註失敗:', error);
-    toast.error(`修改失敗：${error.message}`, { position: POSITION.BOTTOM_CENTER });
-  } finally {
-    editRemarksDialog.loading = false;
+// ✅ [備註留言] 留言式 CRUD：經 updateRemarks CF 整包覆寫，成功後即時同步列表
+async function persistCancelledRemarkNotes(item, newNotes) {
+  const result = await updateRemarks(
+    props.projectId,
+    item.docId,
+    null,
+    userStore.user?.name || '未知用戶',
+    newNotes
+  );
+  if (result.status !== 'success') {
+    throw new Error(result.message || '更新失敗');
+  }
+  const itemIndex = items.value.findIndex(i => i.docId === item.docId);
+  if (itemIndex !== -1) {
+    items.value[itemIndex].remarkNotes = newNotes;
+    items.value[itemIndex].remarks = result.remarks || '';
   }
 }
 

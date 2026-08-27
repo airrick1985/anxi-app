@@ -75,7 +75,9 @@
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_complete_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" teleport="body" auto-position class="mb-4 anxi-datepicker"></VueDatePicker>
             <label class="v-label text-caption">簽約日期</label>
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_contract_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" teleport="body" auto-position class="mb-4 anxi-datepicker"></VueDatePicker>
-            <v-textarea label="備註" v-model="editableData.remarks" rows="3" auto-grow></v-textarea>
+            <v-alert type="info" variant="tonal" density="compact" class="text-caption">
+              備註已改為留言功能，請於戶別詳情「銷售資訊」區塊直接新增／編輯備註留言。
+            </v-alert>
           </div>
         </v-col>
 

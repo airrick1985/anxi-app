@@ -647,6 +647,22 @@
           {{ formatSalespersons(item.salesperson) }}
         </template>
 
+          <!-- ✅ 備註（留言式）：badge + 最新一則摘要，點擊彈出留言小視窗直接 CRUD -->
+          <template v-slot:item.remarks="{ item }">
+            <div class="remark-cell" @click.stop="openRemarkDialog(item)">
+              <template v-if="remarkCellInfo(item).count > 0">
+                <v-icon size="small" color="primary">mdi-comment-text-outline</v-icon>
+                <span class="remark-count">{{ remarkCellInfo(item).count }}</span>
+                <v-icon v-if="remarkCellInfo(item).hasPinned" size="x-small" color="amber-darken-2">mdi-pin</v-icon>
+                <span class="remark-preview">{{ remarkCellInfo(item).preview }}</span>
+              </template>
+              <template v-else>
+                <v-icon size="small" color="grey-lighten-1">mdi-comment-plus-outline</v-icon>
+              </template>
+              <v-tooltip activator="parent" location="top">點擊檢視／新增備註留言</v-tooltip>
+            </div>
+          </template>
+
           <template v-slot:header.isPreferredPayment="{ column }">
             <div class="d-flex flex-column justify-center align-center" style="height: 100%;">
               <span class="text-caption font-weight-bold mb-1">{{ column.title }}</span>
@@ -1193,6 +1209,30 @@
       :plan-options="quotePlansList"
       @data-updated="handleRefreshData"
       @request-open-slide="handleOpenSlideViewer" />
+
+    <!-- ✅ 備註留言小視窗（列表模式備註欄點擊開啟） -->
+    <v-dialog v-model="remarkDialog.show" max-width="540" scrollable>
+      <v-card class="pa-3">
+        <div class="d-flex align-center mb-2">
+          <v-icon color="primary" class="mr-1">mdi-comment-text-multiple-outline</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">{{ remarkDialog.unitId }} 備註留言</span>
+          <v-spacer></v-spacer>
+          <v-btn icon size="small" variant="text" @click="remarkDialog.show = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </div>
+        <v-card-text class="pa-0">
+          <RemarkNotesPanel
+            v-if="remarkDialog.show"
+            dense
+            :notes="remarkDialog.notes"
+            :legacy-remarks="remarkDialog.legacyRemarks"
+            :persist-handler="persistRemarkDialogNotes"
+            :storage-path-prefix="`unitDetails/${projectId}/${remarkDialog.unitId}/remarkNotes`"
+          />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
 
@@ -1972,6 +2012,10 @@ import {
   rowToLandParcel,
 } from '@/constants/landParcelColumns';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
+import RemarkNotesPanel from '@/components/RemarkNotesPanel.vue';
+import { db } from '@/firebase';
+import { doc as fsDoc, updateDoc as fsUpdateDoc, serverTimestamp as fsServerTimestamp } from 'firebase/firestore';
+import { buildRemarksSummary, resolveDisplayNotes } from '@/utils/remarkNotes';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import QuoteSidebar from '@/components/QuoteSidebar.vue';
@@ -3877,6 +3921,45 @@ const tableHeaders = computed(() => {
   }
 });
 
+// ✅ [備註留言] 列表模式備註欄：小視窗狀態與顯示輔助
+const remarkDialog = ref({ show: false, unitId: '', notes: [], legacyRemarks: '' });
+
+function remarkCellInfo(item) {
+  const notes = resolveDisplayNotes(item.remarkNotes, item.remarks);
+  if (notes.length === 0) return { count: 0, preview: '', hasPinned: false };
+  const first = notes[0]; // 已排序：置頂優先、新到舊
+  const author = first.type === 'legacy' ? '舊備註' : (first.type === 'system' ? '系統' : (first.authorName || ''));
+  const text = String(first.content || '').replace(/\s+/g, ' ');
+  const preview = `${author ? author + '：' : ''}${text}`;
+  return {
+    count: notes.length,
+    hasPinned: notes.some(n => n.pinned),
+    preview: preview.length > 24 ? preview.slice(0, 24) + '…' : preview,
+  };
+}
+
+function openRemarkDialog(item) {
+  remarkDialog.value = {
+    show: true,
+    unitId: item.unitId,
+    notes: Array.isArray(item.remarkNotes) ? item.remarkNotes.slice() : [],
+    legacyRemarks: typeof item.remarks === 'string' ? item.remarks : '',
+  };
+}
+
+/** [備註留言] 小視窗持久化：直寫 salesHouseholds 並回填 remarks 字串（store 即時監聽會同步表格） */
+async function persistRemarkDialogNotes(newNotes) {
+  const docId = `${projectId.value}_${remarkDialog.value.unitId}`;
+  const summary = buildRemarksSummary(newNotes);
+  await fsUpdateDoc(fsDoc(db, 'salesHouseholds', docId), {
+    remarkNotes: newNotes,
+    remarks: summary,
+    updatedAt: fsServerTimestamp(),
+  });
+  remarkDialog.value.notes = newNotes.slice();
+  remarkDialog.value.legacyRemarks = summary;
+}
+
 // [新增] 自定義價格排序：讓 null (已售) 排在最後
 const customPriceSort = (a, b) => {
   // 如果兩個都是 null，視為相等
@@ -5542,6 +5625,32 @@ overflow: hidden;
   .compact-table :deep(.v-data-table-column--last-fixed) {
     box-shadow: 4px 0 6px -2px rgba(0, 0, 0, 0.15);
   }
+}
+
+/* ✅ [備註留言] 列表模式備註欄 */
+.remark-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  min-width: 90px;
+  max-width: 260px;
+  padding: 2px 0;
+}
+.remark-cell:hover .remark-preview {
+  text-decoration: underline;
+}
+.remark-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: rgb(var(--v-theme-primary));
+}
+.remark-preview {
+  font-size: 0.78rem;
+  color: rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 表頭樣式微調 */

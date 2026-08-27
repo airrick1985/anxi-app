@@ -715,10 +715,15 @@
                           <v-list-item title="簽約日期"
                             :subtitle="formatDate(unitData.payment_contract_date)"></v-list-item>
                           <v-list-item title="申報書序號" :subtitle="unitData.reportNo || '-'"></v-list-item>
-                          <v-list-item title="備註"><v-list-item-subtitle style="white-space: pre-wrap;">{{
-                              unitData.remarks || '-'
-                              }}</v-list-item-subtitle></v-list-item>
                         </v-list>
+                        <!-- ✅ 備註（留言式）：檢視模式即可 CRUD，不必進「修改銷控」 -->
+                        <v-divider class="my-2"></v-divider>
+                        <RemarkNotesPanel
+                          :notes="viewRemarkNotes"
+                          :legacy-remarks="viewLegacyRemarks"
+                          :persist-handler="persistRemarkNotes"
+                          :storage-path-prefix="remarkNotesStoragePrefix"
+                        />
                       </div>
                     </v-col>
                     <v-col cols="12" md="4">
@@ -1134,6 +1139,10 @@ import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUt
 import SalesBotChat from './SalesBotChat.vue';
 import LandParcelsPanel from './LandParcelsPanel.vue';
 import PaymentRecordsPanel from './PaymentRecordsPanel.vue';
+import RemarkNotesPanel from './RemarkNotesPanel.vue';
+import { db } from '@/firebase';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { buildRemarksSummary } from '@/utils/remarkNotes';
 import { computeHouseLandPrices, buildDefaultFormulas, isSpecialContractType } from '@/composables/usePriceFormula';
 import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue';
@@ -2046,6 +2055,36 @@ watch(() => props.unitData, (val) => {
     : [];
 }, { immediate: true });
 
+// ✅ [備註留言] 檢視模式本地列表：直寫 Firestore 後即時反映（不必進修改銷控）
+const viewRemarkNotes = ref([]);
+const viewLegacyRemarks = ref('');
+watch(() => props.unitData, (val) => {
+  viewRemarkNotes.value = Array.isArray(val?.remarkNotes) ? val.remarkNotes.slice() : [];
+  viewLegacyRemarks.value = typeof val?.remarks === 'string' ? val.remarks : '';
+}, { immediate: true });
+
+const remarkNotesStoragePrefix = computed(() =>
+  `unitDetails/${props.projectId}/${props.unitData?.unitId || 'unknown'}/remarkNotes`
+);
+
+/** [備註留言] 持久化：直寫 salesHouseholds，並回填 remarks 字串維持向下相容 */
+async function persistRemarkNotes(newNotes) {
+  const docId = `${props.projectId}_${props.unitData.unitId}`;
+  const summary = buildRemarksSummary(newNotes);
+  await updateDoc(doc(db, 'salesHouseholds', docId), {
+    remarkNotes: newNotes,
+    remarks: summary,
+    updatedAt: serverTimestamp(),
+  });
+  viewRemarkNotes.value = newNotes.slice();
+  viewLegacyRemarks.value = summary;
+  // 同步父層傳入的物件快照，避免重開 Modal 或列表殘留舊值（store 即時監聽亦會更新）
+  if (props.unitData) {
+    props.unitData.remarkNotes = newNotes;
+    props.unitData.remarks = summary;
+  }
+}
+
 /**
  * [戶別繳款紀錄] 快速新增（檢視模式，不經修改銷控）：
  * 有圖檔則後端一併上傳並命名，寫入成功後即時更新本地列表。
@@ -2277,6 +2316,11 @@ async function executeSaveChanges() {
       const terraceListPrice = Number(data.price_list_terrace) || 0;
       data.price_list_terrace_unit = Number((terraceListPrice / terracePing).toFixed(2));
     }
+
+    // ✅ [備註留言] 備註改由檢視模式即時 CRUD 維護，編輯表單不再送出，
+    // 避免以進入編輯時的舊快照覆蓋期間新增的留言（merge: true 會保留既有值）
+    delete data.remarks;
+    delete data.remarkNotes;
 
     const payload = {
       projectName: props.projectName,

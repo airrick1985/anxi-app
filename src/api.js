@@ -1250,17 +1250,20 @@ export async function updateCancellationDate(projectId, cancelledDocId, cancella
  * 修改退戶備註
  * @param {string} projectId 建案 ID
  * @param {string} cancelledDocId 退戶記錄的 docId
- * @param {string} remarks 備註內容
+ * @param {string|null} remarks 備註內容（字串模式；留言模式可傳 null，由後端依 remarkNotes 產生）
  * @param {string} operatorName 操作人員名稱
- * @returns {Promise<object>} API 響應
+ * @param {Array|null} remarkNotes 留言式備註完整陣列（傳入時後端整包覆寫並回填 remarks 字串）
+ * @returns {Promise<object>} API 響應（留言模式回傳 remarks 為後端產生的相容字串）
  */
-export async function updateRemarks(projectId, cancelledDocId, remarks, operatorName) {
+export async function updateRemarks(projectId, cancelledDocId, remarks, operatorName, remarkNotes = null) {
   if (!projectId || !cancelledDocId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少必要參數。" };
   }
   try {
     const func = httpsCallable(functions, 'updateRemarks');
-    const result = await func({ projectId, cancelledDocId, remarks, operatorName });
+    const payload = { projectId, cancelledDocId, remarks, operatorName };
+    if (Array.isArray(remarkNotes)) payload.remarkNotes = remarkNotes;
+    const result = await func(payload);
     return result.data;
   } catch (error) {
     console.error("呼叫 updateRemarks 雲端函式時發生錯誤:", error);

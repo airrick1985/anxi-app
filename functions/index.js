@@ -3338,6 +3338,88 @@ exports.updateSalesField = onCall({ region: "asia-east1" }, async (request) => {
  * 【新增】退戶功能
  * 將指定戶別及其關聯車位的銷售資料清除，並建立永久退戶紀錄
  */
+// ========================================
+// 備註留言（remarkNotes）後端輔助：與前端 src/utils/remarkNotes.js 對應
+// ========================================
+
+/** 各種來源（admin/client Timestamp、callable 序列化物件、字串）轉毫秒，失敗回 0 */
+function remarkNoteTimeMs(v) {
+  if (!v) return 0;
+  try {
+    if (typeof v.toDate === 'function') return v.toDate().getTime();
+    if (typeof v.seconds === 'number') return v.seconds * 1000;
+    if (typeof v._seconds === 'number') return v._seconds * 1000;
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+  } catch (e) { return 0; }
+}
+
+/** 轉為 admin Timestamp（容忍 client 序列化格式），失敗回 null */
+function toAdminTimestamp(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof admin.firestore.Timestamp) return v;
+  const seconds = (typeof v.seconds === 'number') ? v.seconds
+    : (typeof v._seconds === 'number') ? v._seconds : null;
+  if (seconds !== null) {
+    const nanos = (typeof v.nanoseconds === 'number') ? v.nanoseconds
+      : (typeof v._nanoseconds === 'number') ? v._nanoseconds : 0;
+    return new admin.firestore.Timestamp(seconds, nanos);
+  }
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : admin.firestore.Timestamp.fromDate(d);
+}
+
+/** 正規化單則留言（防止 undefined 寫入 Firestore、統一 Timestamp 型別） */
+function sanitizeRemarkNote(n) {
+  if (!n || typeof n !== 'object') return null;
+  const content = typeof n.content === 'string' ? n.content : '';
+  if (!content && !(Array.isArray(n.images) && n.images.length > 0)) return null;
+  return {
+    noteId: String(n.noteId || `note-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+    type: ['user', 'system', 'legacy'].includes(n.type) ? n.type : 'user',
+    category: typeof n.category === 'string' && n.category ? n.category : 'general',
+    content,
+    images: Array.isArray(n.images)
+      ? n.images.filter(img => img && img.url).map(img => ({
+          url: String(img.url),
+          path: String(img.path || ''),
+          name: String(img.name || ''),
+          size: Number(img.size) || 0,
+          type: String(img.type || ''),
+        }))
+      : [],
+    authorName: String(n.authorName || ''),
+    authorKey: String(n.authorKey || ''),
+    createdAt: toAdminTimestamp(n.createdAt),
+    updatedAt: toAdminTimestamp(n.updatedAt),
+    pinned: !!n.pinned,
+  };
+}
+
+/** 向下相容回填字串（remarks）：置頂優先、新到舊，格式與前端 buildRemarksSummary 一致 */
+function buildRemarksSummaryFromNotes(notes) {
+  const list = (Array.isArray(notes) ? notes : []).filter(n => n && typeof n.content === 'string');
+  const sorted = [...list].sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    return remarkNoteTimeMs(b.createdAt) - remarkNoteTimeMs(a.createdAt);
+  });
+  const CATEGORY_LABELS = { general: '一般', customer: '客況', reminder: '提醒', finance: '財務', contract: '合約' };
+  return sorted.map(n => {
+    const ms = remarkNoteTimeMs(n.createdAt);
+    const dateStr = ms
+      ? new Date(ms).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit' })
+      : '';
+    let name = n.authorName || '';
+    if (n.type === 'legacy') name = '舊備註';
+    else if (n.type === 'system') name = n.authorName ? `系統·${n.authorName}` : '系統';
+    const catLabel = (n.type === 'user' && n.category && n.category !== 'general')
+      ? (CATEGORY_LABELS[n.category] || '') : '';
+    const head = [dateStr, name, catLabel].filter(Boolean).join(' ');
+    const pin = n.pinned ? '📌' : '';
+    return head ? `${pin}[${head}] ${n.content}` : `${pin}${n.content}`;
+  }).join('\n');
+}
+
 exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secrets: gmailSecrets }, async (request) => {
   const { projectId, unitId, operatorName, cancelReasons = [], cancellationDate = null } = request.data;
   const functionName = `cancelPurchase (Project: ${projectId}, Unit: ${unitId})`;
@@ -3430,9 +3512,39 @@ exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secret
     const cancelledDocId = `${projectId}_${unitId}_${timestamp}`;
     console.log(`[${functionName}] 退戶資料備份文檔 ID: ${cancelledDocId}`);
 
+    // ✅ [備註留言] 隨退戶帶入備份：舊字串備註轉入（若尚未有留言）＋ 追加退戶系統留言
+    const baseRemarkNotes = (Array.isArray(originalHouseholdData.remarkNotes)
+      ? originalHouseholdData.remarkNotes : [])
+      .map(sanitizeRemarkNote).filter(Boolean);
+    if (baseRemarkNotes.length === 0 && typeof originalHouseholdData.remarks === 'string' && originalHouseholdData.remarks.trim()) {
+      baseRemarkNotes.push(sanitizeRemarkNote({
+        noteId: 'legacy-remarks',
+        type: 'legacy',
+        content: originalHouseholdData.remarks.trim(),
+      }));
+    }
+    const reasonsText = (Array.isArray(cancelReasons) && cancelReasons.length > 0)
+      ? `，原因：${cancelReasons.join('、')}` : '';
+    const dateText = cancellationDate ? `（退戶日期：${cancellationDate}）` : '';
+    baseRemarkNotes.push({
+      noteId: `system-cancel-${timestamp}`,
+      type: 'system',
+      category: 'general',
+      content: `辦理退戶${reasonsText}${dateText}`,
+      images: [],
+      authorName: operatorName,
+      authorKey: '',
+      createdAt: admin.firestore.Timestamp.now(),
+      updatedAt: null,
+      pinned: false,
+    });
+
     const cancelledPurchaseData = {
       // 展開原始戶別的所有欄位（包含面積、價格等不被清空的欄位）
       ...originalHouseholdData,
+      // ✅ [備註留言] 覆寫為含退戶系統留言的版本，並回填相容字串
+      remarkNotes: baseRemarkNotes,
+      remarks: buildRemarksSummaryFromNotes(baseRemarkNotes),
       // 加入車位資料完整備份
       parkingData: originalParkingData.map(p => p.data),
       // 加入退戶元資料
@@ -3502,6 +3614,7 @@ exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secret
       referrerName: null,
       referrerPhone: null,
       remarks: "",
+      remarkNotes: [],  // ✅ [備註留言] 清空，避免新戶主看到前買方留言（已隨備份帶走）
       '持有車位': [],  // 清除車位關聯陣列
 
       // 更新時間
@@ -3821,8 +3934,9 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1", memory: "512MiB" 
         originalDocId: meta.originalDocId || '',
         // 退戶原因
         cancelReasons: data.cancelReasons || [],
-        // 備註
+        // 備註（字串為向下相容摘要；remarkNotes 為留言式完整資料）
         remarks: data.remarks || '',
+        remarkNotes: Array.isArray(data.remarkNotes) ? data.remarkNotes : [],
         // 冷刪除相關字段
         isDeleted: data._isDeleted || false,
         deletedBy: deletedMeta.deletedBy || '',
@@ -3947,7 +4061,7 @@ exports.updateCancellationDate = onCall({ region: "asia-east1", memory: "512MiB"
  * 修改退戶備註
  */
 exports.updateRemarks = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
-  const { projectId, cancelledDocId, remarks, operatorName } = request.data;
+  const { projectId, cancelledDocId, remarks, operatorName, remarkNotes } = request.data;
   const functionName = `updateRemarks (Doc: ${cancelledDocId})`;
 
   if (!projectId || !cancelledDocId || !operatorName) {
@@ -3958,17 +4072,29 @@ exports.updateRemarks = onCall({ region: "asia-east1", memory: "512MiB" }, async
 
   try {
     console.log(`[${functionName}] 開始修改退戶備註...`);
-    console.log(`[${functionName}] 備註內容: ${remarks}`);
     console.log(`[${functionName}] 操作人員: ${operatorName}`);
 
-    // 更新退戶資料集合中的 remarks
+    // 更新退戶資料集合中的備註
     const cancelledDocRef = db.collection("cancelledPurchases").doc(cancelledDocId);
 
     const updateData = {
-      remarks: remarks || '',
       '_cancellationMeta.lastEditedBy': operatorName,
       '_cancellationMeta.lastEditedAt': admin.firestore.FieldValue.serverTimestamp(),
     };
+
+    let summaryForReturn = null;
+    if (Array.isArray(remarkNotes)) {
+      // ✅ [備註留言] 留言式 CRUD：整包覆寫 remarkNotes，並回填相容字串 remarks
+      const sanitized = remarkNotes.map(sanitizeRemarkNote).filter(Boolean);
+      summaryForReturn = buildRemarksSummaryFromNotes(sanitized);
+      updateData.remarkNotes = sanitized;
+      updateData.remarks = summaryForReturn;
+      console.log(`[${functionName}] 留言式備註更新，共 ${sanitized.length} 則`);
+    } else {
+      // 舊介面相容：純字串備註
+      updateData.remarks = remarks || '';
+      console.log(`[${functionName}] 字串備註內容: ${remarks}`);
+    }
 
     await cancelledDocRef.update(updateData);
 
@@ -3976,7 +4102,8 @@ exports.updateRemarks = onCall({ region: "asia-east1", memory: "512MiB" }, async
 
     return {
       status: "success",
-      message: "退戶備註已更新成功！"
+      message: "退戶備註已更新成功！",
+      remarks: summaryForReturn !== null ? summaryForReturn : (remarks || ''),
     };
 
   } catch (error) {
@@ -3988,7 +4115,7 @@ exports.updateRemarks = onCall({ region: "asia-east1", memory: "512MiB" }, async
 /**
  * 復原退戶資料（將備份資料回寫到原始戶別）
  */
-exports.restoreCancelledPurchase = onCall({ region: "asia-east1" }, async (request) => {
+exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   const { projectId, cancelledDocId, operatorName } = request.data;
   const functionName = `restoreCancelledPurchase (Doc: ${cancelledDocId})`;
 
@@ -4053,6 +4180,24 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1" }, async (reque
     // 銷售人員（複選）：備份可能是舊單人字串或新陣列，復原時統一正規化為陣列
     householdRestoreData.salesperson = normalizeSalespersons(cancelledData.salesperson);
     householdRestoreData.salespersonUserKey = normalizeSalespersons(cancelledData.salespersonUserKey);
+
+    // ✅ [備註留言] 復原時追加系統留言，留下完整軌跡（退戶＋復原都在留言串中）
+    const restoredNotes = (Array.isArray(cancelledData.remarkNotes) ? cancelledData.remarkNotes : [])
+      .map(sanitizeRemarkNote).filter(Boolean);
+    restoredNotes.push({
+      noteId: `system-restore-${Date.now()}`,
+      type: 'system',
+      category: 'general',
+      content: '復原退戶記錄，戶別銷售資料已還原',
+      images: [],
+      authorName: operatorName,
+      authorKey: '',
+      createdAt: admin.firestore.Timestamp.now(),
+      updatedAt: null,
+      pinned: false,
+    });
+    householdRestoreData.remarkNotes = restoredNotes;
+    householdRestoreData.remarks = buildRemarksSummaryFromNotes(restoredNotes);
 
     console.log(`[${functionName}] 準備復原 ${Object.keys(householdRestoreData).length} 個戶別欄位`);
     console.log(`[${functionName}] 準備復原 ${parkingBackup.length} 筆車位資料`);
