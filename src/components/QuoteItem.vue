@@ -65,7 +65,11 @@
     </v-list-item>
 
     <v-divider class="my-2"></v-divider>
-    <v-list-item class="pl-0"><v-list-item-title>車位</v-list-item-title><template v-slot:append><v-btn size="small" variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn></template></v-list-item>
+    <v-list-item class="pl-0"><v-list-item-title>車位</v-list-item-title><template v-slot:append>
+      <v-btn size="small" variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn>
+      <v-btn v-if="canApplyParking" icon="mdi-content-copy" size="x-small" variant="text" color="primary"
+        class="ml-1" title="套用車位至其他戶別" @click="openApplyParkingDialog"></v-btn>
+    </template></v-list-item>
     <v-list-item class="pl-0"><v-list-item-title>車位價格</v-list-item-title><template v-slot:append><strong class="highlight-dark">{{ formattedParkingPrice }}</strong></template></v-list-item>
     <v-divider class="my-2"></v-divider>
     
@@ -211,7 +215,11 @@
       </div>
     </div>
    </div>
-   <div class="item-cell flex-2"><v-btn variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn></div>
+   <div class="item-cell flex-2">
+    <v-btn variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn>
+    <v-btn v-if="canApplyParking" icon="mdi-content-copy" size="x-small" variant="text" color="primary"
+      class="ml-1" title="套用車位至其他戶別" @click="openApplyParkingDialog"></v-btn>
+   </div>
    <div class="item-cell flex-1 highlight-dark"><span>{{ formattedParkingPrice }}</span></div>
    
    <div class="item-cell flex-1">
@@ -650,6 +658,48 @@
   </div>
 </v-expand-transition>
 
+    <!-- ✅ [新增] 套用車位至其他戶別 -->
+    <v-dialog v-model="isApplyParkingOpen" max-width="500">
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon class="mr-2" color="primary">mdi-content-copy</v-icon>套用車位至其他戶別
+          <v-spacer />
+          <v-btn icon variant="text" @click="isApplyParkingOpen = false"><v-icon>mdi-close</v-icon></v-btn>
+        </v-card-title>
+        <v-card-text>
+          <div class="text-subtitle-2 mb-1">要套用的車位（可只勾選部分分開套用）</div>
+          <v-checkbox v-for="sp in applySpotOptions" :key="sp.id" v-model="applySpotIds" :value="sp.id"
+            density="compact" hide-details :label="sp.label" />
+
+          <v-divider class="my-3" />
+          <div class="d-flex align-center mb-1">
+            <div class="text-subtitle-2">套用到哪些戶別</div>
+            <v-spacer />
+            <v-btn size="x-small" variant="text" color="primary" @click="toggleAllApplyTargets">
+              {{ allApplyTargetsSelected ? '全不選' : '全選' }}
+            </v-btn>
+          </div>
+          <v-checkbox v-for="t in otherQuoteItems" :key="t.internalId" v-model="applyTargetIds"
+            :value="t.internalId" density="compact" hide-details :label="applyTargetLabel(t)" />
+
+          <v-divider class="my-3" />
+          <v-radio-group v-model="applyParkingMode" inline hide-details density="compact">
+            <v-radio label="覆蓋既有車位" value="replace" />
+            <v-radio label="加入（保留原有，不重複）" value="merge" />
+          </v-radio-group>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn color="error" variant="text" size="small" :disabled="!applyTargetIds.length"
+            @click="clearApplyTargetsParking">清除所選戶別車位</v-btn>
+          <v-spacer />
+          <v-btn variant="text" @click="isApplyParkingOpen = false">取消</v-btn>
+          <v-btn color="primary" variant="flat"
+            :disabled="!applySpotIds.length || !applyTargetIds.length"
+            @click="commitApplyParking">套用</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- 車位選擇 Modal -->
     <ParkingEditModal 
       v-model:show="isParkingModalOpen"
@@ -825,6 +875,7 @@
 <script setup>
 import { ref, computed, defineProps, defineEmits, onMounted, watch } from 'vue'; // ★★★ 1. 引入 watch ★★★
 import { useQuoteStore } from '@/store/quoteStore';
+import { useToast } from 'vue-toastification';
 import { useDisplay } from 'vuetify';
 import PaymentDetails from './PaymentDetails.vue';
 import ParkingEditModal from './ParkingEditModal.vue';
@@ -852,6 +903,7 @@ const props = defineProps({
 
 const emit = defineEmits(['remove', 'request-open-slide']);
 const quoteStore = useQuoteStore();
+const toast = useToast();
 const projectStore = useProjectStore();
 const { mobile } = useDisplay();
 const isMobile = computed(() => mobile.value);
@@ -1672,6 +1724,69 @@ function formatPercentage(value) {
 function handleParkingUpdate(updatedParkingList) {
   quoteStore.updateParking(props.item.internalId, updatedParkingList);
   isParkingModalOpen.value = false;
+  // ✅ [新增] 自動提示：本戶剛選了車位、其他戶都還沒有車位 → 點 toast 直接開套用對話框
+  const others = quoteStore.items.filter(i => i.internalId !== props.item.internalId);
+  if (updatedParkingList.length > 0 && others.length > 0 && others.every(i => !(i.selectedParking?.length))) {
+    toast.info(`已選 ${updatedParkingList.length} 個車位，點此一鍵套用至其他 ${others.length} 個戶別`, {
+      timeout: 6000,
+      onClick: (closeToast) => { openApplyParkingDialog(); closeToast(); },
+    });
+  }
+}
+
+/* ---------- ✅ [新增] 套用車位至其他戶別 ---------- */
+const isApplyParkingOpen = ref(false);
+const applySpotIds = ref([]);      // 勾選要套用的車位編號
+const applyTargetIds = ref([]);    // 勾選目標戶別 internalId
+const applyParkingMode = ref('replace');
+
+const spotKeyOf = p => String(p?.spotId || p?.['車位編號'] || '');
+const spotPriceOf = p => Number(p?.price_list ?? p?.['表價'] ?? p?.['車位表價']) || 0;
+
+const canApplyParking = computed(() =>
+  (props.item.selectedParking?.length || 0) > 0 && quoteStore.items.length > 1);
+
+const otherQuoteItems = computed(() =>
+  quoteStore.items.filter(i => i.internalId !== props.item.internalId));
+
+const applySpotOptions = computed(() =>
+  (props.item.selectedParking || []).map(p => ({
+    id: spotKeyOf(p),
+    label: `${spotKeyOf(p)}（${spotPriceOf(p)} 萬）`,
+  })));
+
+// 同戶別可重複加入報價，加序號區分；並顯示目標現有車位供對照
+function applyTargetLabel(t) {
+  const sameUnit = quoteStore.items.filter(i => i.unitId === t.unitId);
+  const suffix = sameUnit.length > 1 ? `（第 ${sameUnit.indexOf(t) + 1} 筆）` : '';
+  const pk = (t.selectedParking || []).map(spotKeyOf).join(', ');
+  return `${t.unitId}${suffix}${pk ? `｜現有車位：${pk}` : ''}`;
+}
+
+function openApplyParkingDialog() {
+  applySpotIds.value = (props.item.selectedParking || []).map(spotKeyOf);
+  applyTargetIds.value = otherQuoteItems.value.map(i => i.internalId);
+  applyParkingMode.value = 'replace';
+  isApplyParkingOpen.value = true;
+}
+
+const allApplyTargetsSelected = computed(() =>
+  otherQuoteItems.value.length > 0 && applyTargetIds.value.length === otherQuoteItems.value.length);
+
+function toggleAllApplyTargets() {
+  applyTargetIds.value = allApplyTargetsSelected.value ? [] : otherQuoteItems.value.map(i => i.internalId);
+}
+
+function commitApplyParking() {
+  const spots = (props.item.selectedParking || []).filter(p => applySpotIds.value.includes(spotKeyOf(p)));
+  quoteStore.applyParkingToItems(spots, applyTargetIds.value, applyParkingMode.value);
+  toast.success(`已將 ${spots.length} 個車位套用至 ${applyTargetIds.value.length} 個戶別`);
+  isApplyParkingOpen.value = false;
+}
+
+function clearApplyTargetsParking() {
+  quoteStore.clearParkingForItems(applyTargetIds.value);
+  toast.success(`已清除 ${applyTargetIds.value.length} 個戶別的車位`);
 }
 
 function openParkingModal() {

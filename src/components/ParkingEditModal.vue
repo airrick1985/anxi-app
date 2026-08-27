@@ -21,103 +21,72 @@
       </v-card-title>
       <v-card-text :class="{ 'flex-grow-1 overflow-y-auto': isMobile }">
 
-        <!-- 手機版：卡片式清單，成交價輸入框完整寬度 -->
-        <template v-if="isMobile">
-          <div v-if="localParking.length > 0">
-            <v-card v-for="(p, index) in localParking" :key="p.spotId || p['車位編號']"
-              variant="outlined" class="parking-mobile-card mb-3">
-              <div class="d-flex align-center justify-space-between pl-3 pr-1 pt-1">
-                <span class="parking-mobile-id">
-                  <v-icon size="small" color="info" class="mr-1">mdi-car</v-icon>{{ p.spotId || p['車位編號'] }}
-                </span>
-                <v-btn icon="mdi-close-circle-outline" size="small" variant="text" color="red"
-                  @click="removeParking(index)"></v-btn>
+        <!-- ✅ 已選車位：桌面/手機統一卡片式清單（原表格/灰卡片樣式單調難讀） -->
+        <div class="d-flex align-center flex-wrap ga-2 mb-2">
+          <v-icon color="primary" size="small">mdi-car-multiple</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">已選車位</span>
+          <v-chip size="x-small" variant="tonal" color="primary">{{ localParking.length }} 個</v-chip>
+          <v-spacer />
+          <v-chip v-if="localParking.length > 0" size="small" variant="tonal" color="teal" prepend-icon="mdi-sigma">
+            合計 {{ selectedParkingTotal }} 萬
+          </v-chip>
+        </div>
+
+        <div v-if="localParking.length > 0">
+          <div v-for="(p, index) in localParking" :key="p.spotId || p['車位編號']" class="parking-card">
+            <div class="parking-card-icon"><v-icon color="white" size="20">mdi-car</v-icon></div>
+            <div class="parking-card-main">
+              <div class="parking-card-id">
+                {{ spotIdOf(p) }}
+                <v-chip v-if="typeOf(p)" size="x-small" variant="tonal"
+                  :color="String(typeOf(p)).includes('法定') ? 'indigo' : 'brown'">{{ typeOf(p) }}</v-chip>
               </div>
-              <div class="px-3 pb-3">
+              <div class="parking-card-meta">
+                <span><v-icon size="12" class="mr-1">mdi-ruler</v-icon>{{ sizeOf(p) }}</span>
                 <template v-if="mode === 'sales'">
-                  <div class="parking-mobile-meta mb-2">
-                    <span>表價 <strong>{{ p.price_list || p['車位表價'] || p['表價'] || '—' }}</strong> 萬</span>
-                    <span>底價 <strong>{{ p.price_floor || p['車位底價'] || p['底價'] || '—' }}</strong> 萬</span>
-                  </div>
-                  <v-text-field
-                    v-model.number="p.price_transaction"
-                    label="成交價"
-                    suffix="萬"
-                    type="number"
-                    inputmode="decimal"
-                    density="comfortable"
-                    hide-details
-                    variant="outlined"
-                    bg-color="white"
-                  ></v-text-field>
-                </template>
-                <template v-else>
-                  <div class="parking-mobile-meta">
-                    <span>尺寸 <strong>{{ p.size || p['車位尺寸'] || p['坪數'] || '標準' }}</strong></span>
-                    <span>車位價格 <strong>{{ p.price_list || p['表價'] || p['車位表價'] }}</strong> 萬</span>
-                  </div>
+                  <span>表價 <strong>{{ priceListOf(p) }}</strong> 萬</span>
+                  <span>底價 <strong>{{ priceFloorOf(p) }}</strong> 萬</span>
                 </template>
               </div>
-            </v-card>
+            </div>
+            <div class="parking-card-price">
+              <template v-if="mode === 'quote'">
+                <div class="parking-price-value">{{ priceListOf(p) }}<span class="unit"> 萬</span></div>
+                <div class="parking-price-label">車位價格</div>
+              </template>
+              <v-text-field v-else
+                v-model.number="p.price_transaction"
+                label="成交價" suffix="萬" type="number" inputmode="decimal"
+                density="compact" hide-details variant="outlined" bg-color="white"
+                class="parking-trans-input" />
+            </div>
+            <v-btn icon="mdi-close" size="x-small" variant="text" color="grey"
+              class="parking-card-remove" title="移除此車位" @click="removeParking(index)" />
           </div>
-        </template>
+        </div>
 
-        <!-- 桌面版：維持表格呈現 -->
-        <v-table v-else-if="localParking.length > 0" density="compact">
-          <thead>
-            <tr>
-              <th>車位編號</th>
-              <!-- 4. 根據 mode 顯示不同欄位 -->
-              <th v-if="mode === 'sales'">表價</th>
-              <th v-if="mode === 'sales'">底價</th>
-              <th v-if="mode === 'sales'" style="width: 150px;">成交價</th>
-              <th v-if="mode === 'quote'">尺寸</th>
-              <th v-if="mode === 'quote'">車位價格(萬)</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(p, index) in localParking" :key="p.spotId || p['車位編號']">
-              <td>{{ p.spotId || p['車位編號'] }}</td>
-              <!-- 5. 根據 mode 顯示不同資料 -->
-              <td v-if="mode === 'sales'">{{ p.price_list || p['車位表價'] || p['表價'] }}</td>
-              <td v-if="mode === 'sales'">{{ p.price_floor || p['車位底價'] || p['底價'] }}</td>
-              <td v-if="mode === 'sales'">
-                <v-text-field
-                  v-model.number="p.price_transaction"
-                  type="number"
-                  density="compact"
-                  hide-details
-                  variant="outlined"
-                ></v-text-field>
-              </td>
-              <td v-if="mode === 'quote'">{{ p.size || p['車位尺寸'] || p['坪數'] || '標準' }}</td>
-              <td v-if="mode === 'quote'">{{ p.price_list || p['表價'] || p['車位表價'] }}</td>
-              <td>
-                <v-btn icon="mdi-close-circle-outline" size="small" variant="text" color="red" @click="removeParking(index)"></v-btn>
-              </td>
-            </tr>
-          </tbody>
-        </v-table>
-        <p v-if="localParking.length === 0" class="text-center text-grey my-4">尚未選擇任何車位</p>
-        <v-divider class="my-4"></v-divider>
-        <v-row align="center" dense>
-          <v-col cols="12" sm="4">
-            <v-select
-              label="選擇樓層"
-              :items="floorOptions"
-              v-model="selectedFloor"
-              hide-details
-              no-data-text="無樓層可選"
-              :density="isMobile ? 'comfortable' : 'compact'"
-              variant="outlined"
-            ></v-select>
-          </v-col>
+        <!-- 空狀態 -->
+        <div v-else class="parking-empty">
+          <v-icon size="36" color="grey-lighten-1">mdi-car-off</v-icon>
+          <div class="mt-1">尚未選擇任何車位</div>
+          <div class="text-caption">請由下方「加入車位」選擇樓層與車位</div>
+        </div>
 
-          <v-col cols="12" sm="5">
-            <div>
+        <!-- ✅ 加入車位：樓層改為 chips 一目了然，車位維持下拉（數量多） -->
+        <div class="add-parking-panel mt-4 pa-3">
+          <div class="text-subtitle-2 mb-2 d-flex align-center">
+            <v-icon size="small" class="mr-1" color="primary">mdi-plus-circle-outline</v-icon>加入車位
+            <span v-if="canSelectSoldParking" class="ml-2 text-caption text-amber-darken-3">✨ 已售可選</span>
+          </div>
+          <div class="text-caption text-grey mb-1">樓層</div>
+          <v-chip-group v-model="selectedFloor" column class="floor-chips mb-2">
+            <v-chip v-for="f in floorOptions" :key="f" :value="f" filter size="small"
+              variant="outlined" color="primary" class="floor-chip">{{ f }}</v-chip>
+          </v-chip-group>
+          <v-row dense align="center">
+            <v-col cols="12" sm="8">
               <v-select
-                :label="`選擇車位${canSelectSoldParking ? ' ✨(已售可選)' : ''}`"
+                label="選擇車位"
                 :items="availableParkingOptions"
                 v-model="newParkingSelection"
                 item-title="displayText"
@@ -128,18 +97,21 @@
                 :disabled="!selectedFloor"
                 :density="isMobile ? 'comfortable' : 'compact'"
                 variant="outlined"
+                bg-color="white"
               ></v-select>
-            </div>
-          </v-col>
-
-          <v-col cols="12" sm="3">
-            <v-btn :variant="isMobile ? 'tonal' : 'text'" color="primary" @click="addParking"
-              :disabled="!newParkingSelection" block
-              prepend-icon="mdi-plus-circle-outline">加入</v-btn>
-          </v-col>
-        </v-row>
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-btn color="primary" variant="flat" @click="addParking"
+                :disabled="!newParkingSelection" block
+                prepend-icon="mdi-plus">加入</v-btn>
+            </v-col>
+          </v-row>
+        </div>
       </v-card-text>
       <v-card-actions>
+        <span v-if="localParking.length > 0" class="text-caption text-grey ml-2">
+          共 {{ localParking.length }} 個車位・合計 {{ selectedParkingTotal }} 萬
+        </span>
         <v-spacer></v-spacer>
         <v-btn variant="text" @click="close">關閉</v-btn>
 
@@ -311,6 +283,22 @@ watch(() => props.show, (newVal) => {
 watch(selectedFloor, () => {
   newParkingSelection.value = null;
 });
+
+// ✅ [新增] 欄位讀取 helpers（容忍中英文兩種欄位名）＋合計
+const spotIdOf = p => p.spotId || p['車位編號'] || '';
+const sizeOf = p => p.size || p['車位尺寸'] || p['坪數'] || '標準';
+const typeOf = p => p.type || p['類型'] || p['車位類型'] || '';
+const priceListOf = p => p.price_list || p['車位表價'] || p['表價'] || '—';
+const priceFloorOf = p => p.price_floor || p['車位底價'] || p['底價'] || '—';
+
+// 合計：sales 用成交價（未填以表價備援）、quote 用表價
+const selectedParkingTotal = computed(() =>
+  localParking.value.reduce((sum, p) => {
+    const v = props.mode === 'sales'
+      ? (p.price_transaction ?? priceListOf(p))
+      : priceListOf(p);
+    return sum + (Number(v) || 0);
+  }, 0));
 
 // 3. 動態標題
 const title = computed(() => {
@@ -535,26 +523,122 @@ onUnmounted(() => {
   cursor: default;
 }
 
-.parking-mobile-card {
-  border-color: #e0e0e0;
-  background-color: #fafafa;
+/* ── ✅ 已選車位卡片（桌面/手機共用） ── */
+.parking-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #e3e8ef;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #fff;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.parking-card:hover {
+  border-color: #bbd6f7;
+  box-shadow: 0 2px 8px rgba(30, 80, 162, 0.12);
 }
 
-.parking-mobile-id {
+.parking-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1976d2, #42a5f5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.parking-card-main {
+  min-width: 0;
+}
+
+.parking-card-id {
   font-size: 1.05rem;
   font-weight: 700;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  min-width: 0;
+  gap: 6px;
+  flex-wrap: wrap;
   overflow-wrap: anywhere;
 }
 
-.parking-mobile-meta {
+.parking-card-meta {
   display: flex;
   flex-wrap: wrap;
-  column-gap: 16px;
-  row-gap: 4px;
-  font-size: 0.85rem;
-  color: #616161;
+  column-gap: 14px;
+  row-gap: 2px;
+  font-size: 0.8rem;
+  color: #78909c;
+  margin-top: 2px;
+}
+
+.parking-card-price {
+  margin-left: auto;
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.parking-price-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #00695c;
+  line-height: 1.2;
+}
+.parking-price-value .unit {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #90a4ae;
+}
+.parking-price-label {
+  font-size: 0.7rem;
+  color: #90a4ae;
+}
+
+.parking-trans-input {
+  width: 150px;
+}
+
+.parking-card-remove {
+  flex: 0 0 auto;
+}
+
+/* 空狀態 */
+.parking-empty {
+  border: 2px dashed #cfd8dc;
+  border-radius: 12px;
+  padding: 24px 12px;
+  text-align: center;
+  color: #90a4ae;
+  font-size: 0.9rem;
+}
+
+/* 加入車位面板 */
+.add-parking-panel {
+  background: #f5f8fc;
+  border: 1px solid #e3e8ef;
+  border-radius: 12px;
+}
+
+.floor-chips :deep(.v-chip) {
+  background: #fff;
+}
+
+/* 手機：價格/成交價換到下一行撐滿，避免擠壓 */
+@media (max-width: 600px) {
+  .parking-card {
+    flex-wrap: wrap;
+  }
+  .parking-card-price {
+    margin-left: 52px;
+    width: calc(100% - 100px);
+    text-align: left;
+    order: 5;
+  }
+  .parking-trans-input {
+    width: 100%;
+  }
 }
 </style>

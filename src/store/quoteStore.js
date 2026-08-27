@@ -186,6 +186,35 @@ function addItem(unitData) {
     }
   }
 
+  // ✅ [新增] 將車位套用至多個報價項目（報價設定「套用車位至其他戶別」）
+  // spots: 車位物件陣列（可為來源戶別勾選的子集合）
+  // mode: 'replace' 覆蓋既有車位 | 'merge' 加入（依車位編號去重、保留原有）
+  function applyParkingToItems(spots, targetInternalIds, mode = 'replace') {
+    const keyOf = p => String(p?.spotId || p?.['車位編號'] || '');
+    const targets = new Set(targetInternalIds);
+    for (const item of items.value) {
+      if (!targets.has(item.internalId)) continue;
+      const copied = JSON.parse(JSON.stringify(spots));   // 各戶各自持有副本，避免共用參照
+      if (mode === 'merge') {
+        const existingKeys = new Set((item.selectedParking || []).map(keyOf));
+        item.selectedParking = [
+          ...(item.selectedParking || []),
+          ...copied.filter(p => !existingKeys.has(keyOf(p))),
+        ];
+      } else {
+        item.selectedParking = copied;
+      }
+    }
+  }
+
+  // ✅ [新增] 批次清除多個報價項目的車位
+  function clearParkingForItems(targetInternalIds) {
+    const targets = new Set(targetInternalIds);
+    for (const item of items.value) {
+      if (targets.has(item.internalId)) item.selectedParking = [];
+    }
+  }
+
   // ✅ [新增] 修改房屋總價
   function updateHousePrice(internalId, newPrice) {
     const item = items.value.find(i => i.internalId === internalId);
@@ -353,6 +382,8 @@ function addItem(unitData) {
     removeItem,
     updateUnitField,
     updateParking,
+    applyParkingToItems,
+    clearParkingForItems,
     updateHousePrice,
     updateNegotiationState,
     resetNegotiationPrice,

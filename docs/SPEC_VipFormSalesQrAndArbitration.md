@@ -285,3 +285,28 @@ firebase deploy --only functions:vipFormApi,functions:customerApi,functions:onVi
 12. **既有呼叫 `QrCodeGenerator` 的頁面**（如 BookingRuleManager）行為不變。
 13. **vip-form 頁內分享 QR**（currentUrl）在帶 sp/sn 進頁時保留參數；一般進頁時維持乾淨網址。
 14. 裁決頁時間顯示一律台灣時間（Asia/Taipei）。
+
+---
+
+## 13. 追加優化：接續填寫 QR Flex（2026-08-27）
+
+> 需求：客戶填完 vip-form 後，除既有 LINE 文字通知外，加發一則 Flex Message，內含「接續完成客戶資料表（步驟 4）」的永久連結與其 QR Code；QR 中央顯示建案名稱＋客資姓名，供現場辨識該筆資料由何人接續完成。
+
+### 決策紀錄
+
+| 議題 | 決策 |
+|------|------|
+| QR 中央文字 | Flex 絕對定位疊圖（白底框，建案名稱＋姓名置中）。不用 sharp/canvas 燒圖——Functions 環境無中文字型，有豆腐字風險 |
+| 觸發範圍 | 僅情境 A（public_form）且文件有歸屬銷售（`latestSalesPhone` 有值）才發；情境 B／Excel 匯入不發 |
+| 連結格式 | 沿用客戶模式既有格式，不做短網址：`/#/customer-data-sheet/{projectId}/{docId}?sp={歸屬銷售電話}&sn={姓名}`（docId 固定 → 永久有效） |
+| Flex 內容 | 完整卡片：建案標題＋客戶姓名/電話＋歸屬銷售＋QR（中央疊字）＋「開啟客戶資料表」uri 按鈕＋「複製連結」clipboard 按鈕 |
+| 收件者 | 與既有「✨新貴賓資料」同一批（該建案客資系統-櫃台＋歸屬銷售本人），同一次 multicast 加一則訊息 |
+| 歸屬來源 | 以文件層級 `latestSalesPhone/latestSalesName` 為準（非本次 submission 的 sp），已歸屬他人時 QR 帶原歸屬 |
+
+### 實作
+
+- `functions/index.js` 新增 `_buildVipContinueSheetFlex()`：`qrcode` 套件（純 JS）產 PNG（容錯 H、600px、margin 2）→ 上傳 Storage `vipFormContinueQr/{projectId}/{docId}_{urlHash}.png`（makePublic）→ 組 Flex bubble。
+- 冪等：檔名帶連結內容 md5 前 10 碼，同內容重用不重產；歸屬變動 → hash 變 → 自動產新圖。
+- `onVipGuestSubmission` 情境 A 內產生 Flex，失敗僅略過 Flex 不阻擋文字通知；multicast 改送 `[text, flex?]`。
+- 客戶掃 QR 完成後走既有情境 B「✅客戶資料完成」通知（`submitCustomerSheet` 預設 `internal_sheet`），無需改動。
+- 前端無改動。依賴新增：`qrcode@^1.5.4`。部署：`firebase deploy --only functions:onVipGuestSubmission`。

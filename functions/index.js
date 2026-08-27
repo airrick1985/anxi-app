@@ -51,6 +51,7 @@ const { logger } = require("firebase-functions"); // 確保頂部有引入 logge
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const jwt = require('jsonwebtoken');
+const QRCode = require('qrcode'); // vip-form 接續填寫 QR Flex 用（純 JS 產 PNG）
 const fetch = require('node-fetch'); // Node.js 環境需要引入 fetch
 const { formatInTimeZone, zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz'); //  引入 date-fns-tz
 
@@ -22683,6 +22684,93 @@ async function _handleBatchUpdateCustomers(data, db) {
 }
 
 /**
+ * [vip-form 優化] 產生「接續完成客戶資料表」QR Flex 訊息
+ * - 連結沿用客戶模式格式（docId 固定 → 永久有效）：/#/customer-data-sheet/{projectId}/{docId}?sp&sn
+ * - QR PNG 存 Storage，檔名帶網址 hash：同內容重用不重產；歸屬變動時自動產新圖
+ * - 中央「建案名稱＋客戶姓名」用 Flex 絕對定位疊圖（Functions 環境無中文字型，不燒進圖片）
+ * - QR 容錯 H 級，中央遮蔽不影響掃描
+ */
+async function _buildVipContinueSheetFlex({ projectId, docId, projectName, guestName, guestPhone, salesName, salesPhone }) {
+  const continueUrl = `https://anxismart.com/#/customer-data-sheet/${projectId}/${docId}?sp=${encodeURIComponent(salesPhone)}&sn=${encodeURIComponent(salesName || '')}`;
+
+  const urlHash = crypto.createHash('md5').update(continueUrl).digest('hex').slice(0, 10);
+  const storagePath = `vipFormContinueQr/${projectId}/${docId}_${urlHash}.png`;
+  const bucket = admin.storage().bucket();
+  const file = bucket.file(storagePath);
+  const [exists] = await file.exists();
+  if (!exists) {
+    const qrBuffer = await QRCode.toBuffer(continueUrl, {
+      errorCorrectionLevel: 'H',
+      type: 'png',
+      width: 600,
+      margin: 2
+    });
+    await file.save(qrBuffer, { metadata: { contentType: 'image/png' }, resumable: false });
+    await file.makePublic();
+  }
+  const qrImageUrl = file.publicUrl();
+
+  const safeProjectName = projectName || '未命名建案';
+  const safeGuestName = guestName || '未填姓名';
+  const infoRow = (label, value) => ({
+    type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+      { type: 'text', text: label, color: '#888888', size: 'sm', flex: 2 },
+      { type: 'text', text: value || '—', color: '#333333', size: 'sm', flex: 5, wrap: true }
+    ]
+  });
+
+  return {
+    type: 'flex',
+    altText: `📋 ${safeProjectName} ${safeGuestName} 客戶資料表接續填寫`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#1867C0', paddingAll: '16px', contents: [
+          { type: 'text', text: '📋 客戶資料表 待完成', color: '#FFFFFFCC', size: 'sm' },
+          { type: 'text', text: safeProjectName, color: '#FFFFFF', size: 'xl', weight: 'bold', wrap: true }
+        ]
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '16px', contents: [
+          infoRow('客戶', guestPhone ? `${safeGuestName}（${guestPhone}）` : safeGuestName),
+          infoRow('歸屬銷售', salesName),
+          { type: 'text', text: '請出示 QR Code 給客戶掃描，接續完成客戶資料表（連結永久有效）', size: 'xs', color: '#888888', wrap: true },
+          {
+            type: 'box', layout: 'vertical', cornerRadius: '8px', borderWidth: '1px', borderColor: '#EEEEEE', contents: [
+              { type: 'image', url: qrImageUrl, size: 'full', aspectRatio: '1:1', aspectMode: 'cover' },
+              {
+                type: 'box', layout: 'vertical',
+                position: 'absolute',
+                offsetTop: '0px', offsetBottom: '0px', offsetStart: '0px', offsetEnd: '0px',
+                justifyContent: 'center', alignItems: 'center',
+                contents: [
+                  {
+                    type: 'box', layout: 'vertical', backgroundColor: '#FFFFFF', cornerRadius: '6px',
+                    paddingAll: '8px', paddingStart: '12px', paddingEnd: '12px',
+                    borderWidth: '1px', borderColor: '#DDDDDD',
+                    contents: [
+                      { type: 'text', text: safeProjectName, size: 'xs', weight: 'bold', align: 'center', color: '#333333', wrap: true },
+                      { type: 'text', text: safeGuestName, size: 'sm', weight: 'bold', align: 'center', color: '#1867C0', wrap: true }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      footer: {
+        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '16px', contents: [
+          { type: 'button', style: 'primary', height: 'sm', color: '#1867C0', action: { type: 'uri', label: '開啟客戶資料表', uri: continueUrl } },
+          { type: 'button', style: 'secondary', height: 'sm', action: { type: 'clipboard', label: '複製連結', clipboardText: continueUrl } }
+        ]
+      }
+    }
+  };
+}
+
+/**
  * [觸發函式] 客戶資料通知分流 (修正版 V2 - 支援資料補全通知)
  * 修正點：當銷售人員「補全」第一筆資料(長度未變)時，也要觸發通知。
  */
@@ -22782,6 +22870,9 @@ exports.onVipGuestSubmission = onDocumentWritten({
       return val || '';
     };
 
+    // ✅ [vip-form 優化] 接續填寫 QR Flex（僅情境 A 且有歸屬銷售時產生）
+    let continueFlexMessage = null;
+
     // ============================================================
     // 情境 A: 客戶掃描 QR Code (VipForm)
     // ============================================================
@@ -22817,6 +22908,25 @@ exports.onVipGuestSubmission = onDocumentWritten({
 坪數需求: ${formatVal('坪數需求')}
 購屋預算: ${formatVal('購屋預算')}
 從何得知本建案: ${formatVal('從何得知本建案')}`;
+
+      // ✅ [vip-form 優化] 有歸屬銷售才附「接續完成客戶資料表」QR Flex
+      // 歸屬以文件層級 latestSales* 為準（已歸屬他人時不會被本次提交覆蓋）
+      if (afterData.latestSalesPhone) {
+        try {
+          continueFlexMessage = await _buildVipContinueSheetFlex({
+            projectId,
+            docId: event.params.docId,
+            projectName,
+            guestName: formatVal('姓名') || afterData.latestName || '',
+            guestPhone: formatVal('電話') || afterData.phone || '',
+            salesName: afterData.latestSalesName || '',
+            salesPhone: afterData.latestSalesPhone
+          });
+        } catch (flexError) {
+          // QR 產製失敗不阻擋文字通知
+          console.error(`[${functionName}] 產生接續填寫 QR Flex 失敗（僅略過 Flex，文字通知照發）:`, flexError);
+        }
+      }
     }
 
     // ============================================================
@@ -22908,9 +23018,12 @@ exports.onVipGuestSubmission = onDocumentWritten({
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt - 1)));
         }
 
-        await lineClient.multicast(lineIdArray, [{ type: 'text', text: messageText }]);
+        // ✅ [vip-form 優化] 同一次推播附上接續填寫 QR Flex（收件者同文字通知：櫃台＋歸屬銷售）
+        const messagesToSend = [{ type: 'text', text: messageText }];
+        if (continueFlexMessage) messagesToSend.push(continueFlexMessage);
+        await lineClient.multicast(lineIdArray, messagesToSend);
         success = true;
-        console.log(`[${functionName}] LINE 通知已發送給 ${finalLineIds.size} 人 (${source})。`);
+        console.log(`[${functionName}] LINE 通知已發送給 ${finalLineIds.size} 人 (${source}${continueFlexMessage ? '，含QR Flex' : ''})。`);
         break;
       } catch (error) {
         if (error.statusCode === 429 && attempt < MAX_RETRIES) {
