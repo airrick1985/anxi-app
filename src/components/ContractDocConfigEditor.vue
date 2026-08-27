@@ -74,15 +74,22 @@
         </div>
       </v-card>
 
-      <v-expansion-panels v-model="openPanels" multiple variant="accordion">
+      <!-- 🖥️ 設定區塊：電腦版左邊項目導覽 / 右邊內容；手機版為頂部橫向捲動列 -->
+      <div class="cfg-shell" :class="{ 'cfg-shell--desktop': !isMobile }">
+        <nav class="cfg-nav">
+          <button v-for="sec in cfgSections" :key="sec.key" type="button"
+            class="cfg-nav-item" :class="{ 'cfg-nav-item--active': activeSection === sec.key }"
+            @click="activeSection = sec.key">
+            <v-icon size="18" :color="activeSection === sec.key ? 'primary' : 'grey-darken-1'">{{ sec.icon }}</v-icon>
+            <span class="cfg-nav-title">{{ sec.title }}</span>
+            <span class="cfg-nav-count">{{ sec.count }}</span>
+          </button>
+        </nav>
+        <div class="cfg-panes">
         <!-- ============ 頁面組合 ============ -->
-        <v-expansion-panel value="pages">
-          <v-expansion-panel-title>
-            <v-icon class="mr-2">mdi-file-multiple-outline</v-icon>
-            頁面組合
-            <v-chip size="x-small" class="ml-2" variant="tonal">{{ config.pages.length }} 頁</v-chip>
-          </v-expansion-panel-title>
-          <v-expansion-panel-text>
+        <section v-show="activeSection === 'pages'" class="cfg-pane">
+          <div class="cfg-pane-title"><v-icon class="mr-2">mdi-file-multiple-outline</v-icon>頁面組合</div>
+          <div>
             <draggable v-model="config.pages" item-key="id" handle=".drag-handle" :disabled="!canEdit">
               <template #item="{ element: page, index: pIdx }">
                 <v-card variant="outlined" class="mb-3">
@@ -356,6 +363,13 @@
                               density="compact" variant="outlined" hide-details :disabled="!canEdit" />
                           </v-col>
                         </v-row>
+
+                        <v-divider class="my-3" />
+                        <div class="text-subtitle-2 mb-1">版面配置（以渲染後畫面直接編輯）</div>
+                        <div v-if="!trialUnitId" class="text-caption text-grey mb-2">
+                          提示：先於頁面上方選擇「試算戶別」，即以實際資料渲染預覽（未選擇時數值以Ｘ佔位）。
+                        </div>
+                        <ContractNumberTableLayoutEditor :page="page" :structure="cntStructure(page)" :can-edit="canEdit" />
                       </template>
                     </div>
                   </v-expand-transition>
@@ -372,16 +386,13 @@
                   :title="pt.label" :subtitle="pt.description" @click="addPage(pt.type)" />
               </v-list>
             </v-menu>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
+          </div>
+        </section>
 
         <!-- ============ 價款公式 ============ -->
-        <v-expansion-panel value="priceFormulas">
-          <v-expansion-panel-title>
-            <v-icon class="mr-2">mdi-function-variant</v-icon>
-            價款公式（房屋款 / 主建物價款…）
-          </v-expansion-panel-title>
-          <v-expansion-panel-text>
+        <section v-show="activeSection === 'priceFormulas'" class="cfg-pane">
+          <div class="cfg-pane-title"><v-icon class="mr-2">mdi-function-variant</v-icon>價款公式（房屋款 / 主建物價款…）</div>
+          <div>
             <div class="text-caption text-grey mb-2">
               依序計算，排在前面的項目結果可被後面的公式引用。房屋價款 / 土地價款由建案「房土比公式」（建案設定分頁）計算後帶入。
             </div>
@@ -416,16 +427,13 @@
             <v-btn v-if="canEdit" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addPriceFormula">
               新增價款項目
             </v-btn>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
+          </div>
+        </section>
 
         <!-- ============ 期款房/土拆分 ============ -->
-        <v-expansion-panel value="split">
-          <v-expansion-panel-title>
-            <v-icon class="mr-2">mdi-call-split</v-icon>
-            期款房屋 / 土地拆分規則
-          </v-expansion-panel-title>
-          <v-expansion-panel-text>
+        <section v-show="activeSection === 'split'" class="cfg-pane">
+          <div class="cfg-pane-title"><v-icon class="mr-2">mdi-call-split</v-icon>期款房屋 / 土地拆分規則</div>
+          <div>
             <div class="text-caption text-grey mb-3">
               每期「土地款」以公式計算，「房屋款 = 期款金額 − 土地款」。未指定的期別套用預設公式（預設 0 = 全屬房屋款）。
             </div>
@@ -502,17 +510,13 @@
                 </div>
               </v-alert>
             </template>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
+          </div>
+        </section>
 
         <!-- ============ 磋商條款庫 ============ -->
-        <v-expansion-panel value="clauses">
-          <v-expansion-panel-title>
-            <v-icon class="mr-2">mdi-text-box-multiple-outline</v-icon>
-            磋商條款庫
-            <v-chip size="x-small" class="ml-2" variant="tonal">{{ config.clauseLibrary.length }} 則</v-chip>
-          </v-expansion-panel-title>
-          <v-expansion-panel-text>
+        <section v-show="activeSection === 'clauses'" class="cfg-pane">
+          <div class="cfg-pane-title"><v-icon class="mr-2">mdi-text-box-multiple-outline</v-icon>磋商條款庫</div>
+          <div>
             <div class="text-caption text-grey mb-2">
               套用時系統依戶別「是否首購」自動預選符合條件的條款，銷售端可再勾選調整。
             </div>
@@ -545,17 +549,13 @@
             </v-card>
             <v-btn v-if="canEdit" color="primary" variant="tonal" prepend-icon="mdi-plus"
               @click="config.clauseLibrary.push(newClause())">新增條款</v-btn>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
+          </div>
+        </section>
 
         <!-- ============ 繳款銀行組 ============ -->
-        <v-expansion-panel value="banks">
-          <v-expansion-panel-title>
-            <v-icon class="mr-2">mdi-bank-outline</v-icon>
-            繳款銀行組
-            <v-chip size="x-small" class="ml-2" variant="tonal">{{ config.bankSets.length }} 組</v-chip>
-          </v-expansion-panel-title>
-          <v-expansion-panel-text>
+        <section v-show="activeSection === 'banks'" class="cfg-pane">
+          <div class="cfg-pane-title"><v-icon class="mr-2">mdi-bank-outline</v-icon>繳款銀行組</div>
+          <div>
             <div class="text-caption text-grey mb-2">
               「戶別」來源直接引用該戶的匯款銀行欄位（Excel 上傳/戶別編輯維護）；「自訂」為建案固定帳戶（如裝潢款）。
             </div>
@@ -594,9 +594,10 @@
             </v-card>
             <v-btn v-if="canEdit" color="primary" variant="tonal" prepend-icon="mdi-plus"
               @click="config.bankSets.push(newBankSet())">新增銀行組</v-btn>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
-      </v-expansion-panels>
+          </div>
+        </section>
+        </div><!-- /cfg-panes -->
+      </div><!-- /cfg-shell -->
     </template>
 
     <!-- ============ 另存為全域範本 Dialog ============ -->
@@ -668,7 +669,11 @@ import {
   formulaToDisplayString, roundingToDisplayString, refDefinitionsToMap,
 } from '@/composables/usePriceFormula';
 import { runNewCalculationEngine } from '@/utils/paymentCalculation';
+import { buildCntStructure } from '@/utils/contractDocModel';
+import { buildUnitDocContext } from '@/utils/unitDocContext';
+import { useDisplay } from 'vuetify';
 import TokenFormulaEditor from '@/components/TokenFormulaEditor.vue';
+import ContractNumberTableLayoutEditor from '@/components/contractDoc/ContractNumberTableLayoutEditor.vue';
 
 const route = useRoute();
 const toast = useToast();
@@ -680,8 +685,19 @@ const projectId = ref(route.params.projectId);
 const loading = ref(true);
 const saving = ref(false);
 const config = ref(null);
-const openPanels = ref(['pages']);
 const expandedPages = ref([]);
+
+// 🖥️ 左側項目導覽（電腦版左欄 / 手機版頂部橫向列）
+const { mobile } = useDisplay();
+const isMobile = computed(() => mobile.value);
+const activeSection = ref('pages');
+const cfgSections = computed(() => [
+  { key: 'pages', icon: 'mdi-file-multiple-outline', title: '頁面組合', count: `${config.value?.pages?.length || 0} 頁` },
+  { key: 'priceFormulas', icon: 'mdi-function-variant', title: '價款公式', count: `${config.value?.priceFormulas?.length || 0} 項` },
+  { key: 'split', icon: 'mdi-call-split', title: '期款房/土拆分', count: `${config.value?.installmentSplitRules?.rules?.length || 0} 規則` },
+  { key: 'clauses', icon: 'mdi-text-box-multiple-outline', title: '磋商條款庫', count: `${config.value?.clauseLibrary?.length || 0} 則` },
+  { key: 'banks', icon: 'mdi-bank-outline', title: '繳款銀行組', count: `${config.value?.bankSets?.length || 0} 組` },
+]);
 
 const canEdit = computed(() => {
   const roles = userStore.currentUserRoles || [];
@@ -859,6 +875,19 @@ function cntConstantFields(type) {
 }
 function cntPageLabelFields(type) {
   return type === 'contractNumberTableCombined' ? CNT_PAGE_LABEL_FIELDS_COMBINED : CNT_PAGE_LABEL_FIELDS;
+}
+
+// 合約數字對照表版面編輯器：以試算戶別（未選則空資料，值以Ｘ佔位）組出渲染結構
+function cntStructure(page) {
+  const unit = trialUnit.value || {};
+  const ctx = buildUnitDocContext(unit, {});
+  return buildCntStructure(
+    page,
+    ctx,
+    { fullContext: trialFullContext.value, fieldValues: trialFieldValues.value },
+    { rows: splitTrialRows.value },
+    unit,
+  );
 }
 
 function addPage(type) {
@@ -1148,4 +1177,85 @@ function fmt(v) {
   min-width: 120px;
 }
 .option-table :deep(th) { font-size: 0.8rem; }
+
+/* ── 🖥️ 設定區塊：左邊項目導覽 / 右邊內容（手機版頂部橫向列） ── */
+.cfg-shell--desktop {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.cfg-shell--desktop .cfg-nav {
+  flex: 0 0 200px;
+  width: 200px;
+  position: sticky;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 8px;
+  border-right: 1px solid #e0e0e0;
+}
+
+/* 手機版：頂部橫向捲動列 */
+.cfg-shell:not(.cfg-shell--desktop) .cfg-nav {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.cfg-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.cfg-nav-item:hover { background: #f1f5f9; }
+.cfg-nav-item--active {
+  background: #e8f1ff;
+  border-color: #bbd6f7;
+}
+
+.cfg-nav-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #455a64;
+}
+.cfg-nav-item--active .cfg-nav-title { color: #1a3a6e; }
+
+.cfg-nav-count {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: #90a4ae;
+  background: #f5f5f7;
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.cfg-panes {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cfg-pane-title {
+  display: flex;
+  align-items: center;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1a3a6e;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  border-bottom: 2px solid #e0e0e0;
+}
 </style>

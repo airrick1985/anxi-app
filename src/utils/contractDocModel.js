@@ -662,85 +662,242 @@ function cntSpotPriceRows(prep, missingAsZero) {
   return rows;
 }
 
+/* ============================================================
+ * 版面 blocks：合約數字對照表的最小排序/增刪單位
+ * 每個 block = { key, label, rows }；預設順序照契約書範例，
+ * 可由 page.options.rowLayout 覆蓋（排序 / 隱藏 / 插入自訂列）。
+ * ============================================================ */
+
+/** 貸款金額列（前置頁碼標籤） */
+function cntLoanRow(pageLabel, valueWan, warnings) {
+  const row = cntAmountRow('貸款金額:', valueWan, 4, warnings, { w: 10 });
+  row.cells.unshift(cntL(pageLabel, { w: 8 }));
+  return row;
+}
+
+/** 自訂列可插入的變數欄位目錄（編輯器選單用；value 於 buildCntVarValues 產生） */
+export const CNT_VARIABLES = [
+  { key: 'unitId', label: '戶別' },
+  { key: 'building', label: '棟別' },
+  { key: 'floor', label: '樓層' },
+  { key: 'buyerName', label: '買方姓名' },
+  { key: 'parkingCountZh', label: '車位數量（大寫）' },
+  { key: 'mainRatioText', label: '主建物面積占比' },
+  { key: 'houseTotalSqm', label: '房屋總面積（㎡）' },
+  { key: 'houseTotalPing', label: '房屋總面積（坪）' },
+  { key: 'landShareSqm', label: '土地持分（㎡）' },
+  { key: 'landSharePing', label: '土地持分（坪）' },
+  { key: 'contractTotalZh', label: '本契約總價款（國字）' },
+  { key: 'houseAmountZh', label: '房屋價款（國字）' },
+  { key: 'landPriceZh', label: '土地價款（國字）' },
+  { key: 'parkingTotalZh', label: '車位價款合計（國字）' },
+  { key: 'houseLoanZh', label: '貸款金額－房屋款（國字）' },
+  { key: 'landLoanZh', label: '貸款金額－土地款（國字）' },
+  { key: 'totalLoanZh', label: '貸款金額－整期（國字）' },
+];
+
+/** 變數值組裝（自訂列的藍字內容；缺值 → null → 渲染為Ｘ） */
+function buildCntVarValues(prep, ctx) {
+  const a = prep.a;
+  const num = v => (v !== null && v !== '' && Number.isFinite(Number(v)) ? String(v) : null);
+  const zh = v => (v !== null && Number.isFinite(Number(v)) ? toZhWanString(Number(v)) : null);
+  return {
+    unitId: ctx.unitId || null,
+    building: prep.building,
+    floor: prep.floor,
+    buyerName: ctx.buyerName || null,
+    parkingCountZh: prep.countZh,
+    mainRatioText: prep.mainRatioText,
+    houseTotalSqm: num(a.houseTotalSqm),
+    houseTotalPing: num(a.houseTotalPing),
+    landShareSqm: num(a.landShareSqm),
+    landSharePing: num(a.landSharePing),
+    contractTotalZh: zh(prep.cachedContractTotal ?? null),
+    houseAmountZh: zh(prep.cachedHouseAmount ?? null),
+    landPriceZh: zh(prep.cachedLandPrice ?? null),
+    parkingTotalZh: zh(Number(ctx.parkingTotal) || 0),
+    houseLoanZh: zh(prep.loan.house),
+    landLoanZh: zh(prep.loan.land),
+    totalLoanZh: zh(prep.loan.total),
+  };
+}
+
+/** 自訂列 → 渲染列：segments = [{ type: 'text'|'var', value?|key? }] */
+export function buildCntCustomRow(segments, varValues) {
+  const cells = (segments || []).map(seg => {
+    const isVar = seg.type === 'var';
+    const text = isVar ? (varValues?.[seg.key] ?? null) : String(seg.value ?? '');
+    // 顏色可逐片段指定（blue/black）；未指定時沿用預設：變數＝藍字、固定文字＝黑字
+    const blue = seg.color === 'blue' || (seg.color !== 'black' && isVar);
+    if (blue) return cntV(text);                       // 藍字（空值 → Ｘ）
+    return cntB(text === null ? X_CH : text);          // 黑字（變數缺值也以Ｘ佔位）
+  });
+  if (!cells.length) cells.push(cntB(''));
+  return { cells };
+}
+
+/** 房屋土地【分開】版 blocks（房屋合約 + 土地合約 兩區） */
+function buildCntSeparateSections(prep, ctx) {
+  const { c, pl, warnings, a, spots, countZh, priceOf, loan, exclusiveSqm, exclusivePing } = prep;
+
+  const houseAmountVal = priceOf('houseAmount', '房屋價款');
+  const parkingTotalVal = Number(ctx.parkingTotal) || 0;
+  const contractTotalVal = houseAmountVal === null ? null : houseAmountVal + parkingTotalVal;
+  const landPriceVal = priceOf('landPrice', '土地總價款');
+  prep.cachedHouseAmount = houseAmountVal;
+  prep.cachedLandPrice = landPriceVal;
+  prep.cachedContractTotal = contractTotalVal;
+
+  const houseBlocks = [
+    { key: 'unitNo', label: '房屋編號', rows: [cntUnitNoRow(prep, '房屋編號:', '第', 46)] },
+    { key: 'spots', label: '車位（編號 / 尺寸 / 面積）', rows: cntSpotBlockRows(prep) },
+    { key: 'areaHouseTotal', label: '房屋面積共計', rows: [cntAreaSlotRow('房屋面積共計', a.houseTotalSqm, a.houseTotalPing, 3, warnings)] },
+    { key: 'areaExclusive', label: '專有部分面積', rows: [cntAreaSlotRow('專有部分面積', exclusiveSqm, exclusivePing, 3, warnings)] },
+    { key: 'areaMain', label: '主建物面積', rows: [cntAreaSlotRow('主建物面積', a.mainSqm, a.mainPing, 3, warnings)] },
+    { key: 'areaAncillary', label: '附屬建物陽台面積', rows: [cntAreaSlotRow('附屬建物陽台面積', a.ancillarySqm, a.ancillaryPing, 2, warnings)] },
+    { key: 'areaCommon', label: '共有部份面積', rows: [cntAreaSlotRow('共有部份面積', a.commonSqm, a.commonPing, 2, warnings)] },
+    { key: 'mainRatio', label: '主建物面積占比', rows: [cntMainRatioRow(prep)] },
+    { key: 'amtContractTotal', label: '本契約總價款', rows: [cntAmountRow('本契約總價款', contractTotalVal, 4, warnings)] },
+    { key: 'amtHouse', label: '房屋價款', rows: [cntAmountRow('房屋價款', houseAmountVal, 4, warnings)] },
+    { key: 'amtExclusive', label: '專有部分價款', rows: [cntAmountRow('專有部分價款', priceOf('exclusiveAmount', '專有部分價款'), 4, warnings)] },
+    { key: 'amtMain', label: '主建物價款', rows: [cntAmountRow('主建物價款', priceOf('mainAmount', '主建物價款'), 4, warnings)] },
+    { key: 'amtAncillary', label: '附屬建物陽台價款', rows: [cntAmountRow('附屬建物陽台價款', priceOf('ancillaryAmount', '附屬建物陽台價款'), 3, warnings)] },
+    { key: 'amtCommon', label: '共有部份價款', rows: [cntAmountRow('共有部份價款', priceOf('commonAmount', '共有部份價款'), 3, warnings)] },
+    { key: 'amtParking', label: '車位價款', rows: [cntAmountRow('車位價款', parkingTotalVal, 4, warnings)] },
+    { key: 'spotPrices', label: '車位價款明細（一）（二）…', rows: cntSpotPriceRows(prep, false) },
+    { key: 'constHandover', label: '交屋條款', rows: [cntConstRow(pl.handover, '三、交屋日起', c.handoverDays, '日內配合辦理交屋手續')] },
+    { key: 'loanHouse', label: '貸款金額（房屋款）', rows: [cntLoanRow(pl.houseLoan, loan.house, warnings)] },
+    { key: 'constShorten', label: '縮短償還期限', rows: [cntConstRow(pl.shorten, '2、縮短償還期限為', c.shortenYears, '年(期間不得少於七年)，')] },
+    { key: 'constNotice', label: '接獲通知天數', rows: [cntConstRow(pl.notice, '（三）買方應於接獲通知之日起', c.noticeDays, '天（不得少於三十天）')] },
+    { key: 'constFee', label: '手續費', rows: [cntConstRow(pl.fee, '三、房屋總價款萬分之', c.feePerTenThousand, '（最高以萬分之五為限）之手續費。')] },
+    { key: 'constHousePenalty', label: '賠償違約金（房屋）', rows: [cntConstRow(pl.housePenalty, '賠償房屋總價款百分之', c.housePenaltyPercent, '（不得低於百分之十五）之違約金。')] },
+    { key: 'constHouseForfeit', label: '沒收金額（房屋）', rows: [cntConstRow(pl.houseForfeit, '沒收依房屋總價款百分之', c.houseForfeitPercent, '（最高不得超過百分之十五）計算之金額。')] },
+    { key: 'houseUnitNo', label: '住家編號', rows: [cntUnitNoRow(prep, pl.houseUnitNo, '住家編號：第', 34)] },
+    { key: 'houseWithParking', label: '房屋（含停車位）', rows: [{ cells: cntHouseWithParkingCells(spots, countZh, true) }] },
+  ];
+
+  const landBlocks = [
+    { key: 'landShare', label: '土地持分面積', rows: [cntLandShareRow(prep)] },
+    { key: 'landExclusive', label: '專有部份面積', rows: [cntAreaSlotRow('專有部份面積', exclusiveSqm, exclusivePing, 3, warnings)] },
+    { key: 'amtLandTotal', label: '土地總價款', rows: [cntAmountRow('土地總價款', landPriceVal, 4, warnings)] },
+    { key: 'loanLand', label: '貸款金額（土地款）', rows: [cntLoanRow(pl.landLoan, loan.land, warnings)] },
+    { key: 'constLandPenalty', label: '賠償違約金（土地）', rows: [cntConstRow(pl.landPenalty, '賠償土地總價款百分之', c.landPenaltyPercent, '（不得低於百分之十五）之違約金。')] },
+    { key: 'constLandForfeit', label: '沒收金額（土地）', rows: [cntConstRow(pl.landForfeit, '沒收依土地總價款百分之', c.landForfeitPercent, '（最高不得超過百分之十五）計算之金額。')] },
+    { key: 'landUnitNo', label: '住家編號＋房屋（含停車位）', rows: [{
+      cells: [
+        cntL(pl.landUnitNo, { w: 8 }),
+        cntB('住家編號：第'), cntV(prep.building), cntB('棟第'), cntV(prep.floor), cntB('樓'),
+        ...cntHouseWithParkingCells(spots, countZh, false),
+      ],
+    }] },
+  ];
+
+  return [
+    { key: 'house', title: '房屋合約 (一般合約)', blocks: houseBlocks },
+    { key: 'land', title: '土地合約', blocks: landBlocks },
+  ];
+}
+
+/** 房屋土地【合一】版 blocks（單一表格） */
+function buildCntCombinedSections(prep, ctx) {
+  const { c, pl, warnings, a, spots, countZh, priceOf, loan, exclusiveSqm, exclusivePing } = prep;
+
+  const houseAmountVal = priceOf('houseAmount', '房屋價款');
+  const landPriceVal = priceOf('landPrice', '土地總價款');
+  const parkingTotalVal = Number(ctx.parkingTotal) || 0;
+  const contractTotalVal = (houseAmountVal === null || landPriceVal === null)
+    ? null : houseAmountVal + landPriceVal + parkingTotalVal;
+  prep.cachedHouseAmount = houseAmountVal;
+  prep.cachedLandPrice = landPriceVal;
+  prep.cachedContractTotal = contractTotalVal;
+
+  const blocks = [
+    { key: 'unitNo', label: '房屋編號', rows: [cntUnitNoRow(prep, '房屋編號:', '第', 46)] },
+    { key: 'spots', label: '車位（編號 / 尺寸 / 面積）', rows: cntSpotBlockRows(prep) },
+    // 土地持分 + 面積區（專有部份面積在契約書出現兩處，照樣重複）
+    { key: 'landShare', label: '土地持分面積', rows: [cntLandShareRow(prep)] },
+    { key: 'landExclusive', label: '專有部份面積（土地區）', rows: [cntAreaSlotRow('專有部份面積', exclusiveSqm, exclusivePing, 3, warnings)] },
+    { key: 'areaHouseTotal', label: '房屋面積共計', rows: [cntAreaSlotRow('房屋面積共計', a.houseTotalSqm, a.houseTotalPing, 3, warnings)] },
+    { key: 'areaExclusive', label: '專有部分面積', rows: [cntAreaSlotRow('專有部分面積', exclusiveSqm, exclusivePing, 3, warnings)] },
+    { key: 'areaMain', label: '主建物面積', rows: [cntAreaSlotRow('主建物面積', a.mainSqm, a.mainPing, 3, warnings)] },
+    { key: 'areaAncillary', label: '附屬建物陽台面積', rows: [cntAreaSlotRow('附屬建物陽台面積', a.ancillarySqm, a.ancillaryPing, 2, warnings)] },
+    { key: 'areaCommon', label: '共有部份面積', rows: [cntAreaSlotRow('共有部份面積', a.commonSqm, a.commonPing, 2, warnings)] },
+    { key: 'mainRatio', label: '主建物面積占比', rows: [cntMainRatioRow(prep)] },
+    { key: 'amtContractTotal', label: '本契約總價款', rows: [cntAmountRow('本契約總價款', contractTotalVal, 4, warnings)] },
+    { key: 'amtLandTotal', label: '土地總價款', rows: [cntAmountRow('土地總價款', landPriceVal, 4, warnings)] },
+    { key: 'amtHouse', label: '房屋價款', rows: [cntAmountRow('房屋價款', houseAmountVal, 4, warnings)] },
+    { key: 'amtExclusive', label: '專有部分價款', rows: [cntAmountRow('專有部分價款', priceOf('exclusiveAmount', '專有部分價款'), 4, warnings)] },
+    { key: 'amtMain', label: '主建物價款', rows: [cntAmountRow('主建物價款', priceOf('mainAmount', '主建物價款'), 4, warnings)] },
+    { key: 'amtAncillary', label: '附屬建物陽台價款', rows: [cntAmountRow('附屬建物陽台價款', priceOf('ancillaryAmount', '附屬建物陽台價款'), 3, warnings)] },
+    { key: 'amtCommon', label: '共有部份價款', rows: [cntAmountRow('共有部份價款', priceOf('commonAmount', '共有部份價款'), 3, warnings)] },
+    { key: 'amtParking', label: '車位價款', rows: [cntAmountRow('車位價款', parkingTotalVal, 4, warnings)] },
+    { key: 'spotPrices', label: '車位價款明細（一）（二）…', rows: cntSpotPriceRows(prep, true) },
+    { key: 'constHandover', label: '交屋條款', rows: [cntConstRow(pl.handover, '三、交屋日起', c.handoverDays, '日內配合辦理交屋手續')] },
+    // 貸款金額 = 銀行貸款期整期金額（房地合併）
+    { key: 'loanTotal', label: '貸款金額（整期）', rows: [cntLoanRow(pl.houseLoan, loan.total, warnings)] },
+    { key: 'constShorten', label: '縮短償還期限', rows: [cntConstRow(pl.shorten, '2、縮短償還期限為', c.shortenYears, '年(期間不得少於七年)，')] },
+    { key: 'constNotice', label: '接獲通知天數', rows: [cntConstRow(pl.notice, '（三）買方應於接獲通知之日起', c.noticeDays, '天（不得少於三十天）')] },
+    { key: 'constFee', label: '手續費', rows: [cntConstRow(pl.fee, '三、房屋總價款萬分之', c.feePerTenThousand, '（最高以萬分之五為限）之手續費。')] },
+    { key: 'constHousePenalty', label: '賠償違約金', rows: [cntConstRow(pl.housePenalty, '賠償房屋總價款百分之', c.housePenaltyPercent, '（不得低於百分之十五）之違約金。')] },
+    { key: 'constHouseForfeit', label: '沒收金額', rows: [cntConstRow(pl.houseForfeit, '沒收依房屋總價款百分之', c.houseForfeitPercent, '（最高不得超過百分之十五）計算之金額。')] },
+    // 住家編號 + 房屋（含停車位；本版不帶「位」數）
+    { key: 'houseUnitNo', label: '住家編號', rows: [cntUnitNoRow(prep, pl.houseUnitNo, '住家編號：第', 34)] },
+    { key: 'houseWithParking', label: '房屋（含停車位）', rows: [{ cells: cntHouseWithParkingCells(spots, countZh, false) }] },
+  ];
+
+  return [{ key: 'main', title: '房屋土地合約（一般合約）', blocks }];
+}
+
+/**
+ * 合約數字對照表「結構」：sections（blocks 分組）＋變數值＋警示。
+ * 供版面編輯器（ContractNumberTableLayoutEditor）與 pageData 組裝共用。
+ */
+export function buildCntStructure(page, ctx, priceModel, splitModel, unitData) {
+  const pageType = page.type === 'contractNumberTableCombined' ? 'contractNumberTableCombined' : 'contractNumberTable';
+  const prep = prepareCntBase(page, ctx, priceModel, splitModel, unitData, pageType);
+  const sections = pageType === 'contractNumberTableCombined'
+    ? buildCntCombinedSections(prep, ctx)
+    : buildCntSeparateSections(prep, ctx);
+  return { sections, warnings: prep.warnings, varValues: buildCntVarValues(prep, ctx) };
+}
+
+/**
+ * 套用版面配置：rowLayout.sections[sectionKey] = [{ kind:'builtin', key } | { kind:'custom', id, segments }]。
+ * 未設定（或空）→ 全部 blocks 依預設順序；builtin key 比對不到（版本差異）→ 略過。
+ */
+export function applyCntRowLayout(structure, rowLayout) {
+  return structure.sections.map(sec => {
+    const layout = rowLayout?.sections?.[sec.key];
+    if (!Array.isArray(layout) || !layout.length) {
+      return { title: sec.title, rows: sec.blocks.flatMap(b => b.rows) };
+    }
+    const byKey = Object.fromEntries(sec.blocks.map(b => [b.key, b]));
+    const rows = [];
+    for (const item of layout) {
+      if (item?.kind === 'custom') rows.push(buildCntCustomRow(item.segments, structure.varValues));
+      else if (item?.key && byKey[item.key]) rows.push(...byKey[item.key].rows);
+    }
+    return { title: sec.title, rows };
+  });
+}
+
 /**
  * 合約數字對照表【房屋土地分開版】（富宇首馥）渲染模型（前端預覽與後端 PDF/EXCEL 共用）。
  * 價款固定取 priceFormulas 既定 key（houseAmount/exclusiveAmount/mainAmount/ancillaryAmount/commonAmount）
  * 與基礎 ref（housePrice/landPrice）；缺 key 或公式錯誤 → 該格Ｘ＋warnings。
+ * 版面（列順序 / 隱藏 / 自訂列）由 page.options.rowLayout 控制（範本編輯器可視化調整）。
  */
 export function buildContractNumberTablePageData(page, ctx, priceModel, splitModel, unitData) {
-  const prep = prepareCntBase(page, ctx, priceModel, splitModel, unitData, 'contractNumberTable');
-  const { c, pl, warnings, a, spots, spotRowCount, countZh, priceOf, loan, exclusiveSqm, exclusivePing } = prep;
-
-  /* ================= 房屋合約 ================= */
-  const houseRows = [];
-
-  houseRows.push(cntUnitNoRow(prep, '房屋編號:', '第', 46));
-  houseRows.push(...cntSpotBlockRows(prep));
-
-  // 面積區（槽位式）
-  houseRows.push(cntAreaSlotRow('房屋面積共計', a.houseTotalSqm, a.houseTotalPing, 3, warnings));
-  houseRows.push(cntAreaSlotRow('專有部分面積', exclusiveSqm, exclusivePing, 3, warnings));
-  houseRows.push(cntAreaSlotRow('主建物面積', a.mainSqm, a.mainPing, 3, warnings));
-  houseRows.push(cntAreaSlotRow('附屬建物陽台面積', a.ancillarySqm, a.ancillaryPing, 2, warnings));
-  houseRows.push(cntAreaSlotRow('共有部份面積', a.commonSqm, a.commonPing, 2, warnings));
-  houseRows.push(cntMainRatioRow(prep));
-
-  // 本契約總價款 = 房屋價款（價款公式 houseAmount）＋ 車位成交價合計
-  const houseAmountVal = priceOf('houseAmount', '房屋價款');
-  const parkingTotalVal = Number(ctx.parkingTotal) || 0;
-  houseRows.push(cntAmountRow('本契約總價款',
-    houseAmountVal === null ? null : houseAmountVal + parkingTotalVal, 4, warnings));
-  houseRows.push(cntAmountRow('房屋價款', houseAmountVal, 4, warnings));
-  houseRows.push(cntAmountRow('專有部分價款', priceOf('exclusiveAmount', '專有部分價款'), 4, warnings));
-  houseRows.push(cntAmountRow('主建物價款', priceOf('mainAmount', '主建物價款'), 4, warnings));
-  houseRows.push(cntAmountRow('附屬建物陽台價款', priceOf('ancillaryAmount', '附屬建物陽台價款'), 3, warnings));
-  houseRows.push(cntAmountRow('共有部份價款', priceOf('commonAmount', '共有部份價款'), 3, warnings));
-  houseRows.push(cntAmountRow('車位價款', parkingTotalVal, 4, warnings));
-  houseRows.push(...cntSpotPriceRows(prep, false));
-
-  // 契約條款常數
-  houseRows.push(cntConstRow(pl.handover, '三、交屋日起', c.handoverDays, '日內配合辦理交屋手續'));
-  houseRows.push(cntAmountRow('貸款金額:', loan.house, 4, warnings, { w: 10 }));
-  houseRows[houseRows.length - 1].cells.unshift(cntL(pl.houseLoan, { w: 8 }));
-  houseRows.push(cntConstRow(pl.shorten, '2、縮短償還期限為', c.shortenYears, '年(期間不得少於七年)，'));
-  houseRows.push(cntConstRow(pl.notice, '（三）買方應於接獲通知之日起', c.noticeDays, '天（不得少於三十天）'));
-  houseRows.push(cntConstRow(pl.fee, '三、房屋總價款萬分之', c.feePerTenThousand, '（最高以萬分之五為限）之手續費。'));
-  houseRows.push(cntConstRow(pl.housePenalty, '賠償房屋總價款百分之', c.housePenaltyPercent, '（不得低於百分之十五）之違約金。'));
-  houseRows.push(cntConstRow(pl.houseForfeit, '沒收依房屋總價款百分之', c.houseForfeitPercent, '（最高不得超過百分之十五）計算之金額。'));
-
-  // 住家編號 + 房屋（含停車位）
-  houseRows.push(cntUnitNoRow(prep, pl.houseUnitNo, '住家編號：第', 34));
-  houseRows.push({ cells: cntHouseWithParkingCells(spots, countZh, true) });
-
-  /* ================= 土地合約 ================= */
-  const landRows = [];
-
-  landRows.push(cntLandShareRow(prep));
-  landRows.push(cntAreaSlotRow('專有部份面積', exclusiveSqm, exclusivePing, 3, warnings));
-  landRows.push(cntAmountRow('土地總價款', priceOf('landPrice', '土地總價款'), 4, warnings));
-  landRows.push(cntAmountRow('貸款金額:', loan.land, 4, warnings, { w: 10 }));
-  landRows[landRows.length - 1].cells.unshift(cntL(pl.landLoan, { w: 8 }));
-  landRows.push(cntConstRow(pl.landPenalty, '賠償土地總價款百分之', c.landPenaltyPercent, '（不得低於百分之十五）之違約金。'));
-  landRows.push(cntConstRow(pl.landForfeit, '沒收依土地總價款百分之', c.landForfeitPercent, '（最高不得超過百分之十五）計算之金額。'));
-  landRows.push({
-    cells: [
-      cntL(pl.landUnitNo, { w: 8 }),
-      cntB('住家編號：第'), cntV(prep.building), cntB('棟第'), cntV(prep.floor), cntB('樓'),
-      ...cntHouseWithParkingCells(spots, countZh, false),
-    ],
-  });
-
+  const structure = buildCntStructure(page, ctx, priceModel, splitModel, unitData);
+  const sections = applyCntRowLayout(structure, page.options?.rowLayout);
   return {
-    sections: [
-      { title: '房屋合約 (一般合約)', rows: houseRows },
-      { title: '土地合約', rows: landRows },
-    ],
+    sections,
     // 舊欄位保留（後端渲染相容，避免部署空窗期間出錯）
-    houseTitle: '房屋合約 (一般合約)',
-    landTitle: '土地合約',
-    houseRows,
-    landRows,
-    warnings,
+    houseTitle: sections[0]?.title || '房屋合約 (一般合約)',
+    landTitle: sections[1]?.title || '土地合約',
+    houseRows: sections[0]?.rows || [],
+    landRows: sections[1]?.rows || [],
+    warnings: structure.warnings,
   };
 }
 
@@ -751,58 +908,9 @@ export function buildContractNumberTablePageData(page, ctx, priceModel, splitMod
  * 本契約總價款 = 房屋價款（houseAmount）＋土地總價款（landPrice）＋車位成交價合計。
  */
 export function buildContractNumberTableCombinedPageData(page, ctx, priceModel, splitModel, unitData) {
-  const prep = prepareCntBase(page, ctx, priceModel, splitModel, unitData, 'contractNumberTableCombined');
-  const { c, pl, warnings, a, spots, countZh, priceOf, loan, exclusiveSqm, exclusivePing } = prep;
-
-  const rows = [];
-
-  rows.push(cntUnitNoRow(prep, '房屋編號:', '第', 46));
-  rows.push(...cntSpotBlockRows(prep));
-
-  // 土地持分 + 面積區（專有部份面積在契約書出現兩處，照樣重複）
-  rows.push(cntLandShareRow(prep));
-  rows.push(cntAreaSlotRow('專有部份面積', exclusiveSqm, exclusivePing, 3, warnings));
-  rows.push(cntAreaSlotRow('房屋面積共計', a.houseTotalSqm, a.houseTotalPing, 3, warnings));
-  rows.push(cntAreaSlotRow('專有部分面積', exclusiveSqm, exclusivePing, 3, warnings));
-  rows.push(cntAreaSlotRow('主建物面積', a.mainSqm, a.mainPing, 3, warnings));
-  rows.push(cntAreaSlotRow('附屬建物陽台面積', a.ancillarySqm, a.ancillaryPing, 2, warnings));
-  rows.push(cntAreaSlotRow('共有部份面積', a.commonSqm, a.commonPing, 2, warnings));
-  rows.push(cntMainRatioRow(prep));
-
-  // 價款區
-  const houseAmountVal = priceOf('houseAmount', '房屋價款');
-  const landPriceVal = priceOf('landPrice', '土地總價款');
-  const parkingTotalVal = Number(ctx.parkingTotal) || 0;
-  rows.push(cntAmountRow('本契約總價款',
-    (houseAmountVal === null || landPriceVal === null) ? null : houseAmountVal + landPriceVal + parkingTotalVal,
-    4, warnings));
-  rows.push(cntAmountRow('土地總價款', landPriceVal, 4, warnings));
-  rows.push(cntAmountRow('房屋價款', houseAmountVal, 4, warnings));
-  rows.push(cntAmountRow('專有部分價款', priceOf('exclusiveAmount', '專有部分價款'), 4, warnings));
-  rows.push(cntAmountRow('主建物價款', priceOf('mainAmount', '主建物價款'), 4, warnings));
-  rows.push(cntAmountRow('附屬建物陽台價款', priceOf('ancillaryAmount', '附屬建物陽台價款'), 3, warnings));
-  rows.push(cntAmountRow('共有部份價款', priceOf('commonAmount', '共有部份價款'), 3, warnings));
-  rows.push(cntAmountRow('車位價款', parkingTotalVal, 4, warnings));
-  rows.push(...cntSpotPriceRows(prep, true));
-
-  // 契約條款常數（貸款金額 = 銀行貸款期整期金額，房地合併）
-  rows.push(cntConstRow(pl.handover, '三、交屋日起', c.handoverDays, '日內配合辦理交屋手續'));
-  rows.push(cntAmountRow('貸款金額:', loan.total, 4, warnings, { w: 10 }));
-  rows[rows.length - 1].cells.unshift(cntL(pl.houseLoan, { w: 8 }));
-  rows.push(cntConstRow(pl.shorten, '2、縮短償還期限為', c.shortenYears, '年(期間不得少於七年)，'));
-  rows.push(cntConstRow(pl.notice, '（三）買方應於接獲通知之日起', c.noticeDays, '天（不得少於三十天）'));
-  rows.push(cntConstRow(pl.fee, '三、房屋總價款萬分之', c.feePerTenThousand, '（最高以萬分之五為限）之手續費。'));
-  rows.push(cntConstRow(pl.housePenalty, '賠償房屋總價款百分之', c.housePenaltyPercent, '（不得低於百分之十五）之違約金。'));
-  rows.push(cntConstRow(pl.houseForfeit, '沒收依房屋總價款百分之', c.houseForfeitPercent, '（最高不得超過百分之十五）計算之金額。'));
-
-  // 住家編號 + 房屋（含停車位；本版不帶「位」數）
-  rows.push(cntUnitNoRow(prep, pl.houseUnitNo, '住家編號：第', 34));
-  rows.push({ cells: cntHouseWithParkingCells(spots, countZh, false) });
-
-  return {
-    sections: [{ title: '房屋土地合約（一般合約）', rows }],
-    warnings,
-  };
+  const structure = buildCntStructure(page, ctx, priceModel, splitModel, unitData);
+  const sections = applyCntRowLayout(structure, page.options?.rowLayout);
+  return { sections, warnings: structure.warnings };
 }
 
 /* ============================================================

@@ -118,6 +118,7 @@
                 <v-icon size="18" color="amber-darken-2">mdi-home-heart</v-icon>
                 <span>是否首購</span>
               </div>
+              <!-- 選中＝實心色塊＋打勾radio；未選中＝灰底空心radio，選了哪個一目了然 -->
               <v-btn-toggle
                 v-model="firstTimeBuyerModel"
                 mandatory
@@ -127,21 +128,28 @@
               >
                 <v-btn
                   :value="true"
+                  :variant="firstTimeBuyerModel === true ? 'flat' : 'outlined'"
                   :color="firstTimeBuyerModel === true ? 'success' : undefined"
-                  variant="flat"
-                  class="flex-1-1"
+                  class="flex-1-1 firstbuyer-btn"
+                  :class="{ 'firstbuyer-btn--off': firstTimeBuyerModel !== true }"
                 >
-                  <v-icon start>mdi-check-circle</v-icon>是
+                  <v-icon start>{{ firstTimeBuyerModel === true ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank' }}</v-icon>
+                  是
                 </v-btn>
                 <v-btn
                   :value="false"
+                  :variant="firstTimeBuyerModel === false ? 'flat' : 'outlined'"
                   :color="firstTimeBuyerModel === false ? 'blue-grey-darken-1' : undefined"
-                  variant="flat"
-                  class="flex-1-1"
+                  class="flex-1-1 firstbuyer-btn"
+                  :class="{ 'firstbuyer-btn--off': firstTimeBuyerModel !== false }"
                 >
-                  <v-icon start>mdi-close-circle-outline</v-icon>否
+                  <v-icon start>{{ firstTimeBuyerModel === false ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank' }}</v-icon>
+                  否
                 </v-btn>
               </v-btn-toggle>
+              <div class="text-caption mt-1" :class="firstTimeBuyerModel === true ? 'text-success' : 'text-blue-grey-darken-1'">
+                目前選擇：<strong>{{ firstTimeBuyerModel === true ? '是（首購）' : '否（非首購）' }}</strong>
+              </div>
             </div>
             <div class="d-flex align-center gap-2 mb-2">
               <v-text-field label="房屋成交價(萬)" v-model.number="editableData.price_transaction_house" type="number" :min="0" class="flex-1"></v-text-field>
@@ -1139,6 +1147,17 @@ function savePriceNegotiation() {
 }
 .firstbuyer-toggle :deep(.v-btn) {
   height: 100%;
+}
+/* 選中：粗體白字實心色塊；未選中：灰底淡字，對比拉開避免誤讀 */
+.firstbuyer-btn {
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 2px;
+}
+.firstbuyer-btn--off {
+  color: #90a4ae !important;
+  background-color: #f5f6f8 !important;
+  font-weight: 400;
 }
 </style>
 
