@@ -62,6 +62,8 @@ const fs = require("fs").promises; // 使用 promise 版本的 fs
 const path = require("path");
 // 銷售人員（salesperson / salespersonUserKey）複選共用工具
 const { normalizeSalespersons, formatSalespersons } = require("./utils/salesperson");
+// 試用沙盒（DEMO 建案）對外通知守衛：命中試用建案時不寄 Email／LINE，視同成功
+const { guardedSendMail, shouldBlockOutbound } = require("./utils/trialGuard");
 //  1. 在頂部也引入 @puppeteer/browsers 的元件，方便下方使用
 
 
@@ -299,6 +301,10 @@ exports.forgotPasswordSender = onCall({ region: "asia-east1", secrets: gmailSecr
       throw new HttpsError('not-found', '找不到對應手機號碼的用戶資料');
     }
     const userData = userDoc.data();
+    // 試用帳號不提供密碼重設（避免 TESTA 密碼被重設）
+    if (userData.isTrial === true) {
+      throw new HttpsError('permission-denied', '測試帳號不提供密碼重設');
+    }
     const userEmail = userData.email;
     const userPassword = userData.password;
     if (!userEmail || !userPassword) {
@@ -1568,6 +1574,7 @@ exports.handleLogin = onCall({ memory: "512MiB" }, async (request) => {
       email: userData.email,
       name: userData.name,
       roles: userData.roles || [],
+      isTrial: userData.isTrial === true, // 試用帳號旗標（SPEC_LandingTrialLeadsOnboarding §3.6）
       detailedPermissions: detailedPermissions,
       // ✅ [修正] 新增這一行：將資料庫中的 preferences 回傳給前端
       preferences: userData.preferences || {}
@@ -2435,7 +2442,7 @@ exports.handleSpecialReportUpload = onCall({
       html: emailBodyHtml
     };
 
-    await mailTransport.sendMail(mailOptions);
+    await guardedSendMail(mailTransport, mailOptions, { projectId: projectId }); // [TrialGuard]
     console.log(`[${functionName}] Confirmation HTML email sent to [${recipients}].`);
     return { status: "success", message: "檔案上傳成功，確認信已寄出。" };
 
@@ -5886,13 +5893,13 @@ exports.saveBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL", "
 
 
     const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
-    await mailTransport.sendMail({
+    await guardedSendMail(mailTransport, { // [TrialGuard]
       to: newAppointmentData.bookerEmail,
       cc: ccRecipients,
       subject: subject,
       html: htmlBody,
       name: `${projectName} 預約系統`
-    });
+    }, { projectId: projectId });
 
     // --- 返回成功結果 (維持不變) ---
     return { status: 'success', data: { bookingCode } };
@@ -6043,13 +6050,13 @@ exports.cancelBooking = onCall({ region: "asia-east1", secrets: ["SENDER_EMAIL",
             `;
 
       const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
-      await mailTransport.sendMail({
+      await guardedSendMail(mailTransport, { // [TrialGuard]
         to: bookingData.bookerEmail,
         cc: ccRecipients,
         subject: subject,
         html: htmlBody,
         name: `${projectName} 預約系統`
-      });
+      }, { projectId: projectId });
       console.log(`[${functionName}] 已寄送取消通知信至 ${bookingData.bookerEmail}`);
     }
 
@@ -7059,14 +7066,14 @@ exports.addAppointmentByAdmin = onCall({ region: "asia-east1", cors: true, secre
       const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
       console.log(`[${functionName}] getCcRecipients finished. CC:`, ccRecipients);
 
-      await mailTransport.sendMail({
+      await guardedSendMail(mailTransport, { // [TrialGuard]
         from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
         to: bookerEmail,
         cc: ccRecipients.join(', '),
         subject: subject,
         html: htmlBody,
         name: `${projectName} 預約系統`
-      });
+      }, { projectId: projectId });
       console.log(`[${functionName}] New appointment (by admin) email sent successfully.`);
     } else {
       console.log(`[${functionName}] No booker email provided, skipping email.`);
@@ -7225,13 +7232,13 @@ exports.cancelAppointmentByAdmin = onCall({ region: "asia-east1", secrets: ["SEN
 </div>`;
 
       const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
-      await mailTransport.sendMail({
+      await guardedSendMail(mailTransport, { // [TrialGuard]
         to: bookingData.bookerEmail,
         cc: ccRecipients,
         subject: subject,
         html: htmlBody,
         name: `${projectName} 預約系統`
-      });
+      }, { projectId: projectId });
       console.log(`[${functionName}] 已寄送取消通知信至 ${bookingData.bookerEmail}`);
     }
 
@@ -7612,10 +7619,10 @@ exports.handleDirectReportUpload = onCall({
 </div>
 </div>
       `;
-      await mailTransport.sendMail({
+      await guardedSendMail(mailTransport, { // [TrialGuard]
         from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
         to: email, subject, html: htmlBody
-      });
+      }, { projectId: projectId });
       console.log(`[${functionName}] 已成功寄送確認信至: ${email}`);
     }
 
@@ -8004,12 +8011,12 @@ exports.initiateAuthSigningProcess = onCall({
       </div>
     `;
 
-    await mailTransport.sendMail({
+    await guardedSendMail(mailTransport, { // [TrialGuard]
       from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
       to: formData.受託人Email, //  寄給受託人
       subject: `【重要】${projectName} 驗屋授權書簽署邀請`,
       html: emailBodyHtml,
-    });
+    }, { projectId: projectId });
 
     console.log(`[${functionName}] 已成功為 ${unitId} 寄送簽署邀請至受託人 ${formData.受託人Email}`);
     return { status: "success", message: "邀請已寄出" };
@@ -8198,13 +8205,13 @@ exports.completeAuthSigningProcess = onCall({
             </div>
           `;
 
-          await mailTransport.sendMail({
+          await guardedSendMail(mailTransport, { // [TrialGuard]
             from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
             to: toRecipients.join(', '),
             cc: ccRecipients.join(', '),
             subject: subject,
             html: htmlBody,
-          });
+          }, { projectId: sessionData.projectId });
 
           console.log(`[${functionName}] 已成功為 session ${token} 寄送完成通知信。`);
         }
@@ -8792,13 +8799,13 @@ async function executeUploadReminderLogic() {
           uploadUrl: emailTemplate.uploadUrl
         });
 
-        await mailTransport.sendMail({
+        await guardedSendMail(mailTransport, { // [TrialGuard]
           from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
           to: appointment.bookerEmail,
           bcc: ccEmails, // 改用密件副本，副本收件者不會顯示給客戶
           subject: subject,
           html: htmlBody,
-        });
+        }, { projectId: projectId });
 
         const newTimestamp = admin.firestore.Timestamp.now();
         await apptDoc.ref.update({
@@ -9001,13 +9008,13 @@ exports.sendUploadReminderForUnit = onCall({
   });
 
   try {
-    await mailTransport.sendMail({
+    await guardedSendMail(mailTransport, { // [TrialGuard]
       from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
       to: appointment.bookerEmail,
       bcc: ccEmails,
       subject,
       html: htmlBody,
-    });
+    }, { projectId: projectId });
   } catch (error) {
     console.error(`[${functionName}] 寄送失敗:`, error);
     throw new HttpsError('internal', `寄送提醒信失敗: ${error.message}`);
@@ -10383,14 +10390,14 @@ exports.updateAppointmentByAdmin = onCall({ region: "asia-east1", cors: true, se
           const ccRecipients = await getCcRecipients(db, projectId, "驗屋系統信件副本");
           console.log(`[${functionName}] getCcRecipients finished. CC:`, ccRecipients); // <-- Log 11
           console.log(`[${functionName}] Calling mailTransport.sendMail...`); // <-- Log 12
-          await mailTransport.sendMail({
+          await guardedSendMail(mailTransport, { // [TrialGuard]
             from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
             to: bookerEmail,
             cc: ccRecipients.join(', '),
             subject: subject,
             html: htmlBody,
             name: `${projectName} 預約系統`
-          });
+          }, { projectId: projectId });
           console.log(`[${functionName}] Change notification email sent successfully.`); // <-- Log 13
         } else {
           console.log(`[${functionName}] No significant changes in notification fields, skipping email.`); // <-- Log 14
@@ -11104,6 +11111,8 @@ async function executeReminderForProject(projectId, selectedLineIds = null, isTe
       .filter(f => !f.name.includes("(已下載)") && !f.name.includes("(作廢)"));
 
     // --- 步驟 4: 組合訊息並發送 ---
+    // [TrialGuard] 試用建案不對外發送 LINE（視同成功）
+    if (await shouldBlockOutbound(projectId, 'line')) return '（測試建案）已略過 LINE 通知。';
     const lineClient = new line.Client({ channelAccessToken: lineChannelAccessToken });
     let messageText;
     let resultMessage;
@@ -13148,7 +13157,7 @@ async function generatePdfInBackground(projectId, unitId, confirmationBatchId, i
       console.log(`[${functionName}] 將夾帶 ${mailAttachments.length} 個附件`);
     }
 
-    await mailTransport.sendMail(mailOptions);
+    await guardedSendMail(mailTransport, mailOptions, { projectId: projectId }); // [TrialGuard]
     console.log(`[${functionName}] 已成功寄送報告完成通知 Email。`);
 
   } catch (error) {
@@ -13352,7 +13361,7 @@ exports.sendInspectionReportEmails = onCall({
       console.log(`[${functionName}] 將夾帶 ${mailAttachments.length} 個附件`);
     }
 
-    await mailTransport.sendMail(mailOptions);
+    await guardedSendMail(mailTransport, mailOptions, { projectId: projectId }); // [TrialGuard]
     console.log(`[${functionName}] 成功寄送報告 Email 至 To: ${toList}, Bcc: ${bccList}`);
 
     return { status: "success", driveFileUrl };
@@ -15626,13 +15635,13 @@ async function _handleSaveBooking(data) {
 
     // 測試模式：不 CC 副本收件人，信件只寄給預約人本人（測試頁會填超級管理員自己的 Email）
     const ccRecipients = isTestMode ? [] : await getCcRecipients(projectId, "驗屋系統信件副本");
-    await mailTransport.sendMail({
+    await guardedSendMail(mailTransport, { // [TrialGuard]
       to: newAppointmentData.bookerEmail,
       cc: ccRecipients,
       subject: subject,
       html: htmlBody,
       name: `${projectName} 預約系統`
-    });
+    }, { projectId: projectId });
 
     // --- 返回成功結果 (維持不變) ---
     return { status: 'success', data: { bookingCode } };
@@ -15790,13 +15799,13 @@ async function _handleCancelBooking(data) {
             `;
 
       const ccRecipients = isTestMode ? [] : await getCcRecipients(projectId, "驗屋系統信件副本"); // 測試模式不 CC 副本收件人
-      await mailTransport.sendMail({
+      await guardedSendMail(mailTransport, { // [TrialGuard]
         to: bookingData.bookerEmail,
         cc: ccRecipients,
         subject: subject,
         html: htmlBody,
         name: `${projectName} 預約系統`
-      });
+      }, { projectId: projectId });
       console.log(`[${functionName}] 已寄送取消通知信至 ${bookingData.bookerEmail}`);
     }
 
@@ -16254,12 +16263,12 @@ async function _handleHandleDirectReportUpload(data) {
       `;
 
       const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
-      await mailTransport.sendMail({
+      await guardedSendMail(mailTransport, { // [TrialGuard]
         from: `"${projectName} 驗屋報告系統" <${process.env.SENDER_EMAIL}>`,
         to: email, subject,
         cc: ccRecipients,
         html: htmlBody
-      });
+      }, { projectId: projectId });
       console.log(`[${functionName}] 已成功寄送確認信至: ${email}`);
     }
 
@@ -16326,12 +16335,12 @@ async function _handleInitiateAuthSigningProcess(data) {
       </div>
     `;
 
-    await mailTransport.sendMail({
+    await guardedSendMail(mailTransport, { // [TrialGuard]
       from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
       to: formData.受託人Email,
       subject: `${isTest === true ? '【系統測試】' : ''}【重要】${projectName} 驗屋授權書簽署邀請`,
       html: emailBodyHtml,
-    });
+    }, { projectId: projectId });
     console.log(`[${functionName}] 已成功為 ${unitId} 寄送簽署邀請至受託人 ${formData.受託人Email}${isTest === true ? '（測試模式）' : ''}`);
     // 測試模式回傳 token，讓功能測試頁能接續模擬受託人簽署流程；正式流程不回傳（簽署連結只在受託人信中）
     return isTest === true
@@ -17271,14 +17280,14 @@ async function _handleAddAppointmentAdmin(data) {
       const ccRecipients = await getCcRecipients(projectId, "驗屋系統信件副本");
       console.log(`[${functionName}] getCcRecipients finished. CC:`, ccRecipients);
 
-      await mailTransport.sendMail({
+      await guardedSendMail(mailTransport, { // [TrialGuard]
         from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
         to: bookerEmail,
         cc: ccRecipients.join(', '),
         subject: subject,
         html: htmlBody,
         name: `${projectName} 預約系統`
-      });
+      }, { projectId: projectId });
       console.log(`[${functionName}] New appointment (by admin) email sent successfully.`);
     } else {
       console.log(`[${functionName}] No booker email provided, skipping email.`);
@@ -17576,14 +17585,14 @@ async function _handleUpdateAppointmentByAdmin(data) {
           const ccRecipients = await getCcRecipients(db, projectId, "驗屋系統信件副本");
           console.log(`[${functionName}] getCcRecipients finished. CC:`, ccRecipients);
           console.log(`[${functionName}] Calling mailTransport.sendMail...`);
-          await mailTransport.sendMail({
+          await guardedSendMail(mailTransport, { // [TrialGuard]
             from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
             to: bookerEmail,
             cc: ccRecipients.join(', '),
             subject: subject,
             html: htmlBody,
             name: `${projectName} 預約系統`
-          });
+          }, { projectId: projectId });
           console.log(`[${functionName}] Change notification email sent successfully.`);
         } else {
           console.log(`[${functionName}] No significant changes in notification fields, skipping email.`);
@@ -17816,7 +17825,7 @@ async function _handleCancelAppointmentByAdmin(data) {
       if (sendToBooker && ccToSend.length > 0) {
         mailOptions.cc = ccToSend;
       }
-      await mailTransport.sendMail(mailOptions);
+      await guardedSendMail(mailTransport, mailOptions, { projectId: projectId }); // [TrialGuard]
       console.log(`[${functionName}] 已寄送取消通知信 (to: ${JSON.stringify(mailOptions.to)}, cc: ${JSON.stringify(mailOptions.cc || [])})`);
     } else {
       console.log(`[${functionName}] 未勾選任何收件對象或預約人無 Email，略過寄送取消通知信。`);
@@ -22061,6 +22070,9 @@ async function sendLineNotification(db, projectIds, messageText, options = {}) {
     // 向下相容：允許傳入單一字串或陣列
     const pids = Array.isArray(projectIds) ? projectIds : [projectIds];
     if (pids.length === 0) return;
+    // [TrialGuard] 所有建案皆為試用建案時不對外發送 LINE
+    const trialFlags = await Promise.all(pids.map(pid => shouldBlockOutbound(pid, 'line')));
+    if (trialFlags.every(Boolean)) return;
 
     // 用第一個建案的設定來取得 Token
     const settingsDoc = await db.collection("customerFieldSettings").doc(pids[0]).get();
@@ -23149,6 +23161,8 @@ exports.onVipGuestSubmission = onDocumentWritten({
     }
 
     // 5. 發送（含重試和延迟以避免 429 限流）
+    // [TrialGuard] 試用建案不對外發送 LINE
+    if (await shouldBlockOutbound(projectId, 'line')) return;
     const lineClient = new line.Client({ channelAccessToken: lineToken });
     const lineIdArray = Array.from(finalLineIds);
     const MAX_RETRIES = 3;
@@ -23903,7 +23917,7 @@ exports.onViewingReservationChange = onDocumentWritten({
           }
         }
 
-        if (channelToken) {
+        if (channelToken && !(await shouldBlockOutbound(projectId, 'line'))) { // [TrialGuard]
           const lineClient = new line.Client({ channelAccessToken: channelToken });
 
           // 添加重試邏輯以處理 429 限流
@@ -24154,7 +24168,7 @@ exports.processAndAssignLead = onCall({
       if (recipients.length > 0) {
         const notifyData = { ...leadData, ...updatePayload };
         try {
-          await _sendLeadAssignmentFlex(channelToken, recipients, notifyData, leadId);
+          if (!(await shouldBlockOutbound(projectId, 'line'))) await _sendLeadAssignmentFlex(channelToken, recipients, notifyData, leadId); // [TrialGuard]
         } catch (lineError) {
           const status = lineError?.response?.status;
           const lineMsg = lineError?.response?.data?.message || lineError.message;
@@ -24202,6 +24216,7 @@ exports.scheduledLeadReminder = onSchedule({
 
     for (const settingDoc of settingsSnap.docs) {
       const projectId = settingDoc.id;
+      if (await shouldBlockOutbound(projectId, 'line')) continue; // [TrialGuard] 試用建案略過提醒
 
       // ✅ [新增] 獲取建案正式名稱
       const projectDoc = await db.collection("projects").doc(projectId).get();
@@ -24835,7 +24850,7 @@ exports.batchImportAndAssignLeads = onCall({
             if (adminLineId && adminLineId.startsWith('U')) recipientSet.add(adminLineId);
             const recipients = [...recipientSet];
             if (recipients.length > 0) {
-              await _sendLeadAssignmentFlex(channelToken, recipients, payload, leadId);
+              if (!(await shouldBlockOutbound(projectId, 'line'))) await _sendLeadAssignmentFlex(channelToken, recipients, payload, leadId); // [TrialGuard]
             }
           }
         } catch (lineError) {
@@ -25212,7 +25227,7 @@ exports.batchImportLeadsV2 = onCall({
         const perSales = notifyStats.perSales || {}; // assignedTo -> { name, count }
         const totalCreated = Number(notifyStats.created) || 0;
 
-        if (channelToken && totalCreated > 0) {
+        if (channelToken && totalCreated > 0 && !(await shouldBlockOutbound(projectId, 'line'))) { // [TrialGuard]
           const liffUrl = "https://liff.line.me/2008257338-FSWtfaEM";
 
           // 每位業務一則彙總（個別失敗不影響其他收件人）
@@ -26781,7 +26796,7 @@ async function _sendSyncFailureNotification(db, projectId, syncType, errorMessag
         replyTo: 'noreply@system.local'
       };
 
-      return mailTransporter.sendMail(mailOptions)
+      return guardedSendMail(mailTransporter, mailOptions, { projectId }) // [TrialGuard]
         .catch(err => {
           console.error(`[${functionName}] 發送郵件給 ${recipient.email} 失敗:`, err);
         });
@@ -29807,3 +29822,21 @@ exports.submitCommissionEntries = commissionClaims.submitCommissionEntries;
 exports.voidCommissionRecord = commissionClaims.voidCommissionRecord;
 exports.importCommissionHistory = commissionClaims.importCommissionHistory;
 exports.generateCommissionPdf = commissionClaims.generateCommissionPdf;
+
+
+/* ==========================================================
+ * ✅ [新增] 官網試用留資 / 廣告 Email 群發 / DEMO 沙盒
+ * 規格：docs/SPEC_LandingTrialLeadsOnboarding.md
+ * 實作位於 functions/trial/*.js，守衛位於 functions/utils/trialGuard.js
+ * ========================================================== */
+const trialLeads = require("./trial/trialLeads");
+exports.submitTrialLead = trialLeads.submitTrialLead;
+exports.trackTrialLeadEvent = trialLeads.trackTrialLeadEvent;
+
+const marketingEmail = require("./trial/marketingEmail");
+exports.sendMarketingEmail = marketingEmail.sendMarketingEmail;
+
+const trialSandbox = require("./trial/sandbox");
+exports.snapshotTrialSandbox = trialSandbox.snapshotTrialSandbox;
+exports.resetTrialSandbox = trialSandbox.resetTrialSandbox;
+exports.resetTrialSandboxNow = trialSandbox.resetTrialSandboxNow;

@@ -420,6 +420,10 @@ export async function updateUserProfile(payload) {
     }
 
     const userData = userDocSnap.data();
+    // ✅ 試用帳號（TESTA）為共用帳號，禁止修改個人資料與密碼
+    if (userData.isTrial === true) {
+      return { status: 'error', message: '測試帳號無法修改個人資料' };
+    }
     if (userData.password !== String(oldPassword)) {
       return { status: 'error', message: '原密碼錯誤，無法更新資料' };
     }
@@ -9265,3 +9269,51 @@ export const generateCommissionPdfAPI = async (payload) => {
   const result = await fn(payload);
   return result.data;
 };
+
+// =================================================================
+// 試用留資 / 廣告 Email / 沙盒（docs/SPEC_LandingTrialLeadsOnboarding.md）
+// =================================================================
+
+/** 開始試用：留資（後端寫入 trialLeads、Email 通知超管、回傳試用登入資訊） */
+export const submitTrialLeadAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'submitTrialLead');
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 試用留資事件追蹤（fire-and-forget 由 utils/trialTracking.js 包裝） */
+export const trackTrialLeadEventAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'trackTrialLeadEvent');
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 廣告 Email 群發（後端逐位寄送並更新 emailCampaigns/{id} 進度） */
+export const sendMarketingEmailAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'sendMarketingEmail', { timeout: 540000 });
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 沙盒範本快照（dryRun=true 只回傳筆數預覽） */
+export const snapshotTrialSandboxAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'snapshotTrialSandbox', { timeout: 540000 });
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 立即重置沙盒（超管） */
+export const resetTrialSandboxNowAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'resetTrialSandboxNow', { timeout: 540000 });
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 上傳廣告 Email 附件至 Storage marketing/attachments/{yyyyMM}/ */
+export async function uploadMarketingAttachment(file) {
+  const ym = format(new Date(), 'yyyyMM');
+  const storageRef = ref(storage, `marketing/attachments/${ym}/${Date.now()}_${file.name}`);
+  const snapshot = await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(snapshot.ref);
+  return { name: file.name, url, size: file.size, path: snapshot.ref.fullPath };
+}

@@ -7,6 +7,7 @@
 const axios = require('axios');
 const nodemailer = require('nodemailer');
 const { STATUS_STYLE, classifySalesStatus } = require('../utils/salesStatusGroups');
+const { shouldBlockOutbound } = require('../utils/trialGuard'); // 試用建案對外通知守衛
 
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
 
@@ -186,9 +187,14 @@ function buildTransporter() {
  */
 async function sendSalesStatusNotifications(params) {
   const {
-    projectName, unitId, oldStatus, newStatus, operatorName,
+    projectId, projectName, unitId, oldStatus, newStatus, operatorName,
     recipients, userMap, customTag, remark, adminLineId,
   } = params;
+
+  // [TrialGuard] 試用建案不對外發送 LINE／Email（視同成功，回傳格式相容）
+  if (await shouldBlockOutbound(projectId || projectName, 'line/email')) {
+    return { sent: 0, failed: 0, attempts: [], blocked: true };
+  }
 
   const statusClass = classifySalesStatus(newStatus);
   const timestampText = formatTimestamp();

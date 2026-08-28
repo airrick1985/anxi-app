@@ -2,8 +2,11 @@
   <!-- **** 修改這裡：將 v-model 從 prop 'dialog' 改為本地 ref 'internalDialog' **** -->
   <v-dialog v-model="internalDialog" max-width="500px" persistent> 
     <v-card>
-      <v-card-title>修改個人資料</v-card-title>
+      <v-card-title>{{ isTrialUser ? '個人資料' : '修改個人資料' }}</v-card-title>
       <v-card-text>
+        <v-alert v-if="isTrialUser" type="info" variant="tonal" density="compact" class="mb-3" icon="mdi-flask-outline">
+          測試帳號無法修改個人資料與密碼。
+        </v-alert>
         <!-- ... 表單內容保持不變 ... -->
          <v-text-field 
           :model-value="userStore.user?.key" 
@@ -15,18 +18,21 @@
         <v-form @submit.prevent="submit" ref="profileForm">
           <v-text-field 
             v-model="newName" 
+            :readonly="isTrialUser"
             label="姓名" 
             required 
             :rules="[v => !!v || '姓名為必填欄位']"
           />
           <v-text-field 
             v-model="newEmail" 
+            :readonly="isTrialUser"
             label="Email" 
             required 
             type="email" 
             :rules="[v => !!v || 'Email 為必填欄位', v => /.+@.+\..+/.test(v) || 'Email 格式不正確']" 
           /> 
           <v-text-field 
+            v-if="!isTrialUser"
             v-model="oldPassword" 
             label="原密碼 (必填以驗證身份)" 
             type="password" 
@@ -34,6 +40,7 @@
             :rules="[v => !!v || '必須輸入原密碼以進行修改']"
           />
           <v-text-field 
+            v-if="!isTrialUser"
             v-model="newPassword" 
             label="新密碼 (若不修改請留空)" 
             type="password" 
@@ -43,15 +50,15 @@
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn text @click="closeDialog">取消</v-btn>
-        <v-btn color="primary" :loading="saving" @click="submit">儲存</v-btn>
+        <v-btn text @click="closeDialog">{{ isTrialUser ? '關閉' : '取消' }}</v-btn>
+        <v-btn v-if="!isTrialUser" color="primary" :loading="saving" @click="submit">儲存</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, nextTick, computed } from 'vue';
 import { useUserStore } from '../store/user'; // 假設 store 路徑
 import { updateUserProfile } from '../api'; // 假設 api 呼叫函數
 
@@ -77,6 +84,7 @@ const profileForm = ref(null); // 用於訪問 v-form 的 ref
 
 // --- 從 Pinia Store 獲取用戶信息 ---
 const userStore = useUserStore();
+const isTrialUser = computed(() => userStore.isTrialUser); // 試用帳號：唯讀
 
 // --- 同步 Prop 到本地狀態，並在打開時初始化表單 ---
 watch(() => props.dialog, (newVal) => {

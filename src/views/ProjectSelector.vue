@@ -91,6 +91,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { checkInToSystem } from '@/api'; // 引入驗證 API
+import { trackTrialEvent } from '@/utils/trialTracking'; // 試用留資事件追蹤
 import draggable from 'vuedraggable'; // 引入 draggable
 import IconButton from '@/components/IconButton.vue'; // 引入 IconButton
 import defaultProjectIcon from '@/assets/icons/property.png'; // 引入一個預設圖示
@@ -213,6 +214,9 @@ const enterProject = async (project) => {
     const result = await checkInToSystem(project.id, systemName, userKey, userName);
 
     if (result.status === 'success') {
+      // 試用帳號：記錄進入系統事件（非試用為 no-op）
+      if (userStore.isTrialUser) trackTrialEvent('enter_system', { system: systemName, projectId: project.id });
+
       // 4. 動態跳轉
       const routeName = targetRouteName.value;
       const paramKey = targetRouteParamKey.value;

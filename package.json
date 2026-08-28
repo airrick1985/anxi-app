@@ -100,6 +100,7 @@
     "baseline-browser-mapping": "^2.10.21",
     "cross-env": "^10.1.0",
     "gh-pages": "^6.3.0",
+    "puppeteer-core": "^25.9.0",
     "rollup-plugin-visualizer": "^7.0.1",
     "sass-embedded": "^1.93.2",
     "vite": "^6.3.1",

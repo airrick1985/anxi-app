@@ -41,6 +41,24 @@
         </v-card>
       </v-col>
 
+      <!-- 試用留資管理（超級管理員） -->
+      <v-col v-if="isSuperAdmin" cols="12" md="6" lg="4">
+        <v-card
+          class="tool-card"
+          @click="router.push({ name: 'TrialLeadsManager' })"
+        >
+          <v-card-item>
+            <div class="d-flex align-center gap-3">
+              <v-icon size="40" color="warning">mdi-account-star</v-icon>
+              <div>
+                <v-card-title class="pa-0">試用留資管理</v-card-title>
+                <p class="text-caption text-grey">留資名單、廣告 Email 群發、沙盒設定</p>
+              </div>
+            </div>
+          </v-card-item>
+        </v-card>
+      </v-col>
+
       <!-- 預留位置：數據恢復工具 -->
       <v-col cols="12" md="6" lg="4">
         <v-card
@@ -110,11 +128,16 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import ReportUploadChecker from '@/components/AdminTools/ReportUploadChecker.vue';
 
 const userStore = useUserStore();
+const router = useRouter();
 const selectedTool = ref(null);
+
+// 超級管理員才顯示「試用留資管理」卡片
+const isSuperAdmin = computed(() => userStore.currentUserRoles?.includes('超級管理員'));
 
 // 檢查是否有管理員權限
 const hasAdminAccess = computed(() => {

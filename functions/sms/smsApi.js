@@ -2,6 +2,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { getFirestore } = require("firebase-admin/firestore");
 const axios = require("axios");
+const { shouldBlockOutbound } = require("../utils/trialGuard"); // 試用建案對外通知守衛
 
 // 初始化 Admin SDK
 if (admin.apps.length === 0) {
@@ -21,7 +22,8 @@ module.exports = onCall({
     const functionName = "smsApi";
     
     // 1. 統一解構所有可能用到的參數
-    const { action, userKey, phoneNumber, message, subject, sendTime } = request.data;
+    // projectId 為選填：前端有帶時用於試用建案守衛（TrialGuard）
+    const { action, userKey, phoneNumber, message, subject, sendTime, projectId } = request.data;
 
     console.log(`[${functionName}] 觸發 - Action: ${action}, UserKey: ${userKey}`);
 
@@ -64,6 +66,11 @@ module.exports = onCall({
         else if (action === "sendSms") {
             if (!phoneNumber || !message) {
                 throw new HttpsError("invalid-argument", "缺少手機號碼或簡訊內容。");
+            }
+
+            // [TrialGuard] 試用建案不對外發送簡訊（視同成功，不扣點）
+            if (projectId && await shouldBlockOutbound(projectId, 'sms')) {
+                return { status: "success", credit: null, batchId: null, blocked: true };
             }
 
             // 組裝 EVERY8D 規格要求的 JSON Body

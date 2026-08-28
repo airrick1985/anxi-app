@@ -92,6 +92,11 @@
           </v-list>
         </v-menu>
 
+        <!-- ✅ 試用帳號：Home 頁「?」重新開始導覽（docs/SPEC_LandingTrialLeadsOnboarding.md §7.2） -->
+        <v-btn v-if="isTrialUser && route.name === 'Home'" icon title="功能導覽" class="me-2" @click="restartTour">
+          <v-icon>mdi-help-circle-outline</v-icon>
+        </v-btn>
+
         <v-btn icon @click="logoutDialog = true" title="登出">
           <v-icon color="error">mdi-logout</v-icon>
         </v-btn>
@@ -99,6 +104,19 @@
     </v-app-bar>
 
     <v-main>
+      <!-- ✅ 試用帳號提示條 -->
+      <v-banner
+        v-if="isTrialUser && showTrialBanner"
+        density="compact"
+        lines="one"
+        class="trial-banner"
+        icon="mdi-flask-outline"
+      >
+        <span class="trial-banner__text">測試環境：您正在使用共用測試帳號，系統不會發送真實 LINE／Email／簡訊通知，資料會定期重置。</span>
+        <template #actions>
+          <v-btn size="small" variant="text" icon="mdi-close" @click="dismissTrialBanner" />
+        </template>
+      </v-banner>
       <router-view
         @start-loading="loading = true"
         @stop-loading="loading = false"
@@ -244,6 +262,17 @@ const { showIdleWarning, remainingSeconds, keepAlive, performLogout } = useAutoL
 const userStore = useUserStore();
 const uiStore = useUiStore();
 const { user, unreadCount } = storeToRefs(userStore);
+const isTrialUser = computed(() => userStore.isTrialUser);
+
+// 試用提示條（sessionStorage 記住已關閉）
+const TRIAL_BANNER_KEY = 'anxi-trial-banner-dismissed';
+const showTrialBanner = ref(sessionStorage.getItem(TRIAL_BANNER_KEY) !== '1');
+const dismissTrialBanner = () => {
+  showTrialBanner.value = false;
+  try { sessionStorage.setItem(TRIAL_BANNER_KEY, '1'); } catch (e) { /* ignore */ }
+};
+// 重新開始導覽：以全域事件通知 Home.vue
+const restartTour = () => window.dispatchEvent(new CustomEvent('anxi:restart-tour'));
 const { showAppToolbar } = storeToRefs(uiStore); 
 
 const dialog = ref(false);
@@ -352,6 +381,15 @@ watch(user, (newUser, oldUser) => {
 </script>
 
 <style scoped>
+.trial-banner {
+  background: #2F6BFF !important;
+  color: #fff !important;
+}
+.trial-banner :deep(.v-banner__prepend .v-icon),
+.trial-banner :deep(.v-btn) { color: #fff !important; }
+.trial-banner :deep(.v-avatar) { background: transparent !important; }
+.trial-banner__text { font-size: .85rem; }
+
 /* 樣式部分保持不變 */
 .custom-app-bar {
   background-color: transparent !important;

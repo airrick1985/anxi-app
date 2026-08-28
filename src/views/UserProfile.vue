@@ -12,6 +12,10 @@
 
           <v-form ref="profileForm" @submit.prevent="handleSave">
             <v-card-text class="pa-6">
+              <!-- ✅ 試用帳號：個人資料唯讀 -->
+              <v-alert v-if="isTrialUser" type="info" variant="tonal" density="compact" class="mb-4" icon="mdi-flask-outline">
+                測試帳號無法修改個人資料與密碼。
+              </v-alert>
               <p class="text-h6 mb-4">基本資訊</p>
               <v-text-field
                 :model-value="userStore.user?.key"
@@ -29,6 +33,7 @@
                 density="compact"
                 :rules="[rules.required]"
                 class="mt-4"
+                :readonly="isTrialUser"
               ></v-text-field>
 
               <v-text-field
@@ -37,6 +42,7 @@
                 variant="outlined"
                 density="compact"
                 class="mt-4"
+                :readonly="isTrialUser"
               ></v-text-field>
 
               <v-divider class="my-6"></v-divider>
@@ -89,6 +95,7 @@
                 </v-expansion-panels>
                 <p v-else class="text-grey">未被授予任何系統權限</p>
               </div>
+              <template v-if="!isTrialUser">
               <v-divider class="my-6"></v-divider>
 
               <p class="text-h6 mb-4">修改密碼</p>              
@@ -135,11 +142,12 @@
                 @click:append-inner="showPassword.confirm = !showPassword.confirm"
                 :rules="[rules.passwordMatch]"
               ></v-text-field>
+              </template>
             </v-card-text>
 
             <v-divider></v-divider>
 
-            <v-card-actions class="pa-4">
+            <v-card-actions v-if="!isTrialUser" class="pa-4">
               <v-spacer></v-spacer>
               <v-btn
                 type="submit"
@@ -167,6 +175,7 @@ import { useUserStore } from '@/store/user';
 import { updateUserProfile, fetchAllSystemFunctions } from '@/api';
 
 const userStore = useUserStore();
+const isTrialUser = computed(() => userStore.isTrialUser);
 const profileForm = ref(null);
 const isLoading = ref(false);
 const snackbar = reactive({ show: false, color: 'success', text: '' });
@@ -235,6 +244,7 @@ const rules = {
 
 // 處理儲存
 const handleSave = async () => {
+  if (isTrialUser.value) return; // 試用帳號唯讀
   const { valid } = await profileForm.value.validate();
   if (!valid) {
     return;

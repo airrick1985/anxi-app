@@ -2,6 +2,7 @@
   <button 
     class="icon-button-group" 
     :style="groupStyle"
+    :data-tour="tourId || null"
     @click="$emit('click')"
   >
     <img :src="icon" :alt="`${text}圖標`" class="icon" />
@@ -26,6 +27,11 @@ const props = defineProps({
   scale: {
     type: Number,
     default: 1,
+  },
+  // 導覽錨點（data-tour），由 Home 傳入 'home-' + button.id
+  tourId: {
+    type: String,
+    default: '',
   }
 });
 

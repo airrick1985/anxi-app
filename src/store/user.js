@@ -44,6 +44,8 @@ export const useUserStore = defineStore('user', {
           // ✅ 修改：使用上面轉換好的 permissions 物件，而不是舊的邏輯
           permissions: permissions,
           preferences: userData.preferences || {},
+          // ✅ 試用帳號旗標（handleLogin 回傳 users/{key}.isTrial）
+          isTrial: userData.isTrial === true,
         };
         this.sessionId = sessionId;
         this.detailedPermissions = Array.isArray(userData.detailedPermissions)
@@ -130,6 +132,7 @@ export const useUserStore = defineStore('user', {
           // ✅ 將完整的權限資料寫入 State
           permissions: finalPermissions,
           preferences: preferences || {},
+          isTrial: userData.isTrial === true,
         };
 
         // 更新 detailedPermissions 供 UI 使用
@@ -184,6 +187,7 @@ export const useUserStore = defineStore('user', {
           roles: userData.roles || [],
           permissions: finalPermissions,
           preferences: preferences || {},
+          isTrial: userData.isTrial === true,
         };
 
         this.detailedPermissions = this.getDetailedPermissions(finalPermissions);
@@ -345,6 +349,8 @@ export const useUserStore = defineStore('user', {
 
   getters: {
     isLoggedIn: (state) => !!state.user,
+    // ✅ 試用帳號（TESTA）：控制導覽、個人資料唯讀、隱藏管理功能等
+    isTrialUser: (state) => state.user?.isTrial === true,
     currentUserRoles: (state) => state.user?.roles || [],
     currentUserPreferences: (state) => state.user?.preferences || {},
 

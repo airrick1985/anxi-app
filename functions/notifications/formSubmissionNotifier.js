@@ -8,6 +8,7 @@ const axios = require('axios');
 const nodemailer = require('nodemailer');
 const { Firestore, FieldPath } = require('@google-cloud/firestore');
 const { normalizeSalespersons } = require('../utils/salesperson');
+const { shouldBlockOutbound } = require('../utils/trialGuard'); // 試用建案對外通知守衛
 
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
 const PUBLIC_HOST = 'https://anxismart.com';
@@ -264,6 +265,11 @@ async function sendFormSubmissionNotifications(params) {
   } = params;
 
   const db = dbInstance || new Firestore({ databaseId: 'anxi-app' });
+
+  // [TrialGuard] 試用建案不對外發送 LINE／Email（視同成功，回傳格式相容）
+  if (await shouldBlockOutbound(projectId || projectName, 'line/email')) {
+    return { sent: 0, failed: 0, attempts: [], recipients: [], blocked: true };
+  }
 
   const recipients = await resolveRecipients({
     db, projectId, unitId: unitId || null,

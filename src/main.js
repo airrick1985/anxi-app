@@ -8,6 +8,7 @@ import VueAxios from 'vue-axios'
 import '@mdi/font/css/materialdesignicons.css' // 確保 MDI 圖標 CSS 被導入
 import VueDraggableResizable from 'vue-draggable-resizable'
 import 'vue-draggable-resizable/style.css'
+import { vReveal } from './directives/vReveal' // 首頁捲動「模糊→清晰」特效指令
 
 // AG Grid 模組註冊已移至 HouseholdGrid.vue（唯一消費者），首頁不再被迫載入 ag-grid 整包
 
@@ -65,6 +66,7 @@ const app = createApp(App) // 先創建 app 實例
 app
   .component('font-awesome-icon', FontAwesomeIcon) // 全局註冊組件
   .component('vue-draggable-resizable', VueDraggableResizable)
+  .directive('reveal', vReveal)
   .use(router)
   .use(vuetify)
   .use(VueAxios, axios)

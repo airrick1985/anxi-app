@@ -2,6 +2,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const axios = require("axios");
+const { shouldBlockOutbound } = require("../utils/trialGuard"); // 試用建案對外通知守衛
 
 if (admin.apps.length === 0) {
     admin.initializeApp();
@@ -37,6 +38,9 @@ module.exports = onSchedule({
             const config = projectData.smsReminder;
 
             if (!config?.enabled || !config?.template) continue;
+
+            // [TrialGuard] 試用建案不對外發送簡訊提醒
+            if (await shouldBlockOutbound(projectDoc.id, 'sms')) continue;
 
             let startTime, endTime;
             const strategy = config.sendStrategy || "hours_before";

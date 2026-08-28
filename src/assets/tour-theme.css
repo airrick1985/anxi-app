@@ -1,0 +1,81 @@
+/* 導覽（shepherd.js）ANXI 主題 — docs/SPEC_LandingTrialLeadsOnboarding.md §7.1 */
+.shepherd-modal-overlay-container.shepherd-modal-is-visible {
+  opacity: 0.5;
+}
+
+.shepherd-element.anxi-tour {
+  max-width: 360px;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  font-family: 'Inter', 'Noto Sans TC', system-ui, -apple-system, sans-serif;
+}
+
+.anxi-tour .shepherd-content {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.anxi-tour .shepherd-header {
+  background: #fff;
+  padding: 18px 20px 0;
+}
+
+.anxi-tour .shepherd-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.anxi-tour .shepherd-cancel-icon {
+  color: #9CA3AF;
+  font-size: 1.6rem;
+}
+
+.anxi-tour .shepherd-text {
+  padding: 10px 20px 4px;
+  color: #4B5563;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.anxi-tour .anxi-tour__progress {
+  margin-top: 10px;
+  font-size: 0.75rem;
+  color: #9CA3AF;
+  letter-spacing: 0.04em;
+}
+
+.anxi-tour .shepherd-footer {
+  padding: 12px 20px 18px;
+  gap: 8px;
+}
+
+.anxi-tour .anxi-tour__btn {
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.anxi-tour .anxi-tour__btn--primary {
+  background: #2F6BFF;
+  color: #fff;
+}
+.anxi-tour .anxi-tour__btn--primary:hover {
+  background: #1F4FD1;
+}
+
+.anxi-tour .anxi-tour__btn--ghost {
+  background: transparent;
+  color: #6B7280;
+}
+.anxi-tour .anxi-tour__btn--ghost:hover {
+  background: #F3F4F6;
+  color: #111827;
+}
+
+.anxi-tour .shepherd-arrow::before {
+  background: #fff;
+}

@@ -41,6 +41,31 @@ const routes = [
   },
 
   { path: '/login', name: 'Login', component: () => import('@/views/Login.vue') }, // ✅
+
+  // ✅ 開始試用（留資 → 自動以試用帳號登入；docs/SPEC_LandingTrialLeadsOnboarding.md §3）
+  {
+    path: '/trial',
+    name: 'TrialSignup',
+    component: () => import('@/views/TrialSignup.vue'),
+    meta: {
+      requiresAuth: false,
+      layout: PublicLayout,
+      title: 'ANXI 安熙智慧 - 開始試用'
+    }
+  },
+
+  // ✅ 試用留資管理（超級管理員；docs/SPEC_LandingTrialLeadsOnboarding.md §5）
+  {
+    path: '/admin/trial-leads',
+    name: 'TrialLeadsManager',
+    component: () => import('@/views/admin/TrialLeadsManager.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredRoles: ['超級管理員'],
+      layout: DefaultLayout,
+      title: '試用留資管理'
+    }
+  },
   { path: '/home', name: 'Home', component: () => import('@/views/Home.vue'), meta: { requiresAuth: true } }, // ✅
 
 
@@ -939,7 +964,7 @@ router.beforeEach(async (to, from, next) => {
 
   // --- ✅ 2. [新增] 針對「首頁」的已登入自動跳轉 ---
   // 如果使用者要去首頁 (/)，且已經登入，直接送去 Home
-  if (to.path === '/' && isLoggedIn) {
+  if ((to.path === '/' || to.name === 'TrialSignup') && isLoggedIn) {
     return next({ name: 'Home' });
   }
 
