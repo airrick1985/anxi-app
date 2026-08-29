@@ -66,6 +66,18 @@ const routes = [
       title: '試用留資管理'
     }
   },
+  // ✅ 客戶開發（超級管理員；docs/SPEC_CustomerProspecting.md §3.2）
+  {
+    path: '/admin/prospects',
+    name: 'ProspectManager',
+    component: () => import('@/views/admin/ProspectManager.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredRoles: ['超級管理員'],
+      layout: DefaultLayout,
+      title: '客戶開發'
+    }
+  },
   { path: '/home', name: 'Home', component: () => import('@/views/Home.vue'), meta: { requiresAuth: true } }, // ✅
 
 

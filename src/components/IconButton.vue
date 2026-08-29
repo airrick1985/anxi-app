@@ -7,6 +7,7 @@
   >
     <img :src="icon" :alt="`${text}圖標`" class="icon" />
     <span class="text">{{ text }}</span>
+    <span v-if="badge > 0" class="badge">{{ badge > 99 ? '99+' : badge }}</span>
   </button>
 </template>
 
@@ -32,6 +33,11 @@ const props = defineProps({
   tourId: {
     type: String,
     default: '',
+  },
+  // 右上角紅色數字徽章（0 或未傳不顯示）
+  badge: {
+    type: Number,
+    default: 0,
   }
 });
 
@@ -56,6 +62,7 @@ const groupStyle = computed(() => ({
 <style scoped>
 /* 4. 將 Home.vue 的樣式遷移過來，並使用 CSS 變數 */
 .icon-button-group {
+  position: relative;
   /* 使用動態計算的尺寸 */
   width: var(--group-size);
   height: var(--group-size);
@@ -95,6 +102,22 @@ const groupStyle = computed(() => ({
   filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.2));
   opacity: 0.8;
   transition: all 0.3s ease;
+}
+
+.badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #E53935;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .text {

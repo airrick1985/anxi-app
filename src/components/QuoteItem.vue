@@ -26,7 +26,7 @@
       </div>
 
    <v-list lines="one" class="bg-transparent">
-    <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><div class="d-flex flex-column align-end"><div class="d-flex align-center gap-2"><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong><v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'" class="ml-1">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip><v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn><v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn></div><div v-if="showTerraceSplit" class="terrace-split">房屋 {{ formatNumber(item.unitDetails.price_list_house_only) }} <span class="terrace-split-plus">＋</span> 露臺 {{ formatNumber(item.unitDetails.price_list_terrace) }} <span class="terrace-split-area">({{ formatNumber(item.unitDetails.area_terrace_ping, 2) }} 坪)</span></div></div></template></v-list-item>
+    <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><div class="d-flex flex-column align-end"><div class="d-flex align-center gap-2"><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong><v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'" class="ml-1">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip><v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" :disabled="isNegotiationDisabled" @click="openNegotiationDialog" :title="negotiationDisabledHint || '議價調整'"></v-btn><v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn></div><div v-if="showTerraceSplit" class="terrace-split">房屋 {{ formatNumber(item.unitDetails.price_list_house_only) }} <span class="terrace-split-plus">＋</span> 露臺 {{ formatNumber(item.unitDetails.price_list_terrace) }} <span class="terrace-split-area">({{ formatNumber(item.unitDetails.area_terrace_ping, 2) }} 坪)</span></div></div></template></v-list-item>
     <v-list-item class="pl-0"><v-list-item-title>房屋單價</v-list-item-title><template v-slot:append><div class="d-flex flex-column align-end"><strong>{{ displayUnitPrice }} 萬/坪</strong><div v-if="showTerraceUnitSplit" class="terrace-split"><span class="terrace-split-tag">露臺</span> {{ displayTerraceUnitPrice }} 萬/坪</div></div></template></v-list-item>
     <v-divider class="my-2"></v-divider>
     
@@ -170,7 +170,7 @@
       <div class="d-flex align-center justify-center gap-2">
         <span>{{ displayHousePrice }} 萬</span>
         <v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip>
-        <v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" @click="openNegotiationDialog" title="議價調整"></v-btn>
+        <v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" :disabled="isNegotiationDisabled" @click="openNegotiationDialog" :title="negotiationDisabledHint || '議價調整'"></v-btn>
         <v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn>
       </div>
       <!-- ✅ [新增] 露臺戶表價拆分：房屋(不含露臺) ＋ 露臺 -->
@@ -775,7 +775,7 @@
 
             <!-- 第三欄：直接輸入總價 -->
             <div class="mb-4">
-              <label class="text-caption text-grey-darken-1 d-block mb-2">直接輸入總價 (萬)</label>
+              <label class="text-caption text-grey-darken-1 d-block mb-2">直接輸入房屋總價 (不含車位，萬)</label>
               <v-text-field
                 v-model="negotiationTotalPriceValue"
                 type="number"
@@ -783,7 +783,7 @@
                 placeholder="例如: 3000"
                 variant="outlined"
                 density="compact"
-                hint="直接以此金額作為房屋總價，與上方調整欄位互斥"
+                hint="直接以此金額作為「房屋總價（不含車位）」，與上方調整欄位互斥"
                 persistent-hint
                 @update:model-value="onNegotiationTotalPriceInput"
               ></v-text-field>
@@ -798,8 +798,8 @@
             <v-card variant="outlined" class="pa-4 bg-grey-lighten-5">
               <!-- 原房屋總價 -->
               <div class="d-flex justify-space-between align-center mb-3">
-                <span class="text-grey-darken-2">原房屋總價</span>
-                <span class="font-weight-bold">{{ quoteStore.getRawDisplayHousePrice(props.item.internalId) }} 萬</span>
+                <span class="text-grey-darken-2">原房屋總價（表價）</span>
+                <span class="font-weight-bold">{{ negotiationBasePrice }} 萬</span>
               </div>
               <v-divider class="my-2"></v-divider>
 
@@ -835,8 +835,8 @@
               <!-- 調整合計 -->
               <div class="d-flex justify-space-between align-center mb-3">
                 <span class="text-grey-darken-2 font-weight-bold">調整合計</span>
-                <span :class="(negotiatedPrice - quoteStore.getRawDisplayHousePrice(props.item.internalId)) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
-                  {{ (negotiatedPrice - quoteStore.getRawDisplayHousePrice(props.item.internalId)) > 0 ? '+' : '' }}{{ negotiatedPrice - quoteStore.getRawDisplayHousePrice(props.item.internalId) }} 萬
+                <span :class="(negotiatedPrice - negotiationBasePrice) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
+                  {{ (negotiatedPrice - negotiationBasePrice) > 0 ? '+' : '' }}{{ negotiatedPrice - negotiationBasePrice }} 萬
                 </span>
               </div>
               <v-divider class="my-2"></v-divider>
@@ -846,6 +846,26 @@
                 <span class="text-h6 font-weight-bold">新房屋總價</span>
                 <span class="text-h5 font-weight-bold text-primary">{{ negotiatedPrice }} 萬</span>
               </div>
+              <!-- ✅ [新增] 含車位總價：避免把「房屋總價」誤認為含車位總價 -->
+              <div v-if="!item.usePackageDeal" class="d-flex justify-space-between align-center mt-2">
+                <span class="text-caption text-grey-darken-1">含車位總價（車位 {{ formatNumber(quoteStore.getParkingTotalPrice(props.item.internalId)) }} 萬）</span>
+                <span class="text-subtitle-1 font-weight-bold">{{ formatNumber(negotiatedPrice + quoteStore.getParkingTotalPrice(props.item.internalId)) }} 萬</span>
+              </div>
+              <!-- ✅ 配套模式：總價固定為配套價，折讓自配套金額扣除 -->
+              <template v-else>
+                <v-divider class="my-2"></v-divider>
+                <div class="d-flex justify-space-between align-center">
+                  <span class="text-caption text-grey-darken-1">配套價（總價，不變）</span>
+                  <span class="font-weight-bold">{{ formatNumber(item.unitDetails.price_package_deal) }} 萬</span>
+                </div>
+                <div class="d-flex justify-space-between align-center mt-1">
+                  <span class="text-caption text-grey-darken-1">配套金額（原 {{ formatNumber(quoteStore.getListPackagePrice(props.item.internalId)) }} 萬）</span>
+                  <span class="text-subtitle-1 font-weight-bold" :class="negotiationPreviewPackagePrice < 0 ? 'text-error' : 'text-success'">
+                    {{ formatNumber(negotiationPreviewPackagePrice) }} 萬
+                  </span>
+                </div>
+                <div v-if="negotiationPreviewPackagePrice < 0" class="text-caption text-error mt-1">折讓超過配套金額，無法儲存</div>
+              </template>
             </v-card>
           </div>
         </v-card-text>
@@ -876,7 +896,7 @@
 
 <script setup>
 import { ref, computed, defineProps, defineEmits, onMounted, watch } from 'vue'; // ★★★ 1. 引入 watch ★★★
-import { useQuoteStore } from '@/store/quoteStore';
+import { useQuoteStore, applyNegotiation, deriveNegotiationMode } from '@/store/quoteStore';
 import { useToast } from 'vue-toastification';
 import { useDisplay } from 'vuetify';
 import PaymentDetails from './PaymentDetails.vue';
@@ -1062,9 +1082,23 @@ const usePackageDealModel = computed({
   set: (value) => {
     // ✅ [新增] 超過配套總價上限的戶別禁止勾選配套
     if (value === true && !isPackageDealAllowed.value) return;
+    // ✅ 議價以「表價」為基準，配套／非配套皆適用；勾選配套時若折讓已超過配套金額 → 阻止並提示
+    if (value === true && hasNegotiation.value) {
+      const listPkg = (quoteStore.getListHousePrice(props.item.internalId) + quoteStore.getParkingTotalPrice(props.item.internalId))
+        - (Number(props.item.unitDetails?.price_package_deal) || 0);
+      const newPkg = listPkg + quoteStore.getNegotiationDelta(props.item.internalId);
+      if (newPkg < 0) {
+        toast.warning(`${props.item.unitId} 目前議價折讓已超過配套金額（${formatNumber(listPkg)} 萬），請先減少折讓再勾選配套`);
+        return;
+      }
+    }
     quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', value);
   }
 });
+
+// 議價按鈕：配套／非配套皆可議價（折讓以表價為基準；配套模式自配套金額扣除）
+const isNegotiationDisabled = computed(() => false);
+const negotiationDisabledHint = computed(() => '');
 
 // ✅ [新增] 配套總價門檻（萬，由銷控權限人員於報價單設定頁設定；null = 不限制）
 const packagePriceThreshold = computed(() => {
@@ -1093,6 +1127,8 @@ const packageDisabledHint = computed(() => {
 watch(isPackageDealAllowed, (allowed) => {
   if (!allowed && props.item.usePackageDeal) {
     quoteStore.updateUnitField(props.item.internalId, 'usePackageDeal', false);
+    // ✅ [A3] 不再靜默取消，明確告知使用者
+    toast.warning(`${props.item.unitId} 總價未達配套門檻，已自動取消配套`);
   }
 }, { immediate: true });
 
@@ -1642,11 +1678,16 @@ const displayUnitPrice = computed(() => formatNumber(quoteStore.getDisplayUnitPr
 // ✅ [新增] 露臺單價（僅露臺戶顯示）
 const displayTerraceUnitPrice = computed(() => formatNumber(quoteStore.getTerraceUnitPrice(props.item.internalId), 2));
 
-// ✅ [新增] 判斷是否有議價調整
-const hasNegotiation = computed(() => {
-  const state = props.item.negotiationState;
-  return state?.originalPrice !== null && state?.originalPrice !== undefined;
-});
+// ✅ [重構] 判斷是否有議價調整（由 store 依調整參數判斷）
+const hasNegotiation = computed(() => quoteStore.hasNegotiation(props.item.internalId));
+
+// ✅ [重構] 議價基準 = 房屋總表價（unitDetails 唯讀，不再被議價改寫）
+const negotiationBasePrice = computed(() => Math.round(quoteStore.getListHousePrice(props.item.internalId)));
+
+// 配套模式議價預覽：配套金額 = 原配套金額（表價合計 − 配套價）＋ 折讓（負數）
+const negotiationPreviewPackagePrice = computed(() =>
+  quoteStore.getListPackagePrice(props.item.internalId) + (negotiatedPrice.value - negotiationBasePrice.value)
+);
 
 // ✅ [新增] 露臺戶「總價」拆分顯示條件
 // 議價或配套會使總價不再等於房屋表價+露臺表價，續顯示拆分會與總價矛盾，故此時隱藏
@@ -1660,12 +1701,8 @@ const showTerraceSplit = computed(() => {
 // 單價已改為房屋、露臺各自獨立換算，議價僅影響房屋單價，故露臺戶一律顯示
 const showTerraceUnitSplit = computed(() => quoteStore.hasTerraceSplit(props.item.internalId));
 
-// ✅ [新增] 計算調整差額：當前價格 - 原始價格
-const negotiationDelta = computed(() => {
-  if (!hasNegotiation.value) return 0;
-  const current = quoteStore.getRawDisplayHousePrice(props.item.internalId);
-  return current - (props.item.negotiationState?.originalPrice ?? current);
-});
+// ✅ [重構] 計算調整差額：議價後房屋總價 − 表價
+const negotiationDelta = computed(() => quoteStore.getNegotiationDelta(props.item.internalId));
 
 // ★★★ 3. 新增：計算配套價子項目的 computed 屬性 ★★★
 const calculatedPackageItems = computed(() => {
@@ -1816,9 +1853,8 @@ function openNegotiationDialog() {
   negotiationTotalPriceValue.value = savedState?.totalPriceValue || '';
   negotiationActiveMode.value = savedState?.activeMode || '';
 
-  // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
-  const rawPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
-  negotiatedPrice.value = rawPrice;
+  // 預覽初值：目前議價後房屋總價（無議價即為表價）
+  negotiatedPrice.value = quoteStore.getNegotiatedHousePrice(props.item.internalId);
 
   // 若有暫存數值，重新計算預覽
   if (negotiationPerTsuboValue.value || negotiationDirectAmountValue.value || negotiationTotalPriceValue.value) {
@@ -1847,42 +1883,20 @@ function onNegotiationTotalPriceInput() {
   calculateNegotiatedPrice();
 }
 
+// ✅ [重構] 預覽價格 = 以「表價」為基準套用目前輸入的調整參數（與 store getter 同一套公式）
 function calculateNegotiatedPrice() {
-  const currentPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
-  const area = Number(props.item.unitDetails.area_house_ping) || 0;
-  const hasPerTsuboValue = negotiationPerTsuboValue.value !== '';
-  const hasDirectAmountValue = negotiationDirectAmountValue.value !== '';
-  const hasTotalPriceValue = negotiationTotalPriceValue.value !== '';
-
-  // 直接輸入總價 → 以輸入金額為準
-  if (hasTotalPriceValue) {
-    negotiatedPrice.value = Math.round(Number(negotiationTotalPriceValue.value) || 0);
-    return;
-  }
-
-  // ✅ [優化] 欄位都空 → 顯示原始價格（恢復狀態）
-  if (!hasPerTsuboValue && !hasDirectAmountValue) {
-    const originalPrice = props.item.negotiationState?.originalPrice;
-    negotiatedPrice.value = (originalPrice !== null && originalPrice !== undefined)
-      ? Math.round(originalPrice)
-      : Math.round(currentPrice);
-    return;
-  }
-
-  // 兩種方式並存、累加計算
-  // 每坪調整
-  const perTsuboAdj = hasPerTsuboValue
-    ? Math.round((Number(negotiationPerTsuboValue.value) || 0) * area)
-    : 0;
-
-  // 直接調整
-  const directAdj = hasDirectAmountValue
-    ? Math.round(Number(negotiationDirectAmountValue.value) || 0)
-    : 0;
-
-  // 合計調整 = 每坪 + 直接（並存累加）
-  const totalAdjustment = perTsuboAdj + directAdj;
-  negotiatedPrice.value = Math.round(currentPrice + totalAdjustment);
+  const draftState = {
+    activeMode: '',
+    perTsuboValue: negotiationPerTsuboValue.value,
+    directAmountValue: negotiationDirectAmountValue.value,
+    totalPriceValue: negotiationTotalPriceValue.value
+  };
+  draftState.activeMode = deriveNegotiationMode(draftState);
+  negotiatedPrice.value = applyNegotiation(
+    quoteStore.getListHousePrice(props.item.internalId),
+    props.item.unitDetails.area_house_ping,
+    draftState
+  );
 }
 
 function saveNegotiatedPrice() {
@@ -1890,44 +1904,40 @@ function saveNegotiatedPrice() {
   const hasPerTsubo = negotiationPerTsuboValue.value !== '';
   const hasTotalPrice = negotiationTotalPriceValue.value !== '';
 
-  // ✅ [新增] 欄位都空 → 視同取消調整，恢復原始價格
+  // ✅ [新增] 欄位都空 → 視同取消調整，恢復表價
   if (!hasDirectAmount && !hasPerTsubo && !hasTotalPrice) {
     quoteStore.resetNegotiationPrice(props.item.internalId);
     isNegotiationDialogVisible.value = false;
     return;
   }
 
-  // 使用 getRawDisplayHousePrice 獲取未格式化的原始價格
-  const currentPrice = quoteStore.getRawDisplayHousePrice(props.item.internalId);
+  // 與「表價」比較：加價需二次確認
+  const basePrice = negotiationBasePrice.value;
   const newPrice = negotiatedPrice.value;
-  const priceDifference = newPrice - currentPrice;
+  const priceDifference = newPrice - basePrice;
 
-  // 如果是加價，要求確認
+  // 配套模式：折讓自配套金額扣除，不得使配套金額變為負數
+  if (props.item.usePackageDeal && negotiationPreviewPackagePrice.value < 0) {
+    toast.warning(`折讓 ${formatNumber(-priceDifference)} 萬超過配套金額 ${formatNumber(quoteStore.getListPackagePrice(props.item.internalId))} 萬，請減少折讓或取消配套`);
+    return;
+  }
+
   if (priceDifference > 0) {
     const confirmed = confirm(
-      `此操作將加價 ${priceDifference} 萬元，\n原價: ${currentPrice} 萬 → 新價: ${newPrice} 萬\n\n確定要加價嗎？`
+      `此操作將加價 ${priceDifference} 萬元，\n表價: ${basePrice} 萬 → 新價: ${newPrice} 萬\n\n確定要加價嗎？`
     );
     if (!confirmed) {
       return;
     }
   }
 
-  // 首次調整時記錄原始價格
-  const existingState = props.item.negotiationState;
-  const originalPrice = existingState?.originalPrice ?? currentPrice;
-
-  // 保存新價格
-  quoteStore.updateHousePrice(props.item.internalId, newPrice);
-
-  // 保存調整狀態：原始價格、調整方式、各調整值
-  // activeMode: 'perTsubo' | 'directAmount' | 'totalPrice' | 'both' | ''
+  // ✅ [重構] 只保存調整參數；議價後價格由 store 依表價推導（表價更新時自動重算）
   const activeMode = hasTotalPrice ? 'totalPrice'
     : (hasPerTsubo && hasDirectAmount) ? 'both'
     : hasDirectAmount ? 'directAmount'
     : hasPerTsubo ? 'perTsubo' : '';
 
   quoteStore.updateNegotiationState(props.item.internalId, {
-    originalPrice,
     activeMode,
     perTsuboValue: negotiationPerTsuboValue.value,
     directAmountValue: negotiationDirectAmountValue.value,
@@ -1957,41 +1967,26 @@ const isPlanPickerVisible = ref(false);
 // 已套用方案快照（舊 persist 資料無此欄位 → 空陣列）
 const appliedPlansList = computed(() => props.item.appliedPlans || []);
 
-// 依方案 adjustments 計算議價結果（基準 = 原始價格；已有調整時取 originalPrice）
+// ✅ [重構] 依方案 adjustments 計算議價結果（基準一律 = 表價）
 function computePlanNegotiation(adjustments) {
-  const area = Number(props.item.unitDetails.area_house_ping) || 0;
   const find = (mode) => (adjustments || []).find(a => a.mode === mode);
   const per = find('perTsubo');
   const dir = find('directAmount');
   const tot = find('totalPrice');
 
-  const existingOriginal = props.item.negotiationState?.originalPrice;
-  const basePrice = (existingOriginal !== null && existingOriginal !== undefined)
-    ? existingOriginal
-    : quoteStore.getRawDisplayHousePrice(props.item.internalId);
-
-  let newPrice;
-  if (tot) {
-    newPrice = Math.round(Number(tot.value) || 0);
-  } else {
-    const perAdj = per ? Math.round((Number(per.value) || 0) * area) : 0;
-    const dirAdj = dir ? Math.round(Number(dir.value) || 0) : 0;
-    newPrice = Math.round(basePrice + perAdj + dirAdj);
-  }
-
-  const activeMode = tot ? 'totalPrice'
-    : (per && dir) ? 'both'
-    : dir ? 'directAmount'
-    : per ? 'perTsubo' : '';
-
-  return {
+  const basePrice = negotiationBasePrice.value;
+  const draftState = {
     perTsuboValue: per ? String(per.value) : '',
     directAmountValue: dir ? String(dir.value) : '',
     totalPriceValue: tot ? String(tot.value) : '',
-    activeMode,
-    basePrice,
-    newPrice,
+    activeMode: tot ? 'totalPrice'
+      : (per && dir) ? 'both'
+      : dir ? 'directAmount'
+      : per ? 'perTsubo' : ''
   };
+  const newPrice = applyNegotiation(basePrice, props.item.unitDetails.area_house_ping, draftState);
+
+  return { ...draftState, basePrice, newPrice };
 }
 
 // 套用勾選的方案（selections: [{ plan, selectedPaymentTemplateId }]，picker 已保證衝突規則）
@@ -2004,6 +1999,14 @@ function applyPlans(selections) {
   let negResult = null;
   if (negSelection) {
     negResult = computePlanNegotiation(negSelection.plan.adjustments);
+    // 配套模式：折讓不得超過配套金額（配套金額 = 議價後房價＋車位 − 配套價）
+    if (props.item.usePackageDeal) {
+      const newPkg = quoteStore.getListPackagePrice(internalId) + (negResult.newPrice - negResult.basePrice);
+      if (newPkg < 0) {
+        toast.warning(`方案「${negSelection.plan.name}」的折讓超過 ${props.item.unitId} 的配套金額（${formatNumber(quoteStore.getListPackagePrice(internalId))} 萬），無法套用`);
+        return;
+      }
+    }
     if (negResult.newPrice > negResult.basePrice) {
       const confirmed = confirm(
         `套用方案「${negSelection.plan.name}」將加價 ${negResult.newPrice - negResult.basePrice} 萬元，\n` +
@@ -2028,11 +2031,9 @@ function applyPlans(selections) {
     resetManualTemplate();
   }
 
-  // 3) 議價調整落地
+  // 3) 議價調整落地（只存參數，價格由 store 推導）
   if (negResult) {
-    quoteStore.updateHousePrice(internalId, negResult.newPrice);
     quoteStore.updateNegotiationState(internalId, {
-      originalPrice: negResult.basePrice,
       activeMode: negResult.activeMode,
       perTsuboValue: negResult.perTsuboValue,
       directAmountValue: negResult.directAmountValue,
@@ -2107,7 +2108,7 @@ function isPlanModified(appliedPlan) {
     const state = props.item.negotiationState || {};
     const snap = appliedPlan.negotiation || {};
     // 議價已被清除（恢復原價）也視為已修改
-    if (state.originalPrice === null || state.originalPrice === undefined) return true;
+    if (!hasNegotiation.value) return true;
     if (!sameNumeric(state.perTsuboValue, snap.perTsuboValue)) return true;
     if (!sameNumeric(state.directAmountValue, snap.directAmountValue)) return true;
     if (!sameNumeric(state.totalPriceValue, snap.totalPriceValue)) return true;

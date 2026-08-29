@@ -1110,10 +1110,8 @@ function addQuoteTable() {
 // startTop 可選：未提供時預設緊貼表格底部（向後相容）
 function addNegotiationNotes(tableGroup, startTop = null) {
   // 1. 過濾有議價調整的 items
-  const adjustedItems = quoteStore.items.filter(item =>
-    item.negotiationState?.originalPrice !== null &&
-    item.negotiationState?.originalPrice !== undefined
-  );
+  // ✅ [重構] 以 store 判斷是否有議價；原價 = 表價、現價 = 議價後房屋總價
+  const adjustedItems = quoteStore.items.filter(item => quoteStore.hasNegotiation(item.internalId));
 
   // 2. 無調整 → 不渲染
   if (adjustedItems.length === 0) return null;
@@ -1121,8 +1119,8 @@ function addNegotiationNotes(tableGroup, startTop = null) {
   // 3. 建立文字內容
   const lines = ['★ 議價調整提醒：'];
   adjustedItems.forEach(item => {
-    const originalPrice = item.negotiationState.originalPrice;
-    const currentPrice = Number(item.unitDetails.price_list_house_total) || 0;
+    const originalPrice = quoteStore.getListHousePrice(item.internalId);
+    const currentPrice = quoteStore.getNegotiatedHousePrice(item.internalId);
     const totalDelta = currentPrice - originalPrice;
     const area = Number(item.unitDetails.area_house_ping) || 1;
     const perTsuboDelta = totalDelta / area;

@@ -20,6 +20,7 @@
           :text="button.text"
           :scale="iconScale"
           :tour-id="'home-' + button.id"
+          :badge="button.id === 'prospecting' ? prospectDueCount : 0"
           @click="handleNavigation(button)"
         />
       </template>
@@ -49,6 +50,7 @@ import draggable from 'vuedraggable';
 import { appVersion as versionString } from '@/version';
 import { useOnboardingTour } from '@/composables/useOnboardingTour';
 import { trackTrialEvent } from '@/utils/trialTracking';
+import { useProspectStore } from '@/store/prospectStore';
 
 // ✓ 導入新元件
 import IconButton from '@/components/IconButton.vue'; 
@@ -78,6 +80,10 @@ const route = useRoute();
 const userStore = useUserStore();
 const backgroundImageUrl = ref(myBackgroundImage);
 const isTrialUser = computed(() => userStore.isTrialUser);
+
+// ✅ 客戶開發：今日待追蹤徽章（僅超管載入；docs/SPEC_CustomerProspecting.md §3.1）
+const prospectStore = useProspectStore();
+const prospectDueCount = computed(() => prospectStore.dueTodayCount);
 
 //  新增 footer 所需的響應式變數
 const appVersion = ref(versionString);
@@ -182,6 +188,16 @@ const allButtons = ref([
     nav: { name: 'TrialLeadsManager' }
   },
 
+  // ✅ 客戶開發（僅超級管理員；docs/SPEC_CustomerProspecting.md §3.1）
+  {
+    id: 'prospecting',
+    text: '客戶開發',
+    icon: customerIcon,
+    permissionType: 'system',
+    permissionArgs: ['超級管理員'],
+    nav: { name: 'ProspectManager' }
+  },
+
   // 預約頁功能測試（僅超級管理員）
   {
     id: 'bookingTest',
@@ -198,7 +214,7 @@ const visibleButtons = ref([]);
 // ✅ 試用帳號隱藏的管理類功能（docs/SPEC_LandingTrialLeadsOnboarding.md §3.7）
 const HIDE_FOR_TRIAL = new Set([
   'backupManagement', 'subscriptionManagement', 'UserManagement', 'subscriptionStatus',
-  'sendMessage', 'smsMonitor', 'adminToolsCenter', 'bookingTest', 'trialLeads',
+  'sendMessage', 'smsMonitor', 'adminToolsCenter', 'bookingTest', 'trialLeads', 'prospecting',
 ]);
 
 // ✅ Home 導覽文案（僅試用帳號；步驟由 visibleButtons 產生，沒權限的功能自然不出現）
@@ -322,6 +338,11 @@ onMounted(() => {
         return false;
     }
   });
+
+  // ✅ 客戶開發徽章：超管才載入
+  if (visibleButtons.value.some(b => b.id === 'prospecting')) {
+    prospectStore.load().catch((e) => console.warn('[Home] 載入客戶開發待追蹤數失敗', e));
+  }
 
   // ✅ 試用帳號導覽：?tour=1 或首次（此瀏覽器）自動啟動；「?」可重看
   if (isTrialUser.value) {

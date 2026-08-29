@@ -141,6 +141,20 @@
       </template>
     </v-tooltip>
 
+    <!-- ✅ 報價核准設定（主管清單＋議價授權額度）：僅銷控管理權限人員可見 -->
+    <v-tooltip v-if="canEditQuoteRemark" text="報價核准設定（主管清單／議價授權額度）" location="bottom">
+      <template v-slot:activator="{ props }">
+        <v-btn
+          v-bind="props"
+          icon="mdi-account-check"
+          color="blue-grey-darken-2"
+          variant="tonal"
+          :size="smAndDown ? 'small' : 'default'"
+          @click="isApprovalSettingDialogVisible = true"
+        ></v-btn>
+      </template>
+    </v-tooltip>
+
     <!-- ✅ 建案簡介網址（報價單 QR Code）：僅銷控管理權限人員可見 -->
     <v-tooltip v-if="canEditQuoteRemark" text="建案簡介網址（報價單 QR Code）" location="bottom">
       <template v-slot:activator="{ props }">
@@ -357,6 +371,12 @@
       :project-id="projectId"
     />
 
+    <!-- ✅ [新增] 報價核准設定：主管清單＋議價授權額度（銷控管理權限） -->
+    <QuoteApprovalSettingDialog
+      v-model="isApprovalSettingDialogVisible"
+      :project-id="projectId"
+    />
+
     <!-- ✅ [新增] 方案編輯器（銷控管理權限） -->
     <QuotePlanEditorDialog
       v-model="isPlanEditorVisible"
@@ -490,6 +510,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue';
+import { useToast } from 'vue-toastification';
 import { useRoute, useRouter } from 'vue-router';
 import { useDisplay } from 'vuetify';
 import { useQuoteStore } from '@/store/quoteStore';
@@ -517,6 +538,7 @@ import QuoteUnitPickerDialog from '@/components/QuoteUnitPickerDialog.vue';
 import QuotePrintDialog from '@/components/QuotePrintDialog.vue';
 import QuoteRemarkEditorDialog from '@/components/QuoteRemarkEditorDialog.vue';
 import QuotePackageLimitDialog from '@/components/QuotePackageLimitDialog.vue';
+import QuoteApprovalSettingDialog from '@/components/QuoteApprovalSettingDialog.vue';
 import QuoteIntroUrlDialog from '@/components/QuoteIntroUrlDialog.vue';
 import QuotePlanEditorDialog from '@/components/QuotePlanEditorDialog.vue';
 import { useSalesDataStore } from '@/store/salesDataStore';
@@ -534,10 +556,58 @@ const projectStore = useProjectStore();
 const parkingStore = useParkingStore();
 const adminStore = useAdminStore();
 const salesDataStore = useSalesDataStore();
+const toast = useToast();
 
 onUnmounted(() => {
     parkingStore.cleanup();
 });
+
+// ✅ [A2] 車位資料到位／異動時，依 spotId 刷新各戶已選車位的表價、底價與面積（persist 快照不再過期）
+const parkingSpotKey = p => String(p?.spotId || p?.['車位編號'] || '');
+let parkingSyncToastShown = false;
+function syncSelectedParkingFromStore() {
+  const source = parkingStore.parkingData || [];
+  if (source.length === 0 || quoteStore.items.length === 0) return;
+  const byId = new Map();
+  source.forEach(p => { const k = parkingSpotKey(p); if (k) byId.set(k, p); });
+
+  const changedUnits = [];
+  const missingSpots = [];
+  quoteStore.items.forEach(item => {
+    let changed = false;
+    const refreshed = (item.selectedParking || []).map(sp => {
+      const key = parkingSpotKey(sp);
+      const fresh = key ? byId.get(key) : null;
+      if (!fresh) {
+        if (key && !missingSpots.includes(key)) missingSpots.push(key);
+        return sp;
+      }
+      const next = {
+        ...sp,
+        price_list: fresh.price_list ?? fresh['表價'] ?? fresh['車位表價'] ?? sp.price_list,
+        price_floor: fresh.price_floor ?? fresh['底價'] ?? fresh['車位底價'] ?? sp.price_floor,
+        area: fresh.area ?? fresh['車位面積(m²)'] ?? fresh['車位面積'] ?? sp.area ?? null,
+        area_ping: fresh.area_ping ?? fresh['車位面積_坪'] ?? fresh['車位面積(坪)'] ?? sp.area_ping ?? null,
+      };
+      if (Number(next.price_list) !== Number(sp.price_list)) changed = true;
+      return next;
+    });
+    if (changed) {
+      quoteStore.updateParking(item.internalId, refreshed);
+      changedUnits.push(item.unitId);
+    } else if (refreshed.some((r, i) => r !== (item.selectedParking || [])[i])) {
+      // 僅底價／面積異動：靜默更新
+      quoteStore.updateParking(item.internalId, refreshed);
+    }
+  });
+
+  if (!parkingSyncToastShown && (changedUnits.length > 0 || missingSpots.length > 0)) {
+    parkingSyncToastShown = true;
+    if (changedUnits.length > 0) toast.info(`${changedUnits.join('、')} 的車位表價已依最新資料更新`);
+    if (missingSpots.length > 0) toast.warning(`車位 ${missingSpots.join('、')} 已不存在於銷控資料，請重新選擇車位`);
+  }
+}
+watch(() => parkingStore.parkingData, syncSelectedParkingFromStore, { immediate: true });
 
 const { 
   isSlideDialogVisible,
@@ -602,6 +672,9 @@ const isRemarkEditorVisible = ref(false);
 
 // ✅ [新增] 配套總價上限設定對話框
 const isPackageLimitDialogVisible = ref(false);
+
+// ✅ [新增] 報價核准設定對話框（主管清單＋議價授權額度）
+const isApprovalSettingDialogVisible = ref(false);
 
 // ✅ [新增] 建案簡介網址（報價單 QR Code）設定對話框
 const isIntroUrlDialogVisible = ref(false);
@@ -863,6 +936,9 @@ const formatNumber = (val, frac = 2) => {
 async function loadPageData() {
     loading.value = true;
 
+    // ✅ [A5] 正規化 persist 還原的舊資料：補齊缺欄位、舊版「改寫表價」議價資料遷移為推導模式
+    quoteStore.normalizeItems();
+
     // ✅ [新增] 進入報價頁正規化：所有戶別（含 persist 還原的舊資料）首購狀態一律重設為「首購」
     quoteStore.resetAllToFirstTimeBuyer();
 
@@ -890,18 +966,34 @@ async function loadPageData() {
         if (salesControlRes.status === 'success') {
             const allUnitData = salesControlRes.data.戶別;
             
-            // 更新 quoteStore 中每個 item 的 unitDetails
+            // 更新 quoteStore 中每個 item 的 unitDetails（伺服器快照整包替換；議價由參數推導，無需重套）
+            const repricedUnits = [];
+            const missingUnits = [];
             quoteStore.items.forEach(item => {
                 const matchedUnit = allUnitData.find(unit => unit.戶別 === item.unitId);
                 if (matchedUnit) {
+                    const prevList = Number(item.unitDetails?.price_list_house_total) || 0;
                     // 確保 price_package_deal 正確對應
                     item.unitDetails = {
                         ...item.unitDetails,
                         ...matchedUnit,
                         price_package_deal: matchedUnit.price_package_deal || matchedUnit['配套價格'] || matchedUnit['配套價']
                     };
+                    const nextList = Number(item.unitDetails?.price_list_house_total) || 0;
+                    // ✅ [A2] 表價異動且有議價 → 告知使用者議價已依新表價重新計算
+                    if (prevList !== nextList && quoteStore.hasNegotiation(item.internalId)) {
+                        repricedUnits.push(item.unitId);
+                    }
+                } else if (!missingUnits.includes(item.unitId)) {
+                    missingUnits.push(item.unitId);
                 }
             });
+            if (repricedUnits.length > 0) {
+                toast.info(`${repricedUnits.join('、')} 表價已更新，議價已依新表價重新計算`);
+            }
+            if (missingUnits.length > 0) {
+                toast.warning(`${missingUnits.join('、')} 已不存在於銷控資料，請移除後重新加入`);
+            }
             
             // 保留配套期款範本（如果仍需要）
             packageTermsData.value = salesControlRes.data.配套期款範本 || [];

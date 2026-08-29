@@ -242,10 +242,22 @@ export async function removeTagFromAllLeads(tagName) {
 // emailTemplates
 // ---------------------------------------------------------------
 
-export async function fetchEmailTemplates() {
+/**
+ * 讀取範本；scope 篩選（docs/SPEC_CustomerProspecting.md §2.3）：
+ * - 'trial'：scope 為 trial / all / 未設定（舊資料）
+ * - 'prospect'：scope 為 prospect / all
+ * - 不傳：全部
+ */
+export async function fetchEmailTemplates(scope = null) {
   const snap = await getDocs(collection(db, 'emailTemplates'));
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((t) => {
+      if (!scope) return true;
+      const s = t.scope || 'all';
+      if (s === 'all') return true;
+      return s === scope;
+    })
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant'));
 }
 
@@ -259,6 +271,7 @@ export async function saveEmailTemplate(template, updatedBy = '') {
     updatedAt: serverTimestamp(),
     updatedBy,
   };
+  if (template.scope) payload.scope = template.scope;
   if (template.id) {
     await setDoc(doc(db, 'emailTemplates', template.id), payload, { merge: true });
     return template.id;

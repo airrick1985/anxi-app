@@ -4,61 +4,163 @@ import { useToast } from 'vue-toastification';
 
 const toast = useToast();
 
+// ✅ [重構] 議價狀態只保存「調整參數」，議價後價格一律由表價推導（規格 docs/SPEC_QuoteFloorPriceApproval.md §1.3 A0）
+// activeMode: '' | 'perTsubo' | 'directAmount' | 'totalPrice' | 'both'
+export const EMPTY_NEGOTIATION_STATE = Object.freeze({
+  activeMode: '',
+  perTsuboValue: '',
+  directAmountValue: '',
+  totalPriceValue: ''
+});
+
+// ✅ [新增] 列印前底價守門：通知主管後的紀錄（規格 §6.4）
+export const EMPTY_FLOOR_APPROVAL = Object.freeze({
+  signature: '',
+  requestId: '',
+  notifiedAt: '',
+  supervisors: []
+});
+
+const hasVal = v => v !== '' && v !== null && v !== undefined && !Number.isNaN(Number(v));
+
+/** 依調整參數推導 activeMode（舊資料或缺 activeMode 時使用） */
+export function deriveNegotiationMode(state) {
+  if (!state) return '';
+  if (hasVal(state.totalPriceValue)) return 'totalPrice';
+  const per = hasVal(state.perTsuboValue);
+  const dir = hasVal(state.directAmountValue);
+  if (per && dir) return 'both';
+  if (dir) return 'directAmount';
+  if (per) return 'perTsubo';
+  return '';
+}
+
+/**
+ * 依表價、坪數與議價參數計算議價後房屋總價（純函式，供 store getter 與元件預覽共用）
+ * @param {number} listPrice 房屋總表價（萬）
+ * @param {number} area 房屋坪數
+ * @param {object} state negotiationState
+ */
+export function applyNegotiation(listPrice, area, state) {
+  const base = Number(listPrice) || 0;
+  const mode = state?.activeMode || deriveNegotiationMode(state);
+  if (!mode) return base;
+  if (mode === 'totalPrice') return Math.round(Number(state.totalPriceValue) || 0);
+  const perAdj = hasVal(state.perTsuboValue) ? Math.round((Number(state.perTsuboValue) || 0) * (Number(area) || 0)) : 0;
+  const dirAdj = hasVal(state.directAmountValue) ? Math.round(Number(state.directAmountValue) || 0) : 0;
+  return Math.round(base + perAdj + dirAdj);
+}
+
 export const useQuoteStore = defineStore('quote', () => {
   const items = ref([]);
   const personnelName = ref('');
   const personnelPhone = ref('');
 
+  const findItem = internalId => items.value.find(i => i.internalId === internalId);
+
   // --- 基礎 Getters ---
   const getParkingTotalPrice = computed(() => {
     return (internalId) => {
-      const item = items.value.find(i => i.internalId === internalId);
+      const item = findItem(internalId);
       if (!item) return 0;
-      return item.selectedParking.reduce((sum, p) => sum + (Number(p.price_list) || 0), 0);
+      return (item.selectedParking || []).reduce((sum, p) => sum + (Number(p.price_list) || 0), 0);
+    };
+  });
+
+  // ✅ [新增] 房屋總表價：unitDetails 為伺服器快照，唯讀，永遠是表價
+  const getListHousePrice = computed(() => {
+    return (internalId) => {
+      const item = findItem(internalId);
+      if (!item) return 0;
+      return Number(item.unitDetails?.price_list_house_total) || 0;
+    };
+  });
+
+  // ✅ [新增] 是否有議價調整
+  const hasNegotiation = computed(() => {
+    return (internalId) => {
+      const item = findItem(internalId);
+      if (!item) return false;
+      return !!(item.negotiationState?.activeMode || deriveNegotiationMode(item.negotiationState));
+    };
+  });
+
+  // ✅ [新增] 議價後房屋總價（由表價＋議價參數推導；表價更新後自動重算）
+  const getNegotiatedHousePrice = computed(() => {
+    return (internalId) => {
+      const item = findItem(internalId);
+      if (!item) return 0;
+      return applyNegotiation(
+        item.unitDetails?.price_list_house_total,
+        item.unitDetails?.area_house_ping,
+        item.negotiationState
+      );
+    };
+  });
+
+  // ✅ [新增] 議價差額 = 議價後 − 表價
+  const getNegotiationDelta = computed(() => {
+    return (internalId) => {
+      if (!hasNegotiation.value(internalId)) return 0;
+      return getNegotiatedHousePrice.value(internalId) - getListHousePrice.value(internalId);
     };
   });
 
   const getFinalTotalPrice = computed(() => {
     return (internalId) => {
-      const item = items.value.find(i => i.internalId === internalId);
+      const item = findItem(internalId);
       if (!item) return 0;
       if (item.usePackageDeal) {
         // 使用配套價格作為最終總價
         return Number(item.unitDetails.price_package_deal) || 0;
-      } else {
-        const housePrice = Number(item.unitDetails.price_list_house_total) || 0;
-        const parkingTotal = getParkingTotalPrice.value(internalId);
-        return housePrice + parkingTotal;
       }
+      return getNegotiatedHousePrice.value(internalId) + getParkingTotalPrice.value(internalId);
     };
   });
-  
+
+  // 配套金額 = (議價後房屋總價 ＋ 車位表價合計) − 配套價
+  // 配套模式下總價固定為配套價（走一般期款），議價折讓以「表價」為基準計算，並自配套金額（走配套期款）扣除
   const getPackagePrice = computed(() => {
     return (internalId) => {
-      const item = items.value.find(i => i.internalId === internalId);
+      const item = findItem(internalId);
       if (!item || !item.usePackageDeal) return 0;
-      
-      // 原價總和
-      const originalPrice = (Number(item.unitDetails.price_list_house_total) || 0) + 
-                           getParkingTotalPrice.value(internalId);
-      // 配套價
+      const originalPrice = getNegotiatedHousePrice.value(internalId) + getParkingTotalPrice.value(internalId);
       const packagePrice = Number(item.unitDetails.price_package_deal) || 0;
-      // 折扣金額
+      return originalPrice - packagePrice;
+    };
+  });
+
+  // ✅ [新增] 買方實付總價 = 議價後房屋總價 ＋ 車位表價合計
+  // 非配套：即總價；配套：配套價（一般期款）＋ 配套金額（配套期款）。底價核對／主管通知以此為準。
+  const getPayableTotalPrice = computed(() => {
+    return (internalId) => {
+      const item = findItem(internalId);
+      if (!item) return 0;
+      return getNegotiatedHousePrice.value(internalId) + getParkingTotalPrice.value(internalId);
+    };
+  });
+
+  // ✅ [新增] 未議價的配套金額（表價合計 − 配套價），供議價視窗／列印顯示「原配套金額」
+  const getListPackagePrice = computed(() => {
+    return (internalId) => {
+      const item = findItem(internalId);
+      if (!item || !item.usePackageDeal) return 0;
+      const originalPrice = getListHousePrice.value(internalId) + getParkingTotalPrice.value(internalId);
+      const packagePrice = Number(item.unitDetails.price_package_deal) || 0;
       return originalPrice - packagePrice;
     };
   });
 
   const getRawDisplayHousePrice = computed(() => {
     return (internalId) => {
-      const item = items.value.find(i => i.internalId === internalId);
+      const item = findItem(internalId);
       if (!item) return 0;
       if (item.usePackageDeal) {
         // 配套模式下的房屋價格 = 配套總價 - 車位價格
         const packageTotal = Number(item.unitDetails.price_package_deal) || 0;
         return packageTotal - getParkingTotalPrice.value(internalId);
-      } else {
-        return Number(item.unitDetails.price_list_house_total) || 0;
       }
+      return getNegotiatedHousePrice.value(internalId);
     };
   });
 
@@ -66,7 +168,7 @@ export const useQuoteStore = defineStore('quote', () => {
   // 配套模式下總價由配套價取代，無法對應原始露臺表價，故不拆分
   const getTerraceListPrice = computed(() => {
     return (internalId) => {
-      const item = items.value.find(i => i.internalId === internalId);
+      const item = findItem(internalId);
       if (!item || item.usePackageDeal) return 0;
       const terraceArea = Number(item.unitDetails.area_terrace_ping) || 0;
       if (terraceArea <= 0) return 0;
@@ -83,7 +185,7 @@ export const useQuoteStore = defineStore('quote', () => {
   // 否則露臺戶的房屋單價會被灌水。無露臺者結果與原本相同。
   const getDisplayUnitPrice = computed(() => {
     return (internalId) => {
-      const item = items.value.find(i => i.internalId === internalId);
+      const item = findItem(internalId);
       if (!item) return 0;
       const area = Number(item.unitDetails.area_house_ping);
       if (!area) return 0;
@@ -96,7 +198,7 @@ export const useQuoteStore = defineStore('quote', () => {
   // ✅ [新增] 露臺單價 = 露臺價 / 露臺坪數
   const getTerraceUnitPrice = computed(() => {
     return (internalId) => {
-      const item = items.value.find(i => i.internalId === internalId);
+      const item = findItem(internalId);
       if (!item) return 0;
       const terraceArea = Number(item.unitDetails.area_terrace_ping) || 0;
       if (terraceArea <= 0) return 0;
@@ -105,7 +207,7 @@ export const useQuoteStore = defineStore('quote', () => {
   });
 
   const itemCount = computed(() => items.value.length);
-  
+
   const isItemInQuote = computed(() => {
     const itemIds = new Set(items.value.map(item => item.unitId));
     return (unitId) => itemIds.has(unitId);
@@ -118,13 +220,13 @@ function addItem(unitData) {
     const existingItem = items.value.find(item => item.unitId === unitData['戶別']);
     if (existingItem) {
       toast.warning(`戶別 ${unitData['戶別']} 已在報價單中`);
-      return false; 
+      return false;
     }
     */
-    
+
     // 確保 internalId 絕對唯一 (因為現在允許多個相同 unitId)
     const uniqueId = Date.now().toString() + Math.random().toString(36).substring(2, 5);
-    
+
     items.value.push({
       internalId: uniqueId,
       unitId: unitData['戶別'],
@@ -144,14 +246,8 @@ function addItem(unitData) {
       manualPackageTemplate: { category: null, templateId: null },
       // ✅ [新增] 列印報價單(含期款)用資料：{ general, preferred, package, notes }，由 QuoteItem 同步
       printPaymentData: null,
-      // ✅ [新增] 議價調整狀態：追蹤每個品項的原始價格、調整方式和數值
-      negotiationState: {
-        originalPrice: null,    // null = 未調整；首次調整時記錄原始價格
-        activeMode: '',         // '' | 'perTsubo' | 'directAmount' | 'totalPrice' | 'both' - 最後使用的模式
-        perTsuboValue: '',      // 每坪調整的值（獨立保存）
-        directAmountValue: '',  // 直接調整的值（獨立保存）
-        totalPriceValue: ''     // 直接輸入總價的值（獨立保存）
-      },
+      // ✅ [重構] 議價調整參數（議價後價格由表價推導，unitDetails 不再被改寫）
+      negotiationState: { ...EMPTY_NEGOTIATION_STATE },
       // ✅ [新增] 已套用方案快照（方案編輯器功能）：
       // [{ planId, planName, note, hasNegotiation, hasPayment, selectedPaymentTemplateId, negotiation }]
       appliedPlans: [],
@@ -159,7 +255,9 @@ function addItem(unitData) {
       // { templateId, annualRate, years, periods } | null = 使用範本預設
       companyLoanOverride: null,
       // ✅ [新增] 公司借貸參數快照（由 QuoteItem 同步；含臨時調整後生效值）
-      companyLoan: null
+      companyLoan: null,
+      // ✅ [新增] 列印前底價守門：通知主管紀錄
+      floorApproval: { ...EMPTY_FLOOR_APPROVAL }
     });
 
     return true; // 保持回傳 true，以便 UnitDetailModal 顯示 toast
@@ -173,14 +271,14 @@ function addItem(unitData) {
   }
 
   function updateUnitField(internalId, field, value) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       item[field] = value;
     }
   }
-  
+
   function updateParking(internalId, newParking) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       item.selectedParking = newParking;
     }
@@ -215,59 +313,36 @@ function addItem(unitData) {
     }
   }
 
-  // ✅ [新增] 修改房屋總價
-  function updateHousePrice(internalId, newPrice) {
-    const item = items.value.find(i => i.internalId === internalId);
-    if (item) {
-      item.unitDetails.price_list_house_total = Number(newPrice) || 0;
-    }
-  }
-
-  // ✅ [新增] 更新議價調整狀態：儲存每個 item 的調整方式、數值和原始價格
+  // ✅ [重構] 更新議價調整參數（僅保存參數，價格由 getter 推導；忽略舊欄位 originalPrice）
   function updateNegotiationState(internalId, negotiationState) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
-      item.negotiationState = { ...item.negotiationState, ...negotiationState };
+      const { originalPrice: _ignored, ...rest } = negotiationState || {};
+      const merged = { ...EMPTY_NEGOTIATION_STATE, ...(item.negotiationState || {}), ...rest };
+      delete merged.originalPrice;
+      if (!merged.activeMode) merged.activeMode = deriveNegotiationMode(merged);
+      item.negotiationState = merged;
     }
   }
 
-  // ✅ [新增] 重置議價調整：恢復原始價格並清除調整狀態
+  // ✅ [重構] 重置議價調整：清除參數即恢復表價（unitDetails 未被改寫，無需還原）
   function resetNegotiationPrice(internalId) {
-    const item = items.value.find(i => i.internalId === internalId);
-    if (item && item.negotiationState?.originalPrice !== null && item.negotiationState?.originalPrice !== undefined) {
-      item.unitDetails.price_list_house_total = item.negotiationState.originalPrice;
-      item.negotiationState = {
-        originalPrice: null,
-        activeMode: '',
-        perTsuboValue: '',
-        directAmountValue: '',
-        totalPriceValue: ''
-      };
+    const item = findItem(internalId);
+    if (item) {
+      item.negotiationState = { ...EMPTY_NEGOTIATION_STATE };
     }
   }
 
-  // ✅ [新增] 清空所有議價調整：離開報價設定時呼叫，恢復所有原始價格並清除調整狀態
+  // ✅ [重構] 清空所有議價調整（切換建案時呼叫）
   function clearAllNegotiations() {
     items.value.forEach(item => {
-      // 若有原始價格，先恢復
-      if (item.negotiationState?.originalPrice !== null &&
-          item.negotiationState?.originalPrice !== undefined) {
-        item.unitDetails.price_list_house_total = item.negotiationState.originalPrice;
-      }
-      // 清空調整狀態
-      item.negotiationState = {
-        originalPrice: null,
-        activeMode: '',
-        perTsuboValue: '',
-        directAmountValue: '',
-        totalPriceValue: ''
-      };
+      item.negotiationState = { ...EMPTY_NEGOTIATION_STATE };
     });
   }
 
   // ★★★ 2. 新增：更新配套價子項目的 action ★★★
   function updateItemPackageItems(internalId, newPackageItems) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       item.packageItems = newPackageItems;
     }
@@ -275,11 +350,11 @@ function addItem(unitData) {
 
   // ✅ [打勾] 新增：儲存期款計算結果的 Action
   /**
-   * @param {string} internalId 
-   * @param {Array<{name: string, value: number}>} paymentsArray 
+   * @param {string} internalId
+   * @param {Array<{name: string, value: number}>} paymentsArray
    */
   function updateItemCalculatedPayments(internalId, paymentsArray) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       // 我們儲存簡化後的陣列，只包含名稱和值
       item.calculatedPayments = paymentsArray.map(p => ({
@@ -292,7 +367,7 @@ function addItem(unitData) {
 
   // ✅ [新增] 儲存「套用期款時的說明」（來自所套用期款範本的 applyNote），供列印報價單渲染
   function updateItemPaymentNotes(internalId, notes) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       item.appliedPaymentNotes = Array.isArray(notes)
         ? notes.map(n => String(n || '').trim()).filter(Boolean)
@@ -303,7 +378,7 @@ function addItem(unitData) {
   // ✅ [新增] 更新手動指定的總價期款範本（category / templateId）
   // payload 可只帶其一，例如 { category } 或 { templateId }；傳 null 代表還原自動
   function updateItemManualTemplate(internalId, payload) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       const current = item.manualTemplate || { category: null, templateId: null };
       item.manualTemplate = { ...current, ...payload };
@@ -312,7 +387,7 @@ function addItem(unitData) {
 
   // ✅ [新增] 儲存列印報價單(含期款)用資料（由 QuoteItem 計算後同步）
   function updateItemPrintPaymentData(internalId, data) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       item.printPaymentData = data;
     }
@@ -320,7 +395,7 @@ function addItem(unitData) {
 
   // ✅ [新增] 公司借貸：更新報價當下的臨時調整參數（傳 null = 還原範本預設）
   function updateItemCompanyLoanOverride(internalId, payload) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       item.companyLoanOverride = payload;
     }
@@ -328,7 +403,7 @@ function addItem(unitData) {
 
   // ✅ [新增] 公司借貸：儲存參數快照（由 QuoteItem 同步；無附掛時為 null）
   function updateItemCompanyLoan(internalId, snapshot) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       item.companyLoan = snapshot;
     }
@@ -337,7 +412,7 @@ function addItem(unitData) {
   // ✅ [新增] 更新手動指定的配套期款範本（category / templateId）
   // payload 可只帶其一，例如 { category } 或 { templateId }；傳 null 代表還原自動
   function updateItemManualPackageTemplate(internalId, payload) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       const current = item.manualPackageTemplate || { category: null, templateId: null };
       item.manualPackageTemplate = { ...current, ...payload };
@@ -347,16 +422,71 @@ function addItem(unitData) {
   // ✅ [新增] 更新已套用方案快照（方案編輯器功能）
   // plans 為完整快照陣列；舊資料（persist 還原）無此欄位時也能安全寫入
   function updateItemAppliedPlans(internalId, plans) {
-    const item = items.value.find(i => i.internalId === internalId);
+    const item = findItem(internalId);
     if (item) {
       item.appliedPlans = Array.isArray(plans) ? plans : [];
     }
+  }
+
+  // ✅ [新增] 列印前底價守門：記錄通知主管結果
+  function setFloorApproval(internalId, payload) {
+    const item = findItem(internalId);
+    if (item) {
+      item.floorApproval = { ...EMPTY_FLOOR_APPROVAL, ...(payload || {}) };
+    }
+  }
+
+  // ✅ [新增] 清除底價守門紀錄（未給 internalId 時清除全部）
+  function clearFloorApproval(internalId = null) {
+    items.value.forEach(item => {
+      if (internalId === null || item.internalId === internalId) {
+        item.floorApproval = { ...EMPTY_FLOOR_APPROVAL };
+      }
+    });
   }
 
   // ✅ [新增] 進入報價頁時正規化：將所有戶別（含 persist 還原的舊資料）首購狀態一律重設為「是」（首購）
   function resetAllToFirstTimeBuyer() {
     items.value.forEach(item => {
       item.isFirstTimeBuyer = '是';
+    });
+  }
+
+  // ✅ [新增] 正規化 persist 還原的舊資料：補齊缺欄位，並將舊版「改寫表價」的議價資料遷移為推導模式
+  // - 舊版 negotiationState.originalPrice != null → 表價還原為 originalPrice（議價後價格由參數重新推導）
+  function normalizeItems() {
+    items.value.forEach(item => {
+      if (!item.unitDetails || typeof item.unitDetails !== 'object') item.unitDetails = {};
+      if (!Array.isArray(item.selectedParking)) item.selectedParking = [];
+      if (!item.packageItems || typeof item.packageItems !== 'object') item.packageItems = {};
+      if (!Array.isArray(item.calculatedPayments)) item.calculatedPayments = [];
+      if (!Array.isArray(item.appliedPaymentNotes)) item.appliedPaymentNotes = [];
+      if (!item.manualTemplate) item.manualTemplate = { category: null, templateId: null };
+      if (!item.manualPackageTemplate) item.manualPackageTemplate = { category: null, templateId: null };
+      if (item.printPaymentData === undefined) item.printPaymentData = null;
+      if (!Array.isArray(item.appliedPlans)) item.appliedPlans = [];
+      if (item.companyLoanOverride === undefined) item.companyLoanOverride = null;
+      if (item.companyLoan === undefined) item.companyLoan = null;
+      if (!item.floorApproval || typeof item.floorApproval !== 'object') item.floorApproval = { ...EMPTY_FLOOR_APPROVAL };
+
+      const legacy = item.negotiationState || {};
+      const migrated = {
+        activeMode: legacy.activeMode || '',
+        perTsuboValue: legacy.perTsuboValue ?? '',
+        directAmountValue: legacy.directAmountValue ?? '',
+        totalPriceValue: legacy.totalPriceValue ?? ''
+      };
+      if (legacy.originalPrice !== null && legacy.originalPrice !== undefined && Number.isFinite(Number(legacy.originalPrice))) {
+        // 舊版：price_list_house_total 已被改寫為議價後價格，還原為表價
+        item.unitDetails.price_list_house_total = Number(legacy.originalPrice);
+      }
+      if (!migrated.activeMode) migrated.activeMode = deriveNegotiationMode(migrated);
+      if (!migrated.activeMode) {
+        migrated.perTsuboValue = '';
+        migrated.directAmountValue = '';
+        migrated.totalPriceValue = '';
+      }
+      item.negotiationState = migrated;
     });
   }
 
@@ -371,7 +501,13 @@ function addItem(unitData) {
     itemCount,
     isItemInQuote,
     getParkingTotalPrice,
+    getListHousePrice,
+    hasNegotiation,
+    getNegotiatedHousePrice,
+    getNegotiationDelta,
     getPackagePrice,
+    getListPackagePrice,
+    getPayableTotalPrice,
     getFinalTotalPrice,
     getRawDisplayHousePrice,
     getDisplayUnitPrice,
@@ -384,7 +520,6 @@ function addItem(unitData) {
     updateParking,
     applyParkingToItems,
     clearParkingForItems,
-    updateHousePrice,
     updateNegotiationState,
     resetNegotiationPrice,
     clearAllNegotiations,
@@ -397,6 +532,9 @@ function addItem(unitData) {
     updateItemCompanyLoanOverride,
     updateItemCompanyLoan,
     updateItemAppliedPlans,
+    setFloorApproval,
+    clearFloorApproval,
+    normalizeItems,
     resetAllToFirstTimeBuyer,
     clearQuote
   };

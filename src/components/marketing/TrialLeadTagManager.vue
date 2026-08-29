@@ -124,7 +124,7 @@
           確定要刪除標籤
           <v-chip :color="deleteTarget?.color" size="small" variant="flat">{{ deleteTarget?.name }}</v-chip>
           嗎？<br />
-          此標籤會從<strong>所有留資</strong>中移除，且無法復原。
+          此標籤會從<strong>所有{{ entityLabel }}</strong>中移除，且無法復原。
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -137,7 +137,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUiStore } from '@/store/uiStore';
 import {
@@ -149,11 +149,25 @@ import {
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   tags: { type: Array, default: () => [] },
+  /**
+   * 資料來源 adapter（預設試用留資）：
+   * { save(tags), renameOnAll(old,new)→n, removeFromAll(name)→n, entityLabel }
+   * 客戶開發傳入 prospectService.prospectTagAdapter（docs/SPEC_CustomerProspecting.md §4.6）
+   */
+  adapter: { type: Object, default: null },
 });
 const emit = defineEmits(['update:modelValue', 'changed']);
 
 const { xs } = useDisplay();
 const uiStore = useUiStore();
+
+const api = computed(() => props.adapter || {
+  save: saveTrialLeadTags,
+  renameOnAll: renameTagOnAllLeads,
+  removeFromAll: removeTagFromAllLeads,
+  entityLabel: '留資',
+});
+const entityLabel = computed(() => api.value.entityLabel || '留資');
 
 const colorOptions = [
   { value: 'grey', title: '灰色' },
@@ -201,7 +215,7 @@ function genId() {
 async function persist(tags, changeInfo = null) {
   saving.value = true;
   try {
-    await saveTrialLeadTags(tags);
+    await api.value.save(tags);
     localTags.value = tags;
     emit('changed', { tags, ...changeInfo });
   } catch (e) {
@@ -242,12 +256,12 @@ async function saveEdit(tag) {
   saving.value = true;
   try {
     if (oldName !== name) {
-      const n = await renameTagOnAllLeads(oldName, name);
-      if (n > 0) uiStore.showSnackbar(`已同步更新 ${n} 筆留資的標籤名稱`, 'info');
+      const n = await api.value.renameOnAll(oldName, name);
+      if (n > 0) uiStore.showSnackbar(`已同步更新 ${n} 筆${entityLabel.value}的標籤名稱`, 'info');
     }
   } catch (e) {
     console.error(e);
-    uiStore.showSnackbar(`同步留資標籤失敗：${e.message || e}`, 'error');
+    uiStore.showSnackbar(`同步${entityLabel.value}標籤失敗：${e.message || e}`, 'error');
   } finally {
     saving.value = false;
   }
@@ -265,11 +279,11 @@ async function confirmDelete() {
   if (!tag) return;
   saving.value = true;
   try {
-    const n = await removeTagFromAllLeads(tag.name);
-    if (n > 0) uiStore.showSnackbar(`已從 ${n} 筆留資移除標籤「${tag.name}」`, 'info');
+    const n = await api.value.removeFromAll(tag.name);
+    if (n > 0) uiStore.showSnackbar(`已從 ${n} 筆${entityLabel.value}移除標籤「${tag.name}」`, 'info');
   } catch (e) {
     console.error(e);
-    uiStore.showSnackbar(`移除留資標籤失敗：${e.message || e}`, 'error');
+    uiStore.showSnackbar(`移除${entityLabel.value}標籤失敗：${e.message || e}`, 'error');
     saving.value = false;
     return;
   } finally {

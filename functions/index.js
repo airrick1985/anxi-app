@@ -3711,6 +3711,27 @@ exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secret
 
 const lineSecrets = ["ANXISMART_LINE_CRM_TOKEN", "ANXI_ADMIN_RICK__LINEID"];
 
+// =================================================================
+// 【新增】報價單列印前底價守門與主管確認通知（規格 docs/SPEC_QuoteFloorPriceApproval.md §7）
+//   action: 'check' | 'notify' | 'listApprovers' | 'listSupervisors'
+//   部署：FUNCTIONS_DISCOVERY_TIMEOUT=120 firebase deploy --only functions:quoteApprovalApi
+// =================================================================
+exports.quoteApprovalApi = onCall(
+  { region: "asia-east1", memory: "512MiB", secrets: [...gmailSecrets, ...lineSecrets] },
+  async (request) => {
+    const { action, ...data } = request.data || {};
+    const fn = `quoteApprovalApi(${action}/${data.projectId || '-'})`;
+    try {
+      const { handleQuoteApprovalAction } = require('./quoteApproval');
+      return await handleQuoteApprovalAction(action, data);
+    } catch (error) {
+      if (error instanceof HttpsError) throw error;
+      console.error(`[${fn}] 執行失敗:`, error);
+      throw new HttpsError('internal', `底價核對／通知失敗: ${error.message}`);
+    }
+  }
+);
+
 /**
  * 寄送銷控狀態通知（操作者於對話框按下「發送通知」時呼叫）
  *
@@ -29835,6 +29856,10 @@ exports.trackTrialLeadEvent = trialLeads.trackTrialLeadEvent;
 
 const marketingEmail = require("./trial/marketingEmail");
 exports.sendMarketingEmail = marketingEmail.sendMarketingEmail;
+
+// ✅ 客戶開發：開信追蹤像素（docs/SPEC_CustomerProspecting.md §6.4）
+const emailTracking = require("./trial/emailTracking");
+exports.trackEmailOpen = emailTracking.trackEmailOpen;
 
 const trialSandbox = require("./trial/sandbox");
 exports.snapshotTrialSandbox = trialSandbox.snapshotTrialSandbox;

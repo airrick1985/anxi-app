@@ -210,15 +210,118 @@
 
       <v-divider></v-divider>
 
+      <!-- ✅ [新增] 列印前底價守門（規格 docs/SPEC_QuoteFloorPriceApproval.md §6）：不顯示任何金額 -->
+      <div v-if="floorCheck.loading" class="px-4 py-2">
+        <v-progress-linear indeterminate color="teal-darken-1" height="3"></v-progress-linear>
+        <div class="text-caption text-grey-darken-1 mt-1">正在核對報價…</div>
+      </div>
+      <v-alert
+        v-else-if="floorCheck.error"
+        type="error"
+        variant="tonal"
+        density="compact"
+        class="mx-4 my-2"
+      >
+        <div class="d-flex align-center flex-wrap ga-2">
+          <span>報價核對失敗，無法列印：{{ floorCheck.error }}</span>
+          <v-btn size="small" variant="outlined" color="error" prepend-icon="mdi-refresh" @click="runFloorCheck(true)">重新核對</v-btn>
+        </div>
+      </v-alert>
+      <template v-else>
+        <v-alert
+          v-if="missingUnitItems.length > 0"
+          type="error"
+          variant="tonal"
+          density="compact"
+          class="mx-4 my-2"
+        >
+          {{ missingUnitItems.map(i => i.unitId).join('、') }} 已不存在於銷控資料，請移除後重新加入。
+        </v-alert>
+        <v-alert
+          v-if="floorWarningText"
+          type="warning"
+          variant="tonal"
+          density="compact"
+          class="mx-4 my-2"
+        >
+          {{ floorWarningText }}
+        </v-alert>
+
+        <div v-if="approvalItems.length > 0" class="approval-panel mx-4 my-2">
+          <div class="d-flex align-center text-red-darken-2 font-weight-bold mb-2">
+            <v-icon size="small" class="mr-1">mdi-alert</v-icon>
+            以下戶別價格須經專案主管確認後才可生效
+          </div>
+          <div v-for="entry in approvalItems" :key="entry.item.internalId" class="approval-row">
+            <span class="approval-unit">{{ entry.item.unitId }}</span>
+            <span v-if="entry.notified" class="text-caption text-green-darken-2">
+              已通知 {{ entry.supervisorText }}　{{ entry.notifiedAtText }}
+            </span>
+            <span v-else class="text-caption text-red-darken-2">尚未通知</span>
+          </div>
+
+          <div class="d-flex align-center flex-wrap ga-2 mt-3">
+            <v-select
+              v-model="selectedSupervisorKeys"
+              :items="supervisorOptions"
+              item-title="name"
+              item-value="userKey"
+              label="通知主管"
+              multiple
+              chips
+              closable-chips
+              density="compact"
+              variant="outlined"
+              hide-details
+              :loading="supervisorsLoading"
+              class="flex-grow-1 approval-select"
+            >
+              <template v-slot:item="{ props: itemProps, item }">
+                <v-list-item v-bind="itemProps" :disabled="!supervisorChannel(item.raw)">
+                  <template v-slot:append>
+                    <v-chip :color="supervisorChip(item.raw).color" size="x-small" label>{{ supervisorChip(item.raw).text }}</v-chip>
+                  </template>
+                </v-list-item>
+              </template>
+              <template v-slot:chip="{ props: chipProps, item }">
+                <v-chip v-bind="chipProps" :color="supervisorChip(item.raw).color" size="small" label>{{ item.raw.name }}</v-chip>
+              </template>
+            </v-select>
+            <v-btn
+              color="red-darken-2"
+              variant="flat"
+              prepend-icon="mdi-send"
+              :loading="notifying"
+              :disabled="selectedSupervisorKeys.length === 0 || supervisorsLoading"
+              :block="smAndDown"
+              @click="notifySupervisors"
+            >
+              {{ pendingApprovalItems.length > 0 ? '通知主管' : '再次通知' }}
+            </v-btn>
+          </div>
+          <div v-if="supervisorOptions.length === 0 && !supervisorsLoading" class="text-caption text-red-darken-2 mt-2">
+            本案沒有可通知的主管（未綁定 LINE 且無 Email），請先完成綁定或洽系統管理員。
+          </div>
+
+          <v-alert v-if="lastNotice" type="success" variant="tonal" density="compact" class="mt-3">
+            通知已發送給 {{ lastNotice.names }}（{{ lastNotice.at }}）{{ lastNotice.simulated ? '（測試建案：僅模擬，未實際發送）' : '' }}。<br>
+            <strong>請確認主管已核對金額後再繼續列印。</strong>
+          </v-alert>
+        </div>
+      </template>
+
+      <v-divider></v-divider>
+
       <v-card-actions class="pa-3 flex-wrap justify-end ga-1">
         <v-btn variant="text" @click="show = false">取消</v-btn>
         <v-spacer></v-spacer>
         <!-- ✅ [新增] 預覽：iframe 渲染與列印完全相同的版面 -->
+        <span v-if="actionBlockReason" class="text-caption text-red-darken-2 mr-2">{{ actionBlockReason }}</span>
         <v-btn
           color="teal-darken-1"
           variant="outlined"
           prepend-icon="mdi-eye-outline"
-          :disabled="selectedIds.length === 0"
+          :disabled="actionsDisabled"
           @click="openPdfPreview"
         >
           預覽
@@ -228,7 +331,7 @@
           color="red-darken-1"
           variant="tonal"
           prepend-icon="mdi-file-pdf-box"
-          :disabled="selectedIds.length === 0"
+          :disabled="actionsDisabled"
           :loading="isDownloadingPdf"
           @click="downloadPdf"
         >
@@ -238,7 +341,7 @@
           color="teal-darken-1"
           variant="flat"
           prepend-icon="mdi-printer"
-          :disabled="selectedIds.length === 0"
+          :disabled="actionsDisabled"
           @click="handlePrint"
         >
           列印 ({{ selectedIds.length }})
@@ -281,10 +384,12 @@ import { ref, computed, watch } from 'vue';
 import { useToast } from 'vue-toastification';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { useDisplay } from 'vuetify';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useParkingStore } from '@/store/parkingStore';
-import { fetchQuoteRemark } from '@/api';
+import { useUserStore } from '@/store/user';
+import { fetchQuoteRemark, checkQuoteFloor, notifyQuoteApproval, listQuoteSupervisors } from '@/api';
 import { generateQrDataUrl } from '@/utils/quoteQrCode';
 
 const props = defineProps({
@@ -300,11 +405,273 @@ const toast = useToast();
 const quoteStore = useQuoteStore();
 const projectStore = useProjectStore();
 const parkingStore = useParkingStore();
+const userStore = useUserStore();
+const { smAndDown } = useDisplay();
 
 const show = computed({
   get: () => props.modelValue,
   set: (v) => emit('update:modelValue', v),
 });
+
+// =================================================================
+// ✅ [新增] 列印前底價守門（規格 docs/SPEC_QuoteFloorPriceApproval.md §3、§4、§6）
+//   - 開啟對話框即背景核對全部戶別（後端讀最新底價；回應不含任何金額）
+//   - 有需確認戶別 → 選主管 → 通知 → 直接解鎖（不需勾選確認框）
+//   - 簽章（後端計算）不符 → 視為未通知，需重新通知
+// =================================================================
+const CHECK_CACHE_MS = 10 * 60 * 1000;
+const floorCheck = ref({ loading: false, error: '', results: {}, checkedAt: 0 }); // results: { [internalId]: { needsApproval, missingUnit, missingHouseFloor, missingParking, signature, localKey } }
+const supervisorOptions = ref([]);       // [{ userKey, name, hasLine, hasEmail }]
+const supervisorsLoading = ref(false);
+const selectedSupervisorKeys = ref([]);
+const notifying = ref(false);
+const lastNotice = ref(null);            // { names, at, simulated }
+
+const spotIdsOf = (item) => [...new Set((item.selectedParking || []).map(p => String(p?.spotId || p?.['車位編號'] || '').trim()).filter(Boolean))].sort();
+// 核對金額 = 買方實付總價（配套：配套價＋配套金額；非配套：總價）
+const payableOf = (item) => Math.round(quoteStore.getPayableTotalPrice(item.internalId));
+const localKeyOf = (item) => `${item.unitId}|${payableOf(item)}|${spotIdsOf(item).join(',')}`;
+
+function buildCheckItems(items) {
+  return items.map(item => ({
+    internalId: item.internalId,
+    unitId: item.unitId,
+    quoteTotal: payableOf(item),
+    parkingSpotIds: spotIdsOf(item),
+  }));
+}
+
+function isCacheValid(item) {
+  const r = floorCheck.value.results[item.internalId];
+  if (!r) return false;
+  if (r.localKey !== localKeyOf(item)) return false;
+  return (Date.now() - (r.checkedAt || 0)) < CHECK_CACHE_MS;
+}
+
+async function runFloorCheck(force = false) {
+  const targets = force ? quoteStore.items : quoteStore.items.filter(i => !isCacheValid(i));
+  if (targets.length === 0) return;
+  if (!userStore.user?.key) {
+    floorCheck.value.error = '尚未登入，無法核對';
+    return;
+  }
+  floorCheck.value.loading = true;
+  floorCheck.value.error = '';
+  try {
+    const res = await checkQuoteFloor({
+      projectId: props.projectId,
+      operatorKey: userStore.user.key,
+      items: buildCheckItems(targets),
+    });
+    if (res.status !== 'success') throw new Error(res.message || '核對失敗');
+    const now = Date.now();
+    const byId = new Map(targets.map(i => [i.internalId, i]));
+    const next = { ...floorCheck.value.results };
+    (res.results || []).forEach(r => {
+      const item = byId.get(r.internalId);
+      if (!item) return;
+      next[r.internalId] = { ...r, localKey: localKeyOf(item), checkedAt: now };
+    });
+    floorCheck.value.results = next;
+    floorCheck.value.checkedAt = now;
+  } catch (e) {
+    console.error('[QuotePrintDialog] 底價核對失敗:', e);
+    floorCheck.value.error = e.message || '未知錯誤';
+  } finally {
+    floorCheck.value.loading = false;
+  }
+}
+
+const resultOf = (item) => floorCheck.value.results[item.internalId] || null;
+
+// 需主管確認的戶別（全部報價項目，不限勾選）
+const approvalItems = computed(() => quoteStore.items
+  .filter(item => resultOf(item)?.needsApproval)
+  .map(item => {
+    const r = resultOf(item);
+    const fa = item.floorApproval || {};
+    const notified = !!fa.signature && fa.signature === r.signature;
+    return {
+      item,
+      result: r,
+      notified,
+      supervisorText: (fa.supervisors || []).map(s => `${s.name}（${s.channel === 'email' ? 'Email' : 'LINE'}）`).join('、'),
+      notifiedAtText: fa.notifiedAt ? fmtTaipei(fa.notifiedAt) : '',
+    };
+  }));
+// 尚未通知（或簽章已變）的戶別
+const pendingApprovalItems = computed(() => approvalItems.value.filter(e => !e.notified));
+const missingUnitItems = computed(() => quoteStore.items.filter(item => resultOf(item)?.missingUnit));
+const floorWarningText = computed(() => {
+  const noFloor = quoteStore.items.filter(item => resultOf(item)?.missingHouseFloor).map(i => i.unitId);
+  const noParking = [...new Set(quoteStore.items.flatMap(item => resultOf(item)?.missingParking || []))];
+  const parts = [];
+  if (noFloor.length) parts.push(`${noFloor.join('、')} 未設定房屋底價，無法核對，請通知銷控補登`);
+  if (noParking.length) parts.push(`車位 ${noParking.join('、')} 查無銷控資料，未納入核對`);
+  return parts.join('；');
+});
+
+// 勾選中的戶別是否仍被阻擋
+const blockedSelectedIds = computed(() => selectedIds.value.filter(id => {
+  const item = quoteStore.items.find(i => i.internalId === id);
+  if (!item) return false;
+  const r = resultOf(item);
+  if (!r) return true;                       // 尚未核對
+  if (r.missingUnit) return true;
+  if (!r.needsApproval) return false;
+  return !approvalItems.value.find(e => e.item.internalId === id)?.notified;
+}));
+const actionBlockReason = computed(() => {
+  if (selectedIds.value.length === 0) return '';
+  if (floorCheck.value.loading) return '核對中…';
+  if (floorCheck.value.error) return '核對失敗，請重新核對';
+  const blocked = blockedSelectedIds.value
+    .map(id => quoteStore.items.find(i => i.internalId === id)?.unitId)
+    .filter(Boolean);
+  if (blocked.length === 0) return '';
+  const hasMissing = blocked.some(u => missingUnitItems.value.some(m => m.unitId === u));
+  return hasMissing ? `${blocked.join('、')} 需移除後重新加入` : `${blocked.join('、')} 價格須經主管確認，請先通知主管`;
+});
+const actionsDisabled = computed(() =>
+  selectedIds.value.length === 0 || floorCheck.value.loading || !!floorCheck.value.error || blockedSelectedIds.value.length > 0
+);
+
+function fmtTaipei(iso) {
+  try {
+    return new Intl.DateTimeFormat('zh-TW', {
+      timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(iso));
+  } catch { return ''; }
+}
+
+const supervisorChannel = (s) => (s?.hasLine ? 'line' : (s?.hasEmail ? 'email' : null));
+function supervisorChip(s) {
+  const ch = supervisorChannel(s);
+  if (ch === 'line') return { color: 'success', text: 'LINE' };
+  if (ch === 'email') return { color: 'info', text: 'Email' };
+  return { color: 'grey', text: '無法通知' };
+}
+
+async function loadSupervisors() {
+  if (supervisorsLoading.value) return;
+  supervisorsLoading.value = true;
+  try {
+    const res = await listQuoteSupervisors({ projectId: props.projectId, operatorKey: userStore.user?.key });
+    if (res.status !== 'success') throw new Error(res.message || '載入主管名單失敗');
+    supervisorOptions.value = (res.supervisors || []).filter(s => supervisorChannel(s));
+    // 預設全選可通知者
+    selectedSupervisorKeys.value = supervisorOptions.value.map(s => s.userKey);
+  } catch (e) {
+    console.error('[QuotePrintDialog] 載入主管名單失敗:', e);
+    toast.error(`載入主管名單失敗：${e.message}`);
+    supervisorOptions.value = [];
+    selectedSupervisorKeys.value = [];
+  } finally {
+    supervisorsLoading.value = false;
+  }
+}
+// 出現需確認戶別時才載入主管名單（每次開啟對話框重新載入）
+watch(() => approvalItems.value.length, (n, prev) => {
+  if (n > 0 && (prev === 0 || prev === undefined) && supervisorOptions.value.length === 0) loadSupervisors();
+});
+
+function buildNotifyUnits(entries) {
+  return entries.map(({ item }) => ({
+    internalId: item.internalId,
+    unitId: item.unitId,
+    quoteTotal: payableOf(item),
+    areaHousePing: Number(item.unitDetails?.area_house_ping) || 0,
+    usePackageDeal: !!item.usePackageDeal,
+    packageDeal: item.usePackageDeal ? Math.round(Number(item.unitDetails?.price_package_deal) || 0) : 0,   // 配套價（一般期款）
+    packageAmount: item.usePackageDeal ? Math.round(quoteStore.getPackagePrice(item.internalId)) : 0,     // 配套金額（配套期款）
+    houseListPrice: quoteStore.getListHousePrice(item.internalId),
+    houseNegotiatedPrice: quoteStore.getNegotiatedHousePrice(item.internalId),
+    parking: (item.selectedParking || []).map(p => ({
+      spotId: String(p?.spotId || p?.['車位編號'] || '').trim(),
+      priceList: Number(p?.price_list) || 0,
+    })).filter(p => p.spotId),
+  }));
+}
+
+async function notifySupervisors() {
+  if (notifying.value) return;
+  let targets = pendingApprovalItems.value;
+  if (targets.length === 0) {
+    // O4：全部已通知 → 再次通知需確認
+    targets = approvalItems.value;
+    if (targets.length === 0) return;
+    const latest = targets.map(e => e.item.floorApproval?.notifiedAt).filter(Boolean).sort().pop();
+    const ok = confirm(`已於 ${latest ? fmtTaipei(latest) : '稍早'} 通知過，是否再次發送？`);
+    if (!ok) return;
+  }
+  if (selectedSupervisorKeys.value.length === 0) {
+    toast.warning('請至少選擇一位主管');
+    return;
+  }
+
+  notifying.value = true;
+  try {
+    const res = await notifyQuoteApproval({
+      projectId: props.projectId,
+      projectName: props.projectName,
+      operatorKey: userStore.user?.key,
+      operatorName: userStore.user?.name || '',
+      salesName: props.personnelName || userStore.user?.name || '',
+      salesPhone: props.personnelPhone || '',
+      supervisorKeys: selectedSupervisorKeys.value,
+      units: buildNotifyUnits(targets),
+    });
+    if (res.status !== 'success') throw new Error(res.message || '通知失敗');
+    if (res.skipped === 'no-breach') {
+      // 後端以最新底價核對已不需確認 → 重新核對以解鎖
+      toast.info('依最新底價核對，這些戶別已不需主管確認');
+      await runFloorCheck(true);
+      return;
+    }
+    const okSupervisors = (res.supervisors || []).filter(s => s.status === 'sent' || s.status === 'simulated');
+    const failed = (res.supervisors || []).filter(s => s.status === 'failed');
+    if (okSupervisors.length === 0) {
+      throw new Error(failed.map(f => `${f.name}：${f.error || '發送失敗'}`).join('；') || '所有主管皆發送失敗');
+    }
+    const notifiedAt = res.notifiedAt || new Date().toISOString();
+    (res.requests || []).forEach(r => {
+      quoteStore.setFloorApproval(r.internalId, {
+        signature: r.signature,
+        requestId: r.requestId,
+        notifiedAt,
+        supervisors: okSupervisors.map(s => ({ userKey: s.userKey, name: s.name, channel: s.channel })),
+      });
+      // 同步本地核對結果簽章（後端 notify 時以最新資料重算）
+      const item = quoteStore.items.find(i => i.internalId === r.internalId);
+      if (item && floorCheck.value.results[r.internalId]) {
+        floorCheck.value.results[r.internalId] = { ...floorCheck.value.results[r.internalId], signature: r.signature, localKey: localKeyOf(item) };
+      }
+    });
+    lastNotice.value = {
+      names: okSupervisors.map(s => s.name).join('、'),
+      at: res.notifiedAtTaipei || fmtTaipei(notifiedAt),
+      simulated: !!res.simulated,
+    };
+    if (failed.length > 0) {
+      toast.warning(`部分主管通知失敗：${failed.map(f => f.name).join('、')}`);
+    }
+    toast.success('通知已發送，請確認主管已核對金額後再繼續列印');
+  } catch (e) {
+    console.error('[QuotePrintDialog] 通知主管失敗:', e);
+    toast.error(`通知主管失敗：${e.message}`);
+  } finally {
+    notifying.value = false;
+  }
+}
+
+// 動作前最後防線（按鈕本身已 disabled）
+function ensureCanProceed() {
+  if (actionsDisabled.value) {
+    if (actionBlockReason.value) toast.warning(actionBlockReason.value);
+    return false;
+  }
+  return true;
+}
 
 // --- 列印選項 ---
 const optShowNegotiation = ref(true); // 顯示議價資訊（原價/優惠額），預設開啟
@@ -396,6 +763,12 @@ watch(show, (visible) => {
   isRemarkExpanded.value = false;
   loadRemark();
   loadIntroQr();
+  // ✅ [新增] 開啟即背景核對底價（每次開啟重新核對全部戶別；主管名單重新載入）
+  floorCheck.value = { loading: false, error: '', results: {}, checkedAt: 0 };
+  supervisorOptions.value = [];
+  selectedSupervisorKeys.value = [];
+  lastNotice.value = null;
+  runFloorCheck(true);
 });
 
 const isAllSelected = computed(() =>
@@ -571,9 +944,10 @@ function renderSheet(item) {
   let housePriceVal = `${fmt(housePrice)} 萬`;
   let unitPriceVal = `${fmt(unitPrice, 2)} 萬/坪`;
   if (optShowNegotiation.value && !usePackage) {
-    const orig = Number(item.negotiationState?.originalPrice);
-    const cur = Number(ud.price_list_house_total) || 0;
-    if (!isNaN(orig) && orig > 0 && orig !== cur) {
+    // ✅ [重構] 原價 = 表價（unitDetails 唯讀）、現價 = 議價後房屋總價（由 store 推導）
+    const orig = quoteStore.getListHousePrice(id);
+    const cur = quoteStore.getNegotiatedHousePrice(id);
+    if (quoteStore.hasNegotiation(id) && orig > 0 && orig !== cur) {
       const delta = orig - cur;
       housePriceVal += delta > 0
         ? `<span class="orig-price">${fmt(orig)}萬</span><span class="disc">已優惠 ${fmt(delta)}萬</span>`
@@ -667,7 +1041,17 @@ function renderSheet(item) {
     ['車位價格', parkingPrice > 0 ? `${parkingList.length > 1 ? '合計 ' : ''}${fmt(parkingPrice)} 萬` : '—'],
     ...(usePackage ? [
       ['配套', '是'],
-      ['配套價', `${fmt(packagePrice)} 萬`],
+      // ✅ 配套模式議價：折讓自配套金額扣除，顯示原配套金額（刪除線）＋已優惠
+      ['配套價', (() => {
+        const listPkg = quoteStore.getListPackagePrice(id);
+        const disc = listPkg - packagePrice;
+        if (optShowNegotiation.value && quoteStore.hasNegotiation(id) && disc !== 0) {
+          return `${fmt(packagePrice)} 萬` + (disc > 0
+            ? `<span class="orig-price">${fmt(listPkg)}萬</span><span class="disc">已優惠 ${fmt(disc)}萬</span>`
+            : `<span class="orig-price">${fmt(listPkg)}萬</span><span class="disc up">調整 +${fmt(-disc)}萬</span>`);
+        }
+        return `${fmt(packagePrice)} 萬`;
+      })()],
     ] : []),
   ].map(([lbl, val]) => `
       <div class="cell"><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`).join('');
@@ -1143,6 +1527,7 @@ window.onload = function () {
 }
 
 function handlePrint() {
+  if (!ensureCanProceed()) return;
   const html = buildSheetsHtml({ autoPrint: true });
   if (!html) return;
 
@@ -1162,6 +1547,7 @@ const previewHtml = ref('');
 const isDownloadingPdf = ref(false);
 
 function openPdfPreview() {
+  if (!ensureCanProceed()) return;
   const html = buildSheetsHtml({ fitZoom: true });
   if (!html) return;
   previewHtml.value = html;
@@ -1174,6 +1560,7 @@ const A4_H_PT = 841.89;
 
 // 逐頁 html2canvas 截圖 → 嵌入 A4 PDF；以隱藏 iframe 全新渲染（不受預覽縮放影響）
 async function downloadPdf() {
+  if (!ensureCanProceed()) return;
   const html = buildSheetsHtml({});
   if (!html) return;
   if (isDownloadingPdf.value) return;
@@ -1230,6 +1617,28 @@ async function downloadPdf() {
   border: 0;
   background: #e3e6e8;
 }
+
+/* ✅ [新增] 列印前底價守門區塊 */
+.approval-panel {
+  border: 1px solid rgba(198, 40, 40, 0.5);
+  background: rgba(198, 40, 40, 0.04);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.approval-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 4px 0;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+}
+.approval-row:last-of-type { border-bottom: none; }
+.approval-unit {
+  font-weight: 700;
+  min-width: 72px;
+}
+.approval-select { min-width: 220px; }
 
 .remark-panel {
   background: #fafbfc;

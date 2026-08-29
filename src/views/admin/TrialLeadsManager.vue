@@ -940,13 +940,13 @@ const PRESET_TEMPLATES = [
 async function loadTemplates() {
   loadingTemplates.value = true;
   try {
-    let list = await fetchEmailTemplates();
+    let list = await fetchEmailTemplates('trial');
     if (!list.length) {
       // 首次進頁：寫入預置範本
       for (const t of PRESET_TEMPLATES) {
-        await saveEmailTemplate({ ...t, attachments: [] }, 'system');
+        await saveEmailTemplate({ ...t, attachments: [], scope: 'trial' }, 'system');
       }
-      list = await fetchEmailTemplates();
+      list = await fetchEmailTemplates('trial');
       uiStore.showSnackbar('已建立 3 份預置 Email 範本', 'info');
     }
     templates.value = list;
@@ -960,8 +960,8 @@ async function loadTemplates() {
 
 function openTemplateEditor(t) {
   templateForm.value = t
-    ? { id: t.id, name: t.name || '', subject: t.subject || '', html: t.html || '', attachments: (t.attachments || []).map((a) => ({ ...a })) }
-    : { id: null, name: '', subject: '', html: '<p></p>', attachments: [] };
+    ? { id: t.id, name: t.name || '', subject: t.subject || '', html: t.html || '', attachments: (t.attachments || []).map((a) => ({ ...a })), scope: t.scope || 'all' }
+    : { id: null, name: '', subject: '', html: '<p></p>', attachments: [], scope: 'trial' };
   templatePendingFiles.value = [];
   templateEditorOpen.value = true;
 }
@@ -1006,7 +1006,7 @@ async function onTemplateFilesPicked(files) {
 async function saveTemplate() {
   savingTemplate.value = true;
   try {
-    await saveEmailTemplate(templateForm.value, operatorName.value);
+    await saveEmailTemplate({ ...templateForm.value, scope: templateForm.value.scope || 'trial' }, operatorName.value);
     uiStore.showSnackbar('範本已儲存', 'success');
     templateEditorOpen.value = false;
     await loadTemplates();

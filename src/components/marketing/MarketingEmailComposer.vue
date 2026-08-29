@@ -10,7 +10,7 @@
     <v-card class="composer-card">
       <v-card-title class="d-flex align-center">
         <v-icon class="mr-2" color="primary">mdi-email-edit</v-icon>
-        廣告 Email 編輯器
+        {{ composerTitle }}
         <v-spacer />
         <v-btn icon="mdi-close" variant="text" size="small" :disabled="sending" @click="close" />
       </v-card-title>
@@ -73,13 +73,14 @@
               <template v-if="activeRecipients.length">
                 <v-chip
                   v-for="r in activeRecipients"
-                  :key="r.leadId || r.email"
+                  :key="(r.leadId || '') + '|' + r.email"
                   size="small"
                   class="ma-1"
                   closable
                   @click:close="removeRecipient(r)"
                 >
-                  {{ r.name || '(未填姓名)' }} &lt;{{ r.email }}&gt;
+                  <template v-if="isProspect">{{ r.company || r.name || '(未命名)' }}<span v-if="r.name" class="text-grey">／{{ r.name }}</span> &lt;{{ r.email }}&gt;</template>
+                  <template v-else>{{ r.name || '(未填姓名)' }} &lt;{{ r.email }}&gt;</template>
                 </v-chip>
               </template>
               <div v-else class="text-grey text-caption pa-2">尚無收件人</div>
@@ -90,7 +91,7 @@
                   已排除 {{ excludedRecipients.length }} 位（不聯絡／無 Email／已手動移除），展開可勾回
                 </v-expansion-panel-title>
                 <v-expansion-panel-text>
-                  <div v-for="r in excludedRecipients" :key="r.leadId || r.email || r.name" class="d-flex align-center">
+                  <div v-for="r in excludedRecipients" :key="(r.leadId || '') + '|' + (r.email || r.name)" class="d-flex align-center">
                     <v-checkbox
                       :model-value="false"
                       density="compact"
@@ -100,7 +101,7 @@
                     >
                       <template #label>
                         <span class="text-body-2">
-                          {{ r.name || '(未填姓名)' }}
+                          {{ (isProspect ? (r.company || r.name) : r.name) || '(未填姓名)' }}
                           <span v-if="r.email">&lt;{{ r.email }}&gt;</span>
                           <v-chip size="x-small" class="ml-1" :color="r.reasonColor" variant="tonal">{{ r.reason }}</v-chip>
                         </span>
@@ -120,6 +121,27 @@
               :rules="[(v) => !!(v && v.trim()) || '請輸入主旨']"
               class="mb-2"
             />
+
+            <!-- 客戶開發：Reply-To / 開信追蹤 -->
+            <template v-if="isProspect">
+              <v-text-field
+                v-model="replyToInput"
+                label="回信地址 Reply-To（對方回信會寄到這裡）"
+                variant="outlined"
+                density="compact"
+                prepend-inner-icon="mdi-reply"
+                hide-details
+                class="mb-2"
+              />
+              <v-switch
+                v-model="trackingEnabled"
+                label="嵌入開信追蹤像素（開信時間僅供參考）"
+                color="primary"
+                density="compact"
+                hide-details
+                class="mb-2"
+              />
+            </template>
 
             <!-- 附件 -->
             <div class="text-subtitle-2 mb-1">附件（最多 5 個，單檔 ≤ 10MB，總計 ≤ 20MB）</div>
@@ -194,7 +216,7 @@
             </div>
             <div v-show="rightMode === 'preview'" class="preview-wrapper">
               <div class="text-caption text-grey mb-1">
-                以第一位收件人預覽：{{ previewRecipient.name || '(未填姓名)' }} &lt;{{ previewRecipient.email || '—' }}&gt;
+                以第一位收件人預覽：{{ (isProspect ? (previewRecipient.company || previewRecipient.name) : previewRecipient.name) || '(未填姓名)' }} &lt;{{ previewRecipient.email || '—' }}&gt;
               </div>
               <div class="preview-subject">主旨：{{ renderVariables(subject, previewRecipient) }}</div>
               <div class="preview-html" v-html="renderVariables(html, previewRecipient)"></div>
@@ -296,10 +318,19 @@ import {
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  /** [{ leadId|id, name, email, company, tags }] */
+  /**
+   * [{ leadId|id, name, email, company, tags }]
+   * 客戶開發（target='prospects'）另可帶：contactId、vars:{建案,建商,聯絡人,公司}、excludedReason
+   */
   recipients: { type: Array, default: () => [] },
   /** { subject, html, attachments } */
   preset: { type: Object, default: null },
+  /** 收件人來源集合（docs/SPEC_CustomerProspecting.md §6.1） */
+  target: { type: String, default: 'trialLeads' },
+  /** 回信地址；空＝操作者 Email */
+  replyTo: { type: String, default: '' },
+  /** 是否嵌入開信追蹤像素（僅 prospects） */
+  tracking: { type: Boolean, default: true },
 });
 const emit = defineEmits(['update:modelValue', 'sent', 'template-saved']);
 
@@ -309,6 +340,13 @@ const uiStore = useUiStore();
 
 const currentUserEmail = computed(() => userStore.user?.email || '');
 const operatorKey = computed(() => userStore.user?.key || '');
+const isProspect = computed(() => props.target === 'prospects');
+const templateScope = computed(() => (isProspect.value ? 'prospect' : 'trial'));
+const composerTitle = computed(() => (isProspect.value ? '客戶開發 Email 編輯器' : '廣告 Email 編輯器'));
+
+// Reply-To（僅客戶開發顯示欄位）
+const replyToInput = ref('');
+const trackingEnabled = ref(true);
 
 // ---------------------------------------------------------------
 // 收件人
@@ -321,12 +359,14 @@ function normalizeRecipient(r) {
   const email = String(r.email || '').trim();
   let reason = '';
   let reasonColor = 'grey';
-  if (!email) { reason = '無 Email'; reasonColor = 'grey'; } else if (tags.includes(DO_NOT_CONTACT_TAG)) { reason = '不聯絡'; reasonColor = 'red'; }
+  if (!email) { reason = '無 Email'; reasonColor = 'grey'; } else if (r.excludedReason) { reason = r.excludedReason; reasonColor = 'red'; } else if (tags.includes(DO_NOT_CONTACT_TAG)) { reason = '不聯絡'; reasonColor = 'red'; }
   return {
     leadId: r.leadId || r.id || '',
+    contactId: r.contactId || '',
     name: r.name || '',
     email,
     company: r.company || '',
+    vars: r.vars && typeof r.vars === 'object' ? { ...r.vars } : null,
     tags,
     excluded: !!reason,
     reason,
@@ -354,7 +394,9 @@ function reincludeRecipient(r) {
 // 內容 / 附件
 // ---------------------------------------------------------------
 const subject = ref('');
-const subjectLabel = '主旨（必填，支援 {{姓名}} {{公司}} {{Email}} 變數）';
+const subjectLabel = computed(() => (isProspect.value
+  ? '主旨（必填，支援 {{建案}} {{建商}} {{聯絡人}} {{公司}} {{Email}} 變數）'
+  : '主旨（必填，支援 {{姓名}} {{公司}} {{Email}} 變數）'));
 const html = ref('');
 const attachments = ref([]);
 const pendingFiles = ref([]);
@@ -421,11 +463,9 @@ function removeAttachment(a) {
 // ---------------------------------------------------------------
 // 變數
 // ---------------------------------------------------------------
-const variableButtons = [
-  { token: '{{姓名}}' },
-  { token: '{{公司}}' },
-  { token: '{{Email}}' },
-];
+const variableButtons = computed(() => (isProspect.value
+  ? [{ token: '{{建案}}' }, { token: '{{建商}}' }, { token: '{{聯絡人}}' }, { token: '{{公司}}' }, { token: '{{Email}}' }]
+  : [{ token: '{{姓名}}' }, { token: '{{公司}}' }, { token: '{{Email}}' }]));
 
 function insertVariable(token) {
   const current = html.value || '';
@@ -444,12 +484,19 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;');
 }
 
+/** 與後端 applyVariables 同邏輯：vars 通用替換；{{姓名}}→聯絡人；未知變數保留原文 */
 function renderVariables(text, r) {
   const rec = r || {};
-  return String(text || '')
-    .replace(/\{\{\s*姓名\s*\}\}/g, escapeHtml(rec.name || ''))
-    .replace(/\{\{\s*公司\s*\}\}/g, escapeHtml(rec.company || ''))
-    .replace(/\{\{\s*Email\s*\}\}/gi, escapeHtml(rec.email || ''));
+  const vars = rec.vars && typeof rec.vars === 'object' ? rec.vars : {};
+  const map = {
+    ...vars,
+    姓名: vars['聯絡人'] || rec.name || '',
+    公司: vars['公司'] || rec.company || '',
+    Email: rec.email || '',
+    email: rec.email || '',
+  };
+  return String(text || '').replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (whole, key) =>
+    (Object.prototype.hasOwnProperty.call(map, key) ? escapeHtml(map[key] ?? '') : whole));
 }
 
 // ---------------------------------------------------------------
@@ -467,7 +514,7 @@ const existingTemplateWithName = computed(() =>
 async function loadTemplates() {
   loadingTemplates.value = true;
   try {
-    templates.value = await fetchEmailTemplates();
+    templates.value = await fetchEmailTemplates(templateScope.value);
   } catch (e) {
     console.error(e);
   } finally {
@@ -499,6 +546,7 @@ async function saveAsTemplate() {
       subject: subject.value,
       html: html.value,
       attachments: attachments.value,
+      scope: existing?.scope || templateScope.value,
     }, userStore.user?.name || operatorKey.value);
     uiStore.showSnackbar('範本已儲存', 'success');
     saveTemplateDialog.value = false;
@@ -565,18 +613,26 @@ function watchNewestCampaign(expectedSubject) {
 }
 
 function buildPayload(recipients) {
-  return {
+  const payload = {
     operatorKey: operatorKey.value,
     subject: subject.value.trim(),
     html: html.value,
     attachments: attachments.value.map((a) => ({ name: a.name, url: a.url, size: a.size })),
     recipients: recipients.map((r) => ({
       leadId: r.leadId || null,
+      contactId: r.contactId || null,
       name: r.name || '',
       email: r.email,
       company: r.company || '',
+      vars: r.vars || undefined,
     })),
+    target: props.target,
   };
+  if (isProspect.value) {
+    payload.replyTo = replyToInput.value.trim();
+    payload.tracking = trackingEnabled.value;
+  }
+  return payload;
 }
 
 async function doSend() {
@@ -614,11 +670,13 @@ async function sendTest() {
   }
   sendingTest.value = true;
   try {
+    const first = activeRecipients.value[0];
     const me = {
       leadId: null,
       name: userStore.user?.name || '測試',
       email: currentUserEmail.value,
       company: '（測試）',
+      vars: first?.vars ? { ...first.vars } : undefined,
     };
     const res = await sendMarketingEmailAPI({
       ...buildPayload([me]),
@@ -642,6 +700,8 @@ async function sendTest() {
 // ---------------------------------------------------------------
 function resetState() {
   allRecipients.value = (props.recipients || []).map(normalizeRecipient);
+  replyToInput.value = props.replyTo || currentUserEmail.value || '';
+  trackingEnabled.value = props.tracking !== false;
   subject.value = props.preset?.subject || '';
   html.value = props.preset?.html || '';
   attachments.value = Array.isArray(props.preset?.attachments) ? props.preset.attachments.map((a) => ({ ...a })) : [];

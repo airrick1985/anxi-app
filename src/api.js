@@ -1149,6 +1149,41 @@ export async function sendSalesStatusNotification(payload) {
   }
 }
 
+// ===============================================
+// 報價單列印前底價守門 API（docs/SPEC_QuoteFloorPriceApproval.md §7）
+// ===============================================
+
+async function callQuoteApprovalApi(action, payload) {
+  try {
+    const fn = httpsCallable(functions, 'quoteApprovalApi');
+    const result = await fn({ action, ...payload });
+    return { status: 'success', ...(result.data || {}) };
+  } catch (error) {
+    console.error(`呼叫 quoteApprovalApi(${action}) 雲端函式時發生錯誤:`, error);
+    return { status: 'error', code: error.code || '', message: error.message };
+  }
+}
+
+/** 列印前核對：items = [{ internalId, unitId, quoteTotal, parkingSpotIds }] → results（不含金額） */
+export function checkQuoteFloor(payload) {
+  return callQuoteApprovalApi('check', payload);
+}
+
+/** 通知主管：units / supervisorKeys / salesName ...（後端會再核對一次） */
+export function notifyQuoteApproval(payload) {
+  return callQuoteApprovalApi('notify', payload);
+}
+
+/** 報價核准設定用：全部候選主管（含無法通知者，附 hasLine / hasEmail）與目前設定 */
+export function listQuoteApproverCandidates(payload) {
+  return callQuoteApprovalApi('listApprovers', payload);
+}
+
+/** 列印時可選的主管（已設定則只列設定名單，否則退回全部候選） */
+export function listQuoteSupervisors(payload) {
+  return callQuoteApprovalApi('listSupervisors', payload);
+}
+
 export async function logSalesStatusNotification(payload) {
   if (!payload || !payload.projectId || !payload.unitId) {
     return { status: "error", message: "前端錯誤：缺少 projectId / unitId。" };
