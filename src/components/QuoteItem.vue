@@ -117,30 +117,6 @@
     <v-list-item v-if="showPackageDeal" class="pl-0"><v-list-item-title>配套價</v-list-item-title><template v-slot:append><strong class="final-price">{{ packagePrice.toLocaleString() }} 萬</strong></template></v-list-item>
     <v-list-item class="pl-0"><v-list-item-title class="font-weight-bold">總價</v-list-item-title><template v-slot:append><strong class="final-price">{{ finalTotalPrice.toLocaleString() }} 萬</strong></template></v-list-item>
    </v-list>
-   <!-- ✅ [優化] 手機版補上「選擇方案」按鈕（原僅桌機版有），與付款方式並排 -->
-   <div class="d-flex ga-2 mt-2">
-    <v-btn class="flex-grow-1" size="small" @click="isPaymentDetailsVisible = !isPaymentDetailsVisible" :append-icon="isPaymentDetailsVisible ? 'mdi-chevron-up' : 'mdi-chevron-down'">
-     付款方式
-    </v-btn>
-    <v-btn
-      class="flex-grow-1 plan-select-btn"
-      size="small"
-      prepend-icon="mdi-star-box-multiple"
-      @click="isPlanPickerVisible = true"
-    >選擇方案</v-btn>
-   </div>
-   <div v-if="appliedPlansList.length > 0" class="d-flex flex-wrap justify-center ga-1 mt-2">
-    <v-chip
-      v-for="ap in appliedPlansList"
-      :key="ap.planId"
-      size="x-small"
-      color="deep-purple-darken-1"
-      :variant="isPlanModified(ap) ? 'outlined' : 'flat'"
-      :class="{ 'plan-chip-modified': isPlanModified(ap) }"
-      closable
-      @click:close="removeAppliedPlan(ap)"
-    >{{ ap.planName }}{{ isPlanModified(ap) ? '（已修改）' : '' }}</v-chip>
-   </div>
     </div>
 
     <div v-else class="quote-item-row">
@@ -262,36 +238,62 @@
     <div class="item-cell flex-1 final-price">{{ packagePrice.toLocaleString() }} 萬</div>
    </template>
 
-   <div class="item-cell flex-1">
-    <div class="d-flex flex-column align-center ga-1" style="width: 100%;">
-      <v-btn @click="isPaymentDetailsVisible = !isPaymentDetailsVisible" size="small" :append-icon="isPaymentDetailsVisible ? 'mdi-chevron-up' : 'mdi-chevron-down'">
-       付款方式
-      </v-btn>
-      <!-- ✅ [新增] 選擇方案：套用預先定義的方案（付款方式＋議價調整＋文字內容） -->
-      <v-btn
-        size="small"
-        class="plan-select-btn"
-        prepend-icon="mdi-star-box-multiple"
-        @click="isPlanPickerVisible = true"
-      >選擇方案</v-btn>
-      <div v-if="appliedPlansList.length > 0" class="d-flex flex-wrap justify-center ga-1">
-        <v-chip
-          v-for="ap in appliedPlansList"
-          :key="ap.planId"
-          size="x-small"
-          color="deep-purple-darken-1"
-          :variant="isPlanModified(ap) ? 'outlined' : 'flat'"
-          :class="{ 'plan-chip-modified': isPlanModified(ap) }"
-          closable
-          @click:close="removeAppliedPlan(ap)"
-        >{{ ap.planName }}{{ isPlanModified(ap) ? '（已修改）' : '' }}</v-chip>
-      </div>
-    </div>
-   </div>
    <div class="item-cell flex-shrink-0">
     <v-btn color="red" variant="flat" size="small" @click="emit('remove')">移除本戶</v-btn>
    </div>
     </div>
+
+<!-- ✅ [優化] 付款方式展開列：整列可點擊、狀態一目了然；選擇方案與已套用方案 chips 集中於此，不再塞在表格欄位內 -->
+<div
+  class="payment-toggle-bar"
+  :class="{ 'is-open': isPaymentDetailsVisible, 'is-mobile': isMobile }"
+  role="button"
+  tabindex="0"
+  :aria-expanded="isPaymentDetailsVisible"
+  @click="togglePaymentDetails"
+  @keydown.enter.prevent="togglePaymentDetails"
+  @keydown.space.prevent="togglePaymentDetails"
+>
+  <div class="payment-toggle-main">
+    <span class="payment-toggle-chevron" :class="{ 'is-open': isPaymentDetailsVisible }">
+      <v-icon size="22">mdi-chevron-down</v-icon>
+    </span>
+    <v-icon size="18" class="payment-toggle-icon">mdi-cash-multiple</v-icon>
+    <span class="payment-toggle-label">付款方式</span>
+    <span class="payment-toggle-state">{{ isPaymentDetailsVisible ? '收合明細' : '展開明細' }}</span>
+    <v-chip
+      v-if="hasNewTemplates"
+      size="x-small"
+      :color="isManualTemplateActive ? 'orange-darken-2' : 'green-darken-1'"
+      variant="flat"
+      class="payment-toggle-mode"
+    >{{ isManualTemplateActive ? '手動指定' : '自動判斷' }}</v-chip>
+    <span v-if="paymentSummaryText" class="payment-toggle-summary" :title="paymentSummaryText">{{ paymentSummaryText }}</span>
+  </div>
+  <div class="payment-toggle-side" @click.stop @keydown.stop>
+    <div v-if="appliedPlansList.length > 0" class="d-flex flex-wrap ga-1">
+      <v-chip
+        v-for="ap in appliedPlansList"
+        :key="ap.planId"
+        size="x-small"
+        color="deep-purple-darken-1"
+        :variant="isPlanModified(ap) ? 'outlined' : 'flat'"
+        :class="{ 'plan-chip-modified': isPlanModified(ap) }"
+        closable
+        @click:close="removeAppliedPlan(ap)"
+      >{{ ap.planName }}{{ isPlanModified(ap) ? '（已修改）' : '' }}</v-chip>
+    </div>
+    <!-- ✅ [優化] 選擇方案：加大尺寸、置於展開列最右側醒目位置；手機版整行滿版 -->
+    <v-btn
+      :size="isMobile ? 'large' : 'default'"
+      :block="isMobile"
+      class="plan-select-btn plan-select-btn--hero"
+      prepend-icon="mdi-star-box-multiple"
+      elevation="3"
+      @click="isPlanPickerVisible = true"
+    >選擇方案</v-btn>
+  </div>
+</div>
 
 <v-expand-transition>
   <div v-show="isPaymentDetailsVisible">
@@ -908,6 +910,18 @@ const projectStore = useProjectStore();
 const { mobile } = useDisplay();
 const isMobile = computed(() => mobile.value);
 const isPaymentDetailsVisible = ref(false);
+function togglePaymentDetails() {
+    isPaymentDetailsVisible.value = !isPaymentDetailsVisible.value;
+}
+// ✅ [優化] 付款方式展開列摘要：顯示目前實際採用的總價／配套範本名稱，收合時也能一眼看出
+const paymentSummaryText = computed(() => {
+    const names = [];
+    const general = effectiveGeneralTemplate.value?.templateName;
+    const pkg = effectivePackageTemplate.value?.templateName;
+    if (general) names.push(general);
+    if (pkg && pkg !== general) names.push(pkg);
+    return names.join('　＋　');
+});
 
 // 車位選擇相關狀態
 const isParkingModalOpen = ref(false);
@@ -2127,6 +2141,103 @@ function isPlanModified(appliedPlan) {
   border-style: dashed !important;
 }
 
+/* ✅ [優化] 付款方式展開列：整列可點擊、左側色條 + 大箭頭，展開時轉色 */
+.payment-toggle-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 48px;
+  padding: 6px 12px 6px 10px;
+  margin-top: 4px;
+  border-top: 1px solid #e3e8ee;
+  border-left: 4px solid #90a4ae;
+  background: linear-gradient(90deg, #f4f7fa, #fafbfc);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s, border-color 0.15s;
+  outline: none;
+}
+.payment-toggle-bar:hover { background: #eef3f8; border-left-color: #1976d2; }
+.payment-toggle-bar:focus-visible { box-shadow: inset 0 0 0 2px rgba(25, 118, 210, 0.45); }
+.payment-toggle-bar.is-open {
+  background: #e3f2fd;
+  border-left-color: #1976d2;
+  border-bottom: 1px solid #bbdefb;
+}
+.payment-toggle-bar.is-mobile { flex-wrap: wrap; padding: 8px 10px; margin-top: 0; border: 1px solid #e0e0e0; border-left: 4px solid #90a4ae; }
+.payment-toggle-bar.is-mobile.is-open { border-left-color: #1976d2; }
+.payment-toggle-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.payment-toggle-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #cfd8dc;
+  color: #37474f;
+  transition: transform 0.2s ease, background-color 0.15s;
+  flex-shrink: 0;
+}
+.payment-toggle-chevron.is-open { transform: rotate(180deg); background: #1976d2; color: #fff; }
+.payment-toggle-icon { color: #546e7a; flex-shrink: 0; }
+.payment-toggle-label { font-weight: 700; font-size: 0.95rem; color: #263238; white-space: nowrap; }
+.payment-toggle-state { font-size: 0.8rem; color: #1976d2; white-space: nowrap; }
+.payment-toggle-mode { flex-shrink: 0; }
+.payment-toggle-summary {
+  font-size: 0.8rem;
+  color: #607d8b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  margin-left: 4px;
+}
+.payment-toggle-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  cursor: default;
+}
+.payment-toggle-bar.is-mobile .payment-toggle-side { width: 100%; justify-content: space-between; }
+.payment-toggle-bar.is-mobile .payment-toggle-side > .plan-select-btn--hero { width: 100%; margin-top: 2px; }
+
+/* ✅ [優化] 選擇方案主按鈕：加大字級與內距、動態光暈，讓它成為該列最醒目的操作 */
+.plan-select-btn--hero {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding-inline: 20px !important;
+  min-height: 40px;
+  border-radius: 10px;
+  box-shadow: 0 3px 10px rgba(94, 53, 177, 0.45), 0 0 0 0 rgba(216, 27, 96, 0.5);
+  animation: plan-btn-pulse 2.4s ease-out infinite;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.plan-select-btn--hero:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(94, 53, 177, 0.55);
+  animation: none;
+}
+.plan-select-btn--hero :deep(.v-btn__prepend) { margin-inline-end: 8px; }
+.plan-select-btn--hero :deep(.v-icon) { font-size: 1.3rem; }
+@keyframes plan-btn-pulse {
+  0%   { box-shadow: 0 3px 10px rgba(94, 53, 177, 0.45), 0 0 0 0 rgba(216, 27, 96, 0.45); }
+  70%  { box-shadow: 0 3px 10px rgba(94, 53, 177, 0.45), 0 0 0 10px rgba(216, 27, 96, 0); }
+  100% { box-shadow: 0 3px 10px rgba(94, 53, 177, 0.45), 0 0 0 0 rgba(216, 27, 96, 0); }
+}
+.payment-toggle-bar.is-mobile .payment-toggle-summary { white-space: normal; }
+
 /* Styles remain the same */
 .quote-item-row { display: flex; align-items: center; width: 100%; padding: 8px 0; border-bottom: 1px solid #eee; }
 .item-cell { padding: 0 8px; display: flex; align-items: center; justify-content: center; text-align: center; }
@@ -2134,7 +2245,7 @@ function isPlanModified(appliedPlan) {
 .flex-2 { flex: 2; }
 .flex-shrink-0 { flex-shrink: 0; }
 .item-cell > .v-input { flex: none; }
-.quote-item-mobile { border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px 12px; margin-bottom: 16px; background-color: #fafafa; }
+.quote-item-mobile { border: 1px solid #e0e0e0; border-radius: 8px 8px 0 0; border-bottom: none; padding: 8px 12px; margin-bottom: 0; background-color: #fafafa; }
 .quote-item-mobile .v-list-item { padding-left: 0; padding-right: 0; min-height: 40px; }
 /* ✅ [優化] 手機版：append 區允許收縮、露臺拆分可換行，避免窄螢幕溢位 */
 .quote-item-mobile :deep(.v-list-item__append) { min-width: 0; }

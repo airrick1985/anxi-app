@@ -206,7 +206,6 @@
               <div class="item-cell flex-1">配套</div>
               <div class="item-cell flex-1">配套價</div>
             </template>
-            <div class="item-cell flex-1">付款方式</div>
             <div class="item-cell flex-shrink-0" style="width: 50px;"></div>
           </div>
           <v-card v-for="item in quoteStore.items" :key="item.internalId" class="quote-item-card">

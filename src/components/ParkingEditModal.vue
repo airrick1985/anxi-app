@@ -386,6 +386,9 @@ function addParking() {
       price_floor: newSpotData.price_floor || newSpotData['底價'] || newSpotData['車位底價'],
       // ✅ 如果成交價不存在或為空，預設帶入表價
       price_transaction: newSpotData.price_transaction || newSpotData['車位成交價'] || newSpotData.price_list || newSpotData['表價'] || newSpotData['車位表價'],
+      // ✅ [新增] 車位持分面積（m² / 坪）：供列印報價單「詳細面積」顯示
+      area: newSpotData.area ?? newSpotData['車位面積(m²)'] ?? newSpotData['車位面積'] ?? null,
+      area_ping: newSpotData.area_ping ?? newSpotData['車位面積_坪'] ?? newSpotData['車位面積(坪)'] ?? null,
     };
     localParking.value.push(newSpot);
     newParkingSelection.value = null;

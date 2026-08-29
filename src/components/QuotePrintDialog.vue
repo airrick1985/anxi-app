@@ -283,6 +283,7 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useProjectStore } from '@/store/projectStore';
+import { useParkingStore } from '@/store/parkingStore';
 import { fetchQuoteRemark } from '@/api';
 import { generateQrDataUrl } from '@/utils/quoteQrCode';
 
@@ -298,6 +299,7 @@ const emit = defineEmits(['update:modelValue']);
 const toast = useToast();
 const quoteStore = useQuoteStore();
 const projectStore = useProjectStore();
+const parkingStore = useParkingStore();
 
 const show = computed({
   get: () => props.modelValue,
@@ -547,11 +549,7 @@ function renderSheet(item) {
   ]
     .filter(([, v]) => v !== null && v !== undefined && v !== '')
     .map(([label, ping, sqm]) => ({ label, ...pingWithSqm(ping, sqm) }));
-  const ratio = parseFloat(ud.common_area_ratio);
-  if (!isNaN(ratio)) {
-    areaDetailItems.push({ label: '公設比', main: `${(ratio * 100).toFixed(2)} %`, sqm: '' });
-  }
-  const areaStrip = areaDetailItems.length ? `
+  const buildAreaStrip = () => areaDetailItems.length ? `
     <section class="wide-strip">
       <span class="lbl">詳細面積</span>
       ${areaDetailItems.map(it => `
@@ -606,13 +604,49 @@ function renderSheet(item) {
     : '—';
   const useParkingStrip = parkingList.length > 2;
   const parkingCellVal = useParkingStrip ? `共 ${parkingList.length} 個（明細見下）` : parkingInline;
+
+  // ✅ [新增] 車位持分面積：坪優先取車位資料 area_ping，未填時以 m²(area) × 0.3025 換算；加總所有已選車位
+  // 報價單內的車位物件若未帶面積（舊資料），以車位編號回查車位總表補齊
+  const parkingMaster = parkingStore.parkingData || [];
+  const spotKey = p => String(p?.spotId ?? p?.['車位編號'] ?? '').trim();
+  const masterSpot = p => {
+    const k = spotKey(p);
+    return k ? parkingMaster.find(m => spotKey(m) === k) : null;
+  };
+  const pickArea = (p, field) => {
+    const own = Number(p?.[field]);
+    if (own > 0) return own;
+    const mv = Number(masterSpot(p)?.[field]);
+    return mv > 0 ? mv : 0;
+  };
+  const spotSqm = p => pickArea(p, 'area');
+  const spotPing = p => pickArea(p, 'area_ping') || Math.round(spotSqm(p) * 0.3025 * 100) / 100;
+  const parkingAreaPing = parkingList.reduce((sum, p) => sum + spotPing(p), 0);
+  const parkingAreaSqm = parkingList.reduce((sum, p) => sum + spotSqm(p), 0);
+  const hasParkingArea = parkingAreaPing > 0 || parkingAreaSqm > 0;
+  // ✅ [新增] 詳細面積列最後一格：車位持分面積 坪(m²)（多車位加總）
+  if (hasParkingArea) {
+    areaDetailItems.push({ label: '車位持分面積', ...pingWithSqm(parkingAreaPing, parkingAreaSqm > 0 ? parkingAreaSqm : null) });
+  }
+  // ✅ [優化] 公設比固定為詳細面積列最後一格
+  const ratio = parseFloat(ud.common_area_ratio);
+  if (!isNaN(ratio)) {
+    areaDetailItems.push({ label: '公設比', main: `${(ratio * 100).toFixed(2)} %`, sqm: '' });
+  }
+  const areaStrip = buildAreaStrip();
+
   const parkingStrip = useParkingStrip ? `
     <section class="wide-strip">
       <span class="lbl">車位明細</span>
       ${parkingList.map(p => {
         const price = Number(p.price_list) || 0;
+        const ping = spotPing(p);
+        const sqm = spotSqm(p);
+        const areaNote = ping > 0 || sqm > 0
+          ? `<span class="sqm">${fmt(ping, 2)} 坪${sqm > 0 ? `(${fmt(sqm, 2)}m²)` : ''}</span>`
+          : '';
         return `
-      <span class="strip-item"><em>${esc(p['車位編號'])}</em><b>${price > 0 ? `${fmt(price)} 萬` : '—'}</b></span>`;
+      <span class="strip-item"><em>${esc(p['車位編號'])}</em><b>${price > 0 ? `${fmt(price)} 萬` : '—'}${areaNote}</b></span>`;
       }).join('')}
     </section>` : '';
 
@@ -766,7 +800,8 @@ const SHEET_CSS = `
   }
   .sheet {
     width: 210mm; height: 296mm;
-    margin: 5mm auto; padding: 12mm 14mm;
+    /* ✅ [優化] 頁邊界縮小（12/14mm → 7/8mm），讓內容有更多空間等比放大 */
+    margin: 5mm auto; padding: 7mm 8mm;
     background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.25);
     overflow: hidden;
   }
@@ -1065,27 +1100,41 @@ function buildSheetsHtml({ autoPrint = false, fitZoom = false } = {}) {
 <body>
 ${sheets}
 <script>
-// ✅ 絕對單頁排版：1) 緊湊模式先收斂間距字級 → 2) 仍超出則等比縮放到剛好一頁（不分頁）
+// ✅ 絕對單頁排版：1) 超出時先進緊湊模式收斂間距字級 → 2) 等比縮放到剛好塞滿一頁
+//    （超出則縮小、保證不分頁；有餘裕則放大，上限 MAX_UP，讓內容填滿縮小後的頁邊界）
 window.onload = function () {
+  var MAX_UP = 1.45, MIN_DOWN = 0.3;
   document.querySelectorAll('.sheet').forEach(function (sheet) {
     var inner = sheet.querySelector('.inner');
     if (!inner) return;
     var cs = getComputedStyle(sheet);
     var avail = sheet.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
 
-    // 階梯 1：緊湊模式
-    if (inner.scrollHeight > avail + 1) {
+    // 以縮放比 s 排版（寬度反向放大 → 縮放後恰為頁寬），回傳縮放後的內容高度
+    function measure(s) {
+      inner.style.minHeight = '0';
+      inner.style.width = (100 / s) + '%';
+      inner.style.transform = 'scale(' + s + ')';
+      return inner.scrollHeight * s;
+    }
+    function apply(s) {
+      measure(s);
+      inner.style.minHeight = (avail / s) + 'px';
+    }
+
+    // 階梯 1：原始尺寸超出 → 緊湊模式
+    if (measure(1) > avail + 1) {
       sheet.classList.add('compact');
     }
 
-    // 階梯 2：等比縮放至剛好塞滿一頁（無下限，保證絕不產生第二頁）
-    var natural = inner.scrollHeight;
-    if (natural > avail + 1) {
-      var s = avail / natural;
-      inner.style.transform = 'scale(' + s + ')';
-      inner.style.width = (100 / s) + '%';
-      inner.style.minHeight = (avail / s) + 'px';
+    // 階梯 2：二分搜尋最大可容納的縮放比（寬度改變會重排，故需實測而非單純比例）
+    if (measure(MAX_UP) <= avail + 0.5) { apply(MAX_UP); return; }
+    var lo = MIN_DOWN, hi = MAX_UP;
+    for (var i = 0; i < 12; i++) {
+      var mid = (lo + hi) / 2;
+      if (measure(mid) <= avail + 0.5) lo = mid; else hi = mid;
     }
+    apply(lo);
   });${zoomScript}${printScript}
 };
 <\/script>
