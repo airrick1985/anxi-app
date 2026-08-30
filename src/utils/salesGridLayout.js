@@ -119,6 +119,7 @@ export function buildPagePlan({ paper, orientation, rowsPerPage, colsPerPage, bu
     total: 16 * scale,   // 總價：紅色粗體、不帶「萬」
     sub: 12 * scale,
     sold: 14 * scale,
+    tag: 9 * scale,      // 文字標籤（右上角小 chip，與畫面 9px 對應）
     legend: LEGEND_FONT,
   };
 

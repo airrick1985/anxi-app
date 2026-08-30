@@ -14,6 +14,7 @@
  *   pages: [ { pageNo, totalPages, buildings:[], floors:[],
  *              cells: [ { empty:true } |
  *                       { unitId, bgColor, soldOnly, hasTerrace,
+ *                         tags: [ { text, bgColor, textColor } ],   // 文字標籤（右上角 chip，最多畫 2 個 + '+N'，可省略）
  *                         lines: { total,       // 總價（紅色粗體、無「萬」）
  *                                  breakdown,   // 露臺戶拆分「房屋+露臺」（如 '1,100+134'，可省略）
  *                                  area, unit } } ] } ]   // cells 依 floor×building 攤平
@@ -37,6 +38,18 @@ const TOTAL_RED = "#C00000";
 const TERRACE_GREEN = "#2e7d32";
 const TEXT_DARK = "#212121";
 const TEXT_GRAY = "#555555";
+const TAG_MORE_BG = "#eceff1";
+const TAG_MORE_TEXT = "#455a64";
+const TAG_DEFAULT_BG = "#607D8B";
+
+// 文字標籤帶尺寸（畫面 px 基準，乘 scale；與前端 SalesGridDownloadDialog.vue 同值）
+const TAG_STRIP_TOP = 2;
+const TAG_CHIP_H = 13;
+const TAG_MAX_W = 48;
+const TAG_PAD_X = 4;
+const TAG_GAP = 2;
+const TAG_TOP_INSET = 16;
+const TAG_MAX_SHOWN = 2;
 
 /** 色碼防呆：非合法 hex 一律回退 */
 function safeColor(color, fallback) {
@@ -78,6 +91,58 @@ function centeredText(pdf, text, x, y, w, fontSize, font, color) {
   pdf.text(String(text), x, y, { width: w, align: "center", lineBreak: false });
 }
 
+/** 文字超過 maxW 時截斷加「…」（需先設定 font/fontSize） */
+function fitText(pdf, text, maxW) {
+  let s = String(text ?? "");
+  if (pdf.widthOfString(s) <= maxW) return s;
+  while (s.length > 1 && pdf.widthOfString(s + "…") > maxW) s = s.slice(0, -1);
+  return s + "…";
+}
+
+/**
+ * 文字標籤帶：格子右上角由右往左排 chip，最多 TAG_MAX_SHOWN 個 + '+N'。
+ * 露臺綠點在時右邊界內縮讓開。
+ */
+function drawTagStrip(pdf, cell, x, y, cellW, scale, fTag) {
+  const tags = (Array.isArray(cell.tags) ? cell.tags : []).filter(t => t && String(t.text || "").trim());
+  if (tags.length === 0) return;
+
+  const chipH = TAG_CHIP_H * scale;
+  const padX = TAG_PAD_X * scale;
+  const gap = TAG_GAP * scale;
+  const maxChipW = TAG_MAX_W * scale;
+  const stripY = y + TAG_STRIP_TOP * scale;
+  const leftLimit = x + 3 * scale;
+  let rightX = x + cellW - (cell.hasTerrace ? 11 : 3) * scale;
+
+  // 顯示順序：tag1 tag2 +N（靠右對齊）→ 由右往左畫：+N, tag2, tag1
+  const items = [];
+  const shown = tags.slice(0, TAG_MAX_SHOWN);
+  if (tags.length > TAG_MAX_SHOWN) {
+    items.push({ text: `+${tags.length - TAG_MAX_SHOWN}`, bg: TAG_MORE_BG, color: TAG_MORE_TEXT, noClip: true });
+  }
+  for (let i = shown.length - 1; i >= 0; i--) {
+    const t = shown[i];
+    items.push({
+      text: String(t.text).trim(),
+      bg: safeColor(t.bgColor, TAG_DEFAULT_BG),
+      color: safeColor(t.textColor, "#FFFFFF"),
+    });
+  }
+
+  pdf.font("TC-Bold").fontSize(fTag);
+  for (const item of items) {
+    const label = item.noClip ? item.text : fitText(pdf, item.text, maxChipW - padX * 2);
+    const chipW = Math.min(pdf.widthOfString(label) + padX * 2, item.noClip ? Infinity : maxChipW);
+    const chipX = rightX - chipW;
+    if (chipX < leftLimit) break; // 放不下就不畫（避免壓到左側）
+    pdf.roundedRect(chipX, stripY, chipW, chipH, chipH / 2).fill(item.bg);
+    pdf.font("TC-Bold").fontSize(fTag).fillColor(item.color);
+    pdf.text(label, chipX, stripY + (chipH - fTag) / 2 - fTag * 0.08, { width: chipW, align: "center", lineBreak: false });
+    rightX = chipX - gap;
+  }
+}
+
 function drawPage(pdf, docData, page) {
   const L = docData.layout;
   const margin = num(L.margin, 28);
@@ -92,6 +157,7 @@ function drawPage(pdf, docData, page) {
   const fTotal = num(fonts.total, 9);
   const fSub = num(fonts.sub, 8);
   const fSold = num(fonts.sold, 9);
+  const fTag = num(fonts.tag, 7);
   const fLegend = num(fonts.legend, 9);
 
   const cellW = num(L.cellW);
@@ -158,6 +224,11 @@ function drawPage(pdf, docData, page) {
       pdf.circle(x + cellW - 5 * scale, y + 5 * scale, 2.5 * scale).fill(TERRACE_GREEN);
     }
 
+    // 文字標籤帶：右上角（格子過小則省略）；有標籤時內容區上緣內縮，與畫面一致不重疊戶別編號
+    const hasTags = Array.isArray(cell.tags) && cell.tags.length > 0 && cellW >= 40;
+    if (hasTags) drawTagStrip(pdf, cell, x, y, cellW, scale, fTag);
+    const topInset = hasTags ? TAG_TOP_INSET * scale : 0;
+
     // 內容行：戶別編號（必顯）＋ 依勾選的價格行；垂直置中
     const lines = [{ text: cell.unitId, size: fUnit, font: "TC-Bold", color: TEXT_DARK }];
     if (cell.soldOnly) {
@@ -170,7 +241,7 @@ function drawPage(pdf, docData, page) {
     }
 
     const blockH = lines.reduce((s, l) => s + l.size * 1.25, 0);
-    let ty = y + Math.max(0, (cellH - blockH) / 2);
+    let ty = y + topInset + Math.max(0, (cellH - topInset - blockH) / 2);
     for (const line of lines) {
       centeredText(pdf, line.text ?? "", x, ty, cellW, line.size, line.font, line.color);
       ty += line.size * 1.25;

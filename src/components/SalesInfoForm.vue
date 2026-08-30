@@ -53,7 +53,16 @@
               clearable
               hint="未設定時，報價端「選擇方案」將無方案可選"
               persistent-hint
-            ></v-select> <v-combobox
+            ></v-select>
+
+            <!-- ✅ [新增] 文字標籤：顯示於銷控網格右上角，可多個並各自設定底色/文字色 -->
+            <UnitTagEditor
+              v-model="editableData.unitTags"
+              :suggestions="tagSuggestions"
+              class="mb-4"
+            />
+
+            <v-combobox
               label="戶別圖片"
               v-model="editableData.salesImages"
               :items="salesImageOptions"
@@ -478,6 +487,7 @@ import axios from 'axios';
 import { useDisplay } from 'vuetify';
 import TwCitiesData from '@/assets/TwCities.json' with { type: 'json' };
 import { normalizeSalespersons } from '@/utils/salespersonUtils';
+import UnitTagEditor from './UnitTagEditor.vue';
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
 const CustomerCardImportDialog = defineAsyncComponent(() => import('./CustomerCardImportDialog.vue'));
 const CoBuyerEditor = defineAsyncComponent(() => import('./CoBuyerEditor.vue'));
@@ -500,6 +510,8 @@ const props = defineProps({
   planOptions: { type: Array, default: () => [] },
   // 🖥️ [新增] 電腦版「修改銷控」左側項目導覽：指定只顯示哪些區塊（'sales' | 'deal' | 'buyer'），null = 全顯示
   visibleSections: { type: Array, default: null },
+  // ✅ [新增] 文字標籤常用建議（由全建案戶別推導，選到同名標籤自動套同色）
+  tagSuggestions: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['update:modelValue', 'request-open-slide', 'parking-updated']);

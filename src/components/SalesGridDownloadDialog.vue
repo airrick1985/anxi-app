@@ -65,6 +65,7 @@
               <v-checkbox v-model="content.area" label="坪數" density="compact" hide-details />
               <v-checkbox v-model="content.unit" label="單價" density="compact" hide-details />
               <v-checkbox v-model="content.terrace" label="露台標示" density="compact" hide-details />
+              <v-checkbox v-model="content.tags" label="文字標籤" density="compact" hide-details />
             </div>
           </div>
         </div>
@@ -140,6 +141,7 @@
                 class="pv-cell"
                 :class="{ empty: cell.empty }"
                 :style="{
+                  paddingTop: (!cell.empty && cell.tags && cell.tags.length > 0 && plan.cellW >= 40) ? px(TAG_TOP_INSET * plan.scale) : 0,
                   left: px(colX(idx % page.buildings.length)),
                   top: px(rowY(Math.floor(idx / page.buildings.length))),
                   width: px(plan.cellW), height: px(plan.cellH),
@@ -153,6 +155,36 @@
                     class="pv-dot"
                     :style="{ width: px(5 * plan.scale), height: px(5 * plan.scale), top: px(2.5 * plan.scale), right: px(2.5 * plan.scale) }"
                   ></span>
+                  <!-- ✅ 文字標籤帶：右上角，最多 2 個 + '+N'（格子過小則省略） -->
+                  <div
+                    v-if="cell.tags && cell.tags.length > 0 && plan.cellW >= 40"
+                    class="pv-tags"
+                    :style="{
+                      top: px(2 * plan.scale), left: px(3 * plan.scale),
+                      right: px((cell.hasTerrace ? 11 : 3) * plan.scale),
+                      height: px(TAG_STRIP_H * plan.scale), gap: px(2 * plan.scale)
+                    }"
+                  >
+                    <span
+                      v-for="(tag, ti) in cell.tags.slice(0, 2)"
+                      :key="ti"
+                      class="pv-tag"
+                      :style="{
+                        backgroundColor: tag.bgColor, color: tag.textColor,
+                        fontSize: px(plan.fonts.tag), height: px(TAG_CHIP_H * plan.scale), lineHeight: px(TAG_CHIP_H * plan.scale),
+                        padding: `0 ${px(4 * plan.scale)}`, borderRadius: px(TAG_CHIP_H / 2 * plan.scale),
+                        maxWidth: px(TAG_MAX_W * plan.scale)
+                      }"
+                    >{{ tag.text }}</span>
+                    <span
+                      v-if="cell.tags.length > 2"
+                      class="pv-tag pv-tag-more"
+                      :style="{
+                        fontSize: px(plan.fonts.tag), height: px(TAG_CHIP_H * plan.scale), lineHeight: px(TAG_CHIP_H * plan.scale),
+                        padding: `0 ${px(4 * plan.scale)}`, borderRadius: px(TAG_CHIP_H / 2 * plan.scale)
+                      }"
+                    >+{{ cell.tags.length - 2 }}</span>
+                  </div>
                   <span class="pv-line pv-unit" :style="{ fontSize: px(plan.fonts.unitName), lineHeight: px(plan.fonts.unitName * 1.25) }">{{ cell.unitId }}</span>
                   <template v-if="cell.soldOnly">
                     <span class="pv-line pv-sold" :style="{ fontSize: px(plan.fonts.sold), lineHeight: px(plan.fonts.sold * 1.25) }">已售</span>
@@ -230,6 +262,13 @@ import { useDisplay } from 'vuetify';
 import { saveAs } from 'file-saver';
 import { generateSalesGridPdf } from '@/api';
 import { buildPagePlan, groupLegendRows } from '@/utils/salesGridLayout';
+import { getUnitTags } from '@/utils/unitTags';
+
+// 文字標籤帶尺寸（畫面 px 基準，乘 scale；與後端 salesGridDocument.js 同值）
+const TAG_STRIP_H = 14;
+const TAG_CHIP_H = 13;
+const TAG_MAX_W = 48;
+const TAG_TOP_INSET = 16;
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -260,7 +299,7 @@ const paper = ref('A4');
 const orientation = ref('landscape');
 const rowsPerPage = ref(1);
 const colsPerPage = ref(1);
-const content = reactive({ total: true, area: true, unit: true, terrace: true });
+const content = reactive({ total: true, area: true, unit: true, terrace: true, tags: true });
 const isGenerating = ref(false);
 const snackbar = reactive({ show: false, message: '', color: 'success' });
 const generatedAt = ref('');
@@ -276,6 +315,7 @@ watch(() => props.show, (val) => {
     content.area = true;
     content.unit = true;
     content.terrace = true;
+    content.tags = true;
     generatedAt.value = formatTaiwanNow();
   }
 });
@@ -338,6 +378,8 @@ function getCell(floor, building) {
     bgColor: props.statusColorMap.get(data[statusField.value]) || '#ffffff',
     soldOnly,
     hasTerrace: content.terrace && Number(data.area_terrace_ping) > 0,
+    // ✅ 文字標籤（右上角 chip，最多 2 個 + '+N'；後端照 text/bgColor/textColor 繪製）
+    tags: content.tags ? getUnitTags(data).map(t => ({ text: t.text, bgColor: t.bgColor, textColor: t.textColor })) : [],
     lines: {},
   };
   if (!soldOnly) {
@@ -551,6 +593,25 @@ async function handleDownload() {
   position: absolute;
   border-radius: 50%;
   background: #2e7d32;
+}
+.pv-tags {
+  position: absolute;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  overflow: hidden;
+}
+.pv-tag {
+  display: inline-block;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+.pv-tag-more {
+  background: #eceff1;
+  color: #455a64;
 }
 .pv-legend {
   position: absolute;

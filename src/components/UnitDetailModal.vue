@@ -274,6 +274,7 @@
                   :view-mode="props.viewMode" @request-open-slide="$emit('request-open-slide')"
                   @parking-updated="handleParkingUpdate" :contractTypeOptions="props.contractTypes"
                   :firstPurchaseOptions="firstPurchaseOptions" :planOptions="props.planOptions"
+                  :tag-suggestions="tagSuggestions"
                   :visible-sections="salesFormVisibleSections" />
               </div>
 
@@ -707,6 +708,23 @@
 
                           <v-list-item title="物件類型" :subtitle="unitData.propertyType || '-'"></v-list-item>
 
+                          <!-- ✅ [新增] 文字標籤 -->
+                          <v-list-item title="文字標籤">
+                            <v-list-item-subtitle>
+                              <div v-if="viewUnitTags.length > 0" class="d-flex flex-wrap ga-1 mt-1">
+                                <v-chip
+                                  v-for="(tag, i) in viewUnitTags"
+                                  :key="i"
+                                  size="x-small"
+                                  label
+                                  class="font-weight-bold"
+                                  :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
+                                >{{ tag.text }}</v-chip>
+                              </div>
+                              <span v-else>-</span>
+                            </v-list-item-subtitle>
+                          </v-list-item>
+
                           <v-list-item title="銷售人員" :subtitle="formatSalespersons(unitData.salesperson)"></v-list-item>
                           <v-list-item title="合約方式" :subtitle="unitData.contractType || '-'"></v-list-item>
                           <v-list-item title="是否首購" :subtitle="formatBoolean(unitData.isFirstTimeBuyer)"></v-list-item>
@@ -1136,6 +1154,7 @@ import { useUserStore } from '@/store/user';
 import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot, paymentProofApi } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
+import { getUnitTags, collectTagSuggestions } from '@/utils/unitTags';
 import SalesBotChat from './SalesBotChat.vue';
 import LandParcelsPanel from './LandParcelsPanel.vue';
 import PaymentRecordsPanel from './PaymentRecordsPanel.vue';
@@ -1768,6 +1787,10 @@ const premiumUnitPriceText = computed(() => {
 
 const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p.statusName));
 
+// ✅ [新增] 文字標籤：檢視模式顯示 + 編輯時的常用標籤建議（由全建案戶別推導）
+const viewUnitTags = computed(() => getUnitTags(props.unitData));
+const tagSuggestions = computed(() => collectTagSuggestions(props.allData['戶別'] || []));
+
 const personnelOptions = computed(() => {
   const list = props.allData['銷售人員'] || [];
 
@@ -1945,6 +1968,10 @@ function startEditing() {
   // 土地標的清冊：舊資料無此欄位時預設為空陣列，確保 v-model 綁定可運作
   if (!Array.isArray(editingData.value.landParcels)) {
     editingData.value.landParcels = [];
+  }
+  // ✅ [新增] 文字標籤：舊資料無此欄位時預設為空陣列
+  if (!Array.isArray(editingData.value.unitTags)) {
+    editingData.value.unitTags = [];
   }
   // ✅ [新增] 備註圖片陣列初始化 + 重置 pending 狀態
   if (!Array.isArray(editingData.value.priceRemarkImages)) {

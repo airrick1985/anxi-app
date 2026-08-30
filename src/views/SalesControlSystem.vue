@@ -34,18 +34,6 @@
           <v-btn value="list" prepend-icon="mdi-view-list">列表</v-btn>
         </v-btn-toggle>
 
-        <v-btn-toggle
-          v-if="viewFormat !== 'list'"
-          v-model="displayType"
-          color="primary"
-          variant="outlined"
-          density="compact"
-          mandatory
-        >
-          <v-btn value="住家">住家</v-btn>
-          <v-btn value="店面">店面</v-btn>
-        </v-btn-toggle>
-
         <v-btn
           :color="showFilterPanel ? 'primary' : 'black'"
           :variant="showFilterPanel ? 'flat' : 'tonal'"
@@ -338,26 +326,50 @@
 
     <div class="content-wrapper">
 
-      <!-- ✅ [新增] 全域關鍵字搜尋（列表/網格模式常駐，不需展開篩選面板） -->
-      <div class="global-search-bar mb-2">
-        <v-text-field
-          v-model="filters.keyword"
-          placeholder="全域搜尋：戶別、買方、電話、銷售人員、備註…（可空白分隔多關鍵字）"
-          prepend-inner-icon="mdi-magnify"
-          variant="solo"
-          density="compact"
-          hide-details
-          clearable
-          rounded="lg"
-          bg-color="white"
-          flat
+      <!-- ✅ 網格上方列：住家/店面分段開關（網格模式）+ 全域關鍵字搜尋（列表/網格常駐） -->
+      <div class="grid-topbar mb-2">
+        <div
+          v-if="viewFormat === 'grid'"
+          class="property-type-switch"
+          role="tablist"
+          aria-label="切換顯示住家或店面"
         >
-          <template #append-inner>
-            <span v-if="filters.keyword && filters.keyword.trim()" class="text-caption text-grey">
-              {{ filteredTableItems.length }} 筆
-            </span>
-          </template>
-        </v-text-field>
+          <button
+            v-for="opt in propertyTypeOptions"
+            :key="opt.value"
+            type="button"
+            role="tab"
+            class="property-type-switch__btn"
+            :class="{ 'is-active': displayType === opt.value }"
+            :aria-selected="displayType === opt.value"
+            @click="displayType = opt.value"
+          >
+            <v-icon size="18" class="property-type-switch__icon">{{ opt.icon }}</v-icon>
+            <span class="property-type-switch__label">{{ opt.label }}</span>
+            <span class="property-type-switch__count">{{ opt.count }}</span>
+          </button>
+        </div>
+
+        <div class="global-search-bar">
+          <v-text-field
+            v-model="filters.keyword"
+            placeholder="全域搜尋：戶別、買方、電話、銷售人員、備註…（可空白分隔多關鍵字）"
+            prepend-inner-icon="mdi-magnify"
+            variant="solo"
+            density="compact"
+            hide-details
+            clearable
+            rounded="lg"
+            bg-color="white"
+            flat
+          >
+            <template #append-inner>
+              <span v-if="filters.keyword && filters.keyword.trim()" class="text-caption text-grey">
+                {{ filteredTableItems.length }} 筆
+              </span>
+            </template>
+          </v-text-field>
+        </div>
       </div>
 
       <v-expand-transition>
@@ -393,6 +405,42 @@
             clearable
             :menu-props="{ maxHeight: 320 }"
           ></v-select>
+        </v-col>
+        <!-- ✅ [新增] 文字標籤篩選（任一符合即顯示；可選「(無標籤)」） -->
+        <v-col cols="12" sm="6" md="3">
+          <v-select
+            v-model="filters.tags"
+            :items="tagOptions"
+            item-title="text"
+            item-value="text"
+            label="標籤 (多選)"
+            multiple
+            chips
+            closable-chips
+            variant="outlined"
+            density="compact"
+            hide-details
+            clearable
+            :menu-props="{ maxHeight: 320 }"
+          >
+            <template #chip="{ props: chipProps, item }">
+              <v-chip
+                v-bind="chipProps"
+                size="small"
+                label
+                :style="item.raw.bgColor ? { backgroundColor: item.raw.bgColor, color: item.raw.textColor } : {}"
+              >{{ item.raw.text }}</v-chip>
+            </template>
+            <template #item="{ props: itemProps, item }">
+              <v-list-item v-bind="itemProps" :title="undefined">
+                <span
+                  class="unit-tag-chip unit-tag-chip--lg mr-2"
+                  :style="item.raw.bgColor ? { backgroundColor: item.raw.bgColor, color: item.raw.textColor } : { backgroundColor: '#eceff1', color: '#607d8b' }"
+                >{{ item.raw.text }}</span>
+                <span class="text-caption text-grey">{{ item.raw.count }} 戶</span>
+              </v-list-item>
+            </template>
+          </v-select>
         </v-col>
         <v-col cols="12" sm="6" md="3">
            <div class="d-flex align-center gap-2">
@@ -553,11 +601,34 @@
   :class="{
     'in-quote': quoteStore.isItemInQuote(item.data.unitId),
     'has-terrace': item.data.area_terrace_ping > 0,
-    'filtered-out': isUnitFilteredOut(item.data)
+    'filtered-out': isUnitFilteredOut(item.data),
+    'has-tags': getUnitTags(item.data).length > 0
   }"
   :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
   @click="openUnitDetail(item.data)"
 >
+            <!-- ✅ [新增] 文字標籤帶：右上角，最多露出 2 個、其餘折成 +N；hover 顯示全部 -->
+            <template v-if="getUnitTags(item.data).length > 0">
+              <div class="unit-tags-strip">
+                <span
+                  v-for="(tag, ti) in getUnitTags(item.data).slice(0, 2)"
+                  :key="ti"
+                  class="unit-tag-chip"
+                  :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
+                >{{ tag.text }}</span>
+                <span v-if="getUnitTags(item.data).length > 2" class="unit-tag-chip unit-tag-more">+{{ getUnitTags(item.data).length - 2 }}</span>
+              </div>
+              <v-tooltip activator="parent" location="top" content-class="unit-tags-tooltip">
+                <div class="d-flex flex-wrap ga-1">
+                  <span
+                    v-for="(tag, ti) in getUnitTags(item.data)"
+                    :key="ti"
+                    class="unit-tag-chip unit-tag-chip--lg"
+                    :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
+                  >{{ tag.text }}</span>
+                </div>
+              </v-tooltip>
+            </template>
             <span class="unit-name">
               {{ item.data.unitId }}
               
@@ -598,14 +669,13 @@
         </div>
       </div>
 
-      <div v-else class="list-view-container">
+      <div v-else ref="listViewRef" class="list-view-container">
         <v-data-table
           :headers="tableHeaders"
           :items="filteredTableItems"
           :row-props="({ item }) => ({ class: (Number(item.area_terrace_ping) > 0) ? 'row-has-terrace' : '' })"
           :loading="loading"
           fixed-header
-          :height="tableHeight" 
           hover
           density="compact"
           class="elevation-1 row-pointer compact-table"
@@ -630,6 +700,19 @@
               <div class="status-indicator mr-2" :style="{ backgroundColor: statusColorMap.get(item.status) || '#ddd' }"></div>
               <span class="font-weight-bold text-primary">{{ item.unitId }}</span>
               <v-icon v-if="quoteStore.isItemInQuote(item.unitId)" color="warning" size="small" class="ml-2">mdi-check-circle</v-icon>
+            </div>
+          </template>
+
+          <!-- ✅ [新增] 文字標籤欄：完整顯示所有標籤 chip -->
+          <template v-slot:item.unitTags="{ item }">
+            <div class="d-flex flex-wrap ga-1 py-1" style="max-width: 220px;">
+              <span
+                v-for="(tag, ti) in getUnitTags(item)"
+                :key="ti"
+                class="unit-tag-chip unit-tag-chip--lg"
+                :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
+              >{{ tag.text }}</span>
+              <span v-if="getUnitTags(item).length === 0" class="text-grey-lighten-1">-</span>
             </div>
           </template>
 
@@ -796,6 +879,11 @@
             </span>
           </template>
 
+          <template v-slot:item.parking_spots="{ item }">
+            <span v-if="item.parking_spots" class="text-indigo-darken-2 font-weight-medium">{{ item.parking_spots.split(',').join('、') }}</span>
+            <span v-else class="text-grey">-</span>
+          </template>
+
           <template v-slot:item.parking_floor_total="{ item }">
             <span class="text-red font-weight-bold">
               {{ formatNumber(item.parking_floor_total, 0) }}
@@ -858,7 +946,8 @@
               <td
                 v-for="col in columns"
                 :key="`sum-top-${col.key}`"
-                :class="`text-${col.align || 'start'}`"
+                :class="summaryCellClass(col)"
+                :style="summaryCellStyle(col)"
               >
                 <template v-if="col.key === 'unitId'">
                   合計 {{ summaryRow.count }} 戶
@@ -890,6 +979,10 @@
                 </template>
                 <template v-else-if="col.key === 'unit_price_transaction'">
                   <span v-if="summaryRow.unitPriceTrans !== null" class="text-success">{{ formatNumber(summaryRow.unitPriceTrans, 2) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'parking_spots'">
+                  <span v-if="summaryRow.parkingCountTotal > 0">{{ summaryRow.parkingCountTotal }} 車位</span>
                   <span v-else>-</span>
                 </template>
                 <template v-else-if="col.key === 'parking_floor_total'">
@@ -926,7 +1019,8 @@
               <td
                 v-for="col in columns"
                 :key="`sum-bot-${col.key}`"
-                :class="`text-${col.align || 'start'}`"
+                :class="summaryCellClass(col)"
+                :style="summaryCellStyle(col)"
               >
                 <template v-if="col.key === 'unitId'">
                   合計 {{ summaryRow.count }} 戶
@@ -958,6 +1052,10 @@
                 </template>
                 <template v-else-if="col.key === 'unit_price_transaction'">
                   <span v-if="summaryRow.unitPriceTrans !== null" class="text-success">{{ formatNumber(summaryRow.unitPriceTrans, 2) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'parking_spots'">
+                  <span v-if="summaryRow.parkingCountTotal > 0">{{ summaryRow.parkingCountTotal }} 車位</span>
                   <span v-else>-</span>
                 </template>
                 <template v-else-if="col.key === 'parking_floor_total'">
@@ -996,8 +1094,9 @@
       v-if="isMobile"
       :active="true"
       color="primary"
+      :height="76"
       app
-      grow  
+      grow
     >
     <v-btn @click="showFilterPanel = !showFilterPanel">
         <v-badge
@@ -1032,24 +1131,7 @@
         <span>報價設定</span>
       </v-btn>
 
-      
-      <v-menu top v-if="viewFormat !== 'list'">
-        <template v-slot:activator="{ props }">
-          <v-btn v-bind="props">
-            <v-icon>mdi-home-city-outline</v-icon>
-            <span>{{ displayType }}</span>
-          </v-btn>
-        </template>
-        <v-list>
-          <v-list-item @click="displayType = '住家'">
-            <v-list-item-title>住家</v-list-item-title>
-          </v-list-item>
-          <v-list-item @click="displayType = '店面'">
-            <v-list-item-title>店面</v-list-item-title>
-          </v-list-item>
-        </v-list>
-      </v-menu>
-      
+
       <v-btn @click="openParkingCanvasEditor">
         <v-icon>mdi-car-side</v-icon>
         <span>車位</span>
@@ -2018,6 +2100,7 @@ import { doc as fsDoc, updateDoc as fsUpdateDoc, serverTimestamp as fsServerTime
 import { buildRemarksSummary, resolveDisplayNotes } from '@/utils/remarkNotes';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useSlideViewer } from '@/composables/useSlideViewer';
+import { useStickyHeaderOffset } from '@/composables/useStickyHeaderOffset';
 import QuoteSidebar from '@/components/QuoteSidebar.vue';
 import { useDisplay } from 'vuetify';
 import UpdateControl from './UpdateControl.vue'; 
@@ -2034,10 +2117,24 @@ import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
 import { mdiViewDashboardVariantOutline } from '@mdi/js';
 import { normalizeSalespersons, formatSalespersons, salespersonsIntersect } from '@/utils/salespersonUtils';
+import { getUnitTags, unitTagsToExportColumns, parseUnitTagsFromExport, unitTagsSortValue, collectTagSuggestions } from '@/utils/unitTags';
 import { getUnitParkings, getParkingTransactionTotal, getParkingFloorTotal, getUnitTotalTransactionPrice, getUnitTotalFloorPrice } from '@/utils/analyticsCalculations';
 
 // 2. 變數與狀態定義 (由上而下)
 const showFilterPanel = ref(false);
+
+// ✅ 列表模式：實測 thead 高度寫入 --sticky-header-height，讓上方合計列凍結在表頭正下方
+const listViewRef = ref(null);
+useStickyHeaderOffset(listViewRef);
+
+// 合計列格子：凍結欄（col.fixed，例如戶別）要與資料列一樣套用 Vuetify 的凍結欄 class 與 left 位移，
+// 否則橫向捲動時會錯位，且資料列的凍結格（sticky + z-index）往下捲時會蓋住合計格
+const summaryCellClass = (col) => ({
+  [`text-${col.align || 'start'}`]: true,
+  'v-data-table-column--fixed': !!col.fixed,
+  'v-data-table-column--last-fixed': !!col.lastFixed,
+});
+const summaryCellStyle = (col) => (col.fixed ? { left: `${col.fixedOffset || 0}px` } : undefined);
 const isCancelledPurchaseDialogVisible = ref(false);
 // 手機版「更多」彈出選單的展開狀態（供選完項目後主動關閉用）
 const isMoreMenuOpen = ref(false);
@@ -2049,6 +2146,7 @@ const filters = reactive({
   // --- 共用欄位 ---
   buildings: [], // ✅ 棟別 (多選勾選)
   floors: [],    // ✅ 樓層 (多選勾選)
+  tags: [],      // ✅ 文字標籤 (多選，任一符合；'(無標籤)' 代表沒有標籤的戶別)
   areaMin: null,
   areaMax: null,
   totalPriceMin: null,
@@ -2097,6 +2195,17 @@ const personnelOptions = computed(() => {
 });
 
 // ✅ [新增] 棟別篩選選項：取目前分類（住家/店面、報價模式是否隱藏已售）下所有棟別
+// ✅ [新增] 文字標籤篩選選項：由全部戶別推導（含顏色與戶數），最前面加「(無標籤)」
+const TAG_FILTER_EMPTY_LABEL = '(無標籤)';
+const tagOptions = computed(() => {
+  const suggestions = collectTagSuggestions(salesHouseholds.value || []);
+  const emptyCount = (salesHouseholds.value || []).filter(u => getUnitTags(u).length === 0).length;
+  return [
+    { text: TAG_FILTER_EMPTY_LABEL, bgColor: '', textColor: '', count: emptyCount },
+    ...suggestions,
+  ];
+});
+
 const buildingOptions = computed(() => {
   const names = new Set();
   (tableItems.value || []).forEach(u => {
@@ -2127,6 +2236,7 @@ const activeFilterCount = computed(() => {
   if (filters.keyword && filters.keyword.trim()) count++;
   if (filters.buildings && filters.buildings.length > 0) count++;
   if (filters.floors && filters.floors.length > 0) count++;
+  if (filters.tags && filters.tags.length > 0) count++;
   if (filters.areaMin || filters.areaMax) count++;
   if (filters.totalPriceMin || filters.totalPriceMax) count++;
   if (filters.unitPriceMin || filters.unitPriceMax) count++;
@@ -2152,6 +2262,7 @@ const clearFilters = () => {
   filters.keyword = '';
   filters.buildings = [];
   filters.floors = [];
+  filters.tags = [];
   filters.areaMin = null; filters.areaMax = null;
   filters.totalPriceMin = null; filters.totalPriceMax = null;
   filters.unitPriceMin = null; filters.unitPriceMax = null;
@@ -2186,8 +2297,11 @@ const buildSearchBlob = (item) => {
   };
   // 依欄位定義攤平所有欄位
   for (const col of COLUMN_DEFINITIONS) pushVal(item[col.key]);
-  // 補上衍生欄位（目前檢視模式狀態）
+  // 補上衍生欄位（目前檢視模式狀態、車位編號）
   pushVal(item.status);
+  pushVal(item.parking_spots);
+  // ✅ [新增] 文字標籤：標籤文字納入搜尋
+  for (const tag of getUnitTags(item)) parts.push(tag.text);
   return parts.join(' ').toLowerCase();
 };
 
@@ -2217,6 +2331,14 @@ const itemMatchesFilters = (item, kwTokens, skipStatus = false) => {
     // 1-1. 樓層 (多選勾選)
     if (filters.floors && filters.floors.length > 0) {
       if (!filters.floors.includes(String(item.floor))) return false;
+    }
+
+    // ✅ [新增] 1-2. 文字標籤 (多選，任一符合；'(無標籤)' 代表沒有標籤)
+    if (filters.tags && filters.tags.length > 0) {
+      const itemTagTexts = getUnitTags(item).map(t => t.text);
+      const wantEmpty = filters.tags.includes(TAG_FILTER_EMPTY_LABEL);
+      const matchTag = filters.tags.some(t => itemTagTexts.includes(t)) || (wantEmpty && itemTagTexts.length === 0);
+      if (!matchTag) return false;
     }
 
     // 2. 面積範圍
@@ -2356,6 +2478,8 @@ const PIVOT_CURATED_DIMENSIONS = [
 ];
 const PIVOT_EXCLUDED_KEYS = new Set([
   'salesImages',          // 圖片物件，無法作為維度
+  'unitTags_bgColor',     // 文字標籤色碼，無分析意義（標籤文字 unitTags_text 仍可作維度）
+  'unitTags_textColor',
   'svgName',              // SVG 圖檔名
   'driveFolderUrl',       // 資料夾連結
   'contractDrawingFolderUrl', // 合約分戶圖連結
@@ -2457,7 +2581,7 @@ const PIVOT_BINNED_DIM_KEYS = new Set([
   'price_floor_house_only', 'price_floor_terrace', 'price_floor_ancillary', 'price_floor_house_total', 'price_transaction_house',
   'housePriceRatio', 'landPriceRatio', 'price_package_deal', 'price_package',
   'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount',
-  'parking_trans_total', 'parking_floor_total', 'total_transaction', 'total_floor', 'price_diff',
+  'parking_trans_total', 'parking_floor_total', 'parking_count', 'total_transaction', 'total_floor', 'price_diff',
   'unit_price_list', 'unit_price_floor', 'unit_price_transaction',
   'paid_total', 'payment_ratio',
 ]);
@@ -3474,6 +3598,10 @@ const COLUMN_DEFINITIONS = [
     { key: 'payment_contract_amount', title: '簽約金額' },
     { key: 'reportNo', title: '申報書序號' },
     { key: 'remarks', title: '備註' },
+    // ✅ [新增] 文字標籤：Firestore 存 unitTags 陣列，Excel 拆成三欄逗號分隔、依索引對齊
+    { key: 'unitTags_text', title: '文字標籤' },
+    { key: 'unitTags_bgColor', title: '標籤顏色' },
+    { key: 'unitTags_textColor', title: '文字顏色' },
     { key: 'availablePlans', title: '可選方案' },
     { key: 'salesImages', title: '戶別圖片' },
     { key: 'svgName', title: 'SVG圖檔' },
@@ -3504,6 +3632,7 @@ function planIdsToNames(ids) {
 const isUnitExportDialogVisible = ref(false);
 const UNIT_EXPORT_COMPUTED_COLUMNS = [
     { key: 'parking_spots', title: '車位編號' },
+    { key: 'parking_count', title: '車位數量' },
     { key: 'parking_trans_total', title: '車位成交合計' },
     { key: 'parking_floor_total', title: '車位底價合計' },
     { key: 'total_transaction', title: '成交總價(含車位)' },
@@ -3527,7 +3656,6 @@ const unitExportItems = computed(() => {
         .sort((a, b) => naturalSort(a.unitId, b.unitId))
         .map(item => ({
             ...item,
-            parking_spots: getUnitParkings(item, allParkings).map(p => p.spotId ?? '').filter(Boolean).join(','),
             // ✅ [新增] 可選方案：id 陣列預先轉為名稱陣列，匯出時以逗號分隔輸出
             availablePlans: planIdsToNames(item.availablePlans),
         }));
@@ -3546,22 +3674,6 @@ const salesDataStore = useSalesDataStore();
 const projectIdForPresence = computed(() => route.params.projectName);
 const systemNameForPresence = computed(() => route.meta.viewMode === 'quote' ? '報價系統' : '銷控系統');
 useSystemPresence(projectIdForPresence.value, systemNameForPresence.value);
-
-// ✅ [新增] 動態計算表格高度
-const tableHeight = computed(() => {
-  // 基礎扣除高度 (Toolbar + Padding)
-  let baseReduction = isMobile.value ? 230 : 160;
-
-  // ✅ 如果篩選面板開啟，需要扣除更多空間
-  if (showFilterPanel.value) {
-    // 根據你篩選面板的內容多寡調整數值 (電腦版約增加 130px, 手機版視內容而定)
-    baseReduction += isMobile.value ? 280 : 130; 
-  }
-
-  return isMobile.value 
-    ? `calc(100dvh - ${baseReduction}px)` 
-    : `calc(100vh - ${baseReduction}px)`;
-});
 
 const { 
   isSlideDialogVisible, 
@@ -3647,6 +3759,19 @@ const selectedUnitData = ref(null);
 const isQuoteSidebarOpen = ref(false);
 const isGridDownloadDialogVisible = ref(false); // ✅ [新增] 下載銷控表 PDF 對話框
 const displayType = ref('住家');
+// ✅ 住家/店面分段開關選項（含各類型戶數，顯示於網格上方）
+const propertyTypeOptions = computed(() => {
+  let home = 0;
+  let store = 0;
+  for (const item of salesHouseholds.value || []) {
+    if (item?.layout === '店面') store += 1;
+    else home += 1;
+  }
+  return [
+    { value: '住家', label: '住家', icon: 'mdi-home-outline', count: home },
+    { value: '店面', label: '店面', icon: 'mdi-storefront-outline', count: store },
+  ];
+});
 const priceDisplayMode = ref('list');
 // ✅ [新增] 網格主要顯示內容：total 總價（預設）/ unit 單價 / date 簽約日期
 const gridContentMode = ref('total');
@@ -3822,6 +3947,16 @@ const formatDate = (val) => {
 };
 
 // 修改 tableHeaders computed
+// ✅ [新增] 標籤欄排序：依第一個標籤文字（無標籤排最後）
+const unitTagsColumnSort = (a, b) => {
+  const va = unitTagsSortValue(a);
+  const vb = unitTagsSortValue(b);
+  if (!va && !vb) return 0;
+  if (!va) return 1;
+  if (!vb) return -1;
+  return va.localeCompare(vb, 'zh-Hant');
+};
+
 const tableHeaders = computed(() => {
   // 情境 A: [報價模式]
   if (currentViewMode.value === 'quote') {
@@ -3850,6 +3985,7 @@ const tableHeaders = computed(() => {
 
     // 3. 加入其餘固定欄位
     headers.push(
+      { title: '標籤', key: 'unitTags', align: 'start', sortable: true, sort: unitTagsColumnSort, width: '160px' }, // ✅ [新增] 文字標籤
       { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'center' },
       { title: '露臺(坪)', key: 'area_terrace_ping', align: 'center' }, // ✅ [新增] 報價模式露臺
       { title: '房屋總價', key: 'quote_mode_total_price', align: 'center', sort: customPriceSort, minWidth: '160px' },
@@ -3865,6 +4001,7 @@ const tableHeaders = computed(() => {
       return [
         { title: '狀態', key: 'status', align: 'center', width: '60px', fixed: true },
         { title: '戶別', key: 'unitId', align: 'start', width: '70px', fixed: true },
+        { title: '標籤', key: 'unitTags', align: 'start', width: '120px', sort: unitTagsColumnSort }, // ✅ [新增] 文字標籤
         { title: '優付', key: 'isPreferredPayment', align: 'center', width: '70px' },
         { title: '面積(坪)', key: 'area_house_ping', align: 'end', width: '80px' },
         { title: '露臺(坪)', key: 'area_terrace_ping', align: 'end', width: '80px' },
@@ -3874,6 +4011,7 @@ const tableHeaders = computed(() => {
         { title: '底價單價', key: 'unit_price_floor', align: 'end', width: '85px', sort: customPriceSort },
         { title: '成交價', key: 'price_transaction_house', align: 'end', width: '85px' },
         { title: '成交單價', key: 'unit_price_transaction', align: 'end', width: '85px', sort: customPriceSort },
+        { title: '車位編號', key: 'parking_spots', align: 'start', width: '110px' },
         { title: '車位底價', key: 'parking_floor_total', align: 'end', width: '85px' },
         { title: '車位成交', key: 'parking_trans_total', align: 'end', width: '85px' },
         { title: '成交總價(含車)', key: 'total_transaction', align: 'end', width: '110px' },
@@ -3893,6 +4031,7 @@ const tableHeaders = computed(() => {
     return [
       { title: '銷控狀態', key: 'status', align: 'center' },
       { title: '戶別', key: 'unitId', align: 'start', fixed: true, sortable: true },
+      { title: '標籤', key: 'unitTags', align: 'start', sort: unitTagsColumnSort }, // ✅ [新增] 文字標籤
       // 銷控模式始終顯示優付
       { title: '優付', key: 'isPreferredPayment', align: 'center', width: '80px' },
       { title: '房屋總面積(坪)', key: 'area_house_ping', align: 'start' },
@@ -3905,6 +4044,7 @@ const tableHeaders = computed(() => {
       { title: '底價單價', key: 'unit_price_floor', align: 'start', sort: customPriceSort },
       { title: '成交價', key: 'price_transaction_house', align: 'start' },
       { title: '成交單價', key: 'unit_price_transaction', align: 'start', sort: customPriceSort },
+      { title: '車位編號', key: 'parking_spots', align: 'start' },
       { title: '車位底價', key: 'parking_floor_total', align: 'start' },
       { title: '車位成交', key: 'parking_trans_total', align: 'start' },
       { title: '成交總價(含車)', key: 'total_transaction', align: 'start' },
@@ -3997,6 +4137,9 @@ const enrichUnitItem = (unit, parkingMap) => {
     // 新增：將車位計算結果存入 item
     item.parking_trans_total = parkingTransTotal;
     item.parking_floor_total = parkingFloorTotal;
+    // 車位編號（自然排序、逗號分隔）與車位數量：列表「車位編號」欄、合計列與匯出共用
+    item.parking_spots = mySpots.map(p => p.spotId ?? '').filter(Boolean).sort(naturalSort).join(',');
+    item.parking_count = mySpots.length;
 
     // 房屋成交價
     const houseTrans = Number(unit.price_transaction_house) || 0;
@@ -4045,6 +4188,9 @@ const enrichUnitItem = (unit, parkingMap) => {
         item.quote_mode_total_price = Number(item.price_list_house_total) || 0;
     }
 
+    // ✅ [新增] 文字標籤：攤平成三個逗號分隔欄位（Excel 匯出 / 資料透視 / 指定戶別下載共用）
+    Object.assign(item, unitTagsToExportColumns(unit.unitTags));
+
     return item;
 };
 
@@ -4076,6 +4222,7 @@ const summaryRow = computed(() => {
   let priceTransTotal = 0;       // 房屋成交價加總
   let parkingFloorTotal = 0;     // 車位底價加總
   let parkingTransTotal = 0;     // 車位成交加總
+  let parkingCountTotal = 0;     // 車位數量加總
   let totalTransactionTotal = 0; // 成交總價(含車)加總
   let totalFloorTotal = 0;       // 合計底價(含車)加總
   let priceDiffTotal = 0;        // 溢差價加總（只計算有成交的戶別）
@@ -4090,6 +4237,7 @@ const summaryRow = computed(() => {
     priceTransTotal += Number(item.price_transaction_house) || 0;
     parkingFloorTotal += Number(item.parking_floor_total) || 0;
     parkingTransTotal += Number(item.parking_trans_total) || 0;
+    parkingCountTotal += Number(item.parking_count) || 0;
     totalTransactionTotal += Number(item.total_transaction) || 0;
     totalFloorTotal += Number(item.total_floor) || 0;
     if (item.price_diff !== null && item.price_diff !== undefined) {
@@ -4116,6 +4264,7 @@ const summaryRow = computed(() => {
     priceTransTotal,
     parkingFloorTotal,
     parkingTransTotal,
+    parkingCountTotal,
     totalTransactionTotal,
     totalFloorTotal,
     priceDiffTotal,
@@ -4543,6 +4692,10 @@ const exportToExcel = () => {
             if (key === 'salesImages' && Array.isArray(value)) {
                 return value.join(',');
             }
+            // ✅ [新增] 文字標籤：unitTags 陣列 → 三欄逗號分隔（依索引對齊，上傳時合併回陣列）
+            if (key === 'unitTags_text' || key === 'unitTags_bgColor' || key === 'unitTags_textColor') {
+                return unitTagsToExportColumns(item.unitTags)[key];
+            }
             // ✅ [新增] 可選方案：id 陣列 → 方案名稱逗號分隔（失效 id 不輸出），重新上傳時再反查回 id
             if (key === 'availablePlans') {
                 return planIdsToNames(value).join(',');
@@ -4681,6 +4834,9 @@ const handleFileChange = () => {
             const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
             // ✅ [新增] 可選方案：名稱反查失敗的收集器（不擋整批，解析完成後警示）
             const unknownPlanNames = new Set();
+            // ✅ [新增] 文字標籤：色碼格式警示收集器
+            const tagWarnings = [];
+            const TAG_IMPORT_KEYS = ['unitTags_text', 'unitTags_bgColor', 'unitTags_textColor'];
           const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
                 const newRow = {};
                 for (const [colIndex, englishKey] of indexToKeyMap.entries()) {
@@ -4729,6 +4885,17 @@ const handleFileChange = () => {
                     }
 
                     newRow[englishKey] = value;
+                }
+
+                // ✅ [新增] 文字標籤：三個虛擬欄位合併回 unitTags 陣列（任一欄存在即處理；
+                // 「文字標籤」欄空白 → 清空該戶標籤；顏色缺漏/不合法 → 回退預設並收集警示）
+                if (TAG_IMPORT_KEYS.some(k => k in newRow)) {
+                    const parsed = parseUnitTagsFromExport(
+                        newRow.unitTags_text, newRow.unitTags_bgColor, newRow.unitTags_textColor, String(newRow.unitId || '')
+                    );
+                    newRow.unitTags = parsed.tags;
+                    tagWarnings.push(...parsed.warnings);
+                    for (const k of TAG_IMPORT_KEYS) delete newRow[k];
                 }
                 return newRow;
             });
@@ -4803,6 +4970,12 @@ const handleFileChange = () => {
             if (unknownPlanNames.size > 0) {
                 uploadMessageType.value = 'warning';
                 uploadMessage.value += `\n注意：以下方案名稱不存在，已略過：${[...unknownPlanNames].join('、')}`;
+            }
+            // ✅ [新增] 文字標籤色碼格式警示（不擋上傳，已回退預設色）
+            if (tagWarnings.length > 0) {
+                uploadMessageType.value = 'warning';
+                const shown = tagWarnings.slice(0, 5);
+                uploadMessage.value += `\n標籤提醒：${shown.join('；')}${tagWarnings.length > 5 ? `…（共 ${tagWarnings.length} 筆）` : ''}`;
             }
         } catch (err) {
             uploadMessageType.value = 'error';
@@ -5170,8 +5343,9 @@ const uploadData = async () => {
 
 /* (原本的 CSS 樣式全部保留) */
 .sales-control-page {
-  /* 電腦版維持原樣：扣除 Toolbar */
-  height: calc(100vh - 56px);
+  /* 扣除 Vuetify layout 實際預留的 app-bar / bottom-navigation 高度（由 v-main 提供變數） */
+  height: calc(100vh - var(--v-layout-top, 0px) - var(--v-layout-bottom, 0px));
+  height: calc(100dvh - var(--v-layout-top, 0px) - var(--v-layout-bottom, 0px));
   background-color: #f0f2f5;
   padding: 16px;
   box-sizing: border-box;
@@ -5185,15 +5359,8 @@ overflow: hidden;
 /* ✅ [新增] 手機版專用修正 */
 @media (max-width: 960px) {
   .sales-control-page {
-    /* 手機版 Toolbar 隱藏，所以高度應為全螢幕 */
-    /* 使用 dvh (Dynamic Viewport Height) 解決手機網址列伸縮問題 */
-    height: 100dvh; 
-    
-    /* 確保高度不會被計算錯誤 */
-    min-height: 100dvh; 
-    
-    /* 手機版通常 padding 可以小一點，爭取空間 */
-    padding: 10px; 
+    /* 高度沿用上方 layout 變數計算（含底部導覽列預留），這裡只縮小 padding 爭取空間 */
+    padding: 10px;
   }
 }
 .grid-wrapper {
@@ -5384,6 +5551,58 @@ overflow: hidden;
   cursor: help;
 }
 
+/* ✅ [新增] 文字標籤帶：右上角獨立一條 14px 空間，內容整體下移不與戶別名稱重疊 */
+.unit-card.has-tags {
+  padding-top: 18px;
+}
+.unit-tags-strip {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  left: 3px;
+  height: 14px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* 報價 ✔ 徽章佔右上角時，標籤帶左移讓開 */
+.unit-card.in-quote .unit-tags-strip {
+  right: 24px;
+}
+.unit-tag-chip {
+  display: inline-block;
+  max-width: 48px;
+  height: 13px;
+  line-height: 13px;
+  padding: 0 4px;
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
+}
+.unit-tag-more {
+  background-color: #eceff1;
+  color: #455a64;
+  max-width: none;
+}
+/* 列表 / tooltip / 篩選選單用的較大尺寸 */
+.unit-tag-chip--lg {
+  max-width: 120px;
+  height: 20px;
+  line-height: 18px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
 .unit-card.in-quote {
   border-color: #ff9800;
   box-shadow: 0 0 10px rgba(255, 152, 0, 0.5);
@@ -5562,9 +5781,10 @@ overflow: hidden;
    ------------------------------------------ */
 
 .list-view-container {
+  --list-header-height: 44px; /* 表頭高度：th 高度與凍結合計列的 top 共用 */
   width: 100%;
-  flex: 1; 
-  min-height: 0; 
+  flex: 1;
+  min-height: 0;
   background-color: white;
   border-radius: 8px;
   padding-bottom: 10px; 
@@ -5572,7 +5792,18 @@ overflow: hidden;
   flex-direction: column;
   
   /* ✅ [新增] 確保如果欄位還是太寬，可以左右滑動而不是崩潰 */
-overflow: hidden; 
+overflow: hidden;
+}
+
+/* ✅ 表格高度改由 flex 填滿容器（取代寫死的 calc 高度），捲動在 wrapper 內發生 */
+.list-view-container :deep(.v-data-table) {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.list-view-container :deep(.v-data-table > .v-table__wrapper) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 
@@ -5600,8 +5831,11 @@ overflow: hidden;
     font-size: 0.78rem !important;
   }
 
+  .list-view-container {
+    --list-header-height: 38px;
+  }
   .list-view-container :deep(.v-data-table-header th) {
-    height: 38px !important;
+    height: var(--list-header-height) !important;
   }
 
   .list-view-container :deep(tbody tr td) {
@@ -5658,7 +5892,7 @@ overflow: hidden;
   background-color: #f5f5f7 !important;
   font-weight: bold;
   color: #1a3a6e;
-  height: 44px !important;
+  height: var(--list-header-height) !important;
   /* 移除 text-align: left !important，讓 JS 的 align: 'start' 生效 */
 }
 
@@ -5698,8 +5932,88 @@ overflow: hidden;
   font-size: 1rem !important;
 }
 
+/* ✅ 網格上方列：住家/店面分段開關 + 全域搜尋 */
+.grid-topbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.property-type-switch {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px;
+  background-color: #ffffff;
+  border: 1px solid rgba(var(--v-theme-primary), 0.35);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(var(--v-theme-primary), 0.15);
+  flex-shrink: 0;
+}
+.property-type-switch__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 112px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 9px;
+  background-color: transparent;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+.property-type-switch__btn:hover {
+  background-color: rgba(var(--v-theme-primary), 0.08);
+}
+.property-type-switch__btn.is-active {
+  background-color: rgb(var(--v-theme-primary));
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(var(--v-theme-primary), 0.35);
+}
+.property-type-switch__icon {
+  opacity: 0.9;
+}
+.property-type-switch__count {
+  min-width: 22px;
+  height: 20px;
+  line-height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  background-color: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+}
+.property-type-switch__btn.is-active .property-type-switch__count {
+  background-color: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+@media (max-width: 960px) {
+  .grid-topbar {
+    gap: 8px;
+  }
+  .property-type-switch {
+    width: 100%;
+  }
+  .property-type-switch__btn {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 40px;
+  }
+}
+
 /* ✅ [新增] 全域搜尋列 */
 .global-search-bar {
+  flex: 1 1 260px;
   max-width: 520px;
 }
 .global-search-bar :deep(.v-field) {
@@ -5743,9 +6057,25 @@ overflow: hidden;
   font-size: 0.92rem !important;
 }
 
-/* 上方加總列：底部粗線分隔 */
+/* 上方加總列：底部粗線分隔，並凍結在表頭正下方（隨表頭一起固定） */
 .list-view-container :deep(tr.summary-row-top > td) {
   border-bottom: 2px solid #c0c0c0 !important;
+  /* !important：壓過 Vuetify .v-table--hover > ... > tbody > tr > td { position: relative } */
+  position: sticky !important;
+  /* thead 實際高度由 useStickyHeaderOffset 量測寫入；未量到時退回 CSS 定義的表頭高度 */
+  top: var(--sticky-header-height, var(--list-header-height));
+  /* 高於資料列凍結格（Vuetify z-index: 1），往下捲時資料列不會蓋到合計列 */
+  z-index: 2;
+}
+
+/* 合計列中的凍結欄（戶別等）：上下、左右同時凍結，層級再高一層，橫向捲動時其他合計格從它底下滑過 */
+.list-view-container :deep(tr.summary-row-top > td.v-data-table-column--fixed) {
+  z-index: 3;
+}
+
+/* 下方合計列的凍結欄：橫向捲動時保持凍結並蓋過同列其他格 */
+.list-view-container :deep(tr.summary-row-bottom > td.v-data-table-column--fixed) {
+  z-index: 2;
 }
 
 /* 下方加總列：頂部粗線分隔 */
