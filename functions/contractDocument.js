@@ -418,9 +418,22 @@ function drawBreakdown(pdf, d, slotTop) {
   }
 
   // ---- 備註 ----
+  // 備註：標題列（右格留空）+ 下一列整寬文字格（多行、依內容撐高，最少 20）
+  // 下方磋商條款區會自動吸收剩餘高度
   cell(pdf, L, y, FW(0.13), 20, "備註", { bold: true, size: 10 });
-  cell(pdf, X(0.13), y, FW(0.87), 20, d.remark || "", { size: 9, align: "left" });
+  cell(pdf, X(0.13), y, FW(0.87), 20, "", {});
   y += 20;
+  const remarkText = String(d.remark || "");
+  let remarkH = 20;
+  let remarkDy = 0;
+  if (remarkText) {
+    pdf.font(F("HEI")).fontSize(9);
+    const th = Math.ceil(pdf.heightOfString(remarkText, { width: W - 8 }));
+    remarkH = Math.max(20, th + 6);
+    remarkDy = 3 - (remarkH - th) / 2;   // cell() 預設垂直置中，改為靠上 3pt
+  }
+  cell(pdf, L, y, W, remarkH, remarkText, { size: 9, align: "left", padX: 4, dy: remarkDy });
+  y += remarkH;
 
   // ---- 底部固定區塊高度（自由欄位 + 簽核欄）----
   const freeFields = d.freeFields || [];
@@ -1416,11 +1429,18 @@ function excelBreakdown(ws, d) {
   }
 
   // 備註
+  // 備註：標題列（右格留空）+ 下一列整寬合併格放文字
   ws.getRow(r).height = 18;
   const [b1, b2] = seg(0, 0.13);
   setMerged(ws, r, b1, r, b2, "備註", { bold: true });
   const [b3, b4] = seg(0.13, 1);
-  setMerged(ws, r, b3, r, b4, d.remark || "", { align: "left" });
+  setMerged(ws, r, b3, r, b4, "", {});
+  r += 1;
+  const remarkText = String(d.remark || "");
+  const remarkLines = remarkText ? remarkText.split(/\r?\n/).length : 1;
+  ws.getRow(r).height = Math.max(18, remarkLines * 14 + 4);
+  const [b5, b6] = seg(0, 1);
+  setMerged(ws, r, b5, r, b6, remarkText, { align: "left", vAlign: "top" });
   r += 1;
 
   // 磋商條款

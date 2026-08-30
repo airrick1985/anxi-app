@@ -42,6 +42,22 @@
             style="max-width: 350px;"
           ></v-text-field>
         <v-tooltip location="bottom">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              v-bind="props"
+              :color="activeFilterCount > 0 ? 'primary' : 'black'"
+              variant="text"
+              class="ms-2 me-2"
+              @click="showFilterPanel = !showFilterPanel"
+            >
+              <v-badge :content="activeFilterCount" :model-value="activeFilterCount > 0" color="error" floating>
+                <v-icon>mdi-filter-variant</v-icon>
+              </v-badge>
+            </v-btn>
+          </template>
+          <span>篩選條件</span>
+        </v-tooltip>
+        <v-tooltip location="bottom">
         <template v-slot:activator="{ props }">
           <v-btn
             v-bind="props"
@@ -108,6 +124,12 @@
               <v-btn v-bind="props" icon="mdi-dots-vertical" variant="text"></v-btn>
             </template>
             <v-list density="compact">
+              <v-list-item @click="showFilterPanel = !showFilterPanel">
+                <template v-slot:prepend>
+                  <v-icon icon="mdi-filter-variant" color="primary"></v-icon>
+                </template>
+                <v-list-item-title>篩選條件{{ activeFilterCount > 0 ? `（${activeFilterCount}）` : '' }}</v-list-item-title>
+              </v-list-item>
               <v-list-item @click="exportToExcel">
                 <template v-slot:prepend>
                   <v-icon icon="mdi-file-excel" color="teal"></v-icon>
@@ -135,13 +157,110 @@
     </v-card-title>
 
     <v-divider></v-divider>
-    
-    <div class="table-container flex-grow-1 pa-10">
+
+    <!-- 篩選面板 -->
+    <v-expand-transition>
+      <div v-if="showFilterPanel" class="filter-panel-container flex-shrink-0 px-4 px-md-10 pt-3">
+        <v-card variant="outlined" class="bg-white pa-3">
+          <v-row dense>
+            <v-col cols="12" sm="6" md="3">
+              <v-select
+                v-model="filters.floors"
+                :items="floorOptions"
+                label="樓層 (多選)"
+                multiple chips closable-chips clearable
+                variant="outlined" density="compact" hide-details
+                :menu-props="{ maxHeight: 320 }"
+              ></v-select>
+            </v-col>
+            <v-col cols="12" sm="6" md="3">
+              <v-select
+                v-model="filters.types"
+                :items="typeOptions"
+                label="車位類型 (多選)"
+                multiple chips closable-chips clearable
+                variant="outlined" density="compact" hide-details
+                :menu-props="{ maxHeight: 320 }"
+              ></v-select>
+            </v-col>
+            <v-col cols="12" sm="6" md="3">
+              <v-select
+                v-model="filters.types2"
+                :items="type2Options"
+                label="車位形式 (多選)"
+                multiple chips closable-chips clearable
+                variant="outlined" density="compact" hide-details
+                :menu-props="{ maxHeight: 320 }"
+              ></v-select>
+            </v-col>
+            <v-col cols="12" sm="6" md="3">
+              <v-select
+                v-model="filters.statuses"
+                :items="statusOptions"
+                label="銷控後台狀態 (多選)"
+                multiple chips closable-chips clearable
+                variant="outlined" density="compact" hide-details
+                :menu-props="{ maxHeight: 320 }"
+              >
+                <template v-slot:chip="{ props: chipProps, item }">
+                  <v-chip v-bind="chipProps" :color="getStatusColor(item.raw === '可售' ? '' : item.raw)" size="small">{{ item.raw }}</v-chip>
+                </template>
+              </v-select>
+            </v-col>
+            <v-col cols="12" sm="6" md="3">
+              <v-autocomplete
+                v-model="filters.salespersons"
+                :items="salespersonOptions"
+                label="銷售人員 (多選)"
+                multiple chips closable-chips clearable
+                variant="outlined" density="compact" hide-details
+                :menu-props="{ maxHeight: 320 }"
+              ></v-autocomplete>
+            </v-col>
+            <v-col cols="12" sm="6" md="3">
+              <v-select
+                v-model="filters.buyerState"
+                :items="buyerStateOptions"
+                label="購買戶別"
+                clearable
+                variant="outlined" density="compact" hide-details
+              ></v-select>
+            </v-col>
+            <v-col cols="12" sm="6" md="3">
+              <div class="d-flex align-center ga-2">
+                <v-text-field v-model.number="filters.priceListMin" label="表價 最小(萬)" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+                <span class="text-grey">~</span>
+                <v-text-field v-model.number="filters.priceListMax" label="最大(萬)" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+              </div>
+            </v-col>
+            <v-col cols="12" sm="6" md="3">
+              <div class="d-flex align-center ga-2">
+                <v-text-field v-model.number="filters.priceTransMin" label="成交價 最小(萬)" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+                <span class="text-grey">~</span>
+                <v-text-field v-model.number="filters.priceTransMax" label="最大(萬)" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+              </div>
+            </v-col>
+          </v-row>
+          <div class="d-flex align-center justify-space-between flex-wrap ga-2 mt-3">
+            <span class="text-caption text-grey-darken-1">
+              符合條件：<strong class="text-primary">{{ filteredItems.length }}</strong> / {{ allItems.length }} 車
+            </span>
+            <v-btn
+              variant="text" color="grey-darken-1" size="small"
+              prepend-icon="mdi-filter-remove-outline"
+              :disabled="activeFilterCount === 0"
+              @click="clearFilters"
+            >清除篩選</v-btn>
+          </div>
+        </v-card>
+      </div>
+    </v-expand-transition>
+
+    <div ref="tableContainerRef" class="table-container flex-grow-1 pa-10">
       <v-data-table
          v-model:items-per-page="itemsPerPage"
         :headers="headers"
-        :items="allItems"
-        :search="search"
+        :items="filteredItems"
         :loading="loading"
         class="elevation-1"
         item-value="docId"
@@ -154,6 +273,32 @@
         :page-text="'{0}-{1} 共 {2} 車'"
         :items-per-page-options="[{value: 10, title: '10'}, {value: 25, title: '25'}, {value: 50, title: '50'},{value: 100, title: '100'}, {value: -1, title: '全部'}]"
       >
+        <!-- 頂部合計列：依目前搜尋／篩選結果加總 -->
+        <template v-slot:body.prepend="{ columns }">
+          <tr v-if="summaryRow" class="summary-row">
+            <td
+              v-for="col in columns"
+              :key="`sum-${col.key}`"
+              :class="`text-${col.align || 'start'}`"
+            >
+              <template v-if="col.key === 'floor'">合計</template>
+              <template v-else-if="col.key === 'number'">{{ summaryRow.count }} 車</template>
+              <template v-else-if="col.key === 'area'">{{ formatNumber(summaryRow.areaTotal, 2) }}</template>
+              <template v-else-if="col.key === 'area_ping'">{{ formatNumber(summaryRow.areaPingTotal, 2) }}</template>
+              <template v-else-if="col.key === 'price_list'">{{ formatPrice(summaryRow.priceListTotal) }}</template>
+              <template v-else-if="col.key === 'price_floor'">
+                <span class="text-red">{{ formatPrice(summaryRow.priceFloorTotal) }}</span>
+              </template>
+              <template v-else-if="col.key === 'price_transaction'">
+                <span v-if="summaryRow.priceTransTotal > 0" class="text-success">{{ formatPrice(summaryRow.priceTransTotal) }}</span>
+                <span v-else>-</span>
+              </template>
+              <template v-else-if="col.key === 'status_backend'">
+                <span class="text-no-wrap">可售 {{ summaryRow.availableCount }}・成交 {{ summaryRow.soldCount }}</span>
+              </template>
+            </td>
+          </tr>
+        </template>
         <template v-slot:item.price_list="{ value }">
           {{ formatPrice(value) }}
         </template>
@@ -287,8 +432,9 @@ import { useProjectStore } from '@/store/projectStore';
 import { useToast } from 'vue-toastification';
 import { listenToParkingLots, uploadParkingLots } from '@/api';
 import * as XLSX from 'xlsx-js-style';
-import { formatSalespersons } from '@/utils/salespersonUtils';
+import { formatSalespersons, normalizeSalespersons } from '@/utils/salespersonUtils';
 import ParkingSpotEditDialog from '@/components/ParkingSpotEditDialog.vue';
+import { useStickyHeaderOffset } from '@/composables/useStickyHeaderOffset';
 
 // 接收 projectId 作為 prop
 const props = defineProps({
@@ -381,6 +527,143 @@ const isParsing = ref(false);
 const isUploading = ref(false);
 const uploadMessage = ref('');
 const uploadMessageType = ref('success');
+
+// =================================================================
+// / 篩選功能
+// =================================================================
+const showFilterPanel = ref(false);
+
+// 實測 thead 高度寫入 --sticky-header-height（表頭可能換行，不能寫死），讓合計列凍結在表頭正下方
+const tableContainerRef = ref(null);
+useStickyHeaderOffset(tableContainerRef);
+const createEmptyFilters = () => ({
+  floors: [],
+  types: [],
+  types2: [],
+  statuses: [],
+  salespersons: [],
+  buyerState: null,          // 'has' | 'none' | null
+  priceListMin: null,
+  priceListMax: null,
+  priceTransMin: null,
+  priceTransMax: null,
+});
+const filters = ref(createEmptyFilters());
+
+const buyerStateOptions = [
+  { title: '有購買戶別', value: 'has' },
+  { title: '無購買戶別', value: 'none' },
+];
+
+const hasText = (v) => v !== null && v !== undefined && String(v).trim() !== '';
+const isNumInput = (v) => v !== null && v !== undefined && v !== '' && !isNaN(v);
+const uniqueSorted = (values) => [...new Set(values.filter(hasText).map(v => String(v).trim()))]
+  .sort((a, b) => a.localeCompare(b, 'zh-TW', { numeric: true, sensitivity: 'base' }));
+
+const displayStatus = (item) => (hasText(item?.status_backend) ? String(item.status_backend).trim() : '可售');
+
+const floorOptions = computed(() => uniqueSorted(allItems.value.map(i => i.floor)));
+const typeOptions = computed(() => uniqueSorted(allItems.value.map(i => i.type)));
+const type2Options = computed(() => uniqueSorted(allItems.value.map(i => i.type2)));
+const statusOptions = computed(() => uniqueSorted(allItems.value.map(displayStatus)));
+const salespersonOptions = computed(() => uniqueSorted(allItems.value.flatMap(i => normalizeSalespersons(i.salesperson))));
+
+const activeFilterCount = computed(() => {
+  const f = filters.value;
+  let n = 0;
+  if (f.floors.length) n++;
+  if (f.types.length) n++;
+  if (f.types2.length) n++;
+  if (f.statuses.length) n++;
+  if (f.salespersons.length) n++;
+  if (f.buyerState) n++;
+  if (isNumInput(f.priceListMin) || isNumInput(f.priceListMax)) n++;
+  if (isNumInput(f.priceTransMin) || isNumInput(f.priceTransMax)) n++;
+  return n;
+});
+
+const clearFilters = () => {
+  filters.value = createEmptyFilters();
+};
+
+// 關鍵字搜尋：比對所有可匯出欄位的文字（銷售人員陣列先轉成文字）
+const itemMatchesKeyword = (item, kw) => {
+  if (!kw) return true;
+  const haystack = exportableColumns
+    .map(c => (c.key === 'salesperson' ? formatSalespersons(item.salesperson, '、', '') : item[c.key]))
+    .filter(v => v !== null && v !== undefined && v !== '')
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(kw);
+};
+
+const inRange = (value, min, max) => {
+  const hasMin = isNumInput(min);
+  const hasMax = isNumInput(max);
+  if (!hasMin && !hasMax) return true;
+  if (!isNumInput(value)) return false;
+  const n = Number(value);
+  if (hasMin && n < Number(min)) return false;
+  if (hasMax && n > Number(max)) return false;
+  return true;
+};
+
+const filteredItems = computed(() => {
+  const f = filters.value;
+  const kw = String(search.value || '').trim().toLowerCase();
+  return allItems.value.filter(item => {
+    if (f.floors.length && !f.floors.includes(String(item.floor ?? '').trim())) return false;
+    if (f.types.length && !f.types.includes(String(item.type ?? '').trim())) return false;
+    if (f.types2.length && !f.types2.includes(String(item.type2 ?? '').trim())) return false;
+    if (f.statuses.length && !f.statuses.includes(displayStatus(item))) return false;
+    if (f.salespersons.length) {
+      const list = normalizeSalespersons(item.salesperson);
+      if (!list.some(s => f.salespersons.includes(s))) return false;
+    }
+    if (f.buyerState === 'has' && !hasText(item.buyerUnitId)) return false;
+    if (f.buyerState === 'none' && hasText(item.buyerUnitId)) return false;
+    if (!inRange(item.price_list, f.priceListMin, f.priceListMax)) return false;
+    if (!inRange(item.price_transaction, f.priceTransMin, f.priceTransMax)) return false;
+    return itemMatchesKeyword(item, kw);
+  });
+});
+
+// =================================================================
+// / 合計列（依目前搜尋／篩選結果）
+// =================================================================
+const SOLD_STATUSES = new Set(['小訂', '補足', '簽約', '已售']);
+
+const summaryRow = computed(() => {
+  const items = filteredItems.value;
+  if (items.length === 0) return null;
+  const acc = {
+    count: items.length,
+    areaTotal: 0,
+    areaPingTotal: 0,
+    priceListTotal: 0,
+    priceFloorTotal: 0,
+    priceTransTotal: 0,
+    availableCount: 0,
+    soldCount: 0,
+  };
+  items.forEach(item => {
+    acc.areaTotal += Number(item.area) || 0;
+    acc.areaPingTotal += Number(item.area_ping) || 0;
+    acc.priceListTotal += Number(item.price_list) || 0;
+    acc.priceFloorTotal += Number(item.price_floor) || 0;
+    acc.priceTransTotal += Number(item.price_transaction) || 0;
+    const status = displayStatus(item);
+    if (status === '可售') acc.availableCount++;
+    else if (SOLD_STATUSES.has(status)) acc.soldCount++;
+  });
+  return acc;
+});
+
+const formatNumber = (value, digits = 0) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return new Intl.NumberFormat('zh-TW', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+};
 
 
 // =================================================================
@@ -759,6 +1042,24 @@ const goToFloorplanManager = () => {
 }
 :deep(tbody tr:hover) {
     background-color: #E3F2FD !important;
+}
+
+/* 頂部合計列：凍結在表頭正下方（top = Vuetify 依 density 定義的表頭高度） */
+:deep(tr.summary-row > td) {
+  background-color: #f0f0f0 !important;
+  font-weight: 700 !important;
+  color: #1a3a6e !important;
+  border-bottom: 2px solid #c0c0c0 !important;
+  white-space: nowrap;
+  /* !important：壓過 Vuetify .v-table--hover > ... > tbody > tr > td { position: relative } */
+  position: sticky !important;
+  /* thead 實際高度由 useStickyHeaderOffset 量測寫入；未量到時退回 Vuetify 的密度表頭高度 */
+  top: var(--sticky-header-height, var(--v-table-header-height, 40px));
+  z-index: 1;
+}
+:deep(tr.summary-row:hover > td) {
+  background-color: #e6e6e6 !important;
+  cursor: default;
 }
 .text-truncate {
     white-space: nowrap;

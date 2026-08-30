@@ -21962,10 +21962,39 @@ exports.onVipGuestDuplicate = onDocumentWritten({
   // ✅ 提前退出：提交數沒有增加
   if (afterSubmissions.length <= beforeSubmissions.length) return;
 
+  // ✅ [銷售專屬連結優化] 同一銷售的「接續填寫」不算重複：
+  // 客戶掃銷售專屬連結填 vip-form（submission 已帶該銷售）→ 送客時再以接續連結完成客戶資料表（internal_sheet、同一銷售），
+  // 兩筆屬同一次接待流程，不應發客資重複提醒。不同銷售（歸屬衝突）或再次填 vip-form（public_form）仍照常提醒。
+  const salesKeyOf = (sub) => {
+    if (!sub) return null;
+    const p = sub['銷售人員電話'];
+    const n = sub['銷售人員'];
+    if (p) return String(p);
+    if (n) return `name:${n}`;
+    return null;
+  };
+  const isSameSalesContinuation = (newSub, prevSub) => {
+    if (!newSub || newSub.submissionSource !== 'internal_sheet') return false;
+    const newKey = salesKeyOf(newSub);
+    if (!newKey) return false;
+    const prevKey = salesKeyOf(prevSub);
+    const ownerKey = beforeData?.latestSalesPhone ? String(beforeData.latestSalesPhone)
+      : (beforeData?.latestSalesName ? `name:${beforeData.latestSalesName}` : null);
+    return newKey === prevKey || newKey === ownerKey;
+  };
+  const newlyAddedSubs = afterSubmissions.slice(beforeSubmissions.length);
+  const isContinuationOnly = newlyAddedSubs.length > 0 && newlyAddedSubs.every((sub, i) => {
+    const prevSub = afterSubmissions[beforeSubmissions.length + i - 1];
+    return isSameSalesContinuation(sub, prevSub);
+  });
+
   let shouldTriggerTaskB = false;
   let isSalesFirstScenario = false;
 
-  if (afterSubmissions.length > 2) {
+  if (isContinuationOnly) {
+    console.log(`[${functionName}] 同一銷售接續完成客戶資料表（Doc: ${docId}），不視為重複提交，略過任務 B。`);
+  }
+  else if (afterSubmissions.length > 2) {
     shouldTriggerTaskB = true;
   }
   else if (afterSubmissions.length === 2) {

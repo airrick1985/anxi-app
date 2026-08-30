@@ -221,7 +221,10 @@
         <tbody>
           <tr>
             <td class="label">備註</td>
-            <td class="remark-cell">{{ data.remark }}</td>
+            <td class="remark-head-cell"></td>
+          </tr>
+          <tr>
+            <td class="remark-cell" colspan="2">{{ data.remark }}</td>
           </tr>
         </tbody>
       </table>
@@ -404,7 +407,8 @@ function pfNegCls(f) {
 .bd-install .num { text-align: center; }
 .bd-install .strong { font-weight: 700; }
 .bd-install .pct-cell { font-size: 9px; height: 15px; }
-.remark-cell { height: 22px; text-align: left !important; }
+.remark-head-cell { height: 22px; }
+.remark-cell { height: 22px; text-align: left !important; vertical-align: top; white-space: pre-wrap; line-height: 1.35; padding: 3px 5px; }
 .bd-clauses { flex: 1 1 auto; padding: 5px 8px; min-height: 40px; }
 .bd-clause { white-space: pre-wrap; font-size: 10px; margin-bottom: 8px; text-align: left; }
 .bd-clause:last-child { margin-bottom: 0; }

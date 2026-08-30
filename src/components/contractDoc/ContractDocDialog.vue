@@ -357,8 +357,8 @@
                   </v-row>
                 </template>
 
-                <v-text-field v-model="state.breakdownRemark" label="備註" density="compact"
-                  variant="outlined" hide-details class="mt-3" />
+                <v-textarea v-model="state.breakdownRemark" label="備註" density="compact"
+                  variant="outlined" hide-details class="mt-3" rows="2" auto-grow />
 
                 <!-- 磋商條款 -->
                 <template v-if="clauseLibrary.length">
@@ -680,7 +680,7 @@ import { saveAs } from 'file-saver';
 import { formatInTimeZone } from 'date-fns-tz';
 import { useProjectStore } from '@/store/projectStore';
 import {
-  fetchContractDocConfig, fetchPaymentTermTemplates, updateContractDocData,
+  fetchContractDocConfig, fetchPaymentTermTemplates, updateContractDocData, fetchContractDocData,
   generateContractDocument, driveProxyList,
   listContractDocFiles, deleteContractDocFile, warmupContractDocument,
 } from '@/api.js';
@@ -1499,12 +1499,18 @@ watch(() => props.show, async (val) => {
   loadHistoryFiles(); // 不阻塞開啟：載入該戶別歷史檔案，同時兼預熱產製函式（消除下載時的冷啟動）
   try {
     projectStore.setCurrentProject(props.projectId);
-    const [cfg] = await Promise.all([
+    // 同時抓該戶最新的 contractDocData：父層 unitData 是開啟戶別時的快照，
+    // 若在同一次開啟中儲存後再重開，快照不會更新，故以 Firestore 最新值為準
+    const [cfg, freshDocData] = await Promise.all([
       fetchContractDocConfig(props.projectId),
       loadTemplates(),
+      fetchContractDocData(householdDocId.value).catch(e => {
+        console.warn("讀取戶別合約製作資料失敗，改用父層快照:", e);
+        return undefined;
+      }),
     ]);
     config.value = cfg;
-    if (cfg) restoreDocData(cfg);
+    if (cfg) restoreDocData(cfg, freshDocData);
     // 有合約附圖頁且戶別有連結時，自動載入檔案清單（不阻塞開啟）
     if (cfg && attachmentsPage.value && attachmentSourceUrl.value) {
       loadAttachmentFiles();
@@ -1518,8 +1524,9 @@ watch(() => props.show, async (val) => {
   }
 }, { immediate: true });
 
-function restoreDocData(cfg) {
-  const saved = props.unitData?.contractDocData || {};
+function restoreDocData(cfg, freshDocData) {
+  // freshDocData === undefined 代表讀取失敗 → 退回父層快照；null 代表該戶尚無資料
+  const saved = (freshDocData !== undefined ? freshDocData : props.unitData?.contractDocData) || {};
 
   // 頁面（config + overrides）
   localPages.value = mergePagesWithOverrides(cfg.pages || [], saved.pageOverrides || {});

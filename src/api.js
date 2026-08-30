@@ -5776,6 +5776,12 @@ export const updateContractDocData = (householdDocId, contractDocData) => {
   });
 };
 
+/** 讀取單一戶別最新的合約製作資料（開啟對話框時抓最新值，避免父層快照過期） */
+export const fetchContractDocData = async (householdDocId) => {
+  const snap = await getDoc(doc(db, "salesHouseholds", householdDocId));
+  return snap.exists() ? (snap.data().contractDocData || null) : null;
+};
+
 /** 一次性抓取建案戶別（合約設定試算用的精簡清單） */
 export const fetchSalesHouseholdsOnce = async (projectId) => {
   const snapshot = await getDocs(query(collection(db, "salesHouseholds"), where("projectId", "==", projectId)));
