@@ -1,6 +1,6 @@
 <template>
   <v-dialog :model-value="show" @update:model-value="close" :fullscreen="isMobile"
-    :max-width="isMobile ? '100%' : '80vw'" :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'">
+    :max-width="isMobile ? '100%' : (isEditing ? '1360px' : '80vw')" :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'">
     <v-card class="d-flex flex-column" style="height: 100%; overflow: hidden;">
 
       <v-overlay :model-value="isSaving" class="align-center justify-center blur-background" persistent
@@ -1241,7 +1241,7 @@ const handleKeyPress = (e) => {
 
 // ── 🖥️ [新增] 電腦版「修改銷控」左側項目導覽 ──
 // 左邊點項目、右邊只顯示對應內容；手機版不變（全部區塊由上而下堆疊）
-const SALES_FORM_SECTION_KEYS = ['sales', 'deal', 'buyer'];
+const SALES_FORM_SECTION_KEYS = ['sales', 'deal', 'buyer', 'system'];
 const editSections = computed(() => {
   const d = editingData.value || {};
   const persons = Array.isArray(d.salesperson) ? d.salesperson.filter(Boolean).join('、') : (d.salesperson || '');
@@ -1250,6 +1250,9 @@ const editSections = computed(() => {
   const ratioL = Number(d.landPriceRatio) || 0;
   const parcelCount = Array.isArray(d.landParcels) ? d.landParcels.length : 0;
   const recordCount = Array.isArray(d.paymentRecords) ? d.paymentRecords.length : 0;
+  const planCount = Array.isArray(d.availablePlans) ? d.availablePlans.length : 0;
+  const imageCount = Array.isArray(d.salesImages) ? d.salesImages.length : 0;
+  const tagCount = Array.isArray(d.unitTags) ? d.unitTags.length : 0;
   return [
     {
       key: 'sales', title: '銷售資訊', icon: 'mdi-information-outline', color: 'primary',
@@ -1280,6 +1283,10 @@ const editSections = computed(() => {
     {
       key: 'payments', title: '戶別繳款紀錄', icon: 'mdi-receipt-text-outline', color: 'teal-darken-2',
       summary: recordCount > 0 ? `${recordCount} 筆` : '尚無紀錄',
+    },
+    {
+      key: 'system', title: '系統設定', icon: 'mdi-cog-outline', color: 'blue-grey-darken-1',
+      summary: (planCount + imageCount + tagCount) > 0 ? `方案 ${planCount} · 圖片 ${imageCount} · 標籤 ${tagCount}` : '可選方案 · 戶別圖片 · 文字標籤',
     },
   ];
 });

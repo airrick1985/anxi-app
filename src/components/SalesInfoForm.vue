@@ -39,45 +39,6 @@
               persistent-hint
             ></v-select>
 
-            <!-- ✅ [新增] 可選方案（方案編輯器功能）：限制該戶別在報價端可套用的方案，可複選 -->
-            <v-select
-              label="可選方案"
-              :items="planOptions"
-              v-model="availablePlansList"
-              class="mb-4"
-              item-title="name"
-              item-value="id"
-              multiple
-              chips
-              closable-chips
-              clearable
-              hint="未設定時，報價端「選擇方案」將無方案可選"
-              persistent-hint
-            ></v-select>
-
-            <!-- ✅ [新增] 文字標籤：顯示於銷控網格右上角，可多個並各自設定底色/文字色 -->
-            <UnitTagEditor
-              v-model="editableData.unitTags"
-              :suggestions="tagSuggestions"
-              class="mb-4"
-            />
-
-            <v-combobox
-              label="戶別圖片"
-              v-model="editableData.salesImages"
-              :items="salesImageOptions"
-              multiple
-              chips
-              clearable
-              closable-chips
-              class="mb-4"
-              hint="可從下拉選單選擇，或手動輸入後按 Enter 新增"
-              persistent-hint
-            ></v-combobox>
-            <div class="d-flex align-center mb-4">
-              <v-text-field label="持有車位" :model-value="parkingDisplayText" readonly variant="outlined"  hide-details></v-text-field>
-              <v-btn class="ml-2" variant="plain" color="primary" @click="isParkingModalOpen = true" icon="mdi-pencil"></v-btn>
-            </div>
             <label class="v-label text-caption">小訂日期</label>
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_deposit_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" teleport="body" auto-position class="mb-4 anxi-datepicker"></VueDatePicker>
             <label class="v-label text-caption">補足日期</label>
@@ -123,52 +84,150 @@
               </div>
             </div>
 
-            <!-- 是否首購 -->
+            <!-- 是否首購（✅ [調整] 與「合約方式」統一為 chip 樣式） -->
             <div class="field-block mb-4">
               <div class="field-label">
                 <v-icon size="18" color="amber-darken-2">mdi-home-heart</v-icon>
                 <span>是否首購</span>
               </div>
-              <!-- 選中＝實心色塊＋打勾radio；未選中＝灰底空心radio，選了哪個一目了然 -->
-              <v-btn-toggle
+              <v-chip-group
                 v-model="firstTimeBuyerModel"
+                selected-class="contract-chip--active"
                 mandatory
-                divided
-                rounded="lg"
-                class="firstbuyer-toggle w-100"
+                column
               >
+                <v-chip :value="true" filter variant="outlined" class="contract-chip">是</v-chip>
+                <v-chip :value="false" filter variant="outlined" class="contract-chip">否</v-chip>
+              </v-chip-group>
+            </div>
+            <!-- 🖥️ [調整] 持有車位：卡片式呈現（點卡片開編輯、✕ 移除僅前端暫存、明顯新增入口） -->
+            <div class="field-block mb-2">
+              <div class="field-label">
+                <v-icon size="18" color="blue-darken-2">mdi-parking</v-icon>
+                <span>持有車位{{ ownedParkingSpots.length > 0 ? `（${ownedParkingSpots.length}）` : '' }}</span>
+              </div>
+              <template v-if="ownedParkingSpots.length > 0">
+                <div class="parking-card-wrap">
+                  <div
+                    v-for="p in ownedParkingSpots"
+                    :key="p.spotId"
+                    class="parking-spot-card"
+                    role="button"
+                    title="點擊編輯車位"
+                    @click="isParkingModalOpen = true"
+                  >
+                    <div class="parking-spot-main">
+                      <div class="parking-spot-id">
+                        <v-icon size="15" color="blue-darken-2">mdi-parking</v-icon>{{ p.spotId }}
+                      </div>
+                      <div class="parking-spot-floor">
+                        底價 {{ spotFloorPrice(p) ? `${formatNumber(spotFloorPrice(p), 2)} 萬` : '—' }}
+                      </div>
+                      <div class="parking-spot-price" :class="{ 'parking-spot-price--empty': !Number(p.price_transaction) }">
+                        {{ Number(p.price_transaction) ? `成交價 ${formatNumber(p.price_transaction, 2)} 萬` : '未填成交價' }}
+                      </div>
+                    </div>
+                    <v-btn
+                      icon="mdi-close"
+                      size="x-small"
+                      variant="text"
+                      color="grey-darken-1"
+                      class="parking-spot-remove"
+                      title="移除此車位（按儲存後才生效）"
+                      @click.stop="removeParkingSpot(p)"
+                    ></v-btn>
+                  </div>
+                </div>
                 <v-btn
-                  :value="true"
-                  :variant="firstTimeBuyerModel === true ? 'flat' : 'outlined'"
-                  :color="firstTimeBuyerModel === true ? 'success' : undefined"
-                  class="flex-1-1 firstbuyer-btn"
-                  :class="{ 'firstbuyer-btn--off': firstTimeBuyerModel !== true }"
-                >
-                  <v-icon start>{{ firstTimeBuyerModel === true ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank' }}</v-icon>
-                  是
-                </v-btn>
-                <v-btn
-                  :value="false"
-                  :variant="firstTimeBuyerModel === false ? 'flat' : 'outlined'"
-                  :color="firstTimeBuyerModel === false ? 'blue-grey-darken-1' : undefined"
-                  class="flex-1-1 firstbuyer-btn"
-                  :class="{ 'firstbuyer-btn--off': firstTimeBuyerModel !== false }"
-                >
-                  <v-icon start>{{ firstTimeBuyerModel === false ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank' }}</v-icon>
-                  否
-                </v-btn>
-              </v-btn-toggle>
-              <div class="text-caption mt-1" :class="firstTimeBuyerModel === true ? 'text-success' : 'text-blue-grey-darken-1'">
-                目前選擇：<strong>{{ firstTimeBuyerModel === true ? '是（首購）' : '否（非首購）' }}</strong>
+                  block
+                  variant="outlined"
+                  color="primary"
+                  prepend-icon="mdi-plus"
+                  class="parking-add-btn mt-2"
+                  @click="isParkingModalOpen = true"
+                >新增車位</v-btn>
+              </template>
+              <div v-else class="parking-empty" role="button" @click="isParkingModalOpen = true">
+                <v-icon size="30" color="blue-grey-lighten-2">mdi-parking</v-icon>
+                <div class="text-caption text-grey-darken-1 mt-1 mb-2">此戶尚未持有車位</div>
+                <v-btn variant="flat" color="primary" size="small" prepend-icon="mdi-plus">新增車位</v-btn>
               </div>
             </div>
-            <div class="d-flex align-center gap-2 mb-2">
-              <v-text-field label="房屋成交價(萬)" v-model.number="editableData.price_transaction_house" type="number" :min="0" class="flex-1"></v-text-field>
-              <v-btn icon="mdi-calculator" size="small" variant="text" color="primary" @click="openPriceNegotiationDialog" title="房屋成交價調整"></v-btn>
+            <!-- 💰 [調整] 價格整合：底價/成交價對照表（房屋、車位、合計），溢差一眼可見 -->
+            <div class="field-block mb-2">
+              <div class="field-label">
+                <v-icon size="18" color="green-darken-2">mdi-cash-multiple</v-icon>
+                <span>價格資訊</span>
+                <!-- 📐 [調整] 戶別/總面積改徽章樣式，加強識別（有露臺時併顯露臺面積） -->
+                <span v-if="editableData.unitId || houseAreaPing > 0" class="price-title-meta">
+                  <span v-if="editableData.unitId" class="price-badge price-badge--unit">
+                    <v-icon size="13">mdi-home-outline</v-icon><template v-if="projectName">{{ projectName }}・</template>{{ editableData.unitId }}
+                  </span>
+                  <span v-if="houseAreaPing > 0" class="price-badge price-badge--area">
+                    <v-icon size="13">mdi-floor-plan</v-icon>總面積 {{ formatNumber(houseAreaPing, 2) }} 坪<template v-if="terraceAreaPing > 0">・含露臺 {{ formatNumber(terraceAreaPing, 2) }} 坪</template>
+                  </span>
+                </span>
+              </div>
+              <div class="price-grid">
+                <div class="price-grid-head">項目</div>
+                <div class="price-grid-head price-grid-head--floor"><v-icon size="12" class="mr-1">mdi-tag-outline</v-icon>底價</div>
+                <div class="price-grid-head price-grid-head--sale"><v-icon size="12" class="mr-1">mdi-currency-usd</v-icon>成交價</div>
+
+                <div class="price-grid-item">房屋</div>
+                <div class="price-grid-cell price-grid-cell--floor">
+                  <div class="price-grid-num">{{ formatNumber(houseBasePrice, 2) }} <span class="price-grid-unit">萬</span></div>
+                  <div v-if="terraceFloorPrice > 0" class="price-grid-sub">
+                    房屋 {{ formatNumber(houseOnlyFloorPrice, 2) }} ＋ 露臺 {{ formatNumber(terraceFloorPrice, 2) }}
+                  </div>
+                  <div v-if="houseFloorUnitPrice > 0" class="price-grid-sub">單價{{ terraceFloorPrice > 0 ? '(扣露臺)' : '' }} {{ formatNumber(houseFloorUnitPrice, 2) }} 萬/坪</div>
+                </div>
+                <div class="price-grid-cell price-grid-cell--sale price-grid-cell--input">
+                  <div class="price-grid-input-row">
+                    <v-text-field
+                      v-model.number="editableData.price_transaction_house"
+                      type="number"
+                      :min="0"
+                      suffix="萬"
+                      variant="outlined"
+                      bg-color="white"
+                      density="compact"
+                      hide-details
+                      class="price-grid-input"
+                    ></v-text-field>
+                    <v-btn icon="mdi-calculator" size="x-small" variant="text" color="primary" @click="openPriceNegotiationDialog" title="房屋成交價調整"></v-btn>
+                  </div>
+                  <div v-if="houseSaleUnitPrice > 0" class="price-grid-sub">單價{{ terraceFloorPrice > 0 ? '(扣露臺)' : '' }} {{ formatNumber(houseSaleUnitPrice, 2) }} 萬/坪</div>
+                </div>
+
+                <div class="price-grid-item price-grid-item--parking">
+                  <span>車位</span>
+                  <span v-if="ownedParkingSpots.length > 0" class="price-grid-item-sub">（{{ ownedParkingSpots.map(p => p.spotId).join('、') }}）</span>
+                </div>
+                <div class="price-grid-cell price-grid-cell--floor">
+                  <div class="price-grid-num">{{ formatNumber(parkingBasePrice, 2) }} <span class="price-grid-unit">萬</span></div>
+                </div>
+                <div class="price-grid-cell price-grid-cell--sale">
+                  <div class="price-grid-num">{{ formatNumber(parkingSalePrice, 2) }} <span class="price-grid-unit">萬</span></div>
+                </div>
+
+                <div class="price-grid-item price-grid-item--total">合計</div>
+                <div class="price-grid-cell price-grid-cell--total price-grid-cell--floor">
+                  <div class="price-grid-sub">成交底價</div>
+                  <div class="price-grid-num price-grid-num--total">{{ formatNumber(totalBasePrice, 2) }} <span class="price-grid-unit">萬</span></div>
+                </div>
+                <div class="price-grid-cell price-grid-cell--total price-grid-cell--sale">
+                  <div class="price-grid-sub">成交總價</div>
+                  <div class="price-grid-num price-grid-num--total price-grid-num--sale">{{ formatNumber(totalSalePrice, 2) }} <span class="price-grid-unit">萬</span></div>
+                </div>
+              </div>
+              <div class="price-diff-row" :class="priceDifference > 0 ? 'price-diff-row--plus' : (priceDifference < 0 ? 'price-diff-row--minus' : '')">
+                <span>溢差價（成交總價 − 成交底價）</span>
+                <strong>
+                  {{ priceDifference > 0 ? '+' : '' }}{{ formatNumber(priceDifference, 2) }} 萬
+                  <span v-if="priceDiffUnitPrice !== null" class="price-diff-unit">（{{ priceDiffUnitPrice > 0 ? '+' : '' }}{{ formatNumber(priceDiffUnitPrice, 2) }} 萬/坪）</span>
+                </strong>
+              </div>
             </div>
-            <v-text-field label="車位成交價(萬)"  :model-value="parkingSalePrice" variant="solo" readonly   class="mb-2"></v-text-field>
-            <v-text-field label="成交總價(萬)" :model-value="totalSalePrice" variant="solo" readonly  class="mb-2"></v-text-field>
-            <v-text-field label="溢差價(萬)" :model-value="priceDifference"variant="solo" readonly  ></v-text-field>
           </div>
         </v-col>
 
@@ -319,6 +378,44 @@
               />
             </div>
             </div>
+        </v-col>
+        <v-col cols="12" :md="sectionColMd" v-show="isSectionShown('system')">
+          <div class="info-section">
+            <div class="section-title"><v-icon>mdi-cog-outline</v-icon>系統設定</div>
+            <!-- 🖥️ [調整] 可選方案／戶別圖片自「銷售資訊」抽出，統一於系統設定管理 -->
+            <v-select
+              label="可選方案"
+              :items="planOptions"
+              v-model="availablePlansList"
+              class="mb-4"
+              item-title="name"
+              item-value="id"
+              multiple
+              chips
+              closable-chips
+              clearable
+              hint="未設定時，報價端「選擇方案」將無方案可選"
+              persistent-hint
+            ></v-select>
+            <v-combobox
+              label="戶別圖片"
+              v-model="editableData.salesImages"
+              :items="salesImageOptions"
+              multiple
+              chips
+              clearable
+              closable-chips
+              class="mb-4"
+              hint="可從下拉選單選擇，或手動輸入後按 Enter 新增"
+              persistent-hint
+            ></v-combobox>
+            <!-- ✅ [調整] 文字標籤自「銷售資訊」移入系統設定：顯示於銷控網格右上角，可多個並各自設定底色/文字色 -->
+            <UnitTagEditor
+              v-model="editableData.unitTags"
+              :suggestions="tagSuggestions"
+              class="mb-4"
+            />
+          </div>
         </v-col>
       </v-row>
     </v-form>
@@ -508,7 +605,7 @@ const props = defineProps({
   allSalesImages: { type: Array, default: () => [] },
   // ✅ [新增] 建案方案清單（方案編輯器功能，「可選方案」複選選項）
   planOptions: { type: Array, default: () => [] },
-  // 🖥️ [新增] 電腦版「修改銷控」左側項目導覽：指定只顯示哪些區塊（'sales' | 'deal' | 'buyer'），null = 全顯示
+  // 🖥️ [新增] 電腦版「修改銷控」左側項目導覽：指定只顯示哪些區塊（'sales' | 'deal' | 'buyer' | 'system'），null = 全顯示
   visibleSections: { type: Array, default: null },
   // ✅ [新增] 文字標籤常用建議（由全建案戶別推導，選到同名標籤自動套同色）
   tagSuggestions: { type: Array, default: () => [] },
@@ -520,7 +617,7 @@ const { mobile } = useDisplay();
 const isMobile = computed(() => mobile.value);
 
 // 🖥️ [新增] 區塊顯示控制：父層（修改銷控左側項目）可指定只顯示某一區塊，未指定時三區塊並排
-const ALL_FORM_SECTIONS = ['sales', 'deal', 'buyer'];
+const ALL_FORM_SECTIONS = ['sales', 'deal', 'buyer', 'system'];
 const shownSections = computed(() => {
   const picked = (props.visibleSections || []).filter(k => ALL_FORM_SECTIONS.includes(k));
   return picked.length > 0 ? picked : ALL_FORM_SECTIONS;
@@ -951,11 +1048,16 @@ watch(() => editableData.value.buyerMailingAddressDetail, (val) => {
   }
 });
 
+// 🖥️ [新增] 本次編輯是否動過車位（含清空）：動過後一律以暫存名單為準，避免清空後又 fallback 回 DB 名單
+const hasStagedParking = ref(false);
+watch(() => editableData.value?.unitId, () => { hasStagedParking.value = false; });
+
 // 📋 從 salesParkings 集合中找出該戶別持有的車位
 const ownedParkingSpots = computed(() => {
-  // 1. 如果已存在編輯中的暫存資料，優先使用它
-  if (editableData.value?.['持有車位'] && editableData.value['持有車位'].length > 0) {
-    return editableData.value['持有車位'].map(p => ({
+  // 1. 本次編輯動過車位（含清空）或已有暫存資料時，優先使用暫存
+  const staged = editableData.value?.['持有車位'];
+  if (Array.isArray(staged) && (hasStagedParking.value || staged.length > 0)) {
+    return staged.map(p => ({
         ...p,
         spotId: p.spotId || p['車位編號'], // 確保 Key 相容
         price_transaction: p.price_transaction || p['車位成交價']
@@ -968,14 +1070,23 @@ const ownedParkingSpots = computed(() => {
 });
 
 const houseBasePrice = computed(() => editableData.value?.price_floor_house_total || 0);
+// 💰 [新增] 房屋底價拆分：露臺底價 > 0 時於房屋總底價下方輔助顯示「房屋＋露臺」
+const houseOnlyFloorPrice = computed(() => Number(editableData.value?.price_floor_house_only) || 0);
+const terraceFloorPrice = computed(() => Number(editableData.value?.price_floor_terrace) || 0);
+// 📐 [新增] 面積與單價：標題列顯示戶別/總面積；房屋列輔助顯示底價單價、成交單價
+// 單價口徑（同戶別詳情內部單價）：先扣除露臺底價，再 ÷ 房屋總面積
+const houseAreaPing = computed(() => Number(editableData.value?.area_house_ping) || 0);
+const terraceAreaPing = computed(() => Number(editableData.value?.area_terrace_ping) || 0);
+const houseFloorUnitPrice = computed(() => houseAreaPing.value > 0 ? ((Number(houseBasePrice.value) || 0) - terraceFloorPrice.value) / houseAreaPing.value : 0);
+const houseSaleUnitPrice = computed(() => houseAreaPing.value > 0 ? ((Number(editableData.value?.price_transaction_house) || 0) - terraceFloorPrice.value) / houseAreaPing.value : 0);
+// 💰 [新增] 單一車位底價（相容舊欄位名 車位底價/底價）
+function spotFloorPrice(p) {
+  return Number(p?.price_floor ?? p?.['車位底價'] ?? p?.['底價']) || 0;
+}
 const parkingBasePrice = computed(() => {
-  return ownedParkingSpots.value.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0);
+  return ownedParkingSpots.value.reduce((sum, p) => sum + spotFloorPrice(p), 0);
 });
 const totalBasePrice = computed(() => houseBasePrice.value + parkingBasePrice.value);
-const parkingDisplayText = computed(() => {
-    if (ownedParkingSpots.value.length === 0) return '尚未設定';
-    return ownedParkingSpots.value.map(p => p.spotId).join(', ');
-});
 const parkingSalePrice = computed(() => {
     return ownedParkingSpots.value.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
 });
@@ -997,6 +1108,11 @@ const priceDifference = computed(() => {
   if (!totalSalePrice.value || !totalBasePrice.value) return 0;
   return totalSalePrice.value - totalBasePrice.value;
 });
+// 📐 [新增] 溢差單價＝溢差價 ÷ 房屋總面積（口徑同戶別詳情 premiumUnitPrice）
+const priceDiffUnitPrice = computed(() => {
+  if (!houseAreaPing.value || !priceDifference.value) return null;
+  return priceDifference.value / houseAreaPing.value;
+});
 
 // 📋 處理車位更新：透過 API 直接更新 salesParkings 集合
 async function handleParkingUpdate(updatedParkingList) {
@@ -1006,6 +1122,7 @@ async function handleParkingUpdate(updatedParkingList) {
         if (editableData.value) {
            editableData.value['持有車位'] = updatedParkingList;
         }
+        hasStagedParking.value = true;
 
         // 觸發父元件進行車位資料更新
         // 傳遞更新的車位清單給父元件處理
@@ -1016,6 +1133,13 @@ async function handleParkingUpdate(updatedParkingList) {
     } catch (error) {
         console.error('🚗 車位更新失敗:', error);
     }
+}
+
+// 🖥️ [新增] 卡片 ✕ 移除單一車位：走同一條暫存流程（handleParkingUpdate），按儲存後才寫入資料庫
+function removeParkingSpot(spot) {
+  const targetId = spot.spotId || spot['車位編號'];
+  const remaining = ownedParkingSpots.value.filter(p => (p.spotId || p['車位編號']) !== targetId);
+  handleParkingUpdate(remaining);
 }
 
 // ✅ [新增] 房屋成交價調整相關方法
@@ -1113,7 +1237,7 @@ function savePriceNegotiation() {
 }
 /* 🖥️ 電腦版單一區塊顯示（修改銷控左側項目切換）：限制表單寬度，避免欄位被拉得過長不好讀 */
 .single-section .info-section {
-  max-width: 860px;
+  max-width: 640px;
 }
 .section-title { font-size: 1.1rem; font-weight: 600; color: #1a3a6e; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; display: flex; align-items: center; gap: 8px; }
 .form-label { font-size: 0.9rem; color: #555; font-weight: 500; margin-bottom: 4px; display: block; }
@@ -1152,26 +1276,241 @@ function savePriceNegotiation() {
   border-color: #1a3a6e !important;
   color: #ffffff !important;
 }
-/* 是否首購：兩顆按鈕平分寬度、等高 */
-.firstbuyer-toggle {
-  height: 44px;
+
+/* ===== 持有車位卡片 ===== */
+.parking-card-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
-.flex-1-1 {
-  flex: 1 1 0;
+.parking-spot-card {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #ffffff;
+  border: 1px solid #cfd8e3;
+  border-radius: 10px;
+  padding: 8px 6px 8px 12px;
+  min-width: 148px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
 }
-.firstbuyer-toggle :deep(.v-btn) {
-  height: 100%;
+.parking-spot-card:hover {
+  border-color: #1a3a6e;
+  box-shadow: 0 1px 4px rgba(26, 58, 110, .15);
 }
-/* 選中：粗體白字實心色塊；未選中：灰底淡字，對比拉開避免誤讀 */
-.firstbuyer-btn {
+.parking-spot-id {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-weight: 700;
-  font-size: 1rem;
-  letter-spacing: 2px;
+  color: #1a3a6e;
+  font-size: .95rem;
+  line-height: 1.3;
 }
-.firstbuyer-btn--off {
-  color: #90a4ae !important;
-  background-color: #f5f6f8 !important;
+.parking-spot-price {
+  font-size: .78rem;
+  color: #2e7d32;
+  line-height: 1.3;
+}
+.parking-spot-price--empty {
+  color: #e65100;
+}
+.parking-spot-remove {
+  margin-left: 2px;
+}
+.parking-add-btn {
+  border-style: dashed;
+}
+.parking-empty {
+  border: 1.5px dashed #b7c4d4;
+  border-radius: 10px;
+  background: #fbfcfe;
+  padding: 16px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.parking-empty:hover {
+  border-color: #1a3a6e;
+  background: #f3f7fd;
+}
+/* 車位卡片：底價列 */
+.parking-spot-floor {
+  font-size: .74rem;
+  color: #8493a8;
+  line-height: 1.3;
+}
+
+/* ===== 價格資訊：底價/成交價對照表 ===== */
+.price-grid {
+  display: grid;
+  grid-template-columns: auto 1fr 1.3fr;
+  column-gap: 8px;
+}
+.price-grid-head {
+  font-size: .75rem;
+  color: #8493a8;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-bottom: 1px solid #e6ebf2;
+  display: flex;
+  align-items: flex-end;
+}
+/* 底價欄（灰藍）與成交價欄（綠）以色帶＋同色數字區分 */
+.price-grid-head--floor {
+  color: #5a6b81;
+  background: #eef2f7;
+  border-radius: 10px 10px 0 0;
+}
+.price-grid-head--sale {
+  color: #1b5e20;
+  background: #e7f4e8;
+  border-radius: 10px 10px 0 0;
+}
+.price-grid-item {
+  font-size: .85rem;
+  font-weight: 600;
+  color: #44546a;
+  padding: 10px 0;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+/* 車位列標籤：車位字樣一行、編號括號另起一行 */
+.price-grid-item--parking {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+.price-grid-item-sub {
+  font-size: .72rem;
+  font-weight: 500;
+  color: #8493a8;
+  line-height: 1.3;
+  white-space: normal;
+  max-width: 140px;
+}
+.price-grid-cell {
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.price-grid-cell--floor {
+  background: #eef2f7;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.price-grid-cell--sale {
+  background: #e7f4e8;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.price-grid-cell--floor .price-grid-num {
+  color: #5a6b81;
+}
+.price-grid-cell--sale .price-grid-num {
+  color: #1b5e20;
+}
+.price-grid-num {
+  font-size: .95rem;
+  font-weight: 600;
+  color: #1f2d3d;
+  line-height: 1.3;
+}
+.price-grid-unit {
+  font-size: .75rem;
   font-weight: 400;
+  color: #8493a8;
+}
+.price-grid-sub {
+  font-size: .72rem;
+  color: #8493a8;
+  line-height: 1.3;
+}
+.price-grid-input-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.price-title-meta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.price-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.price-badge--unit {
+  background: #1a3a6e;
+  color: #fff;
+  letter-spacing: .5px;
+}
+.price-badge--area {
+  background: #e8eef7;
+  color: #1a3a6e;
+  border: 1px solid #c9d7ec;
+  font-weight: 600;
+}
+.price-grid-input {
+  max-width: 170px;
+}
+.price-grid-item--total,
+.price-grid-cell--total {
+  border-top: 1px dashed #d4dce8;
+}
+.price-grid-cell--total.price-grid-cell--floor,
+.price-grid-cell--total.price-grid-cell--sale {
+  border-radius: 0 0 10px 10px;
+  padding-bottom: 10px;
+}
+.price-grid-item--total {
+  padding-top: 12px;
+}
+.price-grid-num--total {
+  font-size: 1.05rem;
+}
+.price-grid-num--sale {
+  color: #1b5e20;
+}
+.price-diff-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #eef1f5;
+  color: #607086;
+  font-size: .82rem;
+}
+.price-diff-row--plus {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+.price-diff-row--minus {
+  background: #fdecea;
+  color: #c62828;
+}
+.price-diff-row strong {
+  font-size: .95rem;
+}
+.price-diff-unit {
+  font-size: .78rem;
+  font-weight: 500;
+  margin-left: 2px;
 }
 </style>
 
