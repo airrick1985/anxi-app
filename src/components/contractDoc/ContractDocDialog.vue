@@ -540,22 +540,52 @@
           歷史檔案<template v-if="historyFiles.length">（{{ historyFiles.length }}）</template>
         </v-btn>
         <v-spacer />
-        <v-menu v-if="config">
-          <template #activator="{ props: mp }">
-            <v-btn v-bind="mp" variant="text" prepend-icon="mdi-file-export-outline" :disabled="!canDownload">
-              單頁匯出
-            </v-btn>
-          </template>
-          <v-list density="compact">
-            <v-list-item v-for="p in exportablePages" :key="p.id" :title="p.title"
-              @click="download('pdf', p.id)" />
-          </v-list>
-        </v-menu>
+        <v-btn v-if="config" variant="text" prepend-icon="mdi-file-export-outline" :disabled="!canDownload"
+          @click="openPageExportDialog">選頁匯出</v-btn>
         <v-btn color="error" variant="flat" prepend-icon="mdi-file-pdf-box" :loading="downloading.pdf"
           :disabled="!canDownload" @click="download('pdf')">下載 PDF</v-btn>
         <v-btn color="success" variant="flat" prepend-icon="mdi-file-excel" :loading="downloading.excel"
           :disabled="!canDownload" @click="download('excel')">下載 EXCEL</v-btn>
         <v-btn variant="text" @click="$emit('update:show', false)">關閉</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- 選頁匯出：勾選需要的頁面後合併匯出 -->
+  <v-dialog v-model="pageExportDialog" max-width="440px" scrollable>
+    <v-card>
+      <v-card-title class="pa-3 d-flex align-center">
+        <v-icon start size="small">mdi-file-export-outline</v-icon>
+        <span class="text-subtitle-1 font-weight-bold">選頁匯出</span>
+        <v-spacer />
+        <v-btn size="small" variant="text" color="primary" @click="toggleAllExportPages">
+          {{ pageExportSelection.length === exportablePages.length ? '清除全部' : '全選' }}
+        </v-btn>
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pa-1" style="max-height: 55vh;">
+        <v-list density="compact">
+          <v-list-item v-for="p in exportablePages" :key="p.id" class="px-2"
+            @click="togglePageExport(p.id)">
+            <template #prepend>
+              <v-checkbox-btn :model-value="pageExportSelection.includes(p.id)" density="compact"
+                @click.stop @update:model-value="togglePageExport(p.id, $event)" />
+            </template>
+            <v-list-item-title class="text-body-2">{{ p.title }}</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-card-text>
+      <v-divider />
+      <v-card-text class="pa-3 pb-0 text-caption text-grey">
+        勾選的頁面會依頁面順序合併為一份檔案；EXCEL 不含合約附圖頁。
+      </v-card-text>
+      <v-card-actions class="pa-3 flex-wrap">
+        <v-btn variant="text" @click="pageExportDialog = false">取消</v-btn>
+        <v-spacer />
+        <v-btn color="error" variant="flat" prepend-icon="mdi-file-pdf-box" :loading="downloading.pdf"
+          :disabled="!pageExportSelection.length" @click="exportSelectedPages('pdf')">匯出 PDF</v-btn>
+        <v-btn color="success" variant="flat" prepend-icon="mdi-file-excel" :loading="downloading.excel"
+          :disabled="!pageExportExcelable" @click="exportSelectedPages('excel')">匯出 EXCEL</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -1646,6 +1676,40 @@ async function saveDocData(silent = false) {
 /* ---------- 下載 ---------- */
 const downloading = reactive({ pdf: false, excel: false });
 
+/* ---------- 選頁匯出：勾選需要的頁面後合併匯出 ---------- */
+const pageExportDialog = ref(false);
+const pageExportSelection = ref([]);
+
+// EXCEL 不含合約附圖頁：勾選中至少要有一頁非附圖頁才可匯出 EXCEL
+const pageExportExcelable = computed(() =>
+  exportablePages.value.some(p =>
+    pageExportSelection.value.includes(p.id) && p.type !== 'contractAttachments'));
+
+function openPageExportDialog() {
+  pageExportSelection.value = [];
+  pageExportDialog.value = true;
+}
+
+function togglePageExport(id, val) {
+  const has = pageExportSelection.value.includes(id);
+  const next = val !== undefined ? val : !has;
+  if (next && !has) pageExportSelection.value.push(id);
+  else if (!next && has) pageExportSelection.value = pageExportSelection.value.filter(x => x !== id);
+}
+
+function toggleAllExportPages() {
+  pageExportSelection.value = pageExportSelection.value.length === exportablePages.value.length
+    ? []
+    : exportablePages.value.map(p => p.id);
+}
+
+async function exportSelectedPages(format) {
+  const ids = exportablePages.value.map(p => p.id).filter(id => pageExportSelection.value.includes(id));
+  if (!ids.length) return;
+  await download(format, ids);
+  pageExportDialog.value = false;
+}
+
 function base64ToBlob(base64, mimeType) {
   const byteChars = atob(base64);
   const byteNumbers = new Array(byteChars.length);
@@ -1653,7 +1717,7 @@ function base64ToBlob(base64, mimeType) {
   return new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
 }
 
-async function download(format, onlyPageId = null) {
+async function download(format, onlyPageIds = null) {
   // 會辦單有負數異常欄位：明確提醒並拒絕產製（按鈕已 disabled，此為雙重保險）
   if (breakdownNegatives.value.length) {
     toast.error(`會辦單以下欄位為負數，無法匯出，請先修正戶別資料：${breakdownNegativeText.value}`);
@@ -1666,7 +1730,7 @@ async function download(format, onlyPageId = null) {
 
     // 附圖頁要匯出但清單尚未載入時，先載入並預設全選（避免靜默漏掉附圖）
     const includesAttachments = exportablePages.value
-      .some(p => p.type === 'contractAttachments' && (!onlyPageId || p.id === onlyPageId));
+      .some(p => p.type === 'contractAttachments' && (!onlyPageIds || onlyPageIds.includes(p.id)));
     if (format === 'pdf' && includesAttachments && attachmentSourceUrl.value && !attachmentsLoaded.value) {
       await loadAttachmentFiles();
     }
@@ -1680,7 +1744,7 @@ async function download(format, onlyPageId = null) {
     }
 
     const pagesPayload = exportablePages.value
-      .filter(p => !onlyPageId || p.id === onlyPageId)
+      .filter(p => !onlyPageIds || onlyPageIds.includes(p.id))
       .filter(p => !(format === 'excel' && p.type === 'contractAttachments'))
       .map(p => ({
         id: p.id,
@@ -1700,6 +1764,15 @@ async function download(format, onlyPageId = null) {
       return;
     }
 
+    // 選頁匯出檔名：單頁附頁名、多頁串接頁名（過長改「自選N頁」）；勾滿全部頁視同完整匯出不附頁名
+    let pageTitle = null;
+    if (onlyPageIds && onlyPageIds.length < exportablePages.value.length) {
+      const titles = pagesPayload.map(p => p.title).filter(Boolean);
+      const joined = titles.join('+');
+      pageTitle = titles.length <= 1 ? (titles[0] || null)
+        : (joined.length <= 30 ? joined : `自選${titles.length}頁`);
+    }
+
     const payload = {
       projectId: props.projectId,
       format,
@@ -1707,7 +1780,7 @@ async function download(format, onlyPageId = null) {
         projectName: props.projectName,
         unitId: unitCtx.value.unitId,
         salesperson: unitCtx.value.salespersonText,
-        pageTitle: onlyPageId ? pagesPayload[0]?.title : null,
+        pageTitle,
       },
       pages: pagesPayload,
     };
