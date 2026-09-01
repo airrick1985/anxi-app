@@ -19476,6 +19476,7 @@ exports.generateContractDocument = onCall({
                 fileName: sel.fileName || meta.data.name,
                 mimeType: meta.data.mimeType || '',
                 pageRange: sel.pageRange || null,
+                rotation: Number(sel.rotation) || 0,
                 buffer: Buffer.from(res.data)
               }
             };

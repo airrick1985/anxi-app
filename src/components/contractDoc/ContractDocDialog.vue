@@ -490,7 +490,8 @@
                 <template v-for="pc in (pv.page.pageCopies || 1)" :key="`${pv.renderKey}_p${pc}`">
                   <div class="preview-sheet" :style="[paperStyle(pv.page), sheetZoomStyle(pv.page), sheetFontStyle(pv.page)]">
                     <template v-if="pv.page.type === 'contractAttachments'">
-                      <AttachmentsPreview :data="pv.data" :style="attInnerStyle(pv.page)" />
+                      <AttachmentsPreview :data="pv.data" :style="attInnerStyle(pv.page)"
+                        @rotate="rotateAttachment" />
                     </template>
                     <template v-else>
                       <template v-for="copy in (pv.page.repeatCount || 1)" :key="copy">
@@ -1214,6 +1215,8 @@ const priceModel = computed(() => buildPriceModel(
 const splitModel = computed(() => buildSplitModel(editRows.value, config.value, priceModel.value.fullContext));
 
 /* ---------- 合約附圖 ---------- */
+// 附圖預設方向：合約分戶圖多為橫式掃描，預設順時針轉 90°（用戶可於預覽逐檔調整）
+const DEFAULT_ATTACHMENT_ROTATION = 90;
 const attachmentsLoading = ref(false);
 const attachmentsLoaded = ref(false);
 const attachmentFiles = ref([]);
@@ -1272,7 +1275,8 @@ async function loadAttachmentFiles() {
     state.attachmentSelection = state.attachmentSelection.filter(a => validIds.has(a.fileId));
     // 沒有既存勾選時，預設全選
     if (!state.attachmentSelection.length && attachmentFiles.value.length) {
-      state.attachmentSelection = attachmentFiles.value.map(f => ({ fileId: f.id, fileName: f.name, pageRange: null }));
+      state.attachmentSelection = attachmentFiles.value.map(f =>
+        ({ fileId: f.id, fileName: f.name, pageRange: null, rotation: DEFAULT_ATTACHMENT_ROTATION }));
     }
   } catch (e) {
     console.error('載入合約附圖清單失敗:', e);
@@ -1287,7 +1291,7 @@ function isAttachmentSelected(fileId) {
 }
 function toggleAttachment(f, on) {
   const i = state.attachmentSelection.findIndex(a => a.fileId === f.id);
-  if (on && i < 0) state.attachmentSelection.push({ fileId: f.id, fileName: f.name, pageRange: null });
+  if (on && i < 0) state.attachmentSelection.push({ fileId: f.id, fileName: f.name, pageRange: null, rotation: DEFAULT_ATTACHMENT_ROTATION });
   if (!on && i >= 0) state.attachmentSelection.splice(i, 1);
 }
 function attachmentPageRange(fileId) {
@@ -1296,6 +1300,12 @@ function attachmentPageRange(fileId) {
 function setAttachmentPageRange(fileId, val) {
   const a = state.attachmentSelection.find(x => x.fileId === fileId);
   if (a) a.pageRange = (val || '').trim() || null;
+}
+// 預覽旋轉附圖（dir: 1 順時針 / -1 逆時針）；匯出 PDF 依此方向嵌入
+function rotateAttachment(fileId, dir = 1) {
+  const a = state.attachmentSelection.find(x => x.fileId === fileId);
+  if (!a) return;
+  a.rotation = ((((Number(a.rotation) || 0) + dir * 90) % 360) + 360) % 360;
 }
 
 // 配套款銀行組僅配套合約戶別適用（一般戶即使帳戶欄位有值也不匯出）
@@ -1380,10 +1390,16 @@ function sheetZoomStyle(page) {
   return { zoom: Math.min(1, available / w) };
 }
 
-// 附圖滿版預覽的內容高度（紙張高 - 上下 padding）
+// 附圖滿版預覽的內容高度（紙張高 - 上下 padding）；
+// 同時輸出內容寬高 CSS 變數，供旋轉 90/270 時圖片寬高互換的縮放限制
 function attInnerStyle(page) {
-  const { h } = pageDims(page);
-  return { height: `${h - 56}px` };
+  const { w, h } = pageDims(page);
+  const stageH = h - 56 - 24;   // 再扣預覽底部檔名列高度
+  return {
+    height: `${h - 56}px`,
+    '--att-stage-w': `${w - 64}px`,
+    '--att-stage-h': `${stageH}px`,
+  };
 }
 
 // 頁面字體 → 預覽 CSS 變數（各 Preview 元件以 var(--doc-font, 預設) 套用）
@@ -1471,8 +1487,10 @@ const previewPages = computed(() => {
               page: p,
               data: {
                 file: {
+                  fileId: a.fileId,
                   name: a.fileName || f?.name || '',
                   pageRange: a.pageRange || null,
+                  rotation: Number(a.rotation) || 0,
                   mimeType: f?.mimeType || '',
                   thumbnail: largeThumb(f?.thumbnail),
                 },
@@ -1576,7 +1594,11 @@ function restoreDocData(cfg, freshDocData) {
   state.breakdownRemark = saved.breakdownRemark || '';
   state.decorationRemark = saved.decorationRemark || '';
   state.qrUrl = saved.qrUrl || '';
-  state.attachmentSelection = Array.isArray(saved.attachmentSelection) ? [...saved.attachmentSelection] : [];
+  // 舊存檔沒有 rotation 欄位 → 補預設 90°；明確存 0（用戶轉回原方向）則保留
+  state.attachmentSelection = Array.isArray(saved.attachmentSelection)
+    ? saved.attachmentSelection.map(a =>
+      ({ ...a, rotation: a.rotation == null ? DEFAULT_ATTACHMENT_ROTATION : a.rotation }))
+    : [];
 
   // 磋商條款：有存檔用存檔，否則依條件自動預選
   state.selectedClauseIds = Array.isArray(saved.selectedClauseIds)

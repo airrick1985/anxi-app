@@ -8,7 +8,8 @@
  *   - 合約加註：明體、虛線框、買方簽名列
  *
  * buildContractPdf(payload, attachmentFiles)
- *   attachmentFiles: [{ fileId, fileName, pageRange, buffer, mimeType }]
+ *   attachmentFiles: [{ fileId, fileName, pageRange, rotation, buffer, mimeType }]
+ *   rotation: 0/90/180/270（順時針，與前端預覽一致；以 PDF 頁面 /Rotate 呈現）
  */
 
 const PDFDocument = require("pdfkit");
@@ -1063,20 +1064,27 @@ function drawPageContent(pdf, page, slotTop, slotH) {
   }
 }
 
-/** pdf-lib 合併附圖（PDF 依頁碼範圍；圖片各佔一頁，依附圖頁紙張設定） */
+/** pdf-lib 合併附圖（PDF 依頁碼範圍；圖片各佔一頁，依附圖頁紙張設定；rotation 以頁面 /Rotate 套用） */
 async function mergeAttachments(baseBuffer, attachmentFiles) {
-  const { PDFDocument: PdfLibDocument } = require("pdf-lib");
+  const { PDFDocument: PdfLibDocument, degrees } = require("pdf-lib");
   const merged = await PdfLibDocument.load(baseBuffer);
 
   for (const file of attachmentFiles) {
     if (!file || !file.buffer) continue;
+    const rotation = ((Math.round(Number(file.rotation) || 0) % 360) + 360) % 360;
     try {
       const isPdf = (file.mimeType || "").includes("pdf") || /\.pdf$/i.test(file.fileName || "");
       if (isPdf) {
         const src = await PdfLibDocument.load(file.buffer, { ignoreEncryption: true });
         const indices = parsePageRange(file.pageRange, src.getPageCount());
         const copied = await merged.copyPages(src, indices);
-        copied.forEach(p => merged.addPage(p));
+        copied.forEach(p => {
+          if (rotation) {
+            const current = p.getRotation()?.angle || 0;
+            p.setRotation(degrees((((current + rotation) % 360) + 360) % 360));
+          }
+          merged.addPage(p);
+        });
       } else {
         const isPng = (file.mimeType || "").includes("png") || /\.png$/i.test(file.fileName || "");
         const img = isPng ? await merged.embedPng(file.buffer) : await merged.embedJpg(file.buffer);
@@ -1089,6 +1097,7 @@ async function mergeAttachments(baseBuffer, attachmentFiles) {
         const scale = Math.min((pageW - margin * 2) / img.width, (pageH - margin * 2) / img.height);
         const w = img.width * scale, h = img.height * scale;
         page.drawImage(img, { x: (pageW - w) / 2, y: (pageH - h) / 2, width: w, height: h });
+        if (rotation) page.setRotation(degrees(rotation));
       }
     } catch (e) {
       console.warn(`[contractDocument] 附圖合併失敗（${file.fileName}）：`, e.message);
