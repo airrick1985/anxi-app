@@ -68,7 +68,12 @@
                                     <div v-if="!isEditingProfile">
                                         <!-- 銷售人員欄位 -->
                                         <div class="info-row mb-3">
-                                            <span class="text-caption text-grey">銷售人員</span>
+                                            <span class="text-caption text-grey">銷售人員
+                                                <v-btn v-if="canArbitrate && !guestData.isDeleted" size="x-small"
+                                                    variant="text" color="primary" class="ml-1"
+                                                    prepend-icon="mdi-account-switch"
+                                                    @click="openArbitrationDialog">變更歸屬</v-btn>
+                                            </span>
                                             <div class="d-flex flex-wrap gap-2 align-center">
                                                 <template v-if="salesPersonNames.length > 0">
                                                     <div v-for="(name, idx) in salesPersonNames" :key="idx"
@@ -422,7 +427,7 @@
                                             <v-select
                                                 v-model="editingData.selectedSalesPersons"
                                                 label="銷售人員"
-                                                :items="salesPersonList"
+                                                :items="editSalesOptions"
                                                 item-title="name"
                                                 item-value="phone"
                                                 multiple
@@ -880,6 +885,34 @@
             </v-card>
         </v-dialog>
 
+        <!-- ✅ 變更歸屬（客資歸屬裁決）對話框 -->
+        <v-dialog v-model="isArbitrationDialogVisible" max-width="440px">
+            <v-card>
+                <v-card-title class="bg-blue-grey-lighten-5 text-subtitle-1 font-weight-bold">
+                    <v-icon start size="small">mdi-account-switch</v-icon>變更歸屬銷售
+                </v-card-title>
+                <v-card-text class="pt-4">
+                    <div class="text-body-2 mb-3">
+                        客戶：<span class="font-weight-bold">{{ guestData.latestName }}</span>（{{ guestData.phone }}）<br>
+                        目前歸屬：<span class="font-weight-bold">{{ guestData.latestSalesName || '未歸屬' }}</span>
+                    </div>
+                    <v-select v-model="arbitrationTargetPhone" label="新歸屬銷售" :items="salesPersonList"
+                        item-title="name" item-value="phone" density="compact" variant="outlined"
+                        hide-details="auto" class="mb-3"></v-select>
+                    <v-alert type="info" variant="tonal" density="compact" class="text-caption">
+                        確認後該筆客資將唯一歸屬所選銷售；其他銷售名下的關聯會移至「已刪除」（可還原、可再次變更），並保留完整歸屬異動紀錄。
+                    </v-alert>
+                </v-card-text>
+                <v-card-actions class="pa-4">
+                    <v-spacer></v-spacer>
+                    <v-btn color="grey-darken-1" variant="text"
+                        @click="isArbitrationDialogVisible = false" :disabled="isArbitrating">取消</v-btn>
+                    <v-btn color="primary" variant="elevated" @click="confirmArbitration"
+                        :loading="isArbitrating" :disabled="!arbitrationTargetPhone">確認變更</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
         <v-overlay :model-value="isLoading" class="align-center justify-center" persistent>
             <v-progress-circular color="primary" indeterminate size="64"></v-progress-circular>
         </v-overlay>
@@ -1026,7 +1059,8 @@ import {
     hardDeleteCustomer,
     updateLinkedProjects,
     unlinkProject,
-    getUsersWithSystemPermission
+    getUsersWithSystemPermission,
+    arbitrateVipGuestSales
 } from '@/api';
 import { useToast } from 'vue-toastification';
 import TwCities from '@/assets/TwCities.json';
@@ -1703,8 +1737,83 @@ const hasCounterPermission = computed(() => {
     return permissionDebugInfo.value.hasCabinetSystem;
 });
 
+// ✅ 變更歸屬權限：櫃台或系統/超級管理員（與後端 _assertVipArbitrationPermission 一致）
+const canArbitrate = computed(() => {
+    const roles = userStore.user?.roles || [];
+    return hasCounterPermission.value || roles.includes('系統管理員') || roles.includes('超級管理員');
+});
+
 // 銷售人員列表（該建案中有相應權限的用戶，排除管理員）
 const salesPersonList = ref([]);
+
+// ✅ [離案銷售] 客資既有銷售中已不在建案名單者，補成佔位選項讓編輯模式可見、可移除
+// value 規則：有電話用電話；舊資料無電話用 "name:姓名" 哨兵值（儲存時電話存空字串）
+const legacySalesOptions = computed(() => {
+    const names = Array.isArray(guestData.value.profile?.['銷售人員'])
+        ? guestData.value.profile['銷售人員'].filter(Boolean) : [];
+    const phones = Array.isArray(guestData.value.profile?.['銷售人員電話'])
+        ? guestData.value.profile['銷售人員電話'] : [];
+    const currentPhones = new Set(salesPersonList.value.map(p => String(p.phone)));
+    const opts = [];
+
+    const addLegacy = (rawName, phone) => {
+        if (!rawName) return;
+        if (salesPersonList.value.some(p => p.name === rawName)) return; // 仍在案
+        if (phone && currentPhones.has(String(phone))) return;           // 電話仍在案（改名情況）
+        if (opts.some(o => o.rawName === rawName)) return;               // 已加入
+        opts.push({
+            phone: phone ? String(phone) : `name:${rawName}`,
+            name: `${rawName}（已離案）`,
+            rawName,
+            isLegacy: true
+        });
+    };
+
+    names.forEach((n, i) => addLegacy(n, phones[i]));
+    // 目前負責人員可能不在 profile 陣列中，也一併補上
+    addLegacy(guestData.value.latestSalesName, guestData.value.latestSalesPhone);
+    return opts;
+});
+
+// 編輯模式的完整銷售選項 = 在案人員 + 離案佔位項
+const editSalesOptions = computed(() => [...salesPersonList.value, ...legacySalesOptions.value]);
+
+// --- ✅ 變更歸屬（客資歸屬裁決）---
+const isArbitrationDialogVisible = ref(false);
+const isArbitrating = ref(false);
+const arbitrationTargetPhone = ref(null);
+
+const openArbitrationDialog = () => {
+    // 預選目前歸屬（若仍在案）
+    const current = String(guestData.value.latestSalesPhone || '');
+    arbitrationTargetPhone.value = salesPersonList.value.some(p => String(p.phone) === current) ? current : null;
+    isArbitrationDialogVisible.value = true;
+};
+
+const confirmArbitration = async () => {
+    if (!arbitrationTargetPhone.value) return;
+    isArbitrating.value = true;
+    try {
+        const result = await arbitrateVipGuestSales(
+            mainProjectId.value,
+            props.docId,
+            arbitrationTargetPhone.value,
+            userStore.user.key
+        );
+        if (result?.status !== 'success') {
+            throw new Error(result?.message || '未知錯誤');
+        }
+        toast.success('歸屬已變更');
+        isArbitrationDialogVisible.value = false;
+        await loadData();
+        emit('data-updated');
+    } catch (error) {
+        console.error('變更歸屬失敗:', error);
+        toast.error(`變更歸屬失敗: ${error.message}`);
+    } finally {
+        isArbitrating.value = false;
+    }
+};
 
 // 取得使用者可勾選的建案列表（排除主歸屬建案）
 const availableLinkedProjects = computed(() => {
@@ -1944,7 +2053,8 @@ const getSalesPersonChipOptions = () => {
     }
 
     return editingData.value.selectedSalesPersons.map(phone => {
-        const person = salesPersonList.value.find(p => p.phone === phone);
+        // ✅ [離案銷售] 從完整選項（含離案佔位項）解析顯示名稱
+        const person = editSalesOptions.value.find(p => p.phone === phone);
         return {
             phone: phone,
             label: person ? person.name : phone
@@ -1976,11 +2086,14 @@ const startEditProfile = () => {
     }
 
     // 根據銷售人員名稱查找對應的電話號碼
-    if (salesNameArray.length > 0 && salesPersonList.value.length > 0) {
+    // ✅ [離案銷售] 不在現職名單者以離案佔位項對應，讓其在編輯模式可見、可移除（不再靜默丟棄）
+    if (salesNameArray.length > 0) {
         const selectedPhones = salesNameArray
             .map(name => {
                 const person = salesPersonList.value.find(p => p.name === name);
-                return person ? person.phone : null;
+                if (person) return person.phone;
+                const legacy = legacySalesOptions.value.find(o => o.rawName === name);
+                return legacy ? legacy.phone : null;
             })
             .filter(phone => phone !== null);
 
@@ -2067,6 +2180,7 @@ const saveProfile = async () => {
         });
 
         // 將選定的銷售人員電話號碼轉換回名稱和電話陣列
+        // ✅ [離案銷售] 離案佔位項存回原始姓名（不含「（已離案）」標示）；"name:" 哨兵值電話存空字串
         let salesNames = [];
         let salesPhones = [];
 
@@ -2076,6 +2190,12 @@ const saveProfile = async () => {
                 if (person) {
                     salesNames.push(person.name);
                     salesPhones.push(person.phone);
+                    return;
+                }
+                const legacy = legacySalesOptions.value.find(o => o.phone === phone);
+                if (legacy) {
+                    salesNames.push(legacy.rawName);
+                    salesPhones.push(String(phone).startsWith('name:') ? '' : phone);
                 }
             });
         }
@@ -2084,14 +2204,28 @@ const saveProfile = async () => {
         let latestSalesName = '';
         let latestSalesPhone = editingData.value.latestSalesPhone || '';
 
+        // ✅ 已被移出銷售名單的目前負責人員，不再殘留星號歸屬
+        const selectedSet = editingData.value.selectedSalesPersons || [];
+        if (latestSalesPhone && !selectedSet.includes(latestSalesPhone)) {
+            latestSalesPhone = '';
+        }
+
         if (latestSalesPhone) {
-            // 根據用戶選擇的 latestSalesPhone 取得對應的名稱
+            // 根據用戶選擇的 latestSalesPhone 取得對應的名稱（含離案佔位項）
             const person = salesPersonList.value.find(p => p.phone === latestSalesPhone);
             if (person) {
                 latestSalesName = person.name;
+            } else {
+                const legacy = legacySalesOptions.value.find(o => o.phone === latestSalesPhone);
+                if (legacy) {
+                    latestSalesName = legacy.rawName;
+                    // 哨兵值不可存入資料庫的電話欄位
+                    if (String(latestSalesPhone).startsWith('name:')) latestSalesPhone = '';
+                }
             }
-        } else if (salesNames.length > 0) {
-            // 若未選擇，則使用列表中的最後一個
+        }
+        if (!latestSalesName && salesNames.length > 0) {
+            // 未選擇或原負責人已被移除，使用列表中的最後一個
             latestSalesName = salesNames[salesNames.length - 1];
             latestSalesPhone = salesPhones[salesPhones.length - 1];
         }

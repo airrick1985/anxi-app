@@ -417,10 +417,12 @@ export const useReservationStore = defineStore('reservation', {
 
     /**
  * 檢查客資資料庫 (vipGuests) 是否已存在此電話
+ * ✅ 一併查詢聯絡名單 (leads) 目前的歸屬銷售 (leadAssignee)：
+ *    當客資庫歸屬人已離案時，提醒視窗可改建議名單目前的負責人
  */
 async checkVipGuestPhone(projectId, phone) {
   if (!phone || !projectId) return null;
-  
+
   try {
     const q = query(
       collection(db, "vipGuests"),
@@ -429,15 +431,41 @@ async checkVipGuestPhone(projectId, phone) {
     );
 
     const snapshot = await getDocs(q);
-    
+
     if (!snapshot.empty) {
       // 取得第一筆匹配的客資資料
       const docSnap = snapshot.docs[0];
       const data = docSnap.data();
+
+      // 查詢聯絡名單目前歸屬（取最近一次指派；查詢失敗不影響主流程）
+      let leadAssignee = null;
+      try {
+        const leadSnap = await getDocs(query(
+          collection(db, 'leads'),
+          where('projectId', '==', projectId),
+          where('phone', '==', phone),
+          where('isDeleted', '==', false)
+        ));
+        const assignedLeads = leadSnap.docs
+          .map(d => d.data())
+          .filter(l => l.assignedTo);
+        if (assignedLeads.length > 0) {
+          // 排序改前端處理（避免 where+orderBy 複合索引）
+          assignedLeads.sort((a, b) => (b.assignedAt?.toMillis?.() || 0) - (a.assignedAt?.toMillis?.() || 0));
+          leadAssignee = {
+            phone: assignedLeads[0].assignedTo,
+            name: assignedLeads[0].assignedName || ''
+          };
+        }
+      } catch (e) {
+        console.warn('checkVipGuestPhone 查詢名單歸屬失敗:', e);
+      }
+
       return {
         id: docSnap.id,
         latestSalesName: data.latestSalesName || '未知銷售',
-        latestSalesPhone: data.latestSalesPhone || '' 
+        latestSalesPhone: data.latestSalesPhone || '',
+        leadAssignee
       };
     }
     return null;

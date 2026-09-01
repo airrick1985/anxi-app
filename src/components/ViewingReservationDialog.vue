@@ -253,15 +253,43 @@
                 客資庫比對提醒
             </v-card-title>
             <v-card-text class="py-4">
-                此電話 <span class="font-weight-bold text-error">{{ formData.customerPhone }}</span> 
+                此電話 <span class="font-weight-bold text-error">{{ formData.customerPhone }}</span>
                 已存在 <span class="font-weight-bold">{{ currentProjectName }}</span> 資料庫，<br>
-                是否指定為銷售：<span class="text-subtitle-1 font-weight-bold">{{ vipGuestInfo?.latestSalesName }}</span>？
+                <!-- 歸屬人仍在本案銷售名單：維持原提示 -->
+                <template v-if="vipOwnerSales">
+                    是否指定為銷售：<span class="text-subtitle-1 font-weight-bold">{{ vipGuestInfo?.latestSalesName }}</span>？
+                </template>
+                <!-- 歸屬人已離案：標示並改建議名單目前歸屬 -->
+                <template v-else>
+                    <div class="mt-1">
+                        原歸屬銷售：<span class="font-weight-bold">{{ vipGuestInfo?.latestSalesName || '未知' }}</span>
+                        <v-chip size="x-small" color="warning" variant="flat" class="ml-1">已不在本案銷售名單</v-chip>
+                    </div>
+                    <div v-if="leadAssigneeSales" class="mt-2">
+                        聯絡名單目前歸屬：<span class="text-subtitle-1 font-weight-bold">{{ leadAssigneeSales.name }}</span>，<br>
+                        是否指定為銷售：<span class="text-subtitle-1 font-weight-bold">{{ leadAssigneeSales.name }}</span>？
+                    </div>
+                    <div v-else class="text-caption text-grey-darken-1 mt-2">
+                        請於預約表單中自行選擇銷售人員。
+                    </div>
+                </template>
             </v-card-text>
             <v-divider></v-divider>
             <v-card-actions class="pa-4">
-                <v-btn variant="text" @click="vipConflictDialog = false">不指定</v-btn>
-                <v-spacer></v-spacer>
-                <v-btn color="primary" variant="flat" @click="assignSalesFromVip">指定銷售</v-btn>
+                <template v-if="vipOwnerSales">
+                    <v-btn variant="text" @click="vipConflictDialog = false">不指定</v-btn>
+                    <v-spacer></v-spacer>
+                    <v-btn color="primary" variant="flat" @click="assignSalesFromVip">指定銷售</v-btn>
+                </template>
+                <template v-else-if="leadAssigneeSales">
+                    <v-btn variant="text" @click="vipConflictDialog = false">不指定</v-btn>
+                    <v-spacer></v-spacer>
+                    <v-btn color="primary" variant="flat" @click="assignSalesFromLead">指定 {{ leadAssigneeSales.name }}</v-btn>
+                </template>
+                <template v-else>
+                    <v-spacer></v-spacer>
+                    <v-btn color="primary" variant="flat" @click="vipConflictDialog = false">知道了</v-btn>
+                </template>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -626,35 +654,64 @@ const handlePhoneBlur = async () => {
   }
 };
 
+// 正規化電話號碼 (移除符號) 以利比對
+const normalizePhoneDigits = (p) => String(p || '').replace(/\D/g, '');
+
+/**
+ * ✅ [在案驗證] 客資庫歸屬人是否仍在本案銷售名單
+ * 有電話用電話比對（也容忍以 users 文件 ID 儲存的情況）；舊資料只有姓名時退回姓名比對
+ */
+const vipOwnerSales = computed(() => {
+    const info = vipGuestInfo.value;
+    if (!info) return null;
+    const targetPhone = normalizePhoneDigits(info.latestSalesPhone);
+    return reservationStore.salesList.find(s => {
+        if (targetPhone) {
+            return normalizePhoneDigits(s.phone) === targetPhone || normalizePhoneDigits(s.id) === targetPhone;
+        }
+        return !!info.latestSalesName && s.name === info.latestSalesName;
+    }) || null;
+});
+
+// ✅ 聯絡名單目前歸屬（歸屬人離案時的建議指定對象），需仍在本案銷售名單才提供
+const leadAssigneeSales = computed(() => {
+    const lead = vipGuestInfo.value?.leadAssignee;
+    if (!lead?.phone) return null;
+    const targetPhone = normalizePhoneDigits(lead.phone);
+    return reservationStore.salesList.find(s =>
+        normalizePhoneDigits(s.phone) === targetPhone || normalizePhoneDigits(s.id) === targetPhone
+    ) || null;
+});
+
 /**
  * ✅ 修正版：點擊「指定銷售」後的處理流程
  * 邏輯：Phone (Vip庫) -> 搜尋 salesList -> 取得 ID (UID) -> 填入表單
+ * （按鈕只在 vipOwnerSales 匹配成功時顯示，理論上不會走到失敗分支）
  */
 const assignSalesFromVip = () => {
-    const targetPhone = vipGuestInfo.value?.latestSalesPhone; // 來自 Vip 客資庫
-    const targetName = vipGuestInfo.value?.latestSalesName;
+    const matchedSales = vipOwnerSales.value;
 
-    if (targetPhone) {
-        // 1. 正規化電話號碼 (移除符號) 以利比對
-        const cleanTargetPhone = targetPhone.replace(/\D/g, '');
-
-        // 2. 從目前的專案銷售名單中，尋找「電話號碼」相符的人員
-        const matchedSales = reservationStore.salesList.find(s => {
-            const cleanSalesPhone = (s.phone || '').replace(/\D/g, '');
-            return cleanSalesPhone === cleanTargetPhone;
-        });
-
-        if (matchedSales) {
-            // 3. 成功找到匹配人員：將其 UID (id) 設為表單值
-            // 此時 v-select 會因為 ID 匹配成功，自動在畫面上顯示該員的「姓名」
-            formData.value.salesId = matchedSales.id;
-            console.log(`[Matching Success] 匹配到人員: ${matchedSales.name}`);
-        } else {
-            // 異常處理：客資庫雖然有這個人，但該人員目前沒被分配到這個建案
-            alert(`分配失敗：\n銷售 ${targetName}(${targetPhone}) 不在${currentProjectName.value}的銷售名單中。`);
-        }
+    if (matchedSales) {
+        // 成功找到匹配人員：將其 UID (id) 設為表單值
+        // 此時 v-select 會因為 ID 匹配成功，自動在畫面上顯示該員的「姓名」
+        formData.value.salesId = matchedSales.id;
+        console.log(`[Matching Success] 匹配到人員: ${matchedSales.name}`);
+    } else {
+        const targetPhone = vipGuestInfo.value?.latestSalesPhone;
+        const targetName = vipGuestInfo.value?.latestSalesName;
+        alert(`分配失敗：\n銷售 ${targetName}(${targetPhone}) 不在${currentProjectName.value}的銷售名單中。`);
     }
-    
+
+    vipConflictDialog.value = false;
+};
+
+// ✅ 指定聯絡名單目前的歸屬銷售（歸屬人離案時的替代方案）
+const assignSalesFromLead = () => {
+    const matchedSales = leadAssigneeSales.value;
+    if (matchedSales) {
+        formData.value.salesId = matchedSales.id;
+        console.log(`[Matching Success] 依名單歸屬匹配到人員: ${matchedSales.name}`);
+    }
     vipConflictDialog.value = false;
 };
 

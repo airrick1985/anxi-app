@@ -21017,6 +21017,39 @@ async function _handleFetchVipFormSettings(data, db) {
 }
 
 /**
+ * [內部輔助] 檢查銷售人員目前是否仍在該建案（具「客資系統-銷售/櫃台」權限）
+ * 用途：歸屬保護規則只保護「仍在案」的銷售；已離案者視同無有效歸屬。
+ * 優先以電話查 userPermissions；舊資料只有姓名時，以姓名反查 users 再驗證權限。
+ * 檢查失敗（查詢錯誤）時保守回傳 true，避免誤搶歸屬。
+ */
+async function _isSalesActiveInProject(db, projectId, salesPhone, salesName) {
+  const CRM_SYSTEMS = ['客資系統-銷售', '客資系統-櫃台'];
+  const hasCrmAuth = (permDoc) => {
+    if (!permDoc.exists) return false;
+    const systems = permDoc.data()?.permissions?.[projectId]?.systems || [];
+    return CRM_SYSTEMS.some(s => systems.includes(s));
+  };
+  try {
+    if (salesPhone) {
+      const permDoc = await db.collection('userPermissions').doc(String(salesPhone)).get();
+      return hasCrmAuth(permDoc);
+    }
+    if (salesName) {
+      const usersSnap = await db.collection('users').where('name', '==', String(salesName)).limit(5).get();
+      for (const uDoc of usersSnap.docs) {
+        const permDoc = await db.collection('userPermissions').doc(uDoc.id).get();
+        if (hasCrmAuth(permDoc)) return true;
+      }
+      return false;
+    }
+    return false;
+  } catch (e) {
+    console.warn(`[_isSalesActiveInProject] 檢查失敗，保守視為在案:`, e.message);
+    return true;
+  }
+}
+
+/**
  * [內部函式] 儲存貴賓填寫的表單資料
  * (✓ 已更新：維護 searchablePhones 欄位)
  */
@@ -21059,6 +21092,21 @@ async function _handleSubmitVipForm(data, db) {
 
     submissionSource: 'public_form'
   };
+
+  // ✅ [歸屬防呆] 交易前預先判斷：既有歸屬銷售是否仍在本建案。
+  // 已離案者不再受「不覆蓋歸屬」規則保護（權限查詢不可在 transaction 內做，故先行判斷）。
+  let existingOwnerActive = true;
+  try {
+    const preSnap = await docRef.get();
+    if (preSnap.exists) {
+      const pre = preSnap.data();
+      if (pre.latestSalesPhone || pre.latestSalesName) {
+        existingOwnerActive = await _isSalesActiveInProject(db, projectId, pre.latestSalesPhone, pre.latestSalesName);
+      }
+    }
+  } catch (e) {
+    console.warn(`[_handleSubmitVipForm] 預檢原歸屬在案狀態失敗，保守視為在案:`, e.message);
+  }
 
   try {
     await db.runTransaction(async (transaction) => {
@@ -21118,6 +21166,7 @@ async function _handleSubmitVipForm(data, db) {
         }
 
         // ✅ [銷售專屬連結] 歸屬規則：已有歸屬銷售時不覆蓋（交由櫃台裁決），無歸屬時才自動歸給本次銷售
+        // ✅ [歸屬防呆] 原歸屬人已離案（無本建案客資權限）時視同無有效歸屬，直接改歸給本次銷售並留紀錄
         const hasExistingSales = !!(oldData.latestSalesPhone || oldData.latestSalesName);
         const updatePayload = {
           latestName: name || oldData.latestName,
@@ -21127,9 +21176,24 @@ async function _handleSubmitVipForm(data, db) {
 
           searchablePhones: Array.from(allPhones) // ✅ [新增] 更新搜尋欄位
         };
-        if (!hasExistingSales && (formData['銷售人員'] || formData['銷售人員電話'])) {
+        const effectiveExistingSales = hasExistingSales && existingOwnerActive;
+        if (!effectiveExistingSales && (formData['銷售人員'] || formData['銷售人員電話'])) {
           updatePayload.latestSalesName = formData['銷售人員'] || null;
           updatePayload.latestSalesPhone = formData['銷售人員電話'] || null;
+
+          if (hasExistingSales && !existingOwnerActive) {
+            console.log(`[_handleSubmitVipForm] 原歸屬 ${oldData.latestSalesName || oldData.latestSalesPhone} 已離案，歸屬改給本次銷售 ${formData['銷售人員'] || formData['銷售人員電話']}。`);
+            updatePayload.arbitrationLog = FieldValue.arrayUnion({
+              decidedByKey: 'system',
+              decidedByName: '系統（原歸屬已離案，自動改歸屬）',
+              decidedAt: Timestamp.now(),
+              fromSalesPhone: oldData.latestSalesPhone || null,
+              fromSalesName: oldData.latestSalesName || null,
+              toSalesPhone: formData['銷售人員電話'] || null,
+              toSalesName: formData['銷售人員'] || null,
+              source: 'auto_reassign_inactive_owner'
+            });
+          }
         }
         transaction.update(docRef, updatePayload);
       }
@@ -22898,7 +22962,8 @@ async function _handleBatchUpdateCustomers(data, db) {
  * - 中央「建案名稱＋客戶姓名」用 Flex 絕對定位疊圖（Functions 環境無中文字型，不燒進圖片）
  * - QR 容錯 H 級，中央遮蔽不影響掃描
  */
-async function _buildVipContinueSheetFlex({ projectId, docId, projectName, guestName, guestPhone, salesName, salesPhone }) {
+async function _buildVipContinueSheetFlex({ projectId, docId, projectName, guestName, guestPhone, salesName, salesPhone, salesDisplayName }) {
+  // salesDisplayName 僅供卡片顯示（例如附加「已離案」標示）；連結參數一律用乾淨的 salesName，避免污染後續提交的銷售欄位
   const continueUrl = `https://anxismart.com/#/customer-data-sheet/${projectId}/${docId}?sp=${encodeURIComponent(salesPhone)}&sn=${encodeURIComponent(salesName || '')}`;
 
   const urlHash = crypto.createHash('md5').update(continueUrl).digest('hex').slice(0, 10);
@@ -22942,7 +23007,7 @@ async function _buildVipContinueSheetFlex({ projectId, docId, projectName, guest
       body: {
         type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '16px', contents: [
           infoRow('客戶', guestPhone ? `${safeGuestName}（${guestPhone}）` : safeGuestName),
-          infoRow('歸屬銷售', salesName),
+          infoRow('歸屬銷售', salesDisplayName || salesName),
           { type: 'text', text: '請出示 QR Code 給客戶掃描，接續完成客戶資料表（連結永久有效）', size: 'xs', color: '#888888', wrap: true },
           {
             type: 'box', layout: 'vertical', cornerRadius: '8px', borderWidth: '1px', borderColor: '#EEEEEE', contents: [
@@ -23121,14 +23186,23 @@ exports.onVipGuestSubmission = onDocumentWritten({
       // 歸屬以文件層級 latestSales* 為準（已歸屬他人時不會被本次提交覆蓋）
       if (afterData.latestSalesPhone) {
         try {
+          // ✅ [歸屬防呆] 歸屬人已離案時，卡片標示提醒櫃台裁決（僅影響顯示，不動連結參數）
+          let ownerActive = true;
+          try {
+            ownerActive = await _isSalesActiveInProject(anxiDb, projectId, afterData.latestSalesPhone, afterData.latestSalesName);
+          } catch (e) { /* 檢查失敗時照原樣顯示 */ }
+          const ownerName = afterData.latestSalesName || '';
+          const salesDisplayName = ownerActive ? ownerName : `${ownerName || afterData.latestSalesPhone}（已離案，請櫃台裁決）`;
+
           continueFlexMessage = await _buildVipContinueSheetFlex({
             projectId,
             docId: event.params.docId,
             projectName,
             guestName: formatVal('姓名') || afterData.latestName || '',
             guestPhone: formatVal('電話') || afterData.phone || '',
-            salesName: afterData.latestSalesName || '',
-            salesPhone: afterData.latestSalesPhone
+            salesName: ownerName,
+            salesPhone: afterData.latestSalesPhone,
+            salesDisplayName
           });
         } catch (flexError) {
           // QR 產製失敗不阻擋文字通知
@@ -27889,6 +27963,73 @@ exports.onLeadWriteSheetSync = onDocumentWritten({
       lastError: String(error.message || error),
       lastErrorAt: FieldValue.serverTimestamp()
     }, { merge: true }).catch(() => {});
+  }
+});
+
+/**
+ * [Trigger] 聯絡名單歸屬異動 → 同步客資庫 (vipGuests) 歸屬銷售
+ * 涵蓋所有改歸屬路徑：單筆指派 (processAndAssignLead)、Excel 匯入覆蓋歸屬、前端直接改派。
+ * 只更新 latestSalesName/Phone 並留一筆歸屬異動紀錄；不動 submissions / 電話欄位，
+ * 因此不會觸發 onVipGuestDuplicate / onVipGuestSubmission 的重複通知。
+ */
+exports.onLeadOwnerChangeSyncVipGuest = onDocumentWritten({
+  document: 'leads/{leadId}',
+  database: 'anxi-app',
+  region: 'asia-east1',
+  memory: '512MiB',
+  timeoutSeconds: 60
+}, async (event) => {
+  const functionName = 'onLeadOwnerChangeSyncVipGuest';
+  const afterLead = event.data?.after?.data();
+  const beforeLead = event.data?.before?.data();
+
+  if (!afterLead || afterLead.isDeleted) return; // 刪除／軟刪除不處理
+  const projectId = afterLead.projectId;
+  const phone = afterLead.phone;
+  const salesPhone = afterLead.assignedTo;
+  if (!projectId || !phone || !salesPhone) return; // 未指派歸屬不同步（避免清空既有歸屬）
+
+  // 只在歸屬變更（或新建即帶歸屬）時同步
+  if (beforeLead && String(beforeLead.assignedTo || '') === String(salesPhone)) return;
+
+  const db = new Firestore({ databaseId: 'anxi-app' });
+  try {
+    // 銷售姓名以 users 系統資料為準（名單上的 assignedName 為快照，可能過期）
+    let salesName = afterLead.assignedName || '';
+    try {
+      const uDoc = await db.collection('users').doc(String(salesPhone)).get();
+      if (uDoc.exists && uDoc.data().name) salesName = uDoc.data().name;
+    } catch (e) { /* 取名失敗沿用名單快照 */ }
+
+    const guestsSnap = await db.collection('vipGuests')
+      .where('projectId', '==', projectId)
+      .where('searchablePhones', 'array-contains', phone)
+      .get();
+    if (guestsSnap.empty) return;
+
+    for (const gDoc of guestsSnap.docs) {
+      const guest = gDoc.data();
+      if (String(guest.latestSalesPhone || '') === String(salesPhone)) continue; // 歸屬已一致
+
+      await gDoc.ref.update({
+        latestSalesName: salesName || null,
+        latestSalesPhone: String(salesPhone),
+        updatedAt: FieldValue.serverTimestamp(),
+        arbitrationLog: FieldValue.arrayUnion({
+          decidedByKey: 'system',
+          decidedByName: '系統（名單歸屬同步）',
+          decidedAt: Timestamp.now(),
+          fromSalesPhone: guest.latestSalesPhone || null,
+          fromSalesName: guest.latestSalesName || null,
+          toSalesPhone: String(salesPhone),
+          toSalesName: salesName || null,
+          source: 'lead_assign_sync'
+        })
+      });
+      console.log(`[${functionName}] 客資 ${gDoc.id} 歸屬同步: ${guest.latestSalesName || '無'} → ${salesName} (${salesPhone})`);
+    }
+  } catch (error) {
+    console.error(`[${functionName}] 同步失敗 (lead: ${event.params.leadId}):`, error);
   }
 });
 
