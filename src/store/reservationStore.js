@@ -259,6 +259,47 @@ export const useReservationStore = defineStore('reservation', {
     },
 
     /**
+     * ✅ 從賞屋預約自動建立聯絡名單並指派給指定銷售
+     * （僅在該電話不存在客資與名單時由 addReservation 呼叫）
+     */
+    async createLeadFromReservation(payload) {
+      const { projectId, customerPhone, customerName, salesId, salesName, operatorName } = payload;
+
+      // 建案名稱以 projects 為準（名單文件慣例會存 projectName）
+      let projectName = projectId;
+      try {
+        const pSnap = await getDoc(doc(db, 'projects', projectId));
+        if (pSnap.exists() && pSnap.data().name) projectName = pSnap.data().name;
+      } catch (e) { /* 取名失敗以 projectId 代替 */ }
+
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const dateStr = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())}`;
+
+      await addDoc(collection(db, 'leads'), {
+        name: customerName || '',
+        phone: customerPhone,
+        date: dateStr,
+        source: '賞屋預約',
+        statusText: '',
+        budget: '',
+        note: '',
+        rawText: '賞屋預約自動建立',
+        projectId,
+        projectName,
+        status: '', // 狀態交由 syncReservationToLeads 統一改為「已約賞屋」並寫回報日誌
+        isDeleted: false,
+        createdAt: serverTimestamp(),
+        importedBy: operatorName || '系統',
+        assignedTo: salesId,
+        assignedName: salesName,
+        assignedAt: serverTimestamp(),
+        lastModifiedAt: serverTimestamp(),
+        lastModifiedBy: operatorName || '系統'
+      });
+    },
+
+    /**
      * 新增預約
      */
     async addReservation(payload) {
@@ -296,10 +337,28 @@ export const useReservationStore = defineStore('reservation', {
           reservationTime: docData.reservationTime
         });
 
+        // ✅ [新客自動建名單] 有指定銷售、且該電話在本案既無客資也無名單時，
+        // 自動建立一筆聯絡名單並分配給該銷售（在 sync 之前建立，讓下方 sync 一併補上「已約賞屋」＋回報日誌）
+        let autoAssignedLead = null;
+        if (payload.salesId && payload.salesName && payload.salesName !== '不指定') {
+          try {
+            const [vipResult, leadResult] = await Promise.all([
+              this.checkVipGuestPhone(payload.projectId, payload.customerPhone),
+              this.checkLeadAssignee(payload.projectId, payload.customerPhone)
+            ]);
+            if (!vipResult && !leadResult) {
+              await this.createLeadFromReservation(payload);
+              autoAssignedLead = { salesName: payload.salesName };
+            }
+          } catch (e) {
+            console.warn('自動建立名單失敗（不影響預約本身）:', e);
+          }
+        }
+
         // ✅ 同步到聯絡名單：狀態改「已約賞屋」+ 寫入回報日誌
         await this.syncReservationToLeads('add', docData);
 
-        return { success: true, id: docRef.id };
+        return { success: true, id: docRef.id, autoAssignedLead };
         
       } catch (err) {
         console.error("addReservation Error:", err);

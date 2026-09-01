@@ -471,6 +471,7 @@ import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore'; // 確保引用
 import { useSalesDataStore } from '@/store/salesDataStore'; // 戶別/銷控資料
 import { format } from 'date-fns';
+import { useToast } from 'vue-toastification';
 
 // ===== 原生 datetime-local 轉換工具 =====
 
@@ -600,6 +601,7 @@ const initDialogData = async () => {
 const emit = defineEmits(['update:modelValue', 'saved', 'deleted']);
 
 const reservationStore = useReservationStore();
+const toast = useToast();
 const userStore = useUserStore();
 const projectStore = useProjectStore(); // 用於查找建案名稱以驗證權限
 const salesDataStore = useSalesDataStore(); // 戶別/銷控資料
@@ -1064,7 +1066,11 @@ const save = async () => {
         if (isEdit.value) {
             await reservationStore.updateReservation(props.initialData.id, payload);
         } else {
-            await reservationStore.addReservation(payload);
+            const result = await reservationStore.addReservation(payload);
+            // ✅ [新客自動建名單] 提醒使用者：新電話已自動建立名單並分配給指定銷售
+            if (result?.autoAssignedLead) {
+                toast.success(`已完成預約｜此電話為新客戶，名單已自動分配給 ${result.autoAssignedLead.salesName}`, { timeout: 6000 });
+            }
         }
        emit('saved', payload);
         closeDialog();
