@@ -162,7 +162,7 @@
 
     <v-main>
       <!-- 手機：內嵌式頂欄（不浮動、不遮擋內容） -->
-      <div v-if="smAndDown" class="mobile-topbar d-flex align-center px-1">
+      <div v-if="smAndDown" class="mobile-topbar d-flex align-center pe-1">
         <v-btn icon="mdi-menu" variant="text" size="small" title="開啟選單" @click="drawer = true"></v-btn>
         <span class="text-subtitle-2 font-weight-bold ms-1">{{ currentNavTitle }}</span>
         <v-spacer></v-spacer>
@@ -330,6 +330,12 @@ onMounted(() => {
   font-weight: 600;
 }
 
+/* 全域浮動漢堡（DefaultLayout 固定於視窗左上角）會蓋住抽屜頂部：
+   內容整體下移讓出空間，避免建案切換器／rail 圖示被覆蓋點不到 */
+.inspection-drawer :deep(.v-navigation-drawer__content) {
+  padding-top: 46px;
+}
+
 .project-switcher {
   cursor: pointer;
   padding: 14px 16px;
@@ -348,13 +354,15 @@ onMounted(() => {
 
 .drawer-edge-toggle {
   position: absolute !important;
-  top: 76px;
+  top: 122px;   /* 抽屜內容下移 46px（讓出全域浮動漢堡）後同步下移 */
   z-index: 1010;
   border: 1px solid rgba(0, 0, 0, 0.08);
   transition: left .25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow .2s ease, transform .15s ease;
 }
 
-/* 手機內嵌式頂欄：黏在頁面頂端（全域頂欄下方），不遮擋內容 */
+/* 手機內嵌式頂欄：黏在頁面頂端（全域頂欄下方），不遮擋內容；
+   左側讓出全域浮動漢堡（固定於視窗左上角 10px + 40px 寬）的位置，
+   驗屋選單鈕排在其右側才點得到 */
 .mobile-topbar {
   position: sticky;
   top: var(--v-layout-top, 0px);
@@ -362,6 +370,7 @@ onMounted(() => {
   background: #ffffff;
   border-bottom: 1px solid #eeeeee;
   min-height: 44px;
+  padding-left: 54px;
 }
 .drawer-edge-toggle:hover {
   transform: scale(1.1);

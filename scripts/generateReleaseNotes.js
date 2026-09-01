@@ -115,3 +115,46 @@ const output = {
 const target = resolve(__dirname, '../public/release-notes.json');
 writeFileSync(target, JSON.stringify(output, null, 2), 'utf-8');
 console.log(`🎉 產生完成：release-notes.json (v${output.version}, ${output.date})`);
+
+// ─────────────────────────────────────────────────────────────
+// 6. 產生完整歷史 public/changelog.json（HOME「更新日誌」日記本視窗使用）
+//    解析 CHANGELOG.md 所有 ## [x.y.z] - YYYY-MM-DD 區塊；
+//    相容舊格式的 ### Added / ### Fixed 小節（作為分類 fallback）。
+// ─────────────────────────────────────────────────────────────
+const TYPE_BY_SYMBOL = {
+  '✨': 'feature', 'feat': 'feature',
+  '🐛': 'fix', 'fix': 'fix',
+  '🛠️': 'improve', '♻️': 'improve', '🎨': 'improve', '⚡': 'improve',
+  'perf': 'improve', 'refactor': 'improve', 'style': 'improve',
+};
+const TYPE_BY_SECTION = { added: 'feature', fixed: 'fix', changed: 'improve', improved: 'improve' };
+
+const allSections = [...changelog.matchAll(/## \[(.*?)\] - (\d{4}-\d{2}-\d{2})\r?\n([\s\S]*?)(?=\r?\n## |\s*$)/g)];
+const historyEntries = allSections.map(([, version, date, block]) => {
+  const notes = [];
+  let sectionType = null;
+  block.split('\n').forEach((rawLine) => {
+    const line = rawLine.trim();
+    const sectionMatchLine = line.match(/^###\s+(\w+)/);
+    if (sectionMatchLine) {
+      sectionType = TYPE_BY_SECTION[sectionMatchLine[1].toLowerCase()] || null;
+      return;
+    }
+    if (!line.startsWith('- ')) return;
+    let text = line.replace(/^- /, '').trim();
+    let type = sectionType || 'other';
+    const symbolMatch = text.match(LEADING_SYMBOL_REGEX);
+    if (symbolMatch) {
+      const symbol = (symbolMatch[1] || symbolMatch[2] || '').toLowerCase();
+      if (TYPE_BY_SYMBOL[symbol]) type = TYPE_BY_SYMBOL[symbol];
+      else if (symbol) type = sectionType || 'other';
+      text = text.replace(symbolMatch[0], '').trim();
+    }
+    if (text) notes.push({ type, text });
+  });
+  return { version, date, notes };
+}).filter(entry => entry.notes.length > 0);
+
+const changelogTarget = resolve(__dirname, '../public/changelog.json');
+writeFileSync(changelogTarget, JSON.stringify({ generatedAt: finalDate, entries: historyEntries }, null, 2), 'utf-8');
+console.log(`🎉 產生完成：changelog.json（共 ${historyEntries.length} 個版本）`);

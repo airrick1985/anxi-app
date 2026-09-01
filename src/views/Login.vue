@@ -130,6 +130,9 @@
     </v-dialog>
 
   </v-container>
+
+  <!-- ✅ 節日特效（依 src/utils/festivals.js 日期設定自動顯示；不攔截操作） -->
+  <FestivalEffect />
 </template>
 
 <script setup>
@@ -140,6 +143,7 @@ import { loginUser, forgotPasswordUser } from '../api';
 
 import myBackgroundImage from '@/assets/login-bg.webp';
 import anxiLogo from '@/assets/images/anxi-logo-full.webp';
+import FestivalEffect from '@/components/FestivalEffect.vue';
 
 import { v4 as uuidv4 } from 'uuid';
 

@@ -996,12 +996,8 @@
       </v-btn>
     </v-bottom-navigation>
 
-    <!-- 📱 顯示設定面板：價格顯示／網格內容切換，chip 呈現目前選取狀態 -->
-    <v-bottom-sheet v-model="isDisplaySheetOpen">
-      <v-card class="mobile-sheet" rounded="t-xl">
-        <div class="mobile-sheet-handle"></div>
-        <div class="mobile-sheet-title"><v-icon size="20" color="primary">mdi-currency-usd</v-icon>顯示設定</div>
-
+    <!-- 📱 顯示設定面板：價格顯示／網格內容切換，chip 呈現目前選取狀態（可下滑或按 X 關閉） -->
+    <MobileBottomSheet v-model="isDisplaySheetOpen" icon="mdi-currency-usd" title="顯示設定">
         <div class="mobile-sheet-section">
           <div class="mobile-sheet-label">價格顯示</div>
           <v-chip-group v-model="priceDisplayMode" mandatory selected-class="mobile-sheet-chip--active">
@@ -1019,15 +1015,10 @@
             <v-chip value="date" filter variant="outlined" class="mobile-sheet-chip">簽約日期</v-chip>
           </v-chip-group>
         </div>
-      </v-card>
-    </v-bottom-sheet>
+    </MobileBottomSheet>
 
-    <!-- 📱 全部功能面板：分群圖示磚，所有進階功能一覽可及 -->
-    <v-bottom-sheet v-model="isMoreMenuOpen">
-      <v-card class="mobile-sheet" rounded="t-xl">
-        <div class="mobile-sheet-handle"></div>
-        <div class="mobile-sheet-title"><v-icon size="20" color="primary">mdi-apps</v-icon>全部功能</div>
-
+    <!-- 📱 全部功能面板：分群圖示磚，所有進階功能一覽可及（可下滑或按 X 關閉） -->
+    <MobileBottomSheet v-model="isMoreMenuOpen" icon="mdi-apps" title="全部功能">
         <div class="mobile-sheet-section">
           <v-select
             :model-value="projectId"
@@ -1058,8 +1049,7 @@
             </button>
           </div>
         </div>
-      </v-card>
-    </v-bottom-sheet>
+    </MobileBottomSheet>
 
    <UnitDetailModal
       v-if="isModalVisible"
@@ -1877,6 +1867,7 @@ import {
   rowToLandParcel,
 } from '@/constants/landParcelColumns';
 import UnitDetailModal from '@/components/UnitDetailModal.vue';
+import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
 import RemarkNotesPanel from '@/components/RemarkNotesPanel.vue';
 import { db } from '@/firebase';
 import { doc as fsDoc, updateDoc as fsUpdateDoc, serverTimestamp as fsServerTimestamp } from 'firebase/firestore';
@@ -5653,28 +5644,7 @@ overflow: hidden;
     font-size: 0.8rem;
 }
 
-/* 📱 [新增] 手機版底部面板（顯示設定／全部功能） */
-.mobile-sheet {
-  padding: 6px 16px calc(20px + env(safe-area-inset-bottom, 0px));
-  max-height: 82dvh;
-  overflow-y: auto;
-}
-.mobile-sheet-handle {
-  width: 40px;
-  height: 4px;
-  border-radius: 2px;
-  background: #d4dae3;
-  margin: 6px auto 10px;
-}
-.mobile-sheet-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #1a3a6e;
-  margin-bottom: 12px;
-}
+/* 📱 [新增] 手機版底部面板（顯示設定／全部功能）：外殼樣式在 MobileBottomSheet.vue，此處僅 slot 內容 */
 .mobile-sheet-section {
   margin-bottom: 14px;
 }

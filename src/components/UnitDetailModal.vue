@@ -933,11 +933,8 @@
     </v-card>
   </v-dialog>
 
-  <!-- 📱 [新增] 戶別資訊「更多功能」底部面板：分群圖示磚，比照銷控系統底部面板樣式 -->
-  <v-bottom-sheet v-model="isUnitToolsSheetOpen">
-    <v-card class="mobile-sheet" rounded="t-xl">
-      <div class="mobile-sheet-handle"></div>
-      <div class="mobile-sheet-title"><v-icon size="20" color="primary">mdi-apps</v-icon>{{ unitData?.unitId }} 更多功能</div>
+  <!-- 📱 [新增] 戶別資訊「更多功能」底部面板：分群圖示磚，比照銷控系統底部面板樣式（可下滑或按 X 關閉） -->
+  <MobileBottomSheet v-model="isUnitToolsSheetOpen" icon="mdi-apps" :title="`${unitData?.unitId || ''} 更多功能`">
       <div v-for="group in unitToolGroups" :key="group.title" class="mobile-sheet-section">
         <div class="mobile-sheet-label">{{ group.title }}</div>
         <div class="mobile-tool-grid">
@@ -953,8 +950,7 @@
           </button>
         </div>
       </div>
-    </v-card>
-  </v-bottom-sheet>
+  </MobileBottomSheet>
 
   <CancelPurchaseDialog :show="showCancelDialog" @update:show="showCancelDialog = $event" title="確認辦理退戶"
     :message="cancelDialogMessage" confirm-text="確認退戶" confirm-color="error" :loading="isSaving"
@@ -1193,6 +1189,7 @@ import { computeHouseLandPrices, buildDefaultFormulas, isSpecialContractType } f
 import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue';
 import ContractDocDialog from '@/components/contractDoc/ContractDocDialog.vue';
+import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
 import ConfirmationDialog from './ConfirmationDialog.vue';
 import CancelPurchaseDialog from './CancelPurchaseDialog.vue';
 import SalesStatusNotifyDialog from './SalesStatusNotifyDialog.vue';
@@ -3852,28 +3849,7 @@ onUnmounted(() => {
   color: #ffffff;
 }
 
-/* 📱 [新增] 底部功能面板（比照銷控系統樣式） */
-.mobile-sheet {
-  padding: 6px 16px calc(20px + env(safe-area-inset-bottom, 0px));
-  max-height: 82dvh;
-  overflow-y: auto;
-}
-.mobile-sheet-handle {
-  width: 40px;
-  height: 4px;
-  border-radius: 2px;
-  background: #d4dae3;
-  margin: 6px auto 10px;
-}
-.mobile-sheet-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #1a3a6e;
-  margin-bottom: 12px;
-}
+/* 📱 [新增] 底部功能面板（比照銷控系統樣式）：外殼樣式在 MobileBottomSheet.vue，此處僅 slot 內容 */
 .mobile-sheet-section {
   margin-bottom: 14px;
 }

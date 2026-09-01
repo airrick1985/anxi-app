@@ -26,6 +26,9 @@
       </template>
     </draggable>
 
+    <!-- ✅ 更新日誌：低調純文字入口，固定於左上角、漢堡選單右側（不重疊），點擊開啟日記本樣式視窗 -->
+    <button type="button" class="changelog-link" @click="showChangelog = true">更新日誌</button>
+
     <!-- ✅ 試用帳號：右下角「?」重新開始導覽（docs/SPEC_LandingTrialLeadsOnboarding.md §7） -->
     <v-btn
       v-if="isTrialUser"
@@ -40,6 +43,12 @@
     />
   </div>
 
+  <!-- ✅ 更新日誌日記本視窗 -->
+  <ChangelogDialog v-model="showChangelog" />
+
+  <!-- ✅ 節日特效（依 src/utils/festivals.js 日期設定自動顯示；不攔截操作） -->
+  <FestivalEffect />
+
 </template>
 
 <script setup>
@@ -53,7 +62,9 @@ import { trackTrialEvent } from '@/utils/trialTracking';
 import { useProspectStore } from '@/store/prospectStore';
 
 // ✓ 導入新元件
-import IconButton from '@/components/IconButton.vue'; 
+import IconButton from '@/components/IconButton.vue';
+import ChangelogDialog from '@/components/ChangelogDialog.vue';
+import FestivalEffect from '@/components/FestivalEffect.vue';
 
 // 引入所有需要的圖片
 import databaseIcon from '@/assets/icons/database.png';
@@ -80,6 +91,9 @@ const route = useRoute();
 const userStore = useUserStore();
 const backgroundImageUrl = ref(myBackgroundImage);
 const isTrialUser = computed(() => userStore.isTrialUser);
+
+// ✅ 更新日誌視窗開關
+const showChangelog = ref(false);
 
 // ✅ 客戶開發：今日待追蹤徽章（僅超管載入；docs/SPEC_CustomerProspecting.md §3.1）
 const prospectStore = useProspectStore();
@@ -403,6 +417,37 @@ const handleNavigation = (button) => {
 }
 
 /* ✓ .icon-button 相關的所有樣式都已被移除 (遷移到 IconButton.vue) */
+
+/* ✅ 更新日誌純文字入口：低調固定在左上角，
+   漢堡選單在 top:10/left:10（約 40px 寬），所以從 left:58px 起避開不重疊；
+   z-index 低於抽屜（~1008）與漢堡鈕（1500），開選單時會被蓋住不干擾 */
+.changelog-link {
+  position: fixed;
+  top: 10px;
+  left: 58px;
+  height: 40px; /* 與漢堡鈕同高垂直置中，觸控目標也夠大 */
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.82rem;
+  letter-spacing: 3px;
+  text-indent: 3px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  z-index: 1004;
+  transition: color 0.2s ease, background 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.changelog-link:hover {
+  color: #fff;
+  background: rgba(0, 0, 0, 0.25);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
 
 /* ✅ 試用導覽「?」浮動按鈕（避開右下角系統問題回報鈕） */
 .tour-fab {
