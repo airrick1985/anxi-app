@@ -417,8 +417,6 @@ export const useReservationStore = defineStore('reservation', {
 
     /**
  * 檢查客資資料庫 (vipGuests) 是否已存在此電話
- * ✅ 一併查詢聯絡名單 (leads) 目前的歸屬銷售 (leadAssignee)：
- *    當客資庫歸屬人已離案時，提醒視窗可改建議名單目前的負責人
  */
 async checkVipGuestPhone(projectId, phone) {
   if (!phone || !projectId) return null;
@@ -437,40 +435,90 @@ async checkVipGuestPhone(projectId, phone) {
       const docSnap = snapshot.docs[0];
       const data = docSnap.data();
 
-      // 查詢聯絡名單目前歸屬（取最近一次指派；查詢失敗不影響主流程）
-      let leadAssignee = null;
-      try {
-        const leadSnap = await getDocs(query(
-          collection(db, 'leads'),
-          where('projectId', '==', projectId),
-          where('phone', '==', phone),
-          where('isDeleted', '==', false)
-        ));
-        const assignedLeads = leadSnap.docs
-          .map(d => d.data())
-          .filter(l => l.assignedTo);
-        if (assignedLeads.length > 0) {
-          // 排序改前端處理（避免 where+orderBy 複合索引）
-          assignedLeads.sort((a, b) => (b.assignedAt?.toMillis?.() || 0) - (a.assignedAt?.toMillis?.() || 0));
-          leadAssignee = {
-            phone: assignedLeads[0].assignedTo,
-            name: assignedLeads[0].assignedName || ''
-          };
-        }
-      } catch (e) {
-        console.warn('checkVipGuestPhone 查詢名單歸屬失敗:', e);
+      // ✅ 完整銷售人員名單（「自己的客戶」判斷用）：
+      // 來源 = profile.銷售人員(+電話) ＋ submissions 歷次提交的銷售 ＋ 主歸屬，
+      // 排除已被歸屬裁決冷刪除的銷售 (deletedSales)
+      const deleted = new Set(Array.isArray(data.deletedSales) ? data.deletedSales : []);
+      const namesSet = new Set();
+      const phonesSet = new Set();
+      const addName = (n) => { if (n && !deleted.has(n)) namesSet.add(String(n)); };
+
+      const rawNames = data.profile?.['銷售人員'];
+      if (Array.isArray(rawNames)) {
+        rawNames.forEach(addName);
+      } else if (typeof rawNames === 'string') {
+        rawNames.split(/[、,/;；]/).map(s => s.trim()).forEach(addName);
+      }
+      const namesArr = Array.isArray(rawNames) ? rawNames : [];
+      const rawPhones = data.profile?.['銷售人員電話'];
+      if (Array.isArray(rawPhones)) {
+        rawPhones.forEach((p, i) => {
+          if (!p) return;
+          const pairedName = namesArr[i];
+          if (pairedName && deleted.has(pairedName)) return; // 對應銷售已冷刪除
+          phonesSet.add(String(p));
+        });
+      }
+      (data.submissions || []).forEach(sub => {
+        const n = sub['銷售人員'];
+        if (!n || deleted.has(n)) return;
+        namesSet.add(String(n));
+        if (sub['銷售人員電話']) phonesSet.add(String(sub['銷售人員電話']));
+      });
+      addName(data.latestSalesName);
+      if (data.latestSalesPhone && !(data.latestSalesName && deleted.has(data.latestSalesName))) {
+        phonesSet.add(String(data.latestSalesPhone));
       }
 
       return {
         id: docSnap.id,
         latestSalesName: data.latestSalesName || '未知銷售',
         latestSalesPhone: data.latestSalesPhone || '',
-        leadAssignee
+        allSalesNames: [...namesSet],
+        allSalesPhones: [...phonesSet]
       };
     }
     return null;
   } catch (err) {
     console.error("checkVipGuestPhone Error:", err);
+    return null;
+  }
+},
+
+    /**
+ * ✅ 檢查聯絡名單 (leads) 是否已有此電話，並回傳目前歸屬銷售
+ * 回傳：null = 名單中無此電話；
+ *      { assigned: true, phone, name } = 已指派（取最近一次指派）；
+ *      { assigned: false, phone: '', name: '' } = 名單有此電話但尚未指派
+ */
+async checkLeadAssignee(projectId, phone) {
+  if (!phone || !projectId) return null;
+
+  try {
+    const leadSnap = await getDocs(query(
+      collection(db, 'leads'),
+      where('projectId', '==', projectId),
+      where('phone', '==', phone),
+      where('isDeleted', '==', false)
+    ));
+    if (leadSnap.empty) return null;
+
+    const assignedLeads = leadSnap.docs
+      .map(d => d.data())
+      .filter(l => l.assignedTo);
+
+    if (assignedLeads.length > 0) {
+      // 排序在前端處理（避免 where+orderBy 需複合索引）
+      assignedLeads.sort((a, b) => (b.assignedAt?.toMillis?.() || 0) - (a.assignedAt?.toMillis?.() || 0));
+      return {
+        assigned: true,
+        phone: assignedLeads[0].assignedTo,
+        name: assignedLeads[0].assignedName || ''
+      };
+    }
+    return { assigned: false, phone: '', name: '' };
+  } catch (err) {
+    console.warn('checkLeadAssignee Error:', err);
     return null;
   }
 },
