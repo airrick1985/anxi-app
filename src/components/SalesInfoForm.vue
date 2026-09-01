@@ -169,7 +169,7 @@
                 </span>
               </div>
               <div class="price-grid">
-                <div class="price-grid-head">項目</div>
+                <div class="price-grid-head price-grid-head--item">項目</div>
                 <div class="price-grid-head price-grid-head--floor"><v-icon size="12" class="mr-1">mdi-tag-outline</v-icon>底價</div>
                 <div class="price-grid-head price-grid-head--sale"><v-icon size="12" class="mr-1">mdi-currency-usd</v-icon>成交價</div>
 
@@ -1511,6 +1511,103 @@ function savePriceNegotiation() {
   font-size: .78rem;
   font-weight: 500;
   margin-left: 2px;
+}
+
+/* 📱 [優化] 手機版成交資訊/價格資訊：減少巢狀內距、對照表改 2 欄、輸入欄撐滿好點按 */
+@media (max-width: 599px) {
+  .info-section {
+    padding: 12px 10px;
+  }
+  .field-block {
+    padding: 10px;
+  }
+
+  /* 標題列徽章（建案戶別/總面積）換行至標題下方靠左，不再與標題擠同一列 */
+  .field-label {
+    flex-wrap: wrap;
+  }
+  .price-title-meta {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: 4px;
+  }
+
+  /* 價格對照表：項目名稱改為橫跨整列的小節標題，底價/成交價各半寬並排 */
+  .price-grid {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 6px;
+  }
+  .price-grid-head {
+    display: none;
+  }
+  .price-grid-item {
+    grid-column: 1 / -1;
+    padding: 12px 2px 6px;
+    white-space: normal;
+  }
+  /* 車位列：編號括號改與「車位」同列接續顯示 */
+  .price-grid-item--parking {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .price-grid-item-sub {
+    max-width: none;
+  }
+  /* 每格改為圓角色塊，並以 ::before 標示 底價/成交價（表頭已隱藏） */
+  .price-grid-cell {
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .price-grid-cell--floor::before {
+    content: '底價';
+    font-size: .7rem;
+    font-weight: 600;
+    color: #5a6b81;
+    margin-bottom: 2px;
+  }
+  .price-grid-cell--sale::before {
+    content: '成交價';
+    font-size: .7rem;
+    font-weight: 600;
+    color: #1b5e20;
+    margin-bottom: 2px;
+  }
+  /* 合計格已有「成交底價/成交總價」子標籤，不再重複 */
+  .price-grid-cell--total::before {
+    content: none;
+  }
+  .price-grid-cell--total {
+    border-top: none;
+  }
+  .price-grid-item--total {
+    border-top: 1px dashed #d4dce8;
+    margin-top: 10px;
+    padding-top: 12px;
+  }
+  .price-grid-cell--total.price-grid-cell--floor,
+  .price-grid-cell--total.price-grid-cell--sale {
+    border-radius: 8px;
+  }
+
+  /* 成交價輸入欄：撐滿欄寬；字級 16px 避免 iOS 聚焦自動放大 */
+  .price-grid-input {
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .price-grid-input :deep(input) {
+    font-size: 16px;
+  }
+  .price-grid-input-row {
+    gap: 4px;
+  }
+
+  /* 持有車位卡片改滿寬列，資訊完整呈現且更好點按 */
+  .parking-spot-card {
+    flex: 1 1 100%;
+  }
 }
 </style>
 

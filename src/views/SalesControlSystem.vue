@@ -13,6 +13,7 @@
           label="選擇建案"
           variant="outlined"
           density="compact"
+          hide-details
           class="project-selector"
         ></v-select>
 
@@ -79,20 +80,11 @@
           <v-btn value="transaction" size="small">成交價</v-btn>
         </v-btn-toggle>
 
-        <!-- ✅ [新增] 下載銷控表 PDF（docs/銷控網格下載PDF-spec.md） -->
-        <v-tooltip location="bottom" v-if="viewFormat === 'grid'">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              icon="mdi-file-pdf-box"
-              :disabled="filteredHouseholds.length === 0"
-              @click="isGridDownloadDialogVisible = true"
-            ></v-btn>
-          </template>
-          <span>下載銷控表 (PDF)</span>
-        </v-tooltip>
+        <span
+          class="toolbar-divider"
+          aria-hidden="true"
+          v-if="currentViewMode === 'sales' && viewFormat === 'grid'"
+        ></span>
 
         <v-badge
           :content="itemCount"
@@ -105,20 +97,6 @@
             title="查看報價單"
           ></v-btn>
         </v-badge>
-
-        <!-- ✅ [新增] 報價單設定直接入口：具銷控管理權限者免加入戶別即可進入 -->
-        <v-tooltip location="bottom" v-if="canDirectEnterQuoteSettings">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="goToQuoteSettingsDirect"
-              icon="mdi-file-document-edit-outline"
-            ></v-btn>
-          </template>
-          <span>報價單設定</span>
-        </v-tooltip>
 
         <!-- 實價登錄申報提醒徽章：sales 模式且有待申報戶別時顯示 -->
         <v-tooltip v-if="currentViewMode === 'sales' && pendingReportUnits.length > 0" location="bottom">
@@ -152,155 +130,6 @@
               v-bind="props"
               color="black"
               variant="tonal"
-              @click="openParkingCanvasEditor"
-              icon="mdi-car-side"
-            ></v-btn>
-          </template>
-          <span>車位銷控</span>
-        </v-tooltip>
-
-        <v-tooltip location="bottom">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="handleOpenActivityMessage"
-              icon="mdi-bullhorn"
-            ></v-btn>
-          </template>
-          <span>最新活動訊息</span>
-        </v-tooltip>
-
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="navigateToParkingControl"
-              :loading="false"
-              icon="mdi-car-cog"
-            ></v-btn>
-          </template>
-          <span>車位銷控管理</span>
-        </v-tooltip>
-
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="isCancelledPurchaseDialogVisible = true"
-              icon="mdi-account-cancel"
-            ></v-btn>
-          </template>
-          <span>退戶記錄管理</span>
-        </v-tooltip>
-
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="isAIAssistantDialogVisible = true"
-              icon="mdi-robot-outline"
-            ></v-btn>
-          </template>
-          <span>AI 銷售助理</span>
-        </v-tooltip>
-
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="isAnalyticsPanelVisible = true"
-              icon="mdi-chart-box"
-            ></v-btn>
-          </template>
-          <span>銷控統計分析</span>
-        </v-tooltip>
-
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="isSalesPivotVisible = true"
-              icon="mdi-table-pivot"
-            ></v-btn>
-          </template>
-          <span>資料透視</span>
-        </v-tooltip>
-
-        <!-- ✅ [新增] 請佣獎金系統入口（需「請佣獎金」獨立權限） -->
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales' && canAccessCommission">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="goToCommissionBonus"
-              icon="mdi-cash-multiple"
-            ></v-btn>
-          </template>
-          <span>請佣獎金</span>
-        </v-tooltip>
-
-        <span class="toolbar-divider" aria-hidden="true" v-if="currentViewMode === 'sales'"></span>
-
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="exportToExcel"
-              icon="mdi-tray-arrow-down"
-            ></v-btn>
-          </template>
-          <span>下載戶別資料EXCEL</span>
-        </v-tooltip>
-
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="isUnitExportDialogVisible = true"
-              icon="mdi-table-arrow-down"
-            ></v-btn>
-          </template>
-          <span>下載指定戶別資料</span>
-        </v-tooltip>
-
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="uploadDialog = true"
-              icon="mdi-tray-arrow-up"
-            ></v-btn>
-          </template>
-          <span>上傳戶別資料EXCEL</span>
-        </v-tooltip>
-
-        <!-- ✅ [移除] 付款表資料夾按鈕：付款表已改為系統內產製 PDF/EXCEL，不再使用 Google Drive -->
-
-        <v-tooltip location="bottom">
-          <template v-slot:activator="{ props }">
-            <v-btn
-              v-bind="props"
-              color="black"
-              variant="tonal"
               @click="handleRefreshData"
               :loading="isRefreshing"
               icon="mdi-refresh"
@@ -309,18 +138,41 @@
           <span>重新載入最新資料</span>
         </v-tooltip>
 
-        <v-tooltip location="bottom" v-if="currentViewMode === 'sales'">
+        <!-- 🖥️ [改版] 功能選單：整合原工具列大量圖示按鈕，分群磚格一覽（與手機版「全部功能」面板一致） -->
+        <v-menu
+          v-model="isDesktopToolsMenuOpen"
+          :close-on-content-click="false"
+          location="bottom end"
+          :offset="8"
+        >
           <template v-slot:activator="{ props }">
             <v-btn
               v-bind="props"
-              color="black"
-              variant="tonal"
-              @click="navigateToSalesSettings"
-              icon="mdi-cog"
-            ></v-btn>
+              color="indigo-darken-3"
+              variant="flat"
+              prepend-icon="mdi-apps"
+              append-icon="mdi-chevron-down"
+            >功能</v-btn>
           </template>
-          <span>更多設定</span>
-        </v-tooltip>
+          <v-card class="desktop-tools-menu" rounded="lg" elevation="8">
+            <div v-for="group in desktopToolGroups" :key="group.title" class="desktop-tools-section">
+              <div class="desktop-tools-label">{{ group.title }}</div>
+              <div class="desktop-tools-grid">
+                <button
+                  v-for="tool in group.tools"
+                  :key="tool.label"
+                  type="button"
+                  class="desktop-tool"
+                  :disabled="tool.disabled"
+                  @click="runDesktopTool(tool.action)"
+                >
+                  <span class="desktop-tool-icon"><v-icon size="22">{{ tool.icon }}</v-icon></span>
+                  <span class="desktop-tool-label">{{ tool.label }}</span>
+                </button>
+              </div>
+            </div>
+          </v-card>
+        </v-menu>
       </div>
     </div>
 
@@ -1090,6 +942,8 @@
 
     </div> 
     
+    <!-- 📱 [改版] 手機版底部導覽列：固定 5 鍵不壅擠；進階功能改為底部面板（bottom sheet），
+         面板有全幅遮罩可擋住點擊穿透，避免點工具列/選單時誤觸下方網格開啟戶別資訊 -->
     <v-bottom-navigation
       v-if="isMobile"
       :active="true"
@@ -1098,7 +952,7 @@
       app
       grow
     >
-    <v-btn @click="showFilterPanel = !showFilterPanel">
+      <v-btn @click="showFilterPanel = !showFilterPanel">
         <v-badge
           :content="activeFilterCount"
           :model-value="activeFilterCount > 0"
@@ -1107,9 +961,9 @@
           <v-icon>mdi-filter-variant</v-icon>
         </v-badge>
         <span>篩選</span>
-    </v-btn>
+      </v-btn>
 
-    <v-btn @click="viewFormat = viewFormat === 'grid' ? 'list' : 'grid'">
+      <v-btn @click="viewFormat = viewFormat === 'grid' ? 'list' : 'grid'">
         <v-icon>{{ viewFormat === 'grid' ? 'mdi-view-list' : 'mdi-view-grid' }}</v-icon>
         <span>{{ viewFormat === 'grid' ? '列表' : '網格' }}</span>
       </v-btn>
@@ -1125,158 +979,87 @@
         <span>報價單</span>
       </v-btn>
 
-      <!-- ✅ [新增] 報價單設定直接入口：具銷控管理權限者免加入戶別即可進入 -->
-      <v-btn v-if="canDirectEnterQuoteSettings" @click="goToQuoteSettingsDirect">
+      <!-- 銷售模式：顯示設定（價格/網格內容）；報價模式：報價設定直達 -->
+      <v-btn v-if="currentViewMode === 'sales'" @click="isDisplaySheetOpen = true">
+        <v-icon>mdi-currency-usd</v-icon>
+        <span>{{ priceDisplayLabel }}</span>
+      </v-btn>
+      <v-btn v-else-if="canDirectEnterQuoteSettings" @click="goToQuoteSettingsDirect">
         <v-icon>mdi-file-document-edit-outline</v-icon>
         <span>報價設定</span>
       </v-btn>
 
-
-      <v-btn @click="openParkingCanvasEditor">
-        <v-icon>mdi-car-side</v-icon>
-        <span>車位</span>
+      <!-- 兩種模式皆有「功能」面板（內容依模式提供對應功能） -->
+      <v-btn @click="isMoreMenuOpen = true">
+        <v-icon>mdi-apps</v-icon>
+        <span>功能</span>
       </v-btn>
+    </v-bottom-navigation>
 
-     <v-menu top v-if="currentViewMode === 'sales'">
-        <template v-slot:activator="{ props }">
-          <v-btn v-bind="props">
-            <v-icon>mdi-currency-usd</v-icon>
-            <span>{{ priceDisplayLabel }}</span>
-          </v-btn>
-        </template>
-        <v-list>
-          <v-list-item @click="priceDisplayMode = 'list'">
-            <v-list-item-title>顯示表價</v-list-item-title>
-          </v-list-item>
-          <v-list-item @click="priceDisplayMode = 'floor'">
-            <v-list-item-title>顯示底價</v-list-item-title>
-          </v-list-item>
-          <v-list-item @click="priceDisplayMode = 'transaction'">
-            <v-list-item-title>顯示成交價</v-list-item-title>
-          </v-list-item>
-          <!-- ✅ [新增] 網格主要顯示內容切換：總價 / 單價 / 簽約日期 -->
-          <template v-if="viewFormat === 'grid'">
-            <v-divider></v-divider>
-            <v-list-item @click="gridContentMode = 'total'">
-              <v-list-item-title :class="{ 'text-primary font-weight-bold': gridContentMode === 'total' }">網格顯示總價</v-list-item-title>
-            </v-list-item>
-            <v-list-item @click="gridContentMode = 'unit'">
-              <v-list-item-title :class="{ 'text-primary font-weight-bold': gridContentMode === 'unit' }">網格顯示單價</v-list-item-title>
-            </v-list-item>
-            <v-list-item @click="gridContentMode = 'date'">
-              <v-list-item-title :class="{ 'text-primary font-weight-bold': gridContentMode === 'date' }">網格顯示簽約日期</v-list-item-title>
-            </v-list-item>
-          </template>
-        </v-list>
-      </v-menu>
+    <!-- 📱 顯示設定面板：價格顯示／網格內容切換，chip 呈現目前選取狀態 -->
+    <v-bottom-sheet v-model="isDisplaySheetOpen">
+      <v-card class="mobile-sheet" rounded="t-xl">
+        <div class="mobile-sheet-handle"></div>
+        <div class="mobile-sheet-title"><v-icon size="20" color="primary">mdi-currency-usd</v-icon>顯示設定</div>
 
-      <v-menu top v-if="currentViewMode === 'sales'"
-        v-model="isMoreMenuOpen"
-        :close-on-content-click="false">
-        <template v-slot:activator="{ props }">
-          <v-btn v-bind="props">
-            <v-icon>mdi-dots-vertical</v-icon>
-            <span>更多</span>
-          </v-btn>
-        </template>
-        <v-list>
-          <!-- 切換建案：用原生 div 取代 v-list-item，避免 list-item 的點擊行為與 v-select 衝突 -->
-          <div class="d-flex align-center px-4 py-2">
-            <v-icon color="black" class="mr-3">mdi-home-city</v-icon>
-            <v-select
-              :model-value="projectId"
-              @update:model-value="onSwitchProjectFromMenu"
-              :items="availableProjects"
-              item-title="name"
-              item-value="id"
-              label="選擇建案"
-              variant="plain"
-              density="compact"
-              hide-details
-              class="mobile-project-selector flex-grow-1"
-            ></v-select>
+        <div class="mobile-sheet-section">
+          <div class="mobile-sheet-label">價格顯示</div>
+          <v-chip-group v-model="priceDisplayMode" mandatory selected-class="mobile-sheet-chip--active">
+            <v-chip value="list" filter variant="outlined" class="mobile-sheet-chip">表價</v-chip>
+            <v-chip value="floor" filter variant="outlined" class="mobile-sheet-chip">底價</v-chip>
+            <v-chip value="transaction" filter variant="outlined" class="mobile-sheet-chip">成交價</v-chip>
+          </v-chip-group>
+        </div>
+
+        <div v-if="viewFormat === 'grid'" class="mobile-sheet-section">
+          <div class="mobile-sheet-label">網格顯示內容</div>
+          <v-chip-group v-model="gridContentMode" mandatory selected-class="mobile-sheet-chip--active">
+            <v-chip value="total" filter variant="outlined" class="mobile-sheet-chip">總價</v-chip>
+            <v-chip value="unit" filter variant="outlined" class="mobile-sheet-chip">單價</v-chip>
+            <v-chip value="date" filter variant="outlined" class="mobile-sheet-chip">簽約日期</v-chip>
+          </v-chip-group>
+        </div>
+      </v-card>
+    </v-bottom-sheet>
+
+    <!-- 📱 全部功能面板：分群圖示磚，所有進階功能一覽可及 -->
+    <v-bottom-sheet v-model="isMoreMenuOpen">
+      <v-card class="mobile-sheet" rounded="t-xl">
+        <div class="mobile-sheet-handle"></div>
+        <div class="mobile-sheet-title"><v-icon size="20" color="primary">mdi-apps</v-icon>全部功能</div>
+
+        <div class="mobile-sheet-section">
+          <v-select
+            :model-value="projectId"
+            @update:model-value="onSwitchProjectFromMenu"
+            :items="availableProjects"
+            item-title="name"
+            item-value="id"
+            label="切換建案"
+            variant="outlined"
+            density="compact"
+            hide-details
+            prepend-inner-icon="mdi-home-city"
+          ></v-select>
+        </div>
+
+        <div v-for="group in moreToolGroups" :key="group.title" class="mobile-sheet-section">
+          <div class="mobile-sheet-label">{{ group.title }}</div>
+          <div class="mobile-tool-grid">
+            <button
+              v-for="tool in group.tools"
+              :key="tool.label"
+              type="button"
+              class="mobile-tool"
+              @click="runMoreAction(tool.action)"
+            >
+              <span class="mobile-tool-icon"><v-icon size="22">{{ tool.icon }}</v-icon></span>
+              <span class="mobile-tool-label">{{ tool.label }}</span>
+            </button>
           </div>
-          <v-divider></v-divider>
-
-          <v-list-item @click="() => { isMoreMenuOpen = false; handleRefreshData(); }" :loading="isRefreshing">
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-refresh</v-icon>
-            </template>
-            <v-list-item-title>重新載入資料</v-list-item-title>
-          </v-list-item>
-          <v-divider></v-divider>
-          
-          <v-list-item @click="isMoreMenuOpen = false; exportToExcel()">
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-tray-arrow-down</v-icon>
-            </template>
-            <v-list-item-title>下載戶別資料EXCEL</v-list-item-title>
-          </v-list-item>
-          <v-list-item @click="isMoreMenuOpen = false; isUnitExportDialogVisible = true">
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-table-arrow-down</v-icon>
-            </template>
-            <v-list-item-title>下載指定戶別資料</v-list-item-title>
-          </v-list-item>
-          <v-list-item @click="isMoreMenuOpen = false; uploadDialog = true">
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-tray-arrow-up</v-icon>
-            </template>
-            <v-list-item-title>上傳戶別資料EXCEL</v-list-item-title>
-          </v-list-item>
-          <v-divider></v-divider>
-          <v-list-item @click="isMoreMenuOpen = false; handleOpenActivityMessage()">
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-bullhorn-outline</v-icon>
-            </template>
-            <v-list-item-title>活動訊息</v-list-item-title>
-          </v-list-item>
-
-          <v-list-item @click="isMoreMenuOpen = false; navigateToParkingControl()">
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-car-cog</v-icon>
-            </template>
-            <v-list-item-title>車位銷控管理</v-list-item-title>
-          </v-list-item>
-
-          <v-list-item @click="isMoreMenuOpen = false; isCancelledPurchaseDialogVisible = true">
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-account-cancel</v-icon>
-            </template>
-            <v-list-item-title>退戶記錄管理</v-list-item-title>
-          </v-list-item>
-
-          <v-list-item @click="isMoreMenuOpen = false; isAIAssistantDialogVisible = true">
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-robot-outline</v-icon>
-            </template>
-            <v-list-item-title>AI 銷售助理</v-list-item-title>
-          </v-list-item>
-
-          <v-list-item @click="isMoreMenuOpen = false; isAnalyticsPanelVisible = true">
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-chart-box</v-icon>
-            </template>
-            <v-list-item-title>銷控統計分析</v-list-item-title>
-          </v-list-item>
-
-          <v-list-item @click="isMoreMenuOpen = false; isSalesPivotVisible = true">
-            <template v-slot:prepend>
-              <v-icon color="black">mdi-table-pivot</v-icon>
-            </template>
-            <v-list-item-title>資料透視</v-list-item-title>
-          </v-list-item>
-
-          <v-list-item @click="isMoreMenuOpen = false; navigateToSalesSettings()">
-            <template v-slot:prepend>
-              <v-icon>mdi-cog-outline</v-icon>
-            </template>
-            <v-list-item-title>更多設定</v-list-item-title>
-          </v-list-item>
-        </v-list>
-      </v-menu>
-       
-       </v-bottom-navigation>
+        </div>
+      </v-card>
+    </v-bottom-sheet>
 
    <UnitDetailModal
       v-if="isModalVisible"
@@ -2136,8 +1919,123 @@ const summaryCellClass = (col) => ({
 });
 const summaryCellStyle = (col) => (col.fixed ? { left: `${col.fixedOffset || 0}px` } : undefined);
 const isCancelledPurchaseDialogVisible = ref(false);
-// 手機版「更多」彈出選單的展開狀態（供選完項目後主動關閉用）
+// 手機版「全部功能」底部面板的展開狀態（供選完項目後主動關閉用）
 const isMoreMenuOpen = ref(false);
+// 📱 [新增] 手機版「顯示設定」底部面板（價格顯示／網格內容切換）
+const isDisplaySheetOpen = ref(false);
+
+// 📱 [新增] 全部功能面板：分群圖示磚（原「更多」選單所有功能＋報價設定/車位銷控直達）
+const moreToolGroups = computed(() => {
+  // 報價模式：僅提供該模式桌面工具列對應的功能
+  if (currentViewMode.value !== 'sales') {
+    const tools = [
+      { icon: 'mdi-car-side', label: '車位銷控', action: openParkingCanvasEditor },
+      { icon: 'mdi-bullhorn-outline', label: '活動訊息', action: handleOpenActivityMessage },
+      { icon: 'mdi-refresh', label: '重新載入', action: handleRefreshData },
+    ];
+    if (viewFormat.value === 'grid') {
+      tools.push({ icon: 'mdi-file-pdf-box', label: '下載銷控表', action: () => { isGridDownloadDialogVisible.value = true; } });
+    }
+    return [{ title: '常用', tools }];
+  }
+  const common = [];
+  if (canDirectEnterQuoteSettings.value) {
+    common.push({ icon: 'mdi-file-document-edit-outline', label: '報價設定', action: goToQuoteSettingsDirect });
+  }
+  common.push(
+    { icon: 'mdi-car-side', label: '車位銷控', action: openParkingCanvasEditor },
+    { icon: 'mdi-car-cog', label: '車位管理', action: navigateToParkingControl },
+    { icon: 'mdi-bullhorn-outline', label: '活動訊息', action: handleOpenActivityMessage },
+    { icon: 'mdi-refresh', label: '重新載入', action: handleRefreshData },
+  );
+  return [
+    { title: '常用', tools: common },
+    {
+      title: '資料',
+      tools: [
+        { icon: 'mdi-tray-arrow-down', label: '下載EXCEL', action: exportToExcel },
+        { icon: 'mdi-table-arrow-down', label: '指定戶別下載', action: () => { isUnitExportDialogVisible.value = true; } },
+        { icon: 'mdi-tray-arrow-up', label: '上傳EXCEL', action: () => { uploadDialog.value = true; } },
+        { icon: 'mdi-table-pivot', label: '資料透視', action: () => { isSalesPivotVisible.value = true; } },
+        { icon: 'mdi-chart-box', label: '統計分析', action: () => { isAnalyticsPanelVisible.value = true; } },
+      ],
+    },
+    {
+      title: '管理',
+      tools: [
+        { icon: 'mdi-account-cancel', label: '退戶記錄', action: () => { isCancelledPurchaseDialogVisible.value = true; } },
+        { icon: 'mdi-robot-outline', label: 'AI 銷售助理', action: () => { isAIAssistantDialogVisible.value = true; } },
+        { icon: 'mdi-cog-outline', label: '更多設定', action: navigateToSalesSettings },
+      ],
+    },
+  ];
+});
+
+// 面板關閉後再執行動作：等 overlay 移除，避免關閉瞬間的點擊穿透誤觸下方網格（跳出戶別資訊）
+function runMoreAction(action) {
+  isMoreMenuOpen.value = false;
+  setTimeout(() => action(), 150);
+}
+
+// 🖥️ [改版] 桌面版工具列「功能」下拉選單：原本 10+ 顆圖示按鈕整合為分群磚格，
+// 工具列僅保留高頻操作（檢視/篩選/顯示切換/報價單/申報提醒/重新載入）
+const isDesktopToolsMenuOpen = ref(false);
+const desktopToolGroups = computed(() => {
+  const dataTools = [];
+  if (viewFormat.value === 'grid') {
+    dataTools.push({
+      icon: 'mdi-file-pdf-box',
+      label: '下載銷控表PDF',
+      disabled: filteredHouseholds.value.length === 0,
+      action: () => { isGridDownloadDialogVisible.value = true; },
+    });
+  }
+  const common = [];
+  if (canDirectEnterQuoteSettings.value) {
+    common.push({ icon: 'mdi-file-document-edit-outline', label: '報價單設定', action: goToQuoteSettingsDirect });
+  }
+  // 報價模式：僅提供該模式原工具列對應的功能
+  if (currentViewMode.value !== 'sales') {
+    common.push(
+      { icon: 'mdi-car-side', label: '車位銷控', action: openParkingCanvasEditor },
+      { icon: 'mdi-bullhorn-outline', label: '活動訊息', action: handleOpenActivityMessage },
+    );
+    const groups = [{ title: '常用', tools: common }];
+    if (dataTools.length > 0) groups.push({ title: '資料', tools: dataTools });
+    return groups;
+  }
+  common.push(
+    { icon: 'mdi-car-side', label: '車位銷控', action: openParkingCanvasEditor },
+    { icon: 'mdi-car-cog', label: '車位銷控管理', action: navigateToParkingControl },
+    { icon: 'mdi-bullhorn-outline', label: '活動訊息', action: handleOpenActivityMessage },
+  );
+  dataTools.push(
+    { icon: 'mdi-tray-arrow-down', label: '下載戶別EXCEL', action: exportToExcel },
+    { icon: 'mdi-table-arrow-down', label: '指定戶別下載', action: () => { isUnitExportDialogVisible.value = true; } },
+    { icon: 'mdi-tray-arrow-up', label: '上傳戶別EXCEL', action: () => { uploadDialog.value = true; } },
+    { icon: 'mdi-table-pivot', label: '資料透視', action: () => { isSalesPivotVisible.value = true; } },
+    { icon: 'mdi-chart-box', label: '統計分析', action: () => { isAnalyticsPanelVisible.value = true; } },
+  );
+  const manageTools = [
+    { icon: 'mdi-account-cancel', label: '退戶記錄管理', action: () => { isCancelledPurchaseDialogVisible.value = true; } },
+    { icon: 'mdi-robot-outline', label: 'AI 銷售助理', action: () => { isAIAssistantDialogVisible.value = true; } },
+  ];
+  if (canAccessCommission.value) {
+    manageTools.push({ icon: 'mdi-cash-multiple', label: '請佣獎金', action: goToCommissionBonus });
+  }
+  manageTools.push({ icon: 'mdi-cog-outline', label: '更多設定', action: navigateToSalesSettings });
+  return [
+    { title: '常用', tools: common },
+    { title: '資料', tools: dataTools },
+    { title: '管理', tools: manageTools },
+  ];
+});
+
+// 選單磚點擊：先收合選單再執行（避免導頁/開啟 dialog 時選單殘留）
+function runDesktopTool(action) {
+  isDesktopToolsMenuOpen.value = false;
+  action();
+}
 
 // 1. 修改 filters 定義 (加入銷控專用欄位)
 const filters = reactive({
@@ -5373,8 +5271,9 @@ overflow: hidden;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  padding: 8px 12px;
-  row-gap: 8px;
+  /* 左側留空給全域浮動漢堡鈕（fixed 左上角，寬約 50px），避免遮到建案選單 */
+  padding: 6px 12px 6px 58px;
+  row-gap: 6px;
   column-gap: 12px;
   flex-shrink: 0;
   background-color: #ffffff;
@@ -5739,16 +5638,152 @@ overflow: hidden;
   height: 100%;
   border: none;
 }
+/* 📱 [調整] 底部導覽列改近乎不透明＋上緣分隔線：
+   半透明會讓下方網格/列表「透出來」，使用者誤以為工具列蓋住內容、也容易點錯 */
 .v-bottom-navigation {
-  background-color: rgba(255, 255, 255, 0.75) !important;
+  background-color: rgba(255, 255, 255, 0.97) !important;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  height: calc(56px + 20px) !important; 
-  padding-bottom: 20px !important; 
+  border-top: 1px solid #e5e9f0;
+  height: calc(56px + 20px) !important;
+  padding-bottom: 20px !important;
 }
 
 .v-bottom-navigation .v-btn > .v-btn__content > span {
     font-size: 0.8rem;
+}
+
+/* 📱 [新增] 手機版底部面板（顯示設定／全部功能） */
+.mobile-sheet {
+  padding: 6px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  max-height: 82dvh;
+  overflow-y: auto;
+}
+.mobile-sheet-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: #d4dae3;
+  margin: 6px auto 10px;
+}
+.mobile-sheet-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a3a6e;
+  margin-bottom: 12px;
+}
+.mobile-sheet-section {
+  margin-bottom: 14px;
+}
+.mobile-sheet-label {
+  font-size: .78rem;
+  font-weight: 600;
+  color: #8493a8;
+  margin-bottom: 6px;
+}
+.mobile-sheet-chip {
+  font-weight: 500;
+}
+.mobile-sheet-chip--active {
+  background-color: #1a3a6e !important;
+  border-color: #1a3a6e !important;
+  color: #ffffff !important;
+}
+/* 功能磚：4 欄大點按區，分群一覽 */
+.mobile-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.mobile-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #f7f9fc;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  padding: 12px 4px;
+  min-height: 74px;
+  cursor: pointer;
+  color: #44546a;
+  font: inherit;
+}
+.mobile-tool:active {
+  background: #e8eef7;
+  border-color: #c9d7ec;
+}
+.mobile-tool-icon {
+  color: #1a3a6e;
+}
+.mobile-tool-label {
+  font-size: .72rem;
+  line-height: 1.25;
+  text-align: center;
+}
+
+/* 🖥️ [改版] 桌面版工具列「功能」下拉選單：分群磚格（樣式對齊手機版全部功能面板） */
+.desktop-tools-menu {
+  width: 396px;
+  padding: 14px 16px 16px;
+  background: #ffffff;
+}
+.desktop-tools-section {
+  margin-bottom: 12px;
+}
+.desktop-tools-section:last-child {
+  margin-bottom: 0;
+}
+.desktop-tools-label {
+  font-size: .75rem;
+  font-weight: 700;
+  color: #8493a8;
+  letter-spacing: .05em;
+  margin-bottom: 6px;
+}
+.desktop-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.desktop-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #f7f9fc;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  padding: 12px 6px;
+  min-height: 72px;
+  cursor: pointer;
+  color: #44546a;
+  font: inherit;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.desktop-tool:hover:not(:disabled) {
+  background: #eef3fa;
+  border-color: #c9d7ec;
+}
+.desktop-tool:active:not(:disabled) {
+  background: #e8eef7;
+}
+.desktop-tool:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.desktop-tool-icon {
+  color: #1a3a6e;
+}
+.desktop-tool-label {
+  font-size: .74rem;
+  line-height: 1.25;
+  text-align: center;
 }
 .pre-wrap-alert {
    white-space: pre-wrap;
@@ -6000,6 +6035,8 @@ overflow: hidden;
 @media (max-width: 960px) {
   .grid-topbar {
     gap: 8px;
+    /* 手機版沒有上方 .toolbar，此列即頁面最上排：左側留空給全域浮動漢堡鈕 */
+    padding-left: 44px;
   }
   .property-type-switch {
     width: 100%;

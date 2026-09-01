@@ -264,8 +264,8 @@ const buildTourSteps = () => {
   steps.push({
     id: 'toolbar',
     title: '常用工具',
-    text: '右上角有房貸試算、聯絡客服、全螢幕與訊息中心。',
-    attachTo: { element: '.custom-app-bar', on: 'bottom' },
+    text: '左上角漢堡選單裡有房貸試算、聯絡客服、全螢幕與訊息中心。',
+    attachTo: { element: '.floating-menu-btn', on: 'bottom' },
   });
   steps.push({
     id: 'finish',

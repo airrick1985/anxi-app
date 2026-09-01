@@ -720,86 +720,120 @@
       :title="item.unitId"
     />
 
-    <!-- ✅ [新增] 議價調整對話框 -->
-    <v-dialog v-model="isNegotiationDialogVisible" max-width="500">
-      <v-card>
+    <!-- ✅ [新增] 議價調整對話框（電腦版左右配置：左設定／右結果；手機維持堆疊） -->
+    <v-dialog v-model="isNegotiationDialogVisible" max-width="920">
+      <v-card class="negotiation-dialog">
         <v-card-title class="bg-primary text-white d-flex align-center gap-2">
           <v-icon>mdi-percent</v-icon>
           議價調整 - {{ item.unitId }}
         </v-card-title>
 
-        <v-card-text class="pt-6">
-          <div class="mb-6">
-            <div class="text-caption text-grey-darken-1 mb-2">目前房屋總價</div>
-            <div class="text-h5 font-weight-bold text-primary">{{ displayHousePrice }} 萬元</div>
-            <div class="text-caption text-grey">房屋總面積: {{ formatNumber(item.unitDetails.area_house_ping, 2) }} 坪</div>
-          </div>
-
-          <v-divider class="my-4"></v-divider>
-
-          <!-- ✅ [優化] 調整方式：並排兩個欄位，各自獨立保存 -->
-          <div class="mb-6">
-            <div class="text-subtitle-2 font-weight-bold mb-4">調整方式</div>
-
-            <!-- 第一欄：每坪調整 -->
-            <div class="mb-4">
-              <label class="text-caption text-grey-darken-1 d-block mb-2">每坪調整 (萬/坪)</label>
-              <v-text-field
-                v-model="negotiationPerTsuboValue"
-                type="number"
-                suffix="萬/坪"
-                placeholder="例如: -1.5 (減) 或 +0.5 (加)"
-                variant="outlined"
-                density="compact"
-                hint="輸入負數表示每坪減少"
-                persistent-hint
-                @update:model-value="onNegotiationAdjustmentInput"
-              ></v-text-field>
+        <v-card-text class="pt-5">
+          <!-- ✅ [優化] 目前房屋總價：頂部總覽帶（含單價；露臺戶標示 房屋＋露臺 拆分） -->
+          <v-sheet rounded="lg" class="neg-summary pa-4 mb-5">
+            <div class="d-flex flex-wrap justify-space-between align-center ga-3">
+              <div>
+                <div class="text-caption text-grey-darken-1 mb-1">目前房屋總價</div>
+                <div class="text-h4 font-weight-bold text-primary">{{ displayHousePrice }} <span class="text-h6 font-weight-medium">萬元</span></div>
+                <!-- ✅ 露臺戶：明確標示 房屋價格＋露臺價格（露臺為表價，議價僅影響房屋） -->
+                <div v-if="showTerraceUnitSplit" class="text-body-2 text-grey-darken-2 mt-1">
+                  房屋 <strong>{{ formatNumber(currentHouseOnlyPrice) }}</strong> 萬 ＋ 露臺 <strong>{{ formatNumber(negotiationTerracePrice) }}</strong> 萬
+                </div>
+              </div>
+              <div class="text-md-right">
+                <!-- ✅ 目前單價（露臺戶已扣除露臺價與露臺面積後換算） -->
+                <div class="text-body-2">
+                  <span class="text-grey-darken-1">房屋單價</span>
+                  <strong class="ml-1">{{ formatNumber(currentHouseUnitPrice, 2) }} 萬/坪</strong>
+                </div>
+                <div v-if="showTerraceUnitSplit" class="text-body-2">
+                  <span class="text-grey-darken-1">露臺單價</span>
+                  <strong class="ml-1">{{ displayTerraceUnitPrice }} 萬/坪</strong>
+                </div>
+                <div class="text-caption text-grey mt-1">房屋總面積 {{ formatNumber(item.unitDetails.area_house_ping, 2) }} 坪<template v-if="showTerraceUnitSplit">（露臺 {{ formatNumber(item.unitDetails.area_terrace_ping, 2) }} 坪不計入）</template></div>
+              </div>
             </div>
+          </v-sheet>
 
-            <!-- 第二欄：直接調整 -->
-            <div class="mb-4">
-              <label class="text-caption text-grey-darken-1 d-block mb-2">直接調整總價 (萬)</label>
-              <v-text-field
-                v-model="negotiationDirectAmountValue"
-                type="number"
-                suffix="萬"
-                placeholder="例如: -15 (減) 或 +10 (加)"
-                variant="outlined"
-                density="compact"
-                hint="輸入負數表示總價減少"
-                persistent-hint
-                @update:model-value="onNegotiationAdjustmentInput"
-              ></v-text-field>
-            </div>
+          <v-row dense>
+            <!-- 左：調整設定 -->
+            <v-col cols="12" md="5">
+              <div class="text-subtitle-2 font-weight-bold mb-3 d-flex align-center">
+                <v-icon size="18" class="mr-1" color="primary">mdi-tune-variant</v-icon>調整方式
+              </div>
 
-            <!-- 第三欄：直接輸入總價 -->
-            <div class="mb-4">
-              <label class="text-caption text-grey-darken-1 d-block mb-2">直接輸入房屋總價 (不含車位，萬)</label>
-              <v-text-field
-                v-model="negotiationTotalPriceValue"
-                type="number"
-                suffix="萬"
-                placeholder="例如: 3000"
-                variant="outlined"
-                density="compact"
-                hint="直接以此金額作為「房屋總價（不含車位）」，與上方調整欄位互斥"
-                persistent-hint
-                @update:model-value="onNegotiationTotalPriceInput"
-              ></v-text-field>
-            </div>
-          </div>
+              <v-sheet rounded="lg" class="neg-field-group pa-4 mb-2">
+                <div class="text-caption font-weight-bold text-grey-darken-2 mb-3">方式一：輸入調整幅度（兩欄可並用）</div>
 
-          <v-divider class="my-4"></v-divider>
+                <label class="text-body-2 font-weight-medium d-block mb-1">每坪調整</label>
+                <v-text-field
+                  v-model="negotiationPerTsuboValue"
+                  type="number"
+                  suffix="萬/坪"
+                  placeholder="例如: -1.5 (減) 或 +0.5 (加)"
+                  variant="outlined"
+                  density="compact"
+                  bg-color="white"
+                  hint="輸入負數表示每坪減少"
+                  persistent-hint
+                  class="mb-4"
+                  @update:model-value="onNegotiationAdjustmentInput"
+                ></v-text-field>
 
-          <!-- ✅ [優化] 預覽結果 - 分別顯示兩種調整的明細 -->
-          <div class="mb-4">
-            <div class="text-subtitle-2 font-weight-bold mb-3">調整預覽</div>
-            <v-card variant="outlined" class="pa-4 bg-grey-lighten-5">
+                <label class="text-body-2 font-weight-medium d-block mb-1">直接調整總價</label>
+                <v-text-field
+                  v-model="negotiationDirectAmountValue"
+                  type="number"
+                  suffix="萬"
+                  placeholder="例如: -15 (減) 或 +10 (加)"
+                  variant="outlined"
+                  density="compact"
+                  bg-color="white"
+                  hint="輸入負數表示總價減少"
+                  persistent-hint
+                  @update:model-value="onNegotiationAdjustmentInput"
+                ></v-text-field>
+              </v-sheet>
+
+              <div class="neg-or-divider my-2"><span>或</span></div>
+
+              <v-sheet rounded="lg" class="neg-field-group pa-4">
+                <div class="text-caption font-weight-bold text-grey-darken-2 mb-3">方式二：直接指定總價（與方式一互斥）</div>
+
+                <label class="text-body-2 font-weight-medium d-block mb-1">直接輸入房屋總價（不含車位）</label>
+                <v-text-field
+                  v-model="negotiationTotalPriceValue"
+                  type="number"
+                  suffix="萬"
+                  placeholder="例如: 3000"
+                  variant="outlined"
+                  density="compact"
+                  bg-color="white"
+                  hint="直接以此金額作為「房屋總價（不含車位）」"
+                  persistent-hint
+                  @update:model-value="onNegotiationTotalPriceInput"
+                ></v-text-field>
+              </v-sheet>
+            </v-col>
+
+            <!-- 右：調整預覽（結果） -->
+            <v-col cols="12" md="7">
+              <div class="text-subtitle-2 font-weight-bold mb-3 d-flex align-center">
+                <v-icon size="18" class="mr-1" color="primary">mdi-calculator-variant-outline</v-icon>調整預覽
+              </div>
+              <v-card variant="outlined" class="pa-4 bg-grey-lighten-5 neg-preview">
               <!-- 原房屋總價 -->
-              <div class="d-flex justify-space-between align-center mb-3">
+              <div class="d-flex justify-space-between align-center">
                 <span class="text-grey-darken-2">原房屋總價（表價）</span>
                 <span class="font-weight-bold">{{ negotiationBasePrice }} 萬</span>
+              </div>
+              <!-- ✅ [新增] 露臺戶：表價拆分 房屋＋露臺 -->
+              <div v-if="showTerraceUnitSplit" class="text-caption text-grey-darken-1 text-right">
+                房屋 {{ formatNumber(listHouseOnlyPrice) }} 萬 ＋ 露臺 {{ formatNumber(negotiationTerracePrice) }} 萬
+              </div>
+              <!-- ✅ [新增] 表價單價（露臺戶已扣除露臺價與露臺面積） -->
+              <div class="text-caption text-grey text-right mb-2">
+                單價 {{ formatNumber(listHouseUnitPrice, 2) }} 萬/坪<template v-if="showTerraceUnitSplit">｜露臺 {{ displayTerraceUnitPrice }} 萬/坪</template>
               </div>
               <v-divider class="my-2"></v-divider>
 
@@ -814,17 +848,25 @@
               </div>
 
               <!-- 直接調整 (僅在有值時顯示) -->
-              <div v-if="negotiationDirectAmountValue !== ''" class="d-flex justify-space-between align-center mb-3">
-                <span class="text-grey-darken-2">直接調整</span>
-                <span :class="Number(negotiationDirectAmountValue) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
-                  {{ Number(negotiationDirectAmountValue) > 0 ? '+' : '' }}{{ negotiationDirectAmountValue }} 萬
-                </span>
+              <div v-if="negotiationDirectAmountValue !== ''" class="mb-3">
+                <div class="d-flex justify-space-between align-center">
+                  <span class="text-grey-darken-2">直接調整</span>
+                  <span :class="Number(negotiationDirectAmountValue) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
+                    {{ Number(negotiationDirectAmountValue) > 0 ? '+' : '' }}{{ negotiationDirectAmountValue }} 萬
+                  </span>
+                </div>
+                <!-- ✅ [新增] 折算每坪 -->
+                <div class="text-caption text-grey text-right">折算 {{ directAmountPerPing > 0 ? '+' : '' }}{{ formatNumber(directAmountPerPing, 2) }} 萬/坪</div>
               </div>
 
               <!-- 直接輸入總價 (僅在有值時顯示) -->
-              <div v-if="negotiationTotalPriceValue !== ''" class="d-flex justify-space-between align-center mb-3">
-                <span class="text-grey-darken-2">直接輸入總價</span>
-                <span class="font-weight-bold">{{ Math.round(Number(negotiationTotalPriceValue) || 0) }} 萬</span>
+              <div v-if="negotiationTotalPriceValue !== ''" class="mb-3">
+                <div class="d-flex justify-space-between align-center">
+                  <span class="text-grey-darken-2">直接輸入總價</span>
+                  <span class="font-weight-bold">{{ Math.round(Number(negotiationTotalPriceValue) || 0) }} 萬</span>
+                </div>
+                <!-- ✅ [新增] 換算單價（露臺戶已扣除露臺價與露臺面積） -->
+                <div class="text-caption text-grey text-right">單價 {{ formatNumber(totalPriceInputUnitPrice, 2) }} 萬/坪</div>
               </div>
 
               <!-- 分隔線 (若有任一調整) -->
@@ -833,18 +875,28 @@
               </div>
 
               <!-- 調整合計 -->
-              <div class="d-flex justify-space-between align-center mb-3">
+              <div class="d-flex justify-space-between align-center">
                 <span class="text-grey-darken-2 font-weight-bold">調整合計</span>
                 <span :class="(negotiatedPrice - negotiationBasePrice) > 0 ? 'text-error font-weight-bold' : 'text-success font-weight-bold'">
                   {{ (negotiatedPrice - negotiationBasePrice) > 0 ? '+' : '' }}{{ negotiatedPrice - negotiationBasePrice }} 萬
                 </span>
               </div>
+              <!-- ✅ [新增] 調整合計折算每坪 -->
+              <div class="text-caption text-grey text-right mb-2">折算 {{ negotiationDeltaPerPing > 0 ? '+' : '' }}{{ formatNumber(negotiationDeltaPerPing, 2) }} 萬/坪</div>
               <v-divider class="my-2"></v-divider>
 
               <!-- 新房屋總價 -->
               <div class="d-flex justify-space-between align-center">
                 <span class="text-h6 font-weight-bold">新房屋總價</span>
                 <span class="text-h5 font-weight-bold text-primary">{{ negotiatedPrice }} 萬</span>
+              </div>
+              <!-- ✅ [新增] 露臺戶：新總價拆分 房屋＋露臺（議價僅影響房屋，露臺維持表價） -->
+              <div v-if="showTerraceUnitSplit" class="text-caption text-grey-darken-1 text-right">
+                房屋 {{ formatNumber(negotiatedPrice - negotiationTerracePrice) }} 萬 ＋ 露臺 {{ formatNumber(negotiationTerracePrice) }} 萬
+              </div>
+              <!-- ✅ [新增] 新單價（露臺戶已扣除露臺價與露臺面積） -->
+              <div class="text-caption text-grey text-right">
+                單價 {{ formatNumber(negotiatedUnitPrice, 2) }} 萬/坪<template v-if="showTerraceUnitSplit">｜露臺 {{ displayTerraceUnitPrice }} 萬/坪</template>
               </div>
               <!-- ✅ [新增] 含車位總價：避免把「房屋總價」誤認為含車位總價 -->
               <div v-if="!item.usePackageDeal" class="d-flex justify-space-between align-center mt-2">
@@ -866,8 +918,9 @@
                 </div>
                 <div v-if="negotiationPreviewPackagePrice < 0" class="text-caption text-error mt-1">折讓超過配套金額，無法儲存</div>
               </template>
-            </v-card>
-          </div>
+              </v-card>
+            </v-col>
+          </v-row>
         </v-card-text>
 
         <v-card-actions>
@@ -1701,6 +1754,26 @@ const showTerraceSplit = computed(() => {
 // 單價已改為房屋、露臺各自獨立換算，議價僅影響房屋單價，故露臺戶一律顯示
 const showTerraceUnitSplit = computed(() => quoteStore.hasTerraceSplit(props.item.internalId));
 
+// ✅ [新增] 議價視窗單價換算（一律表價基準，不涉及底價）
+// 露臺戶：先扣除露臺表價再除以房屋總面積（露臺坪本就不計入房屋總面積）
+const negotiationTerracePrice = computed(() => quoteStore.getTerraceListPrice(props.item.internalId));
+const negotiationHouseArea = computed(() => Number(props.item.unitDetails?.area_house_ping) || 0);
+function toHouseUnitPrice(total) {
+  if (!negotiationHouseArea.value) return 0;
+  return ((Number(total) || 0) - negotiationTerracePrice.value) / negotiationHouseArea.value;
+}
+// 目前房屋總價（含議價）之房屋(不含露臺)價格與單價；議價僅影響房屋部分，露臺維持表價
+const currentHouseOnlyPrice = computed(() => quoteStore.getRawDisplayHousePrice(props.item.internalId) - negotiationTerracePrice.value);
+const currentHouseUnitPrice = computed(() => toHouseUnitPrice(quoteStore.getRawDisplayHousePrice(props.item.internalId)));
+// 原表價之房屋(不含露臺)價格與單價
+const listHouseOnlyPrice = computed(() => quoteStore.getListHousePrice(props.item.internalId) - negotiationTerracePrice.value);
+const listHouseUnitPrice = computed(() => toHouseUnitPrice(quoteStore.getListHousePrice(props.item.internalId)));
+// 議價後單價與各調整金額折算每坪
+const negotiatedUnitPrice = computed(() => toHouseUnitPrice(negotiatedPrice.value));
+const negotiationDeltaPerPing = computed(() => negotiationHouseArea.value ? (negotiatedPrice.value - negotiationBasePrice.value) / negotiationHouseArea.value : 0);
+const directAmountPerPing = computed(() => negotiationHouseArea.value ? (Number(negotiationDirectAmountValue.value) || 0) / negotiationHouseArea.value : 0);
+const totalPriceInputUnitPrice = computed(() => toHouseUnitPrice(negotiationTotalPriceValue.value));
+
 // ✅ [重構] 計算調整差額：議價後房屋總價 − 表價
 const negotiationDelta = computed(() => quoteStore.getNegotiationDelta(props.item.internalId));
 
@@ -2491,5 +2564,40 @@ function isPlanModified(appliedPlan) {
 .loan-total-row td {
   border-top: 2px solid rgba(121, 85, 72, 0.4);
   background: rgba(121, 85, 72, 0.05);
+}
+
+/* ✅ [新增] 議價調整視窗：頂部總覽帶／欄位群組／「或」分隔線／預覽數字對齊 */
+.neg-summary {
+  background: rgba(var(--v-theme-primary), 0.06);
+  border: 1px solid rgba(var(--v-theme-primary), 0.22);
+}
+
+.neg-field-group {
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+}
+
+.neg-or-divider {
+  display: flex;
+  align-items: center;
+  color: #9e9e9e;
+  font-size: 12px;
+}
+
+.neg-or-divider::before,
+.neg-or-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px dashed #bdbdbd;
+}
+
+.neg-or-divider span {
+  padding: 0 10px;
+}
+
+/* 預覽金額用等寬數字，跨列右緣對齊更易讀 */
+.neg-preview :deep(strong),
+.neg-preview {
+  font-variant-numeric: tabular-nums;
 }
 </style>

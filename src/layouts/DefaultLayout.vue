@@ -1,107 +1,68 @@
 <template>
   <v-app>
-    <v-app-bar app dark class="custom-app-bar">
-      
-
-      <v-btn icon @click="goHome" class="me-2" title="首頁">
-        <v-icon>mdi-home</v-icon>
+    <!-- ✅ 浮動頂部工具：不再使用固定 v-app-bar 佔用版面空間。
+         僅「登入頁」與「登入後的內部頁面」顯示；對外公開頁（未登入）完全隱藏。 -->
+    <template v-if="showToolbar">
+      <v-btn
+        icon
+        size="small"
+        class="floating-menu-btn"
+        :title="drawerOpen ? '關閉選單' : '開啟選單'"
+        @click="drawerOpen = !drawerOpen"
+      >
+        <v-icon>{{ drawerOpen ? 'mdi-close' : 'mdi-menu' }}</v-icon>
       </v-btn>
-      <div class="d-flex align-center">
-        <v-img :src="logoUrl"
-               max-height="60"
-               contain class="mr-2"
-               style="min-width: 70px; min-height: 50px; border: 1px solid transparent;">
-        </v-img>
-      </div>
-      <v-spacer />
+    </template>
 
-      
-     <v-menu offset-y>
-        <template v-slot:activator="{ props }">
-          <v-btn v-bind="props" icon title="系統設定" class="me-2">
-            <v-icon>mdi-cog</v-icon>
-          </v-btn>
-        </template>
-        <v-list density="compact">
-          <v-list-item @click="openStandbyDialog" prepend-icon="mdi-account-group">
-            <v-list-item-title>BY序</v-list-item-title>
-          </v-list-item>
+    <v-navigation-drawer
+      v-model="drawerOpen"
+      temporary
+      width="272"
+      class="app-drawer"
+    >
+      <!-- 上方留空給浮動關閉鈕（固定於視窗左上角） -->
+      <div class="drawer-top-spacer"></div>
+      <v-divider />
+      <v-list density="compact" nav>
+        <v-list-item v-if="user" prepend-icon="mdi-home" title="首頁" @click="onMenuClick(goHome)" />
 
-          <v-list-item @click="router.push('/vip-login')" prepend-icon="mdi-clipboard-text-outline">
-            <v-list-item-title>貴賓資料表</v-list-item-title>
-          </v-list-item>
+        <v-list-subheader>工具</v-list-subheader>
+        <v-list-item prepend-icon="mdi-account-group" title="BY序" @click="onMenuClick(openStandbyDialog)" />
+        <v-list-item prepend-icon="mdi-clipboard-text-outline" title="貴賓資料表" @click="onMenuClick(() => router.push('/vip-login'))" />
+        <v-list-item prepend-icon="mdi-account-details-outline" title="客戶資料表" @click="onMenuClick(() => router.push('/customer-data-sheet'))" />
 
-          <v-list-item @click="router.push('/customer-data-sheet')" prepend-icon="mdi-account-details-outline">
-            <v-list-item-title>客戶資料表</v-list-item-title>
-          </v-list-item>
-
-          </v-list>
-      </v-menu>
-
-
-      <template v-if="user">
-        <div v-if="display.mdAndUp.value" class="d-flex align-center">
-          <v-btn icon @click="mortgageDialog = true" title="房貸試算" class="me-2">
-              <v-icon>mdi-calculator-variant-outline</v-icon>
-          </v-btn>
-          <v-btn icon @click="contactDialog = true" title="聯絡客服" class="me-2">
-            <v-icon>mdi-message-question</v-icon>
-          </v-btn>
-          <v-btn icon @click="toggleFullscreen" class="me-2" title="全螢幕模式">
-            <v-icon>{{ isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen' }}</v-icon>
-          </v-btn>
-          <v-btn icon @click="goToMessageCenter" class="me-2" title="訊息中心">
-            <v-badge :content="unreadCount" :model-value="unreadCount > 0" color="red" overlap>
-              <v-icon>mdi-email-outline</v-icon>
-            </v-badge>
-          </v-btn>
-          <span class="me-2 clickable" @click="dialog = true" title="個人資料">{{ user.name }}</span>
-        </div>
-
-        <v-menu v-if="display.smAndDown.value" offset-y>
-          <template v-slot:activator="{ props }">
-            <v-btn icon v-bind="props" title="更多功能">
-              <v-icon>mdi-menu</v-icon>
-            </v-btn>
-          </template>
-          <v-list>
-            <v-list-item @click="mortgageDialog = true">
-              <template v-slot:prepend><v-icon>mdi-calculator-variant-outline</v-icon></template>
-              <v-list-item-title>房貸試算</v-list-item-title>
-            </v-list-item>
-
-              <v-list-item @click="contactDialog = true">
-              <template v-slot:prepend><v-icon>mdi-message-question</v-icon></template>
-              <v-list-item-title>聯絡客服</v-list-item-title>
-            </v-list-item>
-
-            <v-list-item @click="goToMessageCenter">
-              <template v-slot:prepend>
+        <template v-if="user">
+          <v-divider class="my-1" />
+          <v-list-subheader>功能</v-list-subheader>
+          <v-list-item prepend-icon="mdi-calculator-variant-outline" title="房貸試算" @click="onMenuClick(() => mortgageDialog = true)" />
+          <v-list-item prepend-icon="mdi-message-question" title="聯絡客服" @click="onMenuClick(() => contactDialog = true)" />
+          <v-list-item
+            :prepend-icon="isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"
+            :title="isFullscreen ? '離開全螢幕' : '全螢幕模式'"
+            @click="onMenuClick(toggleFullscreen)"
+          />
+          <v-list-item title="訊息中心" @click="onMenuClick(goToMessageCenter)">
+            <template v-slot:prepend>
               <v-badge :content="unreadCount" :model-value="unreadCount > 0" color="red" overlap>
-              <v-icon>mdi-email-outline</v-icon>
-                </v-badge>
-                </template>
-              <v-list-item-title>訊息中心</v-list-item-title>
-            </v-list-item>
+                <v-icon>mdi-email-outline</v-icon>
+              </v-badge>
+            </template>
+          </v-list-item>
+          <v-list-item prepend-icon="mdi-account-circle-outline" :title="`個人資料 (${user.name})`" @click="onMenuClick(() => dialog = true)" />
 
-            <v-list-item @click="dialog = true">
-                <template v-slot:prepend><v-icon>mdi-account-circle-outline</v-icon></template>
-                <v-list-item-title>個人資料 ({{ user.name }})</v-list-item-title>
-            </v-list-item>
+          <!-- ✅ 試用帳號：Home 頁重新開始導覽（docs/SPEC_LandingTrialLeadsOnboarding.md §7.2） -->
+          <v-list-item
+            v-if="isTrialUser && route.name === 'Home'"
+            prepend-icon="mdi-help-circle-outline"
+            title="功能導覽"
+            @click="onMenuClick(restartTour)"
+          />
 
-          </v-list>
-        </v-menu>
-
-        <!-- ✅ 試用帳號：Home 頁「?」重新開始導覽（docs/SPEC_LandingTrialLeadsOnboarding.md §7.2） -->
-        <v-btn v-if="isTrialUser && route.name === 'Home'" icon title="功能導覽" class="me-2" @click="restartTour">
-          <v-icon>mdi-help-circle-outline</v-icon>
-        </v-btn>
-
-        <v-btn icon @click="logoutDialog = true" title="登出">
-          <v-icon color="error">mdi-logout</v-icon>
-        </v-btn>
-      </template>
-    </v-app-bar>
+          <v-divider class="my-1" />
+          <v-list-item prepend-icon="mdi-logout" title="登出" base-color="error" @click="onMenuClick(() => logoutDialog = true)" />
+        </template>
+      </v-list>
+    </v-navigation-drawer>
 
     <v-main>
       <!-- ✅ 試用帳號提示條 -->
@@ -246,15 +207,10 @@ import { getLatestRelease, fetchUnreadMessageCount } from '@/api';
 import EditProfileDialog from '../components/EditProfileDialog.vue';
 import MortgageCalculator from '../components/MortgageCalculator.vue';
 import { appVersion as versionString } from '@/version';
-import { useDisplay } from 'vuetify';
 import { useAutoLogout } from '../composables/useAutoLogout';
 
-// 【已修正】從新的 src/assets 位置 import 圖片
-import logoUrl from '@/assets/images/anxi-logo.png';
 // 引入我們的新元件
 import AiAssistant from '../components/AiAssistant.vue';
-
-const display = useDisplay();
 
 // 只要這行程式碼執行，就會開始監聽並計時
 const { showIdleWarning, remainingSeconds, keepAlive, performLogout } = useAutoLogout();
@@ -273,7 +229,10 @@ const dismissTrialBanner = () => {
 };
 // 重新開始導覽：以全域事件通知 Home.vue
 const restartTour = () => window.dispatchEvent(new CustomEvent('anxi:restart-tour'));
-const { showAppToolbar } = storeToRefs(uiStore); 
+const { showAppToolbar } = storeToRefs(uiStore);
+
+// ✅ 漢堡選單抽屜開關
+const drawerOpen = ref(false);
 
 const dialog = ref(false);
 const logoutDialog = ref(false);
@@ -296,6 +255,17 @@ const standbyProjectId = ref('');
 const showSnackbar = (message) => {
   snackbarMessage.value = message;
   snackbar.value = true;
+};
+
+// ✅ 頂部工具顯示條件：登入頁 或 已登入的內部頁面才顯示；
+//    對外公開頁（未登入的一般客戶）完全不顯示。
+//    showAppToolbar 沿用車位編輯模式的隱藏機制（進入編輯時整組隱藏）。
+const showToolbar = computed(() => showAppToolbar.value && (!!user.value || route.name === 'Login'));
+
+// 點選抽屜項目：先關閉抽屜再執行動作
+const onMenuClick = (action) => {
+  drawerOpen.value = false;
+  action();
 };
 
 const appVersion = ref(versionString);
@@ -390,42 +360,25 @@ watch(user, (newUser, oldUser) => {
 .trial-banner :deep(.v-avatar) { background: transparent !important; }
 .trial-banner__text { font-size: .85rem; }
 
-/* 樣式部分保持不變 */
-.custom-app-bar {
-  background-color: transparent !important;
-  background-image: linear-gradient(135deg, rgba(255, 255, 2CHINESE-TRADITIONAL, 0.7) 0%, rgba(195, 195, 195, 0.7) 100%) !important;
+/* ✅ 浮動漢堡按鈕：毛玻璃底，任何背景上都清楚可見；
+   z-index 高於 temporary drawer（~1008），開啟時變成關閉鈕 */
+.floating-menu-btn {
+  position: fixed !important;
+  top: 10px;
+  left: 10px;
+  z-index: 1500;
+  background: rgba(255, 255, 255, 0.6) !important;
+  color: #000 !important;
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.2);
 }
-:deep(.custom-app-bar .v-btn--icon .v-icon),
-:deep(.custom-app-bar .v-app-bar-nav-icon .v-icon) {
-  color: rgb(0, 0, 0) !important;
+
+/* 抽屜上緣留空，避免被浮動關閉鈕（fixed 於視窗左上）壓到第一個項目 */
+.drawer-top-spacer {
+  height: 52px;
 }
-:deep(.custom-app-bar .app-bar-title) {
-  color: rgb(0, 0, 0) !important;
-}
-:deep(.custom-app-bar span.clickable) {
-  color: rgb(0, 0, 0) !important;
-}
-.app-bar-title {
-  white-space: normal !important;
-  overflow: visible !important;
-  text-overflow: clip !important;
-  line-height: 1.3;
-  flex-grow: 0;
-  flex-shrink: 1;
-  min-width: 0;
-}
-@media (max-width: 599px) {
-  .app-bar-title {
-    font-size: 0.85rem !important;
-    line-height: 1.1;
-  }
-  .v-app-bar .v-btn {
-    font-size: 0.8rem;
-    max-height: 28px !important;
-  }
-}
+
 .clickable {
   cursor: pointer;
 }

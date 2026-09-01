@@ -39,6 +39,27 @@
             <template v-if="isEditing">
               <div class="edit-shell" :class="{ 'edit-shell--desktop': !isMobile }">
 
+              <!-- 📱 [手機版] 分區快速切換：預設「全部」堆疊；點選分區只顯示該區塊，只改單一欄位免長捲動 -->
+              <div v-if="isMobile" class="edit-mobile-nav">
+                <button
+                  type="button"
+                  class="edit-mobile-chip"
+                  :class="{ 'edit-mobile-chip--active': activeMobileEditSection === 'all' }"
+                  @click="activeMobileEditSection = 'all'"
+                >全部</button>
+                <button
+                  v-for="sec in editSections"
+                  :key="sec.key"
+                  type="button"
+                  class="edit-mobile-chip"
+                  :class="{ 'edit-mobile-chip--active': activeMobileEditSection === sec.key }"
+                  @click="activeMobileEditSection = sec.key"
+                >
+                  <v-icon size="15">{{ sec.icon }}</v-icon>{{ sec.title }}
+                  <v-icon v-if="sec.alert" size="13" color="error">mdi-alert-circle</v-icon>
+                </button>
+              </div>
+
               <!-- 🖥️ [電腦版] 左側項目導覽：點選切換右側內容，一次只看一個區塊，免長捲動 -->
               <nav v-if="!isMobile" class="edit-nav">
                 <button v-for="sec in editSections" :key="sec.key" type="button"
@@ -892,29 +913,12 @@
                   <v-icon>mdi-file-document-edit-outline</v-icon>
                   <span class="text-caption">合約製作</span>
                 </v-btn>
-                <!-- 更多操作：退戶 / 實價登錄 / 資料夾 / 下載 -->
-                <v-menu location="top end" :close-on-content-click="true">
-                  <template #activator="{ props: menuProps }">
-                    <v-btn v-bind="menuProps" stacked variant="text" class="flex-grow-1">
-                      <v-icon>mdi-dots-horizontal</v-icon>
-                      <span class="text-caption">更多</span>
-                    </v-btn>
-                  </template>
-                  <v-list density="compact">
-                    <v-list-item v-if="viewMode === 'sales' && isSold" @click="openCancelPurchaseDialog"
-                      prepend-icon="mdi-account-cancel-outline" title="辦理退戶" />
-                    <v-list-item v-if="viewMode === 'sales'" @click="openRealPriceReportDialog"
-                      prepend-icon="mdi-file-document-arrow-right-outline" title="實價登錄" />
-                    <v-list-item v-if="viewMode === 'sales' && unitData && unitData.driveFolderUrl"
-                      :href="unitData.driveFolderUrl" target="_blank"
-                      prepend-icon="mdi-folder-google-drive" :title="`${unitData.unitId} 資料夾`" />
-                    <v-list-item v-if="viewMode === 'sales' && unitData && unitData.contractDrawingFolderUrl"
-                      :href="unitData.contractDrawingFolderUrl" target="_blank"
-                      prepend-icon="mdi-floor-plan" title="合約分戶圖" />
-                    <v-list-item v-if="viewMode === 'sales'" @click="downloadExcel"
-                      prepend-icon="mdi-microsoft-excel" title="下載本戶資料" />
-                  </v-list>
-                </v-menu>
+                <!-- 📱 [改版] 更多操作：改為底部功能面板（比照銷控系統樣式，遮罩可擋點擊穿透） -->
+                <v-btn v-if="unitToolGroups.length > 0" stacked variant="text" class="flex-grow-1"
+                  @click="isUnitToolsSheetOpen = true">
+                  <v-icon>mdi-apps</v-icon>
+                  <span class="text-caption">功能</span>
+                </v-btn>
                 <!-- 關閉 -->
                 <v-btn stacked variant="text" class="flex-grow-1" @click="close">
                   <v-icon>mdi-close</v-icon>
@@ -928,6 +932,29 @@
       </div>
     </v-card>
   </v-dialog>
+
+  <!-- 📱 [新增] 戶別資訊「更多功能」底部面板：分群圖示磚，比照銷控系統底部面板樣式 -->
+  <v-bottom-sheet v-model="isUnitToolsSheetOpen">
+    <v-card class="mobile-sheet" rounded="t-xl">
+      <div class="mobile-sheet-handle"></div>
+      <div class="mobile-sheet-title"><v-icon size="20" color="primary">mdi-apps</v-icon>{{ unitData?.unitId }} 更多功能</div>
+      <div v-for="group in unitToolGroups" :key="group.title" class="mobile-sheet-section">
+        <div class="mobile-sheet-label">{{ group.title }}</div>
+        <div class="mobile-tool-grid">
+          <button
+            v-for="tool in group.tools"
+            :key="tool.label"
+            type="button"
+            class="mobile-tool"
+            @click="runUnitToolAction(tool.action)"
+          >
+            <span class="mobile-tool-icon"><v-icon size="22">{{ tool.icon }}</v-icon></span>
+            <span class="mobile-tool-label">{{ tool.label }}</span>
+          </button>
+        </div>
+      </div>
+    </v-card>
+  </v-bottom-sheet>
 
   <CancelPurchaseDialog :show="showCancelDialog" @update:show="showCancelDialog = $event" title="確認辦理退戶"
     :message="cancelDialogMessage" confirm-text="確認退戶" confirm-color="error" :loading="isSaving"
@@ -1195,6 +1222,38 @@ function openRealPriceReportDialog() {
 const isPriceEditable = ref(false); // ✅ [新增] 控制價格欄位是否可編輯
 // 🖥️ [新增] 電腦版「修改銷控」左側項目導覽：目前選取的區塊（手機版維持全部堆疊顯示）
 const activeEditSection = ref('sales');
+// 📱 [新增] 手機版「修改銷控」分區快速切換：預設「全部」維持堆疊，點選分區只顯示該區塊，只改單一欄位免長捲動
+const activeMobileEditSection = ref('all');
+
+// 📱 [新增] 戶別資訊「更多功能」底部面板（取代原 v-menu，比照銷控系統底部面板樣式）
+const isUnitToolsSheetOpen = ref(false);
+const unitToolGroups = computed(() => {
+  if (props.viewMode !== 'sales') return [];
+  const d = props.unitData || {};
+  const docs = [];
+  if (d.driveFolderUrl) {
+    docs.push({ icon: 'mdi-folder-google-drive', label: `${d.unitId} 資料夾`, action: () => window.open(d.driveFolderUrl, '_blank') });
+  }
+  if (d.contractDrawingFolderUrl) {
+    docs.push({ icon: 'mdi-floor-plan', label: '合約分戶圖', action: () => window.open(d.contractDrawingFolderUrl, '_blank') });
+  }
+  docs.push({ icon: 'mdi-microsoft-excel', label: '下載本戶資料', action: downloadExcel });
+  const manage = [
+    { icon: 'mdi-file-document-arrow-right-outline', label: '實價登錄', action: openRealPriceReportDialog },
+  ];
+  if (isSold.value) {
+    manage.push({ icon: 'mdi-account-cancel-outline', label: '辦理退戶', action: openCancelPurchaseDialog });
+  }
+  return [
+    { title: '文件與下載', tools: docs },
+    { title: '管理', tools: manage },
+  ];
+});
+// 面板關閉後再執行動作：等 overlay 移除，避免關閉瞬間點擊穿透誤觸下層內容
+function runUnitToolAction(action) {
+  isUnitToolsSheetOpen.value = false;
+  setTimeout(() => action(), 150);
+}
 
 // ✅ [新增] 備註圖片：上傳/刪除狀態（延遲到儲存才動 Storage）
 const PRICE_REMARK_MAX_IMAGES = 5;
@@ -1290,17 +1349,26 @@ const editSections = computed(() => {
     },
   ];
 });
-// 手機版一律顯示（維持原本堆疊捲動），電腦版只顯示選取項目
+// 📱 手機版：預設「全部」堆疊顯示，選了分區則只顯示該區塊；電腦版只顯示左側選取項目
 function isEditSectionVisible(key) {
-  return isMobile.value || activeEditSection.value === key;
+  if (isMobile.value) {
+    return activeMobileEditSection.value === 'all' || activeMobileEditSection.value === key;
+  }
+  return activeEditSection.value === key;
 }
-const isSalesFormVisible = computed(() =>
-  isMobile.value || SALES_FORM_SECTION_KEYS.includes(activeEditSection.value)
-);
-// 傳給 SalesInfoForm：null = 三欄並排（手機版），否則只顯示選取的那一欄
-const salesFormVisibleSections = computed(() =>
-  isMobile.value ? null : [activeEditSection.value]
-);
+const isSalesFormVisible = computed(() => {
+  if (isMobile.value) {
+    return activeMobileEditSection.value === 'all' || SALES_FORM_SECTION_KEYS.includes(activeMobileEditSection.value);
+  }
+  return SALES_FORM_SECTION_KEYS.includes(activeEditSection.value);
+});
+// 傳給 SalesInfoForm：null = 全部區塊（手機版「全部」），否則只顯示選取的那一欄
+const salesFormVisibleSections = computed(() => {
+  if (isMobile.value) {
+    return activeMobileEditSection.value === 'all' ? null : [activeMobileEditSection.value];
+  }
+  return [activeEditSection.value];
+});
 
 // ✅ [新增] 編輯模式即時提示 - 配套價格（＝成交總價 − 配套房屋總價，與合約製作／付款表同口徑）
 const editingPackagePriceHint = computed(() => {
@@ -1968,6 +2036,7 @@ async function deletePriceRemarkMarkedImages() {
 function startEditing() {
   isPriceEditable.value = false; // ✅ 每次進入編輯模式時，重置為預設不可編輯狀態
   activeEditSection.value = 'sales'; // 🖥️ 左側項目導覽回到第一項
+  activeMobileEditSection.value = 'all'; // 📱 手機版分區切換回到「全部」
   editingData.value = JSON.parse(JSON.stringify(props.unitData || {}));
   if (!editingData.value) {
     editingData.value = {};
@@ -3738,6 +3807,113 @@ onUnmounted(() => {
 .edit-panes {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* 📱 [新增] 手機版「修改銷控」分區快速切換列：黏在編輯區頂端、水平捲動 */
+.edit-mobile-nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 2px;
+  margin: -8px -2px 8px;
+  background: #ffffff;
+  border-bottom: 1px solid #eceff1;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.edit-mobile-nav::-webkit-scrollbar {
+  display: none;
+}
+.edit-mobile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid #cfd8e3;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #44546a;
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  font-family: inherit;
+}
+.edit-mobile-chip--active {
+  background: #1a3a6e;
+  border-color: #1a3a6e;
+  color: #ffffff;
+}
+.edit-mobile-chip--active .v-icon {
+  color: #ffffff;
+}
+
+/* 📱 [新增] 底部功能面板（比照銷控系統樣式） */
+.mobile-sheet {
+  padding: 6px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  max-height: 82dvh;
+  overflow-y: auto;
+}
+.mobile-sheet-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: #d4dae3;
+  margin: 6px auto 10px;
+}
+.mobile-sheet-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a3a6e;
+  margin-bottom: 12px;
+}
+.mobile-sheet-section {
+  margin-bottom: 14px;
+}
+.mobile-sheet-label {
+  font-size: .78rem;
+  font-weight: 600;
+  color: #8493a8;
+  margin-bottom: 6px;
+}
+.mobile-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.mobile-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #f7f9fc;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  padding: 12px 4px;
+  min-height: 74px;
+  cursor: pointer;
+  color: #44546a;
+  font: inherit;
+}
+.mobile-tool:active {
+  background: #e8eef7;
+  border-color: #c9d7ec;
+}
+.mobile-tool-icon {
+  color: #1a3a6e;
+}
+.mobile-tool-label {
+  font-size: .72rem;
+  line-height: 1.25;
+  text-align: center;
 }
 
 .info-section {
