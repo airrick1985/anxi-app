@@ -143,12 +143,12 @@
                     <v-table density="compact" class="edit-rows-table">
                       <thead>
                         <tr>
-                          <th style="width:100px">比例(%)</th>
+                          <th style="width:90px">比例(%)</th>
                           <th>期別名稱</th>
-                          <th style="width:110px" class="text-right">金額(萬)</th>
-                          <th style="width:130px" class="text-right">房屋款(萬)</th>
-                          <th style="width:130px" class="text-right">土地款(萬)</th>
-                          <th style="width:36px"></th>
+                          <th style="width:92px" class="text-right">金額(萬)</th>
+                          <th style="width:92px" class="text-right">房屋款(萬)</th>
+                          <th style="width:92px" class="text-right">土地款(萬)</th>
+                          <th style="width:32px"></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -164,7 +164,7 @@
                               <template v-if="row.type === 'group'">
                                 <span class="font-weight-bold">{{ formatNumber(groupAmount(row)) }}</span>
                               </template>
-                              <v-text-field v-else v-model.number="row.amount" type="number" density="compact"
+                              <v-text-field v-else v-model.number="row.amount" type="text" inputmode="decimal" density="compact"
                                 variant="outlined" hide-details class="amount-input"
                                 @change="recalcPercentFromAmount(row)" />
                             </td>
@@ -175,13 +175,13 @@
                             </template>
                             <template v-else>
                               <td class="text-right">
-                                <v-text-field :model-value="splitFor(row).houseAmount" type="number" step="0.1"
+                                <v-text-field :model-value="splitFor(row).houseAmount" type="text" inputmode="decimal"
                                   density="compact" variant="outlined" hide-details class="amount-input"
                                   :class="{ 'split-manual': splitFor(row).manualSplit }"
                                   @change="setLeafHouseAmount(row, $event)" />
                               </td>
                               <td class="text-right">
-                                <v-text-field :model-value="splitFor(row).landAmount" type="number" step="0.1"
+                                <v-text-field :model-value="splitFor(row).landAmount" type="text" inputmode="decimal"
                                   density="compact" variant="outlined" hide-details class="amount-input"
                                   :class="{ 'split-manual': splitFor(row).manualSplit }"
                                   @change="setLeafLandAmount(row, $event)" />
@@ -198,18 +198,18 @@
                                 <span v-if="child.seq !== null" class="mr-1">{{ child.seq }}.</span>{{ child.name }}
                               </td>
                               <td class="text-right">
-                                <v-text-field v-model.number="child.amount" type="number" density="compact"
+                                <v-text-field v-model.number="child.amount" type="text" inputmode="decimal" density="compact"
                                   variant="outlined" hide-details class="amount-input"
                                   @change="recalcPercentFromAmount(row)" />
                               </td>
                               <td class="text-right">
-                                <v-text-field :model-value="splitFor(child).houseAmount" type="number" step="0.1"
+                                <v-text-field :model-value="splitFor(child).houseAmount" type="text" inputmode="decimal"
                                   density="compact" variant="outlined" hide-details class="amount-input"
                                   :class="{ 'split-manual': splitFor(child).manualSplit }"
                                   @change="setLeafHouseAmount(child, $event)" />
                               </td>
                               <td class="text-right">
-                                <v-text-field :model-value="splitFor(child).landAmount" type="number" step="0.1"
+                                <v-text-field :model-value="splitFor(child).landAmount" type="text" inputmode="decimal"
                                   density="compact" variant="outlined" hide-details class="amount-input"
                                   :class="{ 'split-manual': splitFor(child).manualSplit }"
                                   @change="setLeafLandAmount(child, $event)" />
@@ -331,9 +331,9 @@
                     <v-table density="compact" class="edit-rows-table">
                       <thead>
                         <tr>
-                          <th style="width:110px">比例(%)</th>
+                          <th style="width:90px">比例(%)</th>
                           <th>期別名稱</th>
-                          <th style="width:110px" class="text-right">金額(萬)</th>
+                          <th style="width:92px" class="text-right">金額(萬)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -349,7 +349,7 @@
                               <template v-if="row.type === 'group'">
                                 <span class="font-weight-bold">{{ formatNumber(groupAmount(row)) }}</span>
                               </template>
-                              <v-text-field v-else v-model.number="row.amount" type="number" density="compact"
+                              <v-text-field v-else v-model.number="row.amount" type="text" inputmode="decimal" density="compact"
                                 variant="outlined" hide-details class="amount-input"
                                 @change="decoRecalcPercentFromAmount(row)" />
                             </td>
@@ -360,7 +360,7 @@
                                 <span v-if="child.seq !== null" class="mr-1">{{ child.seq }}.</span>{{ child.name }}
                               </td>
                               <td class="text-right">
-                                <v-text-field v-model.number="child.amount" type="number" density="compact"
+                                <v-text-field v-model.number="child.amount" type="text" inputmode="decimal" density="compact"
                                   variant="outlined" hide-details class="amount-input"
                                   @change="decoRecalcPercentFromAmount(row)" />
                               </td>
@@ -1075,6 +1075,7 @@ function resetToAuto() {
 const editRows = ref([]);
 const correctionTargetKey = ref(null);
 let restoringRows = false;   // 還原已存列時避免 rebuild 蓋掉
+let rowsTemplateId = null;   // 目前 editRows 所依據的範本 id（rebuild/還原時記錄）
 
 function buildRowsFromTemplate(template, baseValue, baseVariable = '總價') {
   if (!template || !Array.isArray(template.items) || baseValue <= 0) return [];
@@ -1104,15 +1105,22 @@ function rebuildRows() {
   if (restoringRows) return;
   editRows.value = buildRowsFromTemplate(activeTemplate.value, mainBase.value);
   correctionTargetKey.value = editRows.value.length ? editRows.value[editRows.value.length - 1].key : null;
+  rowsTemplateId = activeTemplate.value?.id || null;
 }
 
-watch(activeTemplate, () => rebuildRows());
+// watcher 為非同步（pre-flush），若在 restoreDocData 還原已存列之後才觸發，會把還原結果蓋掉；
+// 因此只在「範本 id 真正改變」時重建（範本清單重新載入、同 id 不同物件時不重建）
+watch(activeTemplate, (t) => {
+  if ((t?.id || null) === rowsTemplateId) return;
+  rebuildRows();
+});
 
 /* ---------- 裝修期款（配套戶：配套期款範本，基準 = 配套價格） ---------- */
 const decoManualTemplateId = ref(null);
 const decoEditRows = ref([]);
 const decoCorrectionTargetKey = ref(null);
 let restoringDecoRows = false;
+let decoRowsTemplateId = null;
 
 const decoTemplates = computed(() => templates.value.filter(t => t.paymentCategory === '配套期款'));
 
@@ -1160,9 +1168,13 @@ function rebuildDecoRows() {
   // 配套期款範本的公式參照「配套金額」變數（同付款表配套頁 PaymentSchedulePreviewDialog:856）
   decoEditRows.value = buildRowsFromTemplate(decoActiveTemplate.value, decorationBase.value, '配套金額');
   decoCorrectionTargetKey.value = decoEditRows.value.length ? decoEditRows.value[decoEditRows.value.length - 1].key : null;
+  decoRowsTemplateId = decoActiveTemplate.value?.id || null;
 }
 
-watch(decoActiveTemplate, () => rebuildDecoRows());
+watch(decoActiveTemplate, (t) => {
+  if ((t?.id || null) === decoRowsTemplateId) return;   // 同上：避免非同步 watcher 蓋掉已還原的列
+  rebuildDecoRows();
+});
 
 function decoRecalcAmountFromPercent(row) {
   const base = decorationBase.value;
@@ -1781,6 +1793,7 @@ function restoreDocData(cfg, freshDocData) {
       restoringRows = true;
       editRows.value = saved.manualRows.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) }));
       correctionTargetKey.value = editRows.value.length ? editRows.value[editRows.value.length - 1].key : null;
+      rowsTemplateId = activeTemplate.value?.id || null;
       restoringRows = false;
     } else {
       toast.info('期款範本結構已變更，已重新以範本計算（先前手動調整未套用）。');
@@ -1801,6 +1814,7 @@ function restoreDocData(cfg, freshDocData) {
       restoringDecoRows = true;
       decoEditRows.value = saved.decorationManualRows.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) }));
       decoCorrectionTargetKey.value = decoEditRows.value.length ? decoEditRows.value[decoEditRows.value.length - 1].key : null;
+      decoRowsTemplateId = decoActiveTemplate.value?.id || null;
       restoringDecoRows = false;
     } else if (isPackageContract.value) {
       toast.info('裝修期款範本結構已變更，已重新以範本計算（先前手動調整未套用）。');
@@ -2075,8 +2089,9 @@ function formatNumber(value) {
 .cursor-move { cursor: move; }
 .edit-rows-table :deep(td) { padding: 2px 6px !important; }
 .edit-rows-scroll { overflow-x: auto; }
-.edit-rows-table { min-width: 640px; }
-.amount-input { max-width: 110px; margin-left: auto; }
+.edit-rows-table { min-width: 560px; }
+.amount-input { max-width: 92px; margin-left: auto; }
+.amount-input :deep(input) { text-align: right; padding-inline: 6px; }
 .split-manual :deep(.v-field) { background: rgba(255, 193, 7, 0.14); }
 .split-manual :deep(.v-field__outline) { color: rgb(var(--v-theme-warning)); }
 .split-total-row td { border-top: 1px solid rgba(0, 0, 0, 0.18); background: rgba(0, 0, 0, 0.02); }
