@@ -1193,7 +1193,7 @@
                   <td>
                 <v-select
                       v-model="lead.assignedTo"
-                      :items="salesStaffWithCounts" 
+                      :items="salesStaffWithCounts"
                       item-title="displayName"
                       item-value="id"
                       :label="!lead.assignedTo ? '⚠️ 尚未選擇銷售' : '選擇銷售'"
@@ -1203,8 +1203,29 @@
                       variant="outlined"
                       class="mt-1 font-weight-bold"
                       style="max-width: 260px;"
+                      :menu-props="{ maxHeight: 400 }"
                       @update:model-value="(val) => { updateAssignedInfo(lead, val); lead.autoAssignInfo = null; applySorting(); }"
-                    ></v-select>
+                    >
+                      <template v-slot:item="{ props: itemProps, item }">
+                        <v-list-item v-bind="itemProps" title="" class="sales-select-item">
+                          <template v-slot:title>
+                            <div class="d-flex align-center flex-wrap">
+                              <span class="font-weight-bold me-2">{{ item.raw.name }}</span>
+                              <v-chip size="x-small" color="primary" variant="tonal" label class="me-1">共 {{ item.raw.totalCount }} 筆</v-chip>
+                              <v-chip size="x-small" color="teal" variant="tonal" label>本週 {{ item.raw.weekCount }} 筆</v-chip>
+                            </div>
+                          </template>
+                          <template v-slot:subtitle>
+                            <span class="text-caption">
+                              <v-icon size="x-small" class="me-1">mdi-clock-outline</v-icon>最後分配：{{ item.raw.lastAssignedText }}
+                            </span>
+                          </template>
+                        </v-list-item>
+                      </template>
+                      <template v-slot:selection="{ item }">
+                        <span class="text-truncate">{{ item.raw.name }}（共 {{ item.raw.totalCount }}．週 {{ item.raw.weekCount }}）</span>
+                      </template>
+                    </v-select>
                     <div
                       v-if="lead.assignedTo && lead.autoAssignInfo"
                       class="text-caption mt-1"
@@ -1339,7 +1360,7 @@
                                 <!-- 3. Assign -->
                                 <v-select
                                   v-model="lead.assignedTo"
-                                  :items="salesStaffWithCounts" 
+                                  :items="salesStaffWithCounts"
                                   item-title="displayName"
                                   item-value="id"
                                   :label="!lead.assignedTo ? '⚠️ 尚未選擇銷售' : '選擇銷售'"
@@ -1349,8 +1370,29 @@
                                   variant="outlined"
                                   class="mb-1 font-weight-bold"
                                   bg-color="white"
+                                  :menu-props="{ maxHeight: 380 }"
                                   @update:model-value="(val) => { updateAssignedInfo(lead, val); lead.autoAssignInfo = null; applySorting(); }"
-                                ></v-select>
+                                >
+                                  <template v-slot:item="{ props: itemProps, item }">
+                                    <v-list-item v-bind="itemProps" title="" class="sales-select-item">
+                                      <template v-slot:title>
+                                        <div class="d-flex align-center flex-wrap">
+                                          <span class="font-weight-bold me-2">{{ item.raw.name }}</span>
+                                          <v-chip size="x-small" color="primary" variant="tonal" label class="me-1">共 {{ item.raw.totalCount }} 筆</v-chip>
+                                          <v-chip size="x-small" color="teal" variant="tonal" label>本週 {{ item.raw.weekCount }} 筆</v-chip>
+                                        </div>
+                                      </template>
+                                      <template v-slot:subtitle>
+                                        <span class="text-caption">
+                                          <v-icon size="x-small" class="me-1">mdi-clock-outline</v-icon>最後分配：{{ item.raw.lastAssignedText }}
+                                        </span>
+                                      </template>
+                                    </v-list-item>
+                                  </template>
+                                  <template v-slot:selection="{ item }">
+                                    <span class="text-truncate">{{ item.raw.name }}（共 {{ item.raw.totalCount }}．週 {{ item.raw.weekCount }}）</span>
+                                  </template>
+                                </v-select>
                                 <div
                                   v-if="lead.assignedTo && lead.autoAssignInfo"
                                   class="text-caption mb-3"
@@ -2757,7 +2799,21 @@ const formatYMDHM = (ms) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
+// ✅ [新增] 取得本週 (週一～週日，台灣時區) 的日期字串範圍，供「本週分配數量」統計
+const currentWeekRange = () => {
+  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }); // YYYY-MM-DD
+  const d = new Date(todayStr); // 解析為 UTC 午夜，僅用於推算星期與加減天數
+  const mondayOffset = (d.getUTCDay() + 6) % 7; // 週一=0 ... 週日=6
+  const start = new Date(d);
+  start.setUTCDate(d.getUTCDate() - mondayOffset);
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6);
+  const fmt = (x) => x.toISOString().split('T')[0];
+  return { startStr: fmt(start), endStr: fmt(end) };
+};
+
 const salesStaffWithCounts = computed(() => {
+  const { startStr, endStr } = currentWeekRange();
   return salesStaff.value.map(staff => {
     // A. 統計資料庫中已有的名單數量
     const dbLeads = allLeads.value.filter(l => l.assignedTo === staff.id);
@@ -2769,21 +2825,31 @@ const salesStaffWithCounts = computed(() => {
     // 總計 = 現有 + 預計
     const totalCount = dbCount + previewCount;
 
-    // C. 取得該銷售名下所有名單中「最後一次被分配」的時間
+    // C. 取得該銷售名下所有名單中「最後一次被分配」的時間，並統計本週分配數
     let lastAssignedMs = 0;
+    let weekDbCount = 0;
     dbLeads.forEach(l => {
       const ms = l.assignedAt?.toMillis ? l.assignedAt.toMillis()
                : (l.assignedAt?.toDate ? l.assignedAt.toDate().getTime() : 0);
       if (ms > lastAssignedMs) lastAssignedMs = ms;
+      if (ms) {
+        const dateStr = new Date(ms).toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+        if (dateStr >= startStr && dateStr <= endStr) weekDbCount++;
+      }
     });
     const lastAssignedText = lastAssignedMs ? formatYMDHM(lastAssignedMs) : '尚未分配';
+
+    // 本週分配 = 資料庫中本週已分配 + 本次預覽已選擇 (即將於本週分配)
+    const weekCount = weekDbCount + previewCount;
 
     return {
       ...staff,
       totalCount,
+      weekCount,
       lastAssignedMs,
-      // 顯示格式：姓名 (現有+本次) · 最後分配 YYYY-MM-DD HH:MM
-      displayName: `${staff.name} (${totalCount}) · 最後分配 ${lastAssignedText}`
+      lastAssignedText,
+      // 精簡顯示格式 (下拉選單改用自訂 slot 呈現完整資訊)
+      displayName: `${staff.name}（共 ${totalCount}．本週 ${weekCount}）`
     };
   }).sort((a, b) => {
     // 🚩 排序邏輯：被分配的時間最早的排最前面
@@ -4962,6 +5028,19 @@ const handleExcelFileSelect = async (input) => {
 
 
 </script>
+
+<style>
+/* 選擇銷售下拉選單項目 (v-menu teleport 至 body，scoped CSS 吃不到，故放非 scoped 區塊) */
+.sales-select-item {
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+  border-bottom: 1px solid #f0f0f0;
+}
+.sales-select-item .v-list-item-subtitle {
+  margin-top: 2px;
+  opacity: 0.85;
+}
+</style>
 
 <style scoped>
 .chart-center-label {
