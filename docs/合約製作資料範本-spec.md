@@ -114,7 +114,7 @@ contractDocData: {
   ],
   qrUrl: "https://...",                   // 客戶資料卡 QR 網址（每戶輸入）
   paymentTemplateId: string | null,       // 期款範本手動覆蓋（null=自動）
-  manualRows: [...] | null,               // 期款手動微調結果（同付款表 rows 結構，null=未調整）
+  manualRows: [...] | null,               // 期款手動微調結果（同付款表 rows 結構，null=未調整；葉列可帶 landOverride=土地款手動覆寫，null=走拆分公式）
   pageOverrides: {                         // 本戶層級的頁面覆蓋
     [pageId]: { enabled: boolean, order: number, repeatCount: number }
   },
@@ -315,8 +315,9 @@ installmentSplitRules: {
 ```
 
 - 計算順序：期款範本算出各期**總額**（既有 `runNewCalculationEngine`）→ 每期以 token 公式（§5.1 同一引擎/編輯器）算 `土地款`、`房屋款 = 期款金額 - 土地款`。
+- **每戶個別手動調整（2026-09-02 新增）**：合約製作 Dialog 期款表每一葉列（單期列／群組子項）多出「房屋款(萬)／土地款(萬)」兩欄，直接輸入即覆寫該期拆分。覆寫值以 `landOverride`（土地款）為單一真值存於 `manualRows` 葉列；輸入房屋款時換算成 `landOverride = 期款金額 − 房屋款`。`null` / 清空 / 按回復鍵 = 走公式。該期金額（比例）變動時覆寫的土地款維持不動、差額由房屋款吸收；換期款範本時 `manualRows` 重建，覆寫一併清除。`buildSplitModel` 在公式結果上套覆寫並回傳 `manualSplit` 標記與 `landDiff`，後端 payload 仍為算好的 `houseAmount/landAmount`（後端無需更動）。
 - 可用 ref：`installmentAmount`（該期總額）、`landPrice`、`housePrice`、`total`、`houseRatio`、`landRatio` + priceFormulas 各項結果。
-- **驗證**（不過則下載 disabled + 紅字）：Σ各期土地款 = 土地價款；Σ各期房屋款 = 房屋款總額（容差同付款表：金額整數精確、比例 0.01%）。尾差一鍵補正：差額歸入指定期（預設銀行貸款期），同付款表 `applyCorrection` 模式。
+- **驗證**（不過則下載 disabled + 紅字）：Σ各期土地款 = 土地價款；Σ各期房屋款 = 房屋款總額（容差同付款表：金額整數精確、比例 0.01%）。尾差一鍵補正：差額歸入指定期（預設銀行貸款期），同付款表 `applyCorrection` 模式；土地款差額另有「一鍵補正土地差額」（把 `landDiff` 加到指定葉列的 `landOverride`，預設銀行貸款期、其次最後一期）。
 - **編輯器 UI**：建案設定內表格——選定「預覽用期款範本」後列出全部期別，每列一欄「土地款公式」（空=預設公式），chips 輸入同 §5.1；即時顯示試算與合計驗證。
 - 期別名稱比對不到（範本改名/換範本）：該 rule 顯示警告並視為未指定（走 default）。
 

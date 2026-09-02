@@ -26,27 +26,38 @@ export function sqmToPing(sqm) {
   return Math.round(n * SQM_TO_PING * 100) / 100;
 }
 
-/** 期款編輯列（group/single）攤平成葉列 [{ name, amount, percent, groupName }] */
+/** 葉列的土地款手動覆寫值：有效數字才視為覆寫，其餘一律 null（走拆分公式） */
+export function normalizeLandOverride(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+/** 期款編輯列（group/single）攤平成葉列 [{ key, name, amount, percent, groupName, landOverride }] */
 export function flattenEditRows(editRows = []) {
   const rows = [];
   for (const r of editRows) {
     if (r.type === 'group') {
       (r.children || []).forEach(c => rows.push({
+        key: c.key ?? null,
         name: c.name,
         seq: c.seq ?? null,
         amount: Math.round(Number(c.amount)) || 0,
         percent: null,
         groupName: r.name,
         groupPercent: Number(r.percent) || 0,
+        landOverride: normalizeLandOverride(c.landOverride),
       }));
     } else {
       rows.push({
+        key: r.key ?? null,
         name: r.name,
         seq: null,
         amount: Math.round(Number(r.amount)) || 0,
         percent: Number(r.percent) || 0,
         groupName: null,
         groupPercent: null,
+        landOverride: normalizeLandOverride(r.landOverride),
       });
     }
   }
@@ -70,25 +81,44 @@ export function buildPriceModel(unitData, priceFormulaSettings, config, options 
 
 /**
  * 期款房/土拆分（葉列 → landAmount/houseAmount）。
+ * 每葉列先套建案「期款拆分規則」公式；若該列有手動覆寫土地款（landOverride），
+ * 則以覆寫值為準：土地款 = 覆寫值、房屋款 = 期款金額 − 土地款（manualSplit=true）。
+ * 期款金額（總額）改變時覆寫的土地款維持不動，差額由房屋款吸收。
  */
 export function buildSplitModel(editRows, config, fullContext) {
   const leaves = flattenEditRows(editRows);
-  const split = computeInstallmentSplit(leaves, config?.installmentSplitRules || {}, fullContext);
-  const landSum = split.reduce((s, r) => s + (r.landAmount || 0), 0);
-  const houseSum = split.reduce((s, r) => s + (r.houseAmount || 0), 0);
+  const split = computeInstallmentSplit(leaves, config?.installmentSplitRules || {}, fullContext)
+    .map(r => {
+      const override = normalizeLandOverride(r.landOverride);
+      if (override === null) return { ...r, manualSplit: false };
+      const amount = Number(r.amount) || 0;
+      return {
+        ...r,
+        landAmount: override,
+        houseAmount: Math.round((amount - override) * 100) / 100,
+        manualSplit: true,
+      };
+    });
+  const round2 = v => Math.round(v * 100) / 100;
+  const landSum = round2(split.reduce((s, r) => s + (r.landAmount || 0), 0));
+  const houseSum = round2(split.reduce((s, r) => s + (r.houseAmount || 0), 0));
   const amountSum = split.reduce((s, r) => s + (r.amount || 0), 0);
   const landTarget = Number(fullContext?.landPrice) || 0;
   return {
     rows: split,
     landSum, houseSum, amountSum,
     landTarget,
+    landDiff: round2(landTarget - landSum),
     landOk: Math.abs(landSum - landTarget) < 0.05,
+    hasManualSplit: split.some(r => r.manualSplit),
   };
 }
 
 /** 拆款表付款明細「欄」結構：single → 單欄；group → 多子欄（供橫式表頭） */
 export function buildInstallmentColumns(editRows = [], splitRows = []) {
   const splitByName = Object.fromEntries(splitRows.map(r => [r.name, r]));
+  const splitByKey = Object.fromEntries(splitRows.filter(r => r.key != null).map(r => [r.key, r]));
+  const findSplit = leaf => (leaf.key != null && splitByKey[leaf.key]) || splitByName[leaf.name] || {};
   const columns = [];
   for (const r of editRows) {
     if (r.type === 'group') {
@@ -97,18 +127,19 @@ export function buildInstallmentColumns(editRows = [], splitRows = []) {
         name: r.name,
         percent: Number(r.percent) || 0,
         children: (r.children || []).map(c => {
-          const s = splitByName[c.name] || {};
+          const s = findSplit(c);
           return {
             name: c.name,
             seq: c.seq ?? null,
             amount: Math.round(Number(c.amount)) || 0,
             houseAmount: s.houseAmount ?? (Math.round(Number(c.amount)) || 0),
             landAmount: s.landAmount ?? 0,
+            manualSplit: !!s.manualSplit,
           };
         }),
       });
     } else {
-      const s = splitByName[r.name] || {};
+      const s = findSplit(r);
       columns.push({
         type: 'single',
         name: r.name,
@@ -116,6 +147,7 @@ export function buildInstallmentColumns(editRows = [], splitRows = []) {
         amount: Math.round(Number(r.amount)) || 0,
         houseAmount: s.houseAmount ?? (Math.round(Number(r.amount)) || 0),
         landAmount: s.landAmount ?? 0,
+        manualSplit: !!s.manualSplit,
       });
     }
   }

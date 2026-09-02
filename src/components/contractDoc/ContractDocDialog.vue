@@ -139,12 +139,16 @@
                   <!-- 期款比例/金額微調 -->
                   <template v-if="editRows.length">
                     <v-divider class="my-3" />
+                    <div class="edit-rows-scroll">
                     <v-table density="compact" class="edit-rows-table">
                       <thead>
                         <tr>
-                          <th style="width:110px">比例(%)</th>
+                          <th style="width:100px">比例(%)</th>
                           <th>期別名稱</th>
                           <th style="width:110px" class="text-right">金額(萬)</th>
+                          <th style="width:130px" class="text-right">房屋款(萬)</th>
+                          <th style="width:130px" class="text-right">土地款(萬)</th>
+                          <th style="width:36px"></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -164,6 +168,29 @@
                                 variant="outlined" hide-details class="amount-input"
                                 @change="recalcPercentFromAmount(row)" />
                             </td>
+                            <template v-if="row.type === 'group'">
+                              <td class="text-right"><span class="font-weight-bold">{{ formatNumber(groupSplit(row).house) }}</span></td>
+                              <td class="text-right"><span class="font-weight-bold">{{ formatNumber(groupSplit(row).land) }}</span></td>
+                              <td></td>
+                            </template>
+                            <template v-else>
+                              <td class="text-right">
+                                <v-text-field :model-value="splitFor(row).houseAmount" type="number" step="0.1"
+                                  density="compact" variant="outlined" hide-details class="amount-input"
+                                  :class="{ 'split-manual': splitFor(row).manualSplit }"
+                                  @change="setLeafHouseAmount(row, $event)" />
+                              </td>
+                              <td class="text-right">
+                                <v-text-field :model-value="splitFor(row).landAmount" type="number" step="0.1"
+                                  density="compact" variant="outlined" hide-details class="amount-input"
+                                  :class="{ 'split-manual': splitFor(row).manualSplit }"
+                                  @change="setLeafLandAmount(row, $event)" />
+                              </td>
+                              <td class="text-center">
+                                <v-btn v-if="splitFor(row).manualSplit" icon="mdi-restore" size="x-small" variant="text"
+                                  color="warning" title="回復公式拆分" @click="resetLeafSplit(row)" />
+                              </td>
+                            </template>
                           </tr>
                           <template v-if="row.type === 'group'">
                             <tr v-for="child in row.children" :key="child.key">
@@ -175,11 +202,44 @@
                                   variant="outlined" hide-details class="amount-input"
                                   @change="recalcPercentFromAmount(row)" />
                               </td>
+                              <td class="text-right">
+                                <v-text-field :model-value="splitFor(child).houseAmount" type="number" step="0.1"
+                                  density="compact" variant="outlined" hide-details class="amount-input"
+                                  :class="{ 'split-manual': splitFor(child).manualSplit }"
+                                  @change="setLeafHouseAmount(child, $event)" />
+                              </td>
+                              <td class="text-right">
+                                <v-text-field :model-value="splitFor(child).landAmount" type="number" step="0.1"
+                                  density="compact" variant="outlined" hide-details class="amount-input"
+                                  :class="{ 'split-manual': splitFor(child).manualSplit }"
+                                  @change="setLeafLandAmount(child, $event)" />
+                              </td>
+                              <td class="text-center">
+                                <v-btn v-if="splitFor(child).manualSplit" icon="mdi-restore" size="x-small" variant="text"
+                                  color="warning" title="回復公式拆分" @click="resetLeafSplit(child)" />
+                              </td>
                             </tr>
                           </template>
                         </template>
                       </tbody>
+                      <tfoot>
+                        <tr class="split-total-row">
+                          <td></td>
+                          <td class="font-weight-bold">合計</td>
+                          <td class="text-right font-weight-bold">{{ formatNumber(amountSum) }}</td>
+                          <td class="text-right font-weight-bold">{{ formatNumber(splitModel.houseSum) }}</td>
+                          <td class="text-right font-weight-bold" :class="splitModel.landOk ? 'text-success' : 'text-error'">
+                            {{ formatNumber(splitModel.landSum) }}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
                     </v-table>
+                    </div>
+                    <div class="text-caption text-medium-emphasis mt-1">
+                      房屋款／土地款預設依「期款拆分規則」自動計算；直接輸入即可個別調整（另一方自動補足該期金額），清空欄位或按
+                      <v-icon size="x-small">mdi-restore</v-icon> 回復公式計算。手動指定的土地款在該期金額變動時維持不動，差額由房屋款吸收。
+                    </div>
 
                     <div class="d-flex flex-wrap align-center ga-2 mt-2">
                       <v-chip size="small" :color="percentOk ? 'success' : 'error'" variant="tonal">
@@ -187,6 +247,13 @@
                       </v-chip>
                       <v-chip size="small" :color="amountOk ? 'success' : 'error'" variant="tonal">
                         金額合計 {{ formatNumber(amountSum) }} / {{ formatNumber(mainBase) }} 萬
+                      </v-chip>
+                      <v-chip size="small" :color="splitModel.landOk ? 'success' : 'error'" variant="tonal">
+                        土地款合計 {{ formatNumber(splitModel.landSum) }} / {{ formatNumber(splitModel.landTarget) }} 萬
+                      </v-chip>
+                      <v-chip v-if="splitModel.hasManualSplit" size="small" color="warning" variant="tonal">
+                        <v-icon start size="x-small">mdi-hand-back-right-outline</v-icon>房/土手動調整
+                        <v-btn size="x-small" variant="text" class="ml-1" @click="resetAllSplits">全部回復公式</v-btn>
                       </v-chip>
                     </div>
                     <div v-if="!amountOk || !percentOk" class="d-flex align-center ga-2 mt-2">
@@ -200,8 +267,16 @@
 
                     <!-- 房/土拆分檢核 -->
                     <v-alert v-if="!splitModel.landOk" type="warning" variant="tonal" density="compact" class="mt-3">
-                      各期土地款合計 {{ formatNumber(splitModel.landSum) }} 萬 ≠ 土地價款 {{ formatNumber(splitModel.landTarget) }} 萬。
-                      請至「合約製作範本 → 期款拆分規則」調整，或確認戶別房/土比例。
+                      各期土地款合計 {{ formatNumber(splitModel.landSum) }} 萬 ≠ 土地價款 {{ formatNumber(splitModel.landTarget) }} 萬
+                      （差 {{ formatNumber(splitModel.landDiff) }} 萬）。可直接在上表調整各期土地款、一鍵補正，或至「合約製作範本 → 期款拆分規則」調整公式並確認戶別房/土比例。
+                      <div class="d-flex flex-wrap align-center ga-2 mt-2">
+                        <v-select v-model="landCorrectionTargetKey" :items="landCorrectionOptions"
+                          item-title="label" item-value="key" density="compact" variant="outlined" hide-details
+                          label="土地差額歸入" style="max-width: 260px;" />
+                        <v-btn size="small" color="warning" variant="tonal" @click="applyLandCorrection">
+                          一鍵補正土地差額
+                        </v-btn>
+                      </div>
                     </v-alert>
                   </template>
                 </template>
@@ -719,7 +794,7 @@ import { runNewCalculationEngine } from '@/utils/paymentCalculation';
 import { buildUnitDocContext, resolveBankSets } from '@/utils/unitDocContext';
 import { PAGE_TYPE_MAP, isPackageOnlyPageType } from '@/utils/contractDocDefaults';
 import {
-  buildPriceModel, buildSplitModel, defaultSelectedClauseIds,
+  buildPriceModel, buildSplitModel, normalizeLandOverride, defaultSelectedClauseIds,
   buildBreakdownPageData, buildPaymentDetailPageData,
   buildBankAccountsPageData, buildContractNotesPageData,
   buildDecorationBreakdownPageData, buildDecorationPaymentDetailPageData,
@@ -1213,6 +1288,83 @@ const priceModel = computed(() => buildPriceModel(
 ));
 
 const splitModel = computed(() => buildSplitModel(editRows.value, config.value, priceModel.value.fullContext));
+
+/* ---------- 期款房/土個別手動調整 ----------
+ * 覆寫值存於葉列 row.landOverride（單期列或群組子項），隨 manualRows 一併儲存；
+ * null = 依建案「期款拆分規則」公式計算。房屋款輸入亦換算成土地款覆寫（單一真值來源）。 */
+const EMPTY_SPLIT = { houseAmount: 0, landAmount: 0, manualSplit: false };
+const splitByKey = computed(() => {
+  const map = {};
+  for (const r of splitModel.value.rows) if (r.key != null) map[r.key] = r;
+  return map;
+});
+function splitFor(leaf) {
+  return splitByKey.value[leaf.key] || EMPTY_SPLIT;
+}
+function groupSplit(row) {
+  return (row.children || []).reduce((acc, c) => {
+    const s = splitFor(c);
+    acc.house = Math.round((acc.house + (Number(s.houseAmount) || 0)) * 100) / 100;
+    acc.land = Math.round((acc.land + (Number(s.landAmount) || 0)) * 100) / 100;
+    return acc;
+  }, { house: 0, land: 0 });
+}
+function readInputNumber(evt) {
+  const raw = evt && evt.target ? evt.target.value : evt;
+  if (raw === '' || raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+function setLeafLandAmount(leaf, evt) {
+  leaf.landOverride = normalizeLandOverride(readInputNumber(evt));
+}
+function setLeafHouseAmount(leaf, evt) {
+  const house = readInputNumber(evt);
+  if (house === null) { leaf.landOverride = null; return; }
+  const amount = Math.round(Number(leaf.amount)) || 0;
+  leaf.landOverride = normalizeLandOverride(amount - house);
+}
+function resetLeafSplit(leaf) {
+  leaf.landOverride = null;
+}
+function resetAllSplits() {
+  editRows.value.forEach(r => {
+    if (r.type === 'group') (r.children || []).forEach(c => { c.landOverride = null; });
+    else r.landOverride = null;
+  });
+}
+
+// 土地差額一鍵補正：差額歸入指定葉列（預設銀行貸款期，其次最後一期）
+const landCorrectionTargetKey = ref(null);
+const leafOptions = computed(() => {
+  const list = [];
+  editRows.value.forEach(r => {
+    if (r.type === 'group') (r.children || []).forEach(c => list.push({ key: c.key, label: r.name + '－' + c.name, name: c.name }));
+    else list.push({ key: r.key, label: r.name, name: r.name });
+  });
+  return list;
+});
+const landCorrectionOptions = computed(() => leafOptions.value.map(o => ({ key: o.key, label: o.label })));
+watch(leafOptions, (opts) => {
+  if (opts.some(o => o.key === landCorrectionTargetKey.value)) return;
+  const loan = opts.find(o => String(o.name).includes('銀行貸款')) || opts.find(o => String(o.name).includes('貸款'));
+  landCorrectionTargetKey.value = (loan || opts[opts.length - 1])?.key ?? null;
+}, { immediate: true });
+function findLeafByKey(key) {
+  for (const r of editRows.value) {
+    if (r.type === 'group') {
+      const c = (r.children || []).find(x => x.key === key);
+      if (c) return c;
+    } else if (r.key === key) return r;
+  }
+  return null;
+}
+function applyLandCorrection() {
+  const leaf = findLeafByKey(landCorrectionTargetKey.value);
+  if (!leaf) return;
+  const current = Number(splitFor(leaf).landAmount) || 0;
+  leaf.landOverride = normalizeLandOverride(current + splitModel.value.landDiff);
+}
 
 /* ---------- 合約附圖 ---------- */
 // 附圖預設方向：合約分戶圖多為橫式掃描，預設順時針轉 90°（用戶可於預覽逐檔調整）
@@ -1922,7 +2074,12 @@ function formatNumber(value) {
 }
 .cursor-move { cursor: move; }
 .edit-rows-table :deep(td) { padding: 2px 6px !important; }
+.edit-rows-scroll { overflow-x: auto; }
+.edit-rows-table { min-width: 640px; }
 .amount-input { max-width: 110px; margin-left: auto; }
+.split-manual :deep(.v-field) { background: rgba(255, 193, 7, 0.14); }
+.split-manual :deep(.v-field__outline) { color: rgb(var(--v-theme-warning)); }
+.split-total-row td { border-top: 1px solid rgba(0, 0, 0, 0.18); background: rgba(0, 0, 0, 0.02); }
 .preview-wrapper {
   overflow-x: auto;
   display: flex;
