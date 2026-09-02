@@ -12,31 +12,96 @@
           新增訂閱
         </v-btn>
       </v-toolbar>
-      <v-card-title>
-        <v-text-field
-          v-model="search"
-          label="搜尋建案、系統或聯絡人..."
-          prepend-inner-icon="mdi-magnify"
-          variant="outlined"
-          dense
-          hide-details
-          clearable
-        ></v-text-field>
+      <v-card-title class="pb-0">
+        <v-row dense align="center">
+          <v-col cols="12" md="4">
+            <v-text-field
+              v-model="search"
+              label="搜尋建案、系統或聯絡人..."
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              density="compact"
+              hide-details
+              clearable
+            ></v-text-field>
+          </v-col>
+          <v-col cols="6" sm="4" md="2">
+            <v-select
+              v-model="statusFilter"
+              :items="statusFilterOptions"
+              label="狀態"
+              variant="outlined"
+              density="compact"
+              hide-details
+              multiple
+              clearable
+              chips
+              closable-chips
+            ></v-select>
+          </v-col>
+          <v-col cols="6" sm="4" md="2">
+            <v-select
+              v-model="systemFilter"
+              :items="masterData.systemFunctions"
+              label="系統功能"
+              variant="outlined"
+              density="compact"
+              hide-details
+              multiple
+              clearable
+              chips
+              closable-chips
+            ></v-select>
+          </v-col>
+          <v-col cols="6" sm="4" md="2">
+            <v-select
+              v-model="paymentFilter"
+              :items="paymentFilterOptions"
+              label="繳款狀態"
+              variant="outlined"
+              density="compact"
+              hide-details
+              multiple
+              clearable
+              chips
+              closable-chips
+            ></v-select>
+          </v-col>
+          <v-col cols="6" sm="12" md="2" class="d-flex align-center">
+            <span class="text-caption text-grey me-2">共 {{ filteredSubscriptions.length }} 筆</span>
+            <v-btn
+              v-if="hasActiveFilters"
+              size="small"
+              variant="text"
+              color="primary"
+              prepend-icon="mdi-filter-off-outline"
+              @click="clearFilters"
+            >清除篩選</v-btn>
+          </v-col>
+        </v-row>
       </v-card-title>
 
 <v-data-table
         :headers="headers"
-        :items="subscriptions"
+        :items="filteredSubscriptions"
         :search="search"
         :loading="loading"
-        class="elevation-1"
+        :items-per-page="25"
+        density="comfortable"
+        hover
+        fixed-header
+        class="elevation-1 subscription-table mt-3"
         items-per-page-text="每頁顯示："
         :page-text="`第 {0} - {1} 筆，共 {2} 筆`"
       >
         <template v-slot:item.status="{ item }">
           <v-chip :color="item.color" size="small" label>{{ item.status }}</v-chip>
         </template>
-        
+
+        <template v-slot:item.projectName="{ item }">
+          <span class="font-weight-medium">{{ item.projectName }}</span>
+        </template>
+
          <template v-slot:item.currentUserLimit="{ item }">
           <v-chip v-if="typeof item.currentUserLimit === 'number'" color="primary" size="small" label>
             <v-icon start>mdi-account-group</v-icon>
@@ -45,24 +110,75 @@
           <span v-else class="text-grey">{{ item.currentUserLimit }}</span>
         </template>
 
-        <template v-slot:item.durationDays="{ item }">
-          <v-chip v-if="typeof item.durationDays === 'number'" color="blue-grey" size="small" label>
-            {{ item.durationDays }} 天
-          </v-chip>
-          <span v-else class="text-grey">{{ item.durationDays }}</span>
+        <template v-slot:item.endDate="{ item }">
+          <div class="text-no-wrap">{{ item.startDate || '—' }} ～ {{ item.endDate || '—' }}</div>
+          <div v-if="typeof item.durationDays === 'number'" class="text-caption text-grey">
+            共 {{ item.durationDays }} 天
+          </div>
         </template>
-        
+
+        <template v-slot:item.contactName="{ item }">
+          <div v-if="item.contactName || item.contactPhone">
+            <div class="text-no-wrap">{{ item.contactName || '—' }}</div>
+            <div class="text-caption text-grey text-no-wrap">{{ item.contactPhone }}</div>
+          </div>
+          <span v-else class="text-grey">—</span>
+        </template>
+
+        <template v-slot:item.nextAgreedDate="{ item }">
+          <div v-if="item.nextAgreedDate">
+            <div class="text-no-wrap font-weight-medium">{{ item.nextAgreedDate }}</div>
+            <div class="text-caption text-no-wrap" :class="agreedDateHint(item).class">
+              {{ agreedDateHint(item).text }}
+            </div>
+          </div>
+          <span v-else class="text-grey">—</span>
+        </template>
+
         <template v-slot:item.paymentRecords="{ item }">
-          <v-chip
-            v-if="paymentSummary(item)"
-            :color="paymentSummary(item).color"
-            size="small"
-            label
-            style="cursor: pointer;"
-            @click="openEditDialog(item)"
-          >
-            {{ paymentSummary(item).text }}
-          </v-chip>
+          <template v-if="paymentSummary(item)">
+            <v-chip
+              :color="paymentSummary(item).color"
+              size="small"
+              label
+              style="cursor: pointer;"
+              @click="openEditDialog(item)"
+            >
+              {{ paymentSummary(item).text }}
+            </v-chip>
+            <div v-if="paymentSummary(item).sub" class="text-caption text-grey mt-1">
+              {{ paymentSummary(item).sub }}
+            </div>
+          </template>
+          <span v-else class="text-grey">—</span>
+        </template>
+
+        <template v-slot:item.earliestAppointmentDate="{ item }">
+          <div v-if="item.earliestAppointmentDate">
+            <div class="text-no-wrap font-weight-medium">{{ item.earliestAppointmentDate }}</div>
+            <div class="text-caption text-grey text-no-wrap">{{ earliestElapsedText(item) }}</div>
+            <div
+              v-if="earliestVsAgreedText(item)"
+              class="text-caption text-blue-grey text-no-wrap"
+            >{{ earliestVsAgreedText(item) }}</div>
+          </div>
+          <v-progress-circular
+            v-else-if="earliestLoading"
+            size="16"
+            width="2"
+            indeterminate
+            color="grey"
+          ></v-progress-circular>
+          <span v-else class="text-grey">—</span>
+        </template>
+
+        <template v-slot:item.remarks="{ item }">
+          <v-tooltip v-if="item.remarks" location="top" max-width="400">
+            <template v-slot:activator="{ props }">
+              <div v-bind="props" class="remarks-cell">{{ item.remarks }}</div>
+            </template>
+            <span style="white-space: pre-line;">{{ item.remarks }}</span>
+          </v-tooltip>
           <span v-else class="text-grey">—</span>
         </template>
 
@@ -409,11 +525,24 @@
                   variant="outlined"
                 >
                   <v-card-text class="d-flex align-center py-2">
-                    <v-avatar v-if="isImageAttachment(att)" size="48" rounded class="me-3" style="border: 1px solid #e0e0e0;">
+                    <v-avatar
+                      v-if="isImageAttachment(att)"
+                      size="48"
+                      rounded
+                      class="me-3 attachment-clickable"
+                      style="border: 1px solid #e0e0e0;"
+                      @click="openPreview(att)"
+                    >
                       <v-img :src="att.url" cover></v-img>
                     </v-avatar>
-                    <v-icon v-else color="red-darken-2" size="48" class="me-3">mdi-file-pdf-box</v-icon>
-                    <div class="flex-grow-1" style="min-width: 0;">
+                    <v-icon
+                      v-else
+                      color="red-darken-2"
+                      size="48"
+                      class="me-3 attachment-clickable"
+                      @click="openPreview(att)"
+                    >mdi-file-pdf-box</v-icon>
+                    <div class="flex-grow-1 attachment-clickable" style="min-width: 0;" @click="openPreview(att)">
                       <div class="text-body-2 text-truncate">{{ att.name }}</div>
                       <div class="text-caption text-grey">
                         {{ formatFileSize(att.size) }}
@@ -517,6 +646,7 @@ import { useUserStore } from '@/store/user';
 import { 
     fetchAllSubscriptions,
     fetchMasterDataForSubscriptionForm,
+    fetchEarliestValidAppointmentDates,
     addSubscription,
     updateSubscription,
     deleteSubscription,
@@ -538,20 +668,85 @@ const subscriptions = ref([]);
 const masterData = ref({ projectNames: [], systemFunctions: [] });
 const projects = ref([]);
 
+// --- 篩選狀態 ---
+const statusFilter = ref([]);
+const systemFilter = ref([]);
+const paymentFilter = ref([]);
+const statusFilterOptions = ['啟用中', '即將到期', '已到期', '尚未啟用'];
+const paymentFilterOptions = ['已逾期', '未繳款', '已繳清', '無紀錄'];
+
+const hasActiveFilters = computed(() =>
+  statusFilter.value.length > 0 || systemFilter.value.length > 0 || paymentFilter.value.length > 0
+);
+
+function clearFilters() {
+  statusFilter.value = [];
+  systemFilter.value = [];
+  paymentFilter.value = [];
+  search.value = '';
+}
+
+const filteredSubscriptions = computed(() => {
+  return subscriptions.value.filter(item => {
+    if (statusFilter.value.length > 0) {
+      const matched = statusFilter.value.some(f =>
+        f === '即將到期' ? (item.status || '').startsWith('即將到期') : item.status === f
+      );
+      if (!matched) return false;
+    }
+    if (systemFilter.value.length > 0 && !systemFilter.value.includes(item.systemFunction)) {
+      return false;
+    }
+    if (paymentFilter.value.length > 0 && !paymentFilter.value.includes(paymentCategory(item))) {
+      return false;
+    }
+    return true;
+  });
+});
+
+// --- 自訂排序 ---
+// 日期字串比較：空值排最後
+function compareDatesEmptyLast(a, b) {
+  if (a === b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return a < b ? -1 : 1;
+}
+
+function statusRank(item) {
+  const s = item.status || '';
+  if (s.startsWith('即將到期')) return 0;
+  if (s === '啟用中') return 1;
+  if (s === '尚未啟用') return 2;
+  if (s === '已到期') return 3;
+  return 4;
+}
+
+// 繳款狀態分類：已逾期 / 未繳款 / 已繳清 / 無紀錄 (供篩選與排序共用)
+function paymentCategory(item) {
+  const recs = item.paymentRecords || [];
+  if (recs.length === 0) return '無紀錄';
+  const unpaid = recs.filter(r => !r.paidDate && r.agreedDate);
+  if (unpaid.length === 0) return '已繳清';
+  return unpaid.some(r => daysUntil(r.agreedDate) < 0) ? '已逾期' : '未繳款';
+}
+
+const paymentCategoryRank = { '已逾期': 0, '未繳款': 1, '已繳清': 2, '無紀錄': 3 };
+
 const headers = [
-    { title: '狀態', key: 'status', sortable: false },
-    { title: '建案名稱', key: 'projectName' },
-    { title: '系統功能', key: 'systemFunction' },
-    { title: '使用者上限', key: 'currentUserLimit', align: 'center' },
-    { title: '啟用日期', key: 'startDate' },
-    { title: '停用日期', key: 'endDate' },
-    { title: '訂閱天數', key: 'durationDays' },
-    { title: '聯絡人', key: 'contactName' },
-    { title: '聯絡人手機', key: 'contactPhone' },
-    { title: '訂閱類型', key: 'subscriptionType' },
-    { title: '繳款紀錄', key: 'paymentRecords', sortable: false },
-    { title: '附件', key: 'attachments', sortable: false },
-    { title: '操作', key: 'actions', sortable: false },
+    { title: '狀態', key: 'status', width: 110, sortRaw: (a, b) => (statusRank(a) - statusRank(b)) || compareDatesEmptyLast(a.endDate, b.endDate) },
+    { title: '建案名稱', key: 'projectName', minWidth: 110 },
+    { title: '系統功能', key: 'systemFunction', minWidth: 100 },
+    { title: '使用者上限', key: 'currentUserLimit', align: 'center', width: 100 },
+    { title: '訂閱期間', key: 'endDate', minWidth: 190, sort: compareDatesEmptyLast },
+    { title: '訂閱類型', key: 'subscriptionType', width: 90 },
+    { title: '聯絡人', key: 'contactName', minWidth: 110 },
+    { title: '約定繳款日', key: 'nextAgreedDate', minWidth: 120, sort: compareDatesEmptyLast },
+    { title: '繳款紀錄', key: 'paymentRecords', minWidth: 130, sortRaw: (a, b) => (paymentCategoryRank[paymentCategory(a)] - paymentCategoryRank[paymentCategory(b)]) || compareDatesEmptyLast(a.nextAgreedDate, b.nextAgreedDate) },
+    { title: '最早有效預約', key: 'earliestAppointmentDate', minWidth: 140, sort: compareDatesEmptyLast },
+    { title: '備註', key: 'remarks', minWidth: 140 },
+    { title: '附件', key: 'attachments', sortable: false, width: 130 },
+    { title: '操作', key: 'actions', sortable: false, align: 'center', width: 100 },
 ];
 
 const dialog = ref(false);
@@ -643,19 +838,66 @@ function remindersSentText(rec) {
   return labels.length > 0 ? `已寄提醒: ${labels.join('、')}` : '';
 }
 
-// 列表摘要：最近一筆未繳款的約定日期與金額
+// 取得最早一筆「未繳款」的約定繳款日 (無未繳款則回傳空字串)
+function nextAgreedDateOf(recs) {
+  const unpaid = (recs || [])
+    .filter(r => !r.paidDate && r.agreedDate)
+    .sort((a, b) => a.agreedDate.localeCompare(b.agreedDate));
+  return unpaid.length > 0 ? unpaid[0].agreedDate : '';
+}
+
+// 列表摘要：最近一筆未繳款的狀態與金額 (約定日期已獨立成「約定繳款日」欄位)
 function paymentSummary(item) {
   const recs = item.paymentRecords || [];
   if (recs.length === 0) return null;
   const unpaid = recs
     .filter(r => !r.paidDate && r.agreedDate)
     .sort((a, b) => a.agreedDate.localeCompare(b.agreedDate));
-  if (unpaid.length === 0) return { text: '已繳清', color: 'green' };
+  if (unpaid.length === 0) return { text: `已繳清 (${recs.length} 筆)`, color: 'green', sub: '' };
   const rec = unpaid[0];
-  const [, m, d] = rec.agreedDate.split('-');
   const diff = daysUntil(rec.agreedDate);
-  const color = diff < 0 ? 'red' : (diff <= 30 ? 'orange' : 'blue-grey');
-  return { text: `${Number(m)}/${Number(d)} · $${(Number(rec.amount) || 0).toLocaleString()}`, color };
+  const amt = `$${(Number(rec.amount) || 0).toLocaleString()}`;
+  let text;
+  let color;
+  if (diff < 0) {
+    text = `逾期 ${-diff} 天 · ${amt}`;
+    color = 'red';
+  } else if (diff <= 30) {
+    text = `${diff} 天後 · ${amt}`;
+    color = 'orange';
+  } else {
+    text = `未繳 · ${amt}`;
+    color = 'blue-grey';
+  }
+  const sub = unpaid.length > 1 ? `共 ${unpaid.length} 筆未繳` : '';
+  return { text, color, sub };
+}
+
+// 「約定繳款日」欄位下方的提示文字與顏色
+function agreedDateHint(item) {
+  const diff = daysUntil(item.nextAgreedDate);
+  if (diff < 0) return { text: `已逾期 ${-diff} 天`, class: 'text-red' };
+  if (diff === 0) return { text: '今天到期', class: 'text-red' };
+  if (diff <= 30) return { text: `${diff} 天後到期`, class: 'text-orange' };
+  return { text: `${diff} 天後到期`, class: 'text-grey' };
+}
+
+// 「最早有效預約」距今天數文字
+function earliestElapsedText(item) {
+  const diff = daysUntil(item.earliestAppointmentDate);
+  if (diff > 0) return `${diff} 天後`;
+  if (diff === 0) return '就是今天';
+  return `已過 ${-diff} 天`;
+}
+
+// 「最早有效預約」與約定繳款日的差異天數文字
+function earliestVsAgreedText(item) {
+  if (!item.nextAgreedDate || !item.earliestAppointmentDate) return '';
+  const diff = Math.round(
+    (new Date(item.nextAgreedDate).getTime() - new Date(item.earliestAppointmentDate).getTime()) / 86400000
+  );
+  if (diff === 0) return '與繳款日同日';
+  return diff > 0 ? `繳款日晚 ${diff} 天` : `繳款日早 ${-diff} 天`;
 }
 
 // --- 附件資料相關狀態 ---
@@ -794,6 +1036,11 @@ async function loadData() {
           } else {
             newSub.currentUserLimit = 0;
           }
+
+          // --- 預先計算排序/篩選用欄位 ---
+          newSub.nextAgreedDate = nextAgreedDateOf(sub.paymentRecords);
+          // 先套用已查得的最早預約日 (重新載入時不閃爍)，未查過則為空字串
+          newSub.earliestAppointmentDate = earliestAppointmentMap.value[sub.projectId] || '';
           return newSub;
         });
 
@@ -803,12 +1050,37 @@ async function loadData() {
             systemFunctions: mData.systemFunctions
         };
 
+        // 背景補查各建案最早有效預約日 (不阻塞表格顯示)
+        loadEarliestAppointments();
+
     } catch (error) {
         console.error("載入資料失敗:", error);
         alert('載入資料失敗: ' + error.message);
     } finally {
         loading.value = false;
     }
+}
+
+// --- 最早有效驗屋預約 ---
+const earliestLoading = ref(false);
+const earliestAppointmentMap = ref({});
+
+async function loadEarliestAppointments() {
+  earliestLoading.value = true;
+  try {
+    const map = await fetchEarliestValidAppointmentDates(
+      subscriptions.value.map(s => s.projectId)
+    );
+    earliestAppointmentMap.value = map;
+    subscriptions.value = subscriptions.value.map(s => ({
+      ...s,
+      earliestAppointmentDate: map[s.projectId] || '',
+    }));
+  } catch (e) {
+    console.warn('載入最早有效預約日失敗:', e);
+  } finally {
+    earliestLoading.value = false;
+  }
 }
 
 onMounted(loadData);
@@ -987,6 +1259,9 @@ async function save() {
         // --- 步驟 2: 處理訂閱資料儲存 (既有邏輯) ---
         // ... (以下邏輯保持不變)
         const basePayload = { ...editedItem.value };
+        // 剔除表格顯示用的衍生欄位，避免寫入 Firestore
+        delete basePayload.nextAgreedDate;
+        delete basePayload.earliestAppointmentDate;
         basePayload.attachments = editedItem.value.attachments || [];
 
         // 正規化繳款紀錄：剔除無約定日期者、金額轉數字、保留 remindersSent、依約定日期排序
@@ -1101,3 +1376,36 @@ async function confirmDelete() {
     }
 }
 </script>
+
+<style scoped>
+/* 表頭固定不換行、加深底色 */
+.subscription-table :deep(thead th) {
+  white-space: nowrap;
+  background-color: #f5f7fa !important;
+  font-weight: 600 !important;
+}
+
+/* 儲存格垂直置中，日期/多行資訊欄位靠上下留白 */
+.subscription-table :deep(tbody td) {
+  vertical-align: middle;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+
+/* 編輯訂閱：附件縮圖/檔名可點擊開啟燈箱預覽 */
+.attachment-clickable {
+  cursor: pointer;
+}
+.attachment-clickable:hover {
+  opacity: 0.8;
+}
+
+/* 備註欄：單行截斷，滑鼠移入顯示完整內容 (tooltip) */
+.remarks-cell {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+</style>

@@ -2087,6 +2087,39 @@ export async function fetchAllSubscriptions(adminKey) {
 }
 
 /**
+ * [訂閱管理] 取得各建案「最早的有效驗屋預約日期」(status 為 預約中/已完成，排除取消)。
+ * 不使用 orderBy (避免複合索引)，改為抓取後在前端取最小值。
+ * @param {string[]} projectIds - 建案 ID 陣列 (自動去重、過濾空值)
+ * @returns {Promise<Object<string, string>>} - { projectId: 'YYYY-MM-DD' }，無有效預約的建案不會出現在結果中
+ */
+export async function fetchEarliestValidAppointmentDates(projectIds) {
+  const ids = [...new Set((projectIds || []).filter(Boolean))];
+  const result = {};
+  await Promise.all(ids.map(async (pid) => {
+    try {
+      const q = query(
+        collection(db, 'appointments'),
+        where('projectId', '==', pid),
+        where('status', 'in', ['預約中', '已完成'])
+      );
+      const snapshot = await getDocs(q);
+      let earliest = '';
+      snapshot.forEach((docSnap) => {
+        const d = docSnap.data().appointmentDate;
+        if (d && typeof d.toDate === 'function') {
+          const dateStr = d.toDate().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+          if (!earliest || dateStr < earliest) earliest = dateStr;
+        }
+      });
+      if (earliest) result[pid] = earliest;
+    } catch (e) {
+      console.warn(`[api.js] fetchEarliestValidAppointmentDates: 查詢建案 ${pid} 失敗:`, e);
+    }
+  }));
+  return result;
+}
+
+/**
  * [Firestore 版] 獲取用於訂閱表單的下拉選單資料 (建案、系統列表)
  * @param {string} adminKey - 超級管理員的手機號碼
  */
