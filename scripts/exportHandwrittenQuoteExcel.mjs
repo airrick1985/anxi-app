@@ -134,7 +134,7 @@ wsT.columns = [
   { header: '買方', width: 8 }, { header: '總價下限(萬)', width: 12 }, { header: '總價上限(萬)', width: 12 }, { header: '序', width: 5 },
   { header: '期款項目', width: 24 }, { header: '層級', width: 7 }, { header: '比例/說明', width: 14 }, { header: '公式(系統)', width: 60 },
   { header: '進位方式', width: 10 }, { header: '範本備註', width: 30 },
-  { header: '', width: 3 }, { header: '範本清單', width: 34 }, { header: '類別', width: 10 }, { header: '物件類型', width: 9 },
+  { header: '金額(自動計算)', width: 14 }, { header: '範本清單', width: 34 }, { header: '類別', width: 10 }, { header: '物件類型', width: 9 },
   { header: '買方', width: 8 }, { header: '下限', width: 8 }, { header: '上限', width: 8 }, { header: '符合總價期款(自動)', width: 16 }, { header: '符合配套期款(自動)', width: 16 },
 ];
 const hintOf = (it) => {
@@ -154,11 +154,13 @@ templates.sort((a, b) => catOrder(a) - catOrder(b) || natural(a.templateName, b.
 const generalNames = templates.filter((t) => catOrder(t) < 2).map((t) => t.templateName);
 const packageNames = templates.filter((t) => catOrder(t) === 2).map((t) => t.templateName);
 let maxItems = 0;
+const tplRows = []; // { row, t, it }：期款範本每一列，供回填「金額(自動計算)」公式
 templates.forEach((t) => {
   const items = t.items || [];
   maxItems = Math.max(maxItems, items.length);
   items.forEach((it, idx) => {
     const isChild = !!it.parentId;
+    tplRows.push({ row: wsT.rowCount + 1, t, it });
     wsT.addRow([
       `${t.templateName}|${idx + 1}`, t.templateName, t.paymentCategory ?? '', t.propertyType ?? '', t.buyerType ?? '',
       num(t.minPrice), num(t.maxPrice), idx + 1, (isChild ? '　└ ' : '') + it.name, isChild ? '子項' : '主項',
@@ -187,8 +189,8 @@ wsT.getRow(1).eachCell((c) => { c.font = f({ bold: true, color: { argb: 'FFFFFFF
 wsT.eachRow((row, i) => {
   if (i === 1) return;
   row.eachCell({ includeEmpty: true }, (c, col) => {
-    if (col === 15) return;
     c.font = f({ color: { argb: col === 1 ? 'FF9E9E9E' : 'FF000000' } }); c.border = box;
+    if (col === 15) { c.numFmt = '#,##0'; c.fill = fill('FFFDE7'); }
     c.alignment = [1, 2, 9, 12, 14, 16].includes(col) ? left : center;
     if (row.getCell(10).value === '子項' && col === 9) c.font = f({ color: { argb: 'FF' + GREY } });
   });
@@ -234,9 +236,21 @@ merge('A1:E1'); merge('F1:H1');
 cell('A1', PROJECT_NAME, { font: { bold: true, size: 20, color: { argb: 'FFFFFFFF' } }, fill: NAVY, align: left });
 cell('F1', '房屋報價單', { font: { bold: true, size: 18, color: { argb: 'FFFFFFFF' } }, fill: NAVY, align: right });
 setRow(34); r++;
-merge('A2:D2'); merge('E2:H2');
-cell('A2', '報價日期：　　　年　　　月　　　日', { font: { size: 10 }, align: left });
-cell('E2', '有效期限至：　　　年　　　月　　　日', { font: { size: 10 }, align: left });
+// 報價日期：真正的日期格，預設 =TODAY()（開檔即今天），可直接輸入 2026/9/4 或 9/4 覆蓋；有效期限預設空白
+merge('B2:D2'); merge('F2:H2');
+label('A2', '報價日期');
+label('E2', '有效期限至');
+const DATE_FMT = 'yyyy"年"m"月"d"日"';
+const dateValidation = (title) => ({
+  type: 'date', operator: 'between', allowBlank: true, showInputMessage: true, showErrorMessage: true,
+  formulae: ['DATE(2020,1,1)', 'DATE(2099,12,31)'],
+  promptTitle: title, prompt: '直接輸入日期，例如 2026/9/4 或 9/4（同年）；清空則列印後手寫',
+  errorTitle: title, error: '請輸入有效日期，例如 2026/9/4',
+});
+const quoteDate = cell('B2', { formula: 'TODAY()', result: new Date() }, { font: { size: 11, bold: true }, fill: YELLOW, numFmt: DATE_FMT });
+quoteDate.dataValidation = dateValidation('報價日期');
+const validDate = cell('F2', null, { font: { size: 11, bold: true }, fill: YELLOW, numFmt: DATE_FMT });
+validDate.dataValidation = dateValidation('有效期限');
 setRow(22); r++;
 spacer();
 
@@ -351,6 +365,7 @@ merge(`F${r}:H${r}`);
 cell(`F${r}`, { formula: `IF($H$7<>"是","",IF($K$7<>"",$K$7,IFERROR(INDEX('期款範本'!$P$2:$P$${TPL_LAST},MATCH(1,'期款範本'!$W$2:$W$${TPL_LAST},0)),"（無符合範本，請於 K7 手動指定）")))`, result: '' }, { font: { size: 9, bold: true }, fill: LIGHT, align: left });
 const genSelRef = `$B$${r}`, pkgSelRef = `$F$${r}`;
 const pkgHeadRow = r;
+const payFirstRow = r + 2;
 r++;
 setRow(18);
 merge(`A${r}:B${r}`); label(`A${r}`, '期款項目'); label(`C${r}`, '比例／說明'); label(`D${r}`, '金額(萬)');
@@ -362,10 +377,14 @@ for (let i = 1; i <= PAY_ROWS; i++) {
   setRow(21);
   merge(`A${r}:B${r}`); cell(`A${r}`, tLookup(genSelRef, i, 'I'), { font: { size: 9.5 }, align: left });
   cell(`C${r}`, tLookup(genSelRef, i, 'K'), { font: { size: 8.5, color: { argb: 'FF' + GREY } } });
-  cell(`D${r}`, null, { font: { size: 11 } });
+  const amt = (selRef, nameCell) => {
+    const v = `INDEX('期款範本'!$O$2:$O$${T_LAST},MATCH(${selRef}&"|"&${i},${T_KEY},0))`;
+    return { formula: `IF(${selRef}="","",IFERROR(IF(${v}="","",IF(LEFT(${nameCell},2)="　└","("&TEXT(${v},"#,##0")&")",${v})),""))`, result: '' };
+  };
+  cell(`D${r}`, amt(genSelRef, `$A${r}`), { font: { size: 11, bold: true }, numFmt: '#,##0' });
   merge(`E${r}:F${r}`); cell(`E${r}`, tLookup(pkgSelRef, i, 'I'), { font: { size: 9.5 }, align: left });
   cell(`G${r}`, tLookup(pkgSelRef, i, 'K'), { font: { size: 8.5, color: { argb: 'FF' + GREY } } });
-  cell(`H${r}`, null, { font: { size: 11 } });
+  cell(`H${r}`, amt(pkgSelRef, `$E${r}`), { font: { size: 11, bold: true }, numFmt: '#,##0' });
   r++;
 }
 setRow(22);
@@ -373,13 +392,17 @@ merge(`A${r}:C${r}`); cell(`A${r}`, '總價', { font: { bold: true, size: 11, co
 cell(`D${r}`, { formula: `IF(ISNUMBER(${totalCell}),${totalCell},"")`, result: '' }, { font: { bold: true, size: 12, color: { argb: 'FF' + NAVY } }, fill: LIGHT, numFmt: '#,##0' });
 merge(`E${r}:G${r}`); cell(`E${r}`, { formula: 'IF($H$7="是","配套金額","")', result: '' }, { font: { bold: true, size: 11, color: { argb: 'FF' + GREEN } }, fill: LIGHT, align: right });
 cell(`H${r}`, { formula: `IF(AND($H$7="是",ISNUMBER($B$7),ISNUMBER($F$7)),$B$7+IF(ISNUMBER(${parkingListSumCell}),${parkingListSumCell},0)-$F$7,"")`, result: '' }, { font: { bold: true, size: 12, color: { argb: 'FF' + GREEN } }, fill: LIGHT, numFmt: '#,##0' });
+const pkgAmountCell = `H${r}`;
+// 子項金額（括號文字）灰字
+ws.addConditionalFormatting({ ref: `D${payFirstRow}:D${r - 1}`, rules: [{ type: 'expression', formulae: [`LEFT($A${payFirstRow},2)="　└"`], style: { font: { color: { argb: 'FF' + GREY }, bold: false } } }] });
+ws.addConditionalFormatting({ ref: `H${payFirstRow}:H${r - 1}`, rules: [{ type: 'expression', formulae: [`LEFT($E${payFirstRow},2)="　└"`], style: { font: { color: { argb: 'FF' + GREY }, bold: false } } }] });
 // 配套＝否：右半邊整塊淡化（標題列改灰）
 ws.addConditionalFormatting({ ref: `E${pkgHeadRow + 1}:H${r}`, rules: [{ type: 'expression', formulae: ['$H$7<>"是"'], style: { font: { color: { argb: 'FFBDBDBD' } }, fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFAFAFA' } } } }] });
 ws.addConditionalFormatting({ ref: `E${pkgHeadRow}:H${pkgHeadRow}`, rules: [{ type: 'expression', formulae: ['$H$7<>"是"'], style: { font: { color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFB0BEC5' } } } }] });
 r++;
 setRow(12);
 merge(`A${r}:H${r}`);
-cell(`A${r}`, '「└」為所屬期款之內含明細，已包含於上方主項金額中，請勿重複累加；「比例／說明」為系統範本設定值，實際金額請依總價計算後手寫。', { font: { size: 7.5, color: { argb: 'FF' + GREY } }, align: left, border: false });
+cell(`A${r}`, '金額依系統期款範本公式自動計算（需先填房屋總價）；「└」括號內為主項之內含明細，已含於主項金額，請勿重複累加。', { font: { size: 7.5, color: { argb: 'FF' + GREY } }, align: left, border: false });
 r++;
 spacer();
 
@@ -409,6 +432,45 @@ setRow(22);
 merge(`A${r}:H${r}`);
 cell(`A${r}`, '銷售顧問：＿＿＿＿＿＿＿＿＿　　聯絡電話：＿＿＿＿＿＿＿＿＿＿＿＿　　　　　　　（手寫報價單備援版）', { font: { size: 10 }, align: left, border: { top: { style: 'medium', color: { argb: 'FF' + NAVY } } } });
 const lastRow = r;
+
+// --- 期款範本 O 欄：把系統公式翻成 Excel 公式（對齊 utils/paymentCalculation.js 的引擎語意） ---
+// 變數：總價 → 報價單總價、配套金額 → 報價單配套金額；其他項目名稱 → 同範本該列 O 欄；找不到的名稱視為 0；
+// 進位：precision = roundingValue || 1；四捨五入 ROUND、無條件進位 ROUNDUP、無條件捨去 ROUNDDOWN（皆以 精度 為單位）
+const BASE_REF = { '總價': `'報價單'!$${totalCell.replace(/(\D+)(\d+)/, '$1$$$2')}`, '配套金額': `'報價單'!$${pkgAmountCell.replace(/(\D+)(\d+)/, '$1$$$2')}` };
+const toExcelFormula = (formula, nameToRow) => {
+  const src = String(formula ?? '').trim();
+  if (src === '') return '0';
+  if (/^\d+(\.\d+)?$/.test(src)) return src;
+  const ops = new Set(['+', '-', '*', '/', '(', ')']);
+  const tokens = [];
+  let cur = '';
+  for (const ch of src) {
+    if (ops.has(ch)) { if (cur.trim()) tokens.push(cur.trim()); cur = ''; tokens.push(ch); }
+    else cur += ch;
+  }
+  if (cur.trim()) tokens.push(cur.trim());
+  return tokens.map((tk) => {
+    if (ops.has(tk)) return tk;
+    if (/^\d+(\.\d+)?%?$/.test(tk)) return tk;
+    if (BASE_REF[tk]) return `N(${BASE_REF[tk]})`;
+    if (nameToRow[tk]) return `N($O$${nameToRow[tk]})`;
+    return '0';
+  }).join('');
+};
+const roundWrap = (expr, method, roundingValue) => {
+  const p = Number(roundingValue) || 1;
+  const fn = method === '無條件進位' ? 'ROUNDUP' : method === '無條件捨去' ? 'ROUNDDOWN' : 'ROUND';
+  return p === 1 ? `${fn}(${expr},0)` : `${fn}((${expr})/${p},0)*${p}`;
+};
+templates.forEach((t) => {
+  const rows = tplRows.filter((x) => x.t === t);
+  const nameToRow = Object.fromEntries(rows.map((x) => [x.it.name, x.row]));
+  const baseRef = BASE_REF[t.paymentCategory === '配套期款' ? '配套金額' : '總價'];
+  rows.forEach(({ row, it }) => {
+    const expr = roundWrap(toExcelFormula(it.formula, nameToRow), it.roundingMethod, it.roundingValue);
+    wsT.getCell(row, 15).value = { formula: `IF(N(${baseRef})>0,${expr},"")`, result: '' };
+  });
+});
 
 // --- 螢幕用輔助欄（J/K 欄，不在列印範圍） ---
 const helper = (row, lbl, value, opt = {}) => {
@@ -448,10 +510,12 @@ const lines = [
   ['操作步驟', 'h'],
   ['1. 開啟「報價單」工作表，於黃底「戶別」格點選下拉清單選擇戶別 → 物件類型、格局、樓層、面積、詳細面積、表價、配套價自動帶入。', ''],
   ['2. 車位：於黃底「車位編號」格點選下拉清單（最多 3 個），樓層、面積、表價自動帶入；成交價可手寫或直接輸入。', ''],
+  ['　 報價日期預設為開檔當天（=TODAY()），要改日期直接在黃底格輸入，例如 2026/9/4 或 9/4；有效期限同樣輸入日期，留空則列印後手寫。', ''],
   ['3. 首購：黃底格選「是／否」→ 總價期款範本依「物件類型＋首購／非首購＋總價區間」自動切換（銀行貸款成數隨範本改變）。', ''],
   ['4. 配套：黃底格選「是／否」→ 選「是」才顯示配套價、配套期款與配套金額，且總價改以配套價計；選「否」右半邊淡化不採用。', ''],
   ['5. 期款範本自動判斷用的總價：已填房屋總價時用房屋總價＋車位，未填時以表價估算。要改用優付或其他版本，於報價單右側輔助欄 K6／K7 手動指定，清空即恢復自動。', ''],
-  ['6. 若在電腦上直接輸入「房屋總價(萬)」，房屋單價、總價、配套金額會自動計算；留白則列印後手寫。', ''],
+  ['6. 在電腦上輸入「房屋總價(萬)」後，房屋單價、總價、配套金額與各期期款金額都會依系統範本公式自動計算（含四捨五入／進位規則，與系統報價一致）；留白則列印後手寫。', ''],
+  ['　 期款金額算法在「期款範本」工作表 O 欄，可核對；子項（└）在報價單上以括號呈現，已含於主項金額。', ''],
   ['7. 列印：Ctrl+P，已預設 A4 直式、單頁縮放、置中（右側 J／K 輔助欄不會印出）。建議先看「列印預覽」再印。', ''],
   ['', ''],
   ['注意事項', 'h'],

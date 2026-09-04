@@ -296,6 +296,8 @@
                   @parking-updated="handleParkingUpdate" :contractTypeOptions="props.contractTypes"
                   :firstPurchaseOptions="firstPurchaseOptions" :planOptions="props.planOptions"
                   :tag-suggestions="tagSuggestions"
+                  :remark-notes="viewRemarkNotes" :remark-legacy-remarks="viewLegacyRemarks"
+                  :remark-persist-handler="persistRemarkNotes" :remark-storage-prefix="remarkNotesStoragePrefix"
                   :visible-sections="salesFormVisibleSections" />
               </div>
 
@@ -723,16 +725,75 @@
                     </v-col>
                     <v-col cols="12" md="4">
                       <div class="info-section">
-                        <div class="section-title">{{ unitData.unitId }} 銷售資訊</div>
-                        <v-list dense>
-                          <v-list-item title="銷控狀態" :subtitle="unitData.salesStatus_backend || '-'"></v-list-item>
+                        <div class="section-title section-title--flex">
+                          <span>{{ unitData.unitId }} 銷售資訊</span>
+                          <span v-if="unitData.propertyType" class="section-title-tag">{{ unitData.propertyType }}</span>
+                        </div>
 
-                          <v-list-item title="物件類型" :subtitle="unitData.propertyType || '-'"></v-list-item>
+                        <!-- 銷控狀態：沿用建案設定的狀態色，與銷控表格一致 -->
+                        <div class="sales-status-hero" :style="salesStatusHeroStyle">
+                          <div class="sales-status-hero-label">
+                            <v-icon size="16">mdi-flag-outline</v-icon>銷控狀態
+                          </div>
+                          <div class="sales-status-hero-value">{{ unitData.salesStatus_backend || '尚未設定' }}</div>
+                        </div>
 
-                          <!-- ✅ [新增] 文字標籤 -->
-                          <v-list-item title="文字標籤">
-                            <v-list-item-subtitle>
-                              <div v-if="viewUnitTags.length > 0" class="d-flex flex-wrap ga-1 mt-1">
+                        <!-- 銷售進度：小訂 → 補足 → 簽約 -->
+                        <div class="sales-timeline">
+                          <div v-for="(step, i) in salesTimelineSteps" :key="step.key" class="sales-timeline-step"
+                            :class="{ done: step.done, current: step.current }">
+                            <div class="sales-timeline-node">
+                              <span class="sales-timeline-dot">
+                                <v-icon v-if="step.done" size="12" color="#fff">mdi-check</v-icon>
+                                <span v-else>{{ i + 1 }}</span>
+                              </span>
+                              <span v-if="i < salesTimelineSteps.length - 1" class="sales-timeline-line"></span>
+                            </div>
+                            <div class="sales-timeline-name">{{ step.label }}</div>
+                            <div class="sales-timeline-date">{{ step.date }}</div>
+                          </div>
+                        </div>
+
+                        <div class="info-dl">
+                          <div class="info-dl-row">
+                            <div class="info-dl-label"><v-icon size="16">mdi-account-tie-outline</v-icon>銷售人員</div>
+                            <div class="info-dl-value">
+                              <template v-if="viewSalespersons.length">
+                                <span v-for="p in viewSalespersons" :key="p" class="info-person-chip">
+                                  <v-icon size="14">mdi-account</v-icon>{{ p }}
+                                </span>
+                              </template>
+                              <span v-else class="info-dl-empty">—</span>
+                            </div>
+                          </div>
+                          <div class="info-dl-row">
+                            <div class="info-dl-label"><v-icon size="16">mdi-file-sign</v-icon>合約方式</div>
+                            <div class="info-dl-value" :class="{ 'info-dl-empty': !unitData.contractType }">
+                              {{ unitData.contractType || '—' }}
+                            </div>
+                          </div>
+                          <div class="info-dl-row">
+                            <div class="info-dl-label"><v-icon size="16">mdi-home-plus-outline</v-icon>是否首購</div>
+                            <div class="info-dl-value">
+                              <span v-if="unitData.isFirstTimeBuyer === true" class="info-bool yes">
+                                <v-icon size="14">mdi-check-circle</v-icon>是
+                              </span>
+                              <span v-else-if="unitData.isFirstTimeBuyer === false" class="info-bool no">
+                                <v-icon size="14">mdi-minus-circle-outline</v-icon>否
+                              </span>
+                              <span v-else class="info-dl-empty">—</span>
+                            </div>
+                          </div>
+                          <div class="info-dl-row">
+                            <div class="info-dl-label"><v-icon size="16">mdi-barcode</v-icon>申報書序號</div>
+                            <div class="info-dl-value mono" :class="{ 'info-dl-empty': !unitData.reportNo }">
+                              {{ unitData.reportNo || '—' }}
+                            </div>
+                          </div>
+                          <div class="info-dl-row">
+                            <div class="info-dl-label"><v-icon size="16">mdi-tag-multiple-outline</v-icon>文字標籤</div>
+                            <div class="info-dl-value">
+                              <div v-if="viewUnitTags.length > 0" class="d-flex flex-wrap ga-1">
                                 <v-chip
                                   v-for="(tag, i) in viewUnitTags"
                                   :key="i"
@@ -742,19 +803,11 @@
                                   :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
                                 >{{ tag.text }}</v-chip>
                               </div>
-                              <span v-else>-</span>
-                            </v-list-item-subtitle>
-                          </v-list-item>
+                              <span v-else class="info-dl-empty">—</span>
+                            </div>
+                          </div>
+                        </div>
 
-                          <v-list-item title="銷售人員" :subtitle="formatSalespersons(unitData.salesperson)"></v-list-item>
-                          <v-list-item title="合約方式" :subtitle="unitData.contractType || '-'"></v-list-item>
-                          <v-list-item title="是否首購" :subtitle="formatBoolean(unitData.isFirstTimeBuyer)"></v-list-item>
-                          <v-list-item title="小訂日期" :subtitle="formatDate(unitData.payment_deposit_date)"></v-list-item>
-                          <v-list-item title="補足日期" :subtitle="formatDate(unitData.payment_complete_date)"></v-list-item>
-                          <v-list-item title="簽約日期"
-                            :subtitle="formatDate(unitData.payment_contract_date)"></v-list-item>
-                          <v-list-item title="申報書序號" :subtitle="unitData.reportNo || '-'"></v-list-item>
-                        </v-list>
                         <!-- ✅ 備註（留言式）：檢視模式即可 CRUD，不必進「修改銷控」 -->
                         <v-divider class="my-2"></v-divider>
                         <RemarkNotesPanel
@@ -767,32 +820,112 @@
                     </v-col>
                     <v-col cols="12" md="4">
                       <div class="info-section">
-                        <div class="section-title">{{ unitData.unitId }} 買方資訊</div>
-                        <v-list dense>
-                          <v-list-item title="姓名" :subtitle="unitData.buyerName || '-'"></v-list-item>
-                          <v-list-item title="電話" :subtitle="unitData.buyerPhone || '-'"></v-list-item>
-                          <v-list-item title="Email" :subtitle="unitData.buyerEmail || '-'"></v-list-item>
-                          <v-list-item title="身分證號" :subtitle="unitData.buyerIdNumber || '-'"></v-list-item>
-                          <v-list-item title="通訊地址" :subtitle="formatAddress(unitData, 'Mailing')"></v-list-item>
-                          <v-list-item title="戶籍地址" :subtitle="formatAddress(unitData, 'Permanent')"></v-list-item>
-                          <v-list-item title="出生年月日 (西元)"
-                            :subtitle="formatDate(unitData.buyerDateOfBirth)"></v-list-item>
+                        <div class="section-title section-title--flex">
+                          <span>{{ unitData.unitId }} 買方資訊</span>
+                          <span v-if="viewCoBuyers.length" class="section-title-tag indigo">
+                            <v-icon size="13">mdi-account-multiple-outline</v-icon>共同買方 {{ viewCoBuyers.length }}
+                          </span>
+                        </div>
 
-                          <v-list-item title="出生年月日 (民國)"
-                            :subtitle="formatROCDate(unitData.buyerDateOfBirth)"></v-list-item> </v-list>
+                        <!-- 尚無買方：空狀態，避免整欄都是「-」 -->
+                        <div v-if="!hasBuyerInfo" class="buyer-empty">
+                          <v-icon size="32" color="#b0bec5">mdi-account-off-outline</v-icon>
+                          <div class="buyer-empty-title">尚未填寫買方資料</div>
+                          <div class="buyer-empty-hint">進入「修改銷控」→ 買方資訊即可建立</div>
+                        </div>
 
-                        <!-- ✅ [新增] 共同買方（coBuyers）唯讀摘要 -->
-                        <template v-if="Array.isArray(unitData.coBuyers) && unitData.coBuyers.length > 0">
-                          <v-divider class="my-2"></v-divider>
-                          <div class="text-subtitle-2 font-weight-bold mb-1">
-                            <v-icon size="small" class="mr-1">mdi-account-multiple-outline</v-icon>
-                            共同買方 ({{ unitData.coBuyers.length }})
+                        <template v-else>
+                          <!-- 主買方：姓名＋可直接撥打 / 寄信 -->
+                          <div class="buyer-hero">
+                            <div class="buyer-avatar">{{ buyerInitial }}</div>
+                            <div class="buyer-hero-main">
+                              <div class="buyer-name" :class="{ 'info-dl-empty': !unitData.buyerName }">
+                                {{ unitData.buyerName || '未填姓名' }}
+                              </div>
+                              <div class="buyer-contact">
+                                <a v-if="unitData.buyerPhone" :href="`tel:${unitData.buyerPhone}`" class="buyer-contact-link">
+                                  <v-icon size="15">mdi-phone-outline</v-icon>{{ unitData.buyerPhone }}
+                                </a>
+                                <span v-else class="buyer-contact-link muted">
+                                  <v-icon size="15">mdi-phone-outline</v-icon>未填電話
+                                </span>
+                                <a v-if="unitData.buyerEmail" :href="`mailto:${unitData.buyerEmail}`" class="buyer-contact-link">
+                                  <v-icon size="15">mdi-email-outline</v-icon>{{ unitData.buyerEmail }}
+                                </a>
+                              </div>
+                            </div>
                           </div>
-                          <v-list dense>
-                            <v-list-item v-for="(cb, i) in unitData.coBuyers" :key="i" :title="cb.name || '未填姓名'">
-                              <v-list-item-subtitle style="white-space: pre-wrap;">{{ formatCoBuyerSummary(cb) }}</v-list-item-subtitle>
-                            </v-list-item>
-                          </v-list>
+
+                          <div class="info-dl">
+                            <div class="info-dl-row">
+                              <div class="info-dl-label"><v-icon size="16">mdi-card-account-details-outline</v-icon>身分證號</div>
+                              <div class="info-dl-value mono" :class="{ 'info-dl-empty': !unitData.buyerIdNumber }">
+                                {{ unitData.buyerIdNumber || '—' }}
+                              </div>
+                            </div>
+                            <div class="info-dl-row">
+                              <div class="info-dl-label"><v-icon size="16">mdi-cake-variant-outline</v-icon>出生年月日</div>
+                              <div class="info-dl-value">
+                                <template v-if="unitData.buyerDateOfBirth">
+                                  <span class="mono">{{ formatDate(unitData.buyerDateOfBirth) }}</span>
+                                  <span class="info-dl-sub">{{ formatROCDate(unitData.buyerDateOfBirth) }}</span>
+                                </template>
+                                <span v-else class="info-dl-empty">—</span>
+                              </div>
+                            </div>
+                            <div class="info-dl-row">
+                              <div class="info-dl-label"><v-icon size="16">mdi-mailbox-outline</v-icon>通訊地址</div>
+                              <div class="info-dl-value addr" :class="{ 'info-dl-empty': buyerMailingAddress === '-' }">
+                                {{ buyerMailingAddress === '-' ? '—' : buyerMailingAddress }}
+                              </div>
+                            </div>
+                            <div class="info-dl-row">
+                              <div class="info-dl-label"><v-icon size="16">mdi-home-city-outline</v-icon>戶籍地址</div>
+                              <div class="info-dl-value addr" :class="{ 'info-dl-empty': buyerPermanentAddress === '-' }">
+                                <template v-if="buyerPermanentAddress === '-'">—</template>
+                                <template v-else>
+                                  {{ buyerPermanentAddress }}
+                                  <span v-if="isPermanentSameAsMailing" class="info-dl-sub">同通訊地址</span>
+                                </template>
+                              </div>
+                            </div>
+                          </div>
+                        </template>
+
+                        <!-- ✅ 共同買方（coBuyers）唯讀摘要：改為卡片、逐欄呈現 -->
+                        <template v-if="viewCoBuyers.length">
+                          <div class="cobuyer-title">
+                            <v-icon size="16" class="mr-1">mdi-account-multiple-outline</v-icon>
+                            共同買方
+                            <span class="cobuyer-title-count">{{ viewCoBuyers.length }} 位</span>
+                          </div>
+                          <div v-for="(cb, i) in viewCoBuyers" :key="i" class="cobuyer-card">
+                            <div class="cobuyer-head">
+                              <span class="cobuyer-index">{{ i + 1 }}</span>
+                              <span class="cobuyer-name" :class="{ 'info-dl-empty': !cb.name }">{{ cb.name || '未填姓名' }}</span>
+                            </div>
+                            <div class="cobuyer-rows">
+                              <a v-if="cb.phone" :href="`tel:${cb.phone}`" class="cobuyer-row link">
+                                <v-icon size="14">mdi-phone-outline</v-icon><span>{{ cb.phone }}</span>
+                              </a>
+                              <div v-if="cb.idNumber" class="cobuyer-row">
+                                <v-icon size="14">mdi-card-account-details-outline</v-icon><span class="mono">{{ cb.idNumber }}</span>
+                              </div>
+                              <a v-if="cb.email" :href="`mailto:${cb.email}`" class="cobuyer-row link">
+                                <v-icon size="14">mdi-email-outline</v-icon><span>{{ cb.email }}</span>
+                              </a>
+                              <div v-if="cb.dateOfBirth" class="cobuyer-row">
+                                <v-icon size="14">mdi-cake-variant-outline</v-icon><span>{{ formatROCDate(cb.dateOfBirth) }}</span>
+                              </div>
+                              <div v-if="coBuyerAddress(cb)" class="cobuyer-row">
+                                <v-icon size="14">mdi-mailbox-outline</v-icon><span>{{ coBuyerAddress(cb) }}</span>
+                              </div>
+                              <div v-if="!cb.phone && !cb.idNumber && !cb.email && !cb.dateOfBirth && !coBuyerAddress(cb)"
+                                class="cobuyer-row info-dl-empty">
+                                <v-icon size="14">mdi-information-outline</v-icon><span>僅填寫姓名</span>
+                              </div>
+                            </div>
+                          </div>
                         </template>
                       </div>
                     </v-col>
@@ -1177,7 +1310,8 @@ import { useUserStore } from '@/store/user';
 import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot, paymentProofApi } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
-import { getUnitTags, collectTagSuggestions } from '@/utils/unitTags';
+import { getUnitTags, collectTagSuggestions, getContrastTextColor } from '@/utils/unitTags';
+import { useStatusColorStore } from '@/store/statusColorStore';
 import SalesBotChat from './SalesBotChat.vue';
 import LandParcelsPanel from './LandParcelsPanel.vue';
 import PaymentRecordsPanel from './PaymentRecordsPanel.vue';
@@ -1568,6 +1702,9 @@ const props = defineProps({
   projectId: { type: String, required: true }, // ✅ 修正：新增這一行
   priceFormulas: { type: Object, default: () => null }, // 房土比計算公式（建案層級）
   planOptions: { type: Array, default: () => [] }, // ✅ [新增] 建案方案清單（可選方案編輯用）
+  // ✅ [快速選單] 開啟時的初始分頁（info / aiAssistant）與是否直接進入「修改銷控」（僅銷控模式生效）
+  initialTab: { type: String, default: 'info' },
+  initialEditing: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
@@ -1863,6 +2000,58 @@ const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p.
 
 // ✅ [新增] 文字標籤：檢視模式顯示 + 編輯時的常用標籤建議（由全建案戶別推導）
 const viewUnitTags = computed(() => getUnitTags(props.unitData));
+
+// ── 檢視模式「銷售資訊 / 買方資訊」改版：狀態色、進度、買方摘要 ──
+const statusColorStore = useStatusColorStore();
+
+/** 銷控狀態色沿用建案設定（與銷控表格一致）；store 顏色可能含 alpha（#RRGGBBAA），取前 7 碼 */
+const salesStatusHeroStyle = computed(() => {
+  const status = props.unitData?.salesStatus_backend || '';
+  const map = statusColorStore.colors?.backend || {};
+  let hex = (status && map[status]) || map.default || '#F5F5F5';
+  if (typeof hex === 'string' && hex.length === 9) hex = hex.slice(0, 7);
+  const isDefault = !status || !map[status];
+  return {
+    '--status-color': isDefault ? '#ECEFF1' : hex,
+    '--status-text': isDefault ? '#607D8B' : getContrastTextColor(hex),
+  };
+});
+
+/** 銷售進度：小訂 → 補足 → 簽約；done = 已填日期，current = 下一個待辦 */
+const salesTimelineSteps = computed(() => {
+  const d = props.unitData || {};
+  const defs = [
+    { key: 'deposit', label: '小訂', raw: d.payment_deposit_date },
+    { key: 'complete', label: '補足', raw: d.payment_complete_date },
+    { key: 'contract', label: '簽約', raw: d.payment_contract_date },
+  ];
+  const steps = defs.map(s => ({ key: s.key, label: s.label, done: !!s.raw, date: s.raw ? formatDate(s.raw) : '未填', current: false }));
+  const firstPending = steps.findIndex(s => !s.done);
+  if (firstPending >= 0) steps[firstPending].current = true;
+  return steps;
+});
+
+const viewSalespersons = computed(() => normalizeSalespersons(props.unitData?.salesperson));
+const viewCoBuyers = computed(() => (Array.isArray(props.unitData?.coBuyers) ? props.unitData.coBuyers.filter(Boolean) : []));
+const buyerMailingAddress = computed(() => formatAddress(props.unitData, 'Mailing'));
+const buyerPermanentAddress = computed(() => formatAddress(props.unitData, 'Permanent'));
+const isPermanentSameAsMailing = computed(() =>
+  buyerMailingAddress.value !== '-' && buyerMailingAddress.value === buyerPermanentAddress.value);
+const hasBuyerInfo = computed(() => {
+  const d = props.unitData || {};
+  return !!(d.buyerName || d.buyerPhone || d.buyerEmail || d.buyerIdNumber || d.buyerDateOfBirth
+    || buyerMailingAddress.value !== '-' || buyerPermanentAddress.value !== '-');
+});
+/** 頭像字：中文取姓（第一字）、英文取首字母 */
+const buyerInitial = computed(() => {
+  const name = String(props.unitData?.buyerName || '').trim();
+  if (!name) return '?';
+  return /^[A-Za-z]/.test(name) ? name[0].toUpperCase() : name[0];
+});
+function coBuyerAddress(cb) {
+  if (!cb) return '';
+  return `${cb.mailingAddressCity || ''}${cb.mailingAddressDistrict || ''}${cb.mailingAddressDetail || ''}`;
+}
 const tagSuggestions = computed(() => collectTagSuggestions(props.allData['戶別'] || []));
 
 const personnelOptions = computed(() => {
@@ -3347,6 +3536,7 @@ const printImage = () => {
 
 watch(() => props.show, (newVal) => {
   if (newVal) {
+    if (props.projectId) statusColorStore.fetchColors(props.projectId);
     tab.value = 'info';
     tempParkingSelection.value = null;
     editingParkingSelection.value = null; // 重置編輯暫存
@@ -3520,19 +3710,6 @@ async function commitParkingChanges(unitId, parkingList) {
 
 
 // ✅ [打勾] 新增：格式化民國日期函數
-// ✅ [新增] 共同買方唯讀摘要（電話/身分證/生日/地址，逐行顯示）
-function formatCoBuyerSummary(cb) {
-  if (!cb) return '-';
-  const lines = [];
-  if (cb.phone) lines.push(`電話：${cb.phone}`);
-  if (cb.idNumber) lines.push(`身分證：${cb.idNumber}`);
-  if (cb.email) lines.push(`EMAIL：${cb.email}`);
-  if (cb.dateOfBirth) lines.push(`生日：${formatROCDate(cb.dateOfBirth)}`);
-  const addr = `${cb.mailingAddressCity || ''}${cb.mailingAddressDistrict || ''}${cb.mailingAddressDetail || ''}`;
-  if (addr) lines.push(`地址：${addr}`);
-  return lines.length > 0 ? lines.join('\n') : '-';
-}
-
 function formatROCDate(dateInput) {
   if (!dateInput) return '-';
 
@@ -3679,6 +3856,12 @@ const downloadExcel = async () => {
 // 🔐 [隱藏功能] 事件監聽器設定
 onMounted(() => {
   document.addEventListener('keydown', handleKeyPress);
+  // ✅ [快速選單] 依父層指定的初始狀態開啟：切到指定分頁或直接進入修改銷控
+  // （Modal 以 v-if 掛載，props.show 的 watcher 在首次掛載時不會觸發，故在此處理）
+  if (props.viewMode === 'sales') {
+    if (props.initialTab && props.initialTab !== 'info') tab.value = props.initialTab;
+    if (props.initialEditing) nextTick(() => startEditing());
+  }
 });
 
 onUnmounted(() => {
@@ -3913,6 +4096,454 @@ onUnmounted(() => {
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 2px solid #1a3a6e;
+}
+
+/* ── 檢視模式：銷售資訊 / 買方資訊 改版 ── */
+.section-title--flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.section-title-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.6;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background-color: #e8eef8;
+  color: #1a3a6e;
+  white-space: nowrap;
+}
+
+.section-title-tag.indigo {
+  background-color: #e8eaf6;
+  color: #3949ab;
+}
+
+/* 銷控狀態：底色沿用建案狀態色（CSS 變數由 salesStatusHeroStyle 提供） */
+.sales-status-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background-color: var(--status-color, #eceff1);
+  color: var(--status-text, #37474f);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  margin-bottom: 10px;
+}
+
+.sales-status-hero-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.sales-status-hero-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  line-height: 1.2;
+}
+
+/* 銷售進度：小訂 → 補足 → 簽約 */
+.sales-timeline {
+  display: flex;
+  padding: 10px 4px 6px;
+  margin-bottom: 8px;
+  background-color: #f5f7fa;
+  border: 1px solid #e0e4ea;
+  border-radius: 8px;
+}
+
+.sales-timeline-step {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+}
+
+.sales-timeline-node {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.sales-timeline-dot {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #fff;
+  border: 2px solid #cfd8dc;
+  color: #90a4ae;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.sales-timeline-line {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background-color: #cfd8dc;
+  transform: translateY(-50%);
+}
+
+.sales-timeline-step.done .sales-timeline-dot {
+  background-color: #2e7d32;
+  border-color: #2e7d32;
+}
+
+.sales-timeline-step.done .sales-timeline-line {
+  background-color: #2e7d32;
+}
+
+.sales-timeline-step.current .sales-timeline-dot {
+  border-color: #1a3a6e;
+  color: #1a3a6e;
+  box-shadow: 0 0 0 3px rgba(26, 58, 110, 0.15);
+}
+
+.sales-timeline-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #90a4ae;
+}
+
+.sales-timeline-step.done .sales-timeline-name,
+.sales-timeline-step.current .sales-timeline-name {
+  color: #37474f;
+}
+
+.sales-timeline-date {
+  font-size: 0.78rem;
+  color: #b0bec5;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sales-timeline-step.done .sales-timeline-date {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+/* 標籤左、數值右的資訊列表 */
+.info-dl {
+  display: flex;
+  flex-direction: column;
+}
+
+.info-dl-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px dashed #e6e9ee;
+}
+
+.info-dl-row:last-child {
+  border-bottom: none;
+}
+
+.info-dl-label {
+  flex: 0 0 96px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: #78909c;
+  white-space: nowrap;
+  padding-top: 1px;
+}
+
+.info-dl-label .v-icon {
+  color: #b0bec5;
+}
+
+.info-dl-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #263238;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.info-dl-value.addr {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.info-dl-value .mono,
+.info-dl-value.mono {
+  font-family: 'SFMono-Regular', Consolas, 'Roboto Mono', monospace;
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.info-dl-sub {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #90a4ae;
+}
+
+.info-dl-empty {
+  color: #b0bec5 !important;
+  font-weight: 400 !important;
+}
+
+.info-person-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 10px 2px 6px;
+  border-radius: 12px;
+  background-color: #e8eef8;
+  color: #1a3a6e;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.info-person-chip .v-icon {
+  color: #5c7cae;
+}
+
+.info-bool {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 8px 1px 5px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.info-bool.yes {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.info-bool.no {
+  background-color: #f1f3f4;
+  color: #78909c;
+}
+
+/* 買方：主買方名片 */
+.buyer-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, #eef2fb 0%, #f7f9fd 100%);
+  border: 1px solid #dfe6f2;
+  border-radius: 10px;
+}
+
+.buyer-avatar {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #3949ab;
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.buyer-hero-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.buyer-name {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1a237e;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.buyer-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 4px;
+}
+
+.buyer-contact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #1565c0;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.buyer-contact-link:hover {
+  text-decoration: underline;
+}
+
+.buyer-contact-link.muted {
+  color: #b0bec5;
+  font-weight: 400;
+}
+
+.buyer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 28px 12px;
+  border: 1px dashed #cfd8dc;
+  border-radius: 10px;
+  background-color: #fafbfc;
+  text-align: center;
+}
+
+.buyer-empty-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #78909c;
+}
+
+.buyer-empty-hint {
+  font-size: 0.78rem;
+  color: #b0bec5;
+}
+
+/* 共同買方卡片 */
+.cobuyer-title {
+  display: flex;
+  align-items: center;
+  margin: 12px 0 6px;
+  padding-top: 10px;
+  border-top: 1px solid #e0e0e0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #3949ab;
+}
+
+.cobuyer-title-count {
+  margin-left: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0 7px;
+  border-radius: 10px;
+  background-color: #e8eaf6;
+  color: #3949ab;
+}
+
+.cobuyer-card {
+  padding: 8px 10px;
+  border: 1px solid #e3e6ef;
+  border-left: 3px solid #7986cb;
+  border-radius: 8px;
+  background-color: #fafbfe;
+}
+
+.cobuyer-card+.cobuyer-card {
+  margin-top: 6px;
+}
+
+.cobuyer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.cobuyer-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #3949ab;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.cobuyer-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #263238;
+}
+
+.cobuyer-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 2px;
+}
+
+.cobuyer-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.86rem;
+  color: #455a64;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.cobuyer-row .v-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #90a4ae;
+}
+
+.cobuyer-row.link {
+  color: #1565c0;
+  text-decoration: none;
+}
+
+.cobuyer-row.link:hover {
+  text-decoration: underline;
+}
+
+/* 手機：資訊列標籤縮窄、狀態列字級微調 */
+@media (max-width: 599px) {
+  .info-dl-label {
+    flex-basis: 84px;
+  }
+
+  .sales-status-hero-value {
+    font-size: 1.2rem;
+  }
+
+  .sales-timeline-date {
+    font-size: 0.72rem;
+  }
 }
 
 .highlight-price {

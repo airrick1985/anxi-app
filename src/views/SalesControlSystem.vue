@@ -454,10 +454,16 @@
     'in-quote': quoteStore.isItemInQuote(item.data.unitId),
     'has-terrace': item.data.area_terrace_ping > 0,
     'filtered-out': isUnitFilteredOut(item.data),
-    'has-tags': getUnitTags(item.data).length > 0
+    'has-tags': getUnitTags(item.data).length > 0,
+    'quick-menu-active': quickMenu.open && quickMenu.unit && quickMenu.unit.unitId === item.data.unitId
   }"
   :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
-  @click="openUnitDetail(item.data)"
+  @click="handleUnitCardClick(item.data)"
+  @contextmenu.prevent="onUnitCardContextMenu($event, item.data)"
+  @touchstart.passive="onUnitCardTouchStart($event, item.data)"
+  @touchmove.passive="onUnitCardTouchMove"
+  @touchend="onUnitCardTouchEnd"
+  @touchcancel="onUnitCardTouchEnd"
 >
             <!-- ✅ [新增] 文字標籤帶：右上角，最多露出 2 個、其餘折成 +N；hover 顯示全部 -->
             <template v-if="getUnitTags(item.data).length > 0">
@@ -1062,6 +1068,8 @@
       :contract-types="project.contractTypes || []"
       :price-formulas="project.priceFormulaSettings || null"
       :plan-options="quotePlansList"
+      :initial-tab="unitModalInitial.tab"
+      :initial-editing="unitModalInitial.editing"
       @data-updated="handleRefreshData"
       @request-open-slide="handleOpenSlideViewer" />
 
@@ -1088,6 +1096,193 @@
         </v-card-text>
       </v-card>
     </v-dialog>
+
+    <!-- ✅ [新增] 網格戶別快速選單：電腦版右鍵（游標位置浮動選單） -->
+    <v-menu
+      v-if="!isMobile"
+      v-model="quickMenu.open"
+      :target="[quickMenu.x, quickMenu.y]"
+      location="bottom start"
+      :offset="4"
+      transition="scale-transition"
+    >
+      <v-card v-if="quickMenu.unit" class="unit-quick-menu" rounded="lg" elevation="10">
+        <div class="unit-quick-menu__head">
+          <div class="d-flex align-center ga-2 flex-wrap">
+            <span class="unit-quick-menu__unit">{{ quickMenu.unit.unitId }}</span>
+            <span class="unit-quick-menu__status" :style="quickMenuStatusStyle">{{ quickMenuStatusText }}</span>
+            <span v-if="Number(quickMenu.unit.area_terrace_ping) > 0" class="terrace-chip">露台</span>
+          </div>
+          <div class="unit-quick-menu__meta">{{ quickMenuSummaryLine }}</div>
+          <div v-if="quickMenuOwnerLine" class="unit-quick-menu__meta">{{ quickMenuOwnerLine }}</div>
+          <div v-if="quickMenuTags.length" class="d-flex flex-wrap ga-1 mt-1">
+            <span
+              v-for="(tag, ti) in quickMenuTags"
+              :key="ti"
+              class="unit-tag-chip unit-tag-chip--lg"
+              :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
+            >{{ tag.text }}</span>
+          </div>
+        </div>
+        <v-divider></v-divider>
+        <v-list density="compact" nav class="unit-quick-menu__list">
+          <template v-for="action in unitQuickActions" :key="action.key">
+            <v-divider v-if="action.divider" class="my-1"></v-divider>
+            <v-list-item
+              v-else
+              :prepend-icon="action.icon"
+              :title="action.label"
+              :subtitle="action.subtitle || undefined"
+              :disabled="action.disabled"
+              :class="action.color ? `text-${action.color}` : ''"
+              rounded="md"
+              @click="runUnitQuickAction(action)"
+            >
+              <template v-if="action.badge" v-slot:append>
+                <v-chip size="x-small" variant="tonal" :color="action.badgeColor || 'primary'" class="font-weight-bold">{{ action.badge }}</v-chip>
+              </template>
+            </v-list-item>
+          </template>
+        </v-list>
+        <div class="unit-quick-menu__hint">
+          <v-icon size="12">mdi-mouse</v-icon> 右鍵任一戶別即可開啟；Esc 關閉
+        </div>
+      </v-card>
+    </v-menu>
+
+    <!-- ✅ [新增] 網格戶別快速選單：手機版長按（底部面板，磚格與「更多功能」面板一致） -->
+    <MobileBottomSheet
+      v-if="isMobile"
+      :model-value="quickMenu.open"
+      @update:model-value="val => { quickMenu.open = val; }"
+      :title="quickMenu.unit ? `${quickMenu.unit.unitId} 快速功能` : '快速功能'"
+      icon="mdi-gesture-tap-hold"
+    >
+      <div v-if="quickMenu.unit" class="unit-quick-sheet__head">
+        <div class="d-flex align-center ga-2 flex-wrap">
+          <span class="unit-quick-menu__status" :style="quickMenuStatusStyle">{{ quickMenuStatusText }}</span>
+          <span v-if="Number(quickMenu.unit.area_terrace_ping) > 0" class="terrace-chip">露台</span>
+          <span
+            v-for="(tag, ti) in quickMenuTags"
+            :key="ti"
+            class="unit-tag-chip unit-tag-chip--lg"
+            :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
+          >{{ tag.text }}</span>
+        </div>
+        <div class="unit-quick-menu__meta mt-1">{{ quickMenuSummaryLine }}</div>
+        <div v-if="quickMenuOwnerLine" class="unit-quick-menu__meta">{{ quickMenuOwnerLine }}</div>
+      </div>
+      <div class="mobile-sheet-section">
+        <div class="mobile-tool-grid">
+          <button
+            v-for="action in unitQuickActions.filter(a => !a.divider)"
+            :key="action.key"
+            type="button"
+            class="mobile-tool unit-quick-sheet__tool"
+            :disabled="action.disabled"
+            @click="runUnitQuickAction(action)"
+          >
+            <span class="mobile-tool-icon" :class="action.color ? `text-${action.color}` : ''">
+              <v-badge v-if="action.badge" :content="action.badge" :color="action.badgeColor || 'primary'" floating offset-x="-6" offset-y="-4">
+                <v-icon size="22">{{ action.icon }}</v-icon>
+              </v-badge>
+              <v-icon v-else size="22">{{ action.icon }}</v-icon>
+            </span>
+            <span class="mobile-tool-label">{{ action.label }}</span>
+          </button>
+        </div>
+      </div>
+    </MobileBottomSheet>
+
+    <!-- ✅ [快速選單] 快速變更銷售狀態：點選狀態後確認，走與 Modal 相同的 updateSalesData 流程（含通知） -->
+    <v-dialog v-model="statusQuickDialog.show" max-width="460" :persistent="statusQuickDialog.saving">
+      <v-card rounded="lg">
+        <v-toolbar color="indigo-darken-3" density="compact">
+          <v-toolbar-title class="text-subtitle-1">
+            <v-icon size="small" class="mr-1">mdi-swap-horizontal</v-icon>
+            {{ statusQuickDialog.unit ? statusQuickDialog.unit.unitId : '' }} 變更銷售狀態
+          </v-toolbar-title>
+          <v-btn icon="mdi-close" variant="text" :disabled="statusQuickDialog.saving" @click="statusQuickDialog.show = false"></v-btn>
+        </v-toolbar>
+        <v-card-text class="pt-4">
+          <div class="text-caption text-grey-darken-1 mb-2">
+            目前狀態：<strong>{{ statusQuickDialog.currentStatus || '未設定' }}</strong>，請點選要變更的新狀態
+          </div>
+          <div class="status-quick-grid">
+            <button
+              v-for="s in salesParameters"
+              :key="s.statusName"
+              type="button"
+              class="status-quick-chip"
+              :class="{
+                'status-quick-chip--current': s.statusName === statusQuickDialog.currentStatus,
+                'status-quick-chip--selected': s.statusName === statusQuickDialog.selected
+              }"
+              :style="{ backgroundColor: s.colorCode || '#e0e0e0', color: getContrastTextColor(s.colorCode) === 'white' ? '#fff' : '#1f2937' }"
+              :disabled="statusQuickDialog.saving"
+              @click="statusQuickDialog.selected = s.statusName"
+            >
+              <v-icon v-if="s.statusName === statusQuickDialog.selected" size="16" class="mr-1">mdi-check-circle</v-icon>
+              {{ s.statusName }}
+              <span v-if="s.statusName === statusQuickDialog.currentStatus" class="status-quick-chip__now">目前</span>
+            </button>
+          </div>
+          <v-alert v-if="statusQuickDialog.selected && statusQuickDialog.selected !== statusQuickDialog.currentStatus" type="info" variant="tonal" density="compact" class="mt-3 text-caption">
+            將由「{{ statusQuickDialog.currentStatus || '未設定' }}」變更為「{{ statusQuickDialog.selected }}」；持有車位的後台狀態會一併同步。
+            買方、價格、日期等其他資料請用「修改銷控」編輯。
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-btn variant="text" :disabled="statusQuickDialog.saving" @click="statusQuickDialog.show = false">取消</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn
+            color="indigo-darken-3" variant="flat"
+            :loading="statusQuickDialog.saving"
+            :disabled="!statusQuickDialog.selected || statusQuickDialog.selected === statusQuickDialog.currentStatus"
+            @click="confirmQuickStatusChange"
+          >確認變更</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ✅ [快速選單] 狀態變更後的通知對話框（與 UnitDetailModal 共用元件） -->
+    <SalesStatusNotifyDialog
+      v-if="notifyDialog.mounted"
+      :show="notifyDialog.show" @update:show="notifyDialog.show = $event"
+      :project-id="notifyDialog.projectId" :project-name="notifyDialog.projectName"
+      :unit-id="notifyDialog.unitId"
+      :old-status="notifyDialog.oldStatus" :new-status="notifyDialog.newStatus"
+      trigger-type="update" :operator-name="notifyDialog.operatorName"
+      :recipients="notifyDialog.recipients"
+      @finished="onQuickNotifyFinished" />
+
+    <!-- ✅ [快速選單] 編輯文字標籤：不必進入修改銷控，直接寫入 unitTags -->
+    <v-dialog v-model="tagQuickDialog.show" max-width="520" :persistent="tagQuickDialog.saving" scrollable>
+      <v-card rounded="lg">
+        <v-toolbar color="indigo-darken-3" density="compact">
+          <v-toolbar-title class="text-subtitle-1">
+            <v-icon size="small" class="mr-1">mdi-tag-multiple-outline</v-icon>
+            {{ tagQuickDialog.unit ? tagQuickDialog.unit.unitId : '' }} 編輯標籤
+          </v-toolbar-title>
+          <v-btn icon="mdi-close" variant="text" :disabled="tagQuickDialog.saving" @click="tagQuickDialog.show = false"></v-btn>
+        </v-toolbar>
+        <v-card-text class="pt-4">
+          <UnitTagEditor v-if="tagQuickDialog.show" v-model="tagQuickDialog.tags" :suggestions="quickTagSuggestions" />
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-btn variant="text" :disabled="tagQuickDialog.saving" @click="tagQuickDialog.show = false">取消</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn color="indigo-darken-3" variant="flat" :loading="tagQuickDialog.saving" @click="saveQuickTags">儲存標籤</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ✅ [快速選單] 查看平面圖 / 戶別圖片燈箱 -->
+    <UnitImageLightbox
+      v-model="imageLightbox.show"
+      :images="imageLightbox.images"
+      :title="imageLightbox.title"
+    />
 
     <QuoteSidebar v-model:isOpen="isQuoteSidebarOpen" />
 
@@ -1860,6 +2055,7 @@ import {
   getFloorPlansAPI,
   updateSalesData,
   updateSingleField,
+  updateParkingLot,
   listenToQuotePlans,
   paymentProofApi
  } from '@/api';
@@ -1883,6 +2079,10 @@ const loadUnitDetailModal = () => import('@/components/UnitDetailModal.vue');
 const UnitDetailModal = defineAsyncComponent(loadUnitDetailModal);
 import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
 import RemarkNotesPanel from '@/components/RemarkNotesPanel.vue';
+// ✅ [快速選單] 變更狀態通知 / 標籤編輯 / 戶別圖片燈箱
+const SalesStatusNotifyDialog = defineAsyncComponent(() => import('@/components/SalesStatusNotifyDialog.vue'));
+import UnitTagEditor from '@/components/UnitTagEditor.vue';
+import UnitImageLightbox from '@/components/UnitImageLightbox.vue';
 import { db } from '@/firebase';
 import { doc as fsDoc, updateDoc as fsUpdateDoc, serverTimestamp as fsServerTimestamp } from 'firebase/firestore';
 import { buildRemarksSummary, resolveDisplayNotes } from '@/utils/remarkNotes';
@@ -3616,6 +3816,9 @@ function toDateOrNull(v) {
     const d = v.toDate();
     return isNaN(d.getTime()) ? null : d;
   }
+  // 持久化快取 / callable 序列化後的 Timestamp 會變成純物件 { seconds } 或 { _seconds }
+  if (typeof v.seconds === 'number') return new Date(v.seconds * 1000);
+  if (typeof v._seconds === 'number') return new Date(v._seconds * 1000);
   const d = new Date(v);
   return isNaN(d.getTime()) ? null : d;
 }
@@ -4343,12 +4546,436 @@ function handleScroll(event) {
   if (headerLeftRef.value) headerLeftRef.value.scrollTop = event.target.scrollTop;
 }
 
-function openUnitDetail(unitData) {
+// ✅ [快速選單] 開啟 Modal 時可指定初始分頁（info / aiAssistant）或直接進入修改銷控；一般點擊維持預設
+const unitModalInitial = reactive({ tab: 'info', editing: false });
+function openUnitDetail(unitData, { tab = 'info', editing = false } = {}) {
   if (unitData) {
+    unitModalInitial.tab = tab;
+    unitModalInitial.editing = editing;
     selectedUnitData.value = { ...unitData };
     isModalVisible.value = true;
   }
 }
+
+// =====================================================
+// ✅ [新增] 網格戶別快速選單：電腦版右鍵 / 手機版長按（約 0.5 秒）
+// 電腦版以 v-menu 定位在游標座標；手機版沿用 MobileBottomSheet 底部面板。
+// =====================================================
+const quickMenu = reactive({ open: false, unit: null, x: 0, y: 0 });
+const LONG_PRESS_MS = 500;      // 長按判定時間
+const LONG_PRESS_MOVE_PX = 10;  // 手指移動超過即視為捲動、取消長按
+let longPressTimer = null;
+let longPressStart = { x: 0, y: 0 };
+let longPressFired = false;
+let lastTouchAt = 0;            // Android 長按也會觸發 contextmenu，用時間戳避免重複開啟
+let suppressCardClickUntil = 0; // 長按放開後的合成 click 需忽略，避免同時彈出戶別資訊
+
+function openUnitQuickMenu(unit, x, y) {
+  if (!unit) return;
+  quickMenu.unit = unit;
+  quickMenu.x = Math.round(x);
+  quickMenu.y = Math.round(y);
+  // 已開啟時切換到另一戶：先關再開，讓 v-menu 依新座標重新定位
+  if (quickMenu.open) {
+    quickMenu.open = false;
+    nextTick(() => { quickMenu.open = true; });
+  } else {
+    quickMenu.open = true;
+  }
+}
+
+// 選單開啟中點擊其他戶別：v-menu 的 click-outside 會在捕獲階段先關閉選單，
+// 這裡以 sync watcher 記錄關閉時間，讓「關閉選單」的那一下點擊不再穿透去開啟戶別資訊
+let quickMenuClosedAt = 0;
+watch(() => quickMenu.open, (open) => { if (!open) quickMenuClosedAt = Date.now(); }, { flush: 'sync' });
+
+function handleUnitCardClick(unit) {
+  if (Date.now() < suppressCardClickUntil) return;
+  if (quickMenu.open) { quickMenu.open = false; return; }
+  if (Date.now() - quickMenuClosedAt < 200) return;
+  openUnitDetail(unit);
+}
+
+function onUnitCardContextMenu(event, unit) {
+  // 觸控裝置的長按已由 touch 流程處理，這裡只擋掉瀏覽器原生選單
+  if (Date.now() - lastTouchAt < 1000) return;
+  openUnitQuickMenu(unit, event.clientX, event.clientY);
+}
+
+function clearLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+
+function onUnitCardTouchStart(event, unit) {
+  lastTouchAt = Date.now();
+  longPressFired = false;
+  clearLongPress();
+  if (!event.touches || event.touches.length !== 1) return;
+  const t = event.touches[0];
+  longPressStart = { x: t.clientX, y: t.clientY };
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    longPressFired = true;
+    suppressCardClickUntil = Date.now() + 600;
+    try { if (navigator.vibrate) navigator.vibrate(30); } catch (_) { /* 不支援震動則略過 */ }
+    openUnitQuickMenu(unit, longPressStart.x, longPressStart.y);
+  }, LONG_PRESS_MS);
+}
+
+function onUnitCardTouchMove(event) {
+  if (!longPressTimer || !event.touches || event.touches.length === 0) return;
+  const t = event.touches[0];
+  if (Math.abs(t.clientX - longPressStart.x) > LONG_PRESS_MOVE_PX || Math.abs(t.clientY - longPressStart.y) > LONG_PRESS_MOVE_PX) {
+    clearLongPress();
+  }
+}
+
+function onUnitCardTouchEnd(event) {
+  lastTouchAt = Date.now();
+  clearLongPress();
+  if (longPressFired) {
+    longPressFired = false;
+    // 阻止長按放開後的合成 click（否則會同時開啟戶別資訊 Modal）
+    if (event && event.cancelable) event.preventDefault();
+  }
+}
+
+// 選單關閉後再執行動作：手機版等 overlay 移除避免點擊穿透；電腦版立即執行
+function runUnitQuickAction(action) {
+  if (!action || action.disabled) return;
+  const unit = quickMenu.unit;
+  quickMenu.open = false;
+  const delay = isMobile.value ? 180 : 0;
+  setTimeout(() => { action.run(unit); }, delay);
+}
+
+onUnmounted(clearLongPress);
+
+// --- 快速選單標頭資訊 ---
+const quickMenuStatusText = computed(() => {
+  const u = quickMenu.unit;
+  if (!u) return '';
+  return u[statusField.value] || '未設定狀態';
+});
+const quickMenuStatusStyle = computed(() => {
+  const u = quickMenu.unit;
+  const bg = (u && statusColorMap.value.get(u[statusField.value])) || '#e0e0e0';
+  return { backgroundColor: bg, color: getContrastTextColor(bg) === 'white' ? '#fff' : '#1f2937' };
+});
+const quickMenuTags = computed(() => (quickMenu.unit ? getUnitTags(quickMenu.unit) : []));
+const quickMenuSummaryLine = computed(() => {
+  const u = quickMenu.unit;
+  if (!u) return '';
+  const parts = [];
+  if (u.area_house_ping) parts.push(`${u.area_house_ping} 坪`);
+  if (currentViewMode.value === 'quote' && u.salesStatus_quote === '已售') {
+    parts.push('已售');
+  } else {
+    const total = getDisplayTotalPrice(u);
+    const per = calculateUnitPrice(u);
+    const label = currentViewMode.value === 'sales' ? priceDisplayLabel.value : '表價';
+    if (total && total !== '-') parts.push(`${label} ${total} 萬`);
+    if (per && per !== '-') parts.push(`${per} 萬/坪`);
+  }
+  return parts.join(' ・ ');
+});
+const quickMenuOwnerLine = computed(() => {
+  const u = quickMenu.unit;
+  if (!u || currentViewMode.value !== 'sales') return '';
+  const parts = [];
+  const sp = formatSalespersons(u.salesperson);
+  if (sp && sp !== '-') parts.push(`銷售：${sp}`);
+  if (u.buyerName) parts.push(`買方：${u.buyerName}`);
+  return parts.join(' ・ ');
+});
+
+// 加算欄位（成交總價含車位、繳款比例…）：與列表模式共用 enrichUnitItem，繳款紀錄彈窗需要 total_transaction
+function enrichQuickMenuUnit(unit) {
+  const latest = (salesHouseholds.value || []).find(u => u.unitId === unit.unitId) || unit;
+  return enrichUnitItem(latest, buildParkingMap(salesParkings.value || []));
+}
+
+// 加入報價：欄位對應與 UnitDetailModal 的 handleAddToQuote 一致
+function quickAddUnitToQuote(unit) {
+  if (!(Number(unit.price_list_house_total) > 0)) {
+    toast.error('此戶別尚未設定表價，無法加入報價', { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
+  if (currentViewMode.value === 'quote' && unit.salesStatus_quote === '已售') {
+    toast.error('報價模式下無法加入已售出的戶別', { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
+  const payload = {
+    ...unit,
+    房屋總表價: unit.price_list_house_total,
+    戶別: unit.unitId,
+    area_house_ping: Number(unit.area_house_ping),
+    area_main_ping: unit.area_main_ping,
+    area_ancillary_ping: unit.area_ancillary_ping,
+    area_common_ping: unit.area_common_ping,
+    area_terrace_ping: unit.area_terrace_ping,
+    common_area_ratio: unit.common_area_ratio,
+    area_main_sqm: unit.area_main_sqm,
+    area_ancillary_sqm: unit.area_ancillary_sqm,
+    area_common_sqm: unit.area_common_sqm,
+  };
+  if (quoteStore.addItem(payload)) {
+    toast.success(`戶別 ${unit.unitId} 已加入報價單`, { position: POSITION.BOTTOM_CENTER });
+  }
+}
+
+// 複製戶別摘要（純文字，可直接貼到 LINE / 訊息）
+async function copyUnitSummary(unit) {
+  const e = enrichQuickMenuUnit(unit);
+  const lines = [`【${project.value?.name || ''}】${unit.unitId}`];
+  const status = unit[statusField.value];
+  if (status) lines.push(`狀態：${status}`);
+  if (unit.area_house_ping) lines.push(`房屋面積：${unit.area_house_ping} 坪${Number(unit.area_terrace_ping) > 0 ? `（含露臺 ${unit.area_terrace_ping} 坪）` : ''}`);
+  const hideSold = currentViewMode.value === 'quote' && unit.salesStatus_quote === '已售';
+  if (!hideSold) {
+    if (unit.price_list_house_total) lines.push(`表價：${formatNumber(unit.price_list_house_total, 0)} 萬（${formatNumber(e.unit_price_list, 2)} 萬/坪）`);
+    if (currentViewMode.value === 'sales') {
+      if (unit.price_floor_house_total) lines.push(`底價：${formatNumber(unit.price_floor_house_total, 0)} 萬`);
+      if (unit.price_transaction_house) lines.push(`成交價：${formatNumber(unit.price_transaction_house, 0)} 萬`);
+      if (e.parking_spots) lines.push(`車位：${e.parking_spots}`);
+      if (e.total_transaction > 0) lines.push(`成交總價(含車位)：${formatNumber(e.total_transaction, 0)} 萬`);
+      if (e.payment_ratio !== null && e.payment_ratio !== undefined) lines.push(`繳款比例：${e.payment_ratio.toFixed(1)}%`);
+      const sp = formatSalespersons(unit.salesperson);
+      if (sp && sp !== '-') lines.push(`銷售人員：${sp}`);
+      if (unit.buyerName) lines.push(`買方：${unit.buyerName}`);
+    }
+  }
+  const tags = getUnitTags(unit).map(t => t.text);
+  if (tags.length) lines.push(`標籤：${tags.join('、')}`);
+  try {
+    await navigator.clipboard.writeText(lines.join('\n'));
+    toast.success(`已複製 ${unit.unitId} 戶別摘要`, { position: POSITION.BOTTOM_CENTER, timeout: 2000 });
+  } catch (err) {
+    console.error('複製戶別摘要失敗:', err);
+    toast.error('複製失敗，請重試', { position: POSITION.BOTTOM_CENTER });
+  }
+}
+
+// --- 快速變更銷售狀態 ---
+// 後端 updateSalesData 會把「未提供」的數值/日期欄位設為 null，所以不能只送狀態欄位；
+// 比照 UnitDetailModal：以整份戶別資料為底（Timestamp 轉 Date），只改狀態，再以 merge 寫回
+const QUICK_SAVE_DATE_FIELDS = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date', 'payment_complete_date'];
+function buildQuickSavePayload(raw, patch) {
+  const data = JSON.parse(JSON.stringify(raw));
+  for (const f of QUICK_SAVE_DATE_FIELDS) data[f] = toDateOrNull(raw[f]);
+  // 其餘 Timestamp 欄位（createdAt/updatedAt…）不可經 JSON 後寫回成 map，一律剔除交由 merge 保留
+  for (const key of Object.keys(raw)) {
+    const v = raw[key];
+    if (!QUICK_SAVE_DATE_FIELDS.includes(key) && v && typeof v === 'object' && typeof v.toDate === 'function') delete data[key];
+  }
+  // 備註留言 / 繳款紀錄 / 標籤由各自流程即時維護，這裡不送，避免以舊快照覆蓋
+  delete data.remarks;
+  delete data.remarkNotes;
+  delete data.paymentRecords;
+  delete data.unitTags;
+  delete data.id;
+  return { ...data, ...patch };
+}
+
+const statusQuickDialog = reactive({ show: false, unit: null, currentStatus: '', selected: '', saving: false });
+function openQuickStatusDialog(unit) {
+  const latest = (salesHouseholds.value || []).find(u => u.unitId === unit.unitId) || unit;
+  statusQuickDialog.unit = latest;
+  statusQuickDialog.currentStatus = latest.salesStatus_backend || '';
+  statusQuickDialog.selected = '';
+  statusQuickDialog.saving = false;
+  statusQuickDialog.show = true;
+}
+
+// 狀態變更通知（與 UnitDetailModal 共用 SalesStatusNotifyDialog）
+const notifyDialog = reactive({
+  mounted: false, show: false, projectId: '', projectName: '', unitId: '',
+  oldStatus: null, newStatus: null, operatorName: '', recipients: [],
+});
+function openQuickNotifyDialog(unitId, notification) {
+  Object.assign(notifyDialog, {
+    mounted: true,
+    show: true,
+    projectId: projectId.value,
+    projectName: project.value?.name || '',
+    unitId,
+    oldStatus: notification.oldStatus || null,
+    newStatus: notification.newStatus || null,
+    operatorName: userStore.user?.name || '',
+    recipients: notification.eligibleRecipients || [],
+  });
+}
+function onQuickNotifyFinished(payload) {
+  notifyDialog.show = false;
+  if (payload?.action === 'sent' && payload?.result) {
+    const { sent = 0, failed = 0 } = payload.result;
+    if (sent > 0 && failed === 0) toast.success(`已發送 ${sent} 筆通知`);
+    else if (sent > 0 && failed > 0) toast.warning(`發送 ${sent} 筆、失敗 ${failed} 筆`);
+    else if (failed > 0) toast.error(`通知全部失敗（${failed} 筆），請查 notificationLogs`);
+  }
+}
+
+// 持有車位的後台狀態需與戶別同步（比照 UnitDetailModal.syncOwnedParkingFields）
+async function syncOwnedParkingStatus(unitId, newStatus) {
+  const owned = (salesParkings.value || []).filter(p => p.buyerUnitId === unitId && p.id);
+  for (const parking of owned) {
+    await updateParkingLot(parking.id, { status_backend: newStatus || null, updatedAt: new Date() });
+  }
+}
+
+async function confirmQuickStatusChange() {
+  const unit = statusQuickDialog.unit;
+  const newStatus = statusQuickDialog.selected;
+  if (!unit || !newStatus || newStatus === statusQuickDialog.currentStatus) return;
+  statusQuickDialog.saving = true;
+  try {
+    const payload = {
+      projectName: project.value?.name || '',
+      projectId: projectId.value,
+      unitId: unit.unitId,
+      data: buildQuickSavePayload(unit, { salesStatus_backend: newStatus }),
+    };
+    const result = await updateSalesData(payload);
+    if (result.status !== 'success') throw new Error(result.message || '儲存失敗');
+    await syncOwnedParkingStatus(unit.unitId, newStatus);
+
+    // 本地先行更新，網格顏色立即反映；再觸發重新載入確保一致
+    const raw = (salesHouseholds.value || []).find(u => u.unitId === unit.unitId);
+    if (raw) { raw.salesStatus_backend = newStatus; raw.status = newStatus; }
+    statusQuickDialog.show = false;
+
+    const notif = result.notification;
+    if (notif?.statusChanged && (notif.eligibleRecipients?.length > 0)) {
+      toast.success(`${unit.unitId} 狀態已變更為「${newStatus}」`, { position: POSITION.BOTTOM_CENTER });
+      openQuickNotifyDialog(unit.unitId, notif);
+    } else {
+      toast.success(`${unit.unitId} 狀態已變更為「${newStatus}」${notif?.statusChanged ? '（無可通知人員）' : ''}`, { position: POSITION.BOTTOM_CENTER });
+    }
+    handleRefreshData();
+  } catch (err) {
+    console.error('快速變更狀態失敗:', err);
+    toast.error(`變更狀態失敗：${err.message || '請稍後再試'}`, { position: POSITION.BOTTOM_CENTER });
+  } finally {
+    statusQuickDialog.saving = false;
+  }
+}
+
+// --- 快速編輯標籤：直寫 salesHouseholds.unitTags（同備註留言作法，不經整份儲存）---
+const tagQuickDialog = reactive({ show: false, unit: null, tags: [], saving: false });
+const quickTagSuggestions = computed(() => collectTagSuggestions(salesHouseholds.value || []));
+function openQuickTagDialog(unit) {
+  const latest = (salesHouseholds.value || []).find(u => u.unitId === unit.unitId) || unit;
+  tagQuickDialog.unit = latest;
+  tagQuickDialog.tags = JSON.parse(JSON.stringify(getUnitTags(latest)));
+  tagQuickDialog.saving = false;
+  tagQuickDialog.show = true;
+}
+async function saveQuickTags() {
+  const unit = tagQuickDialog.unit;
+  if (!unit) return;
+  tagQuickDialog.saving = true;
+  try {
+    const tags = (tagQuickDialog.tags || []).map(t => ({ text: t.text, bgColor: t.bgColor, textColor: t.textColor }));
+    await fsUpdateDoc(fsDoc(db, 'salesHouseholds', `${projectId.value}_${unit.unitId}`), {
+      unitTags: tags,
+      updatedAt: fsServerTimestamp(),
+    });
+    const raw = (salesHouseholds.value || []).find(u => u.unitId === unit.unitId);
+    if (raw) raw.unitTags = tags;
+    tagQuickDialog.show = false;
+    toast.success(`${unit.unitId} 標籤已更新`, { position: POSITION.BOTTOM_CENTER, timeout: 2000 });
+  } catch (err) {
+    console.error('儲存標籤失敗:', err);
+    toast.error(`儲存標籤失敗：${err.message || '請稍後再試'}`, { position: POSITION.BOTTOM_CENTER });
+  } finally {
+    tagQuickDialog.saving = false;
+  }
+}
+
+// --- 查看平面圖 / 戶別圖片：salesImages 檔名對應建案圖片庫（含 downloadURL）---
+const imageLightbox = reactive({ show: false, images: [], title: '' });
+function getUnitImages(unit) {
+  const names = Array.isArray(unit?.salesImages) ? unit.salesImages : [];
+  if (names.length === 0) return [];
+  const map = new Map((salesImages.value || []).map(img => [img.imageName, img]));
+  return names.map(n => map.get(n)).filter(img => img && img.downloadURL);
+}
+function openUnitImageLightbox(unit) {
+  const images = getUnitImages(unit);
+  if (images.length === 0) {
+    toast.info(`${unit.unitId} 尚未設定平面圖／戶別圖片`, { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
+  imageLightbox.images = images;
+  imageLightbox.title = unit.unitId;
+  imageLightbox.show = true;
+}
+
+// --- 快速選單項目（依模式動態組成）---
+const unitQuickActions = computed(() => {
+  const u = quickMenu.unit;
+  if (!u) return [];
+  const isQuoteMode = currentViewMode.value === 'quote';
+  const inQuote = quoteStore.isItemInQuote(u.unitId);
+  const remarkCount = resolveDisplayNotes(u.remarkNotes, u.remarks).length;
+  const enriched = currentViewMode.value === 'sales' ? enrichQuickMenuUnit(u) : null;
+  const paymentBadge = enriched
+    ? (enriched.payment_ratio !== null && enriched.payment_ratio > 0
+      ? `${enriched.payment_ratio.toFixed(0)}%`
+      : (enriched.payment_records_count > 0 ? `${enriched.payment_records_count} 筆` : ''))
+    : '';
+  const canQuote = Number(u.price_list_house_total) > 0 && !(isQuoteMode && u.salesStatus_quote === '已售');
+
+  const imageCount = getUnitImages(u).length;
+  const tagCount = getUnitTags(u).length;
+
+  const actions = [
+    { key: 'detail', icon: 'mdi-information-outline', label: '戶別資訊', subtitle: '完整資料、平面圖與車位', run: unit => openUnitDetail(unit) },
+  ];
+  if (!isQuoteMode) {
+    actions.push(
+      { key: 'edit', icon: 'mdi-pencil-outline', label: '修改銷控', subtitle: '直接進入編輯模式', run: unit => openUnitDetail(unit, { editing: true }) },
+      { key: 'status', icon: 'mdi-swap-horizontal', label: '變更狀態', subtitle: `目前：${u.salesStatus_backend || '未設定'}`, color: 'indigo-darken-3', run: unit => openQuickStatusDialog(unit) },
+      { key: 'tags', icon: 'mdi-tag-multiple-outline', label: '編輯標籤', subtitle: tagCount > 0 ? `${tagCount} 個標籤` : '尚無標籤，點此新增', badge: tagCount > 0 ? String(tagCount) : '', run: unit => openQuickTagDialog(unit) },
+      { key: 'divider-1', divider: true },
+      { key: 'remarks', icon: 'mdi-comment-text-multiple-outline', label: '備註留言', subtitle: remarkCount > 0 ? `${remarkCount} 則留言` : '尚無留言，點此新增', badge: remarkCount > 0 ? String(remarkCount) : '', run: unit => openRemarkDialog(unit) },
+      { key: 'payments', icon: 'mdi-cash-multiple', label: '繳款紀錄', subtitle: paymentBadge ? `已繳 ${paymentBadge}` : '尚無繳款紀錄', badge: paymentBadge, badgeColor: enriched && enriched.payment_ratio >= 100 ? 'green' : 'deep-orange', run: unit => openPaymentRecordsPopup(enrichQuickMenuUnit(unit)) },
+      { key: 'ai', icon: 'mdi-robot-outline', label: 'AI 助理', subtitle: '詢問此戶別相關問題', run: unit => openUnitDetail(unit, { tab: 'aiAssistant' }) },
+      { key: 'divider-2', divider: true },
+    );
+  }
+  actions.push(
+    { key: 'images', icon: 'mdi-floor-plan', label: '查看平面圖', subtitle: imageCount > 0 ? `${imageCount} 張戶別圖片` : '尚未設定戶別圖片', badge: imageCount > 0 ? String(imageCount) : '', badgeColor: 'teal', disabled: imageCount === 0, run: unit => openUnitImageLightbox(unit) },
+    inQuote
+      ? { key: 'quote', icon: 'mdi-cart-check', label: '開啟報價單', subtitle: '此戶已在報價單中', color: 'orange-darken-3', run: () => { isQuoteSidebarOpen.value = true; } }
+      : { key: 'quote', icon: 'mdi-cart-plus', label: '加入報價單', subtitle: canQuote ? '加入後可於右側報價單試算' : '尚未設定表價或已售', disabled: !canQuote, color: 'success', run: unit => quickAddUnitToQuote(unit) },
+    { key: 'copy', icon: 'mdi-content-copy', label: '複製摘要', subtitle: '純文字，可貼到 LINE', run: unit => copyUnitSummary(unit) },
+  );
+  if (!isQuoteMode) {
+    actions.push({
+      key: 'folder', icon: 'mdi-folder-google-drive', label: '戶別資料夾', subtitle: u.driveFolderUrl ? '開啟 Google Drive 資料夾' : '尚未設定資料夾連結', disabled: !u.driveFolderUrl,
+      run: unit => { if (unit.driveFolderUrl) window.open(unit.driveFolderUrl, '_blank', 'noopener'); },
+    });
+  }
+  return actions;
+});
+
+// 首次進入網格模式提示操作方式（每台裝置僅顯示一次）
+const QUICK_MENU_HINT_KEY = 'salesGridQuickMenuHintShown';
+function showQuickMenuHintOnce() {
+  try {
+    if (localStorage.getItem(QUICK_MENU_HINT_KEY)) return;
+    localStorage.setItem(QUICK_MENU_HINT_KEY, '1');
+  } catch (_) { return; }
+  const msg = isMobile.value ? '小提示：長按戶別可開啟快速選單（備註、繳款紀錄、加入報價…）' : '小提示：在戶別上按滑鼠右鍵可開啟快速選單（備註、繳款紀錄、加入報價…）';
+  toast.info(msg, { position: POSITION.BOTTOM_CENTER, timeout: 6000 });
+}
+watch([viewFormat, loading], ([fmt, isLoading]) => {
+  if (fmt === 'grid' && !isLoading && (salesHouseholds.value || []).length > 0) showQuickMenuHintOnce();
+}, { immediate: true });
 
 // 從提醒清單點進某戶 → 開 UnitDetailModal；同時關閉提醒 Dialog 避免重疊
 function openPendingUnit(item) {
@@ -5578,6 +6205,20 @@ overflow: hidden;
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
+/* ✅ [快速選單] 長按時不要跳出 iOS 連結預覽/文字選取；正在開啟快速選單的戶別以外框標示 */
+.unit-card {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.unit-card.quick-menu-active {
+  outline: 3px solid #1a3a6e;
+  outline-offset: 1px;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(26, 58, 110, 0.35);
+  z-index: 2;
+}
 .unit-card.empty {
   background-color: #e9ecef;
   box-shadow: none;
@@ -5808,6 +6449,120 @@ overflow: hidden;
 .desktop-tool:disabled {
   opacity: .45;
   cursor: not-allowed;
+}
+
+/* ✅ [快速選單] 電腦版右鍵浮動選單 / 手機版長按底部面板 */
+.unit-quick-menu {
+  width: 300px;
+  max-width: calc(100vw - 16px);
+  background: #ffffff;
+  overflow: hidden;
+}
+.unit-quick-menu__head {
+  padding: 12px 14px 10px;
+  background: linear-gradient(180deg, #f5f8fd 0%, #ffffff 100%);
+}
+.unit-quick-menu__unit {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #1a237e;
+  letter-spacing: .02em;
+}
+.unit-quick-menu__status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 700;
+  line-height: 1.4;
+  border: 1px solid rgba(0, 0, 0, .08);
+}
+.unit-quick-menu__meta {
+  margin-top: 4px;
+  font-size: .78rem;
+  color: #5c6b7f;
+  line-height: 1.35;
+}
+.unit-quick-menu__list {
+  padding: 4px 6px;
+}
+.unit-quick-menu__list :deep(.v-list-item) {
+  min-height: 40px;
+}
+.unit-quick-menu__list :deep(.v-list-item-title) {
+  font-size: .9rem;
+  font-weight: 600;
+}
+.unit-quick-menu__list :deep(.v-list-item-subtitle) {
+  font-size: .72rem;
+}
+.unit-quick-menu__hint {
+  padding: 6px 14px 8px;
+  font-size: .68rem;
+  color: #94a3b8;
+  border-top: 1px dashed #e6ebf2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.unit-quick-sheet__head {
+  padding: 4px 2px 10px;
+}
+.unit-quick-sheet__tool:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+/* ✅ [快速選單] 快速變更狀態：以狀態色塊呈現，目前狀態加註、選取者加勾 */
+.status-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.status-quick-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  font: inherit;
+  font-size: .9rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.status-quick-chip:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .18);
+}
+.status-quick-chip:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+.status-quick-chip--current {
+  opacity: .55;
+  border-style: dashed;
+  border-color: rgba(0, 0, 0, .35);
+}
+.status-quick-chip--selected {
+  border-color: #1a237e;
+  box-shadow: 0 0 0 3px rgba(26, 35, 126, .25);
+  opacity: 1;
+}
+.status-quick-chip__now {
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  background: #37474f;
+  color: #fff;
+  font-size: .62rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
 }
 .desktop-tool-icon {
   color: #1a3a6e;

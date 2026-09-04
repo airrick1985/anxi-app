@@ -5,24 +5,28 @@
         <v-col cols="12" :md="sectionColMd" v-show="isSectionShown('sales')">
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-information-outline</v-icon>銷售資訊</div>
-            <v-select 
-              label="後台狀態" 
-              :items="statusOptions" 
-              v-model="editableData.salesStatus_backend" 
-              class="mb-4" 
-              clearable 
-            ></v-select>
-
-            <v-text-field
-              label="銷售狀態"
-              v-model="editableData.salesStatus_quote"
-              class="mb-4"
-              readonly
-              
-             
-              hint="如要取消「已售」，請取消後台狀態"
-              persistent-hint
-            ></v-text-field>
+            <!-- 🖥️ [調整] 後台狀態 / 銷售狀態 並排同一列 -->
+            <v-row dense class="mb-2">
+              <v-col cols="12" sm="6">
+                <v-select
+                  label="後台狀態"
+                  :items="statusOptions"
+                  v-model="editableData.salesStatus_backend"
+                  clearable
+                  hint="選擇小訂／補足／簽約會詢問日期與金額"
+                  persistent-hint
+                ></v-select>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-text-field
+                  label="銷售狀態"
+                  v-model="editableData.salesStatus_quote"
+                  readonly
+                  hint="如要取消「已售」，請取消後台狀態"
+                  persistent-hint
+                ></v-text-field>
+              </v-col>
+            </v-row>
             
             <v-select
               label="銷售人員"
@@ -45,7 +49,20 @@
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_complete_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" teleport="body" auto-position class="mb-4 anxi-datepicker"></VueDatePicker>
             <label class="v-label text-caption">簽約日期</label>
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_contract_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" teleport="body" auto-position class="mb-4 anxi-datepicker"></VueDatePicker>
-            <v-alert type="info" variant="tonal" density="compact" class="text-caption">
+            <!-- ✅ [調整] 備註留言：修改銷控狀態下亦可直接新增／編輯（送出即儲存，不需按「儲存變更」） -->
+            <div v-if="remarkPersistHandler" class="remark-edit-block">
+              <RemarkNotesPanel
+                :notes="remarkNotes"
+                :legacy-remarks="remarkLegacyRemarks"
+                :persist-handler="remarkPersistHandler"
+                :storage-path-prefix="remarkStoragePrefix"
+                dense
+              />
+              <div class="text-caption text-grey-darken-1 mt-1">
+                <v-icon size="14" class="mr-1">mdi-information-outline</v-icon>備註留言送出後即時儲存，不需再按「儲存變更」。
+              </div>
+            </div>
+            <v-alert v-else type="info" variant="tonal" density="compact" class="text-caption">
               備註已改為留言功能，請於戶別詳情「銷售資訊」區塊直接新增／編輯備註留言。
             </v-alert>
           </div>
@@ -54,52 +71,56 @@
         <v-col cols="12" :md="sectionColMd" v-show="isSectionShown('deal')">
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-currency-usd</v-icon>成交資訊</div>
-            <!-- 合約方式 -->
-            <div class="field-block mb-4">
-              <div class="field-label">
-                <v-icon size="18" color="indigo-darken-1">mdi-file-sign</v-icon>
-                <span>合約方式</span>
-              </div>
-              <v-chip-group
-                v-model="editableData.contractType"
-                selected-class="contract-chip--active"
-                column
-              >
-                <v-chip
-                  v-for="opt in localContractOptions"
-                  :key="opt"
-                  :value="opt"
-                  filter
-                  variant="outlined"
-                  class="contract-chip"
-                >
-                  {{ opt }}
-                </v-chip>
-              </v-chip-group>
-              <div
-                v-if="!localContractOptions || localContractOptions.length === 0"
-                class="text-caption text-grey-darken-1"
-              >
-                尚無合約方式選項
-              </div>
-            </div>
-
-            <!-- 是否首購（✅ [調整] 與「合約方式」統一為 chip 樣式） -->
-            <div class="field-block mb-4">
-              <div class="field-label">
-                <v-icon size="18" color="amber-darken-2">mdi-home-heart</v-icon>
-                <span>是否首購</span>
-              </div>
-              <v-chip-group
-                v-model="firstTimeBuyerModel"
-                selected-class="contract-chip--active"
-                mandatory
-                column
-              >
-                <v-chip :value="true" filter variant="outlined" class="contract-chip">是</v-chip>
-                <v-chip :value="false" filter variant="outlined" class="contract-chip">否</v-chip>
-              </v-chip-group>
-            </div>
+            <!-- 🖥️ [調整] 合約方式 / 是否首購 並排同一列 -->
+            <v-row dense class="mb-4">
+              <v-col cols="12" md="6">
+                <div class="field-block field-block--fill">
+                  <div class="field-label">
+                    <v-icon size="18" color="indigo-darken-1">mdi-file-sign</v-icon>
+                    <span>合約方式</span>
+                  </div>
+                  <v-chip-group
+                    v-model="editableData.contractType"
+                    selected-class="contract-chip--active"
+                    column
+                  >
+                    <v-chip
+                      v-for="opt in localContractOptions"
+                      :key="opt"
+                      :value="opt"
+                      filter
+                      variant="outlined"
+                      class="contract-chip"
+                    >
+                      {{ opt }}
+                    </v-chip>
+                  </v-chip-group>
+                  <div
+                    v-if="!localContractOptions || localContractOptions.length === 0"
+                    class="text-caption text-grey-darken-1"
+                  >
+                    尚無合約方式選項
+                  </div>
+                </div>
+              </v-col>
+              <v-col cols="12" md="6">
+                <div class="field-block field-block--fill">
+                  <div class="field-label">
+                    <v-icon size="18" color="amber-darken-2">mdi-home-heart</v-icon>
+                    <span>是否首購</span>
+                  </div>
+                  <v-chip-group
+                    v-model="firstTimeBuyerModel"
+                    selected-class="contract-chip--active"
+                    mandatory
+                    column
+                  >
+                    <v-chip :value="true" filter variant="outlined" class="contract-chip">是</v-chip>
+                    <v-chip :value="false" filter variant="outlined" class="contract-chip">否</v-chip>
+                  </v-chip-group>
+                </div>
+              </v-col>
+            </v-row>
             <!-- 🖥️ [調整] 持有車位：卡片式呈現（點卡片開編輯、✕ 移除僅前端暫存、明顯新增入口） -->
             <div class="field-block mb-2">
               <div class="field-label">
@@ -573,6 +594,65 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- ✅ [新增] 選擇小訂／補足／簽約後詢問日期與金額：自動填入對應日期欄位，並寫入繳款紀錄（備註＝該狀態） -->
+    <v-dialog v-model="statusPrompt.open" max-width="440" persistent>
+      <v-card>
+        <v-card-title class="bg-primary text-white d-flex align-center ga-2">
+          <v-icon>mdi-calendar-check</v-icon>
+          「{{ statusPrompt.status }}」日期與金額
+        </v-card-title>
+        <v-card-text class="pt-5">
+          <div class="text-body-2 text-grey-darken-2 mb-4">
+            後台狀態已改為「{{ statusPrompt.status }}」，請確認{{ statusPrompt.label }}日期並填寫金額，系統會自動填入「{{ statusPrompt.label }}日期」欄位與繳款紀錄。
+          </div>
+
+          <div class="d-flex align-center justify-space-between mb-1">
+            <label class="v-label text-caption">{{ statusPrompt.label }}日期</label>
+            <v-btn
+              size="x-small"
+              variant="tonal"
+              :color="statusPromptIsToday ? 'success' : 'primary'"
+              :disabled="statusPromptIsToday"
+              @click="setStatusPromptToday"
+            >
+              <v-icon start size="14">{{ statusPromptIsToday ? 'mdi-check' : 'mdi-calendar-today' }}</v-icon>
+              {{ statusPromptIsToday ? '已選今天' : '改為今天' }}
+            </v-btn>
+          </div>
+          <VueDatePicker
+            :locale="'zh-TW'"
+            v-model="statusPrompt.date"
+            auto-apply
+            :enable-time-picker="false"
+            format="yyyy/MM/dd"
+            teleport="body"
+            auto-position
+            :clearable="false"
+            class="mb-4 anxi-datepicker"
+          ></VueDatePicker>
+
+          <v-text-field
+            ref="statusPromptAmountRef"
+            v-model.number="statusPrompt.amount"
+            type="number"
+            :label="`${statusPrompt.label}金額`"
+            suffix="元"
+            min="0"
+            variant="outlined"
+            density="compact"
+            :hint="statusPromptAmountHint"
+            persistent-hint
+            @keydown.enter.prevent="confirmStatusPrompt"
+          ></v-text-field>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn variant="text" color="grey" @click="skipStatusPrompt">略過</v-btn>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-check" @click="confirmStatusPrompt">確認填入</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -588,6 +668,7 @@ import UnitTagEditor from './UnitTagEditor.vue';
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
 const CustomerCardImportDialog = defineAsyncComponent(() => import('./CustomerCardImportDialog.vue'));
 const CoBuyerEditor = defineAsyncComponent(() => import('./CoBuyerEditor.vue'));
+const RemarkNotesPanel = defineAsyncComponent(() => import('./RemarkNotesPanel.vue'));
 
 const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },
@@ -609,6 +690,11 @@ const props = defineProps({
   visibleSections: { type: Array, default: null },
   // ✅ [新增] 文字標籤常用建議（由全建案戶別推導，選到同名標籤自動套同色）
   tagSuggestions: { type: Array, default: () => [] },
+  // ✅ [新增] 備註留言：修改銷控狀態下直接新增／編輯（由父層提供資料與持久化函式；未提供則顯示提示文字）
+  remarkNotes: { type: Array, default: () => [] },
+  remarkLegacyRemarks: { type: String, default: '' },
+  remarkPersistHandler: { type: Function, default: null },
+  remarkStoragePrefix: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:modelValue', 'request-open-slide', 'parking-updated']);
@@ -1226,6 +1312,146 @@ function savePriceNegotiation() {
 
   isPriceNegotiationDialogVisible.value = false;
 }
+
+// ══════════════════════════════════════════════════════════════
+// ✅ [新增] 後台狀態選擇小訂／補足／簽約 → 詢問日期與金額
+// 確認後：自動填入對應日期欄位（小訂/補足/簽約日期），
+// 金額（元）寫入繳款紀錄（備註＝該狀態；已有同備註紀錄則更新，不重複新增）。
+// 使用者不必再另外到日期欄位與繳款紀錄操作。
+// ══════════════════════════════════════════════════════════════
+const STATUS_DATE_CONFIGS = [
+  { keyword: '小訂', label: '小訂', field: 'payment_deposit_date' },
+  { keyword: '補足', label: '補足', field: 'payment_complete_date' },
+  { keyword: '簽約', label: '簽約', field: 'payment_contract_date' },
+];
+
+function resolveStatusDateConfig(status) {
+  const s = String(status || '').trim();
+  if (!s) return null;
+  return STATUS_DATE_CONFIGS.find(c => c.keyword === s)
+    || STATUS_DATE_CONFIGS.find(c => s.includes(c.keyword))
+    || null;
+}
+
+// 台灣時間的「今天」（本地 Date，時間 00:00）
+function todayTaipeiDate() {
+  const ymd = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function toDateOrNull(val) {
+  if (!val) return null;
+  const d = typeof val?.toDate === 'function' ? val.toDate() : new Date(val);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function toYmd(date) {
+  const d = toDateOrNull(date);
+  if (!d) return '';
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+const statusPrompt = ref({
+  open: false,
+  status: '',   // 使用者選到的後台狀態原文
+  label: '',    // 小訂／補足／簽約
+  field: '',    // 對應日期欄位
+  date: null,
+  amount: null,
+  existingRecordId: '',
+  existingAmount: null,
+});
+const statusPromptAmountRef = ref(null);
+
+const statusPromptIsToday = computed(() => toYmd(statusPrompt.value.date) === toYmd(todayTaipeiDate()));
+const statusPromptAmountHint = computed(() => {
+  const p = statusPrompt.value;
+  if (p.existingRecordId) {
+    const prev = p.existingAmount ? `${Number(p.existingAmount).toLocaleString('en-US')} 元` : '未填金額';
+    return `已有備註「${p.status}」的繳款紀錄（原 ${prev}），確認後將更新該筆日期與金額；留空則不更動`;
+  }
+  return `填寫後自動新增一筆繳款紀錄（備註：${p.status}）；留空則不新增`;
+});
+
+function findStatusPaymentRecord(status) {
+  const list = editableData.value?.paymentRecords;
+  if (!Array.isArray(list)) return null;
+  const target = String(status || '').trim();
+  return list.find(r => String(r?.note || '').trim() === target) || null;
+}
+
+function openStatusPrompt(cfg, status) {
+  const existing = findStatusPaymentRecord(status);
+  const currentDate = toDateOrNull(editableData.value?.[cfg.field]);
+  statusPrompt.value = {
+    open: true,
+    status,
+    label: cfg.label,
+    field: cfg.field,
+    // 日期欄位已有值 → 沿用；否則預設今天
+    date: currentDate || todayTaipeiDate(),
+    amount: existing && Number(existing.amount) > 0 ? Number(existing.amount) : null,
+    existingRecordId: existing?.id || '',
+    existingAmount: existing?.amount ?? null,
+  };
+  nextTick(() => {
+    try { statusPromptAmountRef.value?.focus?.(); } catch (e) { /* noop */ }
+  });
+}
+
+function setStatusPromptToday() {
+  statusPrompt.value.date = todayTaipeiDate();
+}
+
+function skipStatusPrompt() {
+  statusPrompt.value.open = false;
+}
+
+function confirmStatusPrompt() {
+  const p = statusPrompt.value;
+  const d = editableData.value;
+  if (!d) { p.open = false; return; }
+
+  // 1. 填入對應日期欄位
+  const pickedDate = toDateOrNull(p.date) || todayTaipeiDate();
+  d[p.field] = new Date(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+
+  // 2. 金額寫入繳款紀錄（元、正整數）；留空則不動繳款紀錄
+  const amountNum = Math.round(Number(p.amount));
+  if (p.amount !== null && p.amount !== '' && Number.isFinite(amountNum) && amountNum > 0) {
+    const nowIso = new Date().toISOString();
+    const dateYmd = toYmd(pickedDate);
+    const list = Array.isArray(d.paymentRecords) ? d.paymentRecords : [];
+    if (p.existingRecordId) {
+      d.paymentRecords = list.map(r => (
+        r?.id === p.existingRecordId ? { ...r, date: dateYmd, amount: amountNum, updatedAt: nowIso } : r
+      ));
+    } else {
+      d.paymentRecords = [
+        ...list,
+        {
+          id: `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          date: dateYmd,
+          amount: amountNum,
+          note: p.status,
+          file: null,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+      ];
+    }
+  }
+
+  p.open = false;
+}
+
+// 使用者實際變更後台狀態時才詢問（初始載入／父層替換物件但值相同不觸發）
+watch(() => editableData.value?.salesStatus_backend, (newVal, oldVal) => {
+  if (newVal === oldVal) return;
+  const cfg = resolveStatusDateConfig(newVal);
+  if (!cfg) return;
+  openStatusPrompt(cfg, String(newVal).trim());
+});
 </script>
 
 <style scoped>
@@ -1253,6 +1479,17 @@ function savePriceNegotiation() {
 
 /* ===== 合約方式 / 是否首購 區塊美化 ===== */
 .field-block {
+  background: #f7f9fc;
+  border: 1px solid #e6ebf2;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+/* 並排時兩側區塊等高（合約方式／是否首購） */
+.field-block--fill {
+  height: 100%;
+}
+/* 修改銷控內的備註留言區塊 */
+.remark-edit-block {
   background: #f7f9fc;
   border: 1px solid #e6ebf2;
   border-radius: 10px;
