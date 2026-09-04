@@ -1154,7 +1154,7 @@
     <MobileBottomSheet
       v-if="isMobile"
       :model-value="quickMenu.open"
-      @update:model-value="val => { quickMenu.open = val; }"
+      @update:model-value="onQuickSheetModelUpdate"
       :title="quickMenu.unit ? `${quickMenu.unit.unitId} 快速功能` : '快速功能'"
       icon="mdi-gesture-tap-hold"
     >
@@ -4570,11 +4570,13 @@ let longPressFired = false;
 let lastTouchAt = 0;            // Android 長按也會觸發 contextmenu，用時間戳避免重複開啟
 let suppressCardClickUntil = 0; // 長按放開後的合成 click 需忽略，避免同時彈出戶別資訊
 
+let quickMenuOpenedAt = 0;      // 面板開啟時間：剛開啟的短時間內忽略關閉請求（長按放開的殘餘事件）
 function openUnitQuickMenu(unit, x, y) {
   if (!unit) return;
   quickMenu.unit = unit;
   quickMenu.x = Math.round(x);
   quickMenu.y = Math.round(y);
+  quickMenuOpenedAt = Date.now();
   // 已開啟時切換到另一戶：先關再開，讓 v-menu 依新座標重新定位
   if (quickMenu.open) {
     quickMenu.open = false;
@@ -4584,6 +4586,13 @@ function openUnitQuickMenu(unit, x, y) {
   }
 }
 
+// 📱 底部面板的關閉請求：長按放開時瀏覽器可能補發 click／scrim 事件，開啟後 0.8 秒內一律忽略，
+// 之後才接受使用者主動的下滑、點 X 或點遮罩關閉
+function onQuickSheetModelUpdate(val) {
+  if (!val && Date.now() - quickMenuOpenedAt < 800) return;
+  quickMenu.open = val;
+}
+
 // 選單開啟中點擊其他戶別：v-menu 的 click-outside 會在捕獲階段先關閉選單，
 // 這裡以 sync watcher 記錄關閉時間，讓「關閉選單」的那一下點擊不再穿透去開啟戶別資訊
 let quickMenuClosedAt = 0;
@@ -4591,7 +4600,9 @@ watch(() => quickMenu.open, (open) => { if (!open) quickMenuClosedAt = Date.now(
 
 function handleUnitCardClick(unit) {
   if (Date.now() < suppressCardClickUntil) return;
-  if (quickMenu.open) { quickMenu.open = false; return; }
+  // 選單開啟中的點擊一律不處理：電腦版由 v-menu 的 click-outside 關閉、手機版由面板遮罩關閉，
+  // 這裡若主動關閉會把長按放開的殘餘 click 當成關閉指令
+  if (quickMenu.open) return;
   if (Date.now() - quickMenuClosedAt < 200) return;
   openUnitDetail(unit);
 }
@@ -4638,7 +4649,9 @@ function onUnitCardTouchEnd(event) {
   clearLongPress();
   if (longPressFired) {
     longPressFired = false;
-    // 阻止長按放開後的合成 click（否則會同時開啟戶別資訊 Modal）
+    // 阻止長按放開後的合成 click（否則會關閉面板或同時開啟戶別資訊 Modal）；
+    // 手指可能停留很久才放開，所以擋 click 的時間要從「放開」起算，而不是從長按觸發起算
+    suppressCardClickUntil = Date.now() + 700;
     if (event && event.cancelable) event.preventDefault();
   }
 }
