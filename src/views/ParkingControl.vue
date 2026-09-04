@@ -431,7 +431,9 @@ import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from 'vue-toastification';
 import { listenToParkingLots, uploadParkingLots } from '@/api';
-import * as XLSX from 'xlsx-js-style';
+import { useSalesDataStore } from '@/store/salesDataStore';
+// ✅ [效能] xlsx-js-style 約 1.3MB，只在匯出 / 上傳 Excel 時才動態載入，不再隨車位頁進入時下載
+const loadXLSX = () => import('xlsx-js-style');
 import { formatSalespersons, normalizeSalespersons } from '@/utils/salespersonUtils';
 import ParkingSpotEditDialog from '@/components/ParkingSpotEditDialog.vue';
 import { useStickyHeaderOffset } from '@/composables/useStickyHeaderOffset';
@@ -673,6 +675,21 @@ onMounted(() => {
   projectStore.fetchProjects();
   if (props.projectId) {
     loading.value = true;
+
+    // ✅ [效能] 從銷控頁跳過來時，salesDataStore 已持有同一份 salesParkings，先用它立刻渲染首屏，
+    // 監聽器第一批資料到達後再整批覆蓋（欄位對齊 listenToParkingLots：docId = 文件 ID，依車位編號排序）
+    try {
+      const cachedParkings = useSalesDataStore().getProjectData(props.projectId).parkings || [];
+      if (cachedParkings.length > 0) {
+        allItems.value = cachedParkings
+          .map(p => ({ docId: p.id, ...p }))
+          .sort((a, b) => String(a.spotId ?? '').localeCompare(String(b.spotId ?? ''), 'zh-TW', { numeric: true }));
+        loading.value = false;
+      }
+    } catch (e) {
+      console.warn('[ParkingControl] 讀取銷控快取車位失敗（忽略）:', e?.message || e);
+    }
+
     unsubscribe = listenToParkingLots(
       props.projectId,
       (data) => {
@@ -732,7 +749,8 @@ const formatPrice = (value) => {
   return `${new Intl.NumberFormat().format(value)} 萬`;
 };
 
-const exportToExcel = () => {
+const exportToExcel = async () => {
+    const XLSX = await loadXLSX();
     if (allItems.value.length === 0) {
         toast.info('目前沒有資料可匯出。');
         return;
@@ -771,7 +789,8 @@ const exportToExcel = () => {
 };
 
 // 管理員專用：匯出所有原始欄位的 Excel
-const exportAdminExcel = () => {
+const exportAdminExcel = async () => {
+    const XLSX = await loadXLSX();
     if (allItems.value.length === 0) {
         toast.info('目前沒有資料可匯出。');
         return;
@@ -846,8 +865,9 @@ const handleFileChange = () => {
     }
     isParsing.value = true;
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         try {
+            const XLSX = await loadXLSX();
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
             const sheetName = workbook.SheetNames[0];

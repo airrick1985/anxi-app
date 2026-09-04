@@ -137,6 +137,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useToast, POSITION } from 'vue-toastification';
 import { useTapUnlock } from '@/composables/useTapUnlock';
+import { toQuoteUnitData } from '@/utils/quoteUnitData';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -217,23 +218,8 @@ function onBuildingChange(row) {
 }
 
 // 將戶別物件轉成 quoteStore.addItem 所需結構
-// （完全對齊 UnitDetailModal.vue handleAddToQuote 的欄位映射）
-function toUnitData(u) {
-  return {
-    ...u,
-    房屋總表價: u.price_list_house_total,
-    戶別: u.unitId,
-    area_house_ping: Number(u.area_house_ping),
-    area_main_ping: u.area_main_ping,
-    area_ancillary_ping: u.area_ancillary_ping,
-    area_common_ping: u.area_common_ping,
-    area_terrace_ping: u.area_terrace_ping,
-    common_area_ratio: u.common_area_ratio,
-    area_main_sqm: u.area_main_sqm,
-    area_ancillary_sqm: u.area_ancillary_sqm,
-    area_common_sqm: u.area_common_sqm,
-  };
-}
+// （與 UnitDetailModal.handleAddToQuote、QuoteSettings 進頁重整 unitDetails 共用 utils/quoteUnitData）
+const toUnitData = toQuoteUnitData;
 
 function onConfirm() {
   const result = [];

@@ -51,10 +51,21 @@ export function applyNegotiation(listPrice, area, state) {
   return Math.round(base + perAdj + dirAdj);
 }
 
+// ✅ [公用電腦防殘留] 報價單閒置逾時（毫秒）：超過此時間沒有任何操作即自動清空
+export const QUOTE_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const ACTIVITY_TOUCH_THROTTLE_MS = 10 * 1000;
+const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
+
 export const useQuoteStore = defineStore('quote', () => {
   const items = ref([]);
   const personnelName = ref('');
   const personnelPhone = ref('');
+  // ✅ [公用電腦防殘留] 報價單持有者（登入者 key）與最後操作時間
+  const ownerKey = ref('');
+  const lastActiveAt = ref(0);
+
+  // 舊版 persist 走 localStorage（key = 'quote'），改為 sessionStorage 後把殘留的舊資料清掉
+  try { localStorage.removeItem('quote'); } catch (_) { /* 無視 */ }
 
   const findItem = internalId => items.value.find(i => i.internalId === internalId);
 
@@ -226,6 +237,7 @@ function addItem(unitData) {
 
     // 確保 internalId 絕對唯一 (因為現在允許多個相同 unitId)
     const uniqueId = Date.now().toString() + Math.random().toString(36).substring(2, 5);
+    touchActivity(true);
 
     items.value.push({
       internalId: uniqueId,
@@ -492,12 +504,68 @@ function addItem(unitData) {
 
   function clearQuote() {
     items.value = [];
+    personnelName.value = '';
+    personnelPhone.value = '';
+    ownerKey.value = '';
+    lastActiveAt.value = 0;
+  }
+
+  // ✅ [公用電腦防殘留] 記錄最後操作時間（預設 10 秒節流，避免每次滑鼠／鍵盤事件都寫 storage）
+  let lastTouchWrite = 0;
+  function touchActivity(force = false) {
+    const now = Date.now();
+    if (!force && now - lastTouchWrite < ACTIVITY_TOUCH_THROTTLE_MS) return;
+    lastTouchWrite = now;
+    lastActiveAt.value = now;
+  }
+
+  function isIdleExpired(now = Date.now()) {
+    return items.value.length > 0 && lastActiveAt.value > 0 && now - lastActiveAt.value > QUOTE_IDLE_TIMEOUT_MS;
+  }
+
+  // ✅ [公用電腦防殘留] 確認報價單屬於目前登入者且未閒置逾時，否則清空
+  // 回傳 '' | 'owner' | 'idle'（清空原因）
+  function ensureFreshForUser(userKey) {
+    const key = userKey ? String(userKey) : '';
+    if (items.value.length === 0) {
+      ownerKey.value = key;
+      return '';
+    }
+    if (ownerKey.value && key && ownerKey.value !== key) {
+      clearQuote();
+      ownerKey.value = key;
+      return 'owner';
+    }
+    if (isIdleExpired()) {
+      clearQuote();
+      ownerKey.value = key;
+      toast.info(`報價單閒置超過 ${Math.round(QUOTE_IDLE_TIMEOUT_MS / 60000)} 分鐘，已自動清空`);
+      return 'idle';
+    }
+    if (!ownerKey.value && key) ownerKey.value = key;
+    if (!lastActiveAt.value) touchActivity(true);
+    return '';
+  }
+
+  // 使用者有任何點擊／按鍵就視為活動；每分鐘檢查一次是否閒置逾時（頁面停在報價設定也會即時清空）
+  if (typeof window !== 'undefined') {
+    const onActivity = () => { if (items.value.length > 0) touchActivity(); };
+    window.addEventListener('pointerdown', onActivity, { passive: true });
+    window.addEventListener('keydown', onActivity, { passive: true });
+    setInterval(() => {
+      if (isIdleExpired()) {
+        clearQuote();
+        toast.info(`報價單閒置超過 ${Math.round(QUOTE_IDLE_TIMEOUT_MS / 60000)} 分鐘，已自動清空`);
+      }
+    }, IDLE_CHECK_INTERVAL_MS);
   }
 
   return {
     items,
     personnelName,
     personnelPhone,
+    ownerKey,
+    lastActiveAt,
     itemCount,
     isItemInQuote,
     getParkingTotalPrice,
@@ -536,8 +604,14 @@ function addItem(unitData) {
     clearFloorApproval,
     normalizeItems,
     resetAllToFirstTimeBuyer,
-    clearQuote
+    clearQuote,
+    touchActivity,
+    ensureFreshForUser
   };
 }, {
-  persist: true
+  // ✅ [公用電腦防殘留] 改用 sessionStorage：關閉分頁即消失，重新整理仍保留
+  persist: {
+    key: 'quote',
+    storage: sessionStorage
+  }
 });

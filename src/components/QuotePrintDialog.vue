@@ -906,12 +906,13 @@ function renderSheet(item) {
   const type = ud.propertyType || ud.layout || '-';
   const area = ud.area_house_ping;
 
-  // 詳細面積資訊：獨立橫列（每項目一小欄：上標籤、下數值）
-  // 坪數為主值，資料庫的平方公尺欄位值（不做換算）以小字淡色顯示於下一行，凸顯坪數
+  // 詳細面積資訊：坪／m² 雙列表格（欄＝項目，列＝單位）
+  // 坪列為主值（粗體深藍、淡藍底），m² 列為資料庫平方公尺欄位值（不做換算）以正常字重深灰顯示；
+  // 單位只在最左欄標示一次，各格只放數字，坪與 m² 上下對齊便於對照
   const pingWithSqm = (ping, sqm) => {
     const s = Number(sqm);
     const hasSqm = sqm !== null && sqm !== undefined && sqm !== '' && !isNaN(s);
-    return { main: `${fmt(ping, 2)} 坪`, sqm: hasSqm ? `(${fmt(s, 2)}m²)` : '' };
+    return { ping: fmt(ping, 2), sqm: hasSqm ? fmt(s, 2) : '' };
   };
   const areaDetailItems = [
     ['主建物(室內)', ud.area_main_ping, ud.area_main_sqm],
@@ -923,10 +924,18 @@ function renderSheet(item) {
     .filter(([, v]) => v !== null && v !== undefined && v !== '')
     .map(([label, ping, sqm]) => ({ label, ...pingWithSqm(ping, sqm) }));
   const buildAreaStrip = () => areaDetailItems.length ? `
-    <section class="wide-strip">
-      <span class="lbl">詳細面積</span>
-      ${areaDetailItems.map(it => `
-      <span class="strip-item"><em>${esc(it.label)}</em><b>${esc(it.main)}${it.sqm ? `<span class="sqm">${esc(it.sqm)}</span>` : ''}</b></span>`).join('')}
+    <section class="area-tbl-wrap">
+      <table class="area-tbl">
+        <thead><tr><th class="corner">詳細面積</th>${areaDetailItems.map(it => `<th>${esc(it.label)}</th>`).join('')}</tr></thead>
+        <tbody>
+          <tr class="row-ping"><th>坪</th>${areaDetailItems.map(it => it.ratio
+            ? `<td class="ratio" rowspan="2">${esc(it.ratio)}</td>`
+            : `<td>${esc(it.ping)}</td>`).join('')}</tr>
+          <tr class="row-sqm"><th>m²</th>${areaDetailItems.map(it => it.ratio
+            ? ''
+            : (it.sqm ? `<td>${esc(it.sqm)}</td>` : `<td class="empty">—</td>`)).join('')}</tr>
+        </tbody>
+      </table>
     </section>` : '';
 
   const housePrice = quoteStore.getRawDisplayHousePrice(id);
@@ -1005,7 +1014,7 @@ function renderSheet(item) {
   // ✅ [優化] 公設比固定為詳細面積列最後一格
   const ratio = parseFloat(ud.common_area_ratio);
   if (!isNaN(ratio)) {
-    areaDetailItems.push({ label: '公設比', main: `${(ratio * 100).toFixed(2)} %`, sqm: '' });
+    areaDetailItems.push({ label: '公設比', ratio: `${(ratio * 100).toFixed(2)} %` });
   }
   const areaStrip = buildAreaStrip();
 
@@ -1028,7 +1037,7 @@ function renderSheet(item) {
   const infoCells = [
     ['戶別', `<b>${esc(item.unitId)}</b>`],
     ['物件類型', esc(type)],
-    ['面積', (() => { const a = pingWithSqm(area, ud.area_house_sqm); return `${esc(a.main)}${a.sqm ? `<span class="sqm">${esc(a.sqm)}</span>` : ''}`; })()],
+    ['面積', (() => { const a = pingWithSqm(area, ud.area_house_sqm); return `<b>${esc(a.ping)} 坪</b>${a.sqm ? `<span class="sqm-inline">／ ${esc(a.sqm)} m²</span>` : ''}`; })()],
     ['首購', item.isFirstTimeBuyer === '是' ? '首購' : '非首購'],
     ['房屋總價', housePriceVal],
     [hasTerraceSplit ? '房屋單價(不含露臺)' : '房屋單價', unitPriceVal],
@@ -1237,9 +1246,27 @@ const SHEET_CSS = `
   }
   .strip-item + .strip-item { border-left: 1px solid #eceff1; }
   .strip-item em { font-style: normal; font-size: 8.5pt; color: #78909c; white-space: nowrap; }
-  .strip-item b { font-size: 10.5pt; color: #263238; margin-top: .6mm; font-weight: 600; white-space: nowrap; }
-  /* 平方公尺：小字淡色、獨立一行，凸顯坪數主值 */
-  .sqm { display: block; font-size: 7.5pt; color: #9e9e9e; font-weight: 400; line-height: 1.15; }
+  .strip-item b { font-size: 11pt; color: #263238; margin-top: .6mm; font-weight: 700; white-space: nowrap; }
+  /* 平方公尺：獨立一行，9pt 深灰藍（#546e7a）確保列印可讀；坪數主值仍以 11pt 粗體深色凸顯層級 */
+  .sqm { display: block; font-size: 9pt; color: #546e7a; font-weight: 400; line-height: 1.25; margin-top: .3mm; letter-spacing: .1px; }
+  /* 基本資訊列「面積」：坪粗體主值 ／ m² 正常字重並排 */
+  .sqm-inline { font-size: 9.5pt; color: #546e7a; font-weight: 400; margin-left: 1mm; white-space: nowrap; }
+  /* 詳細面積：坪／m² 雙列表格（欄＝項目、列＝單位；坪列淡藍底粗體深藍為主值，m² 列白底深灰） */
+  .area-tbl-wrap { margin-top: 1.5mm; border: 1px solid #cfd8dc; border-radius: 1.5mm; overflow: hidden; }
+  .area-tbl { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .area-tbl th, .area-tbl td {
+    text-align: center; padding: 1.3mm 1mm; border-left: 1px solid #e3e8ec; white-space: nowrap; line-height: 1.25;
+  }
+  .area-tbl tr > :first-child { border-left: 0; }
+  .area-tbl tbody tr { border-top: 1px solid #e3e8ec; }
+  .area-tbl thead th { background: #f4f7fa; color: #546e7a; font-size: 8.5pt; font-weight: 600; }
+  .area-tbl th.corner { width: 22mm; font-size: 10pt; text-align: left; padding-left: 3mm; }
+  .area-tbl tbody th { background: #f4f7fa; color: #546e7a; font-size: 9.5pt; font-weight: 700; text-align: left; padding-left: 3mm; }
+  .area-tbl .row-ping th { background: #e3edf8; color: #1a3c6e; }
+  .area-tbl .row-ping td { background: #eef4fb; font-size: 11pt; font-weight: 700; color: #1a3c6e; }
+  .area-tbl .row-sqm td { font-size: 10pt; font-weight: 400; color: #37474f; }
+  .area-tbl td.ratio { background: #fff; vertical-align: middle; font-size: 11pt; font-weight: 700; color: #263238; }
+  .area-tbl td.empty { color: #b0bec5; font-weight: 400; }
   .total-band {
     display: flex; justify-content: space-between; align-items: center;
     background: #eef4fb; border: 1px solid #b4cdec; border-radius: 1.5mm;
@@ -1421,6 +1448,10 @@ const SHEET_CSS = `
   .sheet.compact .lbl { padding: 1.7mm 3mm; font-size: 9.5pt; }
   .sheet.compact .val { padding: 1.7mm 3mm; font-size: 10.5pt; }
   .sheet.compact .strip-item { padding: 1.1mm 1mm; }
+  .sheet.compact .sqm { font-size: 8.5pt; }
+  .sheet.compact .area-tbl th, .sheet.compact .area-tbl td { padding: .8mm 1mm; }
+  .sheet.compact .area-tbl .row-ping td, .sheet.compact .area-tbl td.ratio { font-size: 10.5pt; }
+  .sheet.compact .area-tbl .row-sqm td { font-size: 9pt; }
   .sheet.compact .total-band { margin-top: 2.5mm; padding: 2mm 5mm; }
   .sheet.compact .sec-title { margin-top: 3.5mm; margin-bottom: 2mm; }
   .sheet.compact .pay-loan-grid { margin-top: 3.5mm; gap: 3mm; }
@@ -1554,6 +1585,32 @@ function openPdfPreview() {
   isPdfPreviewVisible.value = true;
 }
 
+// ✅ [新增] PDF 檔名：YYYYMMDD-建案名稱-戶別-報價人員-報價單.pdf
+// 戶別依頁面順序以「、」串接；超過 3 戶改為「首戶等N戶」避免檔名過長
+function sanitizeFileNamePart(text, fallback = '未填') {
+  const cleaned = String(text ?? '')
+    .replace(/[\\/:*?"<>|]/g, '_')   // Windows / macOS 不允許的檔名字元
+    .replace(/[\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || fallback;
+}
+
+function buildPdfFileName(sheetCount = 0) {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()).replace(/-/g, '');
+  const items = quoteStore.items.filter(i => selectedIds.value.includes(i.internalId));
+  const unitIds = items.map(i => sanitizeFileNamePart(i.unitId, '')).filter(Boolean);
+  const total = unitIds.length || sheetCount;
+  const unitPart = unitIds.length === 0
+    ? '未指定戶別'
+    : unitIds.length <= 3
+      ? unitIds.join('、')
+      : `${unitIds[0]}等${total}戶`;
+  const projectPart = sanitizeFileNamePart(props.projectName, '未命名建案');
+  const personnelPart = sanitizeFileNamePart(props.personnelName, '未選擇報價人員');
+  return `${today}-${projectPart}-${unitPart}-${personnelPart}-報價單.pdf`;
+}
+
 // A4 pt 尺寸（jsPDF）
 const A4_W_PT = 595.28;
 const A4_H_PT = 841.89;
@@ -1596,8 +1653,7 @@ async function downloadPdf() {
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, A4_W_PT, Math.min(imgH, A4_H_PT));
     }
 
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()).replace(/-/g, '');
-    pdf.save(`${today}-${props.projectName}-報價單.pdf`);
+    pdf.save(buildPdfFileName(sheetEls.length));
     toast.success('報價單 PDF 已下載');
   } catch (e) {
     console.error('[QuotePrintDialog] 下載 PDF 失敗:', e);

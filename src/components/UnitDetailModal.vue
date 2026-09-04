@@ -1171,7 +1171,7 @@
 
 <script setup>
 import FloorplanSizingTool from '@/views/FloorplanSizingTool.vue';
-import { ref, watch, computed, defineProps, defineEmits, onUnmounted, onMounted, nextTick } from 'vue';
+import { ref, watch, computed, defineProps, defineEmits, onUnmounted, onMounted, nextTick, defineAsyncComponent } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot, paymentProofApi } from '@/api';
@@ -1188,7 +1188,8 @@ import { buildRemarksSummary } from '@/utils/remarkNotes';
 import { computeHouseLandPrices, buildDefaultFormulas, isSpecialContractType } from '@/composables/usePriceFormula';
 import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue';
-import ContractDocDialog from '@/components/contractDoc/ContractDocDialog.vue';
+// ✅ [效能] 合約製作彈窗（約 220KB）改為非同步載入；模板以 v-if 於開啟時建立，故安全
+const ContractDocDialog = defineAsyncComponent(() => import('@/components/contractDoc/ContractDocDialog.vue'));
 import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
 import ConfirmationDialog from './ConfirmationDialog.vue';
 import CancelPurchaseDialog from './CancelPurchaseDialog.vue';
@@ -1196,7 +1197,8 @@ import SalesStatusNotifyDialog from './SalesStatusNotifyDialog.vue';
 import RealPriceReportExportDialog from './RealPriceReport/ExportDialog.vue';
 import { useToast, POSITION } from 'vue-toastification';
 import { useTapUnlock } from '@/composables/useTapUnlock';
-import * as XLSX from 'xlsx';
+// ✅ [效能] xlsx 只在匯出銷售資料時需要 → 動態載入，不隨戶別詳情 Modal 一起下載
+const loadXLSX = () => import('xlsx');
 import { storage } from '@/firebase';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
@@ -3560,7 +3562,7 @@ function formatROCDate(dateInput) {
 }
 
 // ✅ [新增] 下載 Excel 功能
-const downloadExcel = () => {
+const downloadExcel = async () => {
   const sourceData = enrichedUnitData.value || props.unitData;
   if (!sourceData) {
     toast.error('無資料可下載');
@@ -3665,6 +3667,7 @@ const downloadExcel = () => {
     data.push(row);
   }
 
+  const XLSX = await loadXLSX();
   const ws = XLSX.utils.json_to_sheet(data, { header: headers });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "HouseholdData");

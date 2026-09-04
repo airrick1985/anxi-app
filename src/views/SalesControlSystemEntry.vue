@@ -95,7 +95,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 // ✓ 【修改】引入 projectStore，我們需要用它來獲取所有建案的列表
 import { useProjectStore } from '@/store/projectStore';
-import { checkInToSystem } from '@/api'; 
+import { checkInToSystem } from '@/api';
+import { prefetchSalesChunks, prefetchSalesData } from '@/utils/salesPrefetch'; // ✅ [效能] 銷控/報價預載
 
 const router = useRouter();
 const route = useRoute();
@@ -184,6 +185,10 @@ async function enterProject() {
     if (!userKey || !userName) {
       throw new Error('無法獲取使用者資訊，請重新登入。');
     }
+
+    // ✅ [效能] 簽到（Cloud Function，可能冷啟動）期間同步預載頁面 chunk 與建案資料（詳見 utils/salesPrefetch）
+    prefetchSalesChunks(currentViewMode.value === 'quote' ? 'quote' : 'sales');
+    prefetchSalesData(projectId);
 
     // 呼叫後端進行驗證
     const result = await checkInToSystem(projectId, system, userKey, userName);

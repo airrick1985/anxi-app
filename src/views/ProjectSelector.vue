@@ -92,6 +92,7 @@ import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { checkInToSystem } from '@/api'; // 引入驗證 API
 import { trackTrialEvent } from '@/utils/trialTracking'; // 試用留資事件追蹤
+import { prefetchSalesChunks, prefetchSalesData } from '@/utils/salesPrefetch'; // ✅ [效能] 銷控/報價預載
 import draggable from 'vuedraggable'; // 引入 draggable
 import IconButton from '@/components/IconButton.vue'; // 引入 IconButton
 import defaultProjectIcon from '@/assets/icons/property.png'; // 引入一個預設圖示
@@ -171,6 +172,11 @@ onMounted(async () => {
 
     visibleProjects.value = authorizedProjects;
 
+    // ✅ [效能] 使用者還在挑建案時，先把銷控 / 報價頁的 JS chunk 下載好
+    if (requiredSystem.value === '銷控系統' || requiredSystem.value === '報價系統') {
+      prefetchSalesChunks(currentViewMode.value === 'quote' || requiredSystem.value === '報價系統' ? 'quote' : 'sales');
+    }
+
   } catch (e) {
     error.value = '讀取建案權限時發生錯誤。';
     console.error('[ProjectSelector] Error:', e);
@@ -208,6 +214,13 @@ const enterProject = async (project) => {
 
     if (!userKey || !userName) {
       throw new Error('無法獲取使用者資訊，請重新登入。');
+    }
+
+    // ✅ [效能] 簽到（Cloud Function，可能冷啟動）期間同步預載建案資料：
+    // Firestore 監聽先建立、戶別/車位/樣式/顏色先灌進 store 快取，進頁時直接命中，
+    // 總等待從「簽到 + 載資料」變成兩者取大。簽到失敗只是多讀了一次資料，不影響流程。
+    if (systemName === '銷控系統' || systemName === '報價系統') {
+      prefetchSalesData(project.id);
     }
 
     // 3. 執行後端驗證 (現在 systemName 會是 "客資系統-櫃台" 或 "驗屋預約管理-修改" 等)

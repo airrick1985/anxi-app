@@ -3,6 +3,7 @@ import { db } from '@/firebase';
 import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { goOffline, saveUserPreferencesToBackend, fetchUserPreferencesFromBackend, manageUserPresence, getLiffUserData } from '@/api';
 import router from '@/router';
+import { useQuoteStore } from '@/store/quoteStore';
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -53,6 +54,9 @@ export const useUserStore = defineStore('user', {
           : [];
 
         manageUserPresence(userData.key);
+
+        // ✅ [公用電腦防殘留] 換人登入時，若報價單屬於別的使用者或已閒置逾時 → 清空
+        try { useQuoteStore().ensureFreshForUser(userData.key); } catch (e) { console.warn('[UserStore] 檢查報價單持有者失敗:', e); }
 
       } else {
         this.clearUser();
@@ -282,6 +286,8 @@ export const useUserStore = defineStore('user', {
 
       console.log('[UserStore logoutUser] Clearing user state...'); // Log
       this.clearUser();
+      // ✅ [公用電腦防殘留] 登出一併清空報價單，下一位登入者不會看到前一位的報價內容
+      try { useQuoteStore().clearQuote(); } catch (e) { console.warn('[UserStore] 登出清空報價單失敗:', e); }
       console.log('[UserStore logoutUser] Removing session storage...'); // Log
       sessionStorage.removeItem('anxi-user-session'); // 確認是 sessionStorage
 

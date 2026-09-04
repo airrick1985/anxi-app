@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
+import { useQuoteStore } from '@/store/quoteStore';
 import { appVersion } from '@/version';
 import { forceReloadToLatest } from '@/composables/useVersionCheck';
 
@@ -960,6 +961,14 @@ router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore();
   const projectStore = useProjectStore();
   const isLoggedIn = userStore.isLoggedIn; // 獲取主系統登入狀態
+
+  // ✅ [公用電腦防殘留] 每次換頁檢查報價單：持有者不同或閒置逾時 → 清空；否則視為一次活動
+  if (isLoggedIn) {
+    try {
+      const quoteStore = useQuoteStore();
+      if (!quoteStore.ensureFreshForUser(userStore.user?.key)) quoteStore.touchActivity();
+    } catch (e) { console.warn('[Router] 檢查報價單狀態失敗:', e); }
+  }
 
   // --- 2. LIFF 路徑判斷 Log ---
   const liffPath = to.query.liff_path;

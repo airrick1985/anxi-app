@@ -1093,6 +1093,8 @@
 
     <!-- ✅ [新增] 下載銷控表 PDF 對話框 -->
     <SalesGridDownloadDialog
+      v-if="lazyMounted.gridDownload"
+      ref="gridDownloadDialogRef"
       v-model:show="isGridDownloadDialogVisible"
       :buildings="buildingHeaders"
       :floors="floorHeaders"
@@ -1110,6 +1112,8 @@
     />
 
     <CancelledPurchaseManager
+      v-if="lazyMounted.cancelled"
+      ref="cancelledPurchaseRef"
       v-model:show="isCancelledPurchaseDialogVisible"
       :project-id="projectId"
       @data-updated="handleRefreshData"
@@ -1625,6 +1629,8 @@
     </v-dialog>
 
     <ActivityMessageViewer
+      v-if="lazyMounted.activity"
+      ref="activityViewerRef"
       v-model="isActivityDialogVisible"
       :project-id="projectId"
       :project-name="project.name"
@@ -1808,6 +1814,8 @@
 
     <!-- 下載指定戶別資料（篩選後勾選戶別/欄位、拖曳排序後匯出 EXCEL） -->
     <UnitDataExportDialog
+      v-if="lazyMounted.unitExport"
+      ref="unitExportDialogRef"
       v-model="isUnitExportDialogVisible"
       :items="unitExportItems"
       :columns="unitExportColumns"
@@ -1818,6 +1826,8 @@
 
     <!-- 統計分析面板 -->
     <AnalyticsPanel
+      v-if="lazyMounted.analytics"
+      ref="analyticsPanelRef"
       :show="isAnalyticsPanelVisible"
       @update:show="isAnalyticsPanelVisible = $event"
       :project-id="projectId"
@@ -1857,7 +1867,8 @@ import {
 import { useToast, POSITION } from 'vue-toastification';
 import { useSalesDataStore } from '@/store/salesDataStore';
 import { useProjectStore } from '@/store/projectStore';
-import * as XLSX from 'xlsx-js-style';
+// ✅ [效能] xlsx-js-style 約 1.3MB，只有匯出 / 上傳 Excel 時才需要 → 改為動態載入，不再隨銷控頁進入時下載
+const loadXLSX = () => import('xlsx-js-style');
 import {
   LAND_PARCEL_SHEET_NAME,
   HOUSEHOLDS_SHEET_NAME,
@@ -1866,7 +1877,10 @@ import {
   landParcelToRow,
   rowToLandParcel,
 } from '@/constants/landParcelColumns';
-import UnitDetailModal from '@/components/UnitDetailModal.vue';
+// ✅ [效能] 戶別詳情 Modal（含合約製作、付款設定、xlsx…約 500KB+）改為非同步載入；
+// 模板本來就以 v-if 於開啟時建立，故非同步安全。銷控資料載入完成後會閒置預抓（見 loadCurrentProjectData），首次點開不會等下載。
+const loadUnitDetailModal = () => import('@/components/UnitDetailModal.vue');
+const UnitDetailModal = defineAsyncComponent(loadUnitDetailModal);
 import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
 import RemarkNotesPanel from '@/components/RemarkNotesPanel.vue';
 import { db } from '@/firebase';
@@ -1877,15 +1891,19 @@ import { useSlideViewer } from '@/composables/useSlideViewer';
 import { useStickyHeaderOffset } from '@/composables/useStickyHeaderOffset';
 import QuoteSidebar from '@/components/QuoteSidebar.vue';
 import { useDisplay } from 'vuetify';
-import UpdateControl from './UpdateControl.vue'; 
+import UpdateControl from './UpdateControl.vue';
 import ParkingCanvas from '@/components/ParkingCanvas.vue';
-import CancelledPurchaseManager from '@/components/CancelledPurchaseManager.vue';
-import SalesBotChat from '@/components/SalesBotChat.vue';
-import AnalyticsPanel from '@/components/AnalyticsPanel.vue';
-import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
-import UnitDataExportDialog from '@/components/UnitDataExportDialog.vue';
-import SalesGridDownloadDialog from '@/components/SalesGridDownloadDialog.vue';
 import PaymentRecordsPanel from '@/components/PaymentRecordsPanel.vue';
+// ✅ [效能] 對話框型大元件改為非同步載入：首次開啟時才下載對應 chunk，
+// 銷控頁進入時的 JS 體積大幅縮小（AnalyticsPanel 121KB、CancelledPurchaseManager 97KB、
+// UnitDataExportDialog 74KB（含 xlsx）、SalesGridDownloadDialog 35KB、SalesBotChat 19KB…）。
+// 這些元件在模板皆以 v-if（首次開啟後常駐，見 lazyMounted）掛載，關閉後不重置內部狀態。
+const CancelledPurchaseManager = defineAsyncComponent(() => import('@/components/CancelledPurchaseManager.vue'));
+const SalesBotChat = defineAsyncComponent(() => import('@/components/SalesBotChat.vue'));
+const AnalyticsPanel = defineAsyncComponent(() => import('@/components/AnalyticsPanel.vue'));
+const ActivityMessageViewer = defineAsyncComponent(() => import('@/components/ActivityMessageViewer.vue'));
+const UnitDataExportDialog = defineAsyncComponent(() => import('@/components/UnitDataExportDialog.vue'));
+const SalesGridDownloadDialog = defineAsyncComponent(() => import('@/components/SalesGridDownloadDialog.vue'));
 import { useUserStore } from '@/store/user';
 import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
@@ -3170,9 +3188,10 @@ async function copyPivotTable() {
   }
 }
 // 匯出含格式的 Excel
-function exportPivotToExcel() {
+async function exportPivotToExcel() {
   const m = pivotMatrix.value;
   if (!m.rows.length) return;
+  const XLSX = await loadXLSX();
   const aoa = buildPivotAoa();
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const range = XLSX.utils.decode_range(ws['!ref']);
@@ -3674,6 +3693,36 @@ const userStore = useUserStore();
 
 const isAIAssistantDialogVisible = ref(false);
 const isAnalyticsPanelVisible = ref(false);
+
+// ✅ [效能] 對話框型大元件「首次開啟才掛載、之後常駐」
+// 這些元件的開啟初始化都掛在非 immediate 的 watch(props.show / modelValue) 上，
+// 若直接以 show=true 首次掛載會漏掉初始化（例如退戶管理不會 loadData）。
+// 因此第一次要開啟時：先退回關閉 → 讓 v-if 掛載非同步元件 → 等內層元件 ref 就緒（chunk 下載 + 掛載）→ 再真正打開。
+// 之後保持掛載，行為與原本（常駐）完全相同。
+const lazyMounted = reactive({ cancelled: false, unitExport: false, gridDownload: false, activity: false, analytics: false });
+const cancelledPurchaseRef = ref(null);
+const unitExportDialogRef = ref(null);
+const gridDownloadDialogRef = ref(null);
+const activityViewerRef = ref(null);
+const analyticsPanelRef = ref(null);
+function setupLazyDialog(key, visibleRef, compRef) {
+  watch(visibleRef, async (v) => {
+    if (!v || lazyMounted[key]) return;
+    visibleRef.value = false;
+    lazyMounted[key] = true;
+    const start = Date.now();
+    // 非同步元件的 template ref 會在「內層元件」掛載後才有值（wrapper 階段為 null）
+    while (!compRef.value && Date.now() - start < 8000) {
+      await new Promise(r => setTimeout(r, 16));
+    }
+    visibleRef.value = true;
+  });
+}
+setupLazyDialog('cancelled', isCancelledPurchaseDialogVisible, cancelledPurchaseRef);
+setupLazyDialog('unitExport', isUnitExportDialogVisible, unitExportDialogRef);
+setupLazyDialog('gridDownload', isGridDownloadDialogVisible, gridDownloadDialogRef);
+setupLazyDialog('activity', isActivityDialogVisible, activityViewerRef);
+setupLazyDialog('analytics', isAnalyticsPanelVisible, analyticsPanelRef);
 const isParkingCanvasDialogVisible = ref(false);
 const parkingCanvasFloorPlans = ref([]);
 const activeParkingCanvasFloorPlan = ref(null);
@@ -4475,10 +4524,21 @@ async function loadCurrentProjectData(targetId) {
   loading.value = true;
   error.value = null;
   try {
+    // ✅ [效能] 三者並行；樣式與顏色 store 內建預設值且自行處理錯誤，不阻擋畫面：
+    // 只等戶別資料到齊就關閉 loading，樣式 / 顏色回來時畫面會自動反應（原本是三段串行）。
+    const styleAndColorReady = Promise.all([
+      textStyleStore.fetchStyles(targetId),
+      statusColorStore.fetchColors(targetId)
+    ]);
     await salesDataStore.loadProjectData(targetId);
-    await textStyleStore.fetchStyles(targetId);
-    await statusColorStore.fetchColors(targetId);
+    styleAndColorReady.catch(e => console.warn('[SalesControlSystem] 樣式/顏色載入失敗（使用預設值）:', e?.message || e));
     console.log(` [SalesControlSystem] 數據載入完成，戶別數量: ${salesHouseholds.value.length}`);
+    // 畫面已可操作 → 閒置時預抓戶別詳情 Modal 的 chunk，首次點開戶別不必等下載
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 300));
+    idle(() => {
+      loadUnitDetailModal().catch(() => {});
+      import('@/views/ParkingControl.vue').catch(() => {}); // 車位銷控頁 chunk 也先抓好
+    });
     if (import.meta.env.DEV) {
       const stats = salesDataStore.getCacheStats;
       console.group('📊 銷控系統緩存統計');
@@ -4533,7 +4593,7 @@ onUnmounted(() => {
 });
 
 // Export/Upload methods (Keeping same)
-const exportToExcel = () => {
+const exportToExcel = async () => {
     if (salesHouseholds.value.length === 0) {
         toast.info('目前沒有資料可匯出。', { position: POSITION.BOTTOM_CENTER });
         return;
@@ -4624,6 +4684,7 @@ const exportToExcel = () => {
     const exportHeaders = ['文件ID', ...chineseHeaders.value, ...PARKING_EXTRA_HEADERS];
     const warningRow = ['注意：為確保資料能正確重新上傳，請勿修改第二列的標頭名稱。'];
     const dataWithHeader = [warningRow, exportHeaders, ...dataAsArray];
+    const XLSX = await loadXLSX();
     const ws = XLSX.utils.aoa_to_sheet(dataWithHeader);
 
     const warningStyle = { font: { color: { rgb: "FFFF0000" }, bold: true }, fill: { fgColor: { rgb: "FFFFFF00" } } };
@@ -4687,8 +4748,9 @@ const handleFileChange = () => {
     }
     isParsing.value = true;
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         try {
+            const XLSX = await loadXLSX();
             const headerToKeyMap = new Map(COLUMN_DEFINITIONS.map(col => [col.title.trim(), col.key]));
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array', cellDates: true });

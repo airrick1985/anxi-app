@@ -73,6 +73,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { getProjectsForInspectionCalendar, checkInToSystem } from '@/api';
+import { prefetchInspectionCalendarChunks, prefetchInspectionCalendarData } from '@/utils/inspectionPrefetch'; // ✅ [效能] 簽到期間預載
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -132,11 +133,15 @@ const enterProject = async () => {
       throw new Error('無法獲取使用者資訊，請重新登入。');
     }
 
+    // ✅ [效能] 簽到（Cloud Function，可能冷啟動）期間同步預載時間表 chunk 與建案設定、日期範圍、本週預約
+    prefetchInspectionCalendarChunks();
+    prefetchInspectionCalendarData(projectId);
+
     const result = await checkInToSystem(projectId, system, userKey, userName);
 
     if (result.status === 'success') {
-      router.push({ 
-        name: 'InternalInspectionCalendar', 
+      router.push({
+        name: 'InternalInspectionCalendar',
         params: { projectId: projectId } 
       });
     } else {

@@ -768,6 +768,8 @@
                 <label class="text-body-2 font-weight-medium d-block mb-1">每坪調整</label>
                 <v-text-field
                   v-model="negotiationPerTsuboValue"
+                  autocomplete="off"
+                  :name="`neg-negotiationPerTsuboValue-${noAutofillSeed}`"
                   type="number"
                   suffix="萬/坪"
                   placeholder="例如: -1.5 (減) 或 +0.5 (加)"
@@ -783,6 +785,8 @@
                 <label class="text-body-2 font-weight-medium d-block mb-1">直接調整總價</label>
                 <v-text-field
                   v-model="negotiationDirectAmountValue"
+                  autocomplete="off"
+                  :name="`neg-negotiationDirectAmountValue-${noAutofillSeed}`"
                   type="number"
                   suffix="萬"
                   placeholder="例如: -15 (減) 或 +10 (加)"
@@ -803,6 +807,8 @@
                 <label class="text-body-2 font-weight-medium d-block mb-1">直接輸入房屋總價（不含車位）</label>
                 <v-text-field
                   v-model="negotiationTotalPriceValue"
+                  autocomplete="off"
+                  :name="`neg-negotiationTotalPriceValue-${noAutofillSeed}`"
                   type="number"
                   suffix="萬"
                   placeholder="例如: 3000"
@@ -1013,6 +1019,9 @@ function openImageLightbox() {
   if (!hasHouseholdImages.value) return;
   isImageLightboxVisible.value = true;
 }
+
+// ✅ [公用電腦防殘留] 議價欄位關閉瀏覽器自動完成：name 每次掛載都不同，瀏覽器的輸入歷史對不上就不會跳建議
+const noAutofillSeed = Math.random().toString(36).slice(2, 10);
 
 // ✅ [新增] 議價調整相關狀態
 const isNegotiationDialogVisible = ref(false);

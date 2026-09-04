@@ -919,6 +919,8 @@
     </v-dialog>
 
       <AppointmentDetailsDialog
+      v-if="detailsDialogMounted"
+      ref="detailsDialogRef"
       v-model="isDialogVisible"
       :appointment="selectedEvent"
       :can-edit="canEdit"
@@ -1928,6 +1930,8 @@
 
   <!-- 下載EXCEL(列表)：選日期 + 選欄位/排序（比照銷控「下載指定戶別資料」） -->
   <ScheduleListExportDialog
+    v-if="listExportDialogMounted"
+    ref="listExportDialogRef"
     v-model="isListExportDialogVisible"
     :items="listExportItems"
     :columns="listExportColumns"
@@ -2027,12 +2031,18 @@
 </template>
 
 <script setup>
-import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
-import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
+// ✅ [效能] 對話框改為非同步 chunk：首次開啟才下載。
+// AdminAddBooking / 排休管理 / 備註管理 模板本來就 v-if 於開啟時建立；
+// 預約詳情、下載列表 這兩個常駐型的改用 useLazyDialog（首次開啟才掛載、之後常駐）。
+import { defineAsyncComponent } from 'vue';
+const AppointmentDetailsDialog = defineAsyncComponent(() => import('@/components/AppointmentDetailsDialog.vue'));
+const AdminAddBookingDialog = defineAsyncComponent(() => import('@/components/AdminAddBookingDialog.vue'));
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
-import ScheduleListExportDialog from '@/components/ScheduleListExportDialog.vue';
-import InspectorLeaveManagerDialog from '@/components/InspectorLeaveManagerDialog.vue';
-import CalendarNoteManagerDialog from '@/components/CalendarNoteManagerDialog.vue';
+const ScheduleListExportDialog = defineAsyncComponent(() => import('@/components/ScheduleListExportDialog.vue'));
+const InspectorLeaveManagerDialog = defineAsyncComponent(() => import('@/components/InspectorLeaveManagerDialog.vue'));
+const CalendarNoteManagerDialog = defineAsyncComponent(() => import('@/components/CalendarNoteManagerDialog.vue'));
+import { useLazyDialog } from '@/composables/useLazyDialog';
+import { useInspectionCalendarStore } from '@/store/inspectionCalendarStore';
 import { buildLeaveMap, annotateInspectorPersons, getLeaveTypeForSlot, LEAVE_TYPE_LABELS } from '@/utils/inspectorLeaveUtils';
 import { buildCalendarNoteMap, getNoteColor } from '@/utils/calendarNoteUtils';
 
@@ -2042,8 +2052,7 @@ import '@vuepic/vue-datepicker/dist/main.css';
 
 import { usePageContextStore } from '@/store/pageContextStore';
 import { useProjectStore } from '@/store/projectStore'; 
-import Shepherd from 'shepherd.js';
-import 'shepherd.js/dist/css/shepherd.css';
+// ✅ [效能] shepherd.js 導覽套件改為按下「導覽」時才動態載入（見 startTour）
 import { ref, onMounted, computed, watch, reactive, onUnmounted ,nextTick} from 'vue';
 import { useRoute, useRouter } from 'vue-router'; 
 import { useUserStore } from '@/store/user';
@@ -2063,10 +2072,11 @@ import { functions } from '@/firebase';
 import { useDisplay } from 'vuetify';
 import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO, startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+// ✅ [效能] html2canvas（PNG 下載）與 xlsx-js-style（EXCEL 下載，1.3MB）只在使用者按下載時才動態載入；
+// jspdf 原本引入但未使用，一併移除。時間表首載 JS 少約 2MB。
+const loadHtml2canvas = () => import('html2canvas').then(m => m.default);
+const loadXLSX = () => import('xlsx-js-style');
 import { useClipboard } from '@vueuse/core';
-import * as XLSX from 'xlsx-js-style';
 import { vDraggableDialog } from '@/directives/vDraggableDialog';
 import { useSystemPresence } from '@/composables/useSystemPresence';
 import { formatSalespersons, normalizeSalespersons } from '@/utils/salespersonUtils';
@@ -2201,6 +2211,10 @@ const isDownloadingExcel = ref(false);
 const isFilterDialogVisible = ref(false);
 const isStatisticsDialogVisible = ref(false); // ✅ 新增這一行
 const isListExportDialogVisible = ref(false); // 下載EXCEL(列表) 對話框
+// ✅ [效能] 常駐型對話框「首次開啟才掛載、之後常駐」（元件為非同步 chunk）
+const { mounted: detailsDialogMounted, compRef: detailsDialogRef } = useLazyDialog(isDialogVisible);
+const { mounted: listExportDialogMounted, compRef: listExportDialogRef } = useLazyDialog(isListExportDialogVisible);
+const inspectionCalendarStore = useInspectionCalendarStore();
 const isAdvFilterDialogVisible = ref(false); // 進階篩選對話框（自「篩選與顯示設定」拆出）
 const selectedStatisticsTypes = ref([]); // 儲存 Dialog 中被勾選的項目 (e.g., ['初驗', '複驗'])
 const selectedStatisticsStatuses = ref([]); // 儲存 Dialog 中被勾選的狀態 (e.g., ['預約中', '已完成'])
@@ -2605,13 +2619,14 @@ async function handleListExportFetchRange({ start, end }) {
   if (!start || !end || start > end) return;
   isListExportFetching.value = true;
   try {
-    const result = await inspectionApi('fetchCalendarData', {
-      projectId: projectId.value,
-      startDate: parseISO(`${start}T00:00:00`),
-      endDate: parseISO(`${end}T23:59:59`),
-    });
-    if (result.data && Array.isArray(result.data)) {
-      const appointmentsWithDates = result.data.map(appt => convertFirestoreTimestampsToDates(appt));
+    // ✅ [效能] 直讀 Firestore 一次性抓取（失敗退回 Cloud Function）
+    const list = await inspectionCalendarStore.fetchAppointmentsOnce(
+      projectId.value,
+      parseISO(`${start}T00:00:00`),
+      parseISO(`${end}T23:59:59`),
+    );
+    if (Array.isArray(list)) {
+      const appointmentsWithDates = list.map(appt => convertFirestoreTimestampsToDates(appt));
       const appointmentsMap = new Map(allAppointments.value.map(item => [item.id, item]));
       appointmentsWithDates.forEach(item => appointmentsMap.set(item.id, item));
       allAppointments.value = Array.from(appointmentsMap.values());
@@ -3758,12 +3773,12 @@ function copyPivotTable() {
 async function fetchInspectorLeavesData() {
   if (!projectId.value || !startDate.value || !endDate.value) return;
   try {
-    const res = await inspectionApi('fetchInspectorLeaves', {
-      projectId: projectId.value,
-      startDate: format(startDate.value, 'yyyy-MM-dd'),
-      endDate: format(endDate.value, 'yyyy-MM-dd'),
-    });
-    inspectorLeaveRecords.value = res.data?.data || [];
+    // ✅ [效能] 直讀 Firestore（失敗退回 Cloud Function），見 inspectionCalendarStore
+    inspectorLeaveRecords.value = await inspectionCalendarStore.fetchInspectorLeaves(
+      projectId.value,
+      format(startDate.value, 'yyyy-MM-dd'),
+      format(endDate.value, 'yyyy-MM-dd'),
+    );
   } catch (err) {
     console.warn('讀取驗屋人員排休失敗:', err);
   }
@@ -3773,12 +3788,12 @@ async function fetchInspectorLeavesData() {
 async function fetchCalendarNotesData() {
   if (!projectId.value || !startDate.value || !endDate.value) return;
   try {
-    const res = await inspectionApi('fetchCalendarNotes', {
-      projectId: projectId.value,
-      startDate: format(startDate.value, 'yyyy-MM-dd'),
-      endDate: format(endDate.value, 'yyyy-MM-dd'),
-    });
-    calendarNoteRecords.value = res.data?.data || [];
+    // ✅ [效能] 直讀 Firestore（失敗退回 Cloud Function），見 inspectionCalendarStore
+    calendarNoteRecords.value = await inspectionCalendarStore.fetchCalendarNotes(
+      projectId.value,
+      format(startDate.value, 'yyyy-MM-dd'),
+      format(endDate.value, 'yyyy-MM-dd'),
+    );
   } catch (err) {
     console.warn('讀取行事曆備註失敗:', err);
   }
@@ -3788,12 +3803,12 @@ async function fetchCalendarNotesData() {
 async function fetchDailyQuotaData() {
   if (!projectId.value || !startDate.value || !endDate.value) return;
   try {
-    const res = await inspectionApi('fetchDailyQuotaSummary', {
-      projectId: projectId.value,
-      startDate: format(startDate.value, 'yyyy-MM-dd'),
-      endDate: format(endDate.value, 'yyyy-MM-dd'),
-    });
-    dailyQuotaByDate.value = res.data?.data || {};
+    // 每日名額需跨集合聚合，維持走後端
+    dailyQuotaByDate.value = await inspectionCalendarStore.fetchDailyQuotaSummary(
+      projectId.value,
+      format(startDate.value, 'yyyy-MM-dd'),
+      format(endDate.value, 'yyyy-MM-dd'),
+    );
   } catch (err) {
     console.warn('讀取每日名額摘要失敗:', err);
   }
@@ -3882,49 +3897,49 @@ function handleStaffListUpdated(newList) {
   bookingOptions.value = { ...bookingOptions.value, inspectionStaff: newList };
 }
 
+// ✅ [效能] 目前檢視區間的預約來自 inspectionCalendarStore：
+//   直讀 Firestore 即時監聽（跨頁保留，回到同區間直接命中），安全規則不允許時自動退回 Cloud Function。
+//   預約與戶別監聽同時發出，兩者都到才關 loading（原本要等戶別到了才開始抓預約）。
+const currentAppointmentsKey = ref('');
+const currentRangeAppointments = computed(() => inspectionCalendarStore.appointmentsByKey[currentAppointmentsKey.value] || []);
+const householdsReady = ref(false);
+const appointmentsReady = ref(false);
+function maybeFinishInitialLoading() {
+  if (householdsReady.value && appointmentsReady.value) isLoading.value = false;
+}
+function mergeAppointments(list) {
+  if (!Array.isArray(list)) return;
+  // 將 Firestore Timestamp / ISO 字串轉回 Date 物件，並以 id 合併進 allAppointments（保留其他區間已載入的資料）
+  const appointmentsWithDates = list.map(appt => convertFirestoreTimestampsToDates(appt));
+  const appointmentsMap = new Map(allAppointments.value.map(item => [item.id, item]));
+  appointmentsWithDates.forEach(item => appointmentsMap.set(item.id, item));
+  allAppointments.value = Array.from(appointmentsMap.values());
+}
+// 即時監聽有異動 → 自動合併（退回 Cloud Function 模式時只在 fetchData 時更新）
+watch(currentRangeAppointments, (list) => mergeAppointments(list));
+
 // ✅ 8. 修改 fetchData 函數
 async function fetchData() {
   fetchInspectorLeavesData(); // 排休資料獨立載入，不阻塞預約主流程
   fetchCalendarNotesData();   // 行事曆備註同樣獨立載入
   fetchDailyQuotaData();      // 每日名額摘要同樣獨立載入
-  if (allHouseholdData.value.size === 0) {
-    console.warn("fetchData: 戶別快取為空，暫停獲取預約。");
-    // isLoading.value = false; // 讓 isLoading 保持 true，直到戶別資料載入
-    return;
-  }
-  
+  if (!projectId.value || !startDate.value || !endDate.value) return;
+
   isLoading.value = true;
   error.value = null;
   try {
-    // 1. 【優化】只向後端請求 appointments
-    const result = await inspectionApi('fetchCalendarData', {
-      projectId: projectId.value,
-      startDate: startDate.value,
-      endDate: endDate.value
-    });
-
-    if (result.data) {
-        // 2. 將後端回傳的 ISO 字串轉回 Date 物件
-        const appointmentsWithDates = result.data.map(appt => 
-          convertFirestoreTimestampsToDates(appt) // ✅ 使用新的輔助函數
-        );
-
-        // 3. 【修改】合併邏輯
-        const appointmentsMap = new Map(allAppointments.value.map(item => [item.id, item]));
-        appointmentsWithDates.forEach(item => appointmentsMap.set(item.id, item));
-        allAppointments.value = Array.from(appointmentsMap.values());
-        
-        console.log(`[fetchData] 成功獲取 ${appointmentsWithDates.length} 筆預約。`);
-
-    } else {
-        allAppointments.value = [];
-    }
-
+    const { key, ready } = inspectionCalendarStore.subscribeAppointments(projectId.value, startDate.value, endDate.value);
+    currentAppointmentsKey.value = key;
+    await ready;
+    const list = inspectionCalendarStore.appointmentsByKey[key] || [];
+    mergeAppointments(list);
+    console.log(`[fetchData] 成功獲取 ${list.length} 筆預約。`);
   } catch (err) {
     console.error('獲取行事曆資料失敗:', err);
     error.value = err.message;
   } finally {
-    isLoading.value = false;
+    appointmentsReady.value = true;
+    maybeFinishInitialLoading();
   }
 }
 
@@ -4392,12 +4407,6 @@ onMounted(async () => {
     path: route.path,
   });
   
-  // ✅ [新增] 強制從後端讀取最新的使用者偏好設定 (確保重整頁面也能拿到最新時段)
-  if (userStore.isLoggedIn) {
-    console.log('正在重新同步使用者偏好設定...');
-    await userStore.loadUserPreferencesFromDatabase();
-  }
-
   isLoading.value = true;
   error.value = null;
 
@@ -4406,17 +4415,25 @@ onMounted(async () => {
       router.push({ name: 'Login' });
       return;
     }
-    
+
+    // ✅ [效能] 拆掉原本「偏好 → 設定 → 戶別 → 預約」的等待鏈，全部同時發出：
+    //   - 戶別監聽（Firestore）與目前區間預約（store，直讀/即時監聽）立刻開始，兩者都到即關 loading
+    //   - 使用者偏好、建案設定、日期範圍、靜態資料並行；建案設定與日期範圍走 store（直讀 + 快取，入口頁已預載）
+    householdsReady.value = false;
+    appointmentsReady.value = false;
+    startHouseholdListener();
+    fetchData(); // 不 await；由 maybeFinishInitialLoading 統一收尾
+
+    // 強制從後端讀取最新的使用者偏好設定（確保重整頁面也能拿到最新時段）；失敗不阻斷頁面
+    const prefsPromise = userStore.loadUserPreferencesFromDatabase()
+      .catch(e => console.warn('同步使用者偏好設定失敗:', e?.message || e));
+
     // 1. 獲取靜態設定 (不包含 households)
-    // ✅ 呼叫 inspectionApi
     const [projectConfig, dateRangeData] = await Promise.all([
-      inspectionApi('getProjectConfig', { projectId: projectId.value }).then(res => res.data),
-      inspectionApi('getAppointmentDateRange', { projectId: projectId.value }).then(res => res.data.data),
-      
-      // ✅✅✅ 【修改點】✅✅✅
-      // 將 'fetchProjectData' 改為您在 BookingPage 中使用的 'fetchProjectStaticData'
-      projectStore.fetchProjectStaticData(projectId.value, inspectionApi) 
-      // ✅✅✅ 【修改點結束】✅✅✅
+      inspectionCalendarStore.getProjectConfig(projectId.value),
+      inspectionCalendarStore.getAppointmentDateRange(projectId.value),
+      projectStore.fetchProjectStaticData(projectId.value),
+      prefsPromise,
     ]);
 
     // 2. 儲存靜態資料
@@ -4430,43 +4447,40 @@ onMounted(async () => {
     syncColorSettingsFromProject(); // 由建案設定載入共用的事件顏色
     minSelectableDate.value = dateRangeData.minDate;
     maxSelectableDate.value = dateRangeData.maxDate; // ✅ 修正了這裡的變數名稱
-    dateRange.value = [startDate.value, endDate.value]; 
-    
-    // ✅ 3. 啟動戶別資料的即時監聽
-    if (householdListenerUnsubscribe.value) {
-      householdListenerUnsubscribe.value(); // 先停止舊的監聽
-    }
-    householdListenerUnsubscribe.value = listenToHouseholdsForCalendar(
-      projectId.value,
-      (householdsArray) => { // ✅ 監聽器回傳的是陣列
-        const newHouseholds = new Map();
-        householdsArray.forEach(docData => { // ✅ 您的 API 回傳的是已 .data() 的陣列
-          // ✅ 修正：使用 docData.id (來自您的 api.js) 而不是 _docId
-          const key = `${docData.projectId}_${docData.unitId}`;
-          newHouseholds.set(key, convertFirestoreTimestampsToDates(docData)); // ✅ 轉換日期
-        });
-        allHouseholdData.value = newHouseholds;
-        console.log(`[REALTIME] Households cache updated with ${newHouseholds.size} items.`);
-
-        // ✅ 首次載入時，觸發 fetchData
-        if (isLoading.value) {
-          fetchData(); // fetchData 會處理 isLoading.value = false
-        }
-      },
-      (err) => {
-        error.value = `監聽戶別資料失敗: ${err.message}`;
-        isLoading.value = false; // 監聽失敗也應停止 loading
-      }
-    );
-
-    // 4. (fetchData 已被移到監聽器回呼中)
+    dateRange.value = [startDate.value, endDate.value];
 
   } catch (err) {
     console.error('初始化頁面失敗:', err);
     error.value = `無法載入預約資料：${err.message}`;
     isLoading.value = false; // 確保出錯時停止 loading
-  } 
+  }
 });
+
+// ✅ 3. 啟動戶別資料的即時監聽（onMounted 一開始就呼叫，與預約載入並行）
+function startHouseholdListener() {
+  if (householdListenerUnsubscribe.value) {
+    householdListenerUnsubscribe.value(); // 先停止舊的監聽
+  }
+  householdListenerUnsubscribe.value = listenToHouseholdsForCalendar(
+    projectId.value,
+    (householdsArray) => { // ✅ 監聽器回傳的是陣列
+      const newHouseholds = new Map();
+      householdsArray.forEach(docData => { // ✅ 您的 API 回傳的是已 .data() 的陣列
+        const key = `${docData.projectId}_${docData.unitId}`;
+        newHouseholds.set(key, convertFirestoreTimestampsToDates(docData)); // ✅ 轉換日期
+      });
+      allHouseholdData.value = newHouseholds;
+      console.log(`[REALTIME] Households cache updated with ${newHouseholds.size} items.`);
+      householdsReady.value = true;
+      maybeFinishInitialLoading();
+    },
+    (err) => {
+      error.value = `監聽戶別資料失敗: ${err.message}`;
+      householdsReady.value = true;
+      isLoading.value = false; // 監聽失敗也應停止 loading
+    }
+  );
+}
 
 
 // ✅ 18. 修改 onUnmounted
@@ -4864,6 +4878,7 @@ async function handleDownloadPng(rangeStart, rangeEnd) {
 
   await new Promise(resolve => setTimeout(resolve, 100));
 
+  const html2canvas = await loadHtml2canvas();
   const canvas = await html2canvas(tempContainer, { scale: 2, useCORS: true });
 
   document.body.removeChild(tempContainer);
@@ -5088,6 +5103,7 @@ async function renderPersonPngBlob(innerHTML) {
   document.body.appendChild(tempContainer);
   try {
     await new Promise(resolve => setTimeout(resolve, 100));
+    const html2canvas = await loadHtml2canvas();
     const canvas = await html2canvas(tempContainer, { scale: 2, useCORS: true });
     return await new Promise((resolve, reject) =>
       canvas.toBlob(b => (b ? resolve(b) : reject(new Error('圖片轉檔失敗'))), 'image/png')
@@ -5215,6 +5231,7 @@ async function handleDownloadPersonPngCombined() {
 }
 
 async function handleDownloadExcel() {
+  const XLSX = await loadXLSX();
   isDownloadingExcel.value = true;
   try {
     const start = startDate.value;
@@ -5433,11 +5450,20 @@ async function handleRefresh() {
   snackbar.value = true;
 }
 
-// (Tour 函數保持不變)
-const tour = new Shepherd.Tour({ /* ... */ });
-const tourSteps = [ /* ... */ ];
-tour.addSteps(tourSteps);
-function startTour() { tour.start(); }
+// (Tour 函數保持不變；shepherd.js 改為第一次啟動導覽時才動態載入)
+let tour = null;
+async function startTour() {
+  if (!tour) {
+    const [{ default: Shepherd }] = await Promise.all([
+      import('shepherd.js'),
+      import('shepherd.js/dist/css/shepherd.css'),
+    ]);
+    tour = new Shepherd.Tour({ /* ... */ });
+    const tourSteps = [ /* ... */ ];
+    tour.addSteps(tourSteps);
+  }
+  tour.start();
+}
 
 // (navigateToHouseholdGrid 函數保持不變)
 function navigateToHouseholdGrid() {

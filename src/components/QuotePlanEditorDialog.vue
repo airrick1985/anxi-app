@@ -166,6 +166,8 @@
 
           <v-text-field
             v-model="form.perTsuboValue"
+            autocomplete="off"
+            :name="`plan-neg-perTsuboValue-${noAutofillSeed}`"
             label="每坪調整"
             type="number"
             suffix="萬/坪"
@@ -178,6 +180,8 @@
 
           <v-text-field
             v-model="form.directAmountValue"
+            autocomplete="off"
+            :name="`plan-neg-directAmountValue-${noAutofillSeed}`"
             label="直接調整總價"
             type="number"
             suffix="萬"
@@ -190,6 +194,8 @@
 
           <v-text-field
             v-model="form.totalPriceValue"
+            autocomplete="off"
+            :name="`plan-neg-totalPriceValue-${noAutofillSeed}`"
             label="直接輸入總價"
             type="number"
             suffix="萬"
@@ -318,6 +324,9 @@ async function persistPlans() {
 // ── 編輯表單 ──
 const editDialog = ref(false);
 const editingId = ref(null);
+// ✅ [公用電腦防殘留] 議價欄位關閉瀏覽器自動完成：name 每次掛載都不同
+const noAutofillSeed = Math.random().toString(36).slice(2, 10);
+
 const form = reactive({
   name: '',
   paymentTemplateIds: [],

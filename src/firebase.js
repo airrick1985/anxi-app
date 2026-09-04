@@ -2,7 +2,7 @@
 
 // 從 Firebase SDK 引入您需要的函式
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions, httpsCallable } from "firebase/functions"; // 確保導入
 import { getDatabase } from "firebase/database"; 
@@ -27,7 +27,14 @@ const app = initializeApp(firebaseConfig);
 
 // 建立並匯出所有 Firebase 服務的實例
 // 根據 Firebase v9+ 的多資料庫設定方式
-export const db = getFirestore(app, 'anxi-app');
+//
+// ✅ [效能] 啟用 Firestore 本機持久化快取（IndexedDB）：
+//   - onSnapshot 會先立刻回傳上次快取的資料，再同步伺服器差異，重整頁面不必重新下載整批戶別
+//   - persistentMultipleTabManager：多分頁共用同一份快取，不會因第二個分頁而停用持久化
+//   - IndexedDB 不可用（隱私模式等）時 SDK 自動退回記憶體快取，行為與原本相同
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+}, 'anxi-app');
 export const storage = getStorage(app);
 export const functions = getFunctions(app, 'asia-east1');
 export const rtdb = getDatabase(app);

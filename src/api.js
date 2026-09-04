@@ -4619,11 +4619,19 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
   let parkingsLoaded = false;
   let personnelLoaded = false; // ✓ 新增 personnel 載入旗標
 
+  // ✅ [效能] 漸進式送出：專案文件 + 戶別（畫面主體）一到就先 emit，讓頁面立刻可以渲染；
+  // 參數 / 車位 / 人員的快照到齊後再各自 emit 一次補上（回呼端整包覆蓋，不會殘留舊值）。
+  // 原本要等五個集合全部回來才 emit，最慢的一個決定整頁等待時間。
+  // 多個快照在極短時間內陸續抵達（本機快取回放、初次載入）時合併成一次 emit，避免頁面重算多次。
+  let emitTimer = null;
+  const emitNow = () => {
+    emitTimer = null;
+    onDataChange({ ...combinedData });
+  };
   const checkAndEmitData = () => {
-    // ✓ 修改：確保 personnelLoaded 也為 true
-    if (projectLoaded && paramsLoaded && householdsLoaded && parkingsLoaded && personnelLoaded) {
-      onDataChange(combinedData);
-    }
+    if (!(projectLoaded && householdsLoaded)) return;
+    if (emitTimer) return;
+    emitTimer = setTimeout(emitNow, 30);
   };
 
   const unsubProject = onSnapshot(projectDocRef, (docSnap) => {
@@ -4666,6 +4674,7 @@ export const listenToSalesControlData = (projectId, onDataChange, onError) => {
   }, onError);
 
   return () => {
+    if (emitTimer) { clearTimeout(emitTimer); emitTimer = null; }
     unsubProject();
     unsubParams();
     unsubHouseholds();
@@ -5861,6 +5870,14 @@ export const deleteContractDocFile = async (projectId, unitId, path) => {
  * @returns {Promise<object>} 樣式物件
  */
 export const getProjectTextStyle = async (projectId) => {
+  // ✅ [效能] 純讀取設定，優先直讀 Firestore（parkingTextStyles/{projectId}），省掉一次可能冷啟動的 Cloud Function 往返；
+  // 若安全規則不允許前端讀取（permission-denied）等任何錯誤，退回原本的 Cloud Function 路徑。
+  try {
+    const snap = await getDoc(doc(db, 'parkingTextStyles', projectId));
+    return snap.exists() ? snap.data() : {};
+  } catch (e) {
+    console.warn('[api.js] getProjectTextStyle 直讀 Firestore 失敗，改走 Cloud Function:', e?.message || e);
+  }
   const getStyles = httpsCallable(functions, 'getProjectTextStyle');
   const result = await getStyles({ projectId });
   if (result.data.status === 'success') {
@@ -5890,6 +5907,13 @@ export const updateProjectTextStyle = async (projectId, styles) => {
  * @returns {Promise<object>} 顏色設定物件
  */
 export const getProjectStatusColors = async (projectId) => {
+  // ✅ [效能] 純讀取設定，優先直讀 Firestore（projectStatusColors/{projectId}）；失敗退回 Cloud Function（同 getProjectTextStyle）
+  try {
+    const snap = await getDoc(doc(db, 'projectStatusColors', projectId));
+    return snap.exists() ? snap.data() : {};
+  } catch (e) {
+    console.warn('[api.js] getProjectStatusColors 直讀 Firestore 失敗，改走 Cloud Function:', e?.message || e);
+  }
   const getColors = httpsCallable(functions, 'getProjectStatusColors');
   const result = await getColors({ projectId });
   if (result.data.status === 'success') {

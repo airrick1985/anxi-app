@@ -114,6 +114,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { verifyUserPassword } from '@/api';
+import { prefetchSalesSystem } from '@/utils/salesPrefetch'; // ✅ [效能] 進入銷控表 / 列印報價前預載
 
 const route = useRoute();
 const router = useRouter();
@@ -132,6 +133,8 @@ const passwordError = ref('');
 const verifying = ref(false);
 
 onMounted(async () => {
+  // ✅ [效能] 使用者在此頁選功能 / 輸密碼時，先把銷控表與列印報價的 chunk 及建案資料載進快取
+  prefetchSalesSystem(projectId.value, 'quote');
   if (!projectStore.idToNameMap || Object.keys(projectStore.idToNameMap).length === 0) {
     await projectStore.fetchProjects();
   }

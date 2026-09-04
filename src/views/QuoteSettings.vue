@@ -16,160 +16,114 @@
       </div>
     </v-overlay>
 
-   <!-- ✅ [優化] 功能列改為「標題列＋動作列」兩層結構：桌機動作靠右一列，手機動作自動排版不混亂 -->
-   <div class="page-header">
-  <div class="header-main d-flex align-center">
-    <!-- 從「列印報價」(?pick=1) 進入時不提供返回（避免回到報價系統銷控模式） -->
-    <v-btn
-      v-if="!isPickEntry"
-      variant="outlined"
-      :size="smAndDown ? 'small' : 'default'"
-      @click="goBack"
-      class="mr-2 mr-md-4 flex-shrink-0"
-    >返回銷控</v-btn>
-
-    <div class="title-block">
-      <h1 class="text-h6 text-md-h4 font-weight-bold text-primary d-flex align-center">
-        <v-icon color="primary" class="mr-2">mdi-file-document-edit-outline</v-icon>
-        報價單設定
-      </h1>
-      <v-menu location="bottom start">
-        <template #activator="{ props }">
-          <v-chip
-            v-bind="props"
-            class="mt-2 project-chip"
-            color="primary"
-            variant="flat"
-            :size="smAndDown ? 'default' : 'large'"
-            label
-            link
-          >
-            <v-icon start>mdi-office-building-marker</v-icon>
-            建案：{{ projectName }}
-            <v-icon end>mdi-chevron-down</v-icon>
-          </v-chip>
-        </template>
-        <v-list density="comfortable" class="project-switch-list" max-height="60vh">
-          <v-list-subheader>切換建案</v-list-subheader>
-          <v-list-item
-            v-for="p in authorizedProjects"
-            :key="p.id"
-            :active="p.id === projectId"
-            :disabled="p.id === projectId"
-            @click="switchProject(p)"
-          >
-            <template #prepend>
-              <v-icon :color="p.id === projectId ? 'primary' : undefined">
-                {{ p.id === projectId ? 'mdi-check-circle' : 'mdi-office-building-outline' }}
-              </v-icon>
-            </template>
-            <v-list-item-title>{{ p.name }}</v-list-item-title>
-          </v-list-item>
-          <v-list-item v-if="authorizedProjects.length === 0" disabled>
-            <v-list-item-title class="text-grey">無可切換的建案</v-list-item-title>
-          </v-list-item>
-        </v-list>
-      </v-menu>
+   <!-- ✅ [改版] 頁首工具列：對齊銷控系統 .toolbar 樣式
+        群組 1 建案下拉＋標題｜群組 2 返回／新增戶別／移除全部｜群組 3 活動訊息＋「功能」分群磚格選單（管理功能整合）
+        手機：標題與右側鈕同列 → 建案下拉整行 → 動作鈕整行 -->
+   <div class="page-toolbar">
+    <div class="toolbar-group toolbar-group-project">
+      <v-select
+        :model-value="projectId"
+        @update:model-value="onToolbarProjectSelect"
+        :items="authorizedProjects"
+        item-title="name"
+        item-value="id"
+        label="選擇建案"
+        variant="outlined"
+        density="compact"
+        hide-details
+        prepend-inner-icon="mdi-office-building-marker"
+        class="project-selector"
+      ></v-select>
     </div>
 
-    <v-spacer></v-spacer>
+    <span class="toolbar-title">
+      <v-icon size="20" color="primary" class="mr-1">mdi-file-document-edit-outline</v-icon>
+      <span class="d-none d-md-inline">{{ projectName }}-</span>報價單設定
+    </span>
 
-    <!-- 活動訊息（icon，桌機手機都固定在標題列右側） -->
-    <v-tooltip text="活動訊息" location="bottom">
-      <template v-slot:activator="{ props }">
-        <v-btn
-          v-bind="props"
-          icon="mdi-bullhorn-outline"
-          color="red"
-          variant="tonal"
-          :size="smAndDown ? 'small' : 'default'"
-          @click="handleOpenActivityMessage"
-        ></v-btn>
-      </template>
-    </v-tooltip>
-  </div>
+    <span class="toolbar-divider" aria-hidden="true"></span>
 
-  <div class="header-actions">
-    <v-btn
-      color="primary"
-      variant="tonal"
-      prepend-icon="mdi-home-plus"
-      :size="smAndDown ? 'small' : 'default'"
-      @click="openUnitPicker"
-    >新增戶別</v-btn>
+    <div class="toolbar-group toolbar-group-main">
+      <!-- 從「列印報價」(?pick=1) 進入時不提供返回（避免回到報價系統銷控模式） -->
+      <v-btn
+        v-if="!isPickEntry"
+        color="black"
+        variant="tonal"
+        prepend-icon="mdi-arrow-left"
+        :size="smAndDown ? 'small' : 'default'"
+        @click="goBack"
+      >返回銷控</v-btn>
 
-    <v-btn
-      v-if="quoteStore.items.length > 0"
-      color="error"
-      variant="tonal"
-      prepend-icon="mdi-delete-sweep"
-      :size="smAndDown ? 'small' : 'default'"
-      @click="confirmClearDialog = true"
-    >移除全部戶別</v-btn>
+      <v-btn
+        color="primary"
+        variant="flat"
+        prepend-icon="mdi-home-plus"
+        :size="smAndDown ? 'small' : 'default'"
+        @click="openUnitPicker"
+      >新增戶別</v-btn>
 
-    <!-- ✅ 報價單備註編輯器：僅銷控管理權限人員可見 -->
-    <v-btn
-      v-if="canEditQuoteRemark"
-      color="blue-grey-darken-2"
-      variant="tonal"
-      prepend-icon="mdi-note-edit-outline"
-      :size="smAndDown ? 'small' : 'default'"
-      @click="isRemarkEditorVisible = true"
-    >報價單備註</v-btn>
+      <v-btn
+        v-if="quoteStore.items.length > 0"
+        color="error"
+        variant="tonal"
+        prepend-icon="mdi-delete-sweep"
+        :size="smAndDown ? 'small' : 'default'"
+        @click="confirmClearDialog = true"
+      >移除全部戶別</v-btn>
+    </div>
 
-    <!-- ✅ 方案編輯器：僅銷控管理權限人員可見 -->
-    <v-btn
-      v-if="canEditQuoteRemark"
-      color="deep-purple-darken-1"
-      variant="tonal"
-      prepend-icon="mdi-star-box-multiple"
-      :size="smAndDown ? 'small' : 'default'"
-      @click="isPlanEditorVisible = true"
-    >方案編輯器</v-btn>
+    <div class="toolbar-group toolbar-group-actions">
+      <v-tooltip text="活動訊息" location="bottom">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            icon="mdi-bullhorn-outline"
+            color="red"
+            variant="tonal"
+            :size="smAndDown ? 'small' : 'default'"
+            @click="handleOpenActivityMessage"
+          ></v-btn>
+        </template>
+      </v-tooltip>
 
-    <!-- ✅ 配套總價門檻設定：僅銷控管理權限人員可見 -->
-    <v-tooltip v-if="canEditQuoteRemark" text="配套總價門檻設定" location="bottom">
-      <template v-slot:activator="{ props }">
-        <v-btn
-          v-bind="props"
-          icon="mdi-cash-lock"
-          color="blue-grey-darken-2"
-          variant="tonal"
-          :size="smAndDown ? 'small' : 'default'"
-          @click="isPackageLimitDialogVisible = true"
-        ></v-btn>
-      </template>
-    </v-tooltip>
-
-    <!-- ✅ 報價核准設定（主管清單＋議價授權額度）：僅銷控管理權限人員可見 -->
-    <v-tooltip v-if="canEditQuoteRemark" text="報價核准設定（主管清單／議價授權額度）" location="bottom">
-      <template v-slot:activator="{ props }">
-        <v-btn
-          v-bind="props"
-          icon="mdi-account-check"
-          color="blue-grey-darken-2"
-          variant="tonal"
-          :size="smAndDown ? 'small' : 'default'"
-          @click="isApprovalSettingDialogVisible = true"
-        ></v-btn>
-      </template>
-    </v-tooltip>
-
-    <!-- ✅ 建案簡介網址（報價單 QR Code）：僅銷控管理權限人員可見 -->
-    <v-tooltip v-if="canEditQuoteRemark" text="建案簡介網址（報價單 QR Code）" location="bottom">
-      <template v-slot:activator="{ props }">
-        <v-btn
-          v-bind="props"
-          icon="mdi-qrcode"
-          color="blue-grey-darken-2"
-          variant="tonal"
-          :size="smAndDown ? 'small' : 'default'"
-          @click="isIntroUrlDialogVisible = true"
-        ></v-btn>
-      </template>
-    </v-tooltip>
-  </div>
-</div>
+      <!-- ✅ 功能選單：報價單備註／方案編輯器／配套門檻／核准設定／簡介網址，僅銷控管理權限人員可見 -->
+      <v-menu
+        v-if="canEditQuoteRemark"
+        v-model="isToolsMenuOpen"
+        :close-on-content-click="false"
+        location="bottom end"
+        :offset="8"
+      >
+        <template v-slot:activator="{ props }">
+          <v-btn
+            v-bind="props"
+            color="indigo-darken-3"
+            variant="flat"
+            prepend-icon="mdi-apps"
+            append-icon="mdi-chevron-down"
+            :size="smAndDown ? 'small' : 'default'"
+          >功能</v-btn>
+        </template>
+        <v-card class="desktop-tools-menu" rounded="lg" elevation="8">
+          <div v-for="group in toolGroups" :key="group.title" class="desktop-tools-section">
+            <div class="desktop-tools-label">{{ group.title }}</div>
+            <div class="desktop-tools-grid">
+              <button
+                v-for="tool in group.tools"
+                :key="tool.label"
+                type="button"
+                class="desktop-tool"
+                @click="runTool(tool.action)"
+              >
+                <span class="desktop-tool-icon"><v-icon size="22">{{ tool.icon }}</v-icon></span>
+                <span class="desktop-tool-label">{{ tool.label }}</span>
+              </button>
+            </div>
+          </div>
+        </v-card>
+      </v-menu>
+    </div>
+   </div>
 
       <v-dialog
       v-model="isQuoteEditorDialogVisible"
@@ -520,7 +474,6 @@ import { useParkingStore } from '@/store/parkingStore';
 import { useAdminStore } from '@/store/adminStore'; // 1. 引入 adminStore
 import {
   generateQuotePdf,
-  fetchSalesControlData,
   fetchQuotePersonnelList,
   fetchSalesPersonnelList, // 新增 Firestore 版本
   fetchPaymentTermTemplates, // 新增：期款範本 API
@@ -542,6 +495,7 @@ import QuoteApprovalSettingDialog from '@/components/QuoteApprovalSettingDialog.
 import QuoteIntroUrlDialog from '@/components/QuoteIntroUrlDialog.vue';
 import QuotePlanEditorDialog from '@/components/QuotePlanEditorDialog.vue';
 import { useSalesDataStore } from '@/store/salesDataStore';
+import { toQuoteUnitData } from '@/utils/quoteUnitData';
 
 // ✅ [停用] 舊版「列印報價單」按鈕開關：暫時隱藏，只保留「列印報價單(含期款)」。
 // 改為 true 即可恢復顯示（相關的 openQuoteEditor / PrintQuotation 邏輯皆保留未刪除）。
@@ -954,78 +908,92 @@ async function loadPageData() {
     // 初始化車位資料監聽
     parkingStore.initializeParkingData(actualProjectName);
     
-    // 並行載入必要資料
+    // ✅ [效能] 所有資料一次並行載入：
+    //   - 戶別資料改由 salesDataStore（Firestore salesHouseholds，30 分鐘快取 + 即時監聽）提供，
+    //     取代舊的 fetchSalesControlData（Vercel 代理 → Apps Script → Google Sheets，是整頁最慢的一段）。
+    //     欄位映射與「新增戶別」彈窗 / 戶別詳情「加入報價」共用 toQuoteUnitData，確保三處一致。
+    //   - 報價人員清單與管理員資料原本串在戶別資料之後才開始，現在一起並行。
+    // 舊版「配套期款範本」（Apps Script 回傳）只餵給早已停用的舊版 PaymentDetails（paymentTermsData 恆為空），固定給空陣列。
+    packageTermsData.value = [];
+    const [salesDataRes, templatesRes, loanTemplatesRes, personnelRes, adminDataRes] = await Promise.allSettled([
+        salesDataStore.loadProjectData(actualProjectName), // 戶別資料（Firestore）
+        fetchPaymentTermTemplates(projectId.value), // 載入期款範本
+        fetchCompanyLoanTemplates(projectId.value), // 載入公司借貸範本
+        fetchSalesPersonnelList(projectId.value), // 報價人員
+        adminStore.loadAdminData(userStore.user.key) // 權限資料
+    ]);
+
     try {
-        const [salesControlRes, templatesRes, loanTemplatesRes] = await Promise.all([
-            fetchSalesControlData(actualProjectName), // 載入戶別資料
-            fetchPaymentTermTemplates(projectId.value), // 載入期款範本
-            fetchCompanyLoanTemplates(projectId.value) // 載入公司借貸範本
-        ]);
-        
         // 處理銷控資料 - 更新 unitDetails
-        if (salesControlRes.status === 'success') {
-            const allUnitData = salesControlRes.data.戶別;
-            
-            // 更新 quoteStore 中每個 item 的 unitDetails（伺服器快照整包替換；議價由參數推導，無需重套）
-            const repricedUnits = [];
-            const missingUnits = [];
-            quoteStore.items.forEach(item => {
-                const matchedUnit = allUnitData.find(unit => unit.戶別 === item.unitId);
-                if (matchedUnit) {
-                    const prevList = Number(item.unitDetails?.price_list_house_total) || 0;
-                    // 確保 price_package_deal 正確對應
-                    item.unitDetails = {
-                        ...item.unitDetails,
-                        ...matchedUnit,
-                        price_package_deal: matchedUnit.price_package_deal || matchedUnit['配套價格'] || matchedUnit['配套價']
-                    };
-                    const nextList = Number(item.unitDetails?.price_list_house_total) || 0;
-                    // ✅ [A2] 表價異動且有議價 → 告知使用者議價已依新表價重新計算
-                    if (prevList !== nextList && quoteStore.hasNegotiation(item.internalId)) {
-                        repricedUnits.push(item.unitId);
-                    }
-                } else if (!missingUnits.includes(item.unitId)) {
-                    missingUnits.push(item.unitId);
-                }
-            });
-            if (repricedUnits.length > 0) {
-                toast.info(`${repricedUnits.join('、')} 表價已更新，議價已依新表價重新計算`);
-            }
-            if (missingUnits.length > 0) {
-                toast.warning(`${missingUnits.join('、')} 已不存在於銷控資料，請移除後重新加入`);
-            }
-            
-            // 保留配套期款範本（如果仍需要）
-            packageTermsData.value = salesControlRes.data.配套期款範本 || [];
+        if (salesDataRes.status === 'rejected') {
+            throw new Error(`載入戶別資料失敗: ${salesDataRes.reason?.message || salesDataRes.reason}`);
         }
-        
+        const allUnitData = salesDataStore.getProjectData(actualProjectName).households || [];
+        pickerUnits.value = allUnitData;
+
+        // 更新 quoteStore 中每個 item 的 unitDetails（伺服器快照整包替換；議價由參數推導，無需重套）
+        const repricedUnits = [];
+        const missingUnits = [];
+        quoteStore.items.forEach(item => {
+            const matchedUnit = allUnitData.find(unit => unit.unitId === item.unitId);
+            if (matchedUnit) {
+                const prevList = Number(item.unitDetails?.price_list_house_total) || 0;
+                const mapped = toQuoteUnitData(matchedUnit);
+                // 確保 price_package_deal 正確對應
+                item.unitDetails = {
+                    ...item.unitDetails,
+                    ...mapped,
+                    price_package_deal: mapped.price_package_deal || mapped['配套價格'] || mapped['配套價']
+                };
+                const nextList = Number(item.unitDetails?.price_list_house_total) || 0;
+                // ✅ [A2] 表價異動且有議價 → 告知使用者議價已依新表價重新計算
+                if (prevList !== nextList && quoteStore.hasNegotiation(item.internalId)) {
+                    repricedUnits.push(item.unitId);
+                }
+            } else if (!missingUnits.includes(item.unitId)) {
+                missingUnits.push(item.unitId);
+            }
+        });
+        if (repricedUnits.length > 0) {
+            toast.info(`${repricedUnits.join('、')} 表價已更新，議價已依新表價重新計算`);
+        }
+        if (missingUnits.length > 0) {
+            toast.warning(`${missingUnits.join('、')} 已不存在於銷控資料，請移除後重新加入`);
+        }
+
         // 處理期款範本資料
-        if (templatesRes.status === 'success') {
-            paymentTemplates.value = templatesRes.data;
-            console.log(`載入了 ${templatesRes.data.length} 個期款範本`);
+        if (templatesRes.status === 'fulfilled' && templatesRes.value.status === 'success') {
+            paymentTemplates.value = templatesRes.value.data;
+            console.log(`載入了 ${templatesRes.value.data.length} 個期款範本`);
         } else {
-            throw new Error(`載入期款範本失敗: ${templatesRes.message}`);
+            const msg = templatesRes.status === 'fulfilled' ? templatesRes.value.message : templatesRes.reason?.message;
+            throw new Error(`載入期款範本失敗: ${msg}`);
         }
 
         // 處理公司借貸範本（載入失敗不阻斷報價流程，僅不顯示攤還表）
-        if (loanTemplatesRes.status === 'success') {
-            companyLoanTemplates.value = loanTemplatesRes.data;
+        if (loanTemplatesRes.status === 'fulfilled' && loanTemplatesRes.value.status === 'success') {
+            companyLoanTemplates.value = loanTemplatesRes.value.data;
         } else {
-            console.warn(`載入公司借貸範本失敗: ${loanTemplatesRes.message}`);
+            const msg = loanTemplatesRes.status === 'fulfilled' ? loanTemplatesRes.value.message : loanTemplatesRes.reason?.message;
+            console.warn(`載入公司借貸範本失敗: ${msg}`);
             companyLoanTemplates.value = [];
         }
-        
+
     } catch (err) {
         console.error('載入資料失敗:', err);
         error.value = err.message;
     }
 
   try {
-        // 使用新的 Firestore API 獲取報價人員
-        const personnelRes = await fetchSalesPersonnelList(projectId.value);
-        
-        if (personnelRes.status === 'success') {
-            const allPersonnelList = personnelRes.data.personnelList;
+        if (adminDataRes.status === 'rejected') {
+            console.warn('載入管理員資料失敗（不阻斷）:', adminDataRes.reason?.message || adminDataRes.reason);
+        }
+        if (personnelRes.status === 'rejected') {
+            throw new Error('無法獲取報價人員列表: ' + (personnelRes.reason?.message || personnelRes.reason));
+        }
+
+        if (personnelRes.value.status === 'success') {
+            const allPersonnelList = personnelRes.value.data.personnelList;
 
             // 排序邏輯 (維持不變)
             allPersonnelList.sort((a, b) => {
@@ -1034,10 +1002,7 @@ async function loadPageData() {
                 return orderA !== orderB ? orderA - orderB : (a.name || '').localeCompare(b.name || '', 'zh-Hant');
             });
 
-            // --- 2. 新增：載入並檢查使用者權限邏輯 ---
-            // 確保權限資料已載入 (使用當前用戶的 key)
-            await adminStore.loadAdminData(userStore.user.key);
-
+            // --- 2. 權限判斷（adminStore 已在上方並行載入） ---
             // 檢查該用戶在「當前建案」下，是否擁有「報價系統銷售選單」權限
             // ✅ 使用 userStore 自身綁定的權限，避免使用 adminStore 導致一般用戶誤判
             const userPermissions = userStore.user?.permissions || {};
@@ -1071,7 +1036,7 @@ async function loadPageData() {
                 canEditPersonnel.value = false;
             }
         } else {
-            throw new Error('無法獲取報價人員列表: ' + personnelRes.message);
+            throw new Error('無法獲取報價人員列表: ' + personnelRes.value.message);
         }
     } catch (err) {
         console.error('載入權限或報價人員失敗:', err);
@@ -1254,34 +1219,141 @@ function onPickerCancel() {
 }
 
 
+
+// ✅ [改版] 頁首工具列（對齊銷控系統）：建案下拉切換、管理功能整合為「功能」分群磚格選單
+function onToolbarProjectSelect(id) {
+  const target = authorizedProjects.value.find(p => p.id === id);
+  if (target) switchProject(target);
+}
+const isToolsMenuOpen = ref(false);
+const toolGroups = computed(() => [
+  {
+    title: '報價內容',
+    tools: [
+      { icon: 'mdi-note-edit-outline', label: '報價單備註', action: () => { isRemarkEditorVisible.value = true; } },
+      { icon: 'mdi-star-box-multiple', label: '方案編輯器', action: () => { isPlanEditorVisible.value = true; } },
+    ],
+  },
+  {
+    title: '設定',
+    tools: [
+      { icon: 'mdi-cash-lock', label: '配套總價門檻', action: () => { isPackageLimitDialogVisible.value = true; } },
+      { icon: 'mdi-account-check', label: '報價核准設定', action: () => { isApprovalSettingDialogVisible.value = true; } },
+      { icon: 'mdi-qrcode', label: '建案簡介網址', action: () => { isIntroUrlDialogVisible.value = true; } },
+    ],
+  },
+]);
+// 磚點擊：先收合選單再執行，避免開啟 dialog 時選單殘留
+function runTool(action) {
+  isToolsMenuOpen.value = false;
+  action();
+}
 </script>
 
 <style scoped>
 
 /* ✅ [優化] 功能列：標題列＋動作列兩層，動作列以 gap 均勻排版（取代原 mr-4） */
-.page-header { padding: 4px 0 12px; border-bottom: 2px solid #e0e0e0; display: flex; flex-direction: column; gap: 10px; }
-.header-main { min-width: 0; gap: 4px; }
-.header-actions {
+/* ✅ [改版] 頁首工具列：樣式對齊銷控系統 .toolbar（白底、細底線、群組＋分隔線）
+   以負邊距貼齊 v-container 邊緣，左側留空給全域浮動漢堡鈕（fixed 左上角，寬約 50px） */
+.page-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  margin: -16px -16px 14px;
+  padding: 6px 12px 6px 58px;
+  row-gap: 6px;
+  column-gap: 12px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #eceff1;
+}
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.toolbar-group-actions {
+  margin-left: auto;
+}
+.toolbar-divider {
+  width: 1px;
+  height: 28px;
+  background-color: #e0e0e0;
+  flex-shrink: 0;
+  align-self: center;
+}
+.toolbar-title {
+  display: inline-flex;
+  align-items: center;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #37474f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 320px;
+}
+.project-selector {
+  min-width: 170px;
+  max-width: 220px;
+}
+@media (max-width: 1400px) {
+  .toolbar-divider { display: none; }
+}
+/* 手機：第一列 標題＋右側鈕，第二列 建案下拉整行，第三列 動作鈕平分寬度 */
+@media (max-width: 959px) {
+  .page-toolbar { padding: 8px 10px 8px 54px; column-gap: 8px; }
+  .toolbar-title { order: 1; flex: 1 1 0; font-size: 1.05rem; }
+  .toolbar-group-actions { order: 2; margin-left: 0; }
+  .toolbar-group-project { order: 3; flex: 1 1 100%; }
+  .project-selector { max-width: none; width: 100%; }
+  .toolbar-group-main { order: 4; flex: 1 1 100%; flex-wrap: nowrap; }
+  .toolbar-group-main > .v-btn { flex: 1 1 0; min-width: 0; }
+}
+/* 「功能」下拉選單：分群磚格（與銷控系統桌面版功能選單一致） */
+.desktop-tools-menu {
+  width: 396px;
+  max-width: calc(100vw - 24px);
+  padding: 14px 16px 16px;
+  background: #ffffff;
+}
+.desktop-tools-section { margin-bottom: 12px; }
+.desktop-tools-section:last-child { margin-bottom: 0; }
+.desktop-tools-label {
+  font-size: .75rem;
+  font-weight: 700;
+  color: #8493a8;
+  letter-spacing: .05em;
+  margin-bottom: 6px;
+}
+.desktop-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
-/* 手機：文字按鈕改兩欄網格排列，icon 按鈕維持原尺寸插在其後，不再參差混亂 */
-@media (max-width: 959px) {
-  .header-actions { justify-content: flex-start; }
-  .header-actions > .v-btn:not(.v-btn--icon) { flex: 1 1 calc(50% - 4px); min-width: 0; }
+.desktop-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #f7f9fc;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  padding: 12px 6px;
+  min-height: 72px;
+  cursor: pointer;
+  color: #44546a;
+  font: inherit;
+  transition: background-color .15s ease, border-color .15s ease;
 }
-.title-block { min-width: 0; }
-.project-chip {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  padding-inline: 14px;
-  box-shadow: 0 2px 6px rgba(25, 118, 210, 0.25);
-}
-.project-chip :deep(.v-chip__content) { line-height: 1.4; }
+.desktop-tool:hover { background: #eef3fa; border-color: #c9d7ec; }
+.desktop-tool:active { background: #e8eef7; }
+.desktop-tool-icon { color: #1a3a6e; }
+.desktop-tool-label { font-size: .74rem; line-height: 1.25; text-align: center; }
 .quote-item-header { font-weight: bold; padding: 8px 16px; background-color: #f5f5f5; border-radius: 4px; margin-bottom: 8px; }
 .quote-item-header .item-cell { display: flex; justify-content: center; align-items: center; text-align: center; }
 .flex-1 { flex: 1; }
