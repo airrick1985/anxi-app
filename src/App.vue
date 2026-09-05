@@ -74,6 +74,15 @@ const sessionErrorDialog = ref(false);
 
 // ✅ [新增] 重新整理頁面的函式
 const reloadPage = () => {
+  // logoutUser 會先等 RTDB goOffline 回應才清狀態，離線／連線不穩時可能卡住；
+  // 這裡直接同步清掉本機登入狀態，確保重整後一定回到登入頁而不會再次觸發此對話框
+  try {
+    userStore.clearUser();
+    sessionStorage.removeItem('anxi-user-session');
+  } catch (e) {
+    console.warn('[Session Check] 清除本機登入狀態失敗:', e);
+  }
+  window.location.hash = '#/login';
   window.location.reload();
 };
 
@@ -129,13 +138,31 @@ watch(() => userStore.user, (newUser) => {
 
   if (newUser && newUser.key) {
     const userDocRef = doc(db, 'users', newUser.key);
+
+    // 強制登出：先停掉監聽、同步清空本機登入狀態（避免重整後殘留舊 session 再次觸發），再顯示對話框
+    const forceLogout = (reason) => {
+      console.warn(`[Session Check] ${reason} Forcing logout.`);
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
+      sessionErrorDialog.value = true;
+      userStore.logoutUser();
+    };
+
     unsubscribe = onSnapshot(userDocRef, (docSnap) => {
       if (!userStore.user) {
         if (unsubscribe) unsubscribe();
         return;
       }
-      
-      // ✅ [修改] 邏輯處理區塊
+
+      // ✅ Firestore 已啟用持久化快取：onSnapshot 第一次會先回傳「上次快取」的資料，
+      //    其中的 activeSessionId 是上一次登入的舊值，必然與本次新產生的 sessionId 不同。
+      //    只信任伺服器確認過的快照，快取快照一律略過，否則每次重新登入都會被誤判成「另一處登入」。
+      if (docSnap.metadata.fromCache) {
+        return;
+      }
+
       if (docSnap.exists()) {
         // ✅ 指定帳號可不受重複登入限制（多裝置同時在線），跳過 Session 比對
         if (docSnap.data().allowMultiLogin === true) {
@@ -146,20 +173,15 @@ watch(() => userStore.user, (newUser) => {
         const clientSessionId = userStore.sessionId;
 
         if (serverSessionId && clientSessionId && serverSessionId !== clientSessionId) {
-          console.warn('[Session Check] Session ID mismatch! Forcing logout.');
-          
-          // 1. 先執行登出清除狀態
-          userStore.logoutUser();
-          
-          // 2. 顯示 Dialog 取代原本的 Toast
-          sessionErrorDialog.value = true;
+          forceLogout('Session ID mismatch!');
         }
       } else {
-        console.warn('[Session Check] User document no longer exists. Forcing logout.');
-        // 針對使用者被刪除的情況，也建議一併使用 Dialog
-        userStore.logoutUser();
-        sessionErrorDialog.value = true;
+        // 使用者被刪除
+        forceLogout('User document no longer exists.');
       }
+    }, (error) => {
+      // 監聽失敗（權限不足／網路）不視為重複登入，只記錄不登出
+      console.warn('[Session Check] onSnapshot error (ignored):', error);
     });
   }
 }, { immediate: true });
