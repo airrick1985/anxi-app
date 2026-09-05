@@ -1,6 +1,6 @@
 {
   "name": "anxi-app",
-  "version": "1.0.726",
+  "version": "1.0.727",
   "private": true,
   "scripts": {
     "dev": "vite",
