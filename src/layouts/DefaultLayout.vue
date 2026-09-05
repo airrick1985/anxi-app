@@ -260,7 +260,8 @@ const showSnackbar = (message) => {
 // ✅ 頂部工具顯示條件：登入頁 或 已登入的內部頁面才顯示；
 //    對外公開頁（未登入的一般客戶）完全不顯示。
 //    showAppToolbar 沿用車位編輯模式的隱藏機制（進入編輯時整組隱藏）。
-const showToolbar = computed(() => showAppToolbar.value && (!!user.value || route.name === 'Login'));
+// 路由 meta.hideGlobalMenu = true 時隱藏浮動漢堡按鈕（例如銷售圖面編輯器全畫布介面）
+const showToolbar = computed(() => showAppToolbar.value && !route.meta.hideGlobalMenu && (!!user.value || route.name === 'Login'));
 
 // 點選抽屜項目：先關閉抽屜再執行動作
 const onMenuClick = (action) => {

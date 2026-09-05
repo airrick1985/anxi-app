@@ -29,6 +29,7 @@ import { format } from 'date-fns';
 import {
   ref,
   uploadBytes,
+  uploadBytesResumable,
   getDownloadURL,
   deleteObject
 } from "firebase/storage";
@@ -9497,4 +9498,164 @@ export async function uploadMarketingAttachment(file) {
   const snapshot = await uploadBytes(storageRef, file);
   const url = await getDownloadURL(snapshot.ref);
   return { name: file.name, url, size: file.size, path: snapshot.ref.fullPath };
+}
+
+/* ==========================================================
+ * ✅ [新增] 銷售圖面編輯器 API（salesDrawings 集合，docId 自動產生）
+ * 規格：docs/銷售圖面編輯器-spec.md
+ * 純前端直寫 Firestore；底圖／縮圖以 uploadBytesResumable 直傳 Storage
+ * 路徑：salesDrawings/{projectId}/{drawingId}/base_{ts}.{ext} 與 thumb.jpg
+ * ========================================================== */
+
+const SALES_DRAWING_COLLECTION = 'salesDrawings';
+
+/**
+ * 即時監聽建案所有圖面（僅 where projectId；排序在前端，避免複合索引）
+ * @param {string} projectId
+ * @param {function} onDataChange - (drawings[]) 依 updatedAt desc
+ * @param {function} [onError]
+ * @returns {function} unsubscribe
+ */
+export function listenToSalesDrawings(projectId, onDataChange, onError) {
+  const q = query(collection(db, SALES_DRAWING_COLLECTION), where('projectId', '==', projectId));
+  return onSnapshot(q, (snap) => {
+    const toMs = (t) => (t && typeof t.toMillis === 'function') ? t.toMillis() : (t ? new Date(t).getTime() : 0);
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => toMs(b.updatedAt) - toMs(a.updatedAt));
+    onDataChange(list);
+  }, (error) => {
+    console.error(`[api.js] 監聽銷售圖面失敗 (Project: ${projectId}):`, error);
+    if (onError) onError(error);
+  });
+}
+
+/**
+ * 監聽單一圖面文件（編輯頁用：他人更新偵測）
+ */
+export function listenToSalesDrawing(drawingId, onDataChange, onError) {
+  return onSnapshot(doc(db, SALES_DRAWING_COLLECTION, drawingId), (snap) => {
+    onDataChange(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+  }, (error) => {
+    console.error(`[api.js] 監聽銷售圖面文件失敗 (${drawingId}):`, error);
+    if (onError) onError(error);
+  });
+}
+
+export async function getSalesDrawing(drawingId) {
+  const snap = await getDoc(doc(db, SALES_DRAWING_COLLECTION, drawingId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+/**
+ * 建立空白圖面
+ * @param {string} projectId
+ * @param {string} name
+ * @param {object} drawing - 初始 schema（drawingSchema.createEmptyDrawing()）
+ * @param {{userKey:string,name:string}} user
+ * @returns {Promise<string>} drawingId
+ */
+export async function createSalesDrawing(projectId, name, drawing, user) {
+  const ref_ = doc(collection(db, SALES_DRAWING_COLLECTION));
+  const by = { userKey: user?.userKey || '', name: user?.name || '' };
+  await setDoc(ref_, {
+    projectId,
+    name,
+    baseImage: null,
+    thumbnailUrl: null,
+    drawing,
+    drawingSize: JSON.stringify(drawing).length,
+    createdBy: by,
+    createdAt: serverTimestamp(),
+    updatedBy: by,
+    updatedAt: serverTimestamp(),
+    rev: 1,
+  });
+  return ref_.id;
+}
+
+/**
+ * 更新圖面（局部欄位；rev 自動 +1、updatedAt/updatedBy 自動帶入）
+ * @param {string} drawingId
+ * @param {object} patch - 允許：name / baseImage / thumbnailUrl / drawing / drawingSize
+ * @param {{userKey:string,name:string}} user
+ */
+export async function updateSalesDrawing(drawingId, patch, user) {
+  const { increment } = await import('firebase/firestore');
+  const data = { ...patch };
+  if (data.drawing && data.drawingSize == null) data.drawingSize = JSON.stringify(data.drawing).length;
+  data.updatedBy = { userKey: user?.userKey || '', name: user?.name || '' };
+  data.updatedAt = serverTimestamp();
+  data.rev = increment(1);
+  await updateDoc(doc(db, SALES_DRAWING_COLLECTION, drawingId), data);
+}
+
+/**
+ * 複製圖面（底圖沿用同一 Storage 檔案，不重複上傳；更換底圖時才寫入自己的資料夾）
+ * @returns {Promise<string>} 新 drawingId
+ */
+export async function duplicateSalesDrawing(source, newName, user) {
+  const ref_ = doc(collection(db, SALES_DRAWING_COLLECTION));
+  const by = { userKey: user?.userKey || '', name: user?.name || '' };
+  const baseImage = source.baseImage ? { ...source.baseImage, shared: true } : null;
+  await setDoc(ref_, {
+    projectId: source.projectId,
+    name: newName,
+    baseImage,
+    thumbnailUrl: source.thumbnailUrl || null,
+    drawing: source.drawing || null,
+    drawingSize: source.drawingSize || 0,
+    createdBy: by,
+    createdAt: serverTimestamp(),
+    updatedBy: by,
+    updatedAt: serverTimestamp(),
+    rev: 1,
+  });
+  return ref_.id;
+}
+
+/**
+ * 刪除圖面：先刪 Storage（底圖非共享時）與縮圖，失敗不阻擋文件刪除
+ */
+export async function deleteSalesDrawing(drawing) {
+  if (!drawing?.id) throw new Error('缺少圖面 id');
+  const paths = [];
+  if (drawing.baseImage?.storagePath && !drawing.baseImage.shared) paths.push(drawing.baseImage.storagePath);
+  if (drawing.projectId && drawing.thumbnailUrl) paths.push(`${SALES_DRAWING_COLLECTION}/${drawing.projectId}/${drawing.id}/thumb.jpg`);
+  for (const p of paths) {
+    try { await deleteObject(ref(storage, p)); } catch (e) { console.warn('[api.js] 刪除圖面檔案失敗（略過）:', p, e?.code || e); }
+  }
+  await deleteDoc(doc(db, SALES_DRAWING_COLLECTION, drawing.id));
+}
+
+/**
+ * 上傳圖面底圖／縮圖至 Storage（可回報進度）
+ * @param {string} projectId
+ * @param {string} drawingId
+ * @param {Blob|File} blob
+ * @param {string} fileName - 例：base_1757040000000.jpg / thumb.jpg
+ * @param {function} [onProgress] - (0~100)
+ * @returns {Promise<{url:string, storagePath:string}>}
+ */
+export function uploadSalesDrawingFile(projectId, drawingId, blob, fileName, onProgress) {
+  const storagePath = `${SALES_DRAWING_COLLECTION}/${projectId}/${drawingId}/${fileName}`;
+  const fileRef = ref(storage, storagePath);
+  return new Promise((resolve, reject) => {
+    const task = uploadBytesResumable(fileRef, blob, { contentType: blob.type || 'application/octet-stream' });
+    task.on('state_changed',
+      (snap) => { if (onProgress) onProgress(snap.totalBytes ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100) : 0); },
+      (err) => reject(err),
+      async () => {
+        try {
+          const url = await getDownloadURL(fileRef);
+          resolve({ url, storagePath });
+        } catch (e) { reject(e); }
+      }
+    );
+  });
+}
+
+/** 刪除 Storage 上的圖面檔案（更換底圖後清舊檔），失敗僅 warn */
+export async function deleteSalesDrawingFile(storagePath) {
+  if (!storagePath) return;
+  try { await deleteObject(ref(storage, storagePath)); } catch (e) { console.warn('[api.js] 刪除舊底圖失敗（略過）:', storagePath, e?.code || e); }
 }

@@ -636,6 +636,33 @@ const routes = [
     }
   },
   {
+    // ✅ [新增] 銷售圖面編輯器（docs/銷售圖面編輯器-spec.md）：圖面列表
+    path: '/sales-drawings/:projectId',
+    name: 'SalesDrawingList',
+    component: () => import('@/views/SalesDrawingList.vue'),
+    props: true,
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '銷控系統',
+      layout: DefaultLayout,
+      title: '銷售圖面'
+    }
+  },
+  {
+    // ✅ [新增] 銷售圖面編輯器：編輯／檢視（?mode=view 為檢視模式）
+    path: '/sales-drawings/:projectId/:drawingId',
+    name: 'SalesDrawingEditor',
+    component: () => import('@/views/SalesDrawingEditor.vue'),
+    props: true,
+    meta: {
+      requiresAuth: true,
+      requiredSystem: '銷控系統',
+      layout: DefaultLayout,
+      title: '銷售圖面編輯器',
+      hideGlobalMenu: true // 全畫布介面：隱藏左上角浮動漢堡選單，避免遮住返回鈕
+    }
+  },
+  {
     path: '/parking-control/:projectId',
     name: 'ParkingControl',
     component: () => import('@/views/ParkingControl.vue'),
