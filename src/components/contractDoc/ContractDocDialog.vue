@@ -256,14 +256,26 @@
                         <v-btn size="x-small" variant="text" class="ml-1" @click="resetAllSplits">全部回復公式</v-btn>
                       </v-chip>
                     </div>
-                    <div v-if="!amountOk || !percentOk" class="d-flex align-center ga-2 mt-2">
-                      <v-select v-model="correctionTargetKey" :items="correctionOptions"
-                        item-title="label" item-value="key" density="compact" variant="outlined" hide-details
-                        label="差額歸入" style="max-width: 220px;" />
-                      <v-btn size="small" color="warning" variant="tonal" @click="applyCorrection">
-                        一鍵補正差額
-                      </v-btn>
-                    </div>
+                    <!-- 期款金額／比例檢核：不符時無法下載 -->
+                    <v-alert v-if="!amountOk || !percentOk" type="warning" variant="tonal" density="compact" class="mt-3"
+                      icon="mdi-alert-outline">
+                      <div class="font-weight-bold">期款方式數字異常，已停用下載。</div>
+                      <div v-if="!amountOk">
+                        各期金額合計 {{ formatNumber(amountSum) }} 萬 ≠ {{ mainBaseLabel }} {{ formatNumber(mainBase) }} 萬
+                        （{{ amountSum > mainBase ? '多' : '少' }} {{ formatNumber(Math.abs(mainBase - amountSum)) }} 萬），請調整各期金額或一鍵補正。
+                      </div>
+                      <div v-if="!percentOk">
+                        各期比例合計 {{ percentSumText }}% ≠ 100%，請調整比例或一鍵補正。
+                      </div>
+                      <div class="d-flex flex-wrap align-center ga-2 mt-2">
+                        <v-select v-model="correctionTargetKey" :items="correctionOptions"
+                          item-title="label" item-value="key" density="compact" variant="outlined" hide-details
+                          label="差額歸入" style="max-width: 220px;" />
+                        <v-btn size="small" color="warning" variant="tonal" @click="applyCorrection">
+                          一鍵補正差額
+                        </v-btn>
+                      </div>
+                    </v-alert>
 
                     <!-- 房/土拆分檢核 -->
                     <v-alert v-if="!splitModel.landOk" type="warning" variant="tonal" density="compact" class="mt-3">
@@ -375,14 +387,23 @@
                         金額合計 {{ formatNumber(decoAmountSum) }} / {{ formatNumber(decorationBase) }} 萬
                       </v-chip>
                     </div>
-                    <div v-if="!decoAmountOk" class="d-flex align-center ga-2 mt-2">
-                      <v-select v-model="decoCorrectionTargetKey" :items="decoCorrectionOptions"
-                        item-title="label" item-value="key" density="compact" variant="outlined" hide-details
-                        label="差額歸入" style="max-width: 220px;" />
-                      <v-btn size="small" color="warning" variant="tonal" @click="applyDecoCorrection">
-                        一鍵補正差額
-                      </v-btn>
-                    </div>
+                    <!-- 裝修期款金額檢核：不符時無法下載 -->
+                    <v-alert v-if="!decoAmountOk" type="warning" variant="tonal" density="compact" class="mt-3"
+                      icon="mdi-alert-outline">
+                      <div class="font-weight-bold">裝修期款數字異常，已停用下載。</div>
+                      <div>
+                        各期金額合計 {{ formatNumber(decoAmountSum) }} 萬 ≠ 配套價格 {{ formatNumber(decorationBase) }} 萬
+                        （{{ decoAmountSum > decorationBase ? '多' : '少' }} {{ formatNumber(Math.abs(decorationBase - decoAmountSum)) }} 萬），請調整各期金額或一鍵補正。
+                      </div>
+                      <div class="d-flex flex-wrap align-center ga-2 mt-2">
+                        <v-select v-model="decoCorrectionTargetKey" :items="decoCorrectionOptions"
+                          item-title="label" item-value="key" density="compact" variant="outlined" hide-details
+                          label="差額歸入" style="max-width: 220px;" />
+                        <v-btn size="small" color="warning" variant="tonal" @click="applyDecoCorrection">
+                          一鍵補正差額
+                        </v-btn>
+                      </div>
+                    </v-alert>
                   </template>
 
                   <v-text-field v-if="decorationBreakdownPage" v-model="state.decorationRemark"
@@ -597,11 +618,14 @@
       </v-card-text>
 
       <v-divider />
-      <!-- 會辦單負數異常：預覽已標紅，禁止下載並列出異常欄位 -->
-      <v-alert v-if="breakdownNegatives.length" type="error" variant="tonal" density="compact"
+      <!-- 無法下載的原因總覽：負數欄位（預覽已標紅）/ 期款合計不符 / 資料缺漏，任一存在即停用下載 -->
+      <v-alert v-if="downloadBlockers.length" type="error" variant="tonal" density="compact"
         class="ma-3 mb-0 negatives-alert" icon="mdi-alert-octagon">
-        <div class="font-weight-bold">會辦單出現負數欄位，已停用下載。請先修正戶別資料（成交價 / 車位 / 面積 / 房土比）後再匯出。</div>
-        <div class="negatives-chips mt-1">
+        <div class="font-weight-bold">數字異常，已停用下載。請先修正以下項目後再匯出：</div>
+        <ul class="blockers-list">
+          <li v-for="(b, i) in downloadBlockers" :key="i">{{ b }}</li>
+        </ul>
+        <div v-if="breakdownNegatives.length" class="negatives-chips mt-1">
           <v-chip v-for="f in breakdownNegatives" :key="f.label" size="small" color="error" variant="flat"
             class="mr-1 mb-1">
             {{ f.label }}：{{ f.value.toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
@@ -800,7 +824,7 @@ import {
   buildDecorationBreakdownPageData, buildDecorationPaymentDetailPageData,
   buildContractNumberTablePageData, buildContractNumberTableCombinedPageData,
   mergePagesWithOverrides, pagesToOverrides,
-  collectBreakdownNegatives,
+  collectBreakdownNegatives, collectDecorationBreakdownNegatives,
 } from '@/utils/contractDocModel';
 import BreakdownPreview from './BreakdownPreview.vue';
 import PaymentDetailPreview from './PaymentDetailPreview.vue';
@@ -984,6 +1008,8 @@ const manualTemplateId = ref(null);
 // 期款基準：配套合約（毛胚等）改用「配套房屋總價」，與付款表配套兩頁模式一致
 // （拆款表頁首總價、價款公式區的 total 皆同一口徑：ctx.contractTotalPrice）
 const mainBase = computed(() => Math.round(Number(unitCtx.value.contractTotalPrice) || 0));
+// 期款基準名稱：配套戶為配套房屋總價、一般戶為成交總價（警示文案用）
+const mainBaseLabel = computed(() => (isPackageContract.value ? '配套房屋總價' : '成交總價'));
 
 // 裝修頁基準：配套價格 = 成交總價 − 配套房屋總價
 const decorationBase = computed(() =>
@@ -1676,29 +1702,58 @@ const exportablePages = computed(() => localPages.value.filter(p => p.enabled &&
 
 /* ---------- 驗證（可否下載） ---------- */
 // 會辦單負數欄位檢查：面積/價款/付款明細不得為負（溢差價除外）；有異常時預覽標紅並禁止下載
+// 簽約會辦單與裝修工程會辦單（配套戶）一併檢查，異常欄位合併列出
 const breakdownNegatives = computed(() => {
-  const entry = previewPages.value.find(e => e.page.type === 'breakdown');
-  return entry ? collectBreakdownNegatives(entry.data) : [];
+  const found = [];
+  const seen = new Set();
+  previewPages.value.forEach(e => {
+    const type = e.page?.type;
+    if (type !== 'breakdown' && type !== 'decorationBreakdown') return;
+    if (seen.has(type)) return;   // 同類型多份（重複份數）只檢查一次
+    seen.add(type);
+    found.push(...(type === 'breakdown'
+      ? collectBreakdownNegatives(e.data)
+      : collectDecorationBreakdownNegatives(e.data)));
+  });
+  return found;
 });
 const breakdownNegativeText = computed(() =>
   breakdownNegatives.value
     .map(f => `${f.label}（${f.value.toLocaleString('en-US', { maximumFractionDigits: 2 })}）`)
     .join('、'));
 
-const canDownload = computed(() => {
-  if (!config.value || !exportablePages.value.length) return false;
-  if (breakdownNegatives.value.length) return false;
+// 無法下載的原因清單（使用者可讀文字）：底部警示、下載攔截提示共用；空陣列 = 可下載
+const downloadBlockers = computed(() => {
+  const list = [];
+  if (!config.value) return list;
+  if (!exportablePages.value.length) list.push('沒有可匯出的頁面');
+  if (breakdownNegatives.value.length) {
+    list.push(`會辦單出現負數欄位（${breakdownNegatives.value.length} 項，請修正戶別資料：成交價 / 配套價格 / 車位 / 面積 / 房土比 / 期款金額）`);
+  }
   if (needsInstallment.value) {
-    if (!editRows.value.length || mainBase.value <= 0) return false;
-    if (!percentOk.value || !amountOk.value) return false;
-    if (!splitModel.value.landOk) return false;
+    if (mainBase.value <= 0) list.push('期款方式：總價基準為 0，無法計算期款');
+    else if (!editRows.value.length) list.push('期款方式：尚未套用任何範本');
+    else {
+      if (!amountOk.value) {
+        list.push(`期款方式：各期金額合計 ${formatNumber(amountSum.value)} 萬 ≠ ${mainBaseLabel.value} ${formatNumber(mainBase.value)} 萬（差 ${formatNumber(Math.abs(mainBase.value - amountSum.value))} 萬）`);
+      }
+      if (!percentOk.value) list.push(`期款方式：各期比例合計 ${percentSumText.value}% ≠ 100%`);
+      if (!splitModel.value.landOk) {
+        list.push(`期款方式：各期土地款合計 ${formatNumber(splitModel.value.landSum)} 萬 ≠ 土地價款 ${formatNumber(splitModel.value.landTarget)} 萬`);
+      }
+    }
   }
   if (needsDecoration.value) {
-    if (!decoEditRows.value.length || decorationBase.value <= 0) return false;
-    if (!decoAmountOk.value) return false;
+    if (decorationBase.value <= 0) list.push('裝修期款：配套價格為 0，無法計算裝修期款');
+    else if (!decoEditRows.value.length) list.push('裝修期款：尚未套用任何範本');
+    else if (!decoAmountOk.value) {
+      list.push(`裝修期款：各期金額合計 ${formatNumber(decoAmountSum.value)} 萬 ≠ 配套價格 ${formatNumber(decorationBase.value)} 萬（差 ${formatNumber(Math.abs(decorationBase.value - decoAmountSum.value))} 萬）`);
+    }
   }
-  return true;
+  return list;
 });
+
+const canDownload = computed(() => !!config.value && downloadBlockers.value.length === 0);
 
 /* ---------- 開啟時載入 ---------- */
 watch(() => props.show, async (val) => {
@@ -1906,9 +1961,10 @@ function base64ToBlob(base64, mimeType) {
 }
 
 async function download(format, onlyPageIds = null) {
-  // 會辦單有負數異常欄位：明確提醒並拒絕產製（按鈕已 disabled，此為雙重保險）
-  if (breakdownNegatives.value.length) {
-    toast.error(`會辦單以下欄位為負數，無法匯出，請先修正戶別資料：${breakdownNegativeText.value}`);
+  // 數字異常／資料缺漏：明確提醒並拒絕產製（按鈕已 disabled，此為雙重保險）
+  if (downloadBlockers.value.length) {
+    const detail = breakdownNegatives.value.length ? `；負數欄位：${breakdownNegativeText.value}` : '';
+    toast.error(`無法匯出，請先修正：${downloadBlockers.value.join('；')}${detail}`);
     return;
   }
   if (!canDownload.value) return;
@@ -2115,6 +2171,8 @@ function formatNumber(value) {
 }
 /* 負數異常警示：scrollable dialog 的 flex 版面會壓縮 card-text 以外的子元素，
    固定不可壓縮、文字可換行，欄位太多時警示內部自行捲動 */
+.blockers-list { margin: 4px 0 0; padding-left: 18px; }
+.blockers-list li { margin: 2px 0; }
 .negatives-alert {
   flex-shrink: 0;
   max-height: 132px;

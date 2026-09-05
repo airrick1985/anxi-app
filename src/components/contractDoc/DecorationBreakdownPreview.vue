@@ -22,7 +22,7 @@
             <td class="label">房屋編號</td>
             <td class="big">{{ data.unitId }}</td>
             <td class="label">總　價</td>
-            <td class="big">{{ fmtWan(data.totalPrice) }}</td>
+            <td class="big" :class="negCls(data.totalPrice)">{{ fmtWan(data.totalPrice) }}</td>
             <td class="label">聯絡電話</td>
             <td class="mid">{{ data.buyerPhone }}</td>
           </tr>
@@ -45,42 +45,42 @@
         <tbody>
           <tr class="area-row">
             <td class="label" rowspan="6">房屋總面積</td>
-            <td class="val" rowspan="3">{{ fmtArea(a.houseTotalSqm) }}</td>
+            <td class="val" rowspan="3" :class="negCls(a.houseTotalSqm)">{{ fmtArea(a.houseTotalSqm) }}</td>
             <td class="unit" rowspan="3">㎡</td>
             <td class="label" rowspan="2">主建物</td>
             <td class="sub-cell">占比</td>
-            <td class="val">{{ fmtArea(a.mainSqm) }}</td>
+            <td class="val" :class="negCls(a.mainSqm)">{{ fmtArea(a.mainSqm) }}</td>
             <td class="unit">㎡</td>
             <td class="label" rowspan="2">共有部份</td>
-            <td class="val">{{ fmtArea(a.commonSqm) }}</td>
+            <td class="val" :class="negCls(a.commonSqm)">{{ fmtArea(a.commonSqm) }}</td>
             <td class="unit">㎡</td>
           </tr>
           <tr class="area-row">
             <td class="sub-cell">{{ a.mainRatioText }}</td>
-            <td class="val">{{ fmtArea(a.mainPing) }}</td>
+            <td class="val" :class="negCls(a.mainPing)">{{ fmtArea(a.mainPing) }}</td>
             <td class="unit">坪</td>
-            <td class="val">{{ fmtArea(a.commonPing) }}</td>
+            <td class="val" :class="negCls(a.commonPing)">{{ fmtArea(a.commonPing) }}</td>
             <td class="unit">坪</td>
           </tr>
           <tr class="area-row">
             <td class="label sm" rowspan="2" colspan="2">附屬建物(陽台)</td>
-            <td class="val">{{ fmtArea(a.ancillarySqm) }}</td>
+            <td class="val" :class="negCls(a.ancillarySqm)">{{ fmtArea(a.ancillarySqm) }}</td>
             <td class="unit">㎡</td>
             <td rowspan="4" colspan="3" class="blank-cell"></td>
           </tr>
           <tr class="area-row">
-            <td class="val" rowspan="3">{{ fmtArea(a.houseTotalPing) }}</td>
+            <td class="val" rowspan="3" :class="negCls(a.houseTotalPing)">{{ fmtArea(a.houseTotalPing) }}</td>
             <td class="unit" rowspan="3">坪</td>
-            <td class="val">{{ fmtArea(a.ancillaryPing) }}</td>
+            <td class="val" :class="negCls(a.ancillaryPing)">{{ fmtArea(a.ancillaryPing) }}</td>
             <td class="unit">坪</td>
           </tr>
           <tr class="area-row">
             <td class="label sm" rowspan="2" colspan="2">專有部分(合計)</td>
-            <td class="val">{{ fmtArea(a.exclusiveSqm) }}</td>
+            <td class="val" :class="negCls(a.exclusiveSqm)">{{ fmtArea(a.exclusiveSqm) }}</td>
             <td class="unit">㎡</td>
           </tr>
           <tr class="area-row">
-            <td class="val">{{ fmtArea(a.exclusivePing) }}</td>
+            <td class="val" :class="negCls(a.exclusivePing)">{{ fmtArea(a.exclusivePing) }}</td>
             <td class="unit">坪</td>
           </tr>
         </tbody>
@@ -108,12 +108,13 @@
           <tr>
             <td class="label rowlabel">{{ data.installment.rowLabel }}</td>
             <template v-for="col in columns" :key="col.name">
-              <td v-if="col.type === 'single'" class="num">{{ fmtWan(col.amount) }}</td>
+              <td v-if="col.type === 'single'" class="num" :class="negCls(col.amount)">{{ fmtWan(col.amount) }}</td>
               <template v-else>
-                <td v-for="c in col.children" :key="c.name" class="num" :title="c.name">{{ fmtWan(c.amount) }}</td>
+                <td v-for="c in col.children" :key="c.name" class="num" :class="negCls(c.amount)" :title="c.name">{{ fmtWan(c.amount) }}</td>
               </template>
             </template>
-            <td class="num strong">{{ fmtWan(data.installment.grandTotal) }}</td>
+            <td class="num strong" :class="negCls(data.installment.grandTotal) || mismatchCls(data.installment.grandTotal, data.totalPrice)"
+              :title="mismatchCls(data.installment.grandTotal, data.totalPrice) ? `各期合計 ${fmtWan(data.installment.grandTotal)} 萬 ≠ 配套價格 ${fmtWan(data.totalPrice)} 萬` : ''">{{ fmtWan(data.installment.grandTotal) }}</td>
           </tr>
           <tr>
             <td class="label rowlabel">備註</td>
@@ -172,6 +173,18 @@ function fmtArea(v) {
   if (!Number.isFinite(n) || n === 0) return '-';
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+// 負數欄位標示：配套價格/面積/裝修期款不得為負（與 collectDecorationBreakdownNegatives 同判定）
+function negCls(v) {
+  const n = Number(v);
+  return (Number.isFinite(n) && n < 0) ? 'neg-cell' : '';
+}
+// 裝修期款合計與配套價格不符（手動調整後未補正）：標紅提醒，此狀態下同樣無法下載
+function mismatchCls(sum, total) {
+  const s = Number(sum); const t = Number(total);
+  if (!Number.isFinite(s) || !Number.isFinite(t) || t === 0) return '';
+  return Math.abs(s - t) >= 0.5 ? 'neg-cell' : '';
+}
 </script>
 
 <style scoped>
@@ -198,6 +211,13 @@ function fmtArea(v) {
 .area-row .val { font-size: 11.5px; }
 .area-row .unit { font-size: 9px; padding: 0 1px; }
 .area-row .sub-cell { font-size: 9.5px; }
+/* 負數異常欄位：明顯標紅（此狀態下無法下載，見 ContractDocDialog 攔截） */
+.bd-table td.neg-cell {
+  background: #ffe0e0;
+  color: #c00000 !important;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 2px #c00000;
+}
 .bd-install td { padding: 1px 2px; font-size: 9.5px; height: 20px; }
 .bd-install .vert { width: 20px; font-weight: 700; font-size: 11px; line-height: 1.6; }
 .bd-install .unit-cell { width: 46px; font-size: 8.5px; }

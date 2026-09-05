@@ -345,6 +345,43 @@ export function collectBreakdownNegatives(data) {
   return found;
 }
 
+/** 裝修工程會辦單負數欄位檢查（比照簽約會辦單）：配套價格 / 面積 / 裝修期款不得為負。
+ *  label 一律加「裝修」前綴，與簽約會辦單的異常欄位並列時可區分來源。
+ *  回傳 [{ label, value }]，空陣列 = 無異常。預覽標示與下載攔截共用同一份判定。 */
+export function collectDecorationBreakdownNegatives(data) {
+  const found = [];
+  const add = (label, value) => {
+    const n = Number(value);
+    if (Number.isFinite(n) && n < 0) found.push({ label: `裝修 ${label}`, value: n });
+  };
+  if (!data) return found;
+
+  add('配套價格', data.totalPrice);
+
+  const a = data.areas || {};
+  const AREA_LABELS = {
+    houseTotalSqm: '房屋總面積(㎡)', houseTotalPing: '房屋總面積(坪)',
+    mainSqm: '主建物面積(㎡)', mainPing: '主建物面積(坪)',
+    ancillarySqm: '附屬建物面積(㎡)', ancillaryPing: '附屬建物面積(坪)',
+    commonSqm: '共有部份面積(㎡)', commonPing: '共有部份面積(坪)',
+    exclusiveSqm: '專有部分面積(㎡)', exclusivePing: '專有部分面積(坪)',
+  };
+  Object.entries(AREA_LABELS).forEach(([key, label]) => add(label, a[key]));
+
+  const inst = data.installment || {};
+  const addLeaf = (name, leaf) => add(`期款「${name}」金額`, leaf.amount);
+  (inst.columns || []).forEach(col => {
+    if (col.type === 'group') {
+      (col.children || []).forEach(c => addLeaf(`${col.name}-${c.name}`, c));
+    } else {
+      addLeaf(col.name, col);
+    }
+  });
+  add('付款明細 總價', inst.grandTotal);
+
+  return found;
+}
+
 /** 繳款銀行帳戶名稱
  *  配套款銀行組（source: unit-package）僅配套合約戶別適用；一般戶即使帳戶欄位有值也不顯示 */
 export function buildBankAccountsPageData(page, ctx, config, state, unitData) {

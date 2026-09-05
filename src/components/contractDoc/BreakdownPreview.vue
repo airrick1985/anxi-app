@@ -201,7 +201,8 @@
                 <td v-for="c in col.children" :key="c.name" class="num strong" :class="negCls(c.amount)">{{ fmtWan(c.amount) }}</td>
               </template>
             </template>
-            <td class="num strong" :class="negCls(data.installment.grandTotal)">{{ fmtWan(data.installment.grandTotal) }}</td>
+            <td class="num strong" :class="negCls(data.installment.grandTotal) || mismatchCls(data.installment.grandTotal, data.totalPrice)"
+              :title="mismatchCls(data.installment.grandTotal, data.totalPrice) ? `各期合計 ${fmtWan(data.installment.grandTotal)} 萬 ≠ 總價 ${fmtWan(data.totalPrice)} 萬` : ''">{{ fmtWan(data.installment.grandTotal) }}</td>
           </tr>
           <tr>
             <td class="pct-cell"></td>
@@ -343,6 +344,12 @@ function pct(v) {
 function negCls(v) {
   const n = Number(v);
   return (Number.isFinite(n) && n < 0) ? 'neg-cell' : '';
+}
+// 付款明細合計與總價不符（手動調整期款金額後未補正）：標紅提醒，此狀態下同樣無法下載
+function mismatchCls(sum, total) {
+  const s = Number(sum); const t = Number(total);
+  if (!Number.isFinite(s) || !Number.isFinite(t) || t === 0) return '';
+  return Math.abs(s - t) >= 0.5 ? 'neg-cell' : '';
 }
 // 價款項目：label 含「溢差」者可為負，不標示
 function pfNegCls(f) {
