@@ -104,6 +104,65 @@
           ></v-text-field>
         </v-card>
 
+        <!-- 🎨 聯絡狀況顏色：僅「客資系統-櫃台」可維護（父層以 canEditColors 控制） -->
+        <template v-if="canEditColors">
+          <div class="text-subtitle-2 font-weight-bold mb-2">
+            <v-icon start color="deep-purple">mdi-palette</v-icon>
+            聯絡狀況顏色（名單卡片底色）
+          </div>
+          <v-card variant="outlined" class="pa-2 mb-6">
+            <div class="text-caption text-grey mb-2 px-1">
+              名單卡片與表格列會以該狀態顏色呈現淡色底＋左側色條，方便人員一眼辨識；未自訂者採系統預設色。
+            </div>
+            <div class="status-color-list">
+              <div
+                v-for="name in colorStatusNames"
+                :key="name"
+                class="status-color-row"
+                :style="{ backgroundColor: hexToRgba(colorOf(name), 0.09), borderLeftColor: colorOf(name) }"
+              >
+                <div class="status-color-swatch" :style="{ backgroundColor: colorOf(name) }"></div>
+                <div class="flex-grow-1 text-body-2 font-weight-bold text-truncate">{{ name }}</div>
+                <v-chip v-if="isCustomColor(name)" size="x-small" color="deep-purple" variant="tonal" class="me-1">自訂</v-chip>
+                <v-menu :close-on-content-click="false" location="bottom end">
+                  <template #activator="{ props: menuProps }">
+                    <v-btn v-bind="menuProps" size="small" variant="text" color="primary" prepend-icon="mdi-pencil">調整</v-btn>
+                  </template>
+                  <v-card class="pa-3 rounded-lg" width="292">
+                    <div class="text-caption font-weight-bold mb-2">「{{ name }}」顏色</div>
+                    <div class="status-color-presets mb-3">
+                      <button
+                        v-for="c in colorPresets"
+                        :key="c"
+                        type="button"
+                        class="status-color-preset"
+                        :class="{ 'is-active': colorOf(name).toUpperCase() === c.toUpperCase() }"
+                        :style="{ backgroundColor: c }"
+                        :aria-label="c"
+                        @click="setColor(name, c)"
+                      ></button>
+                    </div>
+                    <label class="status-color-custom">
+                      <input type="color" :value="colorOf(name)" @input="e => setColor(name, e.target.value)" />
+                      <span>自訂顏色</span>
+                      <span class="text-caption text-grey ms-auto">{{ colorOf(name) }}</span>
+                    </label>
+                    <v-btn
+                      size="small"
+                      variant="text"
+                      color="grey-darken-1"
+                      class="mt-2"
+                      prepend-icon="mdi-restore"
+                      :disabled="!isCustomColor(name)"
+                      @click="resetColor(name)"
+                    >恢復預設</v-btn>
+                  </v-card>
+                </v-menu>
+              </div>
+            </div>
+          </v-card>
+        </template>
+
         <div class="text-subtitle-2 font-weight-bold mb-2">
           <v-icon start color="warning">mdi-alert-octagon</v-icon>
           未約原因選項 (Reason)
@@ -148,15 +207,20 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { db } from '@/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { useUiStore } from '@/store/uiStore';
+import {
+  LEAD_STATUS_UNPROCESSED, LEAD_STATUS_LEGACY, LEAD_STATUS_COLOR_PRESETS,
+  resolveLeadStatusColor, getDefaultLeadStatusColor, normalizeHexColor, hexToRgba, pruneLeadStatusColors,
+} from '@/utils/leadStatusColors';
 
 const props = defineProps({
   modelValue: Boolean,
   projectId: String,
   staffList: { type: Array, default: () => [] }, // [{ id, name, lineId }]
+  canEditColors: { type: Boolean, default: false }, // 🎨 狀態顏色 CRUD 僅「客資系統-櫃台」可用
 });
 const emit = defineEmits(['update:modelValue', 'settings-updated']);
 const uiStore = useUiStore();
@@ -171,8 +235,34 @@ const settings = ref({
   remindTime: '15:00',
   statusOptions: ['不考慮', '已約賞屋', '空號', '未接'],
   reasonOptions: ['家人討論', '總價太高', '單價太高', '暫不買房', '號碼錯誤/空號'],
-  notifyRecipients: [] // ✅ 本建案固定接收分配通知的人員 userId 陣列
+  notifyRecipients: [], // ✅ 本建案固定接收分配通知的人員 userId 陣列
+  statusColors: {} // 🎨 各狀態自訂顏色 { 狀態名: '#RRGGBB' }，未設定者用預設色
 });
+
+// ---------- 🎨 狀態顏色 ----------
+const colorPresets = LEAD_STATUS_COLOR_PRESETS;
+// 可設色的狀態：系統固定的「未處理」「舊資料上傳」＋自訂狀態選項
+const colorStatusNames = computed(() => [
+  LEAD_STATUS_UNPROCESSED,
+  ...settings.value.statusOptions.filter(n => n !== LEAD_STATUS_UNPROCESSED && n !== LEAD_STATUS_LEGACY),
+  LEAD_STATUS_LEGACY,
+]);
+const colorOf = (name) => resolveLeadStatusColor(name, settings.value.statusColors);
+const isCustomColor = (name) => {
+  const own = normalizeHexColor(settings.value.statusColors?.[name]);
+  return !!own && own !== getDefaultLeadStatusColor(name).toUpperCase();
+};
+const setColor = (name, value) => {
+  const hex = normalizeHexColor(value);
+  if (!hex) return;
+  if (!settings.value.statusColors) settings.value.statusColors = {};
+  settings.value.statusColors = { ...settings.value.statusColors, [name]: hex };
+};
+const resetColor = (name) => {
+  const next = { ...(settings.value.statusColors || {}) };
+  delete next[name];
+  settings.value.statusColors = next;
+};
 
 const newItem = ref({ status: '', reason: '' });
 
@@ -209,11 +299,20 @@ const removeItem = (listKey, index) => {
 const saveSettings = async () => {
   try {
     uiStore.setLoading(true);
-    await setDoc(doc(db, 'projectSettings', props.projectId), {
-      ...settings.value,
+    // statusColors 另行處理：merge:true 會深層合併 map，已刪除的顏色不會被移除，
+    // 故改用 updateDoc 整個欄位覆寫；非櫃台人員不碰此欄位
+    const { statusColors, ...rest } = settings.value;
+    const settingsRef = doc(db, 'projectSettings', props.projectId);
+    await setDoc(settingsRef, {
+      ...rest,
       lastModifiedAt: new Date(),
       lastModifiedBy: '櫃檯管理員'
     }, { merge: true });
+    if (props.canEditColors) {
+      const pruned = pruneLeadStatusColors(statusColors, rest.statusOptions);
+      await updateDoc(settingsRef, { statusColors: pruned });
+      settings.value.statusColors = pruned;
+    }
 
     uiStore.showSnackbar('設定儲存成功，定時任務已更新。', 'success');
     emit('settings-updated', settings.value);
@@ -225,3 +324,62 @@ const saveSettings = async () => {
   }
 };
 </script>
+
+<style scoped>
+/* 🎨 狀態顏色設定列表 */
+.status-color-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.status-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 10px;
+  border-radius: 8px;
+  border-left: 5px solid transparent;
+}
+.status-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.status-color-presets {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+.status-color-preset {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform .12s;
+}
+.status-color-preset:hover { transform: scale(1.08); }
+.status-color-preset.is-active {
+  border-color: #1a1a1a;
+  box-shadow: 0 0 0 2px #fff inset;
+}
+.status-color-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.status-color-custom input[type="color"] {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+</style>

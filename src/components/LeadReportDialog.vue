@@ -257,6 +257,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { resolveLeadStatusColor } from '@/utils/leadStatusColors';
 import { db } from '@/firebase';
 import {
   collection, doc, getDocs, addDoc, updateDoc,
@@ -271,6 +272,7 @@ const props = defineProps({
   lead: { type: Object, default: null },
   projectId: { type: String, required: true },
   statusOptions: { type: Array, default: () => [] },
+  statusColors: { type: Object, default: () => ({}) }, // 🎨 各狀態自訂顏色
   reasonOptions: { type: Array, default: () => [] },
   // 該客戶（依電話）的有效預約清單，由父層傳入
   reservations: { type: Array, default: () => [] }
@@ -409,17 +411,8 @@ const submitReport = async () => {
 
 const getStatusKey = (s) => ({ '已約賞屋': 'success', '不考慮': 'error', '未接': 'warning' }[s] || 'default');
 
-const getStatusColor = (s) => {
-  const colors = {
-    '已約賞屋': '#4CAF50',
-    '不考慮': '#F44336',
-    '未接': '#FF9800',
-    '空號': '#9E9E9E',
-    '未處理': '#FF5722'
-  };
-  if (!s) return colors['未處理'];
-  return colors[s] || '#3949AB';
-};
+// 🎨 狀態顏色：與名單頁共用工具，並吃父層傳入的自訂顏色
+const getStatusColor = (s) => resolveLeadStatusColor(s, props.statusColors);
 
 const formatTime = (date) => {
   if (!date) return '';

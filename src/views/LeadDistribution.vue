@@ -140,7 +140,8 @@
           </v-window-item>
 
           <v-window-item value="status">
-<v-card variant="flat" class="mb-4 pa-3 pa-sm-4 rounded-xl border bg-white shadow-sm">
+<!-- 💻 桌機／平板：完整篩選列（手機改用下方精簡工具列 + 底部篩選面板） -->
+<v-card v-if="!smAndDown" variant="flat" class="mb-4 pa-3 pa-sm-4 rounded-xl border bg-white shadow-sm">
   <v-row dense align="center">
     <!-- ✅ 優化：手機上全寬，平板以上 1/3 寬 -->
     <v-col cols="12" sm="4">
@@ -246,43 +247,175 @@
   ></v-text-field>
 </v-col>
 
-<v-col cols="12" class="mt-2">
-      <!-- ✅ 優化：手機上縱向排列，平板以上橫向排列 -->
-      <v-row no-gutters class="gap-2">
-        <v-col cols="12" sm="6" class="flex-grow-1">
-          <v-btn
-            color="success"
-            prepend-icon="mdi-file-excel"
-            variant="elevated"
-            rounded="lg"
-            :loading="isLeadsExporting"
-            @click="executeLeadsExport"
-            class="font-weight-bold w-100 text-truncate"
-            size="small"
-          >
-            <span class="text-truncate">下載聯絡狀況 EXCEL (全部 {{ exportScopeLeads.length }} 筆)</span>
-          </v-btn>
-        </v-col>
-
-        <v-col cols="12" sm="6" class="flex-grow-1">
-          <v-btn
-            color="blue-grey"
-            prepend-icon="mdi-google-spreadsheet"
-            variant="elevated"
-            rounded="lg"
-            :loading="isSyncingToGoogle || googleSheetForm.isLoadingSheets"
-            @click="openSyncDialog"
-            class="font-weight-bold w-100 text-truncate"
-            size="small"
-          >
-            <span class="text-truncate">同步到 Google Sheet</span>
-          </v-btn>
-        </v-col>
-      </v-row>
-    </v-col>
+<!-- 匯出／同步少用：收進右側下拉選單，不再占一整列 -->
+<v-col cols="12" sm="4" class="mt-sm-2 d-flex justify-end align-center">
+  <v-menu location="bottom end">
+    <template #activator="{ props }">
+      <v-btn
+        v-bind="props"
+        variant="outlined"
+        color="grey-darken-2"
+        rounded="lg"
+        size="small"
+        prepend-icon="mdi-export-variant"
+        append-icon="mdi-chevron-down"
+        :loading="isLeadsExporting || isSyncingToGoogle || googleSheetForm.isLoadingSheets"
+        class="font-weight-bold"
+      >匯出／同步</v-btn>
+    </template>
+    <v-list density="compact" rounded="lg">
+      <v-list-item
+        prepend-icon="mdi-file-excel"
+        title="下載聯絡狀況 EXCEL"
+        :subtitle="`全部 ${exportScopeLeads.length} 筆`"
+        :disabled="isLeadsExporting"
+        @click="executeLeadsExport"
+      ></v-list-item>
+      <v-list-item
+        prepend-icon="mdi-google-spreadsheet"
+        title="同步到 Google Sheet"
+        :disabled="isSyncingToGoogle || googleSheetForm.isLoadingSheets"
+        @click="openSyncDialog"
+      ></v-list-item>
+    </v-list>
+  </v-menu>
+</v-col>
 
   </v-row>
 </v-card>
+
+<!-- 📱 手機：篩選少用但原本占滿整個版面，改為一列工具列（搜尋 + 篩選鈕 + 更多選單），
+     篩選欄位收進底部面板；生效中的條件以 chip 顯示並可單獨移除 -->
+<template v-else>
+  <div class="lead-mobile-toolbar mb-2">
+    <v-text-field
+      v-model="namePhoneSearch"
+      placeholder="搜尋姓名／電話／備註"
+      prepend-inner-icon="mdi-magnify"
+      variant="outlined"
+      density="compact"
+      hide-details
+      clearable
+      rounded="lg"
+      bg-color="white"
+      class="flex-grow-1"
+    ></v-text-field>
+    <v-badge :content="activeFilterCount" :model-value="activeFilterCount > 0" color="error" offset-x="6" offset-y="6">
+      <v-btn
+        icon="mdi-filter-variant"
+        variant="tonal"
+        :color="activeFilterCount > 0 ? 'primary' : 'grey-darken-1'"
+        rounded="lg"
+        class="lead-mobile-toolbar__btn"
+        aria-label="篩選條件"
+        @click="isFilterSheetOpen = true"
+      ></v-btn>
+    </v-badge>
+    <v-menu location="bottom end">
+      <template #activator="{ props }">
+        <v-btn v-bind="props" icon="mdi-dots-vertical" variant="tonal" color="grey-darken-1" rounded="lg" class="lead-mobile-toolbar__btn" aria-label="更多"></v-btn>
+      </template>
+      <v-list density="compact" rounded="lg">
+        <v-list-item
+          prepend-icon="mdi-file-excel"
+          title="下載聯絡狀況 EXCEL"
+          :subtitle="`全部 ${exportScopeLeads.length} 筆`"
+          :disabled="isLeadsExporting"
+          @click="executeLeadsExport"
+        ></v-list-item>
+        <v-list-item
+          prepend-icon="mdi-google-spreadsheet"
+          title="同步到 Google Sheet"
+          :disabled="isSyncingToGoogle || googleSheetForm.isLoadingSheets"
+          @click="openSyncDialog"
+        ></v-list-item>
+      </v-list>
+    </v-menu>
+  </div>
+
+  <div v-if="activeFilterChips.length" class="lead-filter-chips mb-2">
+    <v-chip
+      v-for="chip in activeFilterChips"
+      :key="chip.key"
+      size="small"
+      color="primary"
+      variant="tonal"
+      closable
+      class="font-weight-bold"
+      @click="isFilterSheetOpen = true"
+      @click:close="removeFilterChip(chip.key)"
+    >{{ chip.label }}</v-chip>
+    <v-chip size="small" variant="text" color="grey-darken-1" prepend-icon="mdi-close-circle-outline" @click="clearAllFilters">清除全部</v-chip>
+  </div>
+  <div class="text-caption text-grey-darken-1 px-1 mb-3">符合 {{ filteredLeads.length }} 筆</div>
+
+  <MobileBottomSheet v-model="isFilterSheetOpen" icon="mdi-filter-variant" title="篩選條件">
+    <div class="lead-filter-sheet">
+      <v-select
+        v-if="isReceptionist || isAdmin"
+        v-model="assignedSearch"
+        :items="salesStaff"
+        item-title="name"
+        item-value="id"
+        label="人員"
+        multiple chips closable-chips
+        variant="outlined" density="compact" hide-details rounded="lg"
+        prepend-inner-icon="mdi-account-search"
+      ></v-select>
+      <v-select
+        v-model="statusSearch"
+        :items="['未處理', ...statusOptions, '舊資料上傳']"
+        label="狀態"
+        multiple chips closable-chips
+        variant="outlined" density="compact" hide-details rounded="lg"
+        prepend-inner-icon="mdi-filter-variant"
+      ></v-select>
+      <v-select
+        v-model="reasonSearch"
+        :items="reasonFilterOptions"
+        label="不考慮原因"
+        multiple chips closable-chips
+        variant="outlined" density="compact" hide-details rounded="lg"
+        prepend-inner-icon="mdi-comment-question"
+      ></v-select>
+      <v-select
+        v-model="sourceSearch"
+        :items="sourceOptions"
+        label="來源"
+        multiple chips closable-chips
+        variant="outlined" density="compact" hide-details rounded="lg"
+        prepend-inner-icon="mdi-tray-arrow-down"
+      ></v-select>
+      <v-select
+        v-model="budgetSearch"
+        :items="budgetOptions"
+        label="預算"
+        multiple chips closable-chips
+        variant="outlined" density="compact" hide-details rounded="lg"
+        prepend-inner-icon="mdi-currency-usd"
+      ></v-select>
+
+      <div class="lead-filter-sheet__label">填表日期</div>
+      <div class="lead-filter-sheet__range">
+        <v-text-field v-model="startDate" label="起" type="date" variant="outlined" density="compact" hide-details rounded="lg" clearable></v-text-field>
+        <v-text-field v-model="endDate" label="迄" type="date" variant="outlined" density="compact" hide-details rounded="lg" clearable :min="startDate"></v-text-field>
+      </div>
+
+      <div class="lead-filter-sheet__label">指派時間</div>
+      <div class="lead-filter-sheet__range">
+        <v-text-field v-model="assignedStartDate" label="起" type="date" variant="outlined" density="compact" hide-details rounded="lg" clearable></v-text-field>
+        <v-text-field v-model="assignedEndDate" label="迄" type="date" variant="outlined" density="compact" hide-details rounded="lg" clearable :min="assignedStartDate"></v-text-field>
+      </div>
+
+      <div class="lead-filter-sheet__actions">
+        <v-btn variant="text" color="grey-darken-1" rounded="lg" :disabled="activeFilterCount === 0" @click="clearAllFilters">清除全部</v-btn>
+        <v-btn color="primary" variant="flat" rounded="lg" class="font-weight-bold flex-grow-1" @click="isFilterSheetOpen = false">
+          顯示 {{ filteredLeads.length }} 筆
+        </v-btn>
+      </div>
+    </div>
+  </MobileBottomSheet>
+</template>
 
     <!-- Google Sheet Sync Dialog -->
     <v-dialog v-model="googleSheetDialog" max-width="500px">
@@ -465,11 +598,15 @@
 
   <!-- ✅ 效能優化：手機版改為分批渲染，避免一次渲染全部卡片 -->
   <div class="d-block d-md-none">
+    <!-- 📱 整張卡片可點擊直接進入聯絡回報（內部按鈕以 .stop 避免重複觸發） -->
     <v-card
       v-for="item in mobileLeads"
       :key="item.id"
-      class="mb-4 rounded-xl elevation-2 overflow-hidden"
-      :class="(!item.status || item.status === '未處理') ? 'lead-card-unprocessed' : 'border-0'"
+      class="mb-4 rounded-xl elevation-2 overflow-hidden lead-mobile-card"
+      :class="{ 'lead-card-unprocessed': !item.status || item.status === '未處理' }"
+      :style="leadStatusStyle(item.status)"
+      :ripple="true"
+      @click="openReport(item)"
     >
       <v-card-text class="pa-3 pa-sm-4">
         <!-- ✅ 優化：分層設計，避免手機上溢出 -->
@@ -495,8 +632,8 @@
             >
               {{ item.status || '未處理' }}
             </v-chip>
-            <v-btn icon="mdi-comment-edit" variant="text" color="primary" size="x-small" @click="openReport(item)"></v-btn>
-            <v-btn v-if="isReceptionist" icon="mdi-delete" variant="text" color="error" size="x-small" @click="handleSoftDelete(item)"></v-btn>
+            <v-btn icon="mdi-comment-edit" variant="text" color="primary" size="x-small" @click.stop="openReport(item)"></v-btn>
+            <v-btn v-if="isReceptionist" icon="mdi-delete" variant="text" color="error" size="x-small" @click.stop="handleSoftDelete(item)"></v-btn>
           </div>
         </div>
 
@@ -595,6 +732,7 @@
      :lead="currentLead"
      :project-id="projectId"
      :status-options="statusOptions"
+     :status-colors="statusColors"
      :reason-options="reasonOptions"
      :reservations="currentLead ? getCustomerReservations(currentLead.phone) : []"
      @notify="showMsg"
@@ -746,6 +884,7 @@
       v-model="showSettings"
       :project-id="projectId"
       :staff-list="salesStaff"
+      :can-edit-colors="isReceptionist"
       @settings-updated="onSettingsUpdated"
     />
 
@@ -2066,7 +2205,7 @@ const detailDialog = reactive({
 });
 
 const currentDetailPhone = ref('');
-const { mobile } = useDisplay(); // Initialize mobile detection
+const { mobile, smAndDown } = useDisplay(); // smAndDown（<960px）與名單卡片列表的 d-md-none 斷點一致
 
 const openDetail = (phone, result, type) => {
     currentDetailPhone.value = phone;
@@ -2107,6 +2246,8 @@ import LeadSettingsDialog from '@/components/LeadSettingsDialog.vue';
 
 
 import LeadReportDialog from '@/components/LeadReportDialog.vue';
+import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
+import { resolveLeadStatusColor, buildLeadStatusStyle } from '@/utils/leadStatusColors';
 import * as XLSX from 'xlsx-js-style';
 
 
@@ -2509,6 +2650,8 @@ const resolveExcelDuplicates = async () => {
 
 const statusOptions = ref(['不考慮', '已約賞屋', '空號', '未接']);
 const reasonOptions = ref(['家人討論', '總價太高', '單價太高', '暫不買房', '要找成屋', '號碼錯誤/空號', '未接電話']);
+// 🎨 各狀態自訂顏色（projectSettings.statusColors），由櫃台在系統設定維護
+const statusColors = ref({});
 // 1. 新增搜尋變數
 const reasonSearch = ref([]);
 
@@ -3059,6 +3202,73 @@ if (namePhoneSearch.value) {
     return 0;
   });
 });
+
+// 📱 手機版篩選面板：開關、生效中的條件數／chip 清單、單項移除與清除全部
+const isFilterSheetOpen = ref(false);
+
+const activeFilterCount = computed(() => {
+  let n = 0;
+  if (assignedSearch.value?.length) n++;
+  if (statusSearch.value.length) n++;
+  if (reasonSearch.value.length) n++;
+  if (sourceSearch.value.length) n++;
+  if (budgetSearch.value.length) n++;
+  if (startDate.value || endDate.value) n++;
+  if (assignedStartDate.value || assignedEndDate.value) n++;
+  return n;
+});
+
+// 多選值摘要：最多列 2 項，其餘以 +N 表示，避免 chip 過長
+const summarizeFilterValues = (arr, max = 2) => {
+  if (arr.length <= max) return arr.join('、');
+  return `${arr.slice(0, max).join('、')} +${arr.length - max}`;
+};
+const summarizeDateRange = (from, to) => {
+  const f = from ? from.replace(/-/g, '/') : '';
+  const t = to ? to.replace(/-/g, '/') : '';
+  if (f && t) return `${f}～${t}`;
+  if (f) return `${f} 起`;
+  return `${t} 止`;
+};
+
+const activeFilterChips = computed(() => {
+  const chips = [];
+  if (assignedSearch.value?.length) {
+    const names = assignedSearch.value.map(id => salesStaff.value.find(st => st.id === id)?.name || id);
+    chips.push({ key: 'assigned', label: `人員：${summarizeFilterValues(names)}` });
+  }
+  if (statusSearch.value.length) chips.push({ key: 'status', label: `狀態：${summarizeFilterValues(statusSearch.value)}` });
+  if (reasonSearch.value.length) chips.push({ key: 'reason', label: `原因：${summarizeFilterValues(reasonSearch.value)}` });
+  if (sourceSearch.value.length) chips.push({ key: 'source', label: `來源：${summarizeFilterValues(sourceSearch.value)}` });
+  if (budgetSearch.value.length) chips.push({ key: 'budget', label: `預算：${summarizeFilterValues(budgetSearch.value)}` });
+  if (startDate.value || endDate.value) chips.push({ key: 'date', label: `填表：${summarizeDateRange(startDate.value, endDate.value)}` });
+  if (assignedStartDate.value || assignedEndDate.value) chips.push({ key: 'assignedAt', label: `指派：${summarizeDateRange(assignedStartDate.value, assignedEndDate.value)}` });
+  return chips;
+});
+
+const removeFilterChip = (key) => {
+  switch (key) {
+    case 'assigned': assignedSearch.value = []; break;
+    case 'status': statusSearch.value = []; break;
+    case 'reason': reasonSearch.value = []; break;
+    case 'source': sourceSearch.value = []; break;
+    case 'budget': budgetSearch.value = []; break;
+    case 'date': startDate.value = null; endDate.value = null; break;
+    case 'assignedAt': assignedStartDate.value = null; assignedEndDate.value = null; break;
+  }
+};
+
+const clearAllFilters = () => {
+  assignedSearch.value = [];
+  statusSearch.value = [];
+  reasonSearch.value = [];
+  sourceSearch.value = [];
+  budgetSearch.value = [];
+  startDate.value = null;
+  endDate.value = null;
+  assignedStartDate.value = null;
+  assignedEndDate.value = null;
+};
 
 // ✅ 效能優化：手機版分批渲染（一次 20 筆，按「載入更多」續載）
 const MOBILE_PAGE_SIZE = 20;
@@ -3849,6 +4059,7 @@ const openReport = (item) => {
       if (setSnap.exists()) {
         statusOptions.value = setSnap.data().statusOptions || statusOptions.value;
         reasonOptions.value = setSnap.data().reasonOptions || reasonOptions.value;
+        statusColors.value = setSnap.data().statusColors || {};
       }
     }).catch(err => console.error('載入專案設定失敗', err));
   }
@@ -3896,25 +4107,19 @@ const confirmSoftDelete = async () => {
   }
 };
 
-const getStatusColor = (s) => {
-  const colors = {
-    '已約賞屋': '#4CAF50', // success
-    '不考慮': '#F44336',   // error
-    '未接': '#FF9800',     // warning
-    '空號': '#9E9E9E',     // grey
-    '未處理': '#FF5722',   // 警示橘紅，最顯眼
-    '舊資料上傳': '#607D8B' // 藍灰，區隔移轉資料
-  };
-  if (!s) return colors['未處理']; // 空字串/null/undefined 視為「未處理」
-  return colors[s] || '#3949AB';   // 其他自定狀態預設為 indigo
-};
+// 🎨 狀態顏色：自訂（櫃台設定）> 預設色表 > indigo；空狀態視為「未處理」
+const getStatusColor = (s) => resolveLeadStatusColor(s, statusColors.value);
 
-// ✅ 桌面 v-data-table 整列強調：未處理時套用 lead-row-unprocessed
+// 🎨 名單卡片／表格列依狀態套淡色底 + 左側色條（CSS 變數 --lead-status-color）
+const leadStatusStyle = (status, bgAlpha) => buildLeadStatusStyle(status, statusColors.value, { bgAlpha });
+
+// ✅ 桌面 v-data-table：每列依狀態上色；未處理另加 lead-row-unprocessed 強調
 const leadRowProps = ({ item }) => {
-  if (!item.status || item.status === '未處理') {
-    return { class: 'lead-row-unprocessed' };
-  }
-  return {};
+  const unprocessed = !item.status || item.status === '未處理';
+  return {
+    class: ['lead-row-status', unprocessed ? 'lead-row-unprocessed' : ''],
+    style: leadStatusStyle(item.status, 0.07),
+  };
 };
 
 // ✅ 效能優化：以電話為 key 預建索引 (computed 快取)，
@@ -3997,6 +4202,7 @@ const fetchProjectStaff = async () => {
 const onSettingsUpdated = (s) => {
   statusOptions.value = s.statusOptions;
   reasonOptions.value = s.reasonOptions;
+  statusColors.value = s.statusColors || {};
 };
 
 
@@ -4084,6 +4290,7 @@ onMounted(async () => {
   if (setSnap.exists()) {
     statusOptions.value = setSnap.data().statusOptions || statusOptions.value;
     reasonOptions.value = setSnap.data().reasonOptions || reasonOptions.value;
+    statusColors.value = setSnap.data().statusColors || {};
   }
 });
 
@@ -5052,6 +5259,49 @@ const handleExcelFileSelect = async (input) => {
   pointer-events: none;
 }
 .gap-2 { gap: 8px; }
+
+/* 📱 手機版名單聯絡狀況：精簡工具列 + 篩選 chip + 底部篩選面板 + 可點擊卡片 */
+.lead-mobile-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lead-mobile-toolbar__btn {
+  width: 40px !important;
+  height: 40px !important;
+}
+.lead-filter-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: none;
+}
+.lead-filter-chips::-webkit-scrollbar { display: none; }
+.lead-filter-chips .v-chip { flex-shrink: 0; }
+.lead-filter-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lead-filter-sheet__label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #44546a;
+  margin-bottom: -4px;
+}
+.lead-filter-sheet__range {
+  display: flex;
+  gap: 8px;
+}
+.lead-filter-sheet__range > * { flex: 1 1 0; min-width: 0; }
+.lead-filter-sheet__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.lead-mobile-card { cursor: pointer; }
+.lead-mobile-card:active { transform: scale(0.995); }
 .border-s-lg { border-left: 6px solid !important; }
 
 .v-btn--variant-dashed {
@@ -5168,18 +5418,20 @@ const handleExcelFileSelect = async (input) => {
   50%      { box-shadow: 0 0 0 6px rgba(255, 87, 34, 0); }
 }
 
-/* ✅ 未處理 桌面整列強調（v-data-table 子元素需 :deep 套用） */
-:deep(.lead-row-unprocessed) {
-  background-color: #FFF8F5 !important;
+/* 🎨 桌面表格列：底色由 row-props inline style 依狀態給定，左側色條讀 CSS 變數（v-data-table 子元素需 :deep） */
+:deep(.lead-row-status > td:first-child) {
+  border-left: 4px solid var(--lead-status-color, #3949AB) !important;
 }
-:deep(.lead-row-unprocessed > td:first-child) {
-  border-left: 4px solid #FF5722 !important;
+:deep(.lead-row-unprocessed) {
+  font-weight: 600;
 }
 
-/* ✅ 未處理 手機卡片強調 */
+/* 🎨 手機卡片：底色由 inline style 依狀態給定，左側色條讀 CSS 變數 */
+.lead-mobile-card {
+  border-left: 5px solid var(--lead-status-color, #3949AB) !important;
+}
 .lead-card-unprocessed {
-  border-left: 5px solid #FF5722 !important;
-  background-color: #FFF8F5 !important;
+  box-shadow: 0 2px 8px rgba(255, 87, 34, 0.25) !important;
 }
 
 </style>
