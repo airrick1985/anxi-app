@@ -827,11 +827,35 @@
                           </span>
                         </div>
 
+                        <!-- ✅ 檢視模式即可操作：從客資卡導入買方（免進修改銷控）／開啟該戶客戶資料卡的匯出文件 -->
+                        <div v-if="viewMode === 'sales'" class="buyer-actions">
+                          <v-btn
+                            size="small"
+                            variant="tonal"
+                            color="indigo"
+                            rounded="lg"
+                            prepend-icon="mdi-card-account-details-outline"
+                            class="buyer-actions__btn"
+                            @click="isBuyerImportOpen = true"
+                          >客資卡導入</v-btn>
+                          <v-btn
+                            size="small"
+                            variant="tonal"
+                            color="primary"
+                            rounded="lg"
+                            prepend-icon="mdi-file-export-outline"
+                            class="buyer-actions__btn"
+                            @click="isCustomerCardDialogOpen = true"
+                          >客戶資料卡</v-btn>
+                        </div>
+
                         <!-- 尚無買方：空狀態，避免整欄都是「-」 -->
                         <div v-if="!hasBuyerInfo" class="buyer-empty">
                           <v-icon size="32" color="#b0bec5">mdi-account-off-outline</v-icon>
                           <div class="buyer-empty-title">尚未填寫買方資料</div>
-                          <div class="buyer-empty-hint">進入「修改銷控」→ 買方資訊即可建立</div>
+                          <div class="buyer-empty-hint">
+                            {{ viewMode === 'sales' ? '可按「客資卡導入」直接帶入，或進入「修改銷控」→ 買方資訊建立' : '進入「修改銷控」→ 買方資訊即可建立' }}
+                          </div>
                         </div>
 
                         <template v-else>
@@ -944,6 +968,40 @@
                     :unit-id="unitData.unitId || ''"
                     :drive-folder-url="unitData.driveFolderUrl || ''"
                   />
+
+                  <!-- ✅ [上傳文件] 檢視模式：上傳任意格式文件至戶別 Drive 資料夾（即時儲存，SPEC_UnitDocumentUpload.md） -->
+                  <UnitDocumentsPanel
+                    ref="unitDocumentsPanelRef"
+                    class="mt-2"
+                    :model-value="viewUnitDocuments"
+                    :project-id="projectId"
+                    :unit-id="unitData.unitId || ''"
+                    :drive-folder-url="unitData.driveFolderUrl || ''"
+                    :upload-handler="handleUploadUnitDocument"
+                    :rename-handler="handleRenameUnitDocument"
+                    :delete-handler="handleDeleteUnitDocument"
+                    :auto-open-upload="autoOpenDocumentsUploadOnce"
+                  />
+
+                  <!-- ✅ 檢視模式：從客戶資料卡導入買方（套用即直寫 Firestore，不必進修改銷控） -->
+                  <CustomerCardImportDialog
+                    v-if="isBuyerImportOpen"
+                    v-model:show="isBuyerImportOpen"
+                    :project-id="projectId"
+                    :unit-id="unitData.unitId || ''"
+                    :current-data="unitData"
+                    :existing-co-buyers="viewCoBuyers"
+                    @apply="handleViewBuyerImportApply"
+                  />
+
+                  <!-- ✅ 檢視模式：該戶別客戶資料卡 → 直接進入匯出文件畫面 -->
+                  <UnitCustomerCardDialog
+                    v-if="isCustomerCardDialogOpen"
+                    v-model:show="isCustomerCardDialogOpen"
+                    :project-id="projectId"
+                    :project-name="projectName"
+                    :unit-id="unitData.unitId || ''"
+                  />
                 </div>
               </div>
               <div v-else class="text-center pa-5">
@@ -968,20 +1026,6 @@
 
           <template v-if="!isMobile">
             <v-spacer></v-spacer>
-
-                  <!-- ✅ [上傳文件] 檢視模式：上傳任意格式文件至戶別 Drive 資料夾（即時儲存，SPEC_UnitDocumentUpload.md） -->
-                  <UnitDocumentsPanel
-                    ref="unitDocumentsPanelRef"
-                    class="mt-2"
-                    :model-value="viewUnitDocuments"
-                    :project-id="projectId"
-                    :unit-id="unitData.unitId || ''"
-                    :drive-folder-url="unitData.driveFolderUrl || ''"
-                    :upload-handler="handleUploadUnitDocument"
-                    :rename-handler="handleRenameUnitDocument"
-                    :delete-handler="handleDeleteUnitDocument"
-                    :auto-open-upload="autoOpenDocumentsUploadOnce"
-                  />
             <template v-if="isEditing">
               <v-btn color="grey-darken-1" variant="text" @click="cancelEditing">取消</v-btn>
               <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving" size="large">儲存變更</v-btn>
@@ -1002,6 +1046,18 @@
                 <v-icon left>mdi-folder-google-drive</v-icon>
                 {{ unitData.unitId }} 資料夾
               </v-btn>
+              <!-- ✅ [上傳文件] 未設定資料夾時仍顯示但停用，tooltip 提示 -->
+              <v-tooltip v-if="viewMode === 'sales' && unitData" location="top"
+                :disabled="!!unitData.driveFolderUrl" text="請先於修改銷控設定「戶別資料夾位置」">
+                <template v-slot:activator="{ props: tipProps }">
+                  <span v-bind="tipProps">
+                    <v-btn color="indigo" variant="flat" :disabled="!unitData.driveFolderUrl" @click="openDocumentsUpload">
+                      <v-icon left>mdi-cloud-upload-outline</v-icon>
+                      上傳文件
+                    </v-btn>
+                  </span>
+                </template>
+              </v-tooltip>
               <v-btn v-if="viewMode === 'sales' && unitData && unitData.contractDrawingFolderUrl" color="indigo"
                 variant="flat" :href="unitData.contractDrawingFolderUrl" target="_blank">
                 <v-icon left>mdi-floor-plan</v-icon>
@@ -1046,18 +1102,6 @@
                 <v-btn stacked variant="text" color="success" class="flex-grow-1" @click="handleAddToQuote"
                   :disabled="!canAddToQuote">
                   <v-icon>mdi-plus-box-outline</v-icon>
-              <!-- ✅ [上傳文件] 未設定資料夾時仍顯示但停用，tooltip 提示 -->
-              <v-tooltip v-if="viewMode === 'sales' && unitData" location="top"
-                :disabled="!!unitData.driveFolderUrl" text="請先於修改銷控設定「戶別資料夾位置」">
-                <template v-slot:activator="{ props: tipProps }">
-                  <span v-bind="tipProps">
-                    <v-btn color="indigo" variant="flat" :disabled="!unitData.driveFolderUrl" @click="openDocumentsUpload">
-                      <v-icon left>mdi-cloud-upload-outline</v-icon>
-                      上傳文件
-                    </v-btn>
-                  </span>
-                </template>
-              </v-tooltip>
                   <span class="text-caption">{{ addToQuoteButtonText }}</span>
                 </v-btn>
                 <!-- 主要操作：付款表設定 -->
@@ -1341,6 +1385,7 @@ import { useStatusColorStore } from '@/store/statusColorStore';
 import SalesBotChat from './SalesBotChat.vue';
 import LandParcelsPanel from './LandParcelsPanel.vue';
 import PaymentRecordsPanel from './PaymentRecordsPanel.vue';
+import UnitDocumentsPanel from './UnitDocumentsPanel.vue';
 import RemarkNotesPanel from './RemarkNotesPanel.vue';
 import { db } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -1350,6 +1395,9 @@ import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue';
 // ✅ [效能] 合約製作彈窗（約 220KB）改為非同步載入；模板以 v-if 於開啟時建立，故安全
 const ContractDocDialog = defineAsyncComponent(() => import('@/components/contractDoc/ContractDocDialog.vue'));
+// ✅ 買方資訊區塊（檢視模式）：客資卡導入／客戶資料卡匯出文件，首次開啟才載入
+const CustomerCardImportDialog = defineAsyncComponent(() => import('@/components/CustomerCardImportDialog.vue'));
+const UnitCustomerCardDialog = defineAsyncComponent(() => import('@/components/UnitCustomerCardDialog.vue'));
 import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
 import ConfirmationDialog from './ConfirmationDialog.vue';
 import CancelPurchaseDialog from './CancelPurchaseDialog.vue';
@@ -1385,7 +1433,6 @@ const activeEditSection = ref('sales');
 const activeMobileEditSection = ref('all');
 
 // 📱 [新增] 戶別資訊「更多功能」底部面板（取代原 v-menu，比照銷控系統底部面板樣式）
-import UnitDocumentsPanel from './UnitDocumentsPanel.vue';
 const isUnitToolsSheetOpen = ref(false);
 const unitToolGroups = computed(() => {
   if (props.viewMode !== 'sales') return [];
@@ -1397,6 +1444,14 @@ const unitToolGroups = computed(() => {
   if (d.contractDrawingFolderUrl) {
     docs.push({ icon: 'mdi-floor-plan', label: '合約分戶圖', action: () => window.open(d.contractDrawingFolderUrl, '_blank') });
   }
+  // ✅ [上傳文件] 需先設定戶別資料夾位置；未設定時提示而非靜默無反應
+  docs.push({
+    icon: 'mdi-cloud-upload-outline', label: '上傳文件',
+    action: () => {
+      if (!d.driveFolderUrl) { toast.warning('請先於修改銷控設定「戶別資料夾位置」'); return; }
+      openDocumentsUpload();
+    },
+  });
   docs.push({ icon: 'mdi-microsoft-excel', label: '下載本戶資料', action: downloadExcel });
   const manage = [
     { icon: 'mdi-file-document-arrow-right-outline', label: '實價登錄', action: openRealPriceReportDialog },
@@ -1444,14 +1499,6 @@ const { tap: tapUnlockPriceQuote } = useTapUnlock(() => {
 const handleKeyPress = (e) => {
   if (e.key.toLowerCase() === 'a') {
     keySequence.value += 'a';
-  // ✅ [上傳文件] 需先設定戶別資料夾位置；未設定時提示而非靜默無反應
-  docs.push({
-    icon: 'mdi-cloud-upload-outline', label: '上傳文件',
-    action: () => {
-      if (!d.driveFolderUrl) { toast.warning('請先於修改銷控設定「戶別資料夾位置」'); return; }
-      openDocumentsUpload();
-    },
-  });
     if (keySequence.value.length > 8) {
       keySequence.value = keySequence.value.slice(-8);
     }
@@ -1740,6 +1787,8 @@ const props = defineProps({
   // ✅ [快速選單] 開啟時的初始分頁（info / aiAssistant）與是否直接進入「修改銷控」（僅銷控模式生效）
   initialTab: { type: String, default: 'info' },
   initialEditing: { type: Boolean, default: false },
+  // ✅ [上傳文件] 由快速選單進入時自動彈出上傳對話框（SPEC_UnitDocumentUpload.md）
+  autoOpenDocumentsUpload: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
@@ -1787,8 +1836,6 @@ const householdImages = computed(() => {
     console.log('🖼️ [UnitDetailModal] 圖片匹配結果:', {
       requestedImages: props.unitData.salesImages,
       matchedCount: matchedImages.length,
-  // ✅ [上傳文件] 由快速選單進入時自動彈出上傳對話框（SPEC_UnitDocumentUpload.md）
-  autoOpenDocumentsUpload: { type: Boolean, default: false },
       matchedImages: matchedImages.map(img => img.imageName)
     });
   }
@@ -2280,6 +2327,8 @@ function startEditing() {
   }
   clearPriceRemarkLocalState();
 
+  // ✅ [上傳文件] 同樣以檢視模式本地列表為準，避免整包儲存時把剛上傳的文件覆蓋掉
+  editingData.value.unitDocuments = JSON.parse(JSON.stringify(viewUnitDocuments.value || []));
   // ✅ [戶別繳款紀錄] 以檢視模式本地列表為準（可能含剛快速新增、父層尚未重新載入的紀錄）+ 快照原始欄位
   editingData.value.paymentRecords = JSON.parse(JSON.stringify(viewPaymentRecords.value || []));
   paymentRecordsSnapshot = new Map(
@@ -2327,8 +2376,6 @@ function startEditing() {
 
 function cancelEditing() {
   isEditing.value = false;
-  // ✅ [上傳文件] 同樣以檢視模式本地列表為準，避免整包儲存時把剛上傳的文件覆蓋掉
-  editingData.value.unitDocuments = JSON.parse(JSON.stringify(viewUnitDocuments.value || []));
   // ✅ [戶別繳款紀錄] 取消編輯時釋放本地預覽 URL，不動 Drive
   clearPaymentRecordsPendingState();
   editingData.value = null;
@@ -2385,53 +2432,6 @@ watch(() => props.unitData, (val) => {
     : [];
 }, { immediate: true });
 
-// ✅ [備註留言] 檢視模式本地列表：直寫 Firestore 後即時反映（不必進修改銷控）
-const viewRemarkNotes = ref([]);
-const viewLegacyRemarks = ref('');
-watch(() => props.unitData, (val) => {
-  viewRemarkNotes.value = Array.isArray(val?.remarkNotes) ? val.remarkNotes.slice() : [];
-  viewLegacyRemarks.value = typeof val?.remarks === 'string' ? val.remarks : '';
-}, { immediate: true });
-
-const remarkNotesStoragePrefix = computed(() =>
-  `unitDetails/${props.projectId}/${props.unitData?.unitId || 'unknown'}/remarkNotes`
-);
-
-/** [備註留言] 持久化：直寫 salesHouseholds，並回填 remarks 字串維持向下相容 */
-async function persistRemarkNotes(newNotes) {
-  const docId = `${props.projectId}_${props.unitData.unitId}`;
-  const summary = buildRemarksSummary(newNotes);
-  await updateDoc(doc(db, 'salesHouseholds', docId), {
-    remarkNotes: newNotes,
-    remarks: summary,
-    updatedAt: serverTimestamp(),
-  });
-  viewRemarkNotes.value = newNotes.slice();
-  viewLegacyRemarks.value = summary;
-  // 同步父層傳入的物件快照，避免重開 Modal 或列表殘留舊值（store 即時監聽亦會更新）
-  if (props.unitData) {
-    props.unitData.remarkNotes = newNotes;
-    props.unitData.remarks = summary;
-  }
-}
-
-/**
- * [戶別繳款紀錄] 快速新增（檢視模式，不經修改銷控）：
- * 有圖檔則後端一併上傳並命名，寫入成功後即時更新本地列表。
- */
-async function handleQuickAddPaymentRecord({ date, amount, note, file }) {
-  let base64 = null;
-  if (file) {
-    base64 = await paymentProofFileToBase64(file);
-  }
-  const res = await paymentProofApi({
-    action: 'addRecord',
-    projectId: props.projectId,
-    unitId: props.unitData.unitId,
-    base64,
-    date,
-    amount,
-    note
 // ✅ [上傳文件] 檢視模式本地列表：上傳／改名／刪除後即時反映，不必等父層重新載入（SPEC_UnitDocumentUpload.md）
 const viewUnitDocuments = ref([]);
 watch(() => props.unitData, (val) => {
@@ -2518,6 +2518,104 @@ async function handleDeleteUnitDocument({ docId, trashDriveFile }) {
   emit('data-updated');
 }
 
+// ✅ [備註留言] 檢視模式本地列表：直寫 Firestore 後即時反映（不必進修改銷控）
+const viewRemarkNotes = ref([]);
+const viewLegacyRemarks = ref('');
+watch(() => props.unitData, (val) => {
+  viewRemarkNotes.value = Array.isArray(val?.remarkNotes) ? val.remarkNotes.slice() : [];
+  viewLegacyRemarks.value = typeof val?.remarks === 'string' ? val.remarks : '';
+}, { immediate: true });
+
+const remarkNotesStoragePrefix = computed(() =>
+  `unitDetails/${props.projectId}/${props.unitData?.unitId || 'unknown'}/remarkNotes`
+);
+
+// ✅ [買方資訊] 檢視模式的客資卡導入／客戶資料卡對話框開關
+const isBuyerImportOpen = ref(false);
+const isCustomerCardDialogOpen = ref(false);
+
+/**
+ * [買方資訊] 檢視模式套用客資卡導入結果：
+ * 免進「修改銷控」，只更新買方相關欄位直寫 salesHouseholds（局部 updateDoc，避免 updateSalesData 把未帶欄位清空）
+ */
+async function handleViewBuyerImportApply({ primaryValues, coBuyers }) {
+  if (!props.unitData?.unitId) return;
+  const updates = {};
+  ['buyerName', 'buyerPhone', 'buyerIdNumber', 'buyerEmail', 'buyerDateOfBirth'].forEach(key => {
+    if (primaryValues[key] !== undefined) updates[key] = primaryValues[key];
+  });
+  if (primaryValues.mailingAddress) {
+    const { city, district, detail } = primaryValues.mailingAddress;
+    if (city) {
+      updates.buyerMailingAddressCity = city;
+      updates.buyerMailingAddressDistrict = district || '';
+    } else if (district) {
+      updates.buyerMailingAddressDistrict = district;
+    }
+    updates.buyerMailingAddressDetail = detail || '';
+  }
+  // 共同買方：同一筆客資卡（sourceSubmissionId）重複導入 → 更新既有紀錄，不重複新增
+  if (Array.isArray(coBuyers) && coBuyers.length > 0) {
+    const existing = Array.isArray(props.unitData.coBuyers) ? props.unitData.coBuyers.map(cb => ({ ...cb })) : [];
+    coBuyers.forEach(cb => {
+      const idx = existing.findIndex(e => e.sourceSubmissionId && e.sourceSubmissionId === cb.sourceSubmissionId);
+      if (idx >= 0) existing.splice(idx, 1, cb);
+      else existing.push(cb);
+    });
+    updates.coBuyers = existing;
+  }
+  if (Object.keys(updates).length === 0) {
+    toast.info('沒有需要更新的買方資料');
+    return;
+  }
+  try {
+    const docId = `${props.projectId}_${props.unitData.unitId}`;
+    await updateDoc(doc(db, 'salesHouseholds', docId), { ...updates, updatedAt: serverTimestamp() });
+    // 同步父層傳入的物件快照，畫面立即反映（store 即時監聽亦會更新）
+    Object.assign(props.unitData, updates);
+    toast.success('買方資料已從客戶資料卡導入');
+    emit('data-updated');
+  } catch (err) {
+    console.error('客資卡導入寫入失敗:', err);
+    toast.error('導入失敗：' + (err?.message || '請稍後再試'));
+  }
+}
+
+/** [備註留言] 持久化：直寫 salesHouseholds，並回填 remarks 字串維持向下相容 */
+async function persistRemarkNotes(newNotes) {
+  const docId = `${props.projectId}_${props.unitData.unitId}`;
+  const summary = buildRemarksSummary(newNotes);
+  await updateDoc(doc(db, 'salesHouseholds', docId), {
+    remarkNotes: newNotes,
+    remarks: summary,
+    updatedAt: serverTimestamp(),
+  });
+  viewRemarkNotes.value = newNotes.slice();
+  viewLegacyRemarks.value = summary;
+  // 同步父層傳入的物件快照，避免重開 Modal 或列表殘留舊值（store 即時監聽亦會更新）
+  if (props.unitData) {
+    props.unitData.remarkNotes = newNotes;
+    props.unitData.remarks = summary;
+  }
+}
+
+/**
+ * [戶別繳款紀錄] 快速新增（檢視模式，不經修改銷控）：
+ * 有圖檔則後端一併上傳並命名，寫入成功後即時更新本地列表。
+ */
+async function handleQuickAddPaymentRecord({ date, amount, note, file }) {
+  let base64 = null;
+  if (file) {
+    base64 = await paymentProofFileToBase64(file);
+  }
+  const res = await paymentProofApi({
+    action: 'addRecord',
+    projectId: props.projectId,
+    unitId: props.unitData.unitId,
+    base64,
+    date,
+    amount,
+    note
   });
   if (res.status !== 'success' || !res.record) {
     throw new Error(res.message || '請稍後再試');
@@ -3986,6 +4084,8 @@ onMounted(() => {
   if (props.viewMode === 'sales') {
     if (props.initialTab && props.initialTab !== 'info') tab.value = props.initialTab;
     if (props.initialEditing) nextTick(() => startEditing());
+    // ✅ [上傳文件] 快速選單「上傳文件」進入：面板掛載後自動彈出上傳對話框
+    if (props.autoOpenDocumentsUpload && !props.initialEditing) nextTick(() => openDocumentsUpload());
   }
 });
 
@@ -4084,8 +4184,6 @@ onUnmounted(() => {
 .edit-nav-text {
   display: flex;
   flex-direction: column;
-    // ✅ [上傳文件] 快速選單「上傳文件」進入：面板掛載後自動彈出上傳對話框
-    if (props.autoOpenDocumentsUpload && !props.initialEditing) nextTick(() => openDocumentsUpload());
   min-width: 0;
 }
 
@@ -4564,6 +4662,19 @@ onUnmounted(() => {
 .buyer-empty-hint {
   font-size: 0.78rem;
   color: #b0bec5;
+}
+
+/* ✅ 買方資訊動作列：客資卡導入／客戶資料卡（檢視模式） */
+.buyer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 12px;
+}
+.buyer-actions__btn {
+  flex: 1 1 auto;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 /* 共同買方卡片 */

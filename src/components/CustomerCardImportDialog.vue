@@ -162,10 +162,8 @@
 // 步驟二：主買方逐欄「目前值 vs 導入值」勾選覆蓋；其餘筆以整筆勾選加入共同買方
 // 套用只 emit 給父層改前端 editableData，不直接寫資料庫
 import { ref, computed, watch } from 'vue';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { loadUnitCustomerCardSubmissions, formatTaiwanTime } from '@/utils/customerCardSubmissions';
 import {
-  isCustomerDataCardForm,
   extractBuyerFromSubmission,
   buildCoBuyer,
   formatRocDateText,
@@ -207,7 +205,7 @@ watch(() => props.show, (visible) => {
     coBuyerItems.value = [];
     loadRecords();
   }
-});
+}, { immediate: true }); // 父層可能以 v-if 掛載（開啟時才建立），首次掛載也要載入
 
 function close() {
   emit('update:show', false);
@@ -233,16 +231,6 @@ function isAlreadyImported(submissionId) {
   return (props.existingCoBuyers || []).some(cb => cb.sourceSubmissionId && cb.sourceSubmissionId === submissionId);
 }
 
-function formatTaiwanTime(ts) {
-  if (!ts) return '';
-  const date = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleString('zh-TW', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  });
-}
 
 async function loadRecords() {
   loading.value = true;
@@ -253,48 +241,19 @@ async function loadRecords() {
       loadError.value = '此戶別缺少戶別編號，無法查詢客戶資料卡。';
       return;
     }
-    // 1. 找出此建案所有「客戶資料卡」表單（名稱關鍵字或手動標記）
-    const formsSnap = await getDocs(query(
-      collection(db, 'customFormTemplates'),
-      where('projectId', '==', props.projectId)
-    ));
-    const cardForms = formsSnap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(isCustomerDataCardForm);
-
-    if (cardForms.length === 0) return;
-
-    // 2. 逐表單查此戶別的填寫紀錄（客資卡表單數量少，逐一查詢即可，也避開 in 查詢上限）
-    const all = [];
-    await Promise.all(cardForms.map(async (form) => {
-      const snap = await getDocs(query(
-        collection(db, 'customFormSubmissions'),
-        where('projectId', '==', props.projectId),
-        where('formId', '==', form.id),
-        where('unitId', '==', props.unitId)
-      ));
-      snap.docs.forEach(d => {
-        const data = d.data();
-        if (data.isDeleted === true) return;
-        const buyer = extractBuyerFromSubmission(form, data);
-        all.push({
-          id: d.id,
-          formTitle: form.title || '未命名表單',
-          buyer,
-          submittedAt: data.submittedAt || null,
-          submittedAtText: formatTaiwanTime(data.submittedAt) + (data.lastModifiedAt ? `（修改於 ${formatTaiwanTime(data.lastModifiedAt)}）` : ''),
-          displayName: buyer.name || data.submitterLineName || '未填姓名',
-        });
-      });
-    }));
-
-    // 依填寫時間由早到晚排序（無時間者排最後）
-    all.sort((a, b) => {
-      const ta = a.submittedAt?.seconds ?? Number.MAX_SAFE_INTEGER;
-      const tb = b.submittedAt?.seconds ?? Number.MAX_SAFE_INTEGER;
-      return ta - tb;
+    // 共用查詢：此建案的客資卡表單 × 此戶別的填寫紀錄（已排除刪除、依填寫時間由早到晚）
+    const list = await loadUnitCustomerCardSubmissions(props.projectId, props.unitId);
+    records.value = list.map(({ id, form, data }) => {
+      const buyer = extractBuyerFromSubmission(form, data);
+      return {
+        id,
+        formTitle: form.title || '未命名表單',
+        buyer,
+        submittedAt: data.submittedAt || null,
+        submittedAtText: formatTaiwanTime(data.submittedAt) + (data.lastModifiedAt ? `（修改於 ${formatTaiwanTime(data.lastModifiedAt)}）` : ''),
+        displayName: buyer.name || data.submitterLineName || '未填姓名',
+      };
     });
-    records.value = all;
   } catch (err) {
     console.error('載入客戶資料卡紀錄失敗:', err);
     loadError.value = '載入客戶資料卡紀錄失敗，請稍後再試。';
