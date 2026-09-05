@@ -1569,13 +1569,15 @@
                     :rowspan="pivotMatrix.useCol ? 2 : 1"
                     class="text-left font-weight-bold pivot-sortable"
                     :style="li === 0 ? 'min-width:110px;position:sticky;left:0;background:#f5f5f5;z-index:2;' : 'min-width:100px;'"
-                    @click="togglePivotSort({ type: 'name', li })" title="點擊排序">
+                    @click="togglePivotSort({ type: 'name', li })" title="點擊排序"
+                    v-bind="pivotThDragProps({ type: 'rowDim', index: li }, pivotRowDims.length > 1)">
                     {{ label }}
                     <v-icon size="14" :color="pivotSortActive({ type: 'name', li }) ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon({ type: 'name', li }) }}</v-icon>
                   </th>
                   <template v-if="pivotMatrix.useCol">
-                    <th v-for="cKey in pivotMatrix.colKeys" :key="'c' + cKey" :colspan="pivotMatrix.valueDefs.length"
-                      class="text-center font-weight-bold" style="min-width:70px;border-left:1px solid #e0e0e0;">
+                    <th v-for="(cKey, ci) in pivotMatrix.colKeys" :key="'c' + cKey" :colspan="pivotMatrix.valueDefs.length"
+                      class="text-center font-weight-bold" style="min-width:70px;border-left:1px solid #e0e0e0;"
+                      v-bind="pivotThDragProps({ type: 'colKey', index: ci }, pivotMatrix.colKeys.length > 1)">
                       {{ pivotColLabel(cKey) }}
                     </th>
                     <th :colspan="pivotMatrix.valueDefs.length" class="text-center font-weight-bold"
@@ -1584,7 +1586,8 @@
                   <template v-else>
                     <th v-for="(vd, vi) in pivotMatrix.valueDefs" :key="'v' + vi"
                       class="text-center font-weight-bold pivot-sortable" style="min-width:84px;"
-                      @click="togglePivotSort({ type: 'total', vi })" title="點擊排序">
+                      @click="togglePivotSort({ type: 'total', vi })" title="點擊排序"
+                      v-bind="pivotThDragProps({ type: 'value', index: vi }, pivotMatrix.valueDefs.length > 1)">
                       {{ pivotValueDefLabel(vd) }}
                       <v-icon size="14" :color="pivotSortActive({ type: 'total', vi }) ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon({ type: 'total', vi }) }}</v-icon>
                     </th>
@@ -1596,7 +1599,8 @@
                   <template v-for="cKey in pivotMatrix.colKeys" :key="'sub' + cKey">
                     <th v-for="(vd, vi) in pivotMatrix.valueDefs" :key="'sub' + cKey + vi"
                       class="text-center text-caption pivot-sortable" style="min-width:70px;"
-                      @click="togglePivotSort({ type: 'cell', cKey, vi })" title="點擊排序">
+                      @click="togglePivotSort({ type: 'cell', cKey, vi })" title="點擊排序"
+                      v-bind="pivotThDragProps({ type: 'value', index: vi }, pivotMatrix.valueDefs.length > 1)">
                       {{ pivotValueDefLabel(vd) }}
                       <v-icon size="13" :color="pivotSortActive({ type: 'cell', cKey, vi }) ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon({ type: 'cell', cKey, vi }) }}</v-icon>
                     </th>
@@ -1669,7 +1673,7 @@
             </v-table>
           </div>
           <div v-if="pivotMatrix.rows.length" class="text-caption text-grey mt-1 pivot-result-hint">
-            <v-icon size="13">mdi-cursor-default-click-outline</v-icon> 點擊任一儲存格可查看對應的戶別明細。
+            <v-icon size="13">mdi-cursor-default-click-outline</v-icon> 點擊任一儲存格可查看對應的戶別明細；點表頭排序、按住表頭拖曳可調整欄位順序（複製／匯出 Excel 依此順序）。
           </div>
 
           <!-- 長條圖：第一個值的列合計（單一序列橫向長條） -->
@@ -2956,6 +2960,8 @@ function sortPivotKeys(keys, dimKey, getTotal) {
 
 const PIVOT_SEP = '|#|';       // 組合鍵層級分隔
 const PIVOT_CELL_SEP = '||CELL||'; // 下鑽 key 的列/欄分隔
+// 欄維度群組的手動順序（使用者拖曳表頭調整；欄維度變更時重置）
+const pivotColKeyOrder = ref([]);
 const pivotMatrix = computed(() => {
   const items = pivotSourceItems.value;
   const rowDims = pivotRowDims.value;
@@ -3066,9 +3072,15 @@ const pivotMatrix = computed(() => {
   const rowOrders = buildLevelOrders(rowGetters, [...rowMap.values()].map(r => ({ parts: r.parts, count: r.totalCell.count })));
   const colOrders = buildLevelOrders(colGetters, [...colMap.values()].map(c => ({ parts: c.parts, count: c.cell.count })));
   const rowKeys = [...rowMap.keys()].sort((a, b) => cmpByLevels(rowOrders)(rowMap.get(a).parts, rowMap.get(b).parts));
-  const colKeys = useCol
+  let colKeys = useCol
     ? [...colMap.keys()].sort((a, b) => cmpByLevels(colOrders)(colMap.get(a).parts, colMap.get(b).parts))
     : [''];
+  // 使用者曾拖曳調整欄群組順序：依手動順序排列，新出現的鍵值維持預設排序接在後面
+  if (useCol && pivotColKeyOrder.value.length) {
+    const pos = new Map(pivotColKeyOrder.value.map((k, i) => [k, i]));
+    const manual = colKeys.filter(k => pos.has(k)).sort((a, b) => pos.get(a) - pos.get(b));
+    colKeys = [...manual, ...colKeys.filter(k => !pos.has(k))];
+  }
 
   // 佔比欄：以第一個可計佔比的值（戶數或加總）為準
   const pctValueIndex = valueDefs.findIndex(vd => vd.field === '__count__' || vd.mode === 'sum');
@@ -3194,6 +3206,63 @@ const sortedPivotRows = computed(() => {
   });
 });
 
+// --- 表頭拖曳調整欄位順序：列維度欄（改變分層順序）/ 欄維度群組 / 值欄；複製與匯出 Excel 依相同順序 ---
+const pivotThDrag = ref(null);     // 拖曳中的表頭 { type: 'rowDim'|'colKey'|'value', index }
+const pivotThDragOver = ref(null); // 目前懸停的目標表頭
+const pivotThSame = (a, b) => !!a && !!b && a.type === b.type && a.index === b.index;
+// 回傳可直接 v-bind 到 <th> 的屬性與事件（enabled=false 時不可拖曳）
+function pivotThDragProps(spec, enabled = true) {
+  if (!enabled) return {};
+  const dragging = pivotThSame(pivotThDrag.value, spec);
+  return {
+    draggable: 'true',
+    title: '點擊排序・按住拖曳可調整欄位順序（匯出 Excel 依此順序）',
+    class: {
+      'pivot-th-draggable': true,
+      'pivot-th-dragging': dragging,
+      'pivot-th-drop-target': !dragging && pivotThSame(pivotThDragOver.value, spec),
+    },
+    onDragstart: (e) => {
+      pivotThDrag.value = spec;
+      e.dataTransfer.effectAllowed = 'move';
+      // 刻意不寫入 text/plain：避免拖到左側「列/欄/值/篩選器」放置區被當成欄位鍵值加入
+      e.dataTransfer.setData('application/x-pivot-th', spec.type);
+    },
+    onDragover: (e) => {
+      const srcSpec = pivotThDrag.value;
+      if (!srcSpec || srcSpec.type !== spec.type) return; // 不同類型的欄不可互換（未 preventDefault 即不可放置）
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (!pivotThSame(pivotThDragOver.value, spec)) pivotThDragOver.value = spec;
+    },
+    onDragleave: () => {
+      if (pivotThSame(pivotThDragOver.value, spec)) pivotThDragOver.value = null;
+    },
+    onDrop: (e) => {
+      e.preventDefault();
+      movePivotColumn(pivotThDrag.value, spec);
+      pivotThDrag.value = null;
+      pivotThDragOver.value = null;
+    },
+    onDragend: () => {
+      pivotThDrag.value = null;
+      pivotThDragOver.value = null;
+    },
+  };
+}
+function movePivotColumn(srcSpec, dstSpec) {
+  if (!srcSpec || !dstSpec || srcSpec.type !== dstSpec.type || srcSpec.index === dstSpec.index) return;
+  const moveItem = (arr) => {
+    const next = [...arr];
+    const [picked] = next.splice(srcSpec.index, 1);
+    next.splice(dstSpec.index, 0, picked);
+    return next;
+  };
+  if (srcSpec.type === 'rowDim') pivotRowDims.value = moveItem(pivotRowDims.value);
+  else if (srcSpec.type === 'value') pivotValues.value = moveItem(pivotValues.value);
+  else if (srcSpec.type === 'colKey') pivotColKeyOrder.value = moveItem(pivotMatrix.value.colKeys);
+}
+
 // --- 儲存格顯示（row.cells[cKey] = { count, values[] }）---
 function pivotColLabel(cKey) {
   return String(cKey).split(PIVOT_SEP).filter(Boolean).join(' / ');
@@ -3290,6 +3359,8 @@ function openUnitFromDrill(item) {
 // --- 記住透視設定（依建案，localStorage）---
 const pivotSettingsKey = computed(() => `salesPivotSettings_${projectId.value || 'default'}`);
 let isRestoringPivotSettings = false;
+// 欄維度組成改變時，手動欄群組順序不再適用 → 重置（還原記憶設定時除外）
+watch(pivotColDims, () => { if (!isRestoringPivotSettings) pivotColKeyOrder.value = []; }, { deep: true });
 function savePivotSettings() {
   if (isRestoringPivotSettings) return;
   try {
@@ -3303,6 +3374,7 @@ function savePivotSettings() {
       cellPct: pivotCellPct.value,
       showChart: pivotShowChart.value,
       numericBinning: pivotNumericBinning.value,
+      colKeyOrder: pivotColKeyOrder.value,
     }));
   } catch (e) { /* localStorage 不可用時靜默略過 */ }
 }
@@ -3337,20 +3409,30 @@ function restorePivotSettings() {
     if (PIVOT_CELL_PCT_OPTIONS.some(o => o.key === s.cellPct)) pivotCellPct.value = s.cellPct;
     if (typeof s.showChart === 'boolean') pivotShowChart.value = s.showChart;
     if (typeof s.numericBinning === 'boolean') pivotNumericBinning.value = s.numericBinning;
+    pivotColKeyOrder.value = Array.isArray(s.colKeyOrder) ? s.colKeyOrder.filter(k => typeof k === 'string') : [];
   } catch (e) { /* 設定損毀時忽略，用預設值 */ }
   finally {
     nextTick(() => { isRestoringPivotSettings = false; });
   }
 }
 watch(
-  [pivotRowDims, pivotColDims, pivotValues, pivotFilters, pivotShowBoth, pivotCellPct, pivotShowChart, pivotNumericBinning],
+  [pivotRowDims, pivotColDims, pivotValues, pivotFilters, pivotShowBoth, pivotCellPct, pivotShowChart, pivotNumericBinning, pivotColKeyOrder],
   savePivotSettings,
   { deep: true }
 );
 
 // --- 匯出資料組裝（複製 TSV 與匯出 Excel 共用）---
-function buildPivotAoa() {
+// 列維度標籤 → 匯出值：數值欄位「原值直列」時顯示為千分位字串（如 "3,000"），匯出時轉回數字，Excel 才能直接計算
+function pivotRowPartExportValue(part, li) {
+  const dimKey = pivotRowDims.value[li];
+  if (!dimKey || !PIVOT_BINNED_DIM_KEYS.has(dimKey) || pivotNumericBinning.value || part === PIVOT_EMPTY_LABEL) return part;
+  const n = Number(String(part).replace(/,/g, ''));
+  return isFinite(n) ? n : part;
+}
+// pctAsNumber=true（Excel）：佔比以小數輸出並套百分比格式；false（TSV）：輸出 "12.3%" 文字
+function buildPivotAoa({ pctAsNumber = false } = {}) {
   const m = pivotMatrix.value;
+  const pctCell = (pct) => (pct === null ? '' : (pctAsNumber ? pct / 100 : `${pct}%`));
   const headers = [
     ...m.rowDimLabels,
     ...m.colKeys.flatMap(cKey => m.valueDefs.map(vd =>
@@ -3360,20 +3442,20 @@ function buildPivotAoa() {
     '佔比',
   ];
   const body = sortedPivotRows.value.map(row => [
-    ...row.parts,
+    ...row.parts.map(pivotRowPartExportValue),
     ...m.colKeys.flatMap(cKey => m.valueDefs.map((vd, vi) => {
       const v = row.cells[cKey]?.values[vi];
       return (v === null || v === undefined) ? '' : v;
     })),
     ...(m.useCol ? m.valueDefs.map((vd, vi) => row.totalValues[vi] ?? '') : []),
-    row.pct === null ? '' : `${row.pct}%`,
+    pctCell(row.pct),
   ]);
   const footer = [
     '總計',
     ...Array(Math.max(m.rowDimLabels.length - 1, 0)).fill(''),
     ...m.colKeys.flatMap(cKey => m.valueDefs.map((vd, vi) => m.colTotals[cKey]?.values[vi] ?? '')),
     ...(m.useCol ? m.valueDefs.map((vd, vi) => m.grand.values[vi] ?? '') : []),
-    m.pctValueIndex >= 0 ? '100%' : '',
+    m.pctValueIndex >= 0 ? (pctAsNumber ? 1 : '100%') : '',
   ];
   return [headers, ...body, footer];
 }
@@ -3393,9 +3475,19 @@ async function exportPivotToExcel() {
   const m = pivotMatrix.value;
   if (!m.rows.length) return;
   const XLSX = await loadXLSX();
-  const aoa = buildPivotAoa();
+  const aoa = buildPivotAoa({ pctAsNumber: true });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const range = XLSX.utils.decode_range(ws['!ref']);
+  // 數字儲存格維持數值型別，僅以儲存格格式顯示千分位／百分比（不轉成 "3,000" 文字），公式可直接計算
+  const pctCol = range.e.c;
+  for (let r = range.s.r + 1; r <= range.e.r; r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (!cell || cell.t !== 'n') continue;
+      if (c === pctCol) cell.z = '0.0%';
+      else cell.z = Number.isInteger(cell.v) ? '#,##0' : '#,##0.00';
+    }
+  }
   const headerStyle = {
     font: { bold: true },
     fill: { fgColor: { rgb: 'E8EAF6' } },
@@ -5890,6 +5982,24 @@ const uploadData = async () => {
   .pivot-chart-block {
     max-height: none;
   }
+}
+
+/* --- 資料透視：表頭拖曳調整欄位順序 --- */
+.pivot-th-draggable {
+  cursor: grab;
+}
+.pivot-th-draggable::before {
+  content: '⠿';
+  font-size: 11px;
+  color: #b0bec5;
+  margin-right: 3px;
+}
+.pivot-th-dragging {
+  opacity: 0.4;
+}
+.pivot-th-drop-target {
+  background-color: #e8eaf6 !important;
+  box-shadow: inset 3px 0 0 #3f51b5;
 }
 
 /* --- 資料透視：可點擊下鑽的儲存格 --- */
