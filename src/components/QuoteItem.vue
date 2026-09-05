@@ -321,6 +321,18 @@
               >
                 {{ isManualTemplateActive ? '手動指定' : '自動判斷' }}
               </v-chip>
+              <!-- ✅ [新增] 手動指定的範本不符目前條件：保留選擇、顯示警示（滑入看原因） -->
+              <v-chip
+                v-if="manualTemplateMismatchReasons.length"
+                size="x-small"
+                color="deep-orange"
+                variant="flat"
+                class="ml-1"
+                prepend-icon="mdi-alert"
+                :title="manualTemplateMismatchReasons.join('、')"
+              >
+                條件外
+              </v-chip>
               <v-spacer></v-spacer>
               <v-btn
                 v-if="isManualTemplateActive"
@@ -357,9 +369,11 @@
                 variant="outlined"
                 hide-details
                 class="picker-template"
+                :menu-props="TEMPLATE_MENU_PROPS"
               >
+                <!-- ✅ [優化] 期款方式選單：分「符合此戶條件 / 條件外」兩組；共用選項元件顯示條件標籤（不符者標紅）、原因與自動判斷標記 -->
                 <template v-slot:item="{ props: itemProps, item }">
-                  <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle"></v-list-item>
+                  <PaymentTemplateOptionItem v-bind="itemProps" :option="item.raw" />
                 </template>
               </v-select>
             </div>
@@ -426,6 +440,18 @@
               >
                 {{ isManualPackageTemplateActive ? '手動指定' : '自動判斷' }}
               </v-chip>
+              <!-- ✅ [新增] 手動指定的範本不符目前條件：保留選擇、顯示警示（滑入看原因） -->
+              <v-chip
+                v-if="manualPackageTemplateMismatchReasons.length"
+                size="x-small"
+                color="deep-orange"
+                variant="flat"
+                class="ml-1"
+                prepend-icon="mdi-alert"
+                :title="manualPackageTemplateMismatchReasons.join('、')"
+              >
+                條件外
+              </v-chip>
               <v-spacer></v-spacer>
               <v-btn
                 v-if="isManualPackageTemplateActive"
@@ -462,9 +488,11 @@
                 variant="outlined"
                 hide-details
                 class="picker-template"
+                :menu-props="TEMPLATE_MENU_PROPS"
               >
+                <!-- ✅ [優化] 期款方式選單：分「符合此戶條件 / 條件外」兩組；共用選項元件顯示條件標籤（不符者標紅）、原因與自動判斷標記 -->
                 <template v-slot:item="{ props: itemProps, item }">
-                  <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle"></v-list-item>
+                  <PaymentTemplateOptionItem v-bind="itemProps" :option="item.raw" />
                 </template>
               </v-select>
             </div>
@@ -967,6 +995,13 @@ import { useProjectStore } from '@/store/projectStore';
 import { runNewCalculationEngine } from '@/utils/paymentCalculation';
 // 公司借貸攤還表計算（期款範本附掛借貸範本時顯示）
 import { buildCompanyLoanSchedule } from '@/utils/companyLoanCalculation';
+// ✅ 期款範本條件比對與選單項目（與製作付款表共用）
+import {
+  getTemplateMismatchReasons as matchTemplate,
+  buildTemplateOptionList,
+  TEMPLATE_MENU_PROPS
+} from '@/utils/paymentTemplateMatch';
+import PaymentTemplateOptionItem from '@/components/PaymentTemplateOptionItem.vue';
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -979,7 +1014,9 @@ const props = defineProps({
   allParkingData: { type: Array, default: () => [] },
   projectId: { type: String, required: true }, // ✓ 新增：接收 projectId
   allSalesImages: { type: Array, default: () => [] }, // ✅ [新增] 建案全部銷控圖片，用於戶別圖片燈箱
-  quotePlans: { type: Array, default: () => [] } // ✅ [新增] 建案方案清單（方案編輯器功能）
+  quotePlans: { type: Array, default: () => [] }, // ✅ [新增] 建案方案清單（方案編輯器功能）
+  // 🔐 [新增] 期款範本條件外解鎖（由報價單設定頁隱藏解鎖控制）：false 時期款類別/方式只能選符合條件的範本
+  templateUnlocked: { type: Boolean, default: false }
 });
 
 const emit = defineEmits(['remove', 'request-open-slide']);
@@ -1231,6 +1268,38 @@ const finalTotalPrice = computed(() => quoteStore.getFinalTotalPrice(props.item.
 
 // ★★★ 新增：期款範本選擇邏輯 ★★★
 
+// ✅ [新增] 目前戶別的範本比對條件：物件類型、總價、首購/非首購
+const currentBuyerType = computed(() => (isFirstTimeBuyerModel.value === '是' ? '首購' : '非首購'));
+const currentPropertyTypeForTemplate = computed(() =>
+    props.item.unitDetails?.propertyType || props.item.unitDetails?.layout || '住家'
+);
+
+/** ✅ [新增] 此戶的範本比對條件（供共用比對工具使用） */
+const templateMatchCondition = computed(() => ({
+    propertyType: currentPropertyTypeForTemplate.value,
+    totalPrice: finalTotalPrice.value,
+    buyerType: currentBuyerType.value
+}));
+
+/** 回傳範本不符合目前戶別條件的原因清單（空陣列 = 符合條件）；規則見 utils/paymentTemplateMatch */
+function getTemplateMismatchReasons(template) {
+    return matchTemplate(template, templateMatchCondition.value);
+}
+
+/** 範本是否可手動選取：符合條件，或已解鎖 */
+function isTemplateSelectable(template) {
+    return props.templateUnlocked || getTemplateMismatchReasons(template).length === 0;
+}
+
+/** 建立期款方式選單（分「符合條件 / 條件外」兩組；autoTemplateId 供「自動判斷」標記） */
+function buildTemplateOptions(templates, autoTemplateId) {
+    return buildTemplateOptionList(templates, {
+        ...templateMatchCondition.value,
+        unlocked: props.templateUnlocked,
+        autoTemplateId
+    });
+}
+
 /**
  * 根據條件選擇適用的期款範本
  * @param {string} paymentCategory - 期款類別 ("一般期款" 或 "配套期款")
@@ -1240,10 +1309,6 @@ function selectPaymentTemplate(paymentCategory) {
     if (!props.paymentTemplates || props.paymentTemplates.length === 0) {
         return null;
     }
-    
-    const totalPrice = finalTotalPrice.value;
-    const buyerType = isFirstTimeBuyerModel.value === '是' ? '首購' : '非首購';
-    const currentPropertyType = props.item.unitDetails?.propertyType || props.item.unitDetails?.layout || '住家';
     
     // ✅ [新增] 取得優付類別名稱 (假設後台設定為 '優付期款')
     // 如果使用者勾選了「優付」，且正在尋找「一般期款」的替代品
@@ -1257,18 +1322,11 @@ function selectPaymentTemplate(paymentCategory) {
         targetCategory = '優付期款';
     }
 
-    // 找出符合條件的範本
-    const applicableTemplates = props.paymentTemplates.filter(template => {
-        const templatePropType = template.propertyType || '住家';
-        if (templatePropType !== currentPropertyType) return false;
-
-        return (
-            template.paymentCategory === targetCategory && // 使用目標類別
-            template.minPrice <= totalPrice && 
-            totalPrice <= template.maxPrice && 
-            template.buyerType === buyerType
-        );
-    });
+    // 找出符合條件的範本（條件判斷與手動選單禁選規則共用 getTemplateMismatchReasons）
+    const applicableTemplates = props.paymentTemplates.filter(template =>
+        template.paymentCategory === targetCategory && // 使用目標類別
+        getTemplateMismatchReasons(template).length === 0
+    );
     
     // 如果是優付模式但找不到優付範本，是否要降級回一般範本？
     // 這裡採用的策略是：若找不到，則回傳空 (提示無範本)，因為優付條件通常比較特殊
@@ -1289,12 +1347,21 @@ const hasNewTemplates = computed(() => (props.paymentTemplates || []).length > 0
 
 // 第一層：期款類別選項（取所有範本中 distinct 的 paymentCategory）
 // ✅ [修改] 排除「配套期款」：其期數基準為配套金額，與總價期款不同，不可套用於總價
+// ✅ [新增] 類別底下沒有任何可選範本（且未解鎖）→ 該類別禁選
 const manualCategoryOptions = computed(() => {
     const set = new Set();
     (props.paymentTemplates || []).forEach(t => {
         if (t.paymentCategory && t.paymentCategory !== '配套期款') set.add(t.paymentCategory);
     });
-    return Array.from(set);
+    return Array.from(set).map(category => {
+        const selectable = (props.paymentTemplates || [])
+            .some(t => t.paymentCategory === category && isTemplateSelectable(t));
+        return {
+            title: category,
+            value: category,
+            props: { disabled: !selectable, subtitle: selectable ? undefined : '無符合此戶條件的範本' }
+        };
+    });
 });
 
 // 第一層 v-model：手動值優先；自動模式下同步顯示系統實際採用的類別
@@ -1306,9 +1373,9 @@ const manualCategoryModel = computed({
     },
     set: (value) => {
         // 切換類別時一併清空已選範本，避免殘留不屬於該類別的 templateId；
-        // ✅ [新增] 若該類別下只有一個範本，直接預設選定該唯一選項
+        // ✅ [新增] 若該類別下「可選」範本只有一個（符合條件；解鎖時為全部），直接預設選定
         const candidates = value
-            ? (props.paymentTemplates || []).filter(t => t.paymentCategory === value)
+            ? (props.paymentTemplates || []).filter(t => t.paymentCategory === value && isTemplateSelectable(t))
             : [];
         quoteStore.updateItemManualTemplate(props.item.internalId, {
             category: value,
@@ -1317,19 +1384,14 @@ const manualCategoryModel = computed({
     }
 });
 
-// 第二層：依所選類別列出該類別下所有範本（不受總價/首購/物件類型限制）
+// 第二層：依所選類別列出該類別下所有範本；不符「物件類型/總價/首購」條件者標示原因，未解鎖時禁選
 const manualTemplateOptions = computed(() => {
     const category = manualCategoryModel.value;
     if (!category) return [];
-    return (props.paymentTemplates || [])
-        .filter(t => t.paymentCategory === category)
-        .map(t => {
-            const range = (t.minPrice || t.maxPrice)
-                ? `${t.minPrice ? `${t.minPrice}萬` : '0'}~${t.maxPrice ? `${t.maxPrice}萬` : '無上限'}`
-                : '不限總價';
-            const subtitle = `${t.propertyType || '住家'}｜${t.buyerType || '非首購'}｜${range}`;
-            return { id: t.id, templateName: t.templateName, subtitle };
-        });
+    const templates = (props.paymentTemplates || []).filter(t => t.paymentCategory === category);
+    // 「自動」標記：自動判斷在此類別會採用的範本（優付模式下一般期款會轉為優付期款，故以類別本身重新判斷）
+    const autoTemplate = templates.find(t => getTemplateMismatchReasons(t).length === 0) || null;
+    return buildTemplateOptions(templates, autoTemplate?.id || null);
 });
 
 // 第二層 v-model：手動值優先；自動模式下同步顯示系統實際採用的範本
@@ -1350,6 +1412,11 @@ const isManualTemplateActive = computed(() => {
     return !!id && (props.paymentTemplates || []).some(t => t.id === id);
 });
 
+// ✅ [新增] 手動指定的總價期款範本已不符目前條件（總價/首購/物件類型異動後）→ 保留選擇但顯示「條件外」警示
+const manualTemplateMismatchReasons = computed(() =>
+    isManualTemplateActive.value ? getTemplateMismatchReasons(effectiveGeneralTemplate.value).map(r => r.text) : []
+);
+
 // 還原為自動（清空手動選擇）
 function resetManualTemplate() {
     quoteStore.updateItemManualTemplate(props.item.internalId, { category: null, templateId: null });
@@ -1359,8 +1426,15 @@ function resetManualTemplate() {
 
 // 第一層：期款類別選項（僅開放「配套期款」，且需有對應範本存在）
 const packageCategoryOptions = computed(() => {
-    const hasPackageTemplate = (props.paymentTemplates || []).some(t => t.paymentCategory === '配套期款');
-    return hasPackageTemplate ? ['配套期款'] : [];
+    const packageTemplates = (props.paymentTemplates || []).filter(t => t.paymentCategory === '配套期款');
+    if (packageTemplates.length === 0) return [];
+    // ✅ [新增] 沒有任何可選範本（且未解鎖）→ 類別禁選
+    const selectable = packageTemplates.some(isTemplateSelectable);
+    return [{
+        title: '配套期款',
+        value: '配套期款',
+        props: { disabled: !selectable, subtitle: selectable ? undefined : '無符合此戶條件的範本' }
+    }];
 });
 
 // 第一層 v-model：手動值優先；自動模式下同步顯示系統實際採用的類別
@@ -1372,9 +1446,9 @@ const manualPackageCategoryModel = computed({
     },
     set: (value) => {
         // 切換類別時一併清空已選範本，避免殘留不屬於該類別的 templateId；
-        // ✅ [新增] 若該類別下只有一個範本，直接預設選定該唯一選項
+        // ✅ [新增] 若該類別下「可選」範本只有一個（符合條件；解鎖時為全部），直接預設選定
         const candidates = value
-            ? (props.paymentTemplates || []).filter(t => t.paymentCategory === value)
+            ? (props.paymentTemplates || []).filter(t => t.paymentCategory === value && isTemplateSelectable(t))
             : [];
         quoteStore.updateItemManualPackageTemplate(props.item.internalId, {
             category: value,
@@ -1383,18 +1457,12 @@ const manualPackageCategoryModel = computed({
     }
 });
 
-// 第二層：僅列出類別為「配套期款」的範本（不受總價/首購/物件類型限制）
+// 第二層：僅列出類別為「配套期款」的範本；不符「物件類型/總價/首購」條件者標示原因，未解鎖時禁選
 const manualPackageTemplateOptions = computed(() => {
     if (!manualPackageCategoryModel.value) return [];
-    return (props.paymentTemplates || [])
-        .filter(t => t.paymentCategory === '配套期款')
-        .map(t => {
-            const range = (t.minPrice || t.maxPrice)
-                ? `${t.minPrice ? `${t.minPrice}萬` : '0'}~${t.maxPrice ? `${t.maxPrice}萬` : '無上限'}`
-                : '不限總價';
-            const subtitle = `${t.propertyType || '住家'}｜${t.buyerType || '非首購'}｜${range}`;
-            return { id: t.id, templateName: t.templateName, subtitle };
-        });
+    const templates = (props.paymentTemplates || []).filter(t => t.paymentCategory === '配套期款');
+    const autoTemplate = templates.find(t => getTemplateMismatchReasons(t).length === 0) || null;
+    return buildTemplateOptions(templates, autoTemplate?.id || null);
 });
 
 // 第二層 v-model：手動值優先；自動模式下同步顯示系統實際採用的範本
@@ -1414,6 +1482,11 @@ const isManualPackageTemplateActive = computed(() => {
     const id = props.item.manualPackageTemplate?.templateId;
     return !!id && (props.paymentTemplates || []).some(t => t.id === id && t.paymentCategory === '配套期款');
 });
+
+// ✅ [新增] 手動指定的配套期款範本已不符目前條件 → 保留選擇但顯示「條件外」警示
+const manualPackageTemplateMismatchReasons = computed(() =>
+    isManualPackageTemplateActive.value ? getTemplateMismatchReasons(effectivePackageTemplate.value).map(r => r.text) : []
+);
 
 // 還原為自動（清空手動選擇）
 function resetManualPackageTemplate() {

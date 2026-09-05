@@ -36,9 +36,18 @@
       ></v-select>
     </div>
 
-    <span class="toolbar-title">
+    <!-- 🔐 隱藏解鎖：連點標題 8 次（或鍵盤連按 8 次 a）→ 期款類別/方式可選條件外範本；解鎖後顯示開鎖 icon，點擊重新上鎖 -->
+    <span class="toolbar-title tap-unlock-target" @click="tapTemplateUnlock">
       <v-icon size="20" color="primary" class="mr-1">mdi-file-document-edit-outline</v-icon>
       <span class="d-none d-md-inline">{{ projectName }}-</span>報價單設定
+      <v-icon
+        v-if="templateUnlocked"
+        size="18"
+        color="orange-darken-2"
+        class="ml-1 template-unlock-icon"
+        title="已解鎖：可選擇條件外的期款範本（點擊重新上鎖）"
+        @click.stop="lockTemplateSelection"
+      >mdi-lock-open-variant</v-icon>
     </span>
 
     <span class="toolbar-divider" aria-hidden="true"></span>
@@ -189,6 +198,7 @@
               :all-parking-data="parkingStore.parkingData || []"
               :project-id="projectId"
               :all-sales-images="projectSalesImages"
+              :template-unlocked="templateUnlocked"
               @remove="quoteStore.removeItem(item.internalId)"
               
             />
@@ -464,7 +474,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue';
-import { useToast } from 'vue-toastification';
+import { useToast, POSITION } from 'vue-toastification';
 import { useRoute, useRouter } from 'vue-router';
 import { useDisplay } from 'vuetify';
 import { useQuoteStore } from '@/store/quoteStore';
@@ -482,6 +492,8 @@ import {
   listenToQuotePlans, // ✅ [新增] 方案編輯器：即時監聽方案清單
 } from '@/api';
 import { useSlideViewer } from '@/composables/useSlideViewer';
+import { useTapUnlock } from '@/composables/useTapUnlock';
+import { useKeyUnlock } from '@/composables/useKeyUnlock';
 import QrcodeVue from 'qrcode.vue';
 import QuoteItem from '@/components/QuoteItem.vue';
 // 改為 async 載入：PrintQuotation 帶入 fabric/jspdf 等大型套件，僅在使用者點「列印報價單」時才下載
@@ -605,6 +617,36 @@ const isQuoteEditorDialogVisible = ref(false);
 
 // ✅ [新增] 走「列印報價」(?pick=1) 進入時的戶別選擇彈窗
 const unitPickerVisible = ref(false);
+
+// 🔐 [新增] 期款範本條件外解鎖：期款類別/期款方式預設只能選符合「物件類型、總價區間、首購/非首購」的範本，
+// 解鎖後可選任意範本。狀態只存在本頁生命週期（不持久化），離開頁面或切換建案自動上鎖。
+// 觸發：鍵盤連按 8 次 a（aaaaaaaa，keyup 偵測）或連點標題「報價單設定」8 次。
+const templateUnlocked = ref(false);
+function unlockTemplateSelection() {
+  if (templateUnlocked.value) return;
+  templateUnlocked.value = true;
+  toast.success('已解鎖：可選擇條件外的期款範本', { position: POSITION.BOTTOM_CENTER, timeout: 2000 });
+}
+function lockTemplateSelection() {
+  if (!templateUnlocked.value) return;
+  templateUnlocked.value = false;
+  resetTapTemplateUnlock();
+  toast.info('已重新上鎖期款範本選擇', { position: POSITION.BOTTOM_CENTER, timeout: 1500 });
+}
+const { tap: tapTemplateUnlock, reset: resetTapTemplateUnlock } = useTapUnlock(unlockTemplateSelection);
+// 戶別選擇彈窗開啟期間暫停（該彈窗使用同一組解鎖碼，避免一次按鍵同時解鎖兩層）
+const { attach: attachTemplateKeyUnlock, detach: detachTemplateKeyUnlock } = useKeyUnlock(
+  unlockTemplateSelection,
+  { isPaused: () => unitPickerVisible.value }
+);
+onMounted(attachTemplateKeyUnlock);
+onUnmounted(detachTemplateKeyUnlock);
+watch(projectId, (newId, oldId) => {
+  if (newId !== oldId) {
+    templateUnlocked.value = false;
+    resetTapTemplateUnlock();
+  }
+});
 const pickerUnits = ref([]);
 
 // --- 新增：期款範本選擇相關狀態 ---
@@ -1295,6 +1337,17 @@ function runTool(action) {
   min-width: 0;
   flex: 0 1 auto;
   max-width: 320px;
+}
+/* 🔐 隱藏解鎖點按目標：無可點擊暗示、防連點選取文字 */
+.tap-unlock-target {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: default;
+}
+.template-unlock-icon {
+  cursor: pointer;
+  flex-shrink: 0;
 }
 .project-selector {
   min-width: 170px;

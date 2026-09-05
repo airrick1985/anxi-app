@@ -1258,7 +1258,9 @@ const SHEET_CSS = `
     text-align: center; padding: 1.3mm 1mm; border-left: 1px solid #e3e8ec; white-space: nowrap; line-height: 1.25;
   }
   .area-tbl tr > :first-child { border-left: 0; }
-  .area-tbl tbody tr { border-top: 1px solid #e3e8ec; }
+  /* ✅ [修復] 列分隔線改畫在儲存格（th/td）而非 tr：html2canvas 產 PDF 時會把 tr 邊框整列畫滿，
+     導致跨兩列的公設比儲存格被中線切斷；改為儲存格邊框後瀏覽器預覽與 PDF 皆一致 */
+  .area-tbl tbody th, .area-tbl tbody td { border-top: 1px solid #e3e8ec; }
   .area-tbl thead th { background: #f4f7fa; color: #546e7a; font-size: 8.5pt; font-weight: 600; }
   .area-tbl th.corner { width: 22mm; font-size: 10pt; text-align: left; padding-left: 3mm; }
   .area-tbl tbody th { background: #f4f7fa; color: #546e7a; font-size: 9.5pt; font-weight: 700; text-align: left; padding-left: 3mm; }

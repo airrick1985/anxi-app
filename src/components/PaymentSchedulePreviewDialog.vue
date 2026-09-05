@@ -11,9 +11,18 @@
             <v-card-title class="pa-4">
                 <v-row align="center" no-gutters>
                     <v-col>
-                        <span class="text-h5">
+                        <!-- 🔐 隱藏解鎖：連點標題 8 次（或鍵盤連按 8 次 a）→ 期款範本可選條件外者；解鎖後顯示開鎖 icon，點擊重新上鎖 -->
+                        <span class="text-h5 tap-unlock-target" @click="tapTemplateUnlock">
                             <v-icon start>mdi-file-table-outline</v-icon>
                             製作付款表 - {{ context?.unitId }}
+                            <v-icon
+                                v-if="templateUnlocked"
+                                size="20"
+                                color="orange-darken-2"
+                                class="ml-1 template-unlock-icon"
+                                title="已解鎖：可選擇條件外的期款範本（點擊重新上鎖）"
+                                @click.stop="lockTemplateSelection"
+                            >mdi-lock-open-variant</v-icon>
                         </span>
                     </v-col>
                     <v-col class="text-right">
@@ -78,9 +87,11 @@
                                                 variant="outlined"
                                                 density="compact"
                                                 hide-details
+                                                :menu-props="TEMPLATE_MENU_PROPS"
                                             >
+                                                <!-- ✅ 分「符合此戶條件 / 條件外」兩組；條件外未解鎖不可選 -->
                                                 <template v-slot:item="{ props: itemProps, item }">
-                                                    <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle"></v-list-item>
+                                                    <PaymentTemplateOptionItem v-bind="itemProps" :option="item.raw" />
                                                 </template>
                                             </v-select>
                                         </v-col>
@@ -93,6 +104,18 @@
                                         <v-chip v-else size="small" color="orange" variant="tonal">
                                             <v-icon start size="x-small">mdi-hand-back-right-outline</v-icon>
                                             手動指定
+                                        </v-chip>
+                                        <!-- ✅ 目前採用的範本不符此戶條件：保留選擇、顯示警示（滑入看原因） -->
+                                        <v-chip
+                                            v-if="activeTemplateMismatchReasons.length"
+                                            size="small"
+                                            color="deep-orange"
+                                            variant="flat"
+                                            class="ml-2"
+                                            prepend-icon="mdi-alert"
+                                            :title="activeTemplateMismatchReasons.join('、')"
+                                        >
+                                            條件外
                                         </v-chip>
                                         <v-btn
                                             v-if="!isAutoSelected"
@@ -170,9 +193,11 @@
                                     variant="outlined"
                                     density="compact"
                                     hide-details
+                                    :menu-props="TEMPLATE_MENU_PROPS"
                                 >
+                                    <!-- ✅ 分「符合此戶條件 / 條件外」兩組；條件外未解鎖不可選 -->
                                     <template v-slot:item="{ props: itemProps, item }">
-                                        <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle"></v-list-item>
+                                        <PaymentTemplateOptionItem v-bind="itemProps" :option="item.raw" />
                                     </template>
                                 </v-select>
                                 <div class="d-flex align-center mt-2">
@@ -183,6 +208,18 @@
                                     <v-chip v-else size="small" color="orange" variant="tonal">
                                         <v-icon start size="x-small">mdi-hand-back-right-outline</v-icon>
                                         手動指定
+                                    </v-chip>
+                                    <!-- ✅ 目前採用的配套範本不符此戶條件（含自動判斷退而求其次的情況）：顯示警示 -->
+                                    <v-chip
+                                        v-if="activePackageTemplateMismatchReasons.length"
+                                        size="small"
+                                        color="deep-orange"
+                                        variant="flat"
+                                        class="ml-2"
+                                        prepend-icon="mdi-alert"
+                                        :title="activePackageTemplateMismatchReasons.join('、')"
+                                    >
+                                        條件外
                                     </v-chip>
                                     <v-btn
                                         v-if="manualPackageTemplateId"
@@ -607,9 +644,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, reactive } from 'vue';
+import { ref, computed, watch, reactive, onBeforeUnmount } from 'vue';
 import { useDisplay } from 'vuetify';
-import { useToast } from 'vue-toastification';
+import { useToast, POSITION } from 'vue-toastification';
 import QrcodeVue from 'qrcode.vue';
 import QRCode from 'qrcode';
 import { saveAs } from 'file-saver';
@@ -617,6 +654,16 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { fetchPaymentTermTemplates, generatePaymentDocument } from '@/api.js';
 import { runNewCalculationEngine } from '@/utils/paymentCalculation';
 import { useProjectStore } from '@/store/projectStore';
+// ✅ 期款範本條件比對與選單項目（與報價單設定 QuoteItem 共用）
+import {
+    getTemplateMismatchReasons,
+    isTemplateMatched,
+    buildTemplateOptionList,
+    TEMPLATE_MENU_PROPS
+} from '@/utils/paymentTemplateMatch';
+import PaymentTemplateOptionItem from '@/components/PaymentTemplateOptionItem.vue';
+import { useTapUnlock } from '@/composables/useTapUnlock';
+import { useKeyUnlock } from '@/composables/useKeyUnlock';
 
 const { mobile: isMobile, width: windowWidth } = useDisplay();
 const toast = useToast();
@@ -688,6 +735,36 @@ const packageBase = computed(() => Math.round(Number(props.context?.packagePrice
 const packageTemplates = computed(() => templates.value.filter(t => t.paymentCategory === '配套期款'));
 const showPackageSwitch = computed(() => props.context?.isPackageContract || packageTemplates.value.length > 0);
 
+/* ---------- 🔐 期款範本條件外解鎖 ---------- */
+// 期款範本預設只能選符合「物件類型、總價區間（配套模式為配套總價）、首購/非首購」者；解鎖後可選任意範本。
+// 狀態僅存在對話框開啟期間，每次開啟自動上鎖。觸發：鍵盤連按 8 次 a 或連點標題「製作付款表」8 次。
+const templateUnlocked = ref(false);
+function unlockTemplateSelection() {
+    if (templateUnlocked.value) return;
+    templateUnlocked.value = true;
+    toast.success('已解鎖：可選擇條件外的期款範本', { position: POSITION.BOTTOM_CENTER, timeout: 2000 });
+}
+function lockTemplateSelection() {
+    if (!templateUnlocked.value) return;
+    templateUnlocked.value = false;
+    resetTapTemplateUnlock();
+    toast.info('已重新上鎖期款範本選擇', { position: POSITION.BOTTOM_CENTER, timeout: 1500 });
+}
+const { tap: tapTemplateUnlock, reset: resetTapTemplateUnlock } = useTapUnlock(unlockTemplateSelection);
+const { attach: attachTemplateKeyUnlock, detach: detachTemplateKeyUnlock } = useKeyUnlock(unlockTemplateSelection);
+onBeforeUnmount(detachTemplateKeyUnlock);
+
+/** 此戶的範本比對條件（配套模式下基準為配套總價，與自動判斷一致） */
+const templateMatchCondition = computed(() => {
+    const c = props.context || {};
+    return {
+        propertyType: c.propertyType || '住家',
+        totalPrice: mainBase.value,
+        buyerType: c.isFirstTimeBuyer ? '首購' : '非首購'
+    };
+});
+const isTemplateSelectable = (t) => templateUnlocked.value || isTemplateMatched(t, templateMatchCondition.value);
+
 /* ---------- 第 1 頁範本選擇（自動 + 手動覆蓋） ---------- */
 const manualCategory = ref(null);
 const manualTemplateId = ref(null);
@@ -699,25 +776,14 @@ const autoConditionText = computed(() => {
     return `${category}／${c.propertyType || '住家'}／${buyerType}／基準 ${formatNumber(mainBase.value)} 萬`;
 });
 
-// 自動判斷（沿用 QuoteItem.vue selectPaymentTemplate 邏輯；配套模式下比對基準為配套總價）
+// 自動判斷（條件規則與報價單設定共用 utils/paymentTemplateMatch；配套模式下比對基準為配套總價）
 const autoTemplate = computed(() => {
     const c = props.context;
     if (!c || templates.value.length === 0) return null;
-    const base = mainBase.value;
-    const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
-    const currentPropertyType = c.propertyType || '住家';
     const targetCategory = c.usePreferredPayment ? '優付期款' : '一般期款';
-
-    const applicable = templates.value.filter(t => {
-        const tPropType = t.propertyType || '住家';
-        if (tPropType !== currentPropertyType) return false;
-        return (
-            t.paymentCategory === targetCategory &&
-            t.minPrice <= base &&
-            base <= t.maxPrice &&
-            t.buyerType === buyerType
-        );
-    });
+    const applicable = templates.value.filter(t =>
+        t.paymentCategory === targetCategory && isTemplateMatched(t, templateMatchCondition.value)
+    );
     return applicable.length > 0 ? applicable[0] : null;
 });
 
@@ -730,37 +796,49 @@ const activeTemplate = computed(() => {
 
 const isAutoSelected = computed(() => !manualTemplateId.value);
 
+// ✅ 目前採用的範本不符此戶條件 → 保留選擇但顯示「條件外」警示
+const activeTemplateMismatchReasons = computed(() =>
+    getTemplateMismatchReasons(activeTemplate.value, templateMatchCondition.value).map(r => r.text)
+);
+
 // 期款類別選項（排除配套期款：其基準為配套金額，於第 2 頁另行選擇）
+// ✅ 類別底下沒有任何可選範本（且未解鎖）→ 該類別禁選
 const categoryOptions = computed(() => {
     const set = new Set();
     templates.value.forEach(t => {
         if (t.paymentCategory && t.paymentCategory !== '配套期款') set.add(t.paymentCategory);
     });
-    return Array.from(set);
+    return Array.from(set).map(category => {
+        const selectable = templates.value.some(t => t.paymentCategory === category && isTemplateSelectable(t));
+        return {
+            title: category,
+            value: category,
+            props: { disabled: !selectable, subtitle: selectable ? undefined : '無符合此戶條件的範本' }
+        };
+    });
 });
 
 const categoryModel = computed({
     get: () => manualCategory.value || activeTemplate.value?.paymentCategory || null,
     set: (value) => {
         manualCategory.value = value;
-        const candidates = templates.value.filter(t => t.paymentCategory === value);
+        // ✅ 該類別下「可選」範本只有一個（符合條件；解鎖時為全部）才自動帶入
+        const candidates = templates.value.filter(t => t.paymentCategory === value && isTemplateSelectable(t));
         manualTemplateId.value = candidates.length === 1 ? candidates[0].id : null;
     }
 });
 
-function templateSubtitle(t) {
-    const range = (t.minPrice || t.maxPrice)
-        ? `${t.minPrice ? `${t.minPrice}萬` : '0'}~${t.maxPrice ? `${t.maxPrice}萬` : '無上限'}`
-        : '不限總價';
-    return `${t.propertyType || '住家'}｜${t.buyerType || '非首購'}｜${range}`;
-}
-
+// ✅ 期款範本選單：分「符合此戶條件 / 條件外」兩組，條件外未解鎖不可選
 const templateOptions = computed(() => {
     const category = categoryModel.value;
     if (!category) return [];
-    return templates.value
-        .filter(t => t.paymentCategory === category)
-        .map(t => ({ id: t.id, templateName: t.templateName, subtitle: templateSubtitle(t) }));
+    const list = templates.value.filter(t => t.paymentCategory === category);
+    const auto = list.find(t => isTemplateMatched(t, templateMatchCondition.value)) || null;
+    return buildTemplateOptionList(list, {
+        ...templateMatchCondition.value,
+        unlocked: templateUnlocked.value,
+        autoTemplateId: auto?.id || null
+    });
 });
 
 const templateIdModel = computed({
@@ -779,15 +857,9 @@ const manualPackageTemplateId = ref(null);
 const autoPackageTemplate = computed(() => {
     const c = props.context;
     if (!c || packageTemplates.value.length === 0) return null;
-    const base = mainBase.value; // 範本適用區間以配套總價比對（與報價單 finalTotalPrice 邏輯一致）
-    const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
-    const currentPropertyType = c.propertyType || '住家';
-    const applicable = packageTemplates.value.filter(t => {
-        const tPropType = t.propertyType || '住家';
-        if (tPropType !== currentPropertyType) return false;
-        return t.minPrice <= base && base <= t.maxPrice && t.buyerType === buyerType;
-    });
-    // 條件不中時退而求其次：只要有配套期款範本就取第一個（配套範本通常僅一套）
+    // 範本適用區間以配套總價比對（與報價單 finalTotalPrice 邏輯一致；規則共用 utils/paymentTemplateMatch）
+    const applicable = packageTemplates.value.filter(t => isTemplateMatched(t, templateMatchCondition.value));
+    // 條件不中時退而求其次：只要有配套期款範本就取第一個（配套範本通常僅一套；UI 會標示「條件外」）
     return applicable.length > 0 ? applicable[0] : packageTemplates.value[0];
 });
 
@@ -798,9 +870,20 @@ const activePackageTemplate = computed(() => {
     return autoPackageTemplate.value;
 });
 
-const packageTemplateOptions = computed(() =>
-    packageTemplates.value.map(t => ({ id: t.id, templateName: t.templateName, subtitle: templateSubtitle(t) }))
+// ✅ 目前採用的配套範本不符此戶條件（含自動判斷退而求其次）→ 顯示「條件外」警示
+const activePackageTemplateMismatchReasons = computed(() =>
+    getTemplateMismatchReasons(activePackageTemplate.value, templateMatchCondition.value).map(r => r.text)
 );
+
+// ✅ 配套期款範本選單：分「符合此戶條件 / 條件外」兩組，條件外未解鎖不可選
+const packageTemplateOptions = computed(() => {
+    const auto = packageTemplates.value.find(t => isTemplateMatched(t, templateMatchCondition.value)) || null;
+    return buildTemplateOptionList(packageTemplates.value, {
+        ...templateMatchCondition.value,
+        unlocked: templateUnlocked.value,
+        autoTemplateId: auto?.id || null
+    });
+});
 
 const packageTemplateIdModel = computed({
     get: () => manualPackageTemplateId.value || activePackageTemplate.value?.id || null,
@@ -871,7 +954,15 @@ watch(packageModeEnabled, () => {
 });
 
 watch(() => props.show, (val) => {
+    if (!val) {
+        detachTemplateKeyUnlock();
+        return;
+    }
     if (val) {
+        // 🔐 每次開啟自動上鎖並重新掛載鍵盤解鎖偵測
+        templateUnlocked.value = false;
+        resetTapTemplateUnlock();
+        attachTemplateKeyUnlock();
         resetToAuto();
         manualPackageTemplateId.value = null;
         // 繳款銀行預設不勾選，由用戶自行決定顯示哪些帳戶
@@ -1166,6 +1257,17 @@ async function download(format) {
 </script>
 
 <style scoped>
+/* 🔐 隱藏解鎖點按目標：無可點擊暗示、防連點選取文字 */
+.tap-unlock-target {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: default;
+}
+.template-unlock-icon {
+    cursor: pointer;
+    vertical-align: middle;
+}
 .editor-header {
     background-color: #f5f5f5;
     border-bottom: 1px solid #e0e0e0;

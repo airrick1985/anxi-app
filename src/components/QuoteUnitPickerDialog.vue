@@ -137,6 +137,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useToast, POSITION } from 'vue-toastification';
 import { useTapUnlock } from '@/composables/useTapUnlock';
+import { useKeyUnlock } from '@/composables/useKeyUnlock';
 import { toQuoteUnitData } from '@/utils/quoteUnitData';
 
 const props = defineProps({
@@ -149,12 +150,10 @@ const emit = defineEmits(['update:modelValue', 'confirm', 'cancel']);
 const toast = useToast();
 
 const MAX_ROWS = 5;
-const UNLOCK_CODE = 'aaaaaaaa';
 const NO_BUILDING = '未分棟';
 
 const rows = ref([]);
 const unlocked = ref(false);
-let keyBuffer = '';
 
 // 已售判定：對齊 UnitDetailModal / SalesControlSystem 的 quote 模式狀態
 const isSold = (u) => u?.salesStatus_quote === '已售';
@@ -240,17 +239,6 @@ function onCancel() {
   emit('update:modelValue', false);
 }
 
-// 將輸入字元正規化為半形小寫：
-// 支援半形/全形、大小寫（aaaaaaaa / AAAAAAAA / ａａａａａａａａ / ＡＡＡＡＡＡＡＡ 皆可解鎖）。
-// 全形 ASCII 區（U+FF01–U+FF5E）對應半形為 code - 0xFEE0。
-function normalizeChar(ch) {
-  const code = ch.charCodeAt(0);
-  const half = (code >= 0xff01 && code <= 0xff5e)
-    ? String.fromCharCode(code - 0xfee0)
-    : ch;
-  return half.toLowerCase();
-}
-
 // --- 解鎖碼：只要彈窗開著，無論棟別/戶別選單是否展開都能觸發 ---
 // 關鍵：v-select 開啟選單時，其 typeahead/導覽只攔截 keydown，幾乎不碰 keyup。
 //  - keydown：只負責「擋住」typeahead（preventDefault + 停止傳播），不做偵測
@@ -274,14 +262,8 @@ function doUnlock() {
   });
 }
 
-function onKeyupDetect(e) {
-  if (typeof e.key !== 'string' || e.key.length !== 1) return;
-  keyBuffer = (keyBuffer + normalizeChar(e.key)).slice(-UNLOCK_CODE.length);
-  if (keyBuffer === UNLOCK_CODE) {
-    keyBuffer = '';
-    doUnlock();
-  }
-}
+// 🔐 鍵盤解鎖碼（aaaaaaaa）：共用 composable，keyup capture 偵測
+const { attach: attachKeyUnlock, detach: detachKeyUnlock } = useKeyUnlock(doUnlock);
 
 // 🔐 手機版無鍵盤：連點標題房子 icon 8 次解鎖（與鍵盤解鎖碼等效）
 const { tap: tapUnlock, reset: resetTapUnlock } = useTapUnlock(doUnlock);
@@ -291,16 +273,14 @@ function attachListener() {
   // keyup ：僅 window capture 偵測解鎖（capture 根節點必觸發，且不重複計數）
   window.removeEventListener('keydown', onKeydownBlock, true);
   document.removeEventListener('keydown', onKeydownBlock, true);
-  window.removeEventListener('keyup', onKeyupDetect, true);
   window.addEventListener('keydown', onKeydownBlock, true);
   document.addEventListener('keydown', onKeydownBlock, true);
-  window.addEventListener('keyup', onKeyupDetect, true);
+  attachKeyUnlock();
 }
 function detachListener() {
   window.removeEventListener('keydown', onKeydownBlock, true);
   document.removeEventListener('keydown', onKeydownBlock, true);
-  window.removeEventListener('keyup', onKeyupDetect, true);
-  keyBuffer = '';
+  detachKeyUnlock();
 }
 
 watch(
@@ -310,7 +290,6 @@ watch(
       // 每次開啟重置狀態：預設帶入第 1 筆待選 row（使用者少按一次「新增戶別」）
       rows.value = [{ key: uid(), building: null, unitId: null }];
       unlocked.value = false;
-      keyBuffer = '';
       resetTapUnlock();
       attachListener();
       // 修正 BUG：開啟時不讓游標停留在任何選單，避免按鍵被選單吃掉
