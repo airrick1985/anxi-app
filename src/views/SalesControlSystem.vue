@@ -4570,13 +4570,35 @@ let longPressFired = false;
 let lastTouchAt = 0;            // Android 長按也會觸發 contextmenu，用時間戳避免重複開啟
 let suppressCardClickUntil = 0; // 長按放開後的合成 click 需忽略，避免同時彈出戶別資訊
 
-let quickMenuOpenedAt = 0;      // 面板開啟時間：剛開啟的短時間內忽略關閉請求（長按放開的殘餘事件）
+// 📱 手機面板「上膛」機制：長按開啟面板時手指仍停留在螢幕上，放開時瀏覽器會在手指位置補發合成 click，
+// 若剛好落在面板按鈕上就會誤觸該功能。面板開啟後先設為「未上膛」，一律忽略點擊與關閉請求；
+// 直到出現「新的一次按壓」（pointerdown / touchstart，合成 click 不會伴隨這兩者）
+// 或長按的手指放開 400ms 後（合成 click 已過），才接受操作。
+let quickSheetArmed = true;
+let quickSheetArmTimer = null;
+function armQuickSheet() {
+  quickSheetArmed = true;
+  if (quickSheetArmTimer) { clearTimeout(quickSheetArmTimer); quickSheetArmTimer = null; }
+  document.removeEventListener('pointerdown', armQuickSheet, true);
+  document.removeEventListener('touchstart', armQuickSheet, true);
+}
+function disarmQuickSheet() {
+  quickSheetArmed = false;
+  if (quickSheetArmTimer) { clearTimeout(quickSheetArmTimer); quickSheetArmTimer = null; }
+  document.addEventListener('pointerdown', armQuickSheet, true);
+  document.addEventListener('touchstart', armQuickSheet, true);
+}
+function armQuickSheetAfterRelease(delay = 400) {
+  if (quickSheetArmTimer) clearTimeout(quickSheetArmTimer);
+  quickSheetArmTimer = setTimeout(armQuickSheet, delay);
+}
+
 function openUnitQuickMenu(unit, x, y) {
   if (!unit) return;
   quickMenu.unit = unit;
   quickMenu.x = Math.round(x);
   quickMenu.y = Math.round(y);
-  quickMenuOpenedAt = Date.now();
+  if (isMobile.value) disarmQuickSheet();
   // 已開啟時切換到另一戶：先關再開，讓 v-menu 依新座標重新定位
   if (quickMenu.open) {
     quickMenu.open = false;
@@ -4586,10 +4608,10 @@ function openUnitQuickMenu(unit, x, y) {
   }
 }
 
-// 📱 底部面板的關閉請求：長按放開時瀏覽器可能補發 click／scrim 事件，開啟後 0.8 秒內一律忽略，
+// 📱 底部面板的關閉請求：長按放開時瀏覽器可能補發 click／scrim 事件，未上膛前一律忽略，
 // 之後才接受使用者主動的下滑、點 X 或點遮罩關閉
 function onQuickSheetModelUpdate(val) {
-  if (!val && Date.now() - quickMenuOpenedAt < 800) return;
+  if (!val && !quickSheetArmed) return;
   quickMenu.open = val;
 }
 
@@ -4653,19 +4675,23 @@ function onUnitCardTouchEnd(event) {
     // 手指可能停留很久才放開，所以擋 click 的時間要從「放開」起算，而不是從長按觸發起算
     suppressCardClickUntil = Date.now() + 700;
     if (event && event.cancelable) event.preventDefault();
+    // 手指放開後合成 click 會立刻補發；等它過去再讓面板上膛（期間若有新按壓會提前上膛）
+    if (isMobile.value && quickMenu.open) armQuickSheetAfterRelease();
   }
 }
 
 // 選單關閉後再執行動作：手機版等 overlay 移除避免點擊穿透；電腦版立即執行
 function runUnitQuickAction(action) {
   if (!action || action.disabled) return;
+  // 長按放開落在按鈕上的合成 click：面板尚未上膛，忽略
+  if (isMobile.value && !quickSheetArmed) return;
   const unit = quickMenu.unit;
   quickMenu.open = false;
   const delay = isMobile.value ? 180 : 0;
   setTimeout(() => { action.run(unit); }, delay);
 }
 
-onUnmounted(clearLongPress);
+onUnmounted(() => { clearLongPress(); armQuickSheet(); });
 
 // --- 快速選單標頭資訊 ---
 const quickMenuStatusText = computed(() => {
