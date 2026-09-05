@@ -6531,6 +6531,350 @@ exports.paymentProofApi = onCall({
 });
 // ✓ END: 戶別繳款紀錄 paymentProofApi
 
+// ✓ START: 戶別上傳文件 - Storage 暫存轉存至戶別 Drive 資料夾 (SPEC_UnitDocumentUpload.md)
+// 前端 src/utils/unitDocuments.js 另有同名常數，修改種類清單時前後端要一起改。
+const UNIT_DOCUMENT_TYPE_LABELS = {
+  contract: '合約書',
+  idCard: '身分證',
+  customerCard: '客戶資料卡',
+  order: '訂單',
+  other: '其他',
+};
+const UNIT_DOCUMENT_BLOCKED_EXTS = new Set(['exe', 'bat', 'cmd', 'com', 'msi', 'scr', 'ps1', 'vbs', 'jar']);
+const UNIT_DOCUMENT_MAX_SIZE = 100 * 1024 * 1024; // 100MB
+const UNIT_DOCUMENT_CUSTOM_LABEL_MAX = 20;
+const UNIT_DOCUMENT_EXT_MIME = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', bmp: 'image/bmp',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  txt: 'text/plain', csv: 'text/csv',
+  zip: 'application/zip', rar: 'application/vnd.rar', '7z': 'application/x-7z-compressed',
+};
+
+/** 移除檔名不合法字元／控制字元，去頭尾空白與句點，截斷長度 */
+function sanitizeUnitDocumentSegment(str, maxLen = 80) {
+  return String(str || '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\\/:*?"<>|\x00-\x1f\x7f]/g, '')
+    .trim()
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, maxLen);
+}
+
+/** 取副檔名（小寫、不含點、最長 10 字元）；無副檔名回傳 '' */
+function getUnitDocumentExt(name) {
+  const s = String(name || '');
+  const idx = s.lastIndexOf('.');
+  if (idx <= 0 || idx === s.length - 1) return '';
+  const ext = s.slice(idx + 1).toLowerCase();
+  return /^[a-z0-9]{1,10}$/.test(ext) ? ext : '';
+}
+
+/** 驗證種類並回傳 { docType, docTypeLabel }；other 必須有自訂文字 */
+function resolveUnitDocumentType(docType, docTypeLabel) {
+  const key = String(docType || '');
+  if (!Object.prototype.hasOwnProperty.call(UNIT_DOCUMENT_TYPE_LABELS, key)) {
+    throw new HttpsError('invalid-argument', `未知的文件種類: ${key}`);
+  }
+  if (key === 'other') {
+    const label = sanitizeUnitDocumentSegment(docTypeLabel, UNIT_DOCUMENT_CUSTOM_LABEL_MAX);
+    if (!label) throw new HttpsError('invalid-argument', '文件種類為「其他」時必須填寫自訂種類名稱。');
+    return { docType: key, docTypeLabel: label };
+  }
+  return { docType: key, docTypeLabel: UNIT_DOCUMENT_TYPE_LABELS[key] };
+}
+
+/** 由 Firestore 戶別文件解析 Drive 資料夾 ID（不接受前端直接傳 folderId） */
+function resolveUnitDriveFolderId(householdData, unitId) {
+  const folderUrl = householdData && householdData.driveFolderUrl;
+  if (!folderUrl) {
+    throw new HttpsError('failed-precondition', `戶別 "${unitId}" 尚未設定「戶別資料夾位置」，無法上傳文件。`);
+  }
+  const m = String(folderUrl).match(/[-\w]{25,}/);
+  if (!m) {
+    throw new HttpsError('failed-precondition', `"${folderUrl}" 不是有效的 Google Drive 資料夾連結。`);
+  }
+  return m[0];
+}
+
+/**
+ * 以 Drive resumable upload 串流上傳（multipart 上限 5MB，大檔必須走 resumable）。
+ * 已知 Content-Length 時整個內容一次 PUT 即可完成。
+ */
+async function uploadStreamToDriveResumable({ name, parentId, mimeType, size, stream }) {
+  const auth = getAuthenticatedOAuth2Client();
+  const { token } = await auth.getAccessToken();
+  if (!token) throw new Error('無法取得 Google Drive 存取權杖');
+
+  const initUrl = 'https://www.googleapis.com/upload/drive/v3/files'
+    + '?uploadType=resumable&supportsAllDrives=true&fields=id,name,webViewLink,size,mimeType';
+  const initRes = await fetch(initUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': mimeType,
+      'X-Upload-Content-Length': String(size),
+    },
+    body: JSON.stringify({ name, parents: [parentId] }),
+  });
+  if (!initRes.ok) {
+    const text = await initRes.text().catch(() => '');
+    const err = new Error(`Drive 建立上傳工作階段失敗 (${initRes.status}): ${text.slice(0, 300)}`);
+    err.driveStatus = initRes.status;
+    err.driveBody = text;
+    throw err;
+  }
+  const sessionUrl = initRes.headers.get('location');
+  if (!sessionUrl) throw new Error('Drive 未回傳上傳工作階段 URL');
+
+  const putRes = await fetch(sessionUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType, 'Content-Length': String(size) },
+    body: stream,
+    duplex: 'half',
+  });
+  if (!putRes.ok) {
+    const text = await putRes.text().catch(() => '');
+    throw new Error(`Drive 上傳內容失敗 (${putRes.status}): ${text.slice(0, 300)}`);
+  }
+  return putRes.json();
+}
+
+exports.unitDocumentApi = onCall({
+  region: "asia-east1",
+  memory: "512MiB",
+  timeoutSeconds: 300,
+  cors: true,
+  secrets: driveSecrets
+}, async (request) => {
+  const {
+    action, projectId, unitId,
+    storagePath, fileName, docType, docTypeLabel, originalName, mimeType, size, uploadedBy,
+    docId, trashDriveFile,
+  } = request.data || {};
+  const functionName = `unitDocumentApi (Action: ${action})`;
+
+  if (!projectId || !unitId) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, unitId)。');
+  }
+  if (action !== 'commit' && action !== 'rename' && action !== 'delete') {
+    throw new HttpsError('invalid-argument', `未知的 action: ${action}`);
+  }
+
+  const db = new Firestore({ databaseId: 'anxi-app' });
+  const docRef = db.collection('salesHouseholds').doc(`${projectId}_${unitId}`);
+
+  try {
+    const drive = getAuthenticatedDriveClient();
+
+    // ─────────── action: delete（移除紀錄；勾選時 Drive 檔案移至垃圾桶，否則保留）───────────
+    if (action === 'delete') {
+      if (!docId) throw new HttpsError('invalid-argument', '缺少必要參數 (docId)。');
+      let removed = null;
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(docRef);
+        if (!snap.exists) {
+          throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
+        }
+        const existing = Array.isArray(snap.data().unitDocuments) ? snap.data().unitDocuments : [];
+        removed = existing.find(d => d && d.id === docId) || null;
+        if (!removed) {
+          throw new HttpsError('not-found', '找不到指定的文件紀錄，可能已被其他人刪除，請重新整理。');
+        }
+        tx.update(docRef, { unitDocuments: existing.filter(d => !(d && d.id === docId)) });
+      });
+      let trashWarning = false;
+      if (trashDriveFile === true && removed && removed.fileId) {
+        try {
+          await drive.files.update({ fileId: removed.fileId, requestBody: { trashed: true }, supportsAllDrives: true });
+          console.log(`[${functionName}] Drive 檔案已移至垃圾桶 (fileId: ${removed.fileId})`);
+        } catch (trashError) {
+          console.warn(`[${functionName}] ⚠️ Drive 檔案移至垃圾桶失敗 (fileId: ${removed.fileId}):`, trashError.message);
+          trashWarning = true;
+        }
+      }
+      console.log(`[${functionName}] 已刪除文件紀錄 ${docId} (${unitId})，trashDriveFile=${trashDriveFile === true}`);
+      return { status: 'success', removedId: docId, trashWarning };
+    }
+
+    // ─────────── action: rename（改種類／名稱，同步 Drive 檔名）───────────
+    if (action === 'rename') {
+      if (!docId) throw new HttpsError('invalid-argument', '缺少必要參數 (docId)。');
+      const type = resolveUnitDocumentType(docType, docTypeLabel);
+      const baseName = sanitizeUnitDocumentSegment(fileName);
+      if (!baseName) throw new HttpsError('invalid-argument', '文件名稱不可為空。');
+
+      const preSnap = await docRef.get();
+      if (!preSnap.exists) {
+        throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
+      }
+      const preList = Array.isArray(preSnap.data().unitDocuments) ? preSnap.data().unitDocuments : [];
+      const preDoc = preList.find(d => d && d.id === docId);
+      if (!preDoc) {
+        throw new HttpsError('not-found', '找不到指定的文件紀錄，可能已被其他人刪除，請重新整理。');
+      }
+      const ext = getUnitDocumentExt(preDoc.fileName) || getUnitDocumentExt(preDoc.originalName);
+      const newFileName = ext ? `${baseName}.${ext}` : baseName;
+
+      let renameWarning = false;
+      let webViewLink = preDoc.webViewLink || '';
+      if (newFileName !== preDoc.fileName && preDoc.fileId) {
+        try {
+          const updated = await drive.files.update({
+            fileId: preDoc.fileId,
+            requestBody: { name: newFileName },
+            fields: 'id, name, webViewLink',
+            supportsAllDrives: true,
+          });
+          webViewLink = updated.data.webViewLink || webViewLink;
+        } catch (renameError) {
+          console.warn(`[${functionName}] ⚠️ Drive 檔名同步失敗 (fileId: ${preDoc.fileId}):`, renameError.message);
+          renameWarning = true;
+        }
+      }
+
+      let updatedRecord = null;
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(docRef);
+        if (!snap.exists) {
+          throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
+        }
+        const existing = Array.isArray(snap.data().unitDocuments) ? snap.data().unitDocuments : [];
+        const idx = existing.findIndex(d => d && d.id === docId);
+        if (idx === -1) {
+          throw new HttpsError('not-found', '找不到指定的文件紀錄，可能已被其他人刪除，請重新整理。');
+        }
+        updatedRecord = {
+          ...existing[idx],
+          docType: type.docType,
+          docTypeLabel: type.docTypeLabel,
+          fileName: newFileName,
+          webViewLink,
+          updatedAt: new Date().toISOString(),
+        };
+        const next = existing.slice();
+        next[idx] = updatedRecord;
+        tx.update(docRef, { unitDocuments: next });
+      });
+      console.log(`[${functionName}] 已更新文件 ${docId} → "${newFileName}" (${unitId})`);
+      return { status: 'success', record: updatedRecord, renameWarning };
+    }
+
+    // ─────────── action: commit（Storage 暫存 → Drive → 寫入紀錄 → 刪暫存）───────────
+    const type = resolveUnitDocumentType(docType, docTypeLabel);
+    const baseName = sanitizeUnitDocumentSegment(fileName);
+    if (!baseName) throw new HttpsError('invalid-argument', '文件名稱不可為空。');
+    const expectedPrefix = `unitDocuments/temp/${projectId}/${unitId}/`;
+    if (!storagePath || typeof storagePath !== 'string' || !storagePath.startsWith(expectedPrefix) || storagePath.includes('..')) {
+      throw new HttpsError('invalid-argument', 'storagePath 不合法。');
+    }
+    const ext = getUnitDocumentExt(originalName) || getUnitDocumentExt(storagePath);
+    if (ext && UNIT_DOCUMENT_BLOCKED_EXTS.has(ext)) {
+      throw new HttpsError('invalid-argument', `不允許上傳 .${ext} 類型的檔案。`);
+    }
+
+    // 1. 戶別資料夾
+    const householdDoc = await docRef.get();
+    if (!householdDoc.exists) {
+      throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
+    }
+    const targetFolderId = resolveUnitDriveFolderId(householdDoc.data(), unitId);
+
+    // 2. 暫存檔存在與大小（以 GCS metadata 為準，不信前端）
+    const bucket = getStorage().bucket();
+    const tempFile = bucket.file(storagePath);
+    const [exists] = await tempFile.exists();
+    if (!exists) {
+      throw new HttpsError('not-found', '找不到上傳的暫存檔，請重新選擇檔案上傳。');
+    }
+    const [meta] = await tempFile.getMetadata();
+    const actualSize = Number(meta.size) || 0;
+    if (actualSize <= 0) {
+      await tempFile.delete({ ignoreNotFound: true }).catch(() => {});
+      throw new HttpsError('invalid-argument', '檔案內容為空。');
+    }
+    if (actualSize > UNIT_DOCUMENT_MAX_SIZE) {
+      await tempFile.delete({ ignoreNotFound: true }).catch(() => {});
+      throw new HttpsError('invalid-argument', '檔案大小超過 100MB 上限。');
+    }
+    const resolvedMime = (meta.contentType && meta.contentType !== 'application/octet-stream' ? meta.contentType : null)
+      || (mimeType && String(mimeType).trim()) || UNIT_DOCUMENT_EXT_MIME[ext] || 'application/octet-stream';
+    const finalFileName = ext ? `${baseName}.${ext}` : baseName;
+
+    // 3. 串流上傳至 Drive（resumable）
+    const driveFile = await uploadStreamToDriveResumable({
+      name: finalFileName,
+      parentId: targetFolderId,
+      mimeType: resolvedMime,
+      size: actualSize,
+      stream: tempFile.createReadStream(),
+    });
+    console.log(`[${functionName}] 文件 "${finalFileName}" 已上傳至資料夾 ${targetFolderId} (fileId: ${driveFile.id}, ${actualSize} bytes)`);
+
+    // 4. 寫入紀錄；失敗則將 Drive 檔案移至垃圾桶回滾，避免孤兒檔
+    const nowIso = new Date().toISOString();
+    const uploader = uploadedBy && typeof uploadedBy === 'object'
+      ? { userKey: String(uploadedBy.userKey || ''), name: String(uploadedBy.name || '') }
+      : { userKey: '', name: '' };
+    const newRecord = {
+      id: `ud_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      docType: type.docType,
+      docTypeLabel: type.docTypeLabel,
+      fileName: driveFile.name || finalFileName,
+      originalName: String(originalName || ''),
+      mimeType: resolvedMime,
+      size: actualSize,
+      fileId: driveFile.id,
+      webViewLink: driveFile.webViewLink || `https://drive.google.com/file/d/${driveFile.id}/view`,
+      uploadedBy: uploader,
+      uploadedAt: nowIso,
+      updatedAt: nowIso,
+    };
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(docRef);
+        if (!snap.exists) {
+          throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
+        }
+        const existing = Array.isArray(snap.data().unitDocuments) ? snap.data().unitDocuments : [];
+        tx.update(docRef, { unitDocuments: [...existing, newRecord] });
+      });
+    } catch (writeError) {
+      console.error(`[${functionName}] Firestore 寫入失敗，回滾 Drive 檔案 (fileId: ${driveFile.id}):`, writeError.message);
+      await drive.files.update({ fileId: driveFile.id, requestBody: { trashed: true }, supportsAllDrives: true }).catch(() => {});
+      throw writeError;
+    }
+
+    // 5. 清暫存（失敗僅警告，另有 GCS lifecycle 兜底）
+    await tempFile.delete({ ignoreNotFound: true }).catch((delError) => {
+      console.warn(`[${functionName}] ⚠️ 暫存檔刪除失敗 (${storagePath}):`, delError.message);
+    });
+
+    console.log(`[${functionName}] 已新增文件紀錄 ${newRecord.id} (${unitId}, ${type.docTypeLabel})`);
+    return { status: 'success', record: newRecord };
+
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error(`[${functionName}] 發生錯誤:`, error);
+    if (error.response && error.response.data && error.response.data.error === 'invalid_grant') {
+      driveClientInstance = null;
+      throw new HttpsError('unauthenticated', 'Google Drive 認證失敗，Refresh Token 可能已過期。');
+    }
+    if (error.driveStatus === 404) {
+      throw new HttpsError('failed-precondition', '找不到戶別 Drive 資料夾，請確認「戶別資料夾位置」連結是否正確且已共用給系統帳號。');
+    }
+    throw new HttpsError('internal', `處理文件時發生錯誤: ${error.message}`);
+  }
+});
+// ✓ END: 戶別上傳文件 unitDocumentApi
+
+
 
 // ✓ START: 新增 - 獲取客戶最新預約資料 (供客戶端驗屋報告頁面預填)
 /**

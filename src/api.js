@@ -906,6 +906,24 @@ export async function paymentProofApi(payload) {
 }
 
 /**
+ * 戶別上傳文件 - Storage 暫存轉存至戶別 Drive 資料夾、改名、刪除 (SPEC_UnitDocumentUpload.md)
+ * @param {object} payload - { action: 'commit'|'rename'|'delete', projectId, unitId,
+ *   storagePath?, fileName?, docType?, docTypeLabel?, originalName?, mimeType?, size?, uploadedBy?, docId?, trashDriveFile? }
+ * @returns {Promise<object>} { status, record?|removedId?, renameWarning?, trashWarning? }
+ */
+export async function unitDocumentApi(payload) {
+  try {
+    // 大檔 Storage → Drive 串流轉存需要時間，逾時拉長到 5 分鐘
+    const fn = httpsCallable(functions, 'unitDocumentApi', { timeout: 300000 });
+    const result = await fn(payload);
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 unitDocumentApi 雲端函式時發生錯誤:", error);
+    return { status: "error", message: error.message };
+  }
+}
+
+/**
  * 獲取銷售下拉選單選項 (合約方式、是否首購)
  * @param {string} projectName 建案名稱
  * @returns {Promise<object>} API 響應

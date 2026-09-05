@@ -1070,6 +1070,7 @@
       :plan-options="quotePlansList"
       :initial-tab="unitModalInitial.tab"
       :initial-editing="unitModalInitial.editing"
+      :auto-open-documents-upload="unitModalInitial.documentsUpload"
       @data-updated="handleRefreshData"
       @request-open-slide="handleOpenSlideViewer" />
 
@@ -4547,11 +4548,12 @@ function handleScroll(event) {
 }
 
 // ✅ [快速選單] 開啟 Modal 時可指定初始分頁（info / aiAssistant）或直接進入修改銷控；一般點擊維持預設
-const unitModalInitial = reactive({ tab: 'info', editing: false });
-function openUnitDetail(unitData, { tab = 'info', editing = false } = {}) {
+const unitModalInitial = reactive({ tab: 'info', editing: false, documentsUpload: false });
+function openUnitDetail(unitData, { tab = 'info', editing = false, documentsUpload = false } = {}) {
   if (unitData) {
     unitModalInitial.tab = tab;
     unitModalInitial.editing = editing;
+    unitModalInitial.documentsUpload = documentsUpload; // ✅ [上傳文件] 開啟後自動彈出上傳對話框
     selectedUnitData.value = { ...unitData };
     isModalVisible.value = true;
   }
@@ -4994,6 +4996,14 @@ const unitQuickActions = computed(() => {
     { key: 'copy', icon: 'mdi-content-copy', label: '複製摘要', subtitle: '純文字，可貼到 LINE', run: unit => copyUnitSummary(unit) },
   );
   if (!isQuoteMode) {
+    // ✅ [上傳文件] 開啟戶別資訊並自動彈出上傳對話框（SPEC_UnitDocumentUpload.md）
+    const docCount = Array.isArray(u.unitDocuments) ? u.unitDocuments.length : 0;
+    actions.push({
+      key: 'documents', icon: 'mdi-cloud-upload-outline', label: '上傳文件',
+      subtitle: !u.driveFolderUrl ? '尚未設定資料夾連結' : (docCount > 0 ? `${docCount} 份文件` : '尚無文件，點此上傳'),
+      badge: docCount > 0 ? String(docCount) : '', badgeColor: 'indigo', disabled: !u.driveFolderUrl,
+      run: unit => openUnitDetail(unit, { tab: 'info', documentsUpload: true }),
+    });
     actions.push({
       key: 'folder', icon: 'mdi-folder-google-drive', label: '戶別資料夾', subtitle: u.driveFolderUrl ? '開啟 Google Drive 資料夾' : '尚未設定資料夾連結', disabled: !u.driveFolderUrl,
       run: unit => { if (unit.driveFolderUrl) window.open(unit.driveFolderUrl, '_blank', 'noopener'); },

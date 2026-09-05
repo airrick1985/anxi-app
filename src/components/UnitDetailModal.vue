@@ -968,6 +968,20 @@
 
           <template v-if="!isMobile">
             <v-spacer></v-spacer>
+
+                  <!-- ✅ [上傳文件] 檢視模式：上傳任意格式文件至戶別 Drive 資料夾（即時儲存，SPEC_UnitDocumentUpload.md） -->
+                  <UnitDocumentsPanel
+                    ref="unitDocumentsPanelRef"
+                    class="mt-2"
+                    :model-value="viewUnitDocuments"
+                    :project-id="projectId"
+                    :unit-id="unitData.unitId || ''"
+                    :drive-folder-url="unitData.driveFolderUrl || ''"
+                    :upload-handler="handleUploadUnitDocument"
+                    :rename-handler="handleRenameUnitDocument"
+                    :delete-handler="handleDeleteUnitDocument"
+                    :auto-open-upload="autoOpenDocumentsUploadOnce"
+                  />
             <template v-if="isEditing">
               <v-btn color="grey-darken-1" variant="text" @click="cancelEditing">取消</v-btn>
               <v-btn color="success" variant="flat" @click="saveChanges" :loading="isSaving" size="large">儲存變更</v-btn>
@@ -1032,6 +1046,18 @@
                 <v-btn stacked variant="text" color="success" class="flex-grow-1" @click="handleAddToQuote"
                   :disabled="!canAddToQuote">
                   <v-icon>mdi-plus-box-outline</v-icon>
+              <!-- ✅ [上傳文件] 未設定資料夾時仍顯示但停用，tooltip 提示 -->
+              <v-tooltip v-if="viewMode === 'sales' && unitData" location="top"
+                :disabled="!!unitData.driveFolderUrl" text="請先於修改銷控設定「戶別資料夾位置」">
+                <template v-slot:activator="{ props: tipProps }">
+                  <span v-bind="tipProps">
+                    <v-btn color="indigo" variant="flat" :disabled="!unitData.driveFolderUrl" @click="openDocumentsUpload">
+                      <v-icon left>mdi-cloud-upload-outline</v-icon>
+                      上傳文件
+                    </v-btn>
+                  </span>
+                </template>
+              </v-tooltip>
                   <span class="text-caption">{{ addToQuoteButtonText }}</span>
                 </v-btn>
                 <!-- 主要操作：付款表設定 -->
@@ -1307,7 +1333,7 @@ import FloorplanSizingTool from '@/views/FloorplanSizingTool.vue';
 import { ref, watch, computed, defineProps, defineEmits, onUnmounted, onMounted, nextTick, defineAsyncComponent } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
-import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot, paymentProofApi } from '@/api';
+import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot, paymentProofApi, unitDocumentApi } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 import { getUnitTags, collectTagSuggestions, getContrastTextColor } from '@/utils/unitTags';
@@ -1359,6 +1385,7 @@ const activeEditSection = ref('sales');
 const activeMobileEditSection = ref('all');
 
 // 📱 [新增] 戶別資訊「更多功能」底部面板（取代原 v-menu，比照銷控系統底部面板樣式）
+import UnitDocumentsPanel from './UnitDocumentsPanel.vue';
 const isUnitToolsSheetOpen = ref(false);
 const unitToolGroups = computed(() => {
   if (props.viewMode !== 'sales') return [];
@@ -1417,6 +1444,14 @@ const { tap: tapUnlockPriceQuote } = useTapUnlock(() => {
 const handleKeyPress = (e) => {
   if (e.key.toLowerCase() === 'a') {
     keySequence.value += 'a';
+  // ✅ [上傳文件] 需先設定戶別資料夾位置；未設定時提示而非靜默無反應
+  docs.push({
+    icon: 'mdi-cloud-upload-outline', label: '上傳文件',
+    action: () => {
+      if (!d.driveFolderUrl) { toast.warning('請先於修改銷控設定「戶別資料夾位置」'); return; }
+      openDocumentsUpload();
+    },
+  });
     if (keySequence.value.length > 8) {
       keySequence.value = keySequence.value.slice(-8);
     }
@@ -1752,6 +1787,8 @@ const householdImages = computed(() => {
     console.log('🖼️ [UnitDetailModal] 圖片匹配結果:', {
       requestedImages: props.unitData.salesImages,
       matchedCount: matchedImages.length,
+  // ✅ [上傳文件] 由快速選單進入時自動彈出上傳對話框（SPEC_UnitDocumentUpload.md）
+  autoOpenDocumentsUpload: { type: Boolean, default: false },
       matchedImages: matchedImages.map(img => img.imageName)
     });
   }
@@ -2290,6 +2327,8 @@ function startEditing() {
 
 function cancelEditing() {
   isEditing.value = false;
+  // ✅ [上傳文件] 同樣以檢視模式本地列表為準，避免整包儲存時把剛上傳的文件覆蓋掉
+  editingData.value.unitDocuments = JSON.parse(JSON.stringify(viewUnitDocuments.value || []));
   // ✅ [戶別繳款紀錄] 取消編輯時釋放本地預覽 URL，不動 Drive
   clearPaymentRecordsPendingState();
   editingData.value = null;
@@ -2393,6 +2432,92 @@ async function handleQuickAddPaymentRecord({ date, amount, note, file }) {
     date,
     amount,
     note
+// ✅ [上傳文件] 檢視模式本地列表：上傳／改名／刪除後即時反映，不必等父層重新載入（SPEC_UnitDocumentUpload.md）
+const viewUnitDocuments = ref([]);
+watch(() => props.unitData, (val) => {
+  viewUnitDocuments.value = Array.isArray(val?.unitDocuments)
+    ? JSON.parse(JSON.stringify(val.unitDocuments))
+    : [];
+}, { immediate: true });
+const unitDocumentsPanelRef = ref(null);
+// 快速選單進入時只自動開一次（避免父層 prop 保持 true 導致重開）
+const autoOpenDocumentsUploadOnce = ref(false);
+
+function openDocumentsUpload() {
+  if (isEditing.value) return;
+  const panel = unitDocumentsPanelRef.value;
+  if (panel && typeof panel.openUpload === 'function') {
+    panel.openUpload();
+  } else {
+    // 面板尚未掛載（例如剛開啟 Modal）→ 以 prop 觸發，掛載後自動開啟
+    autoOpenDocumentsUploadOnce.value = true;
+    nextTick(() => { autoOpenDocumentsUploadOnce.value = false; });
+  }
+}
+
+function currentUploaderInfo() {
+  const u = userStore.user || {};
+  return { userKey: u.key || '', name: u.name || '' };
+}
+
+/** [上傳文件] Storage 暫存檔轉存至戶別 Drive 資料夾並寫入紀錄（由面板在 Storage 上傳完成後呼叫） */
+async function handleUploadUnitDocument(payload) {
+  const res = await unitDocumentApi({
+    action: 'commit',
+    projectId: props.projectId,
+    unitId: props.unitData.unitId,
+    ...payload,
+    uploadedBy: currentUploaderInfo(),
+  });
+  if (res.status !== 'success' || !res.record) {
+    throw new Error(res.message || '轉存至 Google Drive 失敗，請稍後再試');
+  }
+  viewUnitDocuments.value = [...viewUnitDocuments.value, res.record];
+  if (props.unitData) props.unitData.unitDocuments = viewUnitDocuments.value.slice();
+  emit('data-updated');
+  return res.record;
+}
+
+/** [上傳文件] 改種類／名稱，後端同步 Drive 檔名 */
+async function handleRenameUnitDocument({ docId, fileName, docType, docTypeLabel }) {
+  const res = await unitDocumentApi({
+    action: 'rename',
+    projectId: props.projectId,
+    unitId: props.unitData.unitId,
+    docId, fileName, docType, docTypeLabel,
+  });
+  if (res.status !== 'success' || !res.record) {
+    toast.error(res.message || '更新文件失敗，請稍後再試');
+    throw new Error(res.message || '更新文件失敗');
+  }
+  viewUnitDocuments.value = viewUnitDocuments.value.map(d => (d.id === docId ? res.record : d));
+  if (props.unitData) props.unitData.unitDocuments = viewUnitDocuments.value.slice();
+  if (res.renameWarning) toast.warning('Drive 檔名同步失敗，文件紀錄仍已更新');
+  else toast.success('文件已更新');
+  emit('data-updated');
+  return res.record;
+}
+
+/** [上傳文件] 刪除紀錄；勾選時將 Drive 檔案移至垃圾桶，否則保留 */
+async function handleDeleteUnitDocument({ docId, trashDriveFile }) {
+  const res = await unitDocumentApi({
+    action: 'delete',
+    projectId: props.projectId,
+    unitId: props.unitData.unitId,
+    docId,
+    trashDriveFile: !!trashDriveFile,
+  });
+  if (res.status !== 'success') {
+    toast.error(res.message || '刪除文件失敗，請稍後再試');
+    throw new Error(res.message || '刪除文件失敗');
+  }
+  viewUnitDocuments.value = viewUnitDocuments.value.filter(d => d.id !== docId);
+  if (props.unitData) props.unitData.unitDocuments = viewUnitDocuments.value.slice();
+  if (res.trashWarning) toast.warning('紀錄已刪除，但 Drive 檔案移至垃圾桶失敗');
+  else toast.success(trashDriveFile ? '文件已刪除並移至 Drive 垃圾桶' : '文件紀錄已刪除（Drive 檔案保留）');
+  emit('data-updated');
+}
+
   });
   if (res.status !== 'success' || !res.record) {
     throw new Error(res.message || '請稍後再試');
@@ -3959,6 +4084,8 @@ onUnmounted(() => {
 .edit-nav-text {
   display: flex;
   flex-direction: column;
+    // ✅ [上傳文件] 快速選單「上傳文件」進入：面板掛載後自動彈出上傳對話框
+    if (props.autoOpenDocumentsUpload && !props.initialEditing) nextTick(() => openDocumentsUpload());
   min-width: 0;
 }
 
