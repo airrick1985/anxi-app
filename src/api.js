@@ -9108,6 +9108,18 @@ export const batchImportAndAssignLeadsAPI = async (data) => {
   }
 };
 
+// ✅ 名單分配：有賞屋預約但未指定銷售 → 不分配，改 LINE 通知本建案櫃台人員
+export const notifyPendingReservationLeadsAPI = async (data) => {
+  try {
+    const func = httpsCallable(getFunctions(undefined, 'asia-east1'), 'notifyPendingReservationLeads');
+    const result = await func(data);
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] notifyPendingReservationLeadsAPI 異常:", error);
+    throw error;
+  }
+};
+
 /**
  * [API] Excel 批次匯入名單 V2（資料移轉強化版）
  * @param {object} data - { projectId, operator, operatorKey, sendLineNotify, chunkIndex, leads }

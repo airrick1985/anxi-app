@@ -1164,11 +1164,29 @@
 
   <v-chip size="x-small" color="purple-darken-1" variant="flat" v-if="summaryCount.reservation">📅 賞屋預約 {{ summaryCount.reservation }} 筆</v-chip>
 
+  <v-chip size="x-small" color="purple-darken-3" variant="elevated" class="font-weight-bold" v-if="summaryCount.reservationPending">
+    🛑 預約待現場裁決 {{ summaryCount.reservationPending }} 筆（不分配）
+  </v-chip>
+
   <v-chip size="x-small" color="deep-orange-darken-1" variant="flat" v-if="pendingOverwrites.length">♻️ 待覆蓋更新 {{ pendingOverwrites.length }} 筆</v-chip>
 
   <v-spacer></v-spacer>
   <v-progress-circular v-if="isCheckingDuplicates" indeterminate size="16" width="2" color="primary" class="me-2"></v-progress-circular>
 </div>
+
+<!-- ✅ 有賞屋預約但預約未指定銷售：鎖定不分配，執行時改 LINE 通知櫃台 -->
+<v-alert
+  v-if="summaryCount.reservationPending"
+  type="warning"
+  variant="tonal"
+  density="compact"
+  color="purple-darken-3"
+  icon="mdi-calendar-alert"
+  class="ma-3 text-caption"
+>
+  有 <b>{{ summaryCount.reservationPending }}</b> 筆名單的電話已有賞屋預約，但預約<b>未指定銷售</b>。
+  這些名單已鎖定不可指派銷售，執行分配時<b>不會寫入名單</b>，系統會改以 LINE 通知本建案櫃台人員，請依現場專案人員指示處理。
+</v-alert>
 
           <!-- Desktop View: Table -->
           <v-table v-if="!mobile" density="comfortable" fixed-header height="500px" class="preview-table">
@@ -1185,7 +1203,7 @@
               <tr 
                   v-for="(lead, idx) in previewLeads" 
                   :key="idx" 
-                  :class="[!lead.assignedTo ? 'bg-red-lighten-5' : getRowClass(lead.phone)]"
+                  :class="[isReservationPending(lead) ? 'bg-purple-lighten-5' : (!lead.assignedTo ? 'bg-red-lighten-5' : getRowClass(lead.phone))]"
                 >
                 <td class="pa-4">
                   <v-text-field
@@ -1220,6 +1238,17 @@
                   </div>
 
                   <div v-if="duplicateResults[lead.phone]">
+                    <!-- 預約未指定銷售：待現場裁決（可附掛於任一類型） -->
+                    <div v-if="getReservationPending(lead.phone)" class="mb-2">
+                        <v-chip color="purple-darken-3" class="font-weight-bold w-100" size="small" label variant="elevated">
+                            <v-icon start icon="mdi-calendar-alert" size="x-small"></v-icon> 預約未指定銷售・待現場裁決
+                        </v-chip>
+                        <div class="text-caption text-purple-darken-3 mt-1 text-left">
+                            📅 {{ getReservationPending(lead.phone).reservationTime || '預約時間未填' }}{{ getReservationPending(lead.phone).reservationType ? `（${getReservationPending(lead.phone).reservationType}）` : '' }}
+                            <div v-if="getReservationPending(lead.phone).note" class="text-grey-darken-1">預約備註：{{ getReservationPending(lead.phone).note }}</div>
+                        </div>
+                    </div>
+
                     <!-- VIP: Existing Customer (Compact Mode) -->
                     <div v-if="duplicateResults[lead.phone].type === 'vip'">
                         <v-chip color="orange-lighten-4" class="text-orange-darken-4 font-weight-bold mb-1" size="small" label>
@@ -1335,8 +1364,9 @@
                       :items="salesStaffWithCounts"
                       item-title="displayName"
                       item-value="id"
-                      :label="!lead.assignedTo ? '⚠️ 尚未選擇銷售' : '選擇銷售'"
-                      :error="!lead.assignedTo"
+                      :label="isReservationPending(lead) ? '🛑 預約待現場裁決（不分配）' : (!lead.assignedTo ? '⚠️ 尚未選擇銷售' : '選擇銷售')"
+                      :error="!lead.assignedTo && !isReservationPending(lead)"
+                      :disabled="isReservationPending(lead)"
                       density="compact"
                       hide-details="auto"
                       variant="outlined"
@@ -1416,7 +1446,7 @@
                            class="mb-3 mx-1"
                            elevation="1"
                            border
-                           :class="[!lead.assignedTo ? 'bg-red-lighten-5' : '']"
+                           :class="[isReservationPending(lead) ? 'bg-purple-lighten-5' : (!lead.assignedTo ? 'bg-red-lighten-5' : '')]"
                         >
                             <v-card-text class="pa-3">
                                 <!-- 1. Header: Name & Phone & Delete -->
@@ -1438,6 +1468,17 @@
                                         📋 歷史回報：{{ lead.status }}
                                      </v-chip>
                                      <template v-if="duplicateResults[lead.phone]">
+                                        <v-chip
+                                            v-if="getReservationPending(lead.phone)"
+                                            color="purple-darken-3"
+                                            class="font-weight-bold"
+                                            size="x-small"
+                                            label
+                                            variant="elevated"
+                                        >
+                                            <v-icon start icon="mdi-calendar-alert" size="x-small"></v-icon>
+                                            預約未指定銷售・待現場裁決 {{ getReservationPending(lead.phone).reservationTime ? `（${getReservationPending(lead.phone).reservationTime}）` : '' }}
+                                        </v-chip>
                                         <template v-if="duplicateResults[lead.phone].type === 'vip'">
                                             <v-chip
                                                 color="orange-lighten-4"
@@ -1502,8 +1543,9 @@
                                   :items="salesStaffWithCounts"
                                   item-title="displayName"
                                   item-value="id"
-                                  :label="!lead.assignedTo ? '⚠️ 尚未選擇銷售' : '選擇銷售'"
-                                  :error="!lead.assignedTo"
+                                  :label="isReservationPending(lead) ? '🛑 預約待現場裁決（不分配）' : (!lead.assignedTo ? '⚠️ 尚未選擇銷售' : '選擇銷售')"
+                                  :error="!lead.assignedTo && !isReservationPending(lead)"
+                                  :disabled="isReservationPending(lead)"
                                   density="compact"
                                   hide-details="auto"
                                   variant="outlined"
@@ -1618,7 +1660,7 @@
           :loading="isImporting"
           @click="executeBatchImportAndAssign"
         >
-          {{ summaryCount.unassigned > 0 ? `尚未處理 (待指派 ${summaryCount.unassigned}筆)` : `確認無誤並執行分配 (${previewLeads.length + pendingOverwrites.length}筆)` }}
+          {{ executeButtonLabel }}
         </v-btn>
         </v-card-actions>
       </v-card>
@@ -2183,6 +2225,7 @@ import {
 
 import { checkLeadDuplicates, batchImportAndAssignLeadsAPI,
   batchImportLeadsV2API,
+  notifyPendingReservationLeadsAPI,
   clearProjectLeadsAPI,
   listGoogleSheets,
   exportToGoogleSheet
@@ -2594,7 +2637,8 @@ const enterExcelPreview = async (newLeads) => {
   }
 
   previewLeads.value.forEach(lead => {
-    if (!lead.assignedTo) {
+    // Excel 有填指派銷售者也要檢查：預約未指定銷售時一律鎖定
+    if (!lead.assignedTo || isReservationPending(lead)) {
       autoAssignByDuplicate(lead);
     }
   });
@@ -3388,11 +3432,29 @@ const AUTO_SOURCE_META = {
   reservation: { label: '賞屋預約', color: 'text-purple-darken-2' }
 };
 
+// ✅ 預約待現場裁決：該電話有 active 賞屋預約但預約未指定銷售
+//    規則：鎖定不可指派、不寫入名單，執行分配時改 LINE 通知本建案櫃台，依現場專案人員指示處理
+const getReservationPending = (phone) => duplicateResults.value[phone]?.data?.reservationPending || null;
+const isReservationPending = (lead) => !!getReservationPending(lead?.phone);
+
+// 鎖定：清空任何已帶入／手動選擇的銷售
+const lockPendingReservationLead = (lead) => {
+  lead.assignedTo = '';
+  lead.assignedName = '';
+  lead.autoAssignInfo = null;
+};
+
 // ✅ 共用：依查重結果自動指派銷售
 // 既有客資(vip)優先採用後端 autoAssign（比較「客資最近互動」vs「名單最後分配」較新的一筆）
 const autoAssignByDuplicate = (lead) => {
   const res = duplicateResults.value[lead.phone];
   if (!res) return;
+
+  // 預約未指定銷售 → 一律鎖定，不自動帶入任何來源的銷售
+  if (res.data?.reservationPending) {
+    lockPendingReservationLead(lead);
+    return;
+  }
 
   if (res.type === 'vip') {
     const auto = res.data?.autoAssign;
@@ -3435,11 +3497,22 @@ const updateAssignedInfo = (lead, salesId) => {
 };
 
 const summaryCount = computed(() => {
-  const counts = { vip: 0, lead: 0, reservation: 0, new: 0, internalDup: 0, unassigned: 0, purchased: 0 };
+  const counts = { vip: 0, lead: 0, reservation: 0, new: 0, internalDup: 0, unassigned: 0, purchased: 0, reservationPending: 0 };
 
   previewLeads.value.forEach(l => {
-    // 1. 檢查查重狀態 (已有客資/重複名單/賞屋預約/全新/已購戶)
+    // 0. 預約未指定銷售（待現場裁決）：獨立計數，不計入待指派
     const res = duplicateResults.value[l.phone];
+    if (res?.data?.reservationPending) {
+      counts.reservationPending++;
+      if (res.type === 'vip') counts.vip++;
+      else if (res.type === 'lead') counts.lead++;
+      else if (res.type === 'reservation') counts.reservation++;
+      else if (res.type === 'purchased') counts.purchased++;
+      if (internalDuplicateMap.value[l.phone]?.length > 1) counts.internalDup++;
+      return;
+    }
+
+    // 1. 檢查查重狀態 (已有客資/重複名單/賞屋預約/全新/已購戶)
     if (res?.type === 'vip') {
       counts.vip++;
       if (res.data?.leadDup) counts.lead++; // 既有客資同時也重複名單，兩者都計
@@ -3770,9 +3843,45 @@ const handleParsing = async () => {
 
 const isImporting = ref(false);
 
+// ✅ 預約待裁決名單：不寫入，改通知櫃台（items 帶預約時間/類型/備註）
+//    先以 buildPendingReservationItems 快照（對話框關閉後查重結果會清空），再送通知
+const buildPendingReservationItems = (pendingLeads) => pendingLeads.map(l => {
+  const p = getReservationPending(l.phone) || {};
+  return {
+    name: l.name || p.name || '',
+    phone: l.phone || '',
+    reservationTime: p.reservationTime || '',
+    reservationType: p.reservationType || '',
+    note: p.note || '',
+    source: normalizeSource(l.source) || ''
+  };
+});
+
+const notifyPendingReservationLeads = async (items) => {
+  if (!items?.length) return;
+  try {
+    const res = await notifyPendingReservationLeadsAPI({
+      projectId: props.projectId,
+      operator: userStore.user?.name || '櫃檯人員',
+      items
+    });
+    if (res?.skipped === 'no-counter') {
+      showMsg(`⚠️ ${items.length} 筆預約待裁決名單未分配，但本建案沒有已綁定 LINE 的櫃台人員，請自行轉知現場`, 'warning');
+    } else if (res?.skipped === 'trial') {
+      showMsg(`${items.length} 筆預約待裁決名單未分配（測試建案不發送 LINE）`, 'info');
+    } else {
+      showMsg(`📅 ${items.length} 筆預約待裁決名單未分配，已 LINE 通知櫃台 ${res?.notified || 0} 人`, 'info');
+    }
+  } catch (err) {
+    console.error('通知櫃台失敗:', err);
+    showMsg(`⚠️ ${items.length} 筆預約待裁決名單未分配，但 LINE 通知櫃台失敗：${err.message}`, 'warning');
+  }
+};
+
 // ✅ 共用：整理預覽名單（標準化來源＋依查重結果產生 statusText）
-const buildLeadsWithStatus = () => {
-  return previewLeads.value.map(l => {
+//    預設排除「預約待現場裁決」的列（不寫入名單）
+const buildLeadsWithStatus = (list = previewLeads.value.filter(l => !isReservationPending(l))) => {
+  return list.map(l => {
     // 🚩 強制標準化來源 (處理預覽中手動修改後的格式不一問題，統一走 normalizeSource)
     const normalizedSource = normalizeSource(l.source);
 
@@ -3805,9 +3914,20 @@ const buildLeadsWithStatus = () => {
   });
 };
 
+// 執行按鈕文字：待指派 > 分配 N 筆（＋通知櫃台 M 筆）
+const executeButtonLabel = computed(() => {
+  if (summaryCount.value.unassigned > 0) return `尚未處理 (待指派 ${summaryCount.value.unassigned}筆)`;
+  const pending = summaryCount.value.reservationPending;
+  const importable = previewLeads.value.length - pending + pendingOverwrites.value.length;
+  if (importable === 0 && pending > 0) return `不分配，僅通知櫃台 (${pending}筆)`;
+  return pending > 0
+    ? `確認無誤並執行分配 (${importable}筆) ＋ 通知櫃台 (${pending}筆)`
+    : `確認無誤並執行分配 (${importable}筆)`;
+});
+
 const executeBatchImportAndAssign = async () => {
-  // ⚠️ 檢查是否有尚未選擇銷售的名單，若有則提醒用戶並中止分配流程
-  const unassignedLeads = previewLeads.value.filter(l => !l.assignedTo);
+  // ⚠️ 檢查是否有尚未選擇銷售的名單（預約待裁決者除外），若有則提醒用戶並中止分配流程
+  const unassignedLeads = previewLeads.value.filter(l => !l.assignedTo && !isReservationPending(l));
   if (unassignedLeads.length > 0) {
     applySorting(); // 將未指派的名單排到最前面，方便用戶快速找到
     showMsg(`⚠️ 尚有 ${unassignedLeads.length} 筆名單未選擇銷售，請先完成指派再執行分配`, 'warning');
@@ -3819,6 +3939,8 @@ const executeBatchImportAndAssign = async () => {
     return executeExcelImportV2();
   }
 
+  const pendingItems = buildPendingReservationItems(previewLeads.value.filter(l => isReservationPending(l)));
+
   try {
     // ✓ [打勾] 修正：手動開啟按鈕的 loading 狀態，解決看不到 LOADING 的問題
     isImporting.value = true;
@@ -3826,19 +3948,23 @@ const executeBatchImportAndAssign = async () => {
 
     const leadsWithStatus = buildLeadsWithStatus();
 
-    const res = await batchImportAndAssignLeadsAPI({
-      projectId: props.projectId,
-      leads: leadsWithStatus,
-      operator: userStore.user?.name || "櫃檯人員",
-      sendLineNotify: sendLineNotify.value // ✅ 傳入 LINE 通知開關
-    });
+    if (leadsWithStatus.length > 0) {
+      const res = await batchImportAndAssignLeadsAPI({
+        projectId: props.projectId,
+        leads: leadsWithStatus,
+        operator: userStore.user?.name || "櫃檯人員",
+        sendLineNotify: sendLineNotify.value // ✅ 傳入 LINE 通知開關
+      });
 
-    if (res.status === 'success') {
-      showMsg(`成功匯入並指派 ${previewLeads.value.length} 筆名單`, 'success');
-      closeUploadDialog();
-    } else {
-      throw new Error(res.message);
+      if (res.status !== 'success') {
+        throw new Error(res.message);
+      }
+      showMsg(`成功匯入並指派 ${leadsWithStatus.length} 筆名單`, 'success');
     }
+
+    // 預約待裁決名單：不寫入，通知櫃台（失敗不影響已完成的分配）
+    await notifyPendingReservationLeads(pendingItems);
+    closeUploadDialog();
   } catch (err) {
     // 這裡會捕捉到之前的 "salesName is not defined" 錯誤
     showMsg('執行失敗：' + err.message, 'error');
@@ -3886,6 +4012,7 @@ const toOverwritePayloadRow = (inc, overwriteLeadId, overwriteAssigned) => {
 
 // 預覽模式：組合預覽名單（新增）＋待覆蓋名單後送共用上傳流程
 const executeExcelImportV2 = async () => {
+  const pendingItems = buildPendingReservationItems(previewLeads.value.filter(l => isReservationPending(l)));
   const createRows = buildLeadsWithStatus().map(l => ({
     ...toImportPayloadRow(l),
     duplicateAction: 'create'
@@ -3893,7 +4020,23 @@ const executeExcelImportV2 = async () => {
   const overwriteRows = pendingOverwrites.value.map(o =>
     toOverwritePayloadRow(o.incoming, o.overwriteLeadId, o.overwriteAssigned)
   );
-  await runImportV2([...createRows, ...overwriteRows], excelSkippedCount.value);
+  const allRows = [...createRows, ...overwriteRows];
+
+  // 全部都是預約待裁決：不匯入，只通知櫃台
+  if (allRows.length === 0 && pendingItems.length > 0) {
+    isImporting.value = true;
+    try {
+      await notifyPendingReservationLeads(pendingItems);
+    } finally {
+      isImporting.value = false;
+    }
+    closeUploadDialog();
+    return;
+  }
+
+  await runImportV2(allRows, excelSkippedCount.value);
+  // 匯入完成後再通知櫃台（不影響匯入結果報告）
+  await notifyPendingReservationLeads(pendingItems);
 };
 
 // ✅ 共用上傳流程：分批呼叫 V2 後端（進度、冪等重試、終場通知、結果報告）
@@ -4818,7 +4961,12 @@ const onTextInput = (index, newValue) => {
 
 const applySorting = () => {
   previewLeads.value.sort((a, b) => {
-    // 1. 待指派最優先 (Priority 0)
+    // 0. 預約待現場裁決最優先（鎖定不分配，讓櫃台一眼看到）
+    const aPend = isReservationPending(a) ? 0 : 1;
+    const bPend = isReservationPending(b) ? 0 : 1;
+    if (aPend !== bPend) return aPend - bPend;
+
+    // 1. 待指派次之 (Priority 0)
     const aUn = !a.assignedTo ? 0 : 1;
     const bUn = !b.assignedTo ? 0 : 1;
     if (aUn !== bUn) return aUn - bUn;

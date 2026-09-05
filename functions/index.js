@@ -25169,11 +25169,12 @@ exports.checkLeadDuplicates = onCall({
     }
 
     // 4. 第三階段：比對 viewing_reservations (已有賞屋預約)
-    // 僅檢查目前還是 "none" 的電話
-    const remainingAfterLeads = cleanPhones.filter(p => results[p].type === "none");
-
-    for (let i = 0; i < remainingAfterLeads.length; i += 30) {
-      const chunk = remainingAfterLeads.slice(i, i + 30);
+    //    ✅ 改為對「所有電話」比對（含已命中客資/名單者），才能偵測「有預約但未指定銷售」的情況
+    //    - 尚未命中任何類型的電話：維持原行為，標為 reservation 類型
+    //    - 任一類型：若該電話所有 active 預約皆未指定銷售 → 附掛 reservationPending，前端鎖定不分配並通知櫃檯
+    const reservationGroups = {};
+    for (let i = 0; i < cleanPhones.length; i += 30) {
+      const chunk = cleanPhones.slice(i, i + 30);
       const reservSnap = await db.collection("viewing_reservations")
         .where("projectId", "==", projectId)
         .where("customerPhone", "in", chunk)
@@ -25183,32 +25184,65 @@ exports.checkLeadDuplicates = onCall({
       reservSnap.forEach(doc => {
         const r = doc.data();
         const phone = r.customerPhone;
-        if (!phone || results[phone]?.type !== "none") return;
+        if (!phone || !results[phone]) return;
+        if (!reservationGroups[phone]) reservationGroups[phone] = [];
+        reservationGroups[phone].push({ id: doc.id, ...r });
+      });
+    }
 
-        let reservationTimeStr = "";
-        if (r.reservationTime && r.reservationTime.toDate) {
-          try {
-            reservationTimeStr = r.reservationTime.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-          } catch (e) { reservationTimeStr = ""; }
-        }
+    const formatReservationTime = (r) => {
+      if (r.reservationTime && r.reservationTime.toDate) {
+        try {
+          return r.reservationTime.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+        } catch (e) { return ""; }
+      }
+      return "";
+    };
+    const reservationMillis = (r) => (r.reservationTime?.toMillis ? r.reservationTime.toMillis() : 0);
 
+    Object.keys(reservationGroups).forEach(phone => {
+      const group = reservationGroups[phone];
+      // 主要顯示的預約：優先取有指定銷售者，其次取預約時間最近者
+      const primary = [...group].sort((a, b) => {
+        const aHas = a.salesId ? 0 : 1;
+        const bHas = b.salesId ? 0 : 1;
+        if (aHas !== bHas) return aHas - bHas;
+        return reservationMillis(b) - reservationMillis(a);
+      })[0];
+      const primaryTimeStr = formatReservationTime(primary);
+
+      if (results[phone].type === "none") {
         results[phone] = {
           type: "reservation",
           data: {
-            name: r.customerName || "未知",
-            assignedName: r.salesName || "不指定",
-            assignedTo: r.salesId || "",
-            salesPhone: r.salesPhone || "",
-            reservationTime: reservationTimeStr,
-            reservationType: r.type || "",           // 預約類型（新客/複訪等）
-            note: r.note || "",
+            name: primary.customerName || "未知",
+            assignedName: primary.salesName || "不指定",
+            assignedTo: primary.salesId || "",
+            salesPhone: primary.salesPhone || "",
+            reservationTime: primaryTimeStr,
+            reservationType: primary.type || "",           // 預約類型（新客/複訪等）
+            note: primary.note || "",
             source: "賞屋預約",
-            date: reservationTimeStr,
+            date: primaryTimeStr,
             interactionLogs: []
           }
         };
-      });
-    }
+      }
+
+      // 所有 active 預約皆未指定銷售 → 標記「預約待現場裁決」
+      const anyHasSales = group.some(r => !!r.salesId);
+      if (!anyHasSales) {
+        if (!results[phone].data) results[phone].data = {};
+        results[phone].data.reservationPending = {
+          reservationId: primary.id,
+          name: primary.customerName || "未知",
+          reservationTime: primaryTimeStr,
+          reservationType: primary.type || "",
+          note: primary.note || "",
+          count: group.length
+        };
+      }
+    });
 
     return { status: "success", results };
 
@@ -25367,6 +25401,101 @@ async function _sendLeadBatchSummaryText(token, to, text) {
   }
   return axios.post("https://api.line.me/v2/bot/message/push", { to: recipients[0], messages }, { headers });
 }
+
+/**
+ * ✅ [新函式] 名單分配：有賞屋預約但預約未指定銷售 → 不寫入名單，改以 LINE 文字通知本建案「客資系統-櫃台」
+ * 接收：{ projectId, operator, items: [{ name, phone, reservationTime, reservationType, note, source }] }
+ * 回傳：{ status, notified, skipped }（notified = 實際收到通知的櫃台人數）
+ */
+exports.notifyPendingReservationLeads = onCall({
+  region: "asia-east1",
+  cors: true,
+  memory: "512MiB",
+  timeoutSeconds: 60,
+  secrets: ["ANXISMART_LINE_CRM_TOKEN"]
+}, async (request) => {
+  const functionName = "notifyPendingReservationLeads";
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const { projectId, operator, items } = request.data || {};
+
+  if (!projectId || !Array.isArray(items) || items.length === 0) {
+    throw new HttpsError("invalid-argument", "缺少必要參數。");
+  }
+
+  try {
+    // [TrialGuard] 試用建案不對外發送 LINE
+    if (await shouldBlockOutbound(projectId, 'line')) {
+      return { status: "success", notified: 0, skipped: "trial" };
+    }
+
+    const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
+    if (!channelToken) {
+      return { status: "success", notified: 0, skipped: "no-token" };
+    }
+
+    const projectDoc = await db.collection("projects").doc(projectId).get();
+    const projectName = projectDoc.exists ? (projectDoc.data().name || projectId) : projectId;
+
+    // 收件對象：本建案所有「客資系統-櫃台」人員（不受提醒開關限制，必發）
+    const counterSnap = await db.collection("userPermissions")
+      .where(`permissions.${projectId}.systems`, 'array-contains', '客資系統-櫃台')
+      .get();
+    const counterKeys = counterSnap.docs.map(d => d.id);
+
+    const lineIds = new Set();
+    for (let i = 0; i < counterKeys.length; i += 30) {
+      const chunk = counterKeys.slice(i, i + 30);
+      const usersSnap = await db.collection("users").where(FieldPath.documentId(), 'in', chunk).get();
+      usersSnap.forEach(doc => {
+        const lid = (doc.data().lineId || '').trim();
+        if (lid.startsWith('U') && lid.length === 33) lineIds.add(lid);
+      });
+    }
+
+    if (lineIds.size === 0) {
+      console.warn(`[${functionName}] 建案 ${projectId} 無已綁定 LINE 的櫃台人員，通知略過`);
+      return { status: "success", notified: 0, skipped: "no-counter" };
+    }
+
+    const formatPhone = (p) => {
+      const d = String(p || '').replace(/\D/g, '');
+      return d.length === 10 ? `${d.slice(0, 4)}-${d.slice(4, 7)}-${d.slice(7)}` : (p || '');
+    };
+
+    // 每則訊息最多 15 筆，避免超過 LINE 文字上限
+    const CHUNK = 15;
+    const recipients = [...lineIds];
+    const totalPages = Math.ceil(items.length / CHUNK);
+    for (let i = 0; i < items.length; i += CHUNK) {
+      const chunk = items.slice(i, i + CHUNK);
+      const page = Math.floor(i / CHUNK) + 1;
+      const lines = [];
+      lines.push(`【賞屋預約待分配】${projectName}${totalPages > 1 ? `（${page}/${totalPages}）` : ''}`);
+      lines.push(`以下 ${chunk.length} 筆名單已有賞屋預約但未指定銷售，本次「未分配、未寫入名單」，請依現場專案人員指示處理：`);
+      lines.push('');
+      chunk.forEach((it, idx) => {
+        lines.push(`${i + idx + 1}. ${it.name || '未知'}  ${formatPhone(it.phone)}`);
+        const timeText = it.reservationTime ? `預約：${it.reservationTime}${it.reservationType ? `（${it.reservationType}）` : ''}` : '預約：時間未填';
+        lines.push(`   ${timeText}`);
+        if (it.source) lines.push(`   名單來源：${it.source}`);
+        if (it.note) lines.push(`   預約備註：${it.note}`);
+      });
+      lines.push('');
+      lines.push(`操作人員：${operator || '櫃檯人員'}`);
+
+      await _sendLeadBatchSummaryText(channelToken, recipients, lines.join('\n'));
+    }
+
+    console.log(`[${functionName}] 建案 ${projectId}：${items.length} 筆待裁決名單，已通知櫃台 ${recipients.length} 人`);
+    return { status: "success", notified: recipients.length };
+
+  } catch (error) {
+    const status = error?.response?.status;
+    const lineMsg = error?.response?.data?.message || error.message;
+    console.error(`[${functionName}] 執行失敗: status=${status}, msg=${lineMsg}`);
+    throw new HttpsError('internal', lineMsg || '通知發送失敗');
+  }
+});
 
 /**
  * [V2] Excel 批次匯入名單（資料移轉強化版）
