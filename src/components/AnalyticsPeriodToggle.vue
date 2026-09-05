@@ -1,82 +1,63 @@
 <template>
   <div class="period-toggle-container">
-    <div class="toggle-and-picker">
-      <!-- 桌面版本：5個按鈕水平排列 -->
-      <v-btn-toggle
-        :model-value="period"
-        @update:model-value="handlePeriodChange"
-        color="primary"
+    <!-- 桌面版本：5 個按鈕水平排列 -->
+    <v-btn-toggle
+      :model-value="period"
+      @update:model-value="handlePeriodChange"
+      color="primary"
+      variant="outlined"
+      density="compact"
+      mandatory
+      divided
+      class="period-toggle d-none d-md-flex"
+    >
+      <v-btn v-for="opt in periodOptions" :key="opt.value" :value="opt.value" size="small" class="period-btn">
+        <v-icon start size="15">{{ opt.icon }}</v-icon>
+        {{ opt.label }}
+      </v-btn>
+    </v-btn-toggle>
+
+    <!-- 手機版本：下拉選擇 -->
+    <v-select
+      :model-value="period"
+      @update:model-value="handlePeriodChange"
+      :items="periodOptions"
+      item-title="label"
+      item-value="value"
+      label="期間"
+      variant="outlined"
+      density="compact"
+      hide-details
+      class="period-select d-md-none"
+    ></v-select>
+
+    <!-- 自訂日期：起訖同一列 -->
+    <div v-if="period === 'custom'" class="custom-date-picker">
+      <v-text-field
+        v-model="customDateRange.start"
+        type="date"
         variant="outlined"
         density="compact"
-        mandatory
-        class="period-toggle d-none d-md-flex"
-      >
-        <v-btn value="today">
-          <v-icon start>mdi-calendar-today</v-icon>
-          本日
-        </v-btn>
-        <v-btn value="week">
-          <v-icon start>mdi-calendar-week</v-icon>
-          本週
-        </v-btn>
-        <v-btn value="month">
-          <v-icon start>mdi-calendar-month</v-icon>
-          本月
-        </v-btn>
-        <v-btn value="custom">
-          <v-icon start>mdi-calendar-range</v-icon>
-          自訂日期
-        </v-btn>
-        <v-btn value="all">
-          <v-icon start>mdi-chart-box-outline</v-icon>
-          累計
-        </v-btn>
-      </v-btn-toggle>
-
-      <!-- 手機版本：下拉選擇 -->
-      <v-select
-        :model-value="period"
-        @update:model-value="handlePeriodChange"
-        :items="periodOptions"
-        item-title="label"
-        item-value="value"
-        label="選擇期間"
+        hide-details
+        class="date-field"
+        @update:model-value="emitCustomPeriod"
+      ></v-text-field>
+      <span class="date-sep">～</span>
+      <v-text-field
+        v-model="customDateRange.end"
+        type="date"
         variant="outlined"
         density="compact"
-        class="d-md-none"
-      ></v-select>
-
-      <!-- 自訂日期選擇器 -->
-      <div v-if="period === 'custom'" class="custom-date-picker mt-3">
-        <v-row>
-          <v-col cols="12" sm="6">
-            <v-text-field
-              v-model="customDateRange.start"
-              type="date"
-              label="開始日期"
-              variant="outlined"
-              density="compact"
-              @update:model-value="emitCustomPeriod"
-            ></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field
-              v-model="customDateRange.end"
-              type="date"
-              label="結束日期"
-              variant="outlined"
-              density="compact"
-              @update:model-value="emitCustomPeriod"
-            ></v-text-field>
-          </v-col>
-        </v-row>
-      </div>
+        hide-details
+        class="date-field"
+        @update:model-value="emitCustomPeriod"
+      ></v-text-field>
     </div>
   </div>
 </template>
 
 <script setup>
-import { defineProps, defineEmits, ref, computed } from 'vue'
+import { ref } from 'vue'
 
 const props = defineProps({
   period: {
@@ -92,11 +73,11 @@ const props = defineProps({
 const emit = defineEmits(['update:period', 'update:custom-date-range'])
 
 const periodOptions = [
-  { value: 'today', label: '本日' },
-  { value: 'week', label: '本週' },
-  { value: 'month', label: '本月' },
-  { value: 'custom', label: '自訂日期' },
-  { value: 'all', label: '累計' },
+  { value: 'today', label: '本日', icon: 'mdi-calendar-today' },
+  { value: 'week', label: '本週', icon: 'mdi-calendar-week' },
+  { value: 'month', label: '本月', icon: 'mdi-calendar-month' },
+  { value: 'custom', label: '自訂', icon: 'mdi-calendar-range' },
+  { value: 'all', label: '累計', icon: 'mdi-chart-box-outline' },
 ]
 
 const customDateRange = ref({
@@ -119,6 +100,7 @@ function formatDateToInput(date) {
  * 處理時間粒度變更
  */
 function handlePeriodChange(newPeriod) {
+  if (!newPeriod) return
   emit('update:period', newPeriod)
 }
 
@@ -135,25 +117,59 @@ function emitCustomPeriod() {
 <style scoped>
 .period-toggle-container {
   display: flex;
-  justify-content: center;
-  margin-bottom: 20px;
-}
-
-.toggle-and-picker {
-  width: 100%;
-  max-width: 900px;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .period-toggle {
-  margin: 0 auto;
-  display: flex;
-  flex-wrap: wrap;
+  height: 32px !important;
+}
+
+.period-btn {
+  font-size: 12.5px !important;
+  letter-spacing: 0;
+  padding: 0 10px !important;
+}
+
+.period-select {
+  min-width: 120px;
+  max-width: 160px;
 }
 
 .custom-date-picker {
-  background: #f5f7fa;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.date-field {
+  width: 150px;
+}
+
+.date-field :deep(input) {
+  font-size: 13px;
+}
+
+.date-sep {
+  font-size: 12px;
+  color: #888;
+}
+
+@media (max-width: 599px) {
+  .period-toggle-container {
+    width: 100%;
+  }
+
+  .custom-date-picker {
+    width: 100%;
+  }
+
+  .date-field {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
 }
 </style>

@@ -713,6 +713,12 @@
                                                 <div class="text-body-2 text-grey-darken-3 pl-1"
                                                     style="white-space: pre-wrap; line-height: 1.6;">{{ log.content }}
                                                 </div>
+
+                                                <!-- 櫃台備註：櫃台可 CRUD／切換銷售可見；銷售僅看到已開放的備註 -->
+                                                <InteractionLogNotes :log="log" :notes="log.counterNotes || []"
+                                                    :project-id="projectId" :doc-id="docId"
+                                                    :can-manage="canEdit"
+                                                    @update:notes="(notes) => handleLogNotesUpdated(log, notes)" />
                                             </v-card-text>
                                         </v-card>
                                     </div>
@@ -1064,6 +1070,7 @@ import {
 } from '@/api';
 import { useToast } from 'vue-toastification';
 import TwCities from '@/assets/TwCities.json';
+import InteractionLogNotes from '@/components/InteractionLogNotes.vue';
 
 /**
  * 格式化銷售人員名稱
@@ -2407,6 +2414,12 @@ const handleSaveLog = async () => {
     } finally {
         isAddingLog.value = false;
     }
+};
+
+// 櫃台備註異動後，直接以子元件合併好的最新備註陣列更新該筆紀錄（免整頁重載）
+const handleLogNotesUpdated = (log, notes) => {
+    const target = (guestData.value.interactionLogs || []).find(l => l.logId === log.logId);
+    if (target) target.counterNotes = Array.isArray(notes) ? notes : [];
 };
 
 // 3. 新增刪除處理函式 (放在 handleSaveLog 附近)

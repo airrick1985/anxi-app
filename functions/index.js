@@ -20219,6 +20219,20 @@ async function _handleFetchCustomerList(data, db) {
       // ✅ [新客/回訪] 計算 互動方式=現場介紹 的次數
       let onSiteVisitCount = 0;
 
+      // ✅ [關鍵字搜尋] 所有洽談紀錄內容 +（僅櫃台）櫃台備註內容，串成一段供前端搜尋
+      const canSeeCounterNotes = isCounter || userProjectSystems.includes('超級管理員');
+      const logSearchParts = [];
+      interactionLogs.forEach(log => {
+        if (!log) return;
+        if (typeof log.content === 'string' && log.content.trim()) logSearchParts.push(log.content.trim());
+        if (canSeeCounterNotes && Array.isArray(log.counterNotes)) {
+          log.counterNotes.forEach(n => {
+            if (n && typeof n.content === 'string' && n.content.trim()) logSearchParts.push(n.content.trim());
+          });
+        }
+      });
+      const logSearchText = logSearchParts.join('\n');
+
       if (interactionLogs.length > 0) {
 
         const sortedLogs = [...interactionLogs].sort((a, b) => {
@@ -20400,6 +20414,9 @@ async function _handleFetchCustomerList(data, db) {
           'latestContent': latestContent,
           'latestLogDate': latestLogDate,
           'latestInteractionType': latestInteractionType,
+
+          // ✅ [關鍵字搜尋] 全部洽談內容（櫃台另含備註內容），僅供前端搜尋比對
+          'logSearchText': logSearchText,
 
           // ✅ 覆寫 拜訪日期：取 interactionLogs 中 互動方式=現場介紹 且日期最晚者
           '拜訪日期': latestOnSiteVisitDate,
@@ -20601,6 +20618,14 @@ exports.customerApi = onCall({
       // ✅ [新增] 刪除洽談紀錄
       case 'deleteInteractionLog':
         return await _handleDeleteInteractionLog(data, db);
+
+      // ✅ [新增] 洽談紀錄櫃台備註 CRUD（含銷售可見/隱藏切換）
+      case 'addInteractionLogNote':
+        return await _handleAddInteractionLogNote(data, db);
+      case 'updateInteractionLogNote':
+        return await _handleUpdateInteractionLogNote(data, db);
+      case 'deleteInteractionLogNote':
+        return await _handleDeleteInteractionLogNote(data, db);
 
       // ✅ [新增] 冷刪除/還原客戶
       case 'softDeleteCustomer':
@@ -21290,7 +21315,7 @@ async function _handleFetchFullCustomersForExport(data, db) {
         latestSalesName: docData.latestSalesName || "",
         latestSalesPhone: docData.latestSalesPhone || "", // ✅ 確保根目錄電話
         profile: docData.profile || {},
-        interactionLogs: docData.interactionLogs || [],
+        interactionLogs: _stripLogCounterNotes(docData.interactionLogs || []),
         submissions: docData.submissions || [], // ✅ 用於關聯「記錄人員電話」
         // ✅ [參考建案] 加入關聯建案資訊
         linkedProjectIds: docData.linkedProjectIds || [],
@@ -21896,8 +21921,8 @@ async function _handleFetchVipGuests(data, db) {
       // ✅ [新增] 回傳計算好的最後提交時間
       lastSubmittedAt: lastSubmittedAt,
 
-      // ✅ [新增] 回傳來人概況所需的欄位
-      interactionLogs: data.interactionLogs || [],
+      // ✅ [新增] 回傳來人概況所需的欄位（櫃台備註屬內部資料，不回傳）
+      interactionLogs: _stripLogCounterNotes(data.interactionLogs || []),
       profile: data.profile || {},
       latestName: data.latestName || '未知',
     };
@@ -22855,6 +22880,9 @@ exports.getCustomerInteractionDetails = onCall(async (request) => {
       }
     }
 
+    // 3-1. 櫃台備註：非櫃台（canEdit=false）檢視者只回傳「銷售可見」的備註，隱藏備註不出伺服器
+    guestData.interactionLogs = _filterLogCounterNotes(guestData.interactionLogs, canEdit);
+
     // 4. 回傳整合資料 (含參考建案欄位)
     return {
       status: "success",
@@ -22973,10 +23001,11 @@ async function _handleUpdateInteractionLog(data, db) {
     const logIndex = logs.findIndex(l => l.logId === logId);
     if (logIndex === -1) throw new Error("找不到該筆洽談紀錄 ID");
 
-    // ✅ 更新紀錄內容
+    // ✅ 更新紀錄內容（counterNotes 為櫃台備註，僅能透過專用 action 異動）
+    const { counterNotes: _ignoredCounterNotes, ...safeLogPayload } = logPayload || {};
     logs[logIndex] = {
       ...logs[logIndex], // 保留原本的 createdAt 等不變資訊
-      ...logPayload,     // 蓋上新的內容 (date, content, tags...)
+      ...safeLogPayload, // 蓋上新的內容 (date, content, tags...)
       recorderName: operatorName,
       recorderPhone: operatorPhone || "", // ✅ 確保電話一併更新
       updatedAt: admin.firestore.Timestamp.now() // 紀錄修改時間
@@ -23031,12 +23060,254 @@ async function _handleDeleteInteractionLog(data, db) {
       lastModifiedBy: operatorPhone || "" // 記錄最後異動者
     });
 
+    // 一併清理該紀錄下所有櫃台備註的 Storage 附件（盡力而為，不阻斷）
+    const removedLog = logs.find(log => log.logId === logId);
+    await _deleteCounterNoteAttachments(_collectCounterNoteAttachmentPaths(removedLog?.counterNotes));
+
     return { status: "success", message: "紀錄已成功刪除" };
 
   } catch (error) {
     console.error(`[_handleDeleteInteractionLog] 錯誤:`, error);
     throw error;
   }
+}
+
+// ============================================================
+// 洽談紀錄「櫃台備註」(interactionLogs[].counterNotes)
+// 資料模型：
+// {
+//   noteId, content, attachments: [{ url, path, name, size, type }],
+//   visibleToSales: boolean,                 // 是否給該筆資料的銷售人員看到
+//   targetRecorderName, targetRecorderPhone, // 被備註的對象（該筆洽談紀錄的記錄人）
+//   targetSalesNames: string[],              // 備註當時該客資的銷售人員
+//   authorName, authorKey, createdAt,        // 誰備註、何時備註
+//   updatedAt, updatedBy,                    // 內容最後編輯時間／人
+//   visibilityUpdatedAt, visibilityUpdatedBy // 可見性最後設定時間／人
+// }
+// 權限：僅該建案「客資系統-櫃台」（或系統/超級管理員）可 CRUD；銷售端只會收到 visibleToSales=true 的備註
+// 時間欄位回傳前一律轉 ISO 字串；前端：InteractionLogNotes.vue
+// ============================================================
+
+/** [內部輔助] 把備註內的 Timestamp 轉 ISO 字串供前端顯示 */
+function _serializeCounterNote(note) {
+  const n = { ...note };
+  ['createdAt', 'updatedAt', 'visibilityUpdatedAt'].forEach((k) => {
+    if (n[k] && typeof n[k].toDate === 'function') n[k] = n[k].toDate().toISOString();
+  });
+  return n;
+}
+
+/** [內部輔助] 依檢視者權限過濾櫃台備註：非櫃台只保留 visibleToSales=true */
+function _filterLogCounterNotes(logs, canSeeHidden) {
+  if (!Array.isArray(logs)) return logs;
+  return logs.map((log) => {
+    if (!log || !Array.isArray(log.counterNotes)) return log;
+    const counterNotes = log.counterNotes
+      .filter((n) => n && (canSeeHidden || n.visibleToSales === true))
+      .map(_serializeCounterNote);
+    return { ...log, counterNotes };
+  });
+}
+
+/** [內部輔助] 移除洽談紀錄內的櫃台備註（匯出、名單、查重等不需要內部備註的路徑） */
+function _stripLogCounterNotes(logs) {
+  if (!Array.isArray(logs)) return logs;
+  return logs.map((log) => {
+    if (!log || log.counterNotes === undefined) return log;
+    const { counterNotes: _omit, ...rest } = log;
+    return rest;
+  });
+}
+
+/**
+ * [內部輔助] 櫃台備註操作權限：系統/超級管理員角色，或該建案「客資系統-櫃台」／「超級管理員」系統權限
+ * @returns {{ name: string }} 操作者資料（供記錄備註人姓名）
+ */
+async function _assertCounterNotePermission(db, projectId, operatorKey) {
+  if (!operatorKey) throw new HttpsError('permission-denied', '缺少操作者身分。');
+  const [userSnap, permSnap] = await Promise.all([
+    db.collection('users').doc(String(operatorKey)).get(),
+    db.collection('userPermissions').doc(String(operatorKey)).get()
+  ]);
+  const userData = userSnap.exists ? userSnap.data() : {};
+  const operator = { name: userData.name || '' };
+  const roles = userData.roles || [];
+  if (roles.includes('系統管理員') || roles.includes('超級管理員')) return operator;
+  const systems = permSnap.exists ? (permSnap.data().permissions?.[projectId]?.systems || []) : [];
+  if (systems.includes('客資系統-櫃台') || systems.includes('超級管理員')) return operator;
+  throw new HttpsError('permission-denied', '權限不足：僅限該建案「客資系統-櫃台」人員管理備註。');
+}
+
+/** [內部輔助] 附件清單白名單化 */
+function _sanitizeCounterNoteAttachments(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((a) => a && typeof a.url === 'string' && a.url)
+    .map((a) => ({
+      url: a.url,
+      path: typeof a.path === 'string' ? a.path : '',
+      name: typeof a.name === 'string' ? a.name : '',
+      size: Number(a.size) || 0,
+      type: typeof a.type === 'string' ? a.type : ''
+    }));
+}
+
+/** [內部輔助] 收集備註附件的 Storage 路徑 */
+function _collectCounterNoteAttachmentPaths(notes) {
+  if (!Array.isArray(notes)) return [];
+  const paths = [];
+  notes.forEach((n) => {
+    (Array.isArray(n?.attachments) ? n.attachments : []).forEach((a) => {
+      if (a && typeof a.path === 'string' && a.path) paths.push(a.path);
+    });
+  });
+  return paths;
+}
+
+/** [內部輔助] 盡力刪除 Storage 檔案（失敗只記錄不拋錯） */
+async function _deleteCounterNoteAttachments(paths) {
+  if (!Array.isArray(paths) || paths.length === 0) return;
+  try {
+    const bucket = getStorage().bucket();
+    await Promise.all(paths.map((p) => bucket.file(p).delete().catch((e) => {
+      console.warn(`[counterNotes] 刪除附件失敗 ${p}:`, e.message);
+    })));
+  } catch (e) {
+    console.warn('[counterNotes] 刪除附件時發生錯誤:', e.message);
+  }
+}
+
+/** [內部輔助] 讀取客戶文件並定位目標洽談紀錄 */
+async function _loadGuestLogForCounterNote(db, docId, logId) {
+  const guestRef = db.collection('vipGuests').doc(docId);
+  const snap = await guestRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', '找不到該客戶資料。');
+  const guestData = snap.data();
+  const logs = Array.isArray(guestData.interactionLogs) ? [...guestData.interactionLogs] : [];
+  const logIndex = logs.findIndex((l) => l && l.logId === logId);
+  if (logIndex === -1) throw new HttpsError('not-found', '找不到該筆洽談紀錄。');
+  return { guestRef, guestData, logs, logIndex };
+}
+
+/**
+ * [內部函式] 新增洽談紀錄櫃台備註
+ * data: { projectId, docId, logId, note: { content, attachments, visibleToSales }, operatorName, operatorKey }
+ * @returns {{ status, message, note }} 新增後的備註（時間為 ISO 字串）
+ */
+async function _handleAddInteractionLogNote(data, db) {
+  const { projectId, docId, logId, note, operatorName, operatorKey } = data || {};
+  if (!projectId || !docId || !logId || !note || typeof note !== 'object') {
+    throw new HttpsError('invalid-argument', '缺少必要參數。');
+  }
+  const content = typeof note.content === 'string' ? note.content.trim() : '';
+  const attachments = _sanitizeCounterNoteAttachments(note.attachments);
+  if (!content && attachments.length === 0) throw new HttpsError('invalid-argument', '備註內容或附件至少需填一項。');
+
+  const operator = await _assertCounterNotePermission(db, projectId, operatorKey);
+  const authorName = operator.name || operatorName || '';
+  const { guestRef, guestData, logs, logIndex } = await _loadGuestLogForCounterNote(db, docId, logId);
+  const log = logs[logIndex];
+  const now = admin.firestore.Timestamp.now();
+  const salesNames = Array.isArray(guestData.latestSalesName)
+    ? guestData.latestSalesName.filter(Boolean)
+    : (guestData.latestSalesName ? [guestData.latestSalesName] : []);
+
+  const newNote = {
+    noteId: `${now.toMillis()}_${Math.random().toString(36).slice(2, 8)}`,
+    content,
+    attachments,
+    visibleToSales: note.visibleToSales === true,
+    targetRecorderName: log.recorderName || '',
+    targetRecorderPhone: log.recorderPhone || '',
+    targetSalesNames: salesNames,
+    authorName,
+    authorKey: String(operatorKey),
+    createdAt: now,
+    updatedAt: null,
+    updatedBy: '',
+    visibilityUpdatedAt: now,
+    visibilityUpdatedBy: authorName
+  };
+
+  const existing = Array.isArray(log.counterNotes) ? log.counterNotes : [];
+  logs[logIndex] = { ...log, counterNotes: [...existing, newNote] };
+  await guestRef.update({
+    interactionLogs: logs,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { status: 'success', message: '備註已新增', note: _serializeCounterNote(newNote) };
+}
+
+/**
+ * [內部函式] 更新洽談紀錄櫃台備註（內容／附件／銷售可見；未提供的欄位不變）
+ * data: { projectId, docId, logId, noteId, patch: { content?, attachments?, visibleToSales? }, operatorName, operatorKey }
+ * @returns {{ status, message, note }}
+ */
+async function _handleUpdateInteractionLogNote(data, db) {
+  const { projectId, docId, logId, noteId, patch, operatorName, operatorKey } = data || {};
+  if (!projectId || !docId || !logId || !noteId || !patch || typeof patch !== 'object') {
+    throw new HttpsError('invalid-argument', '缺少必要參數。');
+  }
+
+  const operator = await _assertCounterNotePermission(db, projectId, operatorKey);
+  const editorName = operator.name || operatorName || '';
+  const { guestRef, logs, logIndex } = await _loadGuestLogForCounterNote(db, docId, logId);
+  const log = logs[logIndex];
+  const notes = Array.isArray(log.counterNotes) ? [...log.counterNotes] : [];
+  const noteIndex = notes.findIndex((n) => n && n.noteId === noteId);
+  if (noteIndex === -1) throw new HttpsError('not-found', '找不到該則備註，可能已被刪除。');
+
+  const now = admin.firestore.Timestamp.now();
+  const updated = { ...notes[noteIndex] };
+  let contentChanged = false;
+  if (typeof patch.content === 'string') { updated.content = patch.content.trim(); contentChanged = true; }
+  if (Array.isArray(patch.attachments)) { updated.attachments = _sanitizeCounterNoteAttachments(patch.attachments); contentChanged = true; }
+  if (contentChanged && !updated.content && (updated.attachments || []).length === 0) {
+    throw new HttpsError('invalid-argument', '備註內容或附件至少需填一項。');
+  }
+  if (typeof patch.visibleToSales === 'boolean' && patch.visibleToSales !== (updated.visibleToSales === true)) {
+    updated.visibleToSales = patch.visibleToSales;
+    updated.visibilityUpdatedAt = now;
+    updated.visibilityUpdatedBy = editorName;
+  }
+  if (contentChanged) {
+    updated.updatedAt = now;
+    updated.updatedBy = editorName;
+  }
+
+  notes[noteIndex] = updated;
+  logs[logIndex] = { ...log, counterNotes: notes };
+  await guestRef.update({
+    interactionLogs: logs,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { status: 'success', message: '備註已更新', note: _serializeCounterNote(updated) };
+}
+
+/**
+ * [內部函式] 刪除洽談紀錄櫃台備註（後端一併清理 Storage 附件）
+ * data: { projectId, docId, logId, noteId, operatorKey }
+ * @returns {{ status, message, deletedAttachments }}
+ */
+async function _handleDeleteInteractionLogNote(data, db) {
+  const { projectId, docId, logId, noteId, operatorKey } = data || {};
+  if (!projectId || !docId || !logId || !noteId) throw new HttpsError('invalid-argument', '缺少必要參數。');
+
+  await _assertCounterNotePermission(db, projectId, operatorKey);
+  const { guestRef, logs, logIndex } = await _loadGuestLogForCounterNote(db, docId, logId);
+  const log = logs[logIndex];
+  const notes = Array.isArray(log.counterNotes) ? log.counterNotes : [];
+  const target = notes.find((n) => n && n.noteId === noteId);
+  if (!target) throw new HttpsError('not-found', '找不到該則備註，可能已被刪除。');
+
+  logs[logIndex] = { ...log, counterNotes: notes.filter((n) => n && n.noteId !== noteId) };
+  await guestRef.update({
+    interactionLogs: logs,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  const deletedAttachments = _sanitizeCounterNoteAttachments(target.attachments);
+  await _deleteCounterNoteAttachments(_collectCounterNoteAttachmentPaths([target]));
+  return { status: 'success', message: '備註已刪除', deletedAttachments };
 }
 
 
@@ -25028,7 +25299,7 @@ exports.checkLeadDuplicates = onCall({
                 source: source,
                 budget: budget
               },
-              interactionLogs: sortedLogs,
+              interactionLogs: _stripLogCounterNotes(sortedLogs),
 
               // 預覽用簡化欄位
               source: source,

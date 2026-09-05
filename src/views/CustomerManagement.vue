@@ -159,7 +159,7 @@
     <v-col cols="12" sm="8" md="9">
       <v-text-field
         v-model="customerListSearch"
-        label="關鍵字搜尋 (姓名、電話、其他聯絡人...)"
+        label="關鍵字搜尋 (姓名、電話、其他聯絡人、洽談紀錄內容、備註...)"
         prepend-inner-icon="mdi-magnify"
         variant="outlined"
         density="comfortable"
@@ -3716,7 +3716,7 @@ const filteredCustomerList = computed(() => {
   }
 
 
-  // 1. 關鍵字過濾 (姓名、電話、銷售人員、其他聯絡人姓名/電話)
+  // 1. 關鍵字過濾 (姓名、電話、銷售人員、其他聯絡人姓名/電話、洽談紀錄內容、櫃台備註內容)
   if (customerListSearch.value) {
     const s = customerListSearch.value.toLowerCase();
     list = list.filter(item => {
@@ -3725,6 +3725,8 @@ const filteredCustomerList = computed(() => {
         (item['電話'] || '').includes(s) ||
         (item['銷售人員'] || '').toLowerCase().includes(s)
       ) return true;
+      // ✅ 洽談紀錄內容與櫃台備註內容（後端依權限組好的 logSearchText；銷售不含隱藏備註）
+      if ((item.logSearchText || '').toLowerCase().includes(s)) return true;
       // ✅ 其他聯絡人的姓名與電話也納入搜尋範圍
       const otherPhones = Array.isArray(item.otherPhones) ? item.otherPhones : [];
       return otherPhones.some(p =>

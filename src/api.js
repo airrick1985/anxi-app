@@ -9004,6 +9004,59 @@ export const deleteInteractionLog = async (projectId, docId, logId, operatorPhon
 };
 
 /**
+ * [API] 新增洽談紀錄的櫃台備註
+ * @param {object} note - { content, attachments, visibleToSales }
+ * @returns {{ status, note }} 新增後的備註（時間為 ISO 字串）
+ */
+export const addInteractionLogNote = async (projectId, docId, logId, note, operatorName, operatorKey) => {
+  try {
+    const result = await customerApiRouter({
+      action: 'addInteractionLogNote',
+      data: { projectId, docId, logId, note, operatorName, operatorKey }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] addInteractionLogNote 失敗:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API] 更新洽談紀錄的櫃台備註（內容／附件／切換銷售可見；未提供的欄位不變）
+ * @param {object} patch - { content?, attachments?, visibleToSales? }
+ * @returns {{ status, note }}
+ */
+export const updateInteractionLogNote = async (projectId, docId, logId, noteId, patch, operatorName, operatorKey) => {
+  try {
+    const result = await customerApiRouter({
+      action: 'updateInteractionLogNote',
+      data: { projectId, docId, logId, noteId, patch, operatorName, operatorKey }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] updateInteractionLogNote 失敗:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * [API] 刪除洽談紀錄的櫃台備註（後端會一併清理 Storage 附件）
+ * @returns {{ status }}
+ */
+export const deleteInteractionLogNote = async (projectId, docId, logId, noteId, operatorKey) => {
+  try {
+    const result = await customerApiRouter({
+      action: 'deleteInteractionLogNote',
+      data: { projectId, docId, logId, noteId, operatorKey }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] deleteInteractionLogNote 失敗:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
  * [API] 冷刪除客戶資料 (針對指定業務人員隱藏)
  */
 export const softDeleteCustomer = async (projectId, docId, salesName, operatorPhone) => {

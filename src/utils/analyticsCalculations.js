@@ -163,14 +163,7 @@ const groupHouseholdsByStatus = (households) => {
  * 計算單戶房屋成交總價
  */
 const getHouseTransactionPrice = (household) => {
-  const price = Number(household.price_transaction_house) || 0
-
-  // DEBUG: 顯示價格計算
-  if (price > 0 && household.unitId === household.unitId) {
-    // 只在有效價格時記錄
-  }
-
-  return price
+  return Number(household.price_transaction_house) || 0
 }
 
 /**
@@ -181,10 +174,27 @@ const getHouseFloorPrice = (household) => {
 }
 
 /**
+ * 建立「戶別 → 該戶車位」索引
+ * Why: 人員排行／溢差價計算會對每位人員 × 每戶重複查車位，用索引把 O(人數×戶數×車位數) 降為一次掃描
+ */
+export const buildParkingIndex = (parkings) => {
+  const index = new Map()
+  ;(parkings || []).forEach(p => {
+    if (!p.buyerUnitId) return
+    if (!index.has(p.buyerUnitId)) index.set(p.buyerUnitId, [])
+    index.get(p.buyerUnitId).push(p)
+  })
+  return index
+}
+
+/**
  * 獲取單戶關聯的車位
+ * @param {Object} household
+ * @param {Array|Map} allParkings - 車位陣列，或 buildParkingIndex() 建立的索引
  */
 export const getUnitParkings = (household, allParkings) => {
-  return allParkings.filter(p => p.buyerUnitId === household.unitId) || []
+  if (allParkings instanceof Map) return allParkings.get(household.unitId) || []
+  return (allParkings || []).filter(p => p.buyerUnitId === household.unitId)
 }
 
 /**
@@ -207,26 +217,7 @@ export const getParkingFloorTotal = (household, allParkings) => {
  * 計算單戶成交總價 (房 + 車位)
  */
 export const getUnitTotalTransactionPrice = (household, allParkings) => {
-  const housePrice = getHouseTransactionPrice(household)
-  const parkingPrice = getParkingTransactionTotal(household, allParkings)
-  const total = housePrice + parkingPrice
-
-  // DEBUG: 記錄第一個成交記錄的價格
-  if (household.salesStatus_backend && household.unitId) {
-    const debugLog = window.__priceDebug = window.__priceDebug || {}
-    if (!debugLog[household.unitId]) {
-      debugLog[household.unitId] = {
-        unitId: household.unitId,
-        name: household.unitName,
-        housePrice,
-        parkingPrice,
-        total,
-        housePriceField: household.price_transaction_house,
-      }
-    }
-  }
-
-  return total
+  return getHouseTransactionPrice(household) + getParkingTransactionTotal(household, allParkings)
 }
 
 /**
@@ -236,6 +227,13 @@ export const getUnitTotalFloorPrice = (household, allParkings) => {
   const housePrice = getHouseFloorPrice(household)
   const parkingPrice = getParkingFloorTotal(household, allParkings)
   return housePrice + parkingPrice
+}
+
+/**
+ * 計算單戶房屋溢差價（成交價 − 底價，不含車位）
+ */
+const getHousePremium = (household) => {
+  return getHouseTransactionPrice(household) - getHouseFloorPrice(household)
 }
 
 /**
@@ -347,21 +345,21 @@ export const calculateHouseholdStats = (households, dateRange = null) => {
     }
   })
 
+  const householdById = new Map(households.map(h => [h.unitId, h]))
+  const sumBy = (unitIds, fn) => Array.from(unitIds).reduce((sum, unitId) => {
+    const household = householdById.get(unitId)
+    return household ? sum + fn(household) : sum
+  }, 0)
+
   // 計算累計已售（所有有任何日期的戶別）
   const cumulativeSold = cumulativeSoldSet.size
-  const cumulativeSoldAmount = Array.from(cumulativeSoldSet)
-    .reduce((sum, unitId) => {
-      const household = households.find(h => h.unitId === unitId)
-      return sum + getHouseTransactionPrice(household)
-    }, 0)
+  const cumulativeSoldAmount = sumBy(cumulativeSoldSet, getHouseTransactionPrice)
+  const cumulativeSoldPremium = sumBy(cumulativeSoldSet, getHousePremium)
 
   // 計算該時間段內的新銷售
   const periodSold = periodSoldSet.size
-  const periodSoldAmount = Array.from(periodSoldSet)
-    .reduce((sum, unitId) => {
-      const household = households.find(h => h.unitId === unitId)
-      return sum + getHouseTransactionPrice(household)
-    }, 0)
+  const periodSoldAmount = sumBy(periodSoldSet, getHouseTransactionPrice)
+  const periodSoldPremium = sumBy(periodSoldSet, getHousePremium)
 
   // 計算未售（總數 - 累計已售）
   const unsold = totalUnfiltered - cumulativeSold
@@ -375,10 +373,12 @@ export const calculateHouseholdStats = (households, dateRange = null) => {
     // 累計已售（所有有任何日期的戶別）
     sold: cumulativeSold,
     soldAmount: cumulativeSoldAmount,
+    soldPremium: cumulativeSoldPremium, // 累計已售溢差價（房屋成交價 − 底價）
 
     // 該時間段內的新銷售
     periodSold,
     periodSoldAmount,
+    periodSoldPremium, // 期間銷售溢差價
 
     // 未售（總數 - 累計已售）
     unsold,
@@ -437,10 +437,13 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
   const totalUnfiltered = parkings.length
   const totalAmountUnfiltered = parkings.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0)
 
+  const householdById = new Map((households || []).map(h => [h.unitId, h]))
+  const parkingPremium = (p) => (Number(p.price_transaction) || 0) - (Number(p.price_floor) || 0)
+
   // 計算累計已售（關聯到有小訂日期且狀態有效的戶別的車位）
   const cumulativeAssigned = parkings.filter(p => {
     if (!p.buyerUnitId || p.buyerUnitId === '') return false
-    const relatedHousehold = households?.find(h => h.unitId === p.buyerUnitId)
+    const relatedHousehold = householdById.get(p.buyerUnitId)
     if (!relatedHousehold || !relatedHousehold.payment_deposit_date) return false
 
     // 檢查狀態是否為有效狀態（小訂、補足、簽約）
@@ -449,6 +452,7 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
   })
   const cumulativeSold = cumulativeAssigned.length
   const cumulativeSoldAmount = cumulativeAssigned.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0)
+  const cumulativeSoldPremium = cumulativeAssigned.reduce((sum, p) => sum + parkingPremium(p), 0)
 
   let filtered = parkings
 
@@ -475,6 +479,7 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
   // 計算該時間段內的新銷售
   const periodSold = assigned.length
   const periodSoldAmount = assigned.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0)
+  const periodSoldPremium = assigned.reduce((sum, p) => sum + parkingPremium(p), 0)
 
   // 計算未售（總車位數 - 累計已售車位數）
   const unsold = totalUnfiltered - cumulativeSold
@@ -488,10 +493,12 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
     // 累計已售
     sold: cumulativeSold,
     soldAmount: cumulativeSoldAmount,
+    soldPremium: cumulativeSoldPremium, // 累計已售車位溢差價（成交價 − 底價）
 
     // 該時間段內的新銷售
     periodSold,
     periodSoldAmount,
+    periodSoldPremium, // 期間銷售車位溢差價
 
     // 未售（總車位數 - 累計已售）
     unsold,
@@ -525,15 +532,8 @@ export const calculatePersonnelStats = (households, parkings, personnel, dateRan
     })
   }
 
-  console.log('[calculatePersonnelStats] 開始計算', {
-    totalSold: filtered.length,
-    dateRange: dateRange ? {
-      start: dateRange.start.toISOString(),
-      end: dateRange.end.toISOString(),
-    } : 'null (全部)',
-  })
-
   const soldHouseholds = filtered
+  const parkingIndex = buildParkingIndex(parkings)
 
   // 名單 = 系統銷售人員 ∪ 成交戶別上出現的所有銷售人員
   // Why: 戶別上填寫的成交人員可能不在系統人員名單內，若只依系統名單統計會漏列
@@ -557,7 +557,7 @@ export const calculatePersonnelStats = (households, parkings, personnel, dateRan
 
     personHouseholds.forEach(h => {
       const statuses = getHouseholdStatuses(h)
-      const totalPrice = getUnitTotalTransactionPrice(h, parkings)
+      const totalPrice = getUnitTotalTransactionPrice(h, parkingIndex)
       const share = salespersonShare(h.salesperson) // 1 / 該戶銷售人員數
 
       // 針對每個狀態分別計算
@@ -584,13 +584,13 @@ export const calculatePersonnelStats = (households, parkings, personnel, dateRan
 
     // 銷售金額 = 該人員所有成交戶別的分攤金額合計
     const totalAmount = personHouseholds.reduce(
-      (sum, h) => sum + getUnitTotalTransactionPrice(h, parkings) * salespersonShare(h.salesperson),
+      (sum, h) => sum + getUnitTotalTransactionPrice(h, parkingIndex) * salespersonShare(h.salesperson),
       0
     )
 
     // 溢差價 = 該人員的分攤溢差價合計
     const premiumAmount = personHouseholds.reduce(
-      (sum, h) => sum + getUnitPremium(h, parkings) * salespersonShare(h.salesperson),
+      (sum, h) => sum + getUnitPremium(h, parkingIndex) * salespersonShare(h.salesperson),
       0
     )
 
@@ -876,14 +876,6 @@ export const calculateAllStatistics = (projectData, period = 'month') => {
   }
 
   const dateRange = getDateRange(period)
-
-  console.log('[calculateAllStatistics] 日期範圍:', {
-    period,
-    dateRange: dateRange ? {
-      start: dateRange.start.toISOString(),
-      end: dateRange.end.toISOString(),
-    } : 'null (全部數據)',
-  })
 
   return {
     period,
