@@ -2125,7 +2125,9 @@ const UnitDetailModal = defineAsyncComponent(loadUnitDetailModal);
 import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
 import RemarkNotesPanel from '@/components/RemarkNotesPanel.vue';
 // ✅ [快速選單] 變更狀態通知 / 標籤編輯 / 戶別圖片燈箱
-const SalesStatusNotifyDialog = defineAsyncComponent(() => import('@/components/SalesStatusNotifyDialog.vue'));
+// SalesStatusNotifyDialog 改靜態匯入：UnitDetailModal 與 SalesAiPanel 也靜態引用同一元件，
+// 動態匯入無法拆成獨立 chunk（Vite 警告），統一為靜態較單純
+import SalesStatusNotifyDialog from '@/components/SalesStatusNotifyDialog.vue';
 import UnitTagEditor from '@/components/UnitTagEditor.vue';
 import UnitImageLightbox from '@/components/UnitImageLightbox.vue';
 import { db } from '@/firebase';
