@@ -72,16 +72,31 @@ export const useSalesAiStore = defineStore('salesAi', () => {
     return { userKey: userStore.user?.key || null, sessionId: userStore.sessionId || null, projectId: projectId.value };
   }
 
+  // 已載入內容所屬的身份（用戶＋建案）。store 是記憶體單例，同一瀏覽器換帳號、
+  // 又開同一個建案時 projectId 沒變，必須靠這個判斷強制重載，否則會看到前一位用戶的對話。
+  const loadedIdentity = ref(null);
+  const currentIdentity = () => `${userStore.user?.key || 'anon'}|${projectId.value || ''}`;
+
+  function resetConversation() {
+    messages.value = [];
+    historyLoaded.value = false;
+    capsLoaded.value = false;
+    capsError.value = null;
+    lastError.value = null;
+    unitContext.value = null;
+    capabilities.value = [];
+    tools.value = [];
+    quickPrompts.value = [];
+    quota.value = { used: 0, limit: 0 };
+    loadedIdentity.value = null;
+  }
+
   async function setProject(id, name) {
-    if (projectId.value !== id) {
+    const userChanged = loadedIdentity.value && loadedIdentity.value !== `${userStore.user?.key || 'anon'}|${id || ''}`;
+    if (projectId.value !== id || userChanged) {
       projectId.value = id;
       projectName.value = name || '';
-      messages.value = [];
-      historyLoaded.value = false;
-      capsLoaded.value = false;
-      capsError.value = null;
-      lastError.value = null;
-      unitContext.value = null;
+      resetConversation();
     } else if (name) {
       projectName.value = name;
     }
@@ -97,8 +112,11 @@ export const useSalesAiStore = defineStore('salesAi', () => {
 
   async function ensureReady() {
     if (!projectId.value) return;
+    // 身份（用戶＋建案）與已載入的不同 → 強制重載，避免沿用前一位用戶的記憶體資料
+    if (loadedIdentity.value !== currentIdentity()) resetConversation();
     if (!historyLoaded.value) await loadHistory();
     if (!capsLoaded.value) await loadCapabilities();
+    loadedIdentity.value = currentIdentity();
   }
 
   async function loadCapabilities() {
