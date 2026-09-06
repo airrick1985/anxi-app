@@ -2,6 +2,16 @@
   "generatedAt": "2026-09-07",
   "entries": [
     {
+      "version": "1.0.733",
+      "date": "2026-09-07",
+      "notes": [
+        {
+          "type": "improve",
+          "text": "微調細部功能"
+        }
+      ]
+    },
+    {
       "version": "1.0.732",
       "date": "2026-09-07",
       "notes": [
