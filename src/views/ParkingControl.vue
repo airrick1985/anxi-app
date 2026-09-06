@@ -294,7 +294,7 @@
                 <span v-else>-</span>
               </template>
               <template v-else-if="col.key === 'status_backend'">
-                <span class="text-no-wrap">可售 {{ summaryRow.availableCount }}・成交 {{ summaryRow.soldCount }}</span>
+                <span class="text-no-wrap">可售 {{ summaryRow.availableCount }}・已簽 {{ summaryRow.signedCount }}・已訂 {{ summaryRow.bookedCount }}・保留 {{ summaryRow.heldCount }}</span>
               </template>
             </td>
           </tr>
@@ -308,8 +308,18 @@
         <template v-slot:item.price_transaction="{ value }">
           {{ formatPrice(value) }}
         </template>
-        <template v-slot:item.status_backend="{ value }">
-          <v-chip :color="getStatusColor(value)" size="small">{{ value || '可售' }}</v-chip>
+        <template v-slot:item.status_backend="{ value, item }">
+          <div class="d-flex align-center flex-wrap" style="gap: 4px;">
+            <v-chip :color="getStatusColor(value)" size="small">{{ value || '可售' }}</v-chip>
+            <!-- 確定度層級：已簽約／已訂未簽／暫時保留 一眼可辨 -->
+            <v-chip v-if="tierOf(item).occupied" size="x-small" variant="tonal" :color="tierOf(item).color">{{ tierOf(item).label }}</v-chip>
+          </div>
+        </template>
+        <template v-slot:item.reservedUntil="{ value, item }">
+          <span v-if="value" :class="isReservationOverdue(item) ? 'text-error font-weight-bold text-no-wrap' : 'text-no-wrap'">
+            {{ toDateKey(value) }}<template v-if="isReservationOverdue(item)">（逾期）</template>
+          </span>
+          <span v-else>-</span>
         </template>
         <template v-slot:item.salesperson="{ value }">
           {{ formatSalespersons(value) }}
@@ -436,6 +446,8 @@ import { useSalesDataStore } from '@/store/salesDataStore';
 const loadXLSX = () => import('xlsx-js-style');
 import { formatSalespersons, normalizeSalespersons } from '@/utils/salespersonUtils';
 import ParkingSpotEditDialog from '@/components/ParkingSpotEditDialog.vue';
+import { classifyCommitment, COMMITMENT_TIERS } from '@/utils/salesStatusGroups';
+import { toDateKey, todayKey } from '@/composables/useParkingRatio';
 import { useStickyHeaderOffset } from '@/composables/useStickyHeaderOffset';
 
 // 接收 projectId 作為 prop
@@ -447,6 +459,7 @@ const props = defineProps({
 });
 
 const router = useRouter();
+const route = useRoute();
 // const emit = defineEmits(['close']); // 不再需要 emit
 const { mdAndUp } = useDisplay();
 const isSearching = ref(false);
@@ -475,6 +488,8 @@ const COLUMN_DEFINITIONS = [
     { key: 'price_floor', title: '車位底價', align: 'end' },   
     { key: 'price_transaction', title: '車位成交價', align: 'end' },
     { key: 'status_backend', title: '銷控後台狀態' },
+    { key: 'reservedBy', title: '保留人' },
+    { key: 'reservedUntil', title: '保留到期' },
     { key: 'status', title: '銷控狀態(報價系統)' },
     { key: 'buyerUnitId', title: '購買戶別' },
     { key: 'buyerName', title: '買方姓名' },
@@ -633,7 +648,13 @@ const filteredItems = computed(() => {
 // =================================================================
 // / 合計列（依目前搜尋／篩選結果）
 // =================================================================
-const SOLD_STATUSES = new Set(['小訂', '補足', '簽約', '已售']);
+// 確定度層級（與房車比速覽相同規則）
+const tierOf = (item) => COMMITMENT_TIERS[classifyCommitment(item?.status_backend)] || COMMITMENT_TIERS.available;
+const isReservationOverdue = (item) => {
+  if (tierOf(item).key !== 'held') return false;
+  const key = toDateKey(item?.reservedUntil);
+  return !!key && key < todayKey();
+};
 
 const summaryRow = computed(() => {
   const items = filteredItems.value;
@@ -647,6 +668,9 @@ const summaryRow = computed(() => {
     priceTransTotal: 0,
     availableCount: 0,
     soldCount: 0,
+    signedCount: 0,
+    bookedCount: 0,
+    heldCount: 0,
   };
   items.forEach(item => {
     acc.areaTotal += Number(item.area) || 0;
@@ -654,9 +678,11 @@ const summaryRow = computed(() => {
     acc.priceListTotal += Number(item.price_list) || 0;
     acc.priceFloorTotal += Number(item.price_floor) || 0;
     acc.priceTransTotal += Number(item.price_transaction) || 0;
-    const status = displayStatus(item);
-    if (status === '可售') acc.availableCount++;
-    else if (SOLD_STATUSES.has(status)) acc.soldCount++;
+    const tier = tierOf(item).key;
+    if (tier === 'available' || tier === 'released') acc.availableCount++;
+    else if (tier === 'signed') { acc.signedCount++; acc.soldCount++; }
+    else if (tier === 'booked') { acc.bookedCount++; acc.soldCount++; }
+    else if (tier === 'held') acc.heldCount++;
   });
   return acc;
 });
@@ -672,6 +698,8 @@ const formatNumber = (value, digits = 0) => {
 // / 生命週期鉤子
 // =================================================================
 onMounted(() => {
+  // 從房車比速覽點選保留車位進來：帶入車位編號當搜尋關鍵字
+  if (route?.query?.spot) search.value = String(route.query.spot);
   projectStore.fetchProjects();
   if (props.projectId) {
     loading.value = true;

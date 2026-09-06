@@ -58,7 +58,7 @@
         <div
           class="spot-content"
           :style="getSpotStyle(spot)"
-          :class="{ 'clickable-spot': previewMode && spot.parkingData, 'multi-selected': multiSelectedIds.length > 1 && multiSelectedIds.includes(spot.id) }"
+          :class="{ 'clickable-spot': previewMode && spot.parkingData, 'multi-selected': multiSelectedIds.length > 1 && multiSelectedIds.includes(spot.id), 'spot-held': isSpotHeld(spot.parkingData), 'spot-booked': isSpotBooked(spot.parkingData) }"
           @click.stop="handleSpotClick(spot)"
         >
           <span 
@@ -68,6 +68,12 @@
           >
             {{ field.value }}
           </span>
+          <!-- 暫時保留逾期角標（後台模式） -->
+          <span
+            v-if="isSpotHeld(spot.parkingData) && getSpotHold(spot.parkingData)?.overdue"
+            class="spot-hold-badge"
+            :title="`保留已逾期 ${getSpotHold(spot.parkingData).daysOverdue} 天`"
+          >逾期</span>
         </div>
       </vue-drag-resize-rotate>
 
@@ -354,6 +360,11 @@
             >
               {{ contextMode === 'sales' ? (selectedDetailSpot.parkingData.status_backend || '未設定') : (selectedDetailSpot.parkingData.status || '未設定') }}
             </span>
+            <span
+              v-if="contextMode === 'sales' && getSpotTierMeta(selectedDetailSpot.parkingData).occupied"
+              class="status-chip tier-chip"
+              :style="{ backgroundColor: getSpotTierMeta(selectedDetailSpot.parkingData).color, color: '#fff', padding: '4px 10px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: '700' }"
+            >{{ getSpotTierMeta(selectedDetailSpot.parkingData).label }}</span>
           </div>
           <div class="d-flex align-center" style="gap: 8px;">
             <button
@@ -505,6 +516,29 @@
                 <span class="info-value">{{ formatSalespersons(selectedDetailSpot.parkingData.salesperson, '、', '—') }}</span>
               </div>
             </div>
+            <!-- 保留資訊：暫時保留層級才顯示 -->
+            <div class="info-section info-section--hold" v-if="contextMode === 'sales' && getSpotHold(selectedDetailSpot.parkingData)">
+              <div class="section-title">保留資訊</div>
+              <div class="info-row">
+                <span class="info-label">保留人</span>
+                <span class="info-value">{{ getSpotHold(selectedDetailSpot.parkingData).reservedBy || selectedDetailSpot.parkingData.buyerName || '—' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">保留到期</span>
+                <span class="info-value" :style="getSpotHold(selectedDetailSpot.parkingData).overdue ? 'color:#c62828;font-weight:700' : ''">
+                  {{ getSpotHold(selectedDetailSpot.parkingData).reservedUntil || '未設定' }}
+                  <template v-if="getSpotHold(selectedDetailSpot.parkingData).overdue">（已逾期 {{ getSpotHold(selectedDetailSpot.parkingData).daysOverdue }} 天）</template>
+                </span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">已保留</span>
+                <span class="info-value">{{ getSpotHold(selectedDetailSpot.parkingData).daysHeld !== null ? `${getSpotHold(selectedDetailSpot.parkingData).daysHeld} 天` : '—' }}</span>
+              </div>
+              <div class="info-row" v-if="getSpotHold(selectedDetailSpot.parkingData).reservedNote">
+                <span class="info-label">保留備註</span>
+                <span class="info-value">{{ getSpotHold(selectedDetailSpot.parkingData).reservedNote }}</span>
+              </div>
+            </div>
           </template>
         </div>
       </div>
@@ -514,6 +548,7 @@
     <ParkingSpotEditDialog
       v-model="showParkingEditDialog"
       :parking="selectedDetailSpot?.parkingData"
+      :tier-overrides="tierOverrides"
       @saved="handleParkingEditSaved"
     />
 
@@ -544,6 +579,8 @@ import {
 } from '@mdi/js';
 import { useToast } from 'vue-toastification';
 import { formatSalespersons } from '@/utils/salespersonUtils';
+import { classifyCommitment, COMMITMENT_TIERS } from '@/utils/salesStatusGroups';
+import { buildHeldEntry, todayKey } from '@/composables/useParkingRatio';
 import { useUserStore } from '@/store/user';
 import ParkingSpotEditDialog from '@/components/ParkingSpotEditDialog.vue';
 
@@ -576,6 +613,11 @@ export default {
       default: () => ({})
     },
     statusColors: {
+      type: Object,
+      default: () => ({})
+    },
+    // 建案在銷控設定指定的確定度層級覆蓋表 { 狀態名稱: tier }
+    tierOverrides: {
       type: Object,
       default: () => ({})
     },
@@ -693,6 +735,16 @@ export default {
       // parkingData 與 allParkingData 內為同一物件參照，就地合併即可同步畫布與詳細視窗
       const { docId, id, ...fields } = updated;
       Object.assign(selectedDetailSpot.value.parkingData, fields);
+    };
+
+    // 車位確定度層級（已簽約／已訂未簽／暫時保留…）與保留資訊：供畫布虛線框、逾期角標與詳情視窗辨識
+    const getSpotTier = (data) => classifyCommitment(data?.status_backend, props.tierOverrides || {});
+    const getSpotTierMeta = (data) => COMMITMENT_TIERS[getSpotTier(data)] || COMMITMENT_TIERS.available;
+    const isSpotHeld = (data) => props.displayMode === 'backend' && !!data && getSpotTier(data) === 'held';
+    const isSpotBooked = (data) => props.displayMode === 'backend' && !!data && getSpotTier(data) === 'booked';
+    const getSpotHold = (data) => {
+      if (!data || getSpotTier(data) !== 'held') return null;
+      return buildHeldEntry(data, 'held', todayKey());
     };
 
     const handleSpotClick = (spot) => {
@@ -1393,6 +1445,7 @@ export default {
       getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, zoomIn, zoomOut, isCanvasLoading, propertiesPanelStyle, onPropertiesPanelDragStart,
       showDetailModal, selectedDetailSpot, handleSpotClick, closeDetailModal, getDetailStatusStyle,
       canEditParking, showParkingEditDialog, openParkingEditDialog, handleParkingEditSaved,
+      getSpotTier, getSpotTierMeta, isSpotHeld, isSpotBooked, getSpotHold,
       formatSalespersons,
       canvasWidth, canvasHeight,
       showPrintDialog, printOrientation, recommendedOrientation, printModeLabel, openPrintDialog, closePrintDialog, doPrint,
@@ -1404,6 +1457,34 @@ export default {
 </script>
 
 <style scoped>
+/* 確定度辨識：暫時保留 → 虛線框；逾期 → 右上角紅色角標（後台模式） */
+.spot-content.spot-held {
+  border-style: dashed;
+  position: relative;
+}
+.spot-content.spot-booked {
+  border-style: solid;
+}
+.spot-hold-badge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  background: #c62828;
+  color: #fff;
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 0 0 0 6px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  animation: spot-hold-blink 1.2s ease-in-out infinite;
+}
+@keyframes spot-hold-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.info-section--hold .section-title { color: #b26a00; }
 .parking-canvas-container {
   position: relative;
   width: 100%;

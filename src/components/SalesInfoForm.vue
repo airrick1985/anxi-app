@@ -664,6 +664,7 @@ import axios from 'axios';
 import { useDisplay } from 'vuetify';
 import TwCitiesData from '@/assets/TwCities.json' with { type: 'json' };
 import { normalizeSalespersons } from '@/utils/salespersonUtils';
+import { getUnitDealParkings } from '@/utils/salesStatusGroups';
 import UnitTagEditor from './UnitTagEditor.vue';
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
 const CustomerCardImportDialog = defineAsyncComponent(() => import('./CustomerCardImportDialog.vue'));
@@ -1152,7 +1153,8 @@ const ownedParkingSpots = computed(() => {
 
   // 2. 否則才從原始資料庫列表過濾 (原本的邏輯)
   if (!props.allParkingData || !editableData.value?.unitId) return [];
-  return props.allParkingData.filter(parking => parking.buyerUnitId === editableData.value.unitId);
+  // 準備購買（保留等）的車位不屬於本戶成交車位，不列入編輯清單（避免儲存時被改成戶別狀態）
+  return getUnitDealParkings(editableData.value.unitId, props.allParkingData);
 });
 
 const houseBasePrice = computed(() => editableData.value?.price_floor_house_total || 0);

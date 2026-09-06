@@ -433,6 +433,7 @@ import ParkingEditModal from '@/components/ParkingEditModal.vue';
 // ✅ [改版] 付款表改為系統內預覽 + PDF/EXCEL 下載（取代 Google Sheet 流程）
 import PaymentSchedulePreviewDialog from '@/components/PaymentSchedulePreviewDialog.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
+import { getUnitDealParkings } from '@/utils/salesStatusGroups';
 
 import { useProjectStore } from '@/store/projectStore';
 
@@ -505,7 +506,8 @@ const ownedParkingSpots = computed(() => {
     const currentUnitId = props.unitData?.unitId || formData.value?.unitId;
     if (!allParkings.length || !currentUnitId) return [];
     
-    return allParkings.filter(parking => parking.buyerUnitId === currentUnitId);
+    // 準備購買（保留等）的車位不計入付款表
+    return getUnitDealParkings(currentUnitId, allParkings);
 });
 
 const accountSections = computed(() => {

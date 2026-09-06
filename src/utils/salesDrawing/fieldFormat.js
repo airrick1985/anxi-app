@@ -8,6 +8,7 @@
  */
 import { COLUMN_DEFINITIONS, UNIT_EXPORT_COMPUTED_COLUMNS, DRAWING_SHORT_LABELS } from '@/constants/householdColumns';
 import { normalizeSalespersons } from '@/utils/salespersonUtils';
+import { isDealParking } from '@/utils/salesStatusGroups';
 
 const TITLE_MAP = new Map([...COLUMN_DEFINITIONS, ...UNIT_EXPORT_COMPUTED_COLUMNS].map(c => [c.key, c.title]));
 
@@ -125,7 +126,7 @@ export function formatFieldValue(fieldKey, raw, opts = {}) {
  */
 export function withDerivedFields(unit, parkings = []) {
   const item = { ...unit };
-  const mySpots = (parkings || []).filter(p => p && p.buyerUnitId === unit.unitId);
+  const mySpots = (parkings || []).filter(p => isDealParking(p, unit.unitId));
   const parkingTransTotal = mySpots.reduce((s, p) => s + (Number(p.price_transaction) || 0), 0);
   const parkingFloorTotal = mySpots.reduce((s, p) => s + (Number(p.price_floor) || 0), 0);
   item.parking_trans_total = parkingTransTotal;

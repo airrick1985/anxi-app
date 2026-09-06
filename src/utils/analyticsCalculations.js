@@ -14,6 +14,7 @@
  */
 
 import { normalizeSalespersons, salespersonsInclude, salespersonShare } from './salespersonUtils'
+import { isDealParking } from './salesStatusGroups'
 
 /**
  * 將各種日期格式轉換為 Date 對象
@@ -180,7 +181,8 @@ const getHouseFloorPrice = (household) => {
 export const buildParkingIndex = (parkings) => {
   const index = new Map()
   ;(parkings || []).forEach(p => {
-    if (!p.buyerUnitId) return
+    // 準備購買（保留等）的車位不算該戶成交車位
+    if (!isDealParking(p)) return
     if (!index.has(p.buyerUnitId)) index.set(p.buyerUnitId, [])
     index.get(p.buyerUnitId).push(p)
   })
@@ -194,7 +196,7 @@ export const buildParkingIndex = (parkings) => {
  */
 export const getUnitParkings = (household, allParkings) => {
   if (allParkings instanceof Map) return allParkings.get(household.unitId) || []
-  return (allParkings || []).filter(p => p.buyerUnitId === household.unitId)
+  return (allParkings || []).filter(p => isDealParking(p, household.unitId))
 }
 
 /**
@@ -442,7 +444,7 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
 
   // 計算累計已售（關聯到有小訂日期且狀態有效的戶別的車位）
   const cumulativeAssigned = parkings.filter(p => {
-    if (!p.buyerUnitId || p.buyerUnitId === '') return false
+    if (!isDealParking(p)) return false
     const relatedHousehold = householdById.get(p.buyerUnitId)
     if (!relatedHousehold || !relatedHousehold.payment_deposit_date) return false
 
@@ -474,7 +476,7 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
     filtered = parkings.filter(p => unitIdsInRange.has(p.buyerUnitId))
   }
 
-  const assigned = filtered.filter(p => p.buyerUnitId && p.buyerUnitId !== '')
+  const assigned = filtered.filter(p => isDealParking(p))
 
   // 計算該時間段內的新銷售
   const periodSold = assigned.length

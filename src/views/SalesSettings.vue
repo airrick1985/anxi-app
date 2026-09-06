@@ -326,7 +326,7 @@
 
                 <v-list-item-title class="font-weight-bold">{{ param.statusName }}</v-list-item-title>
                 <v-list-item-subtitle>
-                  排序: {{ param.order }} | 色碼: {{ param.colorCode }}
+                  排序: {{ param.order }} | 色碼: {{ param.colorCode }} | 層級: {{ tierLabelOf(param) }}
                 </v-list-item-subtitle>
                 
                 <template v-slot:append>
@@ -1630,6 +1630,20 @@
           required
         >
     </v-text-field>
+
+        <!-- 確定度層級：房車比速覽／車位保留辨識用；預設依狀態名稱自動判斷 -->
+        <v-select
+          v-model="editingParameter.commitmentTier"
+          :items="COMMITMENT_TIER_OPTIONS"
+          item-title="title"
+          item-value="value"
+          label="確定度層級（房車比／車位保留辨識）"
+          variant="outlined"
+          density="compact"
+          class="mt-4"
+          :hint="`依名稱自動判斷為「${autoTierLabel}」；指定後以指定為準`"
+          persistent-hint
+        ></v-select>
       </v-form>
     </v-card-text>
     
@@ -1752,6 +1766,7 @@
 </template>
 
 <script setup>
+import { COMMITMENT_TIER_OPTIONS, COMMITMENT_TIERS, inferCommitmentTier } from '@/utils/salesStatusGroups';
 import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick, defineAsyncComponent } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useRoute, useRouter } from 'vue-router';
@@ -2267,17 +2282,30 @@ const setupParamsListener = () => {
   });
 };
 
+// 確定度層級顯示（列表與編輯表單共用）
+const autoTierLabel = computed(() => {
+  const t = inferCommitmentTier(editingParameter.value?.statusName);
+  return COMMITMENT_TIERS[t]?.label || '可售';
+});
+const tierLabelOf = (param) => {
+  const forced = param?.commitmentTier;
+  if (forced && forced !== 'auto' && COMMITMENT_TIERS[forced]) return `${COMMITMENT_TIERS[forced].label}（指定）`;
+  const t = inferCommitmentTier(param?.statusName);
+  return `${COMMITMENT_TIERS[t]?.label || '可售'}（自動）`;
+};
+
 const openParameterDialog = () => {
   editingParameter.value = {
     statusName: '',
     colorCode: '#FFFFFF',
     order: (salesParameters.value.length + 1) * 10,
+    commitmentTier: 'auto',
   };
   parameterDialog.value = true;
 };
 
 const editParameter = (param) => {
-  editingParameter.value = { ...param };
+  editingParameter.value = { commitmentTier: 'auto', ...param };
   parameterDialog.value = true;
 };
 

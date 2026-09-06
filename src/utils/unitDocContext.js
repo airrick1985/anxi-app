@@ -7,6 +7,7 @@
 
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 import { isSpecialContractType } from '@/composables/usePriceFormula';
+import { getUnitDealParkings } from '@/utils/salesStatusGroups';
 
 /** Firestore Timestamp / Date / 字串 → Date（無效回 null） */
 export function toDateSafe(value) {
@@ -23,7 +24,7 @@ export function getOwnedParkingSpots(unitData, allParkings = []) {
   if (unitData && Array.isArray(unitData['持有車位'])) return unitData['持有車位'];
   const unitId = unitData?.unitId;
   if (!unitId || !Array.isArray(allParkings)) return [];
-  return allParkings.filter(p => p.buyerUnitId === unitId);
+  return getUnitDealParkings(unitId, allParkings);
 }
 
 /** 車位顯示字串：B2-058(法定/坡道平面/550*250) */

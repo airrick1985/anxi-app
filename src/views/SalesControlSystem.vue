@@ -22,7 +22,7 @@
 
       <span class="toolbar-divider" aria-hidden="true"></span>
 
-      <!-- 群組 2：檢視模式 + 篩選 -->
+      <!-- 群組 2：檢視模式（篩選鈕已移至網格上方全域搜尋旁） -->
       <div class="toolbar-group">
         <v-btn-toggle
           v-model="viewFormat"
@@ -35,20 +35,6 @@
           <v-btn value="list" prepend-icon="mdi-view-list">列表</v-btn>
         </v-btn-toggle>
 
-        <v-btn
-          :color="showFilterPanel ? 'primary' : 'black'"
-          :variant="showFilterPanel ? 'flat' : 'tonal'"
-          prepend-icon="mdi-filter-variant"
-          @click="showFilterPanel = !showFilterPanel"
-        >
-          篩選
-          <v-badge
-            v-if="activeFilterCount > 0"
-            color="error"
-            :content="activeFilterCount"
-            inline
-          ></v-badge>
-        </v-btn>
       </div>
 
       <!-- 群組 3：操作按鈕（推到右側） -->
@@ -122,6 +108,35 @@
           </span>
         </v-tooltip>
 
+        <!-- 全案概況（常駐）：全案戶數（住家／店面）與車位總數，點擊開速覽面板 -->
+        <button
+          v-if="currentViewMode === 'sales' && projectOverviewText"
+          type="button"
+          class="project-overview-chip"
+          title="全案概況（點擊查看房車比速覽）"
+          @click="isParkingRatioVisible = true"
+        >
+          <v-icon size="16" class="mr-1">mdi-office-building-outline</v-icon>
+          <span>{{ projectOverviewText }}</span>
+        </button>
+
+        <!-- 房車比速覽徽章：sales 模式常駐，車位不足變紅、吃緊變黃，點擊開速覽面板 -->
+        <v-tooltip v-if="currentViewMode === 'sales' && parkingRatioLevel !== 'none'" location="bottom">
+          <template #activator="{ props: ttp }">
+            <v-btn
+              v-bind="ttp"
+              :color="parkingRatioMeta.color"
+              variant="tonal"
+              size="small"
+              class="parking-ratio-badge"
+              :class="{ 'parking-ratio-badge--danger': parkingRatioLevel === 'danger' }"
+              :prepend-icon="parkingRatioMeta.icon"
+              @click="isParkingRatioVisible = true"
+            >{{ parkingRatioBadgeText }}</v-btn>
+          </template>
+          <span>{{ parkingRatioSummaryText }}（點擊查看房車比速覽）</span>
+        </v-tooltip>
+
         <span class="toolbar-divider" aria-hidden="true"></span>
 
         <v-tooltip location="bottom">
@@ -178,6 +193,32 @@
 
     <div class="content-wrapper">
 
+      <!-- 📱 全案概況（常駐）：手機沒有頂部工具列，固定顯示在網格上方；點擊開速覽面板 -->
+      <button
+        v-if="isMobile && currentViewMode === 'sales' && projectOverviewText"
+        type="button"
+        class="project-overview-strip mb-2"
+        @click="isParkingRatioVisible = true"
+      >
+        <v-icon size="16">mdi-office-building-outline</v-icon>
+        <span class="project-overview-strip__text">{{ projectOverviewText }}</span>
+        <span v-if="parkingRatioBadgeText" class="project-overview-strip__ratio">{{ parkingRatioBadgeText }}</span>
+        <v-icon size="14">mdi-chevron-right</v-icon>
+      </button>
+
+      <!-- 📱 房車比提醒橫條：手機沒有頂部工具列，車位吃緊／不足時在網格上方提醒，點擊開速覽面板 -->
+      <button
+        v-if="isMobile && currentViewMode === 'sales' && (parkingRatioLevel === 'danger' || parkingRatioLevel === 'warn')"
+        type="button"
+        class="parking-ratio-banner mb-2"
+        :class="`parking-ratio-banner--${parkingRatioLevel}`"
+        @click="isParkingRatioVisible = true"
+      >
+        <v-icon size="18">{{ parkingRatioMeta.icon }}</v-icon>
+        <span class="parking-ratio-banner__text">{{ parkingRatioMeta.label }}：{{ parkingRatioBadgeText }}</span>
+        <v-icon size="16">mdi-chevron-right</v-icon>
+      </button>
+
       <!-- ✅ 網格上方列：住家/店面分段開關（網格模式）+ 全域關鍵字搜尋（列表/網格常駐） -->
       <div class="grid-topbar mb-2">
         <div
@@ -205,7 +246,7 @@
         <div class="global-search-bar">
           <v-text-field
             v-model="filters.keyword"
-            placeholder="全域搜尋：戶別、買方、電話、銷售人員、備註…（可空白分隔多關鍵字）"
+            placeholder="全域搜尋：戶別、買方、電話、銷售人員、備註、車位編號／車位備註…（可空白分隔多關鍵字）"
             prepend-inner-icon="mdi-magnify"
             variant="solo"
             density="compact"
@@ -222,6 +263,23 @@
             </template>
           </v-text-field>
         </div>
+
+        <!-- 篩選鈕：緊鄰全域搜尋（桌面版；手機版沿用底部導覽列的篩選鈕） -->
+        <v-btn
+          class="d-none d-md-inline-flex global-search-filter-btn"
+          :color="showFilterPanel ? 'primary' : 'black'"
+          :variant="showFilterPanel ? 'flat' : 'tonal'"
+          prepend-icon="mdi-filter-variant"
+          @click="showFilterPanel = !showFilterPanel"
+        >
+          篩選
+          <v-badge
+            v-if="activeFilterCount > 0"
+            color="error"
+            :content="activeFilterCount"
+            inline
+          ></v-badge>
+        </v-btn>
       </div>
 
       <v-expand-transition>
@@ -1315,32 +1373,23 @@
       @data-updated="handleRefreshData"
     />
 
-    <!-- 實價登錄申報 — 首次載入 Snackbar 提醒 -->
-    <v-snackbar
-      v-model="showReportSnackbar"
-      :timeout="12000"
-      :color="overdueReportCount > 0 ? 'error' : 'warning'"
-      location="top right"
-      multi-line
-      max-width="420"
+    <!-- 實價登錄申報 — 角落常駐跑馬燈：不遮擋操作區、不自動消失；點擊開清單 -->
+    <button
+      v-if="currentViewMode === 'sales' && pendingReportUnits.length > 0"
+      type="button"
+      class="report-ticker"
+      :class="{ 'report-ticker--overdue': overdueReportCount > 0 }"
+      :title="reportTickerText"
+      aria-live="polite"
+      @click="showReportReminderDialog = true"
     >
-      <div class="d-flex align-center">
-        <v-icon start size="large">mdi-file-document-alert-outline</v-icon>
-        <div class="text-body-2">
-          有 <strong>{{ pendingReportUnits.length }}</strong> 筆戶別已簽約但尚未填入申報書序號。
-          <template v-if="overdueReportCount > 0">
-            其中 <strong>{{ overdueReportCount }}</strong> 筆已逾 30 天，可能面臨罰則。
-          </template>
-        </div>
-      </div>
-      <template #actions>
-        <v-btn variant="text" @click="showReportSnackbar = false; showReportReminderDialog = true">
-          查看詳情
-        </v-btn>
-        <v-btn icon="mdi-close" variant="text" size="small"
-          @click="showReportSnackbar = false" />
-      </template>
-    </v-snackbar>
+      <v-icon size="16" class="report-ticker__icon">mdi-file-document-alert-outline</v-icon>
+      <span class="report-ticker__viewport">
+        <span class="report-ticker__track" :style="{ animationDuration: reportTickerDuration }">
+          {{ reportTickerText }}
+        </span>
+      </span>
+    </button>
 
     <!-- 實價登錄申報提醒清單 -->
     <v-dialog v-model="showReportReminderDialog" max-width="960" scrollable>
@@ -1953,7 +2002,7 @@
             </div>
           </v-overlay>
           
-         <ParkingCanvas
+         <ParkingCanvas :tier-overrides="parkingTierOverrides"
             v-if="!isParkingCanvasLoading && activeParkingCanvasFloorPlan"
             :project-id="projectId"
             :floor-plan="activeParkingCanvasFloorPlan"
@@ -2024,6 +2073,18 @@
       :price-mode="priceDisplayMode"
     />
 
+    <!-- 房車比速覽面板（首次開啟才掛載，之後常駐） -->
+    <ParkingRatioDialog
+      v-if="parkingRatioMounted"
+      v-model="isParkingRatioVisible"
+      :households="salesHouseholds"
+      :parkings="salesParkings"
+      :parameters="salesParameters"
+      :project-name="projectName"
+      @open-parking="openParkingFromRatio"
+      @go-parking-control="openParkingFromRatio()"
+    />
+
     <!-- 統計分析面板 -->
     <AnalyticsPanel
       v-if="lazyMounted.analytics"
@@ -2067,6 +2128,8 @@ import {
 
 import { useToast, POSITION } from 'vue-toastification';
 import { useSalesDataStore } from '@/store/salesDataStore';
+import { useParkingRatio, PARKING_RATIO_LEVEL_META } from '@/composables/useParkingRatio';
+import { buildCommitmentOverrides, isDealParking } from '@/utils/salesStatusGroups';
 import { useProjectStore } from '@/store/projectStore';
 // ✅ [效能] xlsx-js-style 約 1.3MB，只有匯出 / 上傳 Excel 時才需要 → 改為動態載入，不再隨銷控頁進入時下載
 const loadXLSX = () => import('xlsx-js-style');
@@ -2107,6 +2170,7 @@ import PaymentRecordsPanel from '@/components/PaymentRecordsPanel.vue';
 const CancelledPurchaseManager = defineAsyncComponent(() => import('@/components/CancelledPurchaseManager.vue'));
 const SalesBotChat = defineAsyncComponent(() => import('@/components/SalesBotChat.vue'));
 const AnalyticsPanel = defineAsyncComponent(() => import('@/components/AnalyticsPanel.vue'));
+const ParkingRatioDialog = defineAsyncComponent(() => import('@/components/ParkingRatioDialog.vue'));
 const ActivityMessageViewer = defineAsyncComponent(() => import('@/components/ActivityMessageViewer.vue'));
 const UnitDataExportDialog = defineAsyncComponent(() => import('@/components/UnitDataExportDialog.vue'));
 const SalesGridDownloadDialog = defineAsyncComponent(() => import('@/components/SalesGridDownloadDialog.vue'));
@@ -2174,6 +2238,7 @@ const moreToolGroups = computed(() => {
         { icon: 'mdi-tray-arrow-up', label: '上傳EXCEL', action: () => { uploadDialog.value = true; } },
         { icon: 'mdi-table-pivot', label: '資料透視', action: () => { isSalesPivotVisible.value = true; } },
         { icon: 'mdi-chart-box', label: '統計分析', action: () => { isAnalyticsPanelVisible.value = true; } },
+        { icon: 'mdi-car-multiple', label: '房車比速覽', action: () => { isParkingRatioVisible.value = true; } },
       ],
     },
     {
@@ -2232,6 +2297,7 @@ const desktopToolGroups = computed(() => {
     { icon: 'mdi-tray-arrow-up', label: '上傳戶別EXCEL', action: () => { uploadDialog.value = true; } },
     { icon: 'mdi-table-pivot', label: '資料透視', action: () => { isSalesPivotVisible.value = true; } },
     { icon: 'mdi-chart-box', label: '統計分析', action: () => { isAnalyticsPanelVisible.value = true; } },
+    { icon: 'mdi-car-multiple', label: '房車比速覽', action: () => { isParkingRatioVisible.value = true; } },
   );
   const manageTools = [
     { icon: 'mdi-account-cancel', label: '退戶記錄管理', action: () => { isCancelledPurchaseDialogVisible.value = true; } },
@@ -2412,9 +2478,10 @@ const buildSearchBlob = (item) => {
   };
   // 依欄位定義攤平所有欄位
   for (const col of COLUMN_DEFINITIONS) pushVal(item[col.key]);
-  // 補上衍生欄位（目前檢視模式狀態、車位編號）
+  // 補上衍生欄位（目前檢視模式狀態、車位編號、綁定車位的備註／狀態等）
   pushVal(item.status);
   pushVal(item.parking_spots);
+  pushVal(item.parking_search_text);
   // ✅ [新增] 文字標籤：標籤文字納入搜尋
   for (const tag of getUnitTags(item)) parts.push(tag.text);
   return parts.join(' ').toLowerCase();
@@ -3847,10 +3914,15 @@ const pendingReportUnits = computed(() => {
 });
 const overdueReportCount = computed(() => pendingReportUnits.value.filter(u => u.overdue).length);
 const showReportReminderDialog = ref(false);
-// Snackbar 一次性提醒：載入後若有待申報戶別則秀一次；關閉後同 session 不再重複
-const showReportSnackbar = ref(false);
-const reportSnackbarShown = ref(false);  // 避免資料重新到貨時重複觸發
-// 註：watch 移至 currentViewMode 宣告之後，避免 immediate:true 同步觸發時 TDZ 錯誤
+// 角落跑馬燈文字：常駐顯示（sales 模式且有待申報戶別時），捲動時長依字數調整
+const reportTickerText = computed(() => {
+  const total = pendingReportUnits.value.length;
+  const overdue = overdueReportCount.value;
+  let text = `有 ${total} 筆戶別已簽約但尚未填入申報書序號`;
+  if (overdue > 0) text += `，其中 ${overdue} 筆已逾 30 天，可能面臨罰則`;
+  return `${text}，點此查看詳情`;
+});
+const reportTickerDuration = computed(() => `${Math.max(12, reportTickerText.value.length * 0.45)}s`);
 
 const isRefreshing = ref(false);
 const isDevelopment = computed(() => import.meta.env.DEV);
@@ -3889,6 +3961,21 @@ const userStore = useUserStore();
 
 const isAIAssistantDialogVisible = ref(false);
 const isAnalyticsPanelVisible = ref(false);
+
+// 房車比速覽：工具列常駐徽章（手機為提醒橫條）+ 面板（首次開啟才掛載元件）
+// 統計直接以 salesDataStore 的戶別／車位即時計算，資料異動時徽章顏色會自動更新
+const isParkingRatioVisible = ref(false);
+const parkingRatioMounted = ref(false);
+watch(isParkingRatioVisible, (v) => { if (v) parkingRatioMounted.value = true; });
+const {
+  level: parkingRatioLevel,
+  badgeText: parkingRatioBadgeText,
+  summaryText: parkingRatioSummaryText,
+  overviewText: projectOverviewText,
+} = useParkingRatio(salesHouseholds, salesParkings, computed(() => ({ parameters: salesParameters.value })));
+const parkingRatioMeta = computed(() => PARKING_RATIO_LEVEL_META[parkingRatioLevel.value] || PARKING_RATIO_LEVEL_META.none);
+// 建案指定的確定度層級覆蓋表（銷控狀態參數 commitmentTier），傳給車位圖與編輯對話框
+const parkingTierOverrides = computed(() => buildCommitmentOverrides(salesParameters.value));
 
 // ✅ [效能] 對話框型大元件「首次開啟才掛載、之後常駐」
 // 這些元件的開啟初始化都掛在非 immediate 的 watch(props.show / modelValue) 上，
@@ -3984,18 +4071,6 @@ function goToQuoteSettingsDirect() {
 const projectStore = useProjectStore();
 const projectId = computed(() => route.params.projectName);
 const currentViewMode = computed(() => route.meta.viewMode || 'sales');
-
-// 實價登錄提醒：watch 必須放在 currentViewMode 之後 (immediate:true 同步觸發時會讀 currentViewMode.value)
-watch(pendingReportUnits, (list) => {
-  if (
-    currentViewMode.value === 'sales'
-    && !reportSnackbarShown.value
-    && list.length > 0
-  ) {
-    showReportSnackbar.value = true;
-    reportSnackbarShown.value = true;
-  }
-}, { immediate: true });
 
 const pageTitle = computed(() => (currentViewMode.value === 'quote' ? '報價系統' : '銷控系統'));
 const itemCount = computed(() => quoteStore.itemCount);
@@ -4255,12 +4330,21 @@ const customPriceSort = (a, b) => {
 // 修改 tableItems computed
 const buildParkingMap = (parkings) => {
   const parkingMap = {};
+  // 所有綁定戶別的車位（含準備購買／保留／已售等任何狀態）：只供全域搜尋用，不影響金額計算
+  const allBound = {};
   parkings.forEach(p => {
-    if (p.buyerUnitId) {
+    const boundKey = p && p.buyerUnitId !== null && p.buyerUnitId !== undefined ? String(p.buyerUnitId).trim() : '';
+    if (boundKey) {
+      if (!allBound[boundKey]) allBound[boundKey] = [];
+      allBound[boundKey].push(p);
+    }
+    // 準備購買（保留等）的車位不算該戶成交車位，不計入成交／底價
+    if (isDealParking(p)) {
       if (!parkingMap[p.buyerUnitId]) parkingMap[p.buyerUnitId] = [];
       parkingMap[p.buyerUnitId].push(p);
     }
   });
+  Object.defineProperty(parkingMap, 'allBound', { value: allBound, enumerable: false });
   return parkingMap;
 };
 
@@ -4279,6 +4363,15 @@ const enrichUnitItem = (unit, parkingMap) => {
     // 車位編號（自然排序、逗號分隔）與車位數量：列表「車位編號」欄、合計列與匯出共用
     item.parking_spots = mySpots.map(p => p.spotId ?? '').filter(Boolean).sort(naturalSort).join(',');
     item.parking_count = mySpots.length;
+    // 綁定車位的可搜尋文字：全域搜尋可用車位備註／狀態／形式／保留人等找到戶別
+    // 例：B6-28 後台狀態「已售」、備註「C-17 加購 第二車」、購買戶別 C-17 → 搜「第二車」可篩到 C-17
+    // 用「所有綁定該戶的車位」（不分成交／準備購買狀態），避免準備購買的車位被漏掉
+    const boundSpots = (parkingMap.allBound && parkingMap.allBound[String(unit.unitId ?? '').trim()]) || mySpots;
+    item.parking_search_text = boundSpots.map(p => [
+      p.spotId, p.number, p.floor, p.type, p.type2, p.size,
+      p.status_backend, p.status, p.buyerName, formatSalespersons(p.salesperson),
+      p.reservedBy, p.reservedNote, p.remarks, p.price_transaction,
+    ].filter(v => v !== null && v !== undefined && v !== '').join(' ')).join(' ');
 
     // 房屋成交價
     const houseTrans = Number(unit.price_transaction_house) || 0;
@@ -4556,6 +4649,14 @@ function openUnitDetail(unitData, { tab = 'info', editing = false, documentsUplo
   }
 }
 
+// 戶別資訊開著時，戶別資料有更新（區塊編輯對話框儲存、他人異動、監聽器推送）就把最新資料推回視窗
+// Why: selectedUnitData 是點擊當下的快照；區塊編輯儲存後視窗不關，畫面必須跟著更新
+watch(salesHouseholds, (list) => {
+  if (!isModalVisible.value || !selectedUnitData.value?.unitId) return;
+  const latest = (list || []).find(u => u.unitId === selectedUnitData.value.unitId);
+  if (latest && latest !== selectedUnitData.value) selectedUnitData.value = { ...latest };
+});
+
 // =====================================================
 // ✅ [新增] 網格戶別快速選單：電腦版右鍵 / 手機版長按（約 0.5 秒）
 // 電腦版以 v-menu 定位在游標座標；手機版沿用 MobileBottomSheet 底部面板。
@@ -4776,11 +4877,37 @@ async function copyUnitSummary(unit) {
   if (!hideSold) {
     if (unit.price_list_house_total) lines.push(`表價：${formatNumber(unit.price_list_house_total, 0)} 萬（${formatNumber(e.unit_price_list, 2)} 萬/坪）`);
     if (currentViewMode.value === 'sales') {
-      if (unit.price_floor_house_total) lines.push(`底價：${formatNumber(unit.price_floor_house_total, 0)} 萬`);
-      if (unit.price_transaction_house) lines.push(`成交價：${formatNumber(unit.price_transaction_house, 0)} 萬`);
-      if (e.parking_spots) lines.push(`車位：${e.parking_spots}`);
+      // 底價／成交價同表價格式，附單價
+      const unitPriceText = (v) => (v ? `（${formatNumber(v, 2)} 萬/坪）` : '');
+      if (unit.price_floor_house_total) lines.push(`底價：${formatNumber(unit.price_floor_house_total, 0)} 萬${unitPriceText(e.unit_price_floor)}`);
+      if (unit.price_transaction_house) lines.push(`成交價：${formatNumber(unit.price_transaction_house, 0)} 萬${unitPriceText(e.unit_price_transaction)}`);
+      // 車位：逐一列出編號與成交價，多個再附合計（僅成交車位，準備購買／保留車位不列）
+      const dealParkings = (salesParkings.value || [])
+        .filter(p => isDealParking(p, unit.unitId))
+        .sort((a, b) => naturalSort(a.spotId ?? '', b.spotId ?? ''));
+      if (dealParkings.length) {
+        const parts = dealParkings.map(p => {
+          const price = Number(p.price_transaction) || 0;
+          return `${p.spotId || ''}${price > 0 ? ` 成交 ${formatNumber(price, 0)} 萬` : ''}`;
+        });
+        const parkingTotal = dealParkings.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
+        lines.push(`車位：${parts.join('、')}${dealParkings.length > 1 && parkingTotal > 0 ? `（車位合計 ${formatNumber(parkingTotal, 0)} 萬）` : ''}`);
+      }
       if (e.total_transaction > 0) lines.push(`成交總價(含車位)：${formatNumber(e.total_transaction, 0)} 萬`);
-      if (e.payment_ratio !== null && e.payment_ratio !== undefined) lines.push(`繳款比例：${e.payment_ratio.toFixed(1)}%`);
+      // 溢差價（成交總價 − 底價總價，含車位）與每坪溢差：正數加 +、負數加 −
+      if (e.price_diff !== null && e.price_diff !== undefined && Number.isFinite(Number(e.price_diff))) {
+        const diff = Number(e.price_diff);
+        const area = Number(unit.area_house_ping) || 0;
+        const signed = (v, digits) => `${v > 0 ? '+' : v < 0 ? '-' : ''}${formatNumber(Math.abs(v), digits)}`;
+        const unitDiff = area > 0 ? `（${signed(diff / area, 2)} 萬/坪）` : '';
+        lines.push(`溢差價：${signed(diff, 0)}${unitDiff}`);
+      }
+      // 小訂／簽約日期
+      const dateText = (v) => { const d = toDateOrNull(v); return d ? d.toLocaleDateString('zh-TW') : ''; };
+      const depositDate = dateText(unit.payment_deposit_date);
+      const contractDate = dateText(unit.payment_contract_date);
+      if (depositDate) lines.push(`小訂日期：${depositDate}`);
+      if (contractDate) lines.push(`簽約日期：${contractDate}`);
       const sp = formatSalespersons(unit.salesperson);
       if (sp && sp !== '-') lines.push(`銷售人員：${sp}`);
       if (unit.buyerName) lines.push(`買方：${unit.buyerName}`);
@@ -4858,7 +4985,8 @@ function onQuickNotifyFinished(payload) {
 
 // 持有車位的後台狀態需與戶別同步（比照 UnitDetailModal.syncOwnedParkingFields）
 async function syncOwnedParkingStatus(unitId, newStatus) {
-  const owned = (salesParkings.value || []).filter(p => p.buyerUnitId === unitId && p.id);
+  // 準備購買（保留等）的車位狀態由車位端自行維護，不跟著戶別狀態改
+  const owned = (salesParkings.value || []).filter(p => isDealParking(p, unitId) && p.id);
   for (const parking of owned) {
     await updateParkingLot(parking.id, { status_backend: newStatus || null, updatedAt: new Date() });
   }
@@ -5057,6 +5185,17 @@ function navigateToParkingControl() {
   }
 }
 
+// 房車比速覽 → 車位管理：點保留清單某一列時帶入車位編號當搜尋關鍵字
+function openParkingFromRatio(entry) {
+  if (!projectId.value) return;
+  isParkingRatioVisible.value = false;
+  router.push({
+    name: 'ParkingControl',
+    params: { projectId: projectId.value },
+    query: entry?.spotId ? { spot: entry.spotId } : {},
+  });
+}
+
 const openParkingCanvasEditor = async () => {
   if (!projectId.value) {
     toast.error('未提供專案 ID，無法開啟編輯器。', { position: POSITION.BOTTOM_CENTER });
@@ -5237,7 +5376,6 @@ async function loadCurrentProjectData(targetId) {
 watch(projectId, async (newId, oldId) => {
   if (!newId || newId === oldId) return;
   console.log(`🔄 [SalesControlSystem] 偵測到建案切換: ${oldId} → ${newId}`);
-  reportSnackbarShown.value = false; // 新建案重置實價登錄提醒
   subscribeQuotePlans(newId); // ✅ [新增] 重新監聽新建案的方案清單
   await loadCurrentProjectData(newId);
 });
@@ -5961,6 +6099,70 @@ const uploadData = async () => {
   color: #424242;
 }
 
+/* 實價登錄提醒：角落常駐跑馬燈（左下角，避開右下 AI 助理鈕與手機底部導覽列） */
+.report-ticker {
+  position: fixed;
+  left: 12px;
+  bottom: calc(var(--v-layout-bottom, 0px) + 12px);
+  z-index: 1005; /* 高於 AI 助理 FAB(1000)、低於 Vuetify overlay(2000+)，開對話框時會被遮罩蓋住 */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: min(380px, calc(100vw - 96px));
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border: 1px solid rgba(251, 140, 0, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 248, 225, 0.96);
+  color: #8d5a00;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+  transition: box-shadow 0.15s ease;
+}
+.report-ticker:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+.report-ticker--overdue {
+  border-color: rgba(211, 47, 47, 0.6);
+  background: rgba(255, 235, 238, 0.96);
+  color: #b71c1c;
+}
+.report-ticker__icon {
+  flex-shrink: 0;
+}
+.report-ticker__viewport {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.report-ticker__track {
+  display: inline-block;
+  padding-left: 100%;
+  animation: report-ticker-scroll 14s linear infinite;
+  will-change: transform;
+}
+.report-ticker:hover .report-ticker__track {
+  animation-play-state: paused;
+}
+@keyframes report-ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .report-ticker__track {
+    animation: none;
+    padding-left: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 /* 實價登錄提醒 Dialog：固定 85vh 高度 + 內部 card-text 捲動 */
 .report-reminder-card {
   height: 85vh;
@@ -6043,6 +6245,89 @@ overflow: hidden;
   background-color: #e0e0e0;
   flex-shrink: 0;
   align-self: center;
+}
+/* 全案概況（工具列常駐）：全案戶數（住家／店面）與車位總數 */
+.project-overview-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 16px;
+  border: 1px solid #cfd8dc;
+  background: #eceff1;
+  color: #37474f;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.project-overview-chip:hover { background: #e0e5e8; }
+/* 📱 手機版全案概況列 */
+.project-overview-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid #cfd8dc;
+  background: #eceff1;
+  color: #37474f;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+}
+.project-overview-strip__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-overview-strip__ratio {
+  flex-shrink: 0;
+  color: #546e7a;
+  font-weight: 500;
+}
+/* 房車比速覽徽章（工具列常駐）；車位不足時輕微脈動幾下提醒 */
+.parking-ratio-badge {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.parking-ratio-badge--danger {
+  animation: parking-ratio-pulse 1.6s ease-in-out 3;
+}
+@keyframes parking-ratio-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(211, 47, 47, 0); }
+}
+/* 📱 手機版房車比提醒橫條：只在吃緊／不足時出現 */
+.parking-ratio-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+}
+.parking-ratio-banner--danger {
+  background: #ffebee;
+  border-color: #ef9a9a;
+  color: #c62828;
+}
+.parking-ratio-banner--warn {
+  background: #fff8e1;
+  border-color: #ffe082;
+  color: #e65100;
+}
+.parking-ratio-banner__text {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .toolbar-title {
   font-size: 1.15rem;
@@ -6906,6 +7191,9 @@ overflow: hidden;
 }
 .global-search-bar :deep(.v-field) {
   border: 1px solid #e0e0e0;
+}
+.global-search-filter-btn {
+  flex-shrink: 0;
 }
 
 /* ✅ [新增] 篩選面板間距微調 */

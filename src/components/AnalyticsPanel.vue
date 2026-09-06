@@ -644,6 +644,7 @@ import {
   getDateRange,
 } from '@/utils/analyticsCalculations'
 import { normalizeSalespersons, formatSalespersons, salespersonShare } from '@/utils/salespersonUtils'
+import { getUnitDealParkings } from '@/utils/salesStatusGroups'
 import { fetchVipGuests, analyzeCustomerStatus, getCancelledPurchases } from '@/api'
 // html2canvas / docx / file-saver 只有輸出 AI 報告時才用到，改為下載時動態載入，
 // 避免首次開啟統計面板就得先下載這三個套件（合計約 300KB）
@@ -1087,7 +1088,7 @@ const generateStatisticsText = () => {
         const unitPrice = calculateUnitPrice(unit.unitId, unit.price_transaction_house, unit.area_house_ping)
 
         // 找到該戶對應的所有車位
-        const parkings = projectData.value.parkings?.filter(p => p.buyerUnitId === unit.unitId) || []
+        const parkings = getUnitDealParkings(unit.unitId, projectData.value.parkings)
 
         // 生成車位信息文本
         let parkingText = ''

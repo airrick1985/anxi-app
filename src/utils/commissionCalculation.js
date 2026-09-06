@@ -8,6 +8,8 @@
  * 金額單位慣例：salesHouseholds 價格欄位為「萬」，請佣/獎金金額為「元」。
  */
 
+import { isDealParking } from './salesStatusGroups';
+
 // ---------- 基本工具 ----------
 export function toNum(v) {
   if (v === '' || v === null || v === undefined) return 0;
@@ -66,7 +68,8 @@ export function mergeSettings(saved) {
  * 與 SalesControlSystem enrichUnitItem 的計算一致。
  */
 export function computeUnitFinance(unit, parkings) {
-  const myParkings = (parkings || []).filter(p => p.buyerUnitId === unit.unitId);
+  // 準備購買（保留等）的車位不計入請佣金額
+  const myParkings = (parkings || []).filter(p => isDealParking(p, unit.unitId));
   const parkDeal = myParkings.reduce((s, p) => s + toNum(p.price_transaction), 0);
   const parkFloor = myParkings.reduce((s, p) => s + toNum(p.price_floor), 0);
   const houseDeal = toNum(unit.price_transaction_house);

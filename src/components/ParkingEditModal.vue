@@ -3,7 +3,8 @@
     :max-width="isMobile ? '100%' : '800px'"
     :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'" persistent>
     <v-card :class="{ 'd-flex flex-column': isMobile }" :style="isMobile ? 'height: 100%;' : ''">
-      <v-card-title class="d-flex justify-space-between align-center flex-wrap ga-2">
+      <!-- 標題列可拖曳（電腦版），方便挪開看底下的戶別資訊 -->
+      <v-card-title v-dialog-drag class="d-flex justify-space-between align-center flex-wrap ga-2">
         <!-- 🔐 手機版隱藏解鎖：連點標題（含戶別）8 次解除已售車位禁用（效果同連按 8 次 A） -->
         <span class="parking-modal-title tap-unlock-target" @click="tapUnlockSoldParking">{{ title }}</span>
         <div class="d-flex align-center ga-1">
@@ -183,6 +184,7 @@ import ParkingCanvas from '@/components/ParkingCanvas.vue';
 import { getFloorPlansAPI } from '@/api'; 
 import { useToast } from 'vue-toastification';
 import { useTapUnlock } from '@/composables/useTapUnlock';
+import { vDialogDrag } from '@/composables/useDialogDrag';
 
 // ✓ START: 匯入樣式 Store
 import { useTextStyleStore } from '@/store/textStyleStore';
