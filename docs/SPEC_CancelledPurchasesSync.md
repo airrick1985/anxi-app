@@ -289,40 +289,24 @@
 
 ### 3.2 Google Sheet 目標結構
 
-**欄位對應** (推薦的欄位排列順序):
+**實作規則（2026-09-06 起）**：退戶 Sheet 的欄位與表頭名稱**與「銷控資料同步」完全一致**，再追加退戶專屬三欄。兩張表共用同一份欄位對照表（`salesFieldDisplayNames`）與同一套扁平化邏輯（`_flattenSalesHouseholdForSheet`），因此銷控資料同步新增或更名欄位時，退戶 Sheet 會自動跟著變。
 
-| 欄位標題 | 資料來源 | 資料類型 | 備註 |
-|---------|---------|---------|------|
-| 單位編號 | unitId | String | 如 A5-2 |
-| 棟別 | building | String | 如 A5 |
-| 樓層 | floor | Number | |
-| 格局 | layout | String | 如 3房2衛 |
-| 物業類型 | propertyType | String | |
-| 室內面積(坪) | area_house_ping | Number | |
-| 室內面積(m²) | area_house_sqm | Number | |
-| 露臺面積(坪) | area_terrace_ping | Number | |
-| 公設比 | common_area_ratio | Number | 百分比 |
-| 列價(含車位) | price_list_house_total | Number | |
-| 成交價(含車位) | price_transaction_total | Number | |
-| 買方姓名 | buyerName | String | |
-| 買方身分證號 | buyerIdNumber | String | |
-| 買方電話 | buyerPhone | String | |
-| 買方信箱 | buyerEmail | String | |
-| 首購 | isFirstTimeBuyer | Boolean | |
-| 銷售人員 | salesperson | String | |
-| 取消日期 | _cancellationMeta.cancellationDate | Timestamp | 格式: YYYY-MM-DD HH:mm:ss |
-| 取消原因 | cancelReasons | Array | 以逗號分隔的字串 |
-| 操作人員 | _cancellationMeta.operatorName | String | |
-| 最後編輯時間 | _cancellationMeta.lastEditedAt | Timestamp | |
-| 原始單據號 | _cancellationMeta.originalDocId | String | |
-| 備註 | remarks | String | |
-| 介紹人 | referrerName | String | |
+**欄位順序**：
+
+1. 固定欄：`系統編號 (勿動)`、`更新時間`
+2. 銷控對照表欄（與銷控 Sheet 同名同序）：戶別、銷控狀態、是否優付、房屋坪數、露臺坪數、主建物坪數、附屬建物坪數、公設坪數、房屋總表價、表價單價、房屋表價、露臺表價、房屋總底價、底價單價、房屋底價、露臺底價、房屋成交價、成交單價、成交總價(含車)、車位成交總價、車位成交明細、溢差價、買方姓名、買方電話、身分證字號、Email、小訂日期、補足日期、簽約日期、銷售人員、合約方式、備註、通訊地址_縣市、通訊地址_區域、通訊地址_詳細、戶籍地址_縣市、戶籍地址_區域、戶籍地址_詳細
+3. 退戶專屬欄：`退戶日期`（`_cancellationMeta.cancellationDate`，YYYY/MM/DD，Asia/Taipei）、`退戶原因`（`cancelReasons` 以逗號分隔）、`操作人員`（`_cancellationMeta.operatorName`）
+4. 動態欄：文件中其餘未列在對照表的欄位，以原始 key 當表頭（與銷控 Sheet 相同行為）
+5. 地址合併欄：`通訊地址`、`戶籍地址`（永遠在最後）
+
+**不輸出的退戶內部欄位**：`parkingData`、`parkingDetails`、`_cancellationMeta`、`_isDeleted`、`_deletedMeta`、`docId`（銷控 Sheet 沒有這些欄，避免兩張表不一致）。
 
 **備註**:
-- 可根據實際需求調整欄位
-- Timestamp 字段建議輸出為 `YYYY-MM-DD HH:mm:ss` 格式
-- 陣列字段（如 cancelReasons、parkingData）轉換為字串格式（以逗號或分號分隔）
-- 巢狀物件（如 parkingData）可選擇展開或簡化
+- 冷刪除（`_isDeleted = true`）的退戶紀錄不輸出到 Sheet：全量同步會略過，監聽器會把該列自 Sheet 移除；還原後會重新補回該列
+- 車位相關欄位（車位成交總價、車位成交明細、持有車位）優先讀「持有車位」，若為空則用退戶備份的 `parkingData`
+- 修改欄位對照表後，既有 Sheet 需重新執行一次「全量同步」；監聽器依 Sheet 第一列表頭反查欄位，舊表頭無法對應的欄會被寫成空白
+
+
 
 ---
 

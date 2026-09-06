@@ -27497,51 +27497,25 @@ const salesFieldDisplayNames = {
   buyerPermanentAddressFull: '戶籍地址'
 };
 
-// 退戶資料欄位顯示名稱定義（全量同步與異動監聽器共用，避免兩邊反查不一致）
-const cancelledFieldDisplayNames = {
-  unitId: '戶別',
-  building: '棟別',
-  floor: '樓層',
-  layout: '格局',
-  propertyType: '物業類型',
-  area_house_ping: '房屋坪數',
-  area_terrace_ping: '露臺坪數',
-  common_area_ratio: '公設比',
-  price_list_house_total: '房屋總表價',
-  price_transaction_house: '房屋成交價',
-  price_transaction_total: '成交總價(含車)',
-  parking_trans_total: '車位成交總價',
-  parking_transaction_details: '車位成交明細',
-  buyerName: '買方姓名',
-  buyerPhone: '買方電話',
-  buyerIdNumber: '身分證字號',
-  buyerEmail: '買方Email',
-  isFirstTimeBuyer: '首購',
-  payment_deposit_date: '小訂日期',
-  payment_complete_date: '補足日期',
-  payment_contract_date: '簽約日期',
-  salesperson: '銷售人員',
-  referrerName: '介紹人',
+// 退戶專屬欄位（退戶 Sheet 才有，排在銷控欄位之後、地址合併欄之前）
+const CANCELLED_ONLY_FIELD_DISPLAY_NAMES = {
   cancellationDate: '退戶日期',
   cancelReasons: '退戶原因',
-  operatorName: '操作人員',
-  contractType: '合約方式',
-  remarks: '備註',
-  status: '銷控狀態',
-  updatedAt: '更新時間',
-
-  // 地址（分欄）
-  buyerMailingAddressCity: '通訊地址_縣市',
-  buyerMailingAddressDistrict: '通訊地址_區域',
-  buyerMailingAddressDetail: '通訊地址_詳細',
-  buyerPermanentAddressCity: '戶籍地址_縣市',
-  buyerPermanentAddressDistrict: '戶籍地址_區域',
-  buyerPermanentAddressDetail: '戶籍地址_詳細',
-
-  // 地址（合併欄，由 _buildSheetHeaderKeys 排到最後）
-  buyerMailingAddressFull: '通訊地址',
-  buyerPermanentAddressFull: '戶籍地址'
+  operatorName: '操作人員'
 };
+
+// 退戶資料欄位顯示名稱定義（全量同步與異動監聽器共用，避免兩邊反查不一致）
+// Why: 退戶 Sheet 的欄位與表頭必須和銷控資料同步完全一致，使用者才能用同一套公式 / 樞紐分析；
+//      因此直接沿用 salesFieldDisplayNames，只額外追加退戶專屬三欄。
+const cancelledFieldDisplayNames = {
+  ...salesFieldDisplayNames,
+  ...CANCELLED_ONLY_FIELD_DISPLAY_NAMES
+};
+
+// 退戶備份文件專用的內部欄位：不輸出到 Sheet（銷控 Sheet 沒有這些欄，避免兩張表欄位不一致）
+const CANCELLED_INTERNAL_FIELDS = [
+  'parkingData', 'parkingDetails', '_cancellationMeta', '_isDeleted', '_deletedMeta', 'docId'
+];
 
 // ✅ START: Sync Failure Notification Functions
 /**
@@ -28141,69 +28115,34 @@ function _flattenSalesHouseholdForSheet(h) {
 
 /**
  * 扁平化退戶購案資料用於 Google Sheet
+ * Why: 退戶文件是退戶當下整份戶別文件的備份，所以直接走與銷控資料同步完全相同的扁平化流程
+ *      （狀態、日期、銷售人員、地址合併、衍生價格欄位），確保兩張 Sheet 的欄位與值格式一致，
+ *      再補上退戶專屬欄位（退戶日期 / 退戶原因 / 操作人員）。
  */
 function _flattenCancelledPurchaseForSheet(doc) {
-  const flat = { ...doc };
-  flat['_id'] = doc._docId || doc.id;
+  // 車位來源：優先「持有車位」，退戶備份的 parkingData（salesParkings 完整文件）為 fallback
+  // 兩者的 spotId / price_floor / price_transaction 都能被銷控扁平化邏輯讀取
+  const parkingArr = Array.isArray(doc['持有車位']) && doc['持有車位'].length > 0
+    ? doc['持有車位']
+    : (Array.isArray(doc.parkingData) ? doc.parkingData : []);
 
-  // 處理取消日期 (Timestamp)
-  if (doc._cancellationMeta?.cancellationDate && doc._cancellationMeta.cancellationDate.toDate) {
-    flat['cancellationDate'] = _formatDateTaipei(doc._cancellationMeta.cancellationDate.toDate());
+  const flat = _flattenSalesHouseholdForSheet({ ...doc, '持有車位': parkingArr });
+
+  // 退戶專屬欄位
+  const meta = doc._cancellationMeta || {};
+  const cancelDate = meta.cancellationDate || doc.cancellationDate;
+  if (cancelDate && cancelDate.toDate) {
+    flat['cancellationDate'] = _formatDateTaipei(cancelDate.toDate());
+  } else {
+    flat['cancellationDate'] = cancelDate ? String(cancelDate) : '';
   }
+  flat['operatorName'] = meta.operatorName || doc.operatorName || '';
+  flat['cancelReasons'] = Array.isArray(doc.cancelReasons)
+    ? doc.cancelReasons.join(', ')
+    : (doc.cancelReasons || '');
 
-  // 處理操作人員
-  if (doc._cancellationMeta?.operatorName) {
-    flat['operatorName'] = doc._cancellationMeta.operatorName;
-  }
-
-  // 處理取消原因 (Array → 逗號分隔字串)
-  if (Array.isArray(doc.cancelReasons)) {
-    flat['cancelReasons'] = doc.cancelReasons.join(', ');
-  }
-
-  // 銷售人員（複選）：陣列以逗號分隔，避免被序列化成 JSON 字串
-  flat['salesperson'] = formatSalespersons(doc.salesperson, ',', '');
-  flat['salespersonUserKey'] = formatSalespersons(doc.salespersonUserKey, ',', '');
-
-  // 地址合併欄：縣市 + 區域 + 詳細
-  _applyAddressFullFields(flat, doc);
-
-  // 處理首購 Boolean
-  if (typeof doc.isFirstTimeBuyer === 'boolean') {
-    flat['isFirstTimeBuyer'] = doc.isFirstTimeBuyer ? '是' : '否';
-  }
-
-  // 處理更新時間 Timestamp
-  if (doc.updatedAt && doc.updatedAt.toDate) {
-    flat['updatedAt'] = doc.updatedAt.toDate().toISOString();
-  }
-
-  // 處理付款日期 Timestamp (YYYY/MM/DD，Asia/Taipei 時區)
-  const paymentDateFields = ['payment_deposit_date', 'payment_complete_date', 'payment_contract_date'];
-  paymentDateFields.forEach(field => {
-    if (doc[field] && doc[field].toDate) {
-      flat[field] = _formatDateTaipei(doc[field].toDate());
-    }
-  });
-
-  // 處理停車位資料（取第一筆）
-  if (Array.isArray(doc.parkingData) && doc.parkingData.length > 0) {
-    const parking = doc.parkingData[0];
-    flat['parkingSpotId'] = parking.spotId || '';
-  }
-
-  // 車位成交明細：優先用「持有車位」，退戶備份的 parkingData 為 fallback
-  flat['parking_transaction_details'] = _formatParkingTransactionDetails(
-    Array.isArray(doc['持有車位']) && doc['持有車位'].length > 0 ? doc['持有車位'] : doc.parkingData
-  );
-
-  // 持有車位：陣列僅取「車位編號」，以「、」串接（與銷控資料同步一致）
-  if (Array.isArray(doc['持有車位'])) {
-    flat['持有車位'] = doc['持有車位']
-      .map(p => (p && (p['車位編號'] || p.spotId)) || '')
-      .filter(Boolean)
-      .join('、');
-  }
+  // 退戶備份專用的內部欄位不輸出（避免出現銷控 Sheet 沒有的動態欄位）
+  CANCELLED_INTERNAL_FIELDS.forEach(k => { delete flat[k]; });
 
   return flat;
 }
@@ -28243,13 +28182,16 @@ exports.syncCancelledPurchasesToSheet = onCall({
 
     const docs = [];
     snapshot.forEach(doc => {
-      docs.push({ _docId: doc.id, ...doc.data() });
+      const data = doc.data();
+      // 已冷刪除的退戶紀錄不輸出（與退戶管理列表預設一致；Sheet 不再有 _isDeleted 欄可辨識）
+      if (data._isDeleted === true) return;
+      docs.push({ _docId: doc.id, ...data });
     });
 
     // 2. 扁平化資料
     const rows = docs.map(d => _flattenCancelledPurchaseForSheet(d));
 
-    // 3. 欄位對照表（module scope 的 cancelledFieldDisplayNames，與監聽器共用）
+    // 3. 欄位對照表（module scope 的 cancelledFieldDisplayNames，與銷控資料同步共用同一份 + 退戶專屬欄位）
 
     // 4. 準備 Headers（固定欄 → 對照表欄 → 動態欄 → 地址合併欄）
     const headers = _buildSheetHeaderKeys(cancelledFieldDisplayNames, rows);
@@ -28374,7 +28316,9 @@ exports.onCancelledPurchasesWrite = onDocumentWritten({
     }
 
     // 根據操作類型處理
-    if (!newData) {
+    // 冷刪除（_isDeleted=true）視同刪除：Sheet 不再輸出 _isDeleted 欄，須移除該列才不會被誤認為有效退戶；
+    // 還原（_isDeleted=false）時會走新增流程重新補回該列
+    if (!newData || newData._isDeleted === true) {
       // --- 刪除操作 ---
       if (rowIndex > -1) {
         const sheetId = await _getSheetIdByName(sheets, spreadsheetId, sheetName);
