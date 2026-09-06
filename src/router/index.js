@@ -67,6 +67,18 @@ const routes = [
       title: '試用留資管理'
     }
   },
+  // ✅ AI 助理管理（超級管理員；docs/銷控AI智能助理-spec.md §12）
+  {
+    path: '/admin/ai-assistant',
+    name: 'AiAssistantAdmin',
+    component: () => import('@/views/admin/AiAssistantAdmin.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredRoles: ['超級管理員'],
+      layout: DefaultLayout,
+      title: 'AI 助理管理'
+    }
+  },
   // ✅ 客戶開發（超級管理員；docs/SPEC_CustomerProspecting.md §3.2）
   {
     path: '/admin/prospects',

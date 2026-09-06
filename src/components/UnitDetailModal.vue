@@ -38,7 +38,7 @@
             <v-icon size="18" class="mr-1 unit-tab-icon">mdi-file-upload-outline</v-icon>上傳文件
             <v-badge v-if="viewUnitDocuments.length" :content="viewUnitDocuments.length" color="indigo" inline class="ml-1 unit-tab-badge" />
           </v-tab>
-          <v-tab value="aiAssistant"><v-icon size="18" class="mr-1 unit-tab-icon">mdi-robot-outline</v-icon>AI助理</v-tab>
+          <v-tab v-if="canUseSalesAi" value="aiAssistant"><v-icon size="18" class="mr-1 unit-tab-icon">mdi-robot-outline</v-icon>AI助理</v-tab>
         </v-tabs>
         <v-divider></v-divider>
       </div>
@@ -1069,8 +1069,10 @@
           </v-window-item>
 
           <v-window-item value="aiAssistant">
-            <SalesBotChat v-if="tab === 'aiAssistant'" :project-id="projectId" :unit-data="unitData"
-              :all-parking-data="allData['車位'] || []" :all-units-data="allData['戶別'] || []" />
+            <!-- ✅ 銷控 AI 智能助理：共用對話元件，帶入目前戶別作為上下文（docs/銷控AI智能助理-spec.md §2 #17） -->
+            <div class="unit-ai-chat">
+              <SalesAiChat v-if="tab === 'aiAssistant' && canUseSalesAi" :project-id="projectId" :project-name="projectName" :unit-id="unitData?.unitId || null" @notify="onAiNotify" />
+            </div>
           </v-window-item>
 
         </v-window>
@@ -1462,7 +1464,7 @@ import SalesInfoForm from './SalesInfoForm.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 import { getUnitTags, collectTagSuggestions, getContrastTextColor } from '@/utils/unitTags';
 import { useStatusColorStore } from '@/store/statusColorStore';
-import SalesBotChat from './SalesBotChat.vue';
+import SalesAiChat from './salesAi/SalesAiChat.vue';
 import LandParcelsPanel from './LandParcelsPanel.vue';
 import PaymentRecordsPanel from './PaymentRecordsPanel.vue';
 import UnitDocumentsPanel from './UnitDocumentsPanel.vue';
@@ -1777,6 +1779,13 @@ const notifyDialog = ref({
   pendingAfterFinish: null, // 'data-updated-close' | null
 });
 
+// ✅ AI 助理執行草案後，沿用狀態通知對話框
+function onAiNotify(result) {
+  const n = result?.notification;
+  if (!n?.statusChanged) return;
+  openNotifyDialog(n, n.triggerType || 'update', 'data-updated');
+}
+
 function openNotifyDialog(notification, triggerType, afterFinish) {
   notifyDialog.value = {
     show: true,
@@ -1889,6 +1898,13 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:show', 'data-updated', 'request-open-slide']);
+// ✅ 銷控 AI 智能助理：分頁僅在銷控模式且具「銷控系統」建案權限（超管／系管恆可）時顯示
+const canUseSalesAi = computed(() => {
+  if (props.viewMode !== 'sales') return false;
+  const roles = userStore.user?.roles || [];
+  if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
+  return userStore.hasProjectPermission('銷控系統', props.projectName);
+});
 
 const sizingToolDialog = ref(false);
 
@@ -4378,6 +4394,8 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.unit-ai-chat { height: min(70vh, 640px); display: flex; flex-direction: column; }
+
 /* 🔐 手機版隱藏解鎖點按目標：不顯示任何可點擊暗示，並防止連點選取文字 */
 .tap-unlock-target {
   user-select: none;

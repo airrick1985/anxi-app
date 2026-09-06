@@ -880,7 +880,9 @@ export async function updateSalesData(payload) {
       projectName: payload.projectName,
       projectId: payload.projectId, //  新增：傳遞 projectId 到 Cloud Function
       unitId: payload.unitId,
-      data: payload.data
+      data: payload.data,
+      // ✅ 狀態異動紀錄用：操作人員（後端 salesStatusLogs）
+      operatorName: payload.operatorName || (() => { try { return useUserStore().user?.name || null; } catch { return null; } })(),
     });
     return result.data; // 直接回傳 Cloud Function 的 { status, message }
   } catch (error) {
@@ -9300,16 +9302,19 @@ export const sendSmsAPI = async (data) => {
   }
 };
 
-export const askSalesBotAPI = async (data) => {
-  try {
-    const askBot = httpsCallable(functions, 'askSalesBot');
-    const result = await askBot(data);
-    return result.data;
-  } catch (error) {
-    console.error("[api.js] askSalesBotAPI 發生錯誤:", error);
-    throw error;
-  }
-};
+// ✅ [銷控 AI 智能助理] docs/銷控AI智能助理-spec.md §4.1／§12.5
+// payload 需含 action、projectId、userKey、sessionId（由 salesAiStore 自動附加）
+export async function salesAiAgentApi(payload) {
+  const fn = httpsCallable(functions, 'salesAiAgent', { timeout: 120000 });
+  const result = await fn(payload);
+  return result.data;
+}
+export async function salesAiAdminApi(payload) {
+  const fn = httpsCallable(functions, 'salesAiAdmin', { timeout: 120000 });
+  const result = await fn(payload);
+  return result.data;
+}
+
 // =================================================================
 // /  ✅ [新增] 請佣獎金系統 API（docs/請佣獎金系統-spec.md）
 // =================================================================

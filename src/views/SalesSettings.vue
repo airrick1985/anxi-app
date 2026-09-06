@@ -1212,6 +1212,52 @@
                 </v-card>
               </v-col>
             </v-row>
+
+            <!-- ✅ 銷控 AI 智能助理：寫入權限與建案提示詞覆蓋（docs/銷控AI智能助理-spec.md §5.1） -->
+            <v-divider class="my-5"></v-divider>
+            <div class="text-subtitle-1 font-weight-bold mb-1">智能助理權限</div>
+            <div class="text-caption text-grey-darken-1 mb-3">AI 只會建立「變更草案」，仍需使用者在畫面上確認才會寫入。模型與提示詞由超級管理員在「AI 助理管理」統一維護。</div>
+            <v-row v-if="project.aiAssistant">
+              <v-col cols="12" md="6">
+                <v-switch v-model="project.aiAssistant.allowWrite" color="primary" inset density="compact" label="允許 AI 透過草案修改銷控" hint="關閉時 AI 只能查詢與試算" persistent-hint></v-switch>
+                <v-switch v-model="project.aiAssistant.allowCancel" color="error" inset density="compact" :disabled="!project.aiAssistant.allowWrite" label="允許 AI 建立退戶草案" hint="執行前需輸入戶別編號二次確認；超級／系統管理員恆可" persistent-hint></v-switch>
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-combobox v-model="project.aiAssistant.writeRoles" :items="['超級管理員', '系統管理員', '建案主管', '專案經理', '銷售']" multiple chips closable-chips clearable variant="outlined" density="compact" label="限制可修改的角色" hint="留空 = 具「銷控系統」權限者皆可；超級／系統管理員不受限制" persistent-hint></v-combobox>
+                <v-text-field v-model.number="project.aiAssistant.dailyProposalLimit" type="number" variant="outlined" density="compact" class="mt-3" label="每日草案上限" hint="防止異常大量操作（預設 200）" persistent-hint></v-text-field>
+              </v-col>
+              <v-col cols="12">
+                <v-textarea v-model="project.aiAssistant.promptOverride.projectIntro" variant="outlined" density="compact" rows="3" auto-grow label="建案介紹（提供給 AI 的背景，選填）" hint="例如：位置、產品定位、主力坪數、公設特色；不要放底價策略等敏感內容" persistent-hint></v-textarea>
+              </v-col>
+              <v-col cols="12">
+                <v-textarea v-model="project.aiAssistant.promptOverride.extraRules" variant="outlined" density="compact" rows="2" auto-grow label="補充規則（選填）" hint="會附加在全域規則之後，不得抵觸系統安全規則（權限、草案確認等由程式固定）" persistent-hint></v-textarea>
+              </v-col>
+            </v-row>
+
+            <v-divider class="my-5"></v-divider>
+            <div class="d-flex align-center mb-2">
+              <span class="text-subtitle-1 font-weight-bold">AI 操作紀錄</span>
+              <span class="text-caption text-grey ml-2">最近 50 筆（誰用 AI 改了什麼）</span>
+              <v-spacer></v-spacer>
+              <v-btn size="small" variant="text" prepend-icon="mdi-refresh" :loading="aiLogsLoading" @click="loadAiLogs">重新整理</v-btn>
+            </div>
+            <div v-if="aiLogsError" class="text-caption text-error mb-2">{{ aiLogsError }}</div>
+            <v-table v-else density="compact" class="ai-logs-table">
+              <thead><tr><th style="width:140px">時間</th><th style="width:100px">操作人</th><th>內容</th><th style="width:70px">結果</th></tr></thead>
+              <tbody>
+                <tr v-if="!aiLogs.length"><td colspan="4" class="text-center text-grey py-4">尚無紀錄</td></tr>
+                <tr v-for="log in aiLogs" :key="log.id">
+                  <td class="text-no-wrap">{{ formatAiLogTime(log.createdAt) }}</td>
+                  <td>{{ log.userName }}</td>
+                  <td>
+                    <div>{{ log.summary }}</div>
+                    <div class="text-caption text-grey text-truncate" style="max-width:520px" :title="log.sourceMessage">「{{ log.sourceMessage }}」</div>
+                  </td>
+                  <td><v-chip size="x-small" :color="log.result === 'success' ? 'success' : 'error'" variant="flat">{{ log.result === 'success' ? '成功' : '失敗' }}</v-chip></td>
+                </tr>
+              </tbody>
+            </v-table>
+
             <v-btn
               color="primary"
               @click="saveProjectSettings"
@@ -1800,7 +1846,8 @@ import {
   syncSalesHouseholdsToSheet, // ✅ 新增
   syncCancelledPurchasesToSheet, // ✅ 新增
 } from '@/api';
-import { serverTimestamp } from 'firebase/firestore';
+import { serverTimestamp, collection as fsCollection, query as fsQuery, orderBy as fsOrderBy, limit as fsLimit, getDocs as fsGetDocs } from 'firebase/firestore';
+import { db as fsDb } from '@/firebase';
 // ✅ [新增] 付款表產製設定：logo 上傳（Firebase Storage）與 QR 預覽
 import { getStorage, ref as fbStorageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import QrcodeVue from 'qrcode.vue';
@@ -2077,6 +2124,21 @@ const loadProjectSettings = async () => {
   projectLoading.value = true;
   try {
     project.value = await getProjectSettings(projectId.value);
+
+    // ✅ 銷控 AI 智能助理：補齊建案層預設值（docs/銷控AI智能助理-spec.md §5.1）
+    if (project.value) {
+      const a = project.value.aiAssistant || {};
+      project.value.aiAssistant = {
+        allowWrite: a.allowWrite === true,
+        allowCancel: a.allowCancel === true,
+        writeRoles: Array.isArray(a.writeRoles) ? a.writeRoles : [],
+        modelProfileId: a.modelProfileId || null,
+        promptOverride: { projectIntro: a.promptOverride?.projectIntro || '', extraRules: a.promptOverride?.extraRules || '' },
+        disabledTools: Array.isArray(a.disabledTools) ? a.disabledTools : [],
+        dailyProposalLimit: Number(a.dailyProposalLimit) || 200,
+      };
+      loadAiLogs();
+    }
     
     // 處理合約方式預設值
     if (project.value && (!project.value.contractTypes || !Array.isArray(project.value.contractTypes))) {
@@ -2233,6 +2295,25 @@ const formatDate = (timestamp) => {
   const minutes = String(date.getMinutes()).padStart(2, '0');
 
   return `${year}-${month}-${day} ${hours}:${minutes}`;
+};
+
+// ✅ 銷控 AI 智能助理：稽核紀錄（projects/{id}/aiActionLogs，單一 orderBy 免複合索引）
+const aiLogs = ref([]);
+const aiLogsLoading = ref(false);
+const aiLogsError = ref(null);
+const loadAiLogs = async () => {
+  if (!projectId.value) return;
+  aiLogsLoading.value = true; aiLogsError.value = null;
+  try {
+    const q = fsQuery(fsCollection(fsDb, 'projects', projectId.value, 'aiActionLogs'), fsOrderBy('createdAt', 'desc'), fsLimit(50));
+    const snap = await fsGetDocs(q);
+    aiLogs.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    aiLogsError.value = `無法讀取紀錄：${e.message}`;
+  } finally { aiLogsLoading.value = false; }
+};
+const formatAiLogTime = (v) => {
+  try { const d = v?.toDate ? v.toDate() : new Date(v); return d.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
 };
 
 const resetAIToken = async () => {

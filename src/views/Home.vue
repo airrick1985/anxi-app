@@ -202,6 +202,16 @@ const allButtons = ref([
     nav: { name: 'TrialLeadsManager' }
   },
 
+  // ✅ AI 助理管理（僅超級管理員；docs/銷控AI智能助理-spec.md §12）
+  {
+    id: 'aiAssistantAdmin',
+    text: 'AI 助理管理',
+    icon: userManagementIcon,
+    permissionType: 'system',
+    permissionArgs: ['超級管理員'],
+    nav: { name: 'AiAssistantAdmin' }
+  },
+
   // ✅ 客戶開發（僅超級管理員；docs/SPEC_CustomerProspecting.md §3.1）
   {
     id: 'prospecting',

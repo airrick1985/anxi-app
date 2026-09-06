@@ -2,7 +2,9 @@
 
 > 需求來源：使用者口述（2026-09-06）
 > 建立日期：2026-09-06
-> 狀態：**草案（待討論）**。§2 決策表中「待確認」項目未回覆即採建議預設。
+> 狀態：**確認版（2026-09-06）**。需求方決定：①AI 寫入開關預設關、由管理員在銷控設定開啟；②**退戶開放給 AI**（走草案＋二次確認，見 §4.7）；③底價比照現行銷控權限，AI 可直接回答；④除 Gemini 外接 OpenAI、Anthropic，並需 `openai-compatible` 自架端點；⑤金鑰由超管 UI 寫入 Secret Manager；⑥ICON 先出三款靜態預覽再選；其餘依建議。
+> 實作進度追蹤：`docs/local/銷控AI智能助理-進度.md`（本機，不入 git）。
+> 實作狀態：**程式碼完成（2026-09-06）**，待部署 `salesAiAgent`／`salesAiAdmin` 與實測；§13 為部署清單。
 > 相關檔案（既有）：`src/components/SalesBotChat.vue`（現行對話元件）、`src/views/SalesControlSystem.vue`（功能選單／全域 AI 對話框 §1954）、`src/components/UnitDetailModal.vue`（AI 助理分頁、`saveChanges`／`commitParkingChanges`／`syncOwnedParkingFields`）、`functions/index.js`（`askSalesBot` §30102、`updateSalesData` §2963、`sendSalesStatusNotification` §3743、`sendCustomEmail` 的 session 驗證 §26702）、`src/store/user.js`（`hasProjectPermission`）、`src/composables/useDialogDrag.js`（拖曳指令）、`src/layouts/DefaultLayout.vue`（浮動漢堡鈕 z-index 1500）、`src/utils/salesStatusGroups.js`
 > 參考樣板：[銷售圖面編輯器-spec.md](./銷售圖面編輯器-spec.md)、[SPEC_SalesStatusNotification.md](./SPEC_SalesStatusNotification.md)
 
@@ -44,7 +46,7 @@
 
 ### 1.2 Out of scope（v1 不做，§9 列為後續）
 
-- 退戶、刪除、還原、修改表價／底價／面積／房土比、修改參數與人員設定、修改任何權限（永遠不開放給 AI）。
+- 刪除、還原退戶、修改表價／底價／面積／房土比、修改參數與人員設定、修改任何權限（永遠不開放給 AI）。退戶已依需求方決定納入 v1（§4.7）。
 - 跨建案查詢（AI 只在當前建案脈絡）。
 - 語音輸入、主動推播提醒、跨系統工具（客資／預約／請佣）。
 - 把浮動 ICON 推廣到所有系統頁面（v1 只在銷控系統）。
@@ -74,6 +76,7 @@
 | 15 | 速率限制 | 每使用者每分鐘 10 則、每建案每日草案 200 張（可設） | 沿用 `aiTokenQuota` 之外的粗防護。 |
 | 16 | 手機 | FAB 48px；面板為底部抽屜（高 70vh，可拉到全螢幕） | 底部導覽列高度用 `--v-layout-bottom` 避開。 |
 | 17 | UnitDetailModal 的 AI 分頁 | 保留，改掛同一個對話元件並帶 `unitId` 上下文 | 「詢問此戶別」的入口不變。 |
+| 18 | 入口顯示條件（2026-09-07 需求方追加） | 前端 `canUseSalesAi`：**銷控模式**（`route.meta.viewMode !== 'quote'`）**且**具該建案「銷控系統」權限（超管／系管恆可）才顯示 FAB、面板、功能選單、快速選單與戶別 AI 分頁；**報價系統不顯示也不可使用** | 後端 `sales.read` 仍為最終把關；前端門檻只是不露出入口。 |
 
 ---
 
@@ -211,7 +214,7 @@ exports.salesAiAgent = onCall({
 5. **組 system prompt**（§6.3），**依 capabilities 註冊工具**（§4.3）。
 6. **工具迴圈**（最多 6 輪）：模型回 functionCall → 執行查詢類工具（後端讀 Firestore，結果經權限過濾）→ 回填 functionResponse；遇 `propose_*` 則產生草案並跳出迴圈；遇 `ask_user` 產生問題卡並跳出。
 7. **草案驗證器**（§4.4）在 `propose_*` 後執行；有缺欄位 → 轉成問題卡；有 blockers → 仍回草案卡但不可執行。
-8. 寫 token 用量到 `projectSettings/{projectId}.aiTokenUsed`（唯一寫入點；前端不再 increment）。
+8. 寫 token 用量到 `projects/{projectId}.aiTokenUsed`（唯一寫入點，與 `SalesSettings` 讀寫同一份；前端不再 increment；舊 `projectSettings.aiTokenUsed` 廢棄）。
 9. 回傳。
 
 ### 4.3 工具清單（v1）
@@ -219,10 +222,12 @@ exports.salesAiAgent = onCall({
 | 工具 | 需要能力 | 說明 |
 |---|---|---|
 | `find_units({ building?, floor?, status?, salesperson?, buyerName?, priceMax?, keyword?, limit })` | `sales.read` | 條件查戶別，回精簡欄位（最多 30 筆） |
+| `find_status_changes({ from, to?, unitId? })` | `sales.read` | 區間內狀態異動（§5.7）＋付款日期落在區間的戶別；「今天／昨天成交」一律用此工具 |
 | `get_unit({ unitId })` | `sales.read` | 單戶完整銷控欄位＋持有車位 |
 | `find_parkings({ floor?, status?, available?, buyerUnitId?, keyword?, limit })` | `sales.read` | 條件查車位 |
 | `get_parking({ spotId })` | `sales.read` | 單車位 |
 | `get_project_summary()` | `sales.read` | 戶數／已售／可售／成交總額／各狀態計數（沿用 `analyticsCalculations` 邏輯搬到後端 util） |
+| `find_status_changes({ from, to?, unitId? })` | `sales.read` | 日期區間內的狀態異動（來源 `projects/{id}/notificationLogs`）＋付款日期落在區間的戶別＋資料修改過的戶別（標示非成交）；「今天／昨天成交」一律走此工具 |
 | `list_salespersons()` | `sales.read` | 名單 |
 | `list_status_options()` | `sales.read` | 狀態清單（含確定度層級） |
 | `calc_price_gap({ unitId, offer, spotIds[] })` | `sales.read` | 出價 vs 底價試算 |
@@ -269,6 +274,14 @@ exports.salesAiAgent = onCall({
 6. 寫 `aiActionLogs`，草案標 `executed`。
 7. 既有 `onSalesHouseholdWrite` 觸發器會自動同步 Sheet，無需另外處理。
 
+### 4.7 退戶（需求方決定開放）
+
+- 工具 `propose_cancel_purchase({ unitId, reasons?: string[], date?: 'YYYY-MM-DD' })`，需要能力 `sales.cancel`（= `sales.write` 且建案 `aiAssistant.allowCancel === true`，預設關；超管／系管恆可）。
+- 草案卡顯示：目前買方、狀態、持有車位（全部會被清除）、退戶原因、退戶日期；標示「⚠ 不可逆：買方資料與車位關聯將清空並備份至退戶資料」。
+- 執行需**二次確認**：卡片上要求使用者輸入戶別編號（如 `A-3`）才能按「確認退戶」。
+- 執行呼叫既有退戶邏輯：`cancelPurchase` 內文抽成 `performCancelPurchase(payload, db)` 供 CF 與 AI 共用（不複製邏輯），回傳的 `notification` 沿用通知對話框（`triggerType: 'cancel'`）。
+- 退戶原因若未提供，驗證器產生問題卡（多選，選項沿用 `CancelPurchaseDialog` 的原因清單 + 自填）。
+
 ### 4.6 現有 `askSalesBot` 的去留
 
 - 新函式上線後，`askSalesBot` 保留一版做回退（`SalesSettings` 可切「舊版問答」），下一版移除。
@@ -277,10 +290,11 @@ exports.salesAiAgent = onCall({
 
 ## 5. 資料模型（database：`anxi-app`）
 
-### 5.1 `projectSettings/{projectId}.aiAssistant`（建案層，可覆蓋全域）
+### 5.1 `projects/{projectId}.aiAssistant`（建案層，可覆蓋全域；實作時改存 `projects`，與 `SalesSettings` 既有讀寫同一文件）
 ```json
 {
   "allowWrite": false,
+  "allowCancel": false,        // 退戶（§4.7），需 allowWrite 也為 true
   "writeRoles": [],            // 空 = 有銷控系統權限即可；否則需具備其一角色（超級管理員／系統管理員恆可）
   "modelProfileId": null,      // null = 用全域預設 profile（§5.6）
   "promptOverride": { "projectIntro": "本案位於…", "extraRules": "" },  // 可編輯段的建案覆蓋，null = 用全域
@@ -319,10 +333,20 @@ exports.salesAiAgent = onCall({
 ### 5.4 對話紀錄 `users/{userKey}/aiChatHistory/{projectId}`
 訊息結構擴充：`{ role, type: 'text'|'question'|'proposal'|'result'|'action', text?, payload?, createdAt }`。只保留最近 100 則。
 
+### 5.7 `projects/{projectId}/salesStatusLogs`（狀態異動紀錄，2026-09-07 新增）
+```json
+{ "unitId": "A-3", "oldStatus": null, "newStatus": "小訂", "statusClass": "deal",
+  "source": "updateSalesData | cancelPurchase | aiAssistant", "operatorName": "王小明", "createdAt": ts }
+```
+- 由後端 `recordSalesStatusChange` 在每次後台狀態變更時寫入（與通知流程脫鉤），同時在戶別文件蓋 `salesStatusChangedAt`。
+- Why：實測發現「今天／昨天成交了什麼」無可靠資料源，模型會編造；`notificationLogs` 只在通知對話框出現時才寫。
+- AI 工具 `find_status_changes` 讀此集合＋`notificationLogs`（相容舊資料）去重後回傳，另附付款日期落在區間的戶別。
+
 ### 5.5 Firestore rules
 - `aiProposals`、`aiActionLogs`：前端**不可直接寫**（只有 Cloud Function admin SDK）；`aiActionLogs` 讀取限本人或管理端（銷控設定頁透過 CF 讀）。
 - `users/{key}/aiChatHistory`：維持本人可讀寫。
-- `systemSettings/aiAssistant*`、`aiPromptVersions`、`aiUsageDaily`：前端不可直接讀寫，一律經 `salesAiAdmin` CF（後端驗超管）。
+- `systemSettings/aiAssistant`、`aiPromptVersions`、`aiUsage/{projectId}/daily/*`、`aiAdminLogs`、`aiAdminAlerts`、`aiRateLimits`：前端不可直接讀寫，一律經 `salesAiAdmin` CF（後端驗超管）。
+- 稽核紀錄實作為子集合 `projects/{projectId}/aiActionLogs`（單一 `orderBy createdAt` 免複合索引）；`SalesSettings` AI 分頁以前端直接讀取，rules 需允許有該建案權限者讀取此子集合。
 
 ### 5.6 `systemSettings/aiAssistant`（全域，超級管理員維護）
 ```json
@@ -358,7 +382,7 @@ exports.salesAiAgent = onCall({
 }
 ```
 - `aiPromptVersions/{versionId}`：`{ prompt 快照, createdAt, createdBy, note }`，保留最近 50 版，可一鍵還原。
-- `aiUsageDaily/{yyyymmdd}_{projectId}`：`{ byProfile: { "gemini-flash": { calls, inputTokens, outputTokens, estCost } }, proposals, executed }`，供成本監控圖表。
+- `aiUsage/{projectId}/daily/{yyyymmdd}`：`{ date, calls, inputTokens, outputTokens, totalTokens, estCost, proposals, executed, byProfile: { "gemini-flash": { calls, inputTokens, outputTokens, estCost } } }`，供成本監控圖表（子集合避免 where+orderBy 複合索引）。
 
 ---
 
@@ -374,7 +398,9 @@ exports.salesAiAgent = onCall({
 | `leads.read` | systems 含「客資系統-銷售／櫃台／管理」（v2） |
 | `commission.read` | systems 含「請佣獎金」（v2） |
 
-永遠不存在的能力：退戶、刪除、修改表價／底價／面積、修改參數／人員／權限／設定。這些**沒有對應工具**，模型無從呼叫。
+| `sales.cancel` | `sales.write` 且 `aiAssistant.allowCancel === true`（超管／系管恆可）；執行另需輸入戶別編號二次確認（§4.7） |
+
+永遠不存在的能力：刪除、還原退戶、修改表價／底價／面積、修改參數／人員／權限／設定。這些**沒有對應工具**，模型無從呼叫。
 
 ### 6.2 AI 可寫欄位白名單
 
@@ -456,7 +482,7 @@ exports.salesAiAgent = onCall({
 | `src/views/SalesSettings.vue` | AI 分頁：allowWrite、writeRoles、model、稽核紀錄；Token 改讀 `projectSettings` |
 | `functions/salesAi/index.js` | 新目錄（不塞進 index.js）：`agent.js`（handler、工具迴圈）、`tools.js`、`validate.js`、`execute.js`、`prompt.js`（固定段＋可編輯段組裝）、`providers/{gemini,openai,anthropic,openaiCompatible}.js`（§12.2 adapter）、`secrets.js`（Secret Manager 讀寫＋快取）、`admin.js`（`salesAiAdmin` handler） |
 | `src/views/admin/AiAssistantAdmin.vue` | 超級管理員 AI 管理後台（§12.1），路由 `/admin/ai-assistant`，`requiredRoles: ['超級管理員']` |
-| `src/components/salesAi/admin/*` | `ModelProfileEditor.vue`、`PromptEditor.vue`（含版本列表）、`ToolToggleTable.vue`、`AiPlayground.vue`、`AiUsageChart.vue` |
+| `src/components/salesAi/admin/*` | `useAiAdmin.js`（共用呼叫）、`ModelProfileEditor.vue`、`SecretManager.vue`、`PromptEditor.vue`（含版本列表）、`ToolToggleTable.vue`（含限制）、`ProjectOverrides.vue`、`AiUsageChart.vue`、`AiPlayground.vue` |
 
 ---
 
@@ -570,9 +596,9 @@ Adapter 對應：
 | 供應商 | SDK | 工具格式轉換 | 備註 |
 |---|---|---|---|
 | `gemini` | `@google/generative-ai`（既有） | `tools: [{ functionDeclarations }]`；回應 `functionCall`／送回 `functionResponse` | 現行做法；`thinking` 對應 `thinkingConfig` |
-| `anthropic` | `@anthropic-ai/sdk`（新增） | `tools: [{ name, description, input_schema }]`；回應 `tool_use` block／送回 `tool_result` block；`system` 為獨立參數 | 模型 id 由超管填（例如 `claude-sonnet-5`、`claude-haiku-4-5-20251001`），程式不寫死；`thinking` 對應 extended thinking 參數 |
-| `openai` | `openai`（新增） | `tools: [{ type: 'function', function: { name, description, parameters } }]`；回應 `tool_calls`／送回 `role: 'tool'` 訊息 | 模型 id 由超管填（例如 `gpt-5`）；`thinking` 對應 `reasoning_effort` |
-| `openai-compatible` | 同 `openai` SDK + `baseUrl` | 同上 | 自架／代理端點（待確認是否需要） |
+| `anthropic` | axios 直呼 Messages API（不加 SDK） | `tools: [{ name, description, input_schema }]`；回應 `tool_use` block／送回 `tool_result` block；`system` 為獨立參數 | 模型 id 由超管填（例如 `claude-sonnet-5`、`claude-haiku-4-5-20251001`），程式不寫死；`thinking` 對應 extended thinking 參數 |
+| `openai` | axios 直呼 chat/completions（不加 SDK） | `tools: [{ type: 'function', function: { name, description, parameters } }]`；回應 `tool_calls`／送回 `role: 'tool'` 訊息 | 模型 id 由超管填（例如 `gpt-5`）；`thinking` 對應 `reasoning_effort` |
+| `openai-compatible` | 同 openai adapter + `baseUrl` | 同上 | 自架／代理端點（待確認是否需要） |
 
 通用規則：
 - 工具 JSON Schema 以通用格式維護一份（`tools.js`），adapter 各自轉換；新增工具不用改 adapter。
@@ -616,3 +642,16 @@ Adapter 對應：
 4. 金鑰更新後前端無法從任何 API 取得金鑰內容；Firestore 內無金鑰。
 5. 提示詞還原到舊版本後，Playground 預覽的組裝結果與該版本一致。
 6. 用量頁面數字與 `aiUsageDaily` 一致；成本 = token × 單價。
+
+
+---
+
+## 13. 部署與上線清單（實作完成後）
+
+1. `cd functions && FUNCTIONS_DISCOVERY_TIMEOUT=120 firebase deploy --only functions:salesAiAgent,functions:salesAiAdmin,functions:cancelPurchase`（`cancelPurchase` 內文抽成 `performCancelPurchase`，行為不變但需重新部署）。
+2. Secret Manager IAM：給 Cloud Functions 執行服務帳號 `roles/secretmanager.admin`（超管 UI 寫金鑰）與 `roles/secretmanager.secretAccessor`（執行期讀）。未授權時「API 金鑰」分頁的更新會失敗並提示，執行期會回退到部署綁定的 `SALES_BOT_GEMINI_KEY` 環境變數。
+3. Firestore rules：允許有該建案權限者讀取 `projects/{projectId}/aiActionLogs`（SalesSettings 稽核列表前端直讀）；`aiProposals`、`aiUsage`、`systemSettings`、`aiPromptVersions`、`aiAdminLogs`、`aiAdminAlerts`、`aiRateLimits` 前端全拒（僅 admin SDK）。
+4. 超級管理員進「AI 助理管理」：確認預設 Profile（gemini-flash）測試連線通過；如要接 OpenAI／Anthropic，先在「API 金鑰」寫入金鑰並驗證，再新增 Profile。
+5. 各建案「銷控設定 → AI 助理」：需要寫入功能的建案開啟「允許 AI 透過草案修改銷控」（預設關）；退戶另開。
+6. 驗收：§6.5 注入測試 10 案、§7 示範句、§12.6 管理後台要點。
+7. 舊 `askSalesBot`／`SalesBotChat.vue` 保留一版做回退，下一版移除。

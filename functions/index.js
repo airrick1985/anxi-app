@@ -2960,6 +2960,25 @@ exports.handleSalesSvgBatchDelete = onCall(async (request) => {
  * 【新增】更新銷控資料
  * 處理單一戶別的銷控資料更新，包含所有欄位的資料驗證和型別轉換
  */
+// ✅ [銷控狀態異動紀錄] 與通知流程脫鉤：每次後台狀態變更都寫 projects/{id}/salesStatusLogs 並在戶別蓋 salesStatusChangedAt
+//    Why: AI 助理「今天／昨天成交了什麼」需要可靠的異動時間；notificationLogs 只在通知對話框出現時才寫，會漏。
+async function recordSalesStatusChange(db, { projectId, unitId, oldStatus, newStatus, source, operatorName, stampUnit = true }) {
+  try {
+    const { classifySalesStatus } = require('./utils/salesStatusGroups');
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    await db.collection('projects').doc(projectId).collection('salesStatusLogs').add({
+      unitId, oldStatus: oldStatus || null, newStatus: newStatus || null,
+      statusClass: classifySalesStatus(newStatus), source: source || 'unknown', operatorName: operatorName || null,
+      createdAt: now,
+    });
+    if (stampUnit) {
+      await db.collection('salesHouseholds').doc(`${projectId}_${unitId}`).set({ salesStatusChangedAt: now }, { merge: true });
+    }
+  } catch (e) {
+    console.error(`[recordSalesStatusChange] ${projectId}/${unitId} 寫入失敗（不影響主流程）:`, e.message);
+  }
+}
+
 exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secrets: gmailSecrets }, async (request) => {
   const { projectName, projectId, unitId, data } = request.data;
   const functionName = `updateSalesData (Project: ${projectName}, Unit: ${unitId})`;
@@ -3275,6 +3294,10 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
         : oldSalesStatus;
 
       if (newSalesStatus !== oldSalesStatus) {
+        await recordSalesStatusChange(db, {
+          projectId: finalProjectId, unitId, oldStatus: oldSalesStatus, newStatus: newSalesStatus,
+          source: 'updateSalesData', operatorName: request.data.operatorName || null,
+        });
         const { classifySalesStatus } = require('./utils/salesStatusGroups');
         const { getEligibleRecipients } = require('./utils/getEligibleRecipients');
         const eligibleRecipients = await getEligibleRecipients(finalProjectId, db);
@@ -3427,8 +3450,13 @@ function buildRemarksSummaryFromNotes(notes) {
   }).join('\n');
 }
 
+// ✅ [銷控 AI 智能助理] 退戶核心邏輯抽成可重用函式：CF 與 AI 草案執行共用同一份（docs/銷控AI智能助理-spec.md §4.7）
 exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secrets: gmailSecrets }, async (request) => {
-  const { projectId, unitId, operatorName, cancelReasons = [], cancellationDate = null } = request.data;
+  return performCancelPurchase(request.data || {});
+});
+
+async function performCancelPurchase(payload, dbInstance) {
+  const { projectId, unitId, operatorName, cancelReasons = [], cancellationDate = null } = payload;
   const functionName = `cancelPurchase (Project: ${projectId}, Unit: ${unitId})`;
 
   if (!projectId || !unitId || !operatorName) {
@@ -3449,7 +3477,7 @@ exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secret
     cancellationTimestamp = admin.firestore.FieldValue.serverTimestamp();
   }
 
-  const db = new Firestore({ databaseId: "anxi-app" });
+  const db = dbInstance || new Firestore({ databaseId: "anxi-app" });
 
   try {
     console.log(`[${functionName}] 開始執行退戶作業...`);
@@ -3665,6 +3693,12 @@ exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secret
     // 提交所有操作
     await batch.commit();
 
+    // 狀態異動紀錄（退戶：狀態清空）
+    await recordSalesStatusChange(db, {
+      projectId, unitId, oldStatus: originalHouseholdData.salesStatus_backend || null, newStatus: null,
+      source: 'cancelPurchase', operatorName: operatorName || null,
+    });
+
     console.log(`[${functionName}] 退戶作業完成！`);
     console.log(`[${functionName}] - 已建立退戶紀錄: ${cancellationDocId}`);
     console.log(`[${functionName}] - 已備份退戶資料: ${cancelledDocId}`);
@@ -3703,7 +3737,7 @@ exports.cancelPurchase = onCall({ region: "asia-east1", memory: "512MiB", secret
     console.error(`[${functionName}] Error occurred:`, error);
     throw new HttpsError("internal", `退戶作業失敗: ${error.message}`);
   }
-});
+}
 
 // =================================================================
 // 【新增】銷控狀態通知 Cloud Functions
@@ -30094,170 +30128,7 @@ exports.markInspectionReportDownloaded = onCall({ region: "asia-east1", secrets:
 
 
 
-// =================================================================
-// / ✓ 【新增】AI 銷售助理 (askSalesBot) 
-// =================================================================
-
-
-exports.askSalesBot = onCall({ region: "asia-east1" }, async (request) => {
-  // 1. 驗證使用者身份 (暫時關閉，因為專案使用 checkInToSystem 自訂驗證)
-  // if (!request.auth) {
-  //   throw new HttpsError("unauthenticated", "您必須先登入才能使用 AI 助理。");
-  // }
-
-  // 接收前端傳遞的參數 (前端傳 prompt, history, contextData)
-  const { prompt, history, contextData } = request.data;
-  if (!prompt) {
-    throw new HttpsError("invalid-argument", "對話訊息格式不正確。");
-  }
-  // 將 history 和 prompt 組合成 messages 陣列
-  const messages = [
-    ...(Array.isArray(history) ? history.map(h => ({
-      role: h.role,
-      content: h.parts && h.parts[0] ? h.parts[0].text : ''
-    })) : []),
-    { role: 'user', content: prompt }
-  ];
-
-  try {
-    const apiKey = process.env.SALES_BOT_GEMINI_KEY || "";
-    if (!apiKey) {
-      console.error("[askSalesBot] SALES_BOT_GEMINI_KEY 未設置");
-      throw new HttpsError("internal", "後端未設置 AI 金鑰。");
-    }
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-    // 加入 Debug log 可以看到實際傳入的資料長相
-    console.log('[DEBUG askSalesBot] Received count:',
-      'Units:', contextData.allProjectUnits?.length,
-      'Parkings:', contextData.allProjectParkingLots?.length);
-
-    if (contextData.allProjectParkingLots && contextData.allProjectParkingLots.length > 0) {
-      const b3103a = contextData.allProjectParkingLots.find(p => p['車位編號'] === 'B3-103a' || p.spotId === 'B3-103A' || p.spotId === 'B3-103a' || p['車位編號'] === 'B3-103A');
-      console.log('[DEBUG askSalesBot] Found target parking spot in context:', JSON.stringify(b3103a));
-    }
-
-    // 設定 System Prompt
-    const systemInstruction = `您是建案的專業 AI 銷售助理。請根據以下「目前的系統庫存與狀態資料」來回答銷售人員的問題。
-
-【最重要的觀念 - 戶別 vs 車位 絕對不同】
-- \`allProjectUnits\` = 「戶別」(住宅單位，例如 A-1, C-16)，包含房屋坪數、房屋總表價、房屋總底價等。
-- \`allProjectParkingLots\` = 「車位」(停車位，例如 B3-103A, B6-15)，包含車位底價、車位表價等。
-- 這兩者是**完全不同類型**的資料。問到「戶別」時**只能查 allProjectUnits**，問到「車位」時**只能查 allProjectParkingLots**。**絕對不要將車位資料誤認為戶別資料！**
-
-【資料格式與搜尋規則說明】
-1. 「戶別」：請在 \`allProjectUnits\` 中尋找對應的「戶別」(欄位名為「戶別」)。請忽略大小寫。戶別的價格欄位為「房屋總表價_萬」和「房屋總底價_萬」。
-2. 「當前戶別底價」：請讀取 \`currentUnitInfo\` 中的 \`price_floor_house_total\`。
-3. 「車位底價/表價」：請在 \`allProjectParkingLots\` 中尋找對應的「車位編號」，讀取其 \`車位底價_萬\` 或 \`車位表價_萬\` (單位：萬)。【注意：尋找車位編號時必須忽略大小寫。例如 B3-103a 與 B3-103A 視為相同。】
-4. **檢索指令**：若詢問「陳先生買了哪一戶？」或「查詢某客戶」，請在 \`allProjectUnits\` 中搜尋「買方姓名」欄位進行模糊比對。車位資料也包含「買方姓名」和「對應戶別」可交叉查詢。若詢問某銷售人員的業績，請搜尋「銷售人員」欄位。戶別資料中的「持有車位」陣列列出了該戶已購買的所有車位及其價格。
-5. **計算價差指令**：若詢問「出價 XXX 與底價差多少？」，請直接從 \`currentUnitInfo\` 尋找「當前戶別底價」(price_floor_house_total)，加上詢問中提到的所有「車位底價」(去 \`allProjectParkingLots\` 找對應的 \`車位底價_萬\`，忽略大小寫)，算出『總底價』後與出價相減。請直接給出試算結果與算式，【絕對不要反問】客戶出價包含什麼。
-6. **狀態判斷規則**（非常重要）：
-   - 狀態為「小訂」、「補足」、「簽約」→ 代表**已售**。
-   - 狀態為「保留」、「封戶」、「銷控」→ 代表**特殊標記**，大部分情況下仍屬可售，但回覆時**必須標註該戶/車位目前狀態為「保留」等**，讓用戶知道。
-   - 狀態為空字串、null 或 undefined → 代表**可售**。
-7. **全案檢索指令**：若詢問「最便宜的戶別」，**只能從 allProjectUnits 查找**，根據「房屋總底價_萬」排序。若詢問「尚未售出的車位」，**只能從 allProjectParkingLots 查找**。請依照上述狀態判斷規則決定是否為已售或可售。
-8. **成交金額計算**：戶別的成交價在 \`房屋成交價_萬\` 欄位，車位的成交價在 \`車位成交價_萬\` 欄位。若詢問「成交總銷金額」，請將所有已售出（銷售狀態不為空）的戶別的「房屋成交價_萬」加上所有已售出車位的「車位成交價_萬」加總。若成交價為 null 或空，則用底價代替估算，並註明。
-9. **回答格式（非常重要）**：
-   - 你的回覆必須是**純粹的最終結果**，不能包含任何前言、標題、說明或思考過程。
-   - **絕對禁止**輸出以下內容：「思緒：」、「Answer:」、「我的回答」、「以下是...」、「根據資料...」、「經過篩選...」、「好的，」、「了解，」等任何前綴語句。
-   - **絕對禁止**以任何形式描述你的搜尋步驟、排除邏輯或推理過程。
-   - 回應必須是繁體中文，保持專業、簡潔。
-   - 若資料中找不到對應的資訊，請直接回答「目前系統中查無此資料」，不要編造數字。
-
-【目前的系統庫存與狀態資料 (Context Data)】
-\`\`\`json
-${JSON.stringify(contextData, null, 2)}
-\`\`\`
-`;
-
-    const formattedMessages = messages.map(msg => ({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content }]
-    }));
-
-    // 初始化 Chat Session，並將 System Instruction 放在一開始
-    const chat = model.startChat({
-      systemInstruction: { parts: [{ text: systemInstruction }] },
-      history: formattedMessages.slice(0, -1), // 排除最後一則新訊息
-    });
-
-    const userMessage = messages[messages.length - 1].content;
-
-    // ====================================================
-    // 🎯 Pre-processing: 從使用者的提問中，自動撈出提到的車位資料
-    //    並直接附加到提問中，避免 AI 在 148 筆資料裡找不到
-    // ====================================================
-    let enrichedUserMessage = userMessage;
-    const parkingLots = contextData.allProjectParkingLots || [];
-
-    if (parkingLots.length > 0) {
-      // 用正則抓出所有可能的車位編號 (例如 B3-103A, B6-15, A1-22b)
-      const spotPattern = /[A-Za-z]\d{1,2}-\d{1,4}[A-Za-z]?/g;
-      const mentionedSpots = userMessage.match(spotPattern) || [];
-
-      if (mentionedSpots.length > 0) {
-        const foundSpots = [];
-        for (const spot of mentionedSpots) {
-          const normalizedSpot = spot.trim().toUpperCase();
-          const found = parkingLots.find(p => {
-            const pId = (p['車位編號'] || '').trim().toUpperCase();
-            return pId === normalizedSpot;
-          });
-          if (found) {
-            foundSpots.push(found);
-          }
-        }
-
-        if (foundSpots.length > 0) {
-          const spotInfo = foundSpots.map(s =>
-            `- 車位 ${s['車位編號']}：底價 ${s['車位底價_萬'] ?? '無資料'} 萬，表價 ${s['車位表價_萬'] ?? '無資料'} 萬`
-          ).join('\n');
-
-          enrichedUserMessage += `\n\n【系統已自動查詢到以下車位資料，請直接使用】\n${spotInfo}`;
-          console.log('[askSalesBot] Pre-processed parking data injected:', spotInfo);
-        }
-      }
-    }
-
-    // 將 System Instruction 與最後一則訊息一起發送
-    const result = await chat.sendMessage(enrichedUserMessage);
-    const responseText = result.response.text();
-    const tokenUsage = result.response.usageMetadata;
-
-    // 將 token 消耗量累加到資料庫中
-    if (tokenUsage && tokenUsage.totalTokenCount) {
-      const projectId = request.data.projectId || request.data.contextData?.projectId;
-      if (projectId) {
-        try {
-          const dbInstance = new Firestore({ databaseId: 'anxi-app' });
-          const projectConfigRef = dbInstance.collection('projectSettings').doc(projectId);
-          await projectConfigRef.set({
-            aiTokenUsed: FieldValue.increment(tokenUsage.totalTokenCount)
-          }, { merge: true });
-          console.log(`[askSalesBot] Successfully added ${tokenUsage.totalTokenCount} tokens to project ${projectId} (DB: anxi-app)`);
-        } catch (dbError) {
-          console.error(`[askSalesBot] Failed to update token count for project ${projectId}:`, dbError);
-        }
-      }
-    }
-
-    return {
-      status: 'success',
-      reply: responseText,
-      usage: tokenUsage || null
-    };
-
-  } catch (error) {
-    console.error(`[askSalesBot] 處理錯誤:`, error);
-    // 檢查是否為 503 Service Unavailable 錯誤
-    if (error.message && error.message.includes('503')) {
-      throw new HttpsError("unavailable", "AI 助理服務暫時忙碌中，請稍後再試。");
-    }
-    throw new HttpsError("internal", `AI 助理發生錯誤: ${error.message}`);
-  }
-});
+// （askSalesBot 已於 2026-09-07 移除：改用 salesAiAgent；舊函式無驗證，見資安評估）
 
 
 // AI Regex Generation Backend
@@ -30724,3 +30595,12 @@ const trialSandbox = require("./trial/sandbox");
 exports.snapshotTrialSandbox = trialSandbox.snapshotTrialSandbox;
 exports.resetTrialSandbox = trialSandbox.resetTrialSandbox;
 exports.resetTrialSandboxNow = trialSandbox.resetTrialSandboxNow;
+
+// =================================================================
+// ✅ 銷控 AI 智能助理（docs/銷控AI智能助理-spec.md）
+//    salesAiAgent：對話／草案／執行；salesAiAdmin：超級管理員模型／提示詞／金鑰管理
+// =================================================================
+const salesAi = require("./salesAi");
+salesAi.init({ performCancelPurchase, buildRemarksSummary: buildRemarksSummaryFromNotes, recordSalesStatusChange });
+exports.salesAiAgent = salesAi.salesAiAgent;
+exports.salesAiAdmin = salesAi.salesAiAdmin;

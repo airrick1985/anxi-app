@@ -1948,35 +1948,11 @@
       </v-card>
     </v-dialog>
 
-    <!-- 全域 AI 助理對話框 -->
-    <!-- 全域 AI 助理對話框 -->
-    <v-dialog 
-      v-model="isAIAssistantDialogVisible" 
-      max-width="1000px" 
-      :fullscreen="$vuetify.display.smAndDown"
-      scrollable
-      transition="dialog-bottom-transition"
-    >
-      <v-card :rounded="$vuetify.display.smAndDown ? '0' : 'lg'">
-        <v-card-title class="d-flex justify-space-between align-center px-4 py-3 bg-grey-lighten-4">
-          <span class="text-h6 font-weight-bold">
-            <v-icon color="primary" class="mr-2">mdi-robot-outline</v-icon>{{ projectName }} AI助理
-          </span>
-          <v-btn icon="mdi-close" variant="text" size="small" @click="isAIAssistantDialogVisible = false"></v-btn>
-        </v-card-title>
-        
-        <v-card-text class="pa-0 d-flex flex-column" :style="{ height: $vuetify.display.smAndDown ? '100%' : '80vh' }">
-          <SalesBotChat 
-            v-if="isAIAssistantDialogVisible"
-            :project-id="projectId"
-            :unit-data="null"
-            :all-parking-data="allDataForModal['車位'] || []"
-            :all-units-data="allDataForModal['戶別'] || []"
-            class="flex-grow-1"
-          />
-        </v-card-text>
-      </v-card>
-    </v-dialog>
+    <!-- ✅ 銷控 AI 智能助理：常駐浮動 ICON ＋ 浮動面板（docs/銷控AI智能助理-spec.md §3） -->
+    <template v-if="projectId && canUseSalesAi">
+      <SalesAiFab />
+      <SalesAiPanel :project-id="projectId" :project-name="projectName || ''" @open-unit="openUnitFromAi" />
+    </template>
 
     <v-dialog v-model="isParkingCanvasDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition" :eager="true">
       <v-card class="d-flex flex-column">
@@ -2165,16 +2141,18 @@ import ParkingCanvas from '@/components/ParkingCanvas.vue';
 import PaymentRecordsPanel from '@/components/PaymentRecordsPanel.vue';
 // ✅ [效能] 對話框型大元件改為非同步載入：首次開啟時才下載對應 chunk，
 // 銷控頁進入時的 JS 體積大幅縮小（AnalyticsPanel 121KB、CancelledPurchaseManager 97KB、
-// UnitDataExportDialog 74KB（含 xlsx）、SalesGridDownloadDialog 35KB、SalesBotChat 19KB…）。
+// UnitDataExportDialog 74KB（含 xlsx）、SalesGridDownloadDialog 35KB…）。
 // 這些元件在模板皆以 v-if（首次開啟後常駐，見 lazyMounted）掛載，關閉後不重置內部狀態。
 const CancelledPurchaseManager = defineAsyncComponent(() => import('@/components/CancelledPurchaseManager.vue'));
-const SalesBotChat = defineAsyncComponent(() => import('@/components/SalesBotChat.vue'));
 const AnalyticsPanel = defineAsyncComponent(() => import('@/components/AnalyticsPanel.vue'));
 const ParkingRatioDialog = defineAsyncComponent(() => import('@/components/ParkingRatioDialog.vue'));
 const ActivityMessageViewer = defineAsyncComponent(() => import('@/components/ActivityMessageViewer.vue'));
 const UnitDataExportDialog = defineAsyncComponent(() => import('@/components/UnitDataExportDialog.vue'));
 const SalesGridDownloadDialog = defineAsyncComponent(() => import('@/components/SalesGridDownloadDialog.vue'));
 import { useUserStore } from '@/store/user';
+import { useSalesAiStore } from '@/store/salesAiStore';
+import SalesAiFab from '@/components/salesAi/SalesAiFab.vue';
+import SalesAiPanel from '@/components/salesAi/SalesAiPanel.vue';
 import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
 import { mdiViewDashboardVariantOutline } from '@mdi/js';
@@ -2245,7 +2223,7 @@ const moreToolGroups = computed(() => {
       title: '管理',
       tools: [
         { icon: 'mdi-account-cancel', label: '退戶記錄', action: () => { isCancelledPurchaseDialogVisible.value = true; } },
-        { icon: 'mdi-robot-outline', label: 'AI 銷售助理', action: () => { isAIAssistantDialogVisible.value = true; } },
+        ...(canUseSalesAi.value ? [{ icon: 'mdi-robot-outline', label: 'AI 智能助理', action: () => { aiStore.open(); } }] : []),
         { icon: 'mdi-cog-outline', label: '更多設定', action: navigateToSalesSettings },
       ],
     },
@@ -2301,8 +2279,8 @@ const desktopToolGroups = computed(() => {
   );
   const manageTools = [
     { icon: 'mdi-account-cancel', label: '退戶記錄管理', action: () => { isCancelledPurchaseDialogVisible.value = true; } },
-    { icon: 'mdi-robot-outline', label: 'AI 銷售助理', action: () => { isAIAssistantDialogVisible.value = true; } },
   ];
+  if (canUseSalesAi.value) manageTools.push({ icon: 'mdi-robot-outline', label: 'AI 智能助理', action: () => { aiStore.open(); } });
   if (canAccessCommission.value) {
     manageTools.push({ icon: 'mdi-cash-multiple', label: '請佣獎金', action: goToCommissionBonus });
   }
@@ -3959,7 +3937,6 @@ const effectiveGridContentMode = computed(() =>
 const isActivityDialogVisible = ref(false);
 const userStore = useUserStore();
 
-const isAIAssistantDialogVisible = ref(false);
 const isAnalyticsPanelVisible = ref(false);
 
 // 房車比速覽：工具列常駐徽章（手機為提醒橫條）+ 面板（首次開啟才掛載元件）
@@ -4075,6 +4052,27 @@ const currentViewMode = computed(() => route.meta.viewMode || 'sales');
 const pageTitle = computed(() => (currentViewMode.value === 'quote' ? '報價系統' : '銷控系統'));
 const itemCount = computed(() => quoteStore.itemCount);
 const projectName = computed(() => project.value.name);
+
+// ✅ 銷控 AI 智能助理（docs/銷控AI智能助理-spec.md）
+// 入口僅限具「銷控系統」建案權限者（超管／系管恆可），且只在銷控模式顯示；報價模式不顯示也不可使用
+const canUseSalesAi = computed(() => {
+  if (currentViewMode.value !== 'sales') return false;
+  const roles = userStore.user?.roles || [];
+  if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
+  return userStore.hasProjectPermission('銷控系統', project.value?.name);
+});
+const aiStore = useSalesAiStore();
+watch(canUseSalesAi, ok => { if (!ok) aiStore.close(); });
+function openUnitFromAi(unitId) {
+  const target = (salesHouseholds.value || []).find(u => String(u.unitId).toUpperCase() === String(unitId || '').toUpperCase());
+  if (target) openUnitDetail(target);
+  else toast.warning(`找不到戶別 ${unitId}`);
+}
+aiStore.registerUiActionHandler(a => { if (a?.type === 'openUnit') openUnitFromAi(a.unitId); });
+watch([projectId, projectName], ([id, name]) => { if (id) aiStore.setProject(id, name || ''); }, { immediate: true });
+// 全螢幕功能開啟時隱藏浮動 ICON，避免蓋住畫布
+watch([isParkingCanvasDialogVisible, isSlideDialogVisible], ([a, b]) => { aiStore.hidden = !!(a || b); });
+onUnmounted(() => { aiStore.close(); aiStore.hidden = false; });
 const availableProjects = computed(() => projectStore.projectsList || []);
 
 // [Grid Computed]
@@ -5109,7 +5107,7 @@ const unitQuickActions = computed(() => {
       { key: 'divider-1', divider: true },
       { key: 'remarks', icon: 'mdi-comment-text-multiple-outline', label: '備註留言', subtitle: remarkCount > 0 ? `${remarkCount} 則留言` : '尚無留言，點此新增', badge: remarkCount > 0 ? String(remarkCount) : '', run: unit => openRemarkDialog(unit) },
       { key: 'payments', icon: 'mdi-cash-multiple', label: '繳款紀錄', subtitle: paymentBadge ? `已繳 ${paymentBadge}` : '尚無繳款紀錄', badge: paymentBadge, badgeColor: enriched && enriched.payment_ratio >= 100 ? 'green' : 'deep-orange', run: unit => openPaymentRecordsPopup(enrichQuickMenuUnit(unit)) },
-      { key: 'ai', icon: 'mdi-robot-outline', label: 'AI 助理', subtitle: '詢問此戶別相關問題', run: unit => openUnitDetail(unit, { tab: 'aiAssistant' }) },
+      ...(canUseSalesAi.value ? [{ key: 'ai', icon: 'mdi-robot-outline', label: 'AI 助理', subtitle: '詢問此戶別相關問題', run: unit => openUnitDetail(unit, { tab: 'aiAssistant' }) }] : []),
       { key: 'divider-2', divider: true },
     );
   }
