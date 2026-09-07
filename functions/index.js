@@ -23727,6 +23727,62 @@ async function _buildVipContinueSheetFlex({ projectId, docId, projectName, guest
 }
 
 /**
+ * [內部輔助] 「客戶資料完成」Flex 卡片（情境 B：銷售補全客戶資料表）
+ * 取代原本純文字通知；底部按鈕導向洽談紀錄入口頁（LINE 內自動登入後開啟該客戶）
+ */
+function _buildCustomerSheetCompleteFlex({ projectId, docId, projectName, basicRows, needRows }) {
+  const logUrl = `https://anxismart.com/#/customer-log-entry/${projectId}/${encodeURIComponent(docId)}`;
+  const safeProjectName = projectName || '未命名建案';
+
+  const infoRow = ([label, value]) => ({
+    type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+      { type: 'text', text: label, color: '#888888', size: 'sm', flex: 3 },
+      { type: 'text', text: value ? String(value) : '—', color: '#333333', size: 'sm', flex: 7, wrap: true }
+    ]
+  });
+  const sectionTitle = (text) => ({
+    type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center', contents: [
+      { type: 'box', layout: 'vertical', width: '4px', height: '14px', backgroundColor: '#2E7D32', cornerRadius: '2px', contents: [] },
+      { type: 'text', text, size: 'sm', weight: 'bold', color: '#2E7D32' }
+    ]
+  });
+
+  const guestName = (basicRows.find(([l]) => l === '姓名') || [])[1] || '未填姓名';
+  const salesName = (basicRows.find(([l]) => l === '銷售') || [])[1] || '';
+
+  return {
+    type: 'flex',
+    altText: `✅ ${safeProjectName} 客戶資料完成：${guestName}${salesName ? `（${salesName}）` : ''}`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#2E7D32', paddingAll: '16px', contents: [
+          { type: 'text', text: '✅ 客戶資料完成', color: '#FFFFFFCC', size: 'sm' },
+          { type: 'text', text: safeProjectName, color: '#FFFFFF', size: 'xl', weight: 'bold', wrap: true }
+        ]
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '16px', contents: [
+          sectionTitle('基本資料'),
+          { type: 'box', layout: 'vertical', spacing: 'sm', contents: basicRows.map(infoRow) },
+          { type: 'separator', margin: 'md' },
+          sectionTitle('需求資訊'),
+          { type: 'box', layout: 'vertical', spacing: 'sm', contents: needRows.map(infoRow) },
+          { type: 'text', text: '點擊下方按鈕可直接開啟該客戶，接續填寫洽談紀錄。', size: 'xs', color: '#888888', wrap: true, margin: 'md' }
+        ]
+      },
+      footer: {
+        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '16px', contents: [
+          { type: 'button', style: 'primary', height: 'sm', color: '#2E7D32', action: { type: 'uri', label: '開啟洽談紀錄', uri: logUrl } },
+          { type: 'button', style: 'secondary', height: 'sm', action: { type: 'clipboard', label: '複製連結', clipboardText: logUrl } }
+        ]
+      }
+    }
+  };
+}
+
+/**
  * [觸發函式] 客戶資料通知分流 (修正版 V2 - 支援資料補全通知)
  * 修正點：當銷售人員「補全」第一筆資料(長度未變)時，也要觸發通知。
  */
@@ -23828,6 +23884,8 @@ exports.onVipGuestSubmission = onDocumentWritten({
 
     // ✅ [vip-form 優化] 接續填寫 QR Flex（僅情境 A 且有歸屬銷售時產生）
     let continueFlexMessage = null;
+    // ✅ [客戶資料完成 Flex] 情境 B 改為 Flex 卡片（含開啟洽談紀錄按鈕），取代純文字
+    let completeFlexMessage = null;
 
     // ============================================================
     // 情境 A: 客戶掃描 QR Code (VipForm)
@@ -23941,6 +23999,33 @@ exports.onVipGuestSubmission = onDocumentWritten({
 坪數需求: ${formatVal('坪數需求')}
 購屋預算: ${formatVal('購屋預算')}
 從何得知本建案: ${formatVal('從何得知本建案')}`;
+
+      // ✅ [客戶資料完成 Flex] 產製失敗時退回純文字，不阻擋通知
+      try {
+        completeFlexMessage = _buildCustomerSheetCompleteFlex({
+          projectId,
+          docId: event.params.docId,
+          projectName,
+          basicRows: [
+            ['銷售', formatVal('銷售人員')],
+            ['姓名', formatVal('姓名')],
+            ['電話', formatVal('電話')],
+            ['拜訪日期', visitDate],
+            ['年齡', formatVal('年齡')],
+            ['地址', fullAddress],
+            ['職業', fullJob]
+          ],
+          needRows: [
+            ['購屋動機', formatVal('購屋動機')],
+            ['房型需求', formatVal('房型需求')],
+            ['坪數需求', formatVal('坪數需求')],
+            ['購屋預算', formatVal('購屋預算')],
+            ['得知管道', formatVal('從何得知本建案')]
+          ]
+        });
+      } catch (flexError) {
+        console.error(`[${functionName}] 產生客戶資料完成 Flex 失敗（退回純文字）:`, flexError);
+      }
     }
 
     // 4. 轉換手機號為 LINE ID 並發送
@@ -23986,11 +24071,14 @@ exports.onVipGuestSubmission = onDocumentWritten({
         }
 
         // ✅ [vip-form 優化] 同一次推播附上接續填寫 QR Flex（收件者同文字通知：櫃台＋歸屬銷售）
-        const messagesToSend = [{ type: 'text', text: messageText }];
+        // ✅ [客戶資料完成 Flex] 情境 B 以 Flex 卡片取代純文字；其餘維持文字（＋接續填寫 QR Flex）
+        const messagesToSend = completeFlexMessage
+          ? [completeFlexMessage]
+          : [{ type: 'text', text: messageText }];
         if (continueFlexMessage) messagesToSend.push(continueFlexMessage);
         await lineClient.multicast(lineIdArray, messagesToSend);
         success = true;
-        console.log(`[${functionName}] LINE 通知已發送給 ${finalLineIds.size} 人 (${source}${continueFlexMessage ? '，含QR Flex' : ''})。`);
+        console.log(`[${functionName}] LINE 通知已發送給 ${finalLineIds.size} 人 (${source}${continueFlexMessage ? '，含QR Flex' : ''}${completeFlexMessage ? '，Flex 卡片' : ''})。`);
         break;
       } catch (error) {
         if (error.statusCode === 429 && attempt < MAX_RETRIES) {

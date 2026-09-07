@@ -745,6 +745,19 @@ const routes = [
     }
   },
 
+  // ✅ 洽談紀錄入口頁（LINE「客戶資料完成」通知連結導向；LIFF 自動登入後轉入客資系統並開啟該客戶）
+  {
+    path: '/customer-log-entry/:projectId/:docId',
+    name: 'CustomerLogEntry',
+    component: () => import('@/views/CustomerLogEntry.vue'),
+    props: true,
+    meta: {
+      requiresAuth: false, // 避開全域登入，由組件內 LIFF 驗證
+      layout: PublicLayout,
+      title: '開啟洽談紀錄'
+    }
+  },
+
   // ✅ 客資歸屬裁決頁（LINE 裁決通知連結導向，限櫃台）
   {
     path: '/vip-guest-arbitration/:projectId/:docId',

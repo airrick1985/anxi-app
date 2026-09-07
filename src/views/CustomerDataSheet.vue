@@ -3,9 +3,9 @@
     <v-row justify="center">
       <v-col cols="12" md="10" lg="8">
 
-        <v-stepper 
-          v-if="!isCustomerMode" 
-          :model-value="step" 
+        <v-stepper
+          v-if="!isCustomerMode"
+          :model-value="step"
           class="mb-5"
           :alt-labels="isMobile"
           :class="{ 'mobile-stepper': isMobile }"
@@ -22,7 +22,7 @@
         </v-stepper>
 
         <v-window v-model="step">
-          
+
           <v-window-item :value="1">
             <v-card flat class="text-center pa-10">
               <div v-if="isLoading">
@@ -35,19 +35,19 @@
                 <v-icon icon="mdi-alert-circle" size="64" color="error" class="mb-4"></v-icon>
                 <h3 class="text-h5 font-weight-bold mb-2">驗證失敗</h3>
                 <p class="text-body-1 text-grey-darken-1 mb-6">{{ step1Error }}</p>
-                
-                <v-btn 
+
+                <v-btn
                   v-if="showBindButton"
-                  color="success" 
-                  block 
-                  size="large" 
+                  color="success"
+                  block
+                  size="large"
                   @click="goToBinding"
                   prepend-icon="mdi-link-variant"
                   class="mb-3"
                 >
                   前往帳號綁定
                 </v-btn>
-                
+
                 <v-btn color="primary" variant="outlined" @click="initializeLiff">
                   重試
                 </v-btn>
@@ -83,7 +83,7 @@
             <v-card flat>
               <v-card-title class="d-flex justify-space-between align-center">
                 <span>選擇客戶</span>
-                
+
                 <v-btn-toggle
                   v-model="filterRange"
                   mandatory
@@ -96,7 +96,7 @@
                   <v-btn value="week" size="small">7天內</v-btn>
                 </v-btn-toggle>
               </v-card-title>
-                             
+
                  <v-text-field
                   v-model="guestSearch"
                   label="搜尋姓名或電話"
@@ -105,7 +105,7 @@
                   prepend-inner-icon="mdi-magnify"
                   clearable
                   hide-details
-                  class="mb-4 mt-2" 
+                  class="mb-4 mt-2"
                   autocomplete="off" ></v-text-field>
 
                  <v-list lines="one" border rounded style="max-height: 400px; overflow-y: auto;">
@@ -118,7 +118,7 @@
                     :class="{ 'opacity-60 bg-grey-lighten-5': !!guest.latestSalesName && guest.submissionsCount <= 1 }"
                   >
                     <template v-slot:prepend>
-                      <v-icon 
+                      <v-icon
                         :color="guest.gender === '男' ? 'blue' : (guest.gender === '女' ? 'pink' : 'indigo')"
                         class="mr-3"
                       >
@@ -129,7 +129,7 @@
                     <template v-slot:title>
                       <div class="d-flex align-center mb-1">
                         <span class="text-subtitle-1 font-weight-bold">{{ guest.name }}</span>
-                        
+
                         <v-chip
                           v-if="guest.gender"
                           size="x-small"
@@ -146,12 +146,12 @@
 
                     <template v-slot:append>
                       <div class="d-flex flex-column align-end justify-center">
-                        
+
                         <div class="mb-1 d-flex align-center">
-                          <v-icon 
+                          <v-icon
                             v-if="!!guest.latestSalesName && guest.submissionsCount <= 1"
-                            size="small" 
-                            color="grey" 
+                            size="small"
+                            color="grey"
                             class="mr-1"
                           >
                             mdi-lock
@@ -171,10 +171,10 @@
                         <div class="d-flex align-center">
                           <v-tooltip v-if="guest.submissionsCount > 1" location="top">
                             <template v-slot:activator="{ props }">
-                              <v-icon 
-                                v-bind="props" 
-                                color="warning" 
-                                size="small" 
+                              <v-icon
+                                v-bind="props"
+                                color="warning"
+                                size="small"
                                 class="mr-1"
                               >
                                 mdi-alert-circle-outline
@@ -185,7 +185,7 @@
                               最後銷售：{{ guest.latestSalesName || '未知' }}
                             </span>
                           </v-tooltip>
-                          
+
                           <span class="text-caption text-grey">
                             {{ formatGuestDate(guest.lastSubmittedAt) }}
                           </span>
@@ -208,7 +208,7 @@
                         color="grey-darken-1"
                         size="small"
                         class="text-decoration-underline"
-                        @click="confirmNewCustomerDialog = true" 
+                        @click="confirmNewCustomerDialog = true"
                         prepend-icon="mdi-account-plus-outline"
                      >
                         新增客戶資料
@@ -241,14 +241,14 @@
 
 
         <div v-if="step === 4">
-          <v-card v-if="showCoverImage && coverImageUrl" class="mb-5" elevation="4">
+          <v-card v-if="showCoverImage && coverImageUrl" class="mb-5" elevation="4" rounded="xl">
             <v-img :src="coverImageUrl" aspect-ratio="16/9" cover></v-img>
           </v-card>
 
-          <v-card>
-            <v-toolbar color="#f5f5f7" density="compact">
+          <v-card class="cds-card" rounded="xl" elevation="3">
+            <v-toolbar color="white" density="compact" class="cds-toolbar">
               <v-btn v-if="!isCustomerMode" icon="mdi-arrow-left" @click="step = 3; isSubmitted = false;"></v-btn>
-              <v-toolbar-title>{{ pageTitle }}</v-toolbar-title>
+              <v-toolbar-title class="cds-toolbar__title">{{ pageTitle }}</v-toolbar-title>
               <v-spacer></v-spacer>
               <v-btn v-if="!isCustomerMode" @click="qrDialog = true" icon="mdi-qrcode" title="產生客戶填寫QR Code"></v-btn>
             </v-toolbar>
@@ -256,7 +256,7 @@
             <v-card-text v-if="isLoading" class="text-center pa-10">
               <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
             </v-card-text>
-            
+
             <v-card-text v-else-if="isSubmitted" class="text-center pa-10">
               <v-icon size="80" color="success">mdi-check-circle-outline</v-icon>
               <h2 class="text-h5 mt-4">資料已送出</h2>
@@ -279,8 +279,11 @@
               </v-alert>
 
               <v-form ref="formRef" @submit.prevent="handleSubmit">
-                <p v-if="!isCustomerMode" class="text-h6 mb-4">銷售資訊</p>
-                
+                <div v-if="!isCustomerMode" class="cds-section-title">
+                  <span class="cds-section-title__bar"></span>
+                  <span>銷售資訊</span>
+                </div>
+
                 <v-select
                 clearable
                   v-if="!isCustomerMode"
@@ -289,19 +292,27 @@
                   item-title="name"
                   item-value="name"
                   label="銷售人員"
-                  variant="filled"
+                  variant="outlined"
+                  rounded="lg"
+                  prepend-inner-icon="mdi-account-tie"
                   :readonly="!isCounter"
                   :rules="[rules.required]"
                   class="mb-2"
                 ></v-select>
 
-                <p class="text-h6 mt-6 mb-4">基本資料</p>
-                
+                <div class="cds-section-title" :class="{ 'mt-6': !isCustomerMode }">
+                  <span class="cds-section-title__bar"></span>
+                  <span>基本資料</span>
+                </div>
+                <p class="text-caption text-grey-darken-1 mb-4">標示 * 為必填項目</p>
+
                 <v-text-field
                 clearable
                   v-model="formData['姓名']"
-                  label="姓名"
+                  label="姓名 *"
                   variant="outlined"
+                  rounded="lg"
+                  prepend-inner-icon="mdi-account-outline"
                   :rules="[rules.required]"
                   class="mb-2"
                 autocomplete="off" ></v-text-field>
@@ -309,8 +320,11 @@
                 <v-text-field
                 clearable
                   v-model="formData['電話']"
-                  label="電話"
+                  label="電話 *"
                   variant="outlined"
+                  rounded="lg"
+                  prepend-inner-icon="mdi-phone-outline"
+                  inputmode="numeric"
                   :rules="[rules.required, rules.phone]"
                   class="mb-2"
                 autocomplete="off" ></v-text-field>
@@ -318,30 +332,33 @@
                 <v-text-field
                   v-if="!isCustomerMode"
                   v-model="formData['拜訪日期']"
-                  label="拜訪日期"
+                  label="拜訪日期 *"
                   type="date"
                   variant="outlined"
+                  rounded="lg"
+                  prepend-inner-icon="mdi-calendar-outline"
                   :max="todayInTaiwan"
                   :rules="[rules.required, rules.maxDate]"
                   class="mb-2"
                 autocomplete="off" ></v-text-field>
-                
+
                 <dynamic-form-field
                   clearable
-                  v-if="systemSettings.fields.age" 
+                  v-if="systemSettings.fields.age"
                   :field-config="systemSettings.fields.age"
                   v-model="formData[systemSettings.fields.age.label]"
                 </dynamic-form-field>
-     
+
                 <v-row dense>
                 <v-col cols="6">
                     <v-select
                       clearable
-                      v-model="formData['居住城市']" 
+                      v-model="formData['居住城市']"
                       :rules="[rules.required]"
                       :items="cityOptions"
-                      label="現居地址"
+                      label="現居縣市 *"
                       variant="outlined"
+                      rounded="lg"
                     ></v-select>
                   </v-col>
                   <v-col cols="6">
@@ -350,11 +367,12 @@
                       v-model="formData['居住鄉鎮市區']"
                        :rules="[rules.required]"
                       :items="districtOptions"
-                      label="鄉鎮市區"
+                      label="鄉鎮市區 *"
                       variant="outlined"
-                      
+                      rounded="lg"
+
                       :disabled="!formData['居住城市']"
-                      
+
                     ></v-select>
                   </v-col>
                 </v-row>
@@ -363,6 +381,8 @@
                   v-model="formData['居住詳細地址']"
                   label="地址或街道"
                   variant="outlined"
+                  rounded="lg"
+                  prepend-inner-icon="mdi-map-marker-outline"
                   class="mb-2"
                 autocomplete="off" ></v-text-field>
 
@@ -370,8 +390,8 @@
                    clearable
                   v-if="systemSettings.fields.occupation"
                   :field-config="systemSettings.fields.occupation"
-                  v-model="formData[systemSettings.fields.occupation.label]"               
-                  hint="可選擇其他輸入您的職業"   
+                  v-model="formData[systemSettings.fields.occupation.label]"
+                  hint="可選擇其他輸入您的職業"
                   ></dynamic-form-field>
 
                   <v-text-field
@@ -379,12 +399,17 @@
                   v-model="formData['任職公司']"
                   label="任職公司"
                   variant="outlined"
+                  rounded="lg"
+                  prepend-inner-icon="mdi-office-building-outline"
                   class="mb-2"
                   autocomplete="off"
                 ></v-text-field>
 
-                <v-divider class="my-6"></v-divider>
-                <p class="text-h6 mb-4">需求資訊</p>
+                <div class="cds-section-title mt-8">
+                  <span class="cds-section-title__bar"></span>
+                  <span>需求資訊</span>
+                </div>
+                <p class="text-caption text-grey-darken-1 mb-4">請點選符合需求的項目，再點一次可取消。</p>
 
                 <template v-for="field in formFields" :key="field.key">
                   <dynamic-form-field
@@ -393,13 +418,16 @@
                     v-model="formData[field.label]"
                   ></dynamic-form-field>
                 </template>
-                
+
                 <v-btn
                   type="submit"
-                  color="#005AB6" 
+                  color="#005AB6"
                   block
                   size="large"
-                  class="mt-6"
+                  rounded="lg"
+                  elevation="2"
+                  class="mt-8 cds-submit"
+                  prepend-icon="mdi-send-outline"
                   :loading="isSubmitting"
                 >
                   送出資料
@@ -409,7 +437,7 @@
             </v-card-text>
           </v-card>
         </div>
-        
+
         <v-dialog v-model="qrDialog" max-width="400">
           <v-card>
             <v-card-title>客戶資料表 QR Code</v-card-title>
@@ -440,21 +468,22 @@
 </template>
 
 <script setup>
-import { useDisplay } from 'vuetify'; 
-import { ref, computed, onMounted, watch, h, nextTick, Fragment } from 'vue'; 
-import { useRoute, useRouter } from 'vue-router'; 
+import { useDisplay } from 'vuetify';
+import { ref, computed, onMounted, watch, h, nextTick, Fragment } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   fetchVipGuests,
-  fetchCustomerSheetSettings, 
+  fetchCustomerSheetSettings,
   submitCustomerSheet,
-  fetchUserManagementInitialData, 
+  fetchUserManagementInitialData,
   fetchSingleVipGuest,
   getLiffUserData // ✅ 引入 LIFF 驗證 API
 } from '@/api';
 import liff from '@line/liff'; // ✅ 引入 LIFF SDK
 import QrCode from 'qrcode.vue';
-import twCitiesData from '@/assets/TwCities.json'; 
-import { VCombobox, VSelect, VTextField } from 'vuetify/components'; 
+import twCitiesData from '@/assets/TwCities.json';
+import { VCombobox, VSelect, VTextField } from 'vuetify/components';
+import ChoiceChipField from '@/components/form/ChoiceChipField.vue';
 
 // ✅ [打勾] 請在此填入您的 LIFF ID
 const LIFF_ID = '2008257338-8AWzYeNQ'; //2008257338-6N3jwqxA 測試用    2008257338-8AWzYeNQ 正式
@@ -485,7 +514,7 @@ const DynamicFormField = {
     const options = computed(() => props.fieldConfig.options || []);
 
     const computedOptions = computed(() => {
-      const optionsList = options.value || []; 
+      const optionsList = options.value || [];
       if (props.fieldConfig.allowCustom) {
         return [...optionsList, '其他'];
       }
@@ -502,7 +531,7 @@ const DynamicFormField = {
     });
 
     watch(() => props.modelValue, (newModelValue) => {
-      const currentOptions = options.value || []; 
+      const currentOptions = options.value || [];
       if (!props.fieldConfig.allowCustom) {
         internalSelectValue.value = newModelValue;
         return;
@@ -523,7 +552,7 @@ const DynamicFormField = {
         if (customValue.value !== newCustomValue) {
             customValue.value = newCustomValue;
         }
-      } else { 
+      } else {
         if (newModelValue && !currentOptions.includes(newModelValue)) {
           internalSelectValue.value = '其他';
           customValue.value = newModelValue;
@@ -552,7 +581,7 @@ const DynamicFormField = {
         } else {
             emit('update:modelValue', baseValues);
         }
-      } else { 
+      } else {
         if (internalSelectValue.value === '其他') {
           emit('update:modelValue', customValue.value || null);
         } else {
@@ -560,38 +589,38 @@ const DynamicFormField = {
         }
       }
     };
-    
+
     watch(internalSelectValue, (newSelectVal, oldSelectVal) => {
         if (props.fieldConfig.selectionMode === 'multiple') {
             if (Array.isArray(oldSelectVal) && oldSelectVal.includes('其他') && (!Array.isArray(newSelectVal) || !newSelectVal.includes('其他'))) {
                 customValue.value = '';
             }
-        } else { 
+        } else {
             if (oldSelectVal === '其他' && newSelectVal !== '其他') {
                 customValue.value = '';
             }
         }
-        emitUpdate(); 
+        emitUpdate();
     });
-    
+
     watch(customValue, () => {
         if (showCustomField.value) {
             emitUpdate();
         }
     });
-    
-    if (!props.fieldConfig || !props.fieldConfig.options) { 
-      return () => null; 
+
+    if (!props.fieldConfig || !props.fieldConfig.options) {
+      return () => null;
     }
 
     const rules = {
       required: (v) => !!v || '此欄位為必填',
       requiredArray: (v) => (Array.isArray(v) && v.length > 0) || '此欄位為必填',
     };
-    
+
     const isRequired = props.fieldConfig.isRequired;
     const isMultiple = props.fieldConfig.selectionMode === 'multiple';
-    
+
     const fieldRules = computed(() => {
         if (!isRequired) return [];
         if (isMultiple) {
@@ -611,8 +640,9 @@ const DynamicFormField = {
     return () => {
       const commonProps = {
         label: props.fieldConfig.label,
-        items: computedOptions.value, 
+        items: computedOptions.value,
         variant: 'outlined',
+        rounded: 'lg',
         rules: isRequired ? [fieldRules.value] : [],
         class: 'mb-2',
         autocomplete: 'off',
@@ -620,16 +650,18 @@ const DynamicFormField = {
         persistentHint: !!props.hint
       };
 
-      const vTextField = h(VTextField, { 
+      const vTextField = h(VTextField, {
         modelValue: customValue.value,
         'onUpdate:modelValue': (val) => {
           customValue.value = val;
         },
         label: '請輸入其他項目',
         variant: 'outlined',
+        rounded: 'lg',
+        prependInnerIcon: 'mdi-pencil-outline',
         class: 'mb-2 mt-n1',
         autocomplete: 'off',
-        rules: (isRequired && showCustomField.value) ? [rules.required] : [], 
+        rules: (isRequired && showCustomField.value) ? [rules.required] : [],
       });
 
       if (props.fieldConfig.selectionMode === 'single') {
@@ -649,25 +681,27 @@ const DynamicFormField = {
           return h(VSelect, vSelectProps);
         }
       }
-      
+
       if (props.fieldConfig.selectionMode === 'multiple') {
+        // 複選改為內嵌選項晶片：所有選項一目了然、點選即完成，不再有下拉選單卡住畫面
         const multiProps = {
-          ...commonProps,
+          label: props.fieldConfig.label,
+          items: computedOptions.value,
+          required: !!isRequired,
+          rules: isRequired ? [fieldRules.value] : [],
           modelValue: internalSelectValue.value,
           'onUpdate:modelValue': (val) => {
             internalSelectValue.value = val;
           },
-          multiple: true,
-          chips: true,
-          closableChips: true
+          multiple: true
         };
         if (props.fieldConfig.allowCustom) {
            return h(Fragment, [
-             h(VSelect, multiProps),
+             h(ChoiceChipField, multiProps),
              showCustomField.value ? vTextField : null,
            ]);
         } else {
-          return h(VSelect, multiProps);
+          return h(ChoiceChipField, multiProps);
         }
       }
       return null;
@@ -694,16 +728,16 @@ const vipGuests = ref([]);
 const guestSearch = ref('');
 const selectedGuestId = ref(null);
 const formRef = ref(null);
-const currentDocId = ref(null); 
+const currentDocId = ref(null);
 const projectName = ref('');
 const coverImageUrl = ref(null);
 const showCoverImage = ref(false);
-const systemSettings = ref({ fields: {} }); 
-const formFields = ref([]); 
+const systemSettings = ref({ fields: {} });
+const formFields = ref([]);
 const formData = ref({});
 const qrDialog = ref(false);
 const copySuccess = ref(false);
-const confirmNewCustomerDialog = ref(false); 
+const confirmNewCustomerDialog = ref(false);
 
 
 
@@ -721,19 +755,19 @@ const getTodayInTaiwan = () => {
 const todayInTaiwan = computed(() => getTodayInTaiwan());
 
 const currentUrl = computed(() => {
-  if (!selectedProjectId.value) return ''; 
+  if (!selectedProjectId.value) return '';
   const selectedSalesName = formData.value['銷售人員'];
   const selectedSalesPersonObject = salespersonOptions.value.find(p => p.name === selectedSalesName);
   const selectedSalesPhone = selectedSalesPersonObject ? selectedSalesPersonObject.phone : undefined;
 
   const path = router.resolve({
-    name: 'CustomerDataSheetForm', 
+    name: 'CustomerDataSheetForm',
     params: {
-      projectId: selectedProjectId.value, 
-      docId: currentDocId.value || undefined 
+      projectId: selectedProjectId.value,
+      docId: currentDocId.value || undefined
     },
     query: {
-      sp: selectedSalesPhone, 
+      sp: selectedSalesPhone,
       sn: selectedSalesName || undefined
     }
   }).href;
@@ -746,7 +780,7 @@ const filteredVipGuests = computed(() => {
   let list = [...vipGuests.value];
   const lowerSearch = guestSearch.value ? guestSearch.value.trim().toLowerCase() : null;
   if (lowerSearch) {
-    list = list.filter(guest => 
+    list = list.filter(guest =>
       guest.name.toLowerCase().includes(lowerSearch) ||
       guest.phone.includes(lowerSearch)
     );
@@ -761,7 +795,7 @@ const filteredVipGuests = computed(() => {
       if (!dateToCompare) return false;
       if (filterRange.value === 'today') {
         return dateToCompare >= todayStart;
-      } else { 
+      } else {
         return dateToCompare >= weekStart;
       }
     });
@@ -776,15 +810,15 @@ const filteredVipGuests = computed(() => {
 
 const parseTimestamp = (t) => {
     if (!t) return null;
-    if (typeof t.toDate === 'function') return t.toDate(); 
-    if (t._seconds !== undefined) return new Date(t._seconds * 1000); 
-    const d = new Date(t); 
+    if (typeof t.toDate === 'function') return t.toDate();
+    if (t._seconds !== undefined) return new Date(t._seconds * 1000);
+    const d = new Date(t);
     return isNaN(d.getTime()) ? null : d;
 };
 
 const salespersonOptions = computed(() => {
   if (!isCounter.value) {
-    return [salesPerson.value]; 
+    return [salesPerson.value];
   }
   const options = [salesPerson.value];
   const filteredSalesStaff = allManageableUsers.value.filter(user => {
@@ -803,7 +837,7 @@ const rules = {
   requiredArray: (v) => (Array.isArray(v) && v.length > 0) || '此欄位為必填',
   phone: (v) => (v && v.length === 10 && v.startsWith('09')) || '請輸入有效的 10 碼手機號碼',
   maxDate: (v) => {
-    if (!v) return true; 
+    if (!v) return true;
     const today = getTodayInTaiwan();
     return v <= today || `日期不可大於今天 (${today})`;
   }
@@ -870,7 +904,7 @@ async function initializeLiff() {
       showBindButton.value = true;
     } else if (response.status === 'bound') {
       // 成功登入
-      
+
       // 1. 篩選有權限的專案
       const validProjects = (response.projects || []).filter(p => {
         const systems = p.systems || [];
@@ -891,13 +925,13 @@ async function initializeLiff() {
           name: response.userName,
           // 注意：如果後端沒回傳電話，這裡會是空值。若為空，一般銷售人員提交表單時可能會漏掉電話欄位
           // 建議確保後端 getLiffUserData 回傳 userKey (phone)
-          phone: response.userKey || '', 
+          phone: response.userKey || '',
           projects: validProjects.map(p => ({ id: p.projectId, name: p.projectName })),
           isCounter: hasCounterRole
         };
-        
+
         // 設定 salesPhone 以便後續 loadForm 邏輯使用
-        salesPhone.value = response.userKey || ''; 
+        salesPhone.value = response.userKey || '';
 
         // 自動跳轉到步驟 2
         step.value = 2;
@@ -923,27 +957,27 @@ async function handleProjectSelected(isUrlEntry = false) {
   try {
     const [guests, settings] = await Promise.all([
       fetchVipGuests(selectedProjectId.value),
-      fetchCustomerSheetSettings(selectedProjectId.value) 
+      fetchCustomerSheetSettings(selectedProjectId.value)
     ]);
-    
-    vipGuests.value = guests; 
-    
+
+    vipGuests.value = guests;
+
     if (settings.status === 'success') {
       projectName.value = settings.projectName;
       showCoverImage.value = settings.vipFormConfig?.coverImage?.show || false;
       coverImageUrl.value = settings.vipFormConfig?.coverImage?.url || null;
-      systemSettings.value = { fields: settings.customerFieldSettings || {} }; 
-      formFields.value = processFormFields(settings.vipFormFields); 
+      systemSettings.value = { fields: settings.customerFieldSettings || {} };
+      formFields.value = processFormFields(settings.vipFormFields);
     } else {
       throw new Error(settings.message);
     }
-    
+
     if (!isUrlEntry) {
       step.value = 3;
     }
   } catch (error) {
     console.error("載入建案資料失敗:", error);
-    errorMessage.value = error.message; 
+    errorMessage.value = error.message;
   } finally {
     isLoading.value = false;
   }
@@ -966,28 +1000,28 @@ function processFormFields(dynamicFields = {}) {
 
 function handleGuestSelected(guestId) {
   selectedGuestId.value = guestId;
-  currentDocId.value = guestId; 
-  loadForm(); 
+  currentDocId.value = guestId;
+  loadForm();
   step.value = 4;
 }
 
 function handleNewCustomer() {
   selectedGuestId.value = null;
-  currentDocId.value = null; 
-  loadForm(); 
+  currentDocId.value = null;
+  loadForm();
   step.value = 4;
 }
 
 function executeNewCustomer() {
-  handleNewCustomer(); 
-  confirmNewCustomerDialog.value = false; 
+  handleNewCustomer();
+  confirmNewCustomerDialog.value = false;
 }
 
 async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameFromUrl = null) {
   isLoading.value = true;
   errorMessage.value = null;
   isSubmitted.value = false;
-  
+
   allManageableUsers.value = [];
   allUserPermissionsMap.value = {};
 
@@ -1005,16 +1039,16 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
     let initialFormData = {
       '姓名': '',
       '電話': '',
-      '銷售人員': isUrlEntry ? salesNameFromUrl : salesPerson.value.name, 
+      '銷售人員': isUrlEntry ? salesNameFromUrl : salesPerson.value.name,
       // [修正]: 初始化時就明確寫入銷售人員電話
       '銷售人員電話': initialSalesPhone,
       '拜訪日期': getTodayInTaiwan(),
-      '居住城市': null, 
+      '居住城市': null,
       '居住鄉鎮市區': null,
       '居住詳細地址': '',
       '任職公司': '',
-    };    
-    
+    };
+
     // 動態欄位初始化
     if (systemSettings.value.fields.age) {
       const field = systemSettings.value.fields.age;
@@ -1037,25 +1071,25 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
 
         if (data.submissions && Array.isArray(data.submissions) && data.submissions.length > 0) {
             sourceData = data.submissions[data.submissions.length - 1];
-        } 
+        }
         else if (data.profile) {
             sourceData = data.profile;
-        } 
+        }
         else {
             sourceData = data;
         }
 
-        initialFormData = { 
-          ...initialFormData, 
+        initialFormData = {
+          ...initialFormData,
           ...sourceData,
           '拜訪日期': sourceData['拜訪日期'] || getTodayInTaiwan(),
           // 確保即便讀取舊資料，若當下有明確的銷售人員身份，仍以當下身份為主 (或保持原狀，視業務邏輯)
-          '銷售人員': initialFormData['銷售人員'] || sourceData['銷售人員'], 
+          '銷售人員': initialFormData['銷售人員'] || sourceData['銷售人員'],
           '銷售人員電話': initialFormData['銷售人員電話'] || sourceData['銷售人員電話']
         };
-        
+
         if (sourceData['居住鄉鎮市區']) {
-          const city = twCitiesData.find(c => 
+          const city = twCitiesData.find(c =>
             c.districts.some(d => d.name === sourceData['居住鄉鎮市區'])
           );
           if (city) {
@@ -1067,9 +1101,9 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
         throw new Error(result.message);
       }
     }
-    
+
     formData.value = initialFormData;
-    
+
     // 櫃台模式下載入其他人員清單
     if (!isUrlEntry) {
       if (isCounter.value) {
@@ -1079,7 +1113,7 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
         if (adminPhone) {
             console.log(`[loadForm] 準備讀取管理員 [${adminPhone}] 的可管理清單...`);
             const result = await fetchUserManagementInitialData(adminPhone);
-            
+
             if (result.status === 'success' && result.data) {
               allManageableUsers.value = result.data.manageableUsers || [];
               allUserPermissionsMap.value = result.data.allUserPermissionsMap || {};
@@ -1118,7 +1152,7 @@ async function handleSubmit() {
         // 情境 B: 櫃台模式 (根據下拉選單 formData['銷售人員'] 反查電話)
         const selectedSalesName = formData.value['銷售人員'];
         const selectedSalesPersonObject = salespersonOptions.value.find(p => p.name === selectedSalesName);
-        
+
         if (selectedSalesPersonObject && selectedSalesPersonObject.phone) {
              formData.value['銷售人員電話'] = selectedSalesPersonObject.phone;
         }
@@ -1135,9 +1169,9 @@ async function handleSubmit() {
   // -----------------------------------------------------------
   if (!isCustomerMode.value && !formData.value['銷售人員電話']) {
       alert('系統錯誤：無法取得銷售人員電話，請嘗試重新整理或重新登入。');
-      return; 
+      return;
   }
-  
+
   // Debug Log (確認用，確認沒問題後可移除)
   console.log('準備送出的銷售電話:', formData.value['銷售人員電話']);
 
@@ -1151,27 +1185,27 @@ async function handleSubmit() {
   }
 
   isSubmitting.value = true;
-  
+
   try {
     const result = await submitCustomerSheet(
-      selectedProjectId.value, 
-      formData.value, 
-      currentDocId.value 
+      selectedProjectId.value,
+      formData.value,
+      currentDocId.value
     );
-    
+
     if (result.status !== 'success') {
       throw new Error(result.message);
     }
-    
+
     const updatedData = {
-      id: result.docId, 
-      name: formData.value['姓名'], 
+      id: result.docId,
+      name: formData.value['姓名'],
       phone: formData.value['電話']
     };
 
-    if (!currentDocId.value) { 
+    if (!currentDocId.value) {
       vipGuests.value.unshift(updatedData);
-    } else { 
+    } else {
       const index = vipGuests.value.findIndex(g => g.id === currentDocId.value);
       if (index > -1) {
         vipGuests.value[index].name = updatedData.name;
@@ -1179,7 +1213,7 @@ async function handleSubmit() {
       }
     }
 
-    isSubmitted.value = true; 
+    isSubmitted.value = true;
 
   } catch (error) {
     console.error("提交客戶資料表失敗:", error);
@@ -1191,7 +1225,7 @@ async function handleSubmit() {
 
 function handleSubmitSuccessAction() {
   if (isCustomerMode.value) {
-    window.close(); 
+    window.close();
   } else {
     step.value = 3;
     isSubmitted.value = false;
@@ -1228,19 +1262,19 @@ function formatGuestDate(val) {
 onMounted(() => {
   if (props.projectId) {
     // 這是客戶/QR Code 流程
-    isCustomerMode.value = true; 
+    isCustomerMode.value = true;
     step.value = 4;
     selectedProjectId.value = props.projectId;
-    currentDocId.value = props.docId; 
-    
+    currentDocId.value = props.docId;
+
     const salesPhoneFromUrl = route.query.sp;
     const salesNameFromUrl = route.query.sn;
-    
-    handleProjectSelected(true); 
-    loadForm(true, salesPhoneFromUrl, salesNameFromUrl); 
+
+    handleProjectSelected(true);
+    loadForm(true, salesPhoneFromUrl, salesNameFromUrl);
   } else {
     // ✅ [修改] 銷售人員流程：初始化 LIFF
-    isCustomerMode.value = false; 
+    isCustomerMode.value = false;
     step.value = 1;
     initializeLiff(); // 啟動 LIFF
   }
@@ -1250,9 +1284,9 @@ onMounted(() => {
 
 <style scoped>
 .mobile-stepper :deep(.v-stepper-item__title) {
-  font-size: 12px !important; 
-  line-height: 1.2;           
-  white-space: nowrap;        
+  font-size: 12px !important;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .mobile-stepper :deep(.v-stepper-item__avatar) {
@@ -1260,5 +1294,69 @@ onMounted(() => {
   height: 24px !important;
   font-size: 12px !important;
   margin-bottom: 8px !important;
+}
+
+/* 卡片：頂部主色細線 + 柔和陰影 */
+.cds-card {
+  border-top: 3px solid #005AB6;
+  box-shadow: 0 8px 28px rgba(20, 40, 80, 0.08) !important;
+  overflow: hidden;
+}
+.cds-toolbar {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.cds-toolbar__title {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #1F2A3A;
+}
+
+/* 區塊標題：左側主色短線 */
+.cds-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #1F2A3A;
+  margin-bottom: 4px;
+}
+.cds-section-title__bar {
+  display: inline-block;
+  width: 4px;
+  height: 18px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #005AB6 0%, #4C9BE8 100%);
+}
+
+/* 輸入框：主色聚焦、淡化預設邊框 */
+.cds-card :deep(.v-field--variant-outlined .v-field__outline) {
+  --v-field-border-opacity: 0.22;
+}
+.cds-card :deep(.v-field--variant-outlined.v-field--focused .v-field__outline) {
+  --v-field-border-opacity: 1;
+  color: #005AB6;
+}
+.cds-card :deep(.v-field--focused .v-label.v-field-label--floating) {
+  color: #005AB6;
+}
+
+/* 選項晶片：主色主題 */
+.cds-card :deep(.choice-chip-field__body) {
+  background: #FAFBFD;
+}
+.cds-card :deep(.v-chip.choice-chip-field__chip) {
+  border-color: rgba(0, 90, 182, 0.4);
+  color: #1F2A3A;
+}
+.cds-card :deep(.v-chip.choice-chip-field__chip--selected) {
+  color: #FFFFFF;
+  box-shadow: 0 2px 10px rgba(0, 90, 182, 0.3);
+}
+
+.cds-submit {
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 </style>

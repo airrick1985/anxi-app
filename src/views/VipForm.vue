@@ -2,8 +2,8 @@
  <v-container style="background-color: #F5F5F7" class="font-serif">
     <v-row justify="center">
       <v-col cols="12" md="10" lg="8">
-        
-        <v-card v-if="showCoverImage && coverImageUrl" class="mb-5" elevation="4">
+
+        <v-card v-if="showCoverImage && coverImageUrl" class="mb-5" elevation="4" rounded="xl">
           <v-img
             :src="coverImageUrl"
             aspect-ratio="16/9"
@@ -11,13 +11,13 @@
           ></v-img>
         </v-card>
 
-       
-        <v-card>
-          <v-toolbar  color="white" density="compact">
-            <v-toolbar-title> {{ pageTitle }}</v-toolbar-title>
 
-            <v-btn 
-              variant="text" 
+        <v-card class="vip-card" rounded="xl" elevation="3">
+          <v-toolbar color="white" density="compact" class="vip-toolbar">
+            <v-toolbar-title class="vip-toolbar__title">{{ pageTitle }}</v-toolbar-title>
+
+            <v-btn
+              variant="text"
               color="grey-darken-2"
               class="mr-2"
               @click="toggleLanguage"
@@ -25,15 +25,15 @@
               {{ currentLang === 'zh-TW' ? 'English' : '中文' }}
             </v-btn>
 
-            <v-btn 
-             variant="text" 
-             color="black" 
+            <v-btn
+             variant="text"
+             color="black"
              prepend-icon="mdi-qrcode-scan"
              @click="qrDialog = true"
            >
                      </v-btn>
-  
-          
+
+
           </v-toolbar>
 
           <v-card-text v-if="isLoading" class="text-center pa-10">
@@ -67,91 +67,100 @@
               {{ errorMessage }}
             </v-alert>
              <v-form ref="formRef" @submit.prevent="handleSubmit">
-              <p class="text-h6 mb-4">{{ t.basicInfo }}</p> <v-text-field
+              <div class="vip-section-title">
+                <span class="vip-section-title__bar"></span>
+                <span>{{ t.basicInfo }}</span>
+              </div>
+              <p class="text-caption text-grey-darken-1 mb-4">{{ t.requiredNote }}</p>
+
+              <v-text-field
                 v-model="formData['姓名']"
-                :label="t.name" 
+                :label="t.name + ' *'"
                 variant="outlined"
-                :rules="[rules.required]" 
+                rounded="lg"
+                prepend-inner-icon="mdi-account-outline"
+                :rules="[rules.required]"
                 class="mb-2"
-              ></v-text-field> <v-text-field
+              ></v-text-field>
+              <v-text-field
                 v-model="formData['電話']"
-                :label="t.phone"
+                :label="t.phone + ' *'"
                 variant="outlined"
+                rounded="lg"
+                prepend-inner-icon="mdi-phone-outline"
+                inputmode="numeric"
                 :rules="[rules.required, rules.phone]"
                 class="mb-2"
               ></v-text-field>
 
-              <v-label class="text-caption text-grey-darken-1 ml-1">{{ t.gender }}</v-label>
-              <v-radio-group
+              <ChoiceChipField
                 v-model="formData['性別']"
-                inline
+                :label="t.gender"
+                :items="genderItems"
+                :multiple="false"
+                required
                 :rules="[rules.required]"
-                color="primary"
-                class="mb-2 ml-1"
-                hide-details="auto"
-              >
-                <v-radio :label="t.male" value="男"></v-radio>
-                <v-radio :label="t.female" value="女"></v-radio>
-              </v-radio-group>
-              <v-divider class="my-6"></v-divider>
+                color="#AF832D"
+                :single-hint="t.singleHint"
+                class="vip-chip-field"
+              ></ChoiceChipField>
 
-              <p class="text-h6 mb-4">{{ t.requirements }}</p> <template v-for="field in formFields" :key="field.key">
-                
+              <div class="vip-section-title mt-8">
+                <span class="vip-section-title__bar"></span>
+                <span>{{ t.requirements }}</span>
+              </div>
+              <p class="text-caption text-grey-darken-1 mb-4">{{ t.requirementsNote }}</p>
+
+              <template v-for="field in formFields" :key="field.key">
+
                 <v-select
                   v-if="field.selectionMode === 'single' && !field.allowCustom"
                   v-model="formData[field.label]"
                   :label="field.label"
                   :items="field.options"
                   variant="outlined"
-                  :rules="field.isRequired ? [rules.required] : []" 
+                  rounded="lg"
+                  :rules="field.isRequired ? [rules.required] : []"
                   class="mb-2"
                 ></v-select>
 
-                  <v-combobox
+                <v-combobox
                   v-if="field.selectionMode === 'single' && field.allowCustom"
                   v-model="formData[field.label]"
                   :label="field.label"
                   :items="field.options"
                   variant="outlined"
+                  rounded="lg"
                   :rules="field.isRequired ? [rules.required] : []"
                   class="mb-2"
                 ></v-combobox>
 
-                <v-select
-                  v-if="field.selectionMode === 'multiple' && !field.allowCustom"
+                <!-- 複選改為內嵌選項晶片：所有選項一目了然、點選即完成，不再有下拉選單卡住畫面 -->
+                <ChoiceChipField
+                  v-if="field.selectionMode === 'multiple'"
                   v-model="formData[field.label]"
                   :label="field.label"
                   :items="field.options"
-                  variant="outlined"
-                  multiple
-                  chips
-                  closable-chips
+                  :required="!!field.isRequired"
                   :rules="field.isRequired ? [rules.requiredArray] : []"
-                  class="mb-2"
-                ></v-select>
-
-                <v-select
-                  v-if="field.selectionMode === 'multiple' && field.allowCustom"
-                  v-model="formData[field.label]"
-                  :label="field.label"
-                  :items="field.options"
-                  variant="outlined"
-                  multiple
-                  chips
-                  closable-chips
-                  :rules="field.isRequired ? [rules.requiredArray] : []"
-                  class="mb-2"
-                ></v-select>
+                  color="#AF832D"
+                  :multiple-hint="t.multiHint"
+                  :selected-count-text="t.selectedCount"
+                  class="vip-chip-field"
+                ></ChoiceChipField>
 
                 <v-text-field
                   v-if="field.selectionMode === 'multiple' && field.allowCustom && formData[field.label] && formData[field.label].includes('其他')"
                   v-model="formData[field.label + '_其他']"
-                  :label="t.enterOther" 
+                  :label="t.enterOther"
                   variant="outlined"
+                  rounded="lg"
+                  prepend-inner-icon="mdi-pencil-outline"
                   :rules="[rules.required]"
-                  class="mb-4 ml-4"
-                ></v-text-field> </template>
-              
+                  class="mb-4 vip-other-field"
+                ></v-text-field>
+              </template>
+
               <div class="text-center mt-6">
                 <v-btn
                   type="submit"
@@ -198,6 +207,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { fetchVipFormSettings, submitVipForm } from '@/api';
 import QrCode from 'qrcode.vue';
+import ChoiceChipField from '@/components/form/ChoiceChipField.vue';
 
 const props = defineProps({
   projectId: {
@@ -240,7 +250,12 @@ const i18n = {
     copy: '複製網址',
     copied: '已複製',
     close: '關閉',
-    formTitleSuffix: '貴賓資料表'
+    formTitleSuffix: '貴賓資料表',
+    requiredNote: '標示 * 為必填項目',
+    requirementsNote: '請點選符合您需求的項目，再點一次可取消。',
+    multiHint: '可複選',
+    singleHint: '請點選一項',
+    selectedCount: (n) => `已選 ${n} 項`
   },
   'en': {
     basicInfo: 'Basic Info',
@@ -261,12 +276,23 @@ const i18n = {
     copy: 'Copy Link',
     copied: 'Copied',
     close: 'Close',
-    formTitleSuffix: 'VIP Form'
+    formTitleSuffix: 'VIP Form',
+    requiredNote: 'Fields marked * are required',
+    requirementsNote: 'Tap the options that match your needs. Tap again to deselect.',
+    multiHint: 'Select all that apply',
+    singleHint: 'Select one',
+    selectedCount: (n) => `${n} selected`
   }
 };
 
 // ✓ 新增：取得當前語言文字的 helper
 const t = computed(() => i18n[currentLang.value]);
+
+// 性別選項：儲存值固定為中文，顯示文字依語言切換
+const genderItems = computed(() => [
+  { title: t.value.male, value: '男' },
+  { title: t.value.female, value: '女' }
+]);
 
 
 const isLoading = ref(true);
@@ -326,16 +352,16 @@ onMounted(async () => {
     isLoading.value = false;
     return;
   }
-  
+
   try {
     const result = await fetchVipFormSettings(props.projectId);
-    
+
     if (result.status !== 'success') {
       throw new Error(result.message);
     }
-    
+
     projectName.value = result.projectName || props.projectId;
-    
+
     // 處理封面圖
     if (result.vipFormConfig?.coverImage) {
       showCoverImage.value = result.vipFormConfig.coverImage.show || false;
@@ -363,10 +389,10 @@ onMounted(async () => {
 
     for (const key of sortedKeys) {
       const field = dynamicFields[key];
-      
+
       // ✓ 檢查：如果選項為空，則不渲染
       if (!field.options || field.options.length === 0) {
-        continue; 
+        continue;
       }
 
       const fieldOptions = [...field.options];
@@ -380,19 +406,19 @@ onMounted(async () => {
         key: key,
 
         ...field,
-        options: fieldOptions 
+        options: fieldOptions
 
       });
 
       // 初始化 formData
       initialFormData[field.label] = (field.selectionMode === 'multiple') ? [] : null;
     if (field.allowCustom) {
-       
+
         initialFormData[field.label + '_其他'] = '';
       }
-    
+
     }
-    
+
     formFields.value = processedFields;
     formData.value = initialFormData;
 
@@ -413,7 +439,7 @@ const handleSubmit = async () => {
   }
 
   isSubmitting.value = true;
-  
+
 // ✓ START: 新增 - 建立處理過的 payload
   // 1. 複製一份原始表單資料
   const processedFormData = { ...formData.value };
@@ -422,28 +448,28 @@ const handleSubmit = async () => {
   for (const field of formFields.value) {
     // 3. 找出那些是 "多選 + 允許自訂" (即有 "其他" 選項) 的欄位
     if (field.selectionMode === 'multiple' && field.allowCustom) {
-      
+
       const fieldLabel = field.label; // e.g., '購屋動機'
       const otherKey = `${fieldLabel}_其他`; // e.g., '購屋動機_其他'
-      
+
       const mainValue = processedFormData[fieldLabel]; // e.g., ['自住', '其他']
       const otherValue = processedFormData[otherKey]; // e.g., '想買給小孩'
 
       if (Array.isArray(mainValue) && mainValue.includes('其他') && otherValue) {
         // 4. 如果使用者選了 "其他" 並且填寫了內容
-        
+
         // 5. 更新主欄位的值：
         processedFormData[fieldLabel] = mainValue
           .filter(item => item !== '其他') // a. 移除 "其他"
           .concat(otherValue); // b. 加上自訂的內容
-          
+
       } else if (Array.isArray(mainValue)) {
          // 6. 如果使用者沒填寫 "其他" 內容，或取消勾選 "其他"
          //    確保只保留非 "其他" 的選項
          processedFormData[fieldLabel] = mainValue
           .filter(item => item !== '其他');
       }
-      
+
       // 7. 從最終送出的資料中刪除輔助用的 '_其他' 欄位
       delete processedFormData[otherKey];
     }
@@ -461,7 +487,7 @@ const handleSubmit = async () => {
   try {
     // 8. 改為傳送處理過的 processedFormData
     const result = await submitVipForm(props.projectId, processedFormData);
-    
+
     if (result.status !== 'success') {
       throw new Error(result.message);
     }
@@ -513,7 +539,7 @@ async function copyUrlToClipboard() {
   background: linear-gradient(90deg, #AF832D 0%, #F2D06B 50%, #AF832D 100%) !important;
   background-size: 200% auto;
   /* 深褐色文字，對比度較高更有質感 */
-  color: #3E2723 !important; 
+  color: #3E2723 !important;
   font-weight: 700;
   border: none;
   box-shadow: 0 4px 15px rgba(175, 131, 45, 0.3);
@@ -526,4 +552,67 @@ async function copyUrlToClipboard() {
   box-shadow: 0 6px 20px rgba(175, 131, 45, 0.4);
 }
 
+/* 卡片：頂部細金線 + 柔和陰影 */
+.vip-card {
+  border-top: 3px solid #C9A85A;
+  box-shadow: 0 8px 28px rgba(60, 45, 20, 0.08) !important;
+  overflow: hidden;
+}
+.vip-toolbar {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.vip-toolbar__title {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #2E2A25;
+}
+
+/* 區塊標題：左側金色短線 */
+.vip-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #2E2A25;
+  margin-bottom: 4px;
+}
+.vip-section-title__bar {
+  display: inline-block;
+  width: 4px;
+  height: 18px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #AF832D 0%, #F2D06B 100%);
+}
+
+/* 輸入框：淡金色聚焦 */
+.vip-card :deep(.v-field--variant-outlined.v-field--focused .v-field__outline) {
+  --v-field-border-opacity: 1;
+  color: #AF832D;
+}
+.vip-card :deep(.v-field--variant-outlined .v-field__outline) {
+  --v-field-border-opacity: 0.22;
+}
+.vip-card :deep(.v-field--focused .v-label.v-field-label--floating) {
+  color: #AF832D;
+}
+
+/* 選項晶片：金色主題 */
+.vip-chip-field :deep(.choice-chip-field__body) {
+  border-radius: 14px;
+  background: #FCFBF8;
+}
+.vip-chip-field :deep(.v-chip.choice-chip-field__chip) {
+  border-color: rgba(175, 131, 45, 0.45);
+  color: #5C4A24;
+}
+.vip-chip-field :deep(.v-chip.choice-chip-field__chip--selected) {
+  color: #FFFFFF;
+  box-shadow: 0 2px 10px rgba(175, 131, 45, 0.35);
+}
+
+.vip-other-field {
+  margin-left: 4px;
+}
 </style>

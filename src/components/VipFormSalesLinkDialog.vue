@@ -12,8 +12,22 @@
 
       <v-card-text class="pa-4">
         <p class="text-body-2 text-grey-darken-1 mb-4">
-          選擇銷售人員後產生專屬的貴賓資料表網址與 QR Code，客戶掃碼填寫的資料會自動歸屬給該銷售人員。
+          選擇表單類型與銷售人員後產生專屬網址與 QR Code，客戶掃碼填寫的資料會自動歸屬給該銷售人員。
         </p>
+
+        <div class="text-subtitle-2 font-weight-bold mb-2">表單類型</div>
+        <v-btn-toggle
+          v-model="formType"
+          mandatory
+          color="primary"
+          variant="outlined"
+          density="comfortable"
+          divided
+          class="mb-4 w-100"
+        >
+          <v-btn value="vip" class="flex-grow-1" prepend-icon="mdi-star-outline">貴賓資料表</v-btn>
+          <v-btn value="customer" class="flex-grow-1" prepend-icon="mdi-account-box-outline">客戶資料表</v-btn>
+        </v-btn-toggle>
 
         <v-select
           v-model="selectedSalesPhone"
@@ -36,7 +50,7 @@
         <template v-if="selectedSalesPhone">
           <v-text-field
             :model-value="salesFormUrl"
-            label="專屬網址"
+            :label="`專屬網址（${currentFormType.label}）`"
             variant="outlined"
             density="comfortable"
             readonly
@@ -104,16 +118,28 @@ const dialogVisible = computed({
   set: (val) => emit('update:modelValue', val)
 });
 
+// 表單類型定義：路徑與檔名後綴
+const FORM_TYPES = {
+  vip: { label: '貴賓資料表', path: '/#/vip-form/' },
+  customer: { label: '客戶資料表', path: '/#/customer-data-sheet/' }
+};
+
+const formType = ref('vip');
 const selectedSalesPhone = ref('');
 const showQrDialog = ref(false);
 const copySuccess = ref(false);
 
 watch(dialogVisible, (val) => {
   if (val) {
+    formType.value = 'vip';
     selectedSalesPhone.value = '';
     copySuccess.value = false;
   }
 });
+
+watch(formType, () => { copySuccess.value = false; });
+
+const currentFormType = computed(() => FORM_TYPES[formType.value] || FORM_TYPES.vip);
 
 const selectedSalesName = computed(() => {
   const staff = props.staffList.find(s => s.phone === selectedSalesPhone.value);
@@ -123,7 +149,7 @@ const selectedSalesName = computed(() => {
 const salesFormUrl = computed(() => {
   if (!selectedSalesPhone.value) return '';
   const origin = window.location.origin;
-  let url = `${origin}/#/vip-form/${props.projectId}?sp=${encodeURIComponent(selectedSalesPhone.value)}`;
+  let url = `${origin}${currentFormType.value.path}${props.projectId}?sp=${encodeURIComponent(selectedSalesPhone.value)}`;
   if (selectedSalesName.value) {
     url += `&sn=${encodeURIComponent(selectedSalesName.value)}`;
   }
@@ -137,7 +163,7 @@ const qrOverlayText = computed(() => {
 
 const qrDownloadFileName = computed(() => {
   if (!selectedSalesName.value) return '';
-  return `${props.projectName || props.projectId}_${selectedSalesName.value}_貴賓資料表`;
+  return `${props.projectName || props.projectId}_${selectedSalesName.value}_${currentFormType.value.label}`;
 });
 
 async function copyUrl() {

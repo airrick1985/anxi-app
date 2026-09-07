@@ -1749,7 +1749,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, reactive, defineAsyncComponent } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useDisplay } from 'vuetify';
@@ -1806,6 +1806,7 @@ const tab = ref('management');
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 const router = useRouter();
+const route = useRoute();
 
 // ===============================================
 // ✅ [新增] 可存取建案清單與切換邏輯
@@ -2641,11 +2642,33 @@ async function loadCustomerList() {
       return dateB.localeCompare(dateA);
     });
 
+    // ✅ [LINE 通知深連結] 列表載入後，若網址帶 openLog 則自動開啟該客戶洽談紀錄
+    openLogFromQuery();
+
   } catch (error) {
     console.error("載入客戶列表失敗:", error);
   } finally {
     isLoadingCustomerList.value = false;
   }
+}
+
+// ✅ [LINE 通知深連結] ?openLog=<docId>：由 CustomerLogEntry 帶入，開啟後即清除參數
+let handledOpenLogId = null;
+function openLogFromQuery() {
+  const docId = route.query.openLog;
+  if (!docId || handledOpenLogId === docId) return;
+  handledOpenLogId = docId;
+
+  const item = customerList.value.find(c => c.docId === docId);
+  if (item) {
+    openInteractionLog(null, { item });
+  } else {
+    alert('找不到該筆客戶資料，可能已被刪除或您沒有檢視權限。');
+  }
+
+  // 清掉參數，避免重新整理後再次開啟
+  const { openLog, ...rest } = route.query;
+  router.replace({ query: rest });
 }
 // ✓ END: 新增
 
