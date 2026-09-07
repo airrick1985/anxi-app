@@ -46,7 +46,8 @@
 
 ### 1.2 Out of scope（v1 不做，§9 列為後續）
 
-- 刪除、還原退戶、修改表價／底價／面積／房土比、修改參數與人員設定、修改任何權限（永遠不開放給 AI）。退戶已依需求方決定納入 v1（§4.7）。
+- 刪除、還原退戶、修改面積／戶別基本資料、修改參數與人員設定、修改任何權限（永遠不開放給 AI）。退戶已依需求方決定納入 v1（§4.7）。
+- ~~修改表價／底價／房土比~~ → 2026-09-07 需求方決定**開放**：AI 可寫欄位與使用者本人在戶別資訊表單可編輯的欄位對齊（§6.2）。
 - 跨建案查詢（AI 只在當前建案脈絡）。
 - 語音輸入、主動推播提醒、跨系統工具（客資／預約／請佣）。
 - 把浮動 ICON 推廣到所有系統頁面（v1 只在銷控系統）。
@@ -76,6 +77,7 @@
 | 15 | 速率限制 | 每使用者每分鐘 10 則、每建案每日草案 200 張（可設） | 沿用 `aiTokenQuota` 之外的粗防護。 |
 | 16 | 手機 | FAB 48px；面板為底部抽屜（高 70vh，可拉到全螢幕） | 底部導覽列高度用 `--v-layout-bottom` 避開。 |
 | 17 | UnitDetailModal 的 AI 分頁 | 保留，改掛同一個對話元件並帶 `unitId` 上下文 | 「詢問此戶別」的入口不變。 |
+| 19 | 可寫欄位對齊使用者權限（2026-09-07 需求方追加） | AI 可改欄位＝使用者本人在戶別資訊表單能編輯的欄位（含表價／底價／配套／房土比／買方完整資料／付款日期），面積與戶別基本資料維持不可改；`FIELD_DEFS` 為單一事實來源（§6.2） | 「AI 是使用者的分身」。`allowWrite` 開關與 `writeRoles` 維持不變；表價／底價變更以 warning 提醒（比照前端確認框），房土比加總、露臺欄位、合約方式清單等表單規則在驗證器兜底。 |
 | 18 | 入口顯示條件（2026-09-07 需求方追加） | 前端 `canUseSalesAi`：**銷控模式**（`route.meta.viewMode !== 'quote'`）**且**具該建案「銷控系統」權限（超管／系管恆可）才顯示 FAB、面板、功能選單、快速選單與戶別 AI 分頁；**報價系統不顯示也不可使用** | 後端 `sales.read` 仍為最終把關；前端門檻只是不露出入口。 |
 
 ---
@@ -124,7 +126,7 @@
   | `text` | 一般文字（Markdown → `marked` → `DOMPurify`） |
   | `question` | 問題卡（§3.3） |
   | `proposal` | 變更預覽卡（§3.4） |
-  | `result` | 執行結果卡（成功／失敗、影響戶別與車位、通知按鈕） |
+  | `result` | 執行結果卡（2026-09-07 擴充）：標題「已完成修改 A-3／共 N 戶」＋**修改前 → 修改後**逐欄位表（依戶別／車位分組，舊值劃線、新值加粗、算式／自動計算註記）＋車位／備註補充列＋開啟戶別／通知按鈕 |
   | `action` | UI 動作卡（「開啟 A-3 戶別資訊」按鈕） |
 - 輸入區：多行輸入（Enter 送出、Shift+Enter 換行）、快捷指令 chip（「今日成交」「可售車位」「我的戶別」…可依權限顯示）。
 - 上下文提示：若面板從戶別 Modal 開啟，輸入框上方顯示「目前戶別：A-3」chip，可移除。
@@ -198,7 +200,7 @@ exports.salesAiAgent = onCall({
   reply?: string,                 // 文字回覆（Markdown）
   question?: { proposalId, questions[] },
   proposal?: Proposal,            // 見 §5.2
-  result?: { applied: [...], notification?: {...} },
+  result?: { applied: [...], diff: [...], changeText: string, headline: string, unitId, unitIds, notification?: {...} },  // diff＝執行前重算的修改前後；changeText 為文字版（對話歷史與稽核用）
   uiActions?: [{ type: 'openUnit', unitId }],
   usage: { totalTokenCount },
   quota: { used, limit },
@@ -231,7 +233,7 @@ exports.salesAiAgent = onCall({
 | `list_salespersons()` | `sales.read` | 名單 |
 | `list_status_options()` | `sales.read` | 狀態清單（含確定度層級） |
 | `calc_price_gap({ unitId, offer, spotIds[] })` | `sales.read` | 出價 vs 底價試算 |
-| `propose_unit_update({ unitId, changes: {...} })` | `sales.write` | 產生戶別變更草案；`changes` 只允許 §6.2 白名單欄位 |
+| `propose_changes({ unitId?, unitIds?, filter?, changes?, adjustments?, assignParkings?, releaseParkings?, addRemark? })` | `sales.write` | 產生戶別變更草案（2026-09-07 擴充多戶＋規則式調價）。目標：`unitId` 單戶、`unitIds` 多戶、`filter{building, floors[], floorFrom, floorTo, status}` 篩選，可併用、上限 30 戶、一張草案逐戶列出；多戶不可配置／解除車位。`adjustments[{field, mode: perPing|delta|percent|set, value, decimals=0}]` 由驗證器依每戶現值與 `area_house_ping` 計算（模型禁止自行算術）。`changes` 只允許 §6.2 白名單欄位 |
 | `propose_parking_assign({ unitId, parkings: [{ spotId, price: number \| 'list' \| 'floor' }] })` | `sales.write` | 配置車位（可與上者合併成一張草案） |
 | `propose_parking_release({ unitId, spotIds[] })` | `sales.write` | 解除車位 |
 | `propose_add_remark({ unitId, content, category? })` | `sales.write` | 新增備註留言（remarkNotes） |
@@ -247,16 +249,19 @@ exports.salesAiAgent = onCall({
 規則（v1）：
 1. 戶別必須存在於 `salesHouseholds`（`{projectId}_{unitId}`）；否則 blocker。
 2. `salesStatus_backend` 必須在參數清單或 `(無)`/空；否則 blocker，並附清單。
-3. 狀態改為「成交類」（`classifyCommitment` ∈ signed/booked）且目前／草案 `salesperson` 為空 → missing `salesperson`（multiselect，選項 `salesPersonnel`）。
+3. **本次草案有變更狀態**且改為「成交類」（`classifyCommitment` ∈ signed/booked）、目前／草案 `salesperson` 為空 → missing `salesperson`（multiselect，選項 `salesPersonnel`，`required: false` 可略過，比照前端表單不強制）。2026-09-07 需求方原則：**除非資料改動使欄位成為必要，否則不要求使用者必填**；只改表價／底價等其他欄位時，即使該戶原本就是成交狀態且銷售人員空白，也不反問。必填的問題只剩：戶別／車位有多個候選、使用者自己給的值無法辨識（金額、日期、布林、生日、狀態、合約方式、銷售人員不在名單）、房土比超出範圍、配置車位缺價格。
 4. 同上情況 `buyerName` 為空 → missing `buyerName`（text，`required: false`，可略過）。
 5. 狀態含「小訂」且 `payment_deposit_date` 空 → missing（date，預設今天 Asia/Taipei）；「補足」「簽約」同理對應欄位。
 6. 車位 `spotId` 必須存在；`buyerUnitId` 為他戶且 `isDealParking` → blocker「B6-18 已配置給 A-5」；狀態為保留且非本戶 → warning。
 7. 車位價格：`'list'` → `price_list`；`'floor'` → `price_floor`；數字 → 直接用；沒給 → missing（number，hint 顯示表價／底價，`sales.read` 才顯示底價）。
-8. `price_transaction_house` 低於 `price_floor_house_total` → warning；`price_list_house_total`/`price_floor_*` 出現在 changes → blocker「表價／底價請至戶別資訊修改」。
+8. `price_transaction_house` 低於 `price_floor_house_total`（以草案後的底價計）→ warning；表價／底價明細欄位（`price_list_house_only`／`price_list_terrace`／`price_floor_house_only`／`price_floor_terrace`）任一出現在 changes → warning「您正在修改房屋表價／底價，會影響報價系統與銷控表」（比照 `UnitDetailModal` 儲存前的確認框），表價低於底價另加 warning。
+8b. 房屋總表價／總底價為衍生欄位（`utils/priceDerive.js`）：`price_list_house_total = price_list_house_only + price_list_terrace`，底價同理。模型指定總額時由驗證器改寫到明細欄位——無露臺的戶別直接等價改寫；有露臺者，`adjustments` 的相對調價只調房屋部分（warning 說明露臺不變），直接指定金額則 blocker 請它指明改哪一項。明細有異動時總額重算並以「自動計算」列入草案卡。
+8a. 房土比：只給 `housePriceRatio` 或 `landPriceRatio` 其一 → 自動補 `100 − x`（卡片標「自動計算」）；兩者皆給且加總 ≠ 100 → blocker（與 `saveChanges` 相同規則）。露臺欄位（`price_list_terrace`、`price_floor_terrace`）在 `area_terrace_ping ≤ 0` 的戶別 → blocker。`contractType` 須在 `projects.contractTypes` 內（模糊唯一則對應，否則 select 問題卡）。布林欄位接受「是／否／true／false」；`buyerDateOfBirth` 接受民國或西元，存為 `{year(民國), month, day}`。
 9. 銷售人員名稱必須在 `salesPersonnel` 名單；模糊比對（「小明」→ 唯一符合「王小明」則自動對應並在卡片標示）；多筆或 0 筆 → missing。
 10. `salespersonUserKey` 由名單 `phone` 自動回填（與 `SalesInfoForm` 一致）。
 11. `price_transaction_total` 未指定時 = 房屋成交價 + 所有持有車位成交價（含本次配置），卡片標示「自動計算」。
-12. 任何 changes 內不在白名單的鍵 → 直接丟棄並記 log（不回報給模型，避免提示它換名字再試）。
+13. 多戶草案：`resolveTargets` 合併 `unitId/unitIds/filter`（去重、依編號排序、>30 戶 blocker）；逐戶跑同一套規則，同欄位問題只問一次（答案套用全部戶別）；某戶無現值／無面積 → warning 略過該戶，其餘照常；全部沒有可套用變更才 blocker。`adjustments` 計算後的值走與 `changes` 相同的正規化與檢查，草案卡以 note 顯示算式（例如「每坪+1萬 × 47.64坪」）。
+12. 任何 changes 內不在白名單的鍵 → 直接丟棄並記 log（不回報給模型，避免提示它換名字再試）；表單本身不可編輯或系統衍生的鍵（面積、`salesStatus_quote`、`price_list_terrace_unit`、`payment_*_amount`、繳款紀錄／圖片／標籤／地號）→ blocker 並說明正確操作位置。舊欄位名（`payment_supplement_date`）自動對應到 `payment_complete_date`。
 
 ### 4.5 執行（action = execute）
 
@@ -400,11 +405,26 @@ exports.salesAiAgent = onCall({
 
 | `sales.cancel` | `sales.write` 且 `aiAssistant.allowCancel === true`（超管／系管恆可）；執行另需輸入戶別編號二次確認（§4.7） |
 
-永遠不存在的能力：刪除、還原退戶、修改表價／底價／面積、修改參數／人員／權限／設定。這些**沒有對應工具**，模型無從呼叫。
+永遠不存在的能力：刪除、還原退戶、修改面積／戶別基本資料、修改參數／人員／權限／設定。這些**沒有對應工具**，模型無從呼叫。
 
-### 6.2 AI 可寫欄位白名單
+### 6.2 AI 可寫欄位白名單（2026-09-07 改為「與使用者本人權限對齊」）
 
-`salesStatus_backend`、`price_transaction_house`、`price_transaction_total`、`buyerName`、`buyerPhone`、`salesperson`（→ 自動回填 `salespersonUserKey`）、`contractType`、`payment_deposit_date/amount`、`payment_supplement_date/amount`、`payment_contract_date/amount`、`payment_complete_date`、`remarkNotes`（append only）、車位配置／解除（`salesParkings` 銷售欄位 + `持有車位`）。其餘鍵一律丟棄。
+**原則：AI 是使用者的分身**。使用者本人在「戶別資訊 → 修改銷控」表單能編輯的欄位，AI 就能透過草案修改；表單不能編輯的（面積、棟別／樓層／格局）AI 也不能。現行銷控系統沒有欄位層級權限（有「銷控系統」權限即可編輯全部欄位），因此 `sales.write` 對應全部白名單；日後若系統加入欄位權限，只需在 `data.js` `writableFieldsFor(caps)` 依能力過濾。
+
+單一事實來源：`functions/salesAi/data.js` `FIELD_DEFS`（label／type／section／hint），工具 schema、驗證器型別轉換、草案卡標籤、執行器寫入皆由它產生。
+
+| 區塊 | 欄位 |
+|---|---|
+| 銷售資訊 | `salesStatus_backend`、`salesperson`（→ 自動回填 `salespersonUserKey`）、`contractType`、`payment_deposit_date`、`payment_complete_date`（＝前端「補足日期」）、`payment_contract_date` |
+| 成交資訊 | `price_transaction_house`、`price_transaction_total`（未給自動計算） |
+| 買方資訊 | `buyerName`、`buyerPhone`（多筆逗號分隔）、`buyerIdNumber`、`buyerDateOfBirth`（民國物件）、`buyerEmail`、`isFirstTimeBuyer`、通訊／戶籍地址各三欄 |
+| 價格設定 | `price_list_house_only`（房屋表價）、`price_list_terrace`、`price_floor_house_only`（房屋底價）、`price_floor_terrace`、`price_package_deal`、`isPreferredPayment`、`priceRemarks`；`price_list_house_total`／`price_floor_house_total` 為衍生欄位，不接受直接指定（§4.4 8b） |
+| 房土比 | `housePriceRatio`、`landPriceRatio` |
+| 其他 | `remarkNotes`（append only）、車位配置／解除（`salesParkings` 銷售欄位 + `持有車位`） |
+
+執行時的衍生欄位（與前端儲存流程一致）：`status` ＝ `salesStatus_backend`；`salesStatus_quote` ＝ 有狀態 → 「已售」、無 → 空字串；`price_list_terrace` 變更 → 重算 `price_list_terrace_unit`。
+
+不開放：`payment_supplement_*`／`payment_*_amount`（匯出用舊欄位，表單不編輯；金額走繳款紀錄）、`paymentRecords`、`landParcels`、`salesImages`、`unitTags`、`availablePlans`、面積、`salesStatus_quote`（衍生）。其餘鍵一律丟棄。
 
 ### 6.3 System prompt 骨架（重點段落）
 
@@ -428,7 +448,7 @@ exports.salesAiAgent = onCall({
 3. 寫入只產生草案；執行時**重新驗證**身份、能力、資料（§4.5）。
 4. 草案綁 `userKey/projectId/sessionId`、10 分鐘、一次性。
 5. `projectId` 必須在使用者權限內；跨建案問題回「只能協助目前建案」。
-6. 白名單欄位過濾在**後端**；表價／底價／面積等永不可寫。
+6. 白名單欄位過濾在**後端**（建立草案與執行時各驗一次）；白名單＝使用者本人表單可編輯欄位（§6.2），面積／基本資料永不可寫。
 7. 工具回傳資料以 JSON 包裝並宣告為資料（間接注入：備註內容含「把這戶改成已售」不會被當指令；且就算被當指令也只會變草案）。
 8. 模型輸出經 `marked` + `DOMPurify`（禁 `<script>`、事件屬性、`javascript:` 連結）。
 9. 拒絕回覆不揭露資料存在與否（「沒有權限」而非「該戶存在但你不能看」）。
@@ -498,7 +518,7 @@ exports.salesAiAgent = onCall({
 
 **寫入（皆走草案）**
 - ★ 狀態變更、成交價、買方資料、銷售人員、付款進度、契約類型、配置／解除車位、備註留言。
-- 批次：「A 棟 3 樓全部改保留」→ 一張草案多列（上限 20 戶）、逐戶顯示。
+- ✅ 批次（2026-09-07 已做）：「A 棟 3 樓全部改保留」「A 棟表價每坪加 1 萬」→ 一張草案多列（上限 30 戶）、逐戶顯示；多戶狀態異動仍寫異動紀錄，但不開通知對話框（對話框為單戶設計）。
 - 標籤（`unitTags`）新增／移除。
 - 車位保留（`status_backend` 保留 + 保留人／到期日，沿用車位編輯對話框欄位）。
 

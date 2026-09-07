@@ -5,44 +5,155 @@ const { normalizeSalespersons, formatSalespersons } = require('../utils/salesper
 const { classifyCommitment, buildCommitmentOverrides, isDealParking } = require('../utils/salesStatusGroups');
 const { DateTime } = require('luxon');
 
-// ---- 欄位標籤（草案卡顯示、工具輸出）----
-const FIELD_LABELS = {
-  salesStatus_backend: '銷控狀態',
-  price_transaction_house: '房屋成交價（萬）',
-  price_transaction_total: '成交總價含車位（萬）',
-  buyerName: '買方姓名',
-  buyerPhone: '買方電話',
-  salesperson: '銷售人員',
-  salespersonUserKey: '銷售人員帳號',
-  contractType: '契約類型',
-  payment_deposit_date: '小訂日期',
-  payment_deposit_amount: '小訂金額（萬）',
-  payment_supplement_date: '補足日期',
-  payment_supplement_amount: '補足金額（萬）',
-  payment_contract_date: '簽約日期',
-  payment_contract_amount: '簽約金額（萬）',
-  payment_complete_date: '付清日期',
-  remarkNotes: '備註留言',
-  '持有車位': '持有車位',
-  price_list_house_total: '房屋總表價（萬）',
-  price_floor_house_total: '房屋總底價（萬）',
+// ---- AI 可寫欄位定義（§6.2）----
+// Why: AI 是使用者的分身，可改欄位＝使用者本人在「戶別資訊 → 修改銷控」表單能編輯的欄位
+//      （UnitDetailModal 價格設定／房土比 + SalesInfoForm 銷售／成交／買方）。
+//      面積、戶別基本資料表單本身不可編輯，AI 也不開放；結構型資料（繳款紀錄、圖片、標籤、地號）不適合對話修改。
+//      注意：前端「補足日期」實際綁 payment_complete_date；payment_supplement_*／payment_*_amount 是匯出用舊欄位，表單不編輯。
+// type: status | salesperson | text | number | date | bool | rocDate
+const FIELD_DEFS = {
+  // 銷售資訊
+  salesStatus_backend: { label: '銷控狀態', type: 'status', section: '銷售資訊', hint: '需在本案狀態清單內；空值＝可售' },
+  salesperson: { label: '銷售人員', type: 'salesperson', section: '銷售資訊', hint: '姓名，可多人' },
+  contractType: { label: '合約方式', type: 'text', section: '銷售資訊', hint: '需在本案合約方式清單內' },
+  payment_deposit_date: { label: '小訂日期', type: 'date', section: '銷售資訊' },
+  payment_complete_date: { label: '補足日期', type: 'date', section: '銷售資訊' },
+  payment_contract_date: { label: '簽約日期', type: 'date', section: '銷售資訊' },
+  // 成交資訊
+  price_transaction_house: { label: '房屋成交價（萬）', type: 'number', section: '成交資訊' },
+  price_transaction_total: { label: '成交總價含車位（萬）', type: 'number', section: '成交資訊', hint: '未提供會自動計算' },
+  // 買方資訊
+  buyerName: { label: '買方姓名', type: 'text', section: '買方資訊' },
+  buyerPhone: { label: '買方電話', type: 'text', section: '買方資訊', hint: '多筆以逗號分隔' },
+  buyerIdNumber: { label: '身分證字號', type: 'text', section: '買方資訊' },
+  buyerDateOfBirth: { label: '出生年月日', type: 'rocDate', section: '買方資訊', hint: '民國 65/3/12 或西元 1976-03-12' },
+  buyerEmail: { label: 'EMAIL', type: 'text', section: '買方資訊' },
+  isFirstTimeBuyer: { label: '是否首購', type: 'bool', section: '買方資訊' },
+  buyerMailingAddressCity: { label: '通訊地址_縣市', type: 'text', section: '買方資訊' },
+  buyerMailingAddressDistrict: { label: '通訊地址_區域', type: 'text', section: '買方資訊' },
+  buyerMailingAddressDetail: { label: '通訊地址_詳細', type: 'text', section: '買方資訊' },
+  buyerPermanentAddressCity: { label: '戶籍地址_縣市', type: 'text', section: '買方資訊' },
+  buyerPermanentAddressDistrict: { label: '戶籍地址_區域', type: 'text', section: '買方資訊' },
+  buyerPermanentAddressDetail: { label: '戶籍地址_詳細', type: 'text', section: '買方資訊' },
+  // 價格設定
+  // 註：房屋總表價／總底價是衍生欄位（＝房屋＋露臺），模型指定總額時會由 validate 改寫到對應明細欄位
+  price_list_house_only: { label: '房屋表價（萬）', type: 'number', section: '價格設定', hint: '不含露臺；調整表價請改這個欄位' },
+  price_list_terrace: { label: '露臺表價（萬）', type: 'number', section: '價格設定', hint: '僅有露臺的戶別' },
+  price_list_house_total: { label: '房屋總表價（萬）', type: 'number', section: '價格設定', hint: '＝房屋表價＋露臺表價，系統自動計算，不可直接指定' },
+  price_floor_house_only: { label: '房屋底價（萬）', type: 'number', section: '價格設定', hint: '不含露臺；調整底價請改這個欄位' },
+  price_floor_terrace: { label: '露臺底價（萬）', type: 'number', section: '價格設定', hint: '僅有露臺的戶別' },
+  price_floor_house_total: { label: '房屋總底價（萬）', type: 'number', section: '價格設定', hint: '＝房屋底價＋露臺底價，系統自動計算，不可直接指定' },
+  price_package_deal: { label: '配套房屋總價（萬）', type: 'number', section: '價格設定', hint: '合約上的房屋總價；配套價格＝成交總價−此值' },
+  isPreferredPayment: { label: '優付', type: 'bool', section: '價格設定' },
+  priceRemarks: { label: '價格備註', type: 'text', section: '價格設定' },
+  // 房土比
+  housePriceRatio: { label: '房屋價款比例(%)', type: 'number', section: '房土比', hint: '與土地比例加總須為 100；只給一個會自動補另一個' },
+  landPriceRatio: { label: '土地價款比例(%)', type: 'number', section: '房土比', hint: '與房屋比例加總須為 100' },
 };
 
-// AI 可寫欄位白名單（§6.2）
-const WRITABLE_FIELDS = new Set([
-  'salesStatus_backend', 'price_transaction_house', 'price_transaction_total',
-  'buyerName', 'buyerPhone', 'salesperson', 'contractType',
-  'payment_deposit_date', 'payment_deposit_amount',
-  'payment_supplement_date', 'payment_supplement_amount',
-  'payment_contract_date', 'payment_contract_amount', 'payment_complete_date',
-]);
-const NUMERIC_FIELDS = new Set(['price_transaction_house', 'price_transaction_total', 'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount']);
-const DATE_FIELDS = new Set(['payment_deposit_date', 'payment_supplement_date', 'payment_contract_date', 'payment_complete_date']);
-const FORBIDDEN_HINT = {
-  price_list_house_total: '表價', price_floor_house_total: '底價', price_list_house_only: '表價', price_floor_house_only: '底價',
-  unit_price_list: '表價', unit_price_floor: '底價', area_house_ping: '面積', area_main_ping: '面積',
-  housePriceRatio: '房土比', landPriceRatio: '房土比', salesStatus_quote: '報價狀態',
+/** 模型可能沿用的舊欄位名 → 實際欄位 */
+const FIELD_ALIASES = {
+  payment_supplement_date: 'payment_complete_date',
+  payment_top_up_date: 'payment_complete_date',
+  buyer_name: 'buyerName', buyer_phone: 'buyerPhone',
 };
+
+// ---- 欄位標籤（草案卡顯示、工具輸出）----
+const FIELD_LABELS = {
+  ...Object.fromEntries(Object.entries(FIELD_DEFS).map(([k, d]) => [k, d.label])),
+  salespersonUserKey: '銷售人員帳號',
+  remarkNotes: '備註留言',
+  '持有車位': '持有車位',
+  salesStatus_quote: '銷售狀態',
+  price_list_terrace_unit: '露臺單價（表價）',
+  payment_supplement_date: '補足日期',
+};
+
+const fieldsOfType = t => new Set(Object.keys(FIELD_DEFS).filter(k => FIELD_DEFS[k].type === t));
+const WRITABLE_FIELDS = new Set(Object.keys(FIELD_DEFS));
+const NUMERIC_FIELDS = fieldsOfType('number');
+const DATE_FIELDS = fieldsOfType('date');
+const BOOL_FIELDS = fieldsOfType('bool');
+const TEXT_FIELDS = fieldsOfType('text');
+// 只有「有露臺面積」的戶別才有的欄位（與編輯表單 v-if 一致）。
+// 註：price_*_house_only 已改為所有戶別都要維護的主要欄位（總額由它衍生），故不在此列。
+const TERRACE_ONLY_FIELDS = new Set(['price_list_terrace', 'price_floor_terrace']);
+
+/** 由明細衍生、不接受直接指定的總額欄位 → 對應的明細欄位 */
+const DERIVED_TOTAL_TO_DETAIL = {
+  price_list_house_total: { only: 'price_list_house_only', terrace: 'price_list_terrace' },
+  price_floor_house_total: { only: 'price_floor_house_only', terrace: 'price_floor_terrace' },
+};
+
+/**
+ * 依能力回傳本次可寫欄位。
+ * 現行銷控系統沒有欄位層級權限：有「銷控系統」權限即可編輯表單全部欄位，AI 比照；
+ * 日後若系統加入欄位權限，只需在此依 caps 過濾。
+ */
+function writableFieldsFor(caps) {
+  if (!caps || !caps.has('sales.write')) return new Set();
+  return new Set(WRITABLE_FIELDS);
+}
+
+// 表單本身不可編輯（或由系統衍生）的欄位：模型送來一律擋下並說明
+const FORBIDDEN_HINT = {
+  area_house_ping: '面積不可由 AI 修改（戶別資訊表單亦不可編輯）', area_main_ping: '面積不可由 AI 修改（戶別資訊表單亦不可編輯）',
+  area_ancillary_ping: '面積不可由 AI 修改（戶別資訊表單亦不可編輯）', area_common_ping: '面積不可由 AI 修改（戶別資訊表單亦不可編輯）',
+  area_terrace_ping: '面積不可由 AI 修改（戶別資訊表單亦不可編輯）', area_house_sqm: '面積不可由 AI 修改（戶別資訊表單亦不可編輯）',
+  unitId: '戶別編號不可修改', building: '棟別不可修改', floor: '樓層不可修改', layout: '格局不可由 AI 修改', propertyType: '物件類型不可由 AI 修改',
+  salesStatus_quote: '銷售狀態由銷控狀態自動衍生，請改「銷控狀態」',
+  price_list_terrace_unit: '露臺單價由露臺表價自動計算，請改「露臺表價」',
+  payment_deposit_amount: '小訂金額請至戶別資訊的「繳款紀錄」登錄，AI 目前無法代填',
+  payment_supplement_amount: '補足金額請至戶別資訊的「繳款紀錄」登錄，AI 目前無法代填',
+  payment_contract_amount: '簽約金額請至戶別資訊的「繳款紀錄」登錄，AI 目前無法代填',
+  paymentRecords: '繳款紀錄請至戶別資訊操作', landParcels: '土地標的清冊請至戶別資訊操作',
+  salesImages: '戶別圖片請至戶別資訊操作', unitTags: '文字標籤請至戶別資訊操作', availablePlans: '可選方案請至戶別資訊操作',
+  remarks: '備註請用 addRemark 新增留言', remarkNotes: '備註請用 addRemark 新增留言',
+};
+
+// ---- 值解析／顯示 ----
+/** 是／否、true／false、1／0 → boolean；無法辨識回 undefined；空值回 null */
+function parseBool(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).trim().toLowerCase();
+  if (['是', '有', 'true', 'yes', 'y', '1', '優付', '首購', '要', '開', '開啟'].includes(s)) return true;
+  if (['否', '無', 'false', 'no', 'n', '0', '非', '不是', '取消', '關', '關閉', '非優付', '非首購'].includes(s)) return false;
+  return undefined;
+}
+
+/** 民國／西元生日 → { year(民國), month, day }；空值 null；無法辨識 undefined */
+function parseRocDate(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const toObj = (y, m, d) => {
+    const year = y > 1911 ? y - 1911 : y;
+    if (year < 1 || year > 200 || m < 1 || m > 12 || d < 1 || d > 31) return undefined;
+    return { year, month: m, day: d };
+  };
+  if (typeof v === 'object') {
+    const y = Number(v.year), m = Number(v.month), d = Number(v.day);
+    return [y, m, d].every(Number.isFinite) ? toObj(y, m, d) : undefined;
+  }
+  const s = FULL_TO_HALF(String(v)).trim().replace(/^民國/, '').replace(/\s+/g, '');
+  const m = /^(\d{2,4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/.exec(s);
+  if (!m) return undefined;
+  return toObj(+m[1], +m[2], +m[3]);
+}
+function formatRocDate(v) {
+  if (!v || typeof v !== 'object' || !v.year) return null;
+  return `民國${v.year}年${v.month}月${v.day}日`;
+}
+
+/** 草案卡／摘要用的顯示值 */
+function displayValue(field, v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (field === 'salesperson') return formatSalespersons(v, '、', '') || null;
+  if (field === 'buyerDateOfBirth') return formatRocDate(v);
+  if (DATE_FIELDS.has(field)) return toDateStr(v);
+  if (BOOL_FIELDS.has(field) || typeof v === 'boolean') return v === true ? '是' : '否';
+  if (Array.isArray(v)) return v.join('、');
+  return v;
+}
 
 // ---- 日期 ----
 function todayTaipei() { return DateTime.now().setZone('Asia/Taipei').toFormat('yyyy-MM-dd'); }
@@ -152,10 +263,28 @@ const stripEmpty = obj => {
   return out;
 };
 
-function slimUnit(u, parkings, { includeFloor = true } = {}) {
+function slimUnit(u, parkings, { includeFloor = true, full = false } = {}) {
   const owned = (parkings || []).filter(p => isDealParking(p, u.unitId)).map(p => ({
     車位編號: p.spotId, 成交價_萬: num(p.price_transaction), 狀態: p.status_backend || null,
   }));
+  const terrace = num(u.area_terrace_ping) || 0;
+  // full：get_unit 單戶查詢時回傳可編輯的完整欄位（讓模型知道現值，才能正確產生草案）
+  const extra = full ? {
+    露臺面積_坪: terrace > 0 ? terrace : undefined,
+    // 表價／底價的可編輯明細：總額由「房屋＋露臺」自動計算，模型要調價請改這兩個欄位
+    房屋表價_萬: num(u.price_list_house_only),
+    露臺表價_萬: terrace > 0 ? num(u.price_list_terrace) : undefined,
+    房屋底價_萬: includeFloor ? num(u.price_floor_house_only) : undefined,
+    露臺底價_萬: includeFloor && terrace > 0 ? num(u.price_floor_terrace) : undefined,
+    配套房屋總價_萬: num(u.price_package_deal),
+    優付: u.isPreferredPayment === true ? '是' : undefined,
+    價格備註: typeof u.priceRemarks === 'string' ? u.priceRemarks.slice(0, 200) : undefined,
+    房屋價款比例_百分比: num(u.housePriceRatio), 土地價款比例_百分比: num(u.landPriceRatio),
+    身分證字號: u.buyerIdNumber, EMAIL: u.buyerEmail, 出生年月日: formatRocDate(u.buyerDateOfBirth),
+    是否首購: u.isFirstTimeBuyer === false ? '否' : (u.isFirstTimeBuyer === true ? '是' : undefined),
+    通訊地址: [u.buyerMailingAddressCity, u.buyerMailingAddressDistrict, u.buyerMailingAddressDetail].filter(Boolean).join('') || undefined,
+    戶籍地址: [u.buyerPermanentAddressCity, u.buyerPermanentAddressDistrict, u.buyerPermanentAddressDetail].filter(Boolean).join('') || undefined,
+  } : {};
   return stripEmpty({
     戶別: u.unitId, 棟別: u.building, 樓層: u.floor, 格局: u.layout, 物件類型: u.propertyType,
     主建坪數: num(u.area_main_ping), 房屋總面積_坪: num(u.area_house_ping),
@@ -166,10 +295,11 @@ function slimUnit(u, parkings, { includeFloor = true } = {}) {
     成交總價含車_萬: num(u.price_transaction_total),
     買方姓名: u.buyerName, 買方電話: u.buyerPhone,
     銷售人員: formatSalespersons(u.salesperson, '、', ''),
-    契約類型: u.contractType,
-    小訂日期: toDateStr(u.payment_deposit_date), 小訂金額: num(u.payment_deposit_amount),
-    補足日期: toDateStr(u.payment_supplement_date), 補足金額: num(u.payment_supplement_amount),
-    簽約日期: toDateStr(u.payment_contract_date), 簽約金額: num(u.payment_contract_amount),
+    合約方式: u.contractType,
+    小訂日期: toDateStr(u.payment_deposit_date),
+    補足日期: toDateStr(u.payment_complete_date),
+    簽約日期: toDateStr(u.payment_contract_date),
+    ...extra,
     持有車位: owned,
     標籤: Array.isArray(u.tags) ? u.tags.map(t => (typeof t === 'string' ? t : t?.text)).filter(Boolean) : undefined,
     備註: typeof u.remarks === 'string' ? u.remarks.slice(0, 300) : undefined,
@@ -214,7 +344,9 @@ function matchSalesperson(personnel, raw) {
 }
 
 module.exports = {
-  FIELD_LABELS, WRITABLE_FIELDS, NUMERIC_FIELDS, DATE_FIELDS, FORBIDDEN_HINT,
+  FIELD_DEFS, FIELD_ALIASES, FIELD_LABELS, WRITABLE_FIELDS, NUMERIC_FIELDS, DATE_FIELDS, BOOL_FIELDS, TEXT_FIELDS, TERRACE_ONLY_FIELDS, FORBIDDEN_HINT,
+  DERIVED_TOTAL_TO_DETAIL,
+  writableFieldsFor, parseBool, parseRocDate, formatRocDate, displayValue,
   todayTaipei, nowTaipeiText, toDateStr, toDateTimeStr, parseDateInput,
   normalizeId, idKeys, findById, loadProjectData, slimUnit, slimParking, parkingAvailability, matchSalesperson,
   normalizeSalespersons, formatSalespersons, isDealParking, classifyCommitment, num, stripEmpty,

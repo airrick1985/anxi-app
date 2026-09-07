@@ -155,19 +155,12 @@
                     <v-icon left size="small">mdi-pencil</v-icon> 修改價格
                   </v-btn>
                 </div>
+                <!-- 💰 表價：房屋表價＋露臺表價為輸入，房屋總表價一律由系統計算（見 utils/priceDerive.js） -->
                 <v-row>
                   <v-col cols="12" md="3">
-                    <v-text-field v-model="editingData.price_list_house_total" label="房屋表價" suffix="萬" type="number"
+                    <v-text-field v-model="editingData.price_list_house_only" label="房屋表價" suffix="萬" type="number"
                       variant="outlined" :bg-color="!isPriceEditable ? '#f5f5f5' : 'white'" class="input-price-list"
                       :readonly="!isPriceEditable"
-                      :rules="[val => val >= 0 || '金額不可小於 0']" :hint="`單價: ${editingListUnitPrice} 萬/坪`"
-                      persistent-hint></v-text-field>
-                  </v-col>
-
-                  <v-col cols="12" md="3" v-if="editingData.area_terrace_ping > 0">
-                    <v-text-field v-model="editingData.price_list_house_only" label="房屋表價(不含露臺)" suffix="萬"
-                      type="number" variant="outlined" :bg-color="!isPriceEditable ? '#f5f5f5' : 'white'"
-                      class="input-price-list" :readonly="!isPriceEditable"
                       :rules="[val => val >= 0 || '金額不可小於 0']"
                       :hint="`單價: ${editingListHouseOnlyUnitPrice} 萬/坪`" persistent-hint></v-text-field>
                   </v-col>
@@ -181,24 +174,45 @@
                       persistent-hint></v-text-field>
                   </v-col>
 
-                  <v-col cols="12" md="3" v-if="viewMode === 'sales'">
-                    <v-text-field v-model="editingData.price_floor_house_total" label="房屋底價" suffix="萬" type="number"
-                      variant="outlined" :bg-color="!isPriceEditable ? '#f5f5f5' : 'white'" class="input-price-floor"
-                      :readonly="!isPriceEditable"
-                      :hint="`單價: ${editingFloorUnitPrice} 萬/坪`" persistent-hint></v-text-field>
+                  <v-col cols="12" md="3">
+                    <v-text-field :model-value="editingListTotalDisplay" label="房屋總表價" suffix="萬"
+                      variant="outlined" bg-color="#eef3fb" class="input-price-list input-price-derived" readonly
+                      :hint="editingData.area_terrace_ping > 0
+                        ? `自動計算：房屋表價 ＋ 露臺表價 · 單價 ${editingListUnitPrice} 萬/坪`
+                        : `自動計算：同房屋表價 · 單價 ${editingListUnitPrice} 萬/坪`"
+                      persistent-hint>
+                      <template #append-inner>
+                        <v-icon size="18" color="grey-darken-1">mdi-calculator-variant-outline</v-icon>
+                      </template>
+                    </v-text-field>
                   </v-col>
 
-                  <v-col cols="12" md="3" v-if="viewMode === 'sales' && editingData.area_terrace_ping > 0">
-                    <v-text-field v-model="editingData.price_floor_house_only" label="房屋底價(不含露臺)" suffix="萬"
-                      type="number" variant="outlined" bg-color="white" class="input-price-floor"
+                  <v-col cols="12" md="3" v-if="viewMode === 'sales'">
+                    <v-text-field v-model="editingData.price_floor_house_only" label="房屋底價" suffix="萬" type="number"
+                      variant="outlined" :bg-color="!isPriceEditable ? '#f5f5f5' : 'white'" class="input-price-floor"
+                      :readonly="!isPriceEditable"
                       :hint="`單價: ${editingFloorHouseOnlyUnitPrice} 萬/坪`" persistent-hint></v-text-field>
                   </v-col>
 
                   <v-col cols="12" md="3" v-if="viewMode === 'sales' && editingData.area_terrace_ping > 0">
                     <v-text-field v-model="editingData.price_floor_terrace" label="露臺底價" suffix="萬" type="number"
-                      variant="outlined" bg-color="white" class="input-price-floor"
+                      variant="outlined" :bg-color="!isPriceEditable ? '#f5f5f5' : 'white'" class="input-price-floor"
+                      :readonly="!isPriceEditable"
                       :hint="`露臺 ${formatNumber(editingData.area_terrace_ping, 2)} 坪 · 單價: ${editingFloorTerraceUnitPrice} 萬/坪`"
                       persistent-hint></v-text-field>
+                  </v-col>
+
+                  <v-col cols="12" md="3" v-if="viewMode === 'sales'">
+                    <v-text-field :model-value="editingFloorTotalDisplay" label="房屋總底價" suffix="萬"
+                      variant="outlined" bg-color="#fbf0ee" class="input-price-floor input-price-derived" readonly
+                      :hint="editingData.area_terrace_ping > 0
+                        ? `自動計算：房屋底價 ＋ 露臺底價 · 單價 ${editingFloorUnitPrice} 萬/坪`
+                        : `自動計算：同房屋底價 · 單價 ${editingFloorUnitPrice} 萬/坪`"
+                      persistent-hint>
+                      <template #append-inner>
+                        <v-icon size="18" color="grey-darken-1">mdi-calculator-variant-outline</v-icon>
+                      </template>
+                    </v-text-field>
                   </v-col>
 
                   <!-- 配套房屋總價：合約上的房屋總價，配套價格＝成交總價 − 此值 -->
@@ -487,7 +501,7 @@
                               <div class="price-split-hint">含露臺，明細如下</div>
                               <div class="price-split-row">
                                 <div class="price-split-part">
-                                  <div class="price-split-label">房屋(不含露臺)</div>
+                                  <div class="price-split-label">房屋表價</div>
                                   <div class="price-split-value">
                                     {{ formatNumber(unitData.price_list_house_only) }} <span
                                       class="price-split-currency">萬</span>
@@ -525,7 +539,7 @@
                               <div class="price-split-hint">含露臺，明細如下</div>
                               <div class="price-split-row">
                                 <div class="price-split-part">
-                                  <div class="price-split-label">房屋(不含露臺)</div>
+                                  <div class="price-split-label">房屋底價</div>
                                   <div class="price-split-value">
                                     {{ formatNumber(unitData.price_floor_house_only) }} <span
                                       class="price-split-currency">萬</span>
@@ -682,14 +696,23 @@
                         </div>
                         <!-- 🚗 加購或保留車位：綁定本戶但後台狀態非小訂／補足／簽約的車位，不計入成交／底價
                              版面比照上方車位明細，僅以琥珀色（逾期紅色）區隔；狀態 chip 與「編輯」可直接改車位 -->
-                        <div v-if="flaggedParkings.length" class="parking-deal-block parking-hold-block"
+                        <div v-if="flaggedParkings.length || canQuickPickParking" class="parking-deal-block parking-hold-block"
                           :class="{ 'parking-hold-block--overdue': flaggedParkingHasOverdue }">
-                          <div class="parking-deal-summary">
+                          <div class="parking-deal-summary"
+                            :class="{ 'parking-deal-summary--clickable': canQuickPickParking }"
+                            :title="canQuickPickParking ? '點擊開啟選擇加購或保留車位介面' : ''"
+                            @click="canQuickPickParking && openHoldParkingPicker()">
                             <span class="parking-deal-title">加購或保留車位
                               <span class="parking-deal-count">{{ flaggedParkings.length }} 個</span>
                             </span>
+                            <v-btn v-if="canQuickPickParking" size="x-small" variant="tonal" color="warning"
+                              prepend-icon="mdi-car-clock" :loading="isHoldParkingSaving"
+                              @click.stop="openHoldParkingPicker">選擇車位</v-btn>
                           </div>
-                          <div class="parking-deal-table">
+                          <div v-if="!flaggedParkings.length" class="parking-deal-empty parking-hold-empty" @click="openHoldParkingPicker">
+                            <v-icon size="16" class="mr-1">mdi-car-clock</v-icon>尚無加購或保留車位，點此選擇
+                          </div>
+                          <div v-else class="parking-deal-table">
                             <div class="parking-deal-row head">
                               <span class="pd-id">車位</span>
                               <span class="pd-num">底價</span>
@@ -709,6 +732,9 @@
                               <span class="pd-act">
                                 <v-btn icon="mdi-pencil" size="x-small" variant="text" color="primary" title="編輯車位"
                                   @click="openParkingSpotEditor(entry.raw)"></v-btn>
+                                <v-btn v-if="canQuickPickParking" icon="mdi-close-circle-outline" size="x-small" variant="text" color="error"
+                                  title="釋出此車位（解除與本戶的綁定）" :disabled="isHoldParkingSaving"
+                                  @click="askReleaseHeldParking(entry)"></v-btn>
                               </span>
                             </div>
                             <div v-if="flaggedParkings.length > 1" class="parking-deal-row foot">
@@ -1230,6 +1256,16 @@
     :allParkingData="allData['車位'] || []" :initialSelectedParking="quickParkingInitial"
     mode="sales" :unit-id="unitData?.unitId || ''" :project-id="projectId" :sales-control-view-mode="props.viewMode"
     @confirm="handleQuickParkingConfirm" @request-open-slide="$emit('request-open-slide')" />
+  <!-- 🚗 成交總覽「加購或保留車位」→ 保留模式選車位（每個車位可指定後台狀態；確認後立即寫入車位文件） -->
+  <ParkingEditModal v-if="holdParkingPickerMounted" v-model:show="isHoldParkingPickerOpen"
+    :allParkingData="allData['車位'] || []" :initialSelectedParking="holdParkingInitial"
+    :project-id="projectId" :unit-id="unitData?.unitId || ''" mode="sales" hold-mode
+    :hold-status-options="holdStatusOptions" :hold-default-status="holdDefaultStatus"
+    :tier-overrides="parkingTierOverrides" :hold-default-reserved-by="unitData?.buyerName || ''"
+    @confirm="handleHoldParkingConfirm" @request-open-slide="$emit('request-open-slide')" />
+  <ConfirmationDialog :show="releaseHoldDialog.show" @update:show="releaseHoldDialog.show = $event" title="釋出車位"
+    :message="releaseHoldDialog.message" confirm-text="確定釋出" confirm-color="error" :loading="isHoldParkingSaving"
+    @confirm="confirmReleaseHeldParking" @cancel="releaseHoldDialog.show = false" />
 
   <!-- 區塊編輯對話框：戶別資訊留在原地，只彈出該區塊的編輯表單（標題列可拖曳；儲存走同一套整份寫入流程） -->
   <v-dialog v-if="sectionEditDialog.show" :model-value="true" @update:model-value="v => { if (!v) cancelSectionEdit(); }"
@@ -1473,6 +1509,7 @@ import { db } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { buildRemarksSummary } from '@/utils/remarkNotes';
 import { computeHouseLandPrices, buildDefaultFormulas, isSpecialContractType } from '@/composables/usePriceFormula';
+import { deriveTotalPrice, applyDerivedPrices } from '@/utils/priceDerive';
 import { useQuoteStore } from '@/store/quoteStore';
 import PaymentSettings from '@/views/PaymentSettings.vue';
 // ✅ [效能] 合約製作彈窗（約 220KB）改為非同步載入；模板以 v-if 於開啟時建立，故安全
@@ -1484,7 +1521,7 @@ const ParkingEditModal = defineAsyncComponent(() => import('@/components/Parking
 // 🚗 加購或保留車位 → 編輯車位（元件很小且 modelValue watcher 非 immediate，同步載入避免首開時漏帶資料）
 import ParkingSpotEditDialog from '@/components/ParkingSpotEditDialog.vue';
 import { classifyCommitment, COMMITMENT_TIERS, buildCommitmentOverrides, isPreparatoryParkingStatus, isDealParking } from '@/utils/salesStatusGroups';
-import { buildHeldEntry, todayKey } from '@/composables/useParkingRatio';
+import { buildHeldEntry, todayKey, toDateKey, addDaysKey, DEFAULT_RESERVATION_DAYS } from '@/composables/useParkingRatio';
 import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
 import { vDialogDrag } from '@/composables/useDialogDrag';
 import ConfirmationDialog from './ConfirmationDialog.vue';
@@ -1690,10 +1727,20 @@ const editingPackagePriceHint = computed(() => {
   return `配套價格: ${formatNumber(total - packageDeal, 2)} 萬（成交總價 ${formatNumber(total, 2)} − 配套房屋總價）`;
 });
 
-// ✅ [新增] 編輯模式即時計算 - 表價單價
+// 💰 編輯模式：房屋總表價／總底價一律由明細衍生（房屋＋露臺），輸入框唯讀顯示這兩個值
+const editingListTotal = computed(() =>
+  deriveTotalPrice(editingData.value?.price_list_house_only, editingData.value?.price_list_terrace));
+const editingFloorTotal = computed(() =>
+  deriveTotalPrice(editingData.value?.price_floor_house_only, editingData.value?.price_floor_terrace));
+const editingListTotalDisplay = computed(() =>
+  editingListTotal.value === null ? '' : formatNumber(editingListTotal.value, 2));
+const editingFloorTotalDisplay = computed(() =>
+  editingFloorTotal.value === null ? '' : formatNumber(editingFloorTotal.value, 2));
+
+// ✅ [新增] 編輯模式即時計算 - 表價單價（採衍生後的總表價）
 const editingListUnitPrice = computed(() => {
   if (!editingData.value) return '0.00';
-  const price = Number(editingData.value.price_list_house_total) || 0;
+  const price = Number(editingListTotal.value) || 0;
   const area = Number(editingData.value.area_house_ping) || 0;
   return area > 0 ? (price / area).toFixed(2) : '0.00';
 });
@@ -1717,7 +1764,7 @@ const editingListTerraceUnitPrice = computed(() => {
 // ✅ [新增] 編輯模式即時計算 - 底價單價
 const editingFloorUnitPrice = computed(() => {
   if (!editingData.value) return '0.00';
-  const price = Number(editingData.value.price_floor_house_total) || 0;
+  const price = Number(editingFloorTotal.value) || 0;
   const area = Number(editingData.value.area_house_ping) || 0;
   return area > 0 ? (price / area).toFixed(2) : '0.00';
 });
@@ -2225,6 +2272,147 @@ function handleParkingSpotSaved(updated) {
   // 即時反映：Firestore 監聽器稍後也會覆蓋為最新資料
   const { docId, id, ...fields } = updated;
   Object.assign(target, fields);
+}
+
+// =================================================================
+// 🚗 成交總覽「加購或保留車位」→ 直接新增／移除／改狀態（檢視模式，免進修改銷控）
+// Why: 原本只能逐筆改車位資料，要新增保留車位得繞去車位銷控；這裡比照「車位明細」提供選擇車位介面。
+//      這類車位只綁 buyerUnitId＋後台狀態，不寫入戶別「持有車位」（那是成交車位專用，供 Sheet／通知）。
+// =================================================================
+const isHoldParkingPickerOpen = ref(false);
+const holdParkingPickerMounted = ref(false);
+const holdParkingInitial = ref([]);
+const isHoldParkingSaving = ref(false);
+// 可指定的後台狀態：建案銷控狀態參數中「非小訂／補足／簽約」者，補上常用預設值；已釋出類不列
+const holdStatusOptions = computed(() => {
+  const fromParams = (props.allData?.['參數'] || [])
+    .map(p => String(p?.statusName || '').trim())
+    .filter(name => name && isPreparatoryParkingStatus(name) && classifyCommitment(name, parkingTierOverrides.value) !== 'released');
+  return Array.from(new Set([...fromParams, '保留', '主管保留', '已售']));
+});
+const holdDefaultStatus = computed(() => (holdStatusOptions.value.includes('保留') ? '保留' : holdStatusOptions.value[0] || '保留'));
+// 目前綁定本戶的準備購買車位（原始物件）
+const currentHeldRawParkings = () => {
+  const unitId = props.unitData?.unitId;
+  if (!unitId) return [];
+  return (props.allData?.['車位'] || []).filter(p => p && p.buyerUnitId === unitId && isPreparatoryParkingStatus(p.status_backend));
+};
+function openHoldParkingPicker() {
+  if (!canQuickPickParking.value) return;
+  // 帶入目前的加購／保留車位；reservedAt 為 Timestamp 不進深拷貝，寫回時再從原始物件取
+  holdParkingInitial.value = currentHeldRawParkings().map(p => ({
+    spotId: p.spotId || p['車位編號'],
+    '車位編號': p.spotId || p['車位編號'],
+    size: p.size || p['車位尺寸'] || '標準',
+    type: p.type || null,
+    price_list: p.price_list ?? null,
+    price_floor: p.price_floor ?? null,
+    price_transaction: p.price_transaction ?? p.price_list ?? null,
+    status_backend: p.status_backend || holdDefaultStatus.value,
+    remarks: p.remarks || null,
+    // 保留資訊：到期日統一 YYYY-MM-DD 供 type="date" 欄位編輯
+    reservedBy: p.reservedBy || null,
+    reservedUntil: toDateKey(p.reservedUntil) || null,
+    reservedNote: p.reservedNote || null,
+  }));
+  holdParkingPickerMounted.value = true;
+  isHoldParkingPickerOpen.value = true;
+}
+// 解除綁定的欄位（與 commitParkingChanges 一致，另清掉保留資訊）
+const RELEASE_PARKING_FIELDS = {
+  buyerUnitId: null, buyerName: null, price_transaction: null, status: null, status_backend: null,
+  salesperson: [], salespersonUserKey: [], remarks: null,
+  reservedBy: null, reservedUntil: null, reservedNote: null, reservedAt: null,
+};
+async function handleHoldParkingConfirm(parkingList) {
+  if (isHoldParkingSaving.value) return;
+  const unitId = props.unitData?.unitId;
+  if (!unitId) return;
+  const list = Array.isArray(parkingList) ? parkingList : [];
+  const allParkingData = props.allData?.['車位'] || [];
+  const src = props.unitData || {};
+  isHoldParkingSaving.value = true;
+  try {
+    const keepIds = new Set(list.map(p => p.spotId || p['車位編號']));
+    // 1. 被移出清單的車位 → 釋出
+    for (const p of currentHeldRawParkings()) {
+      if (p.id && !keepIds.has(p.spotId)) {
+        await updateParkingLot(p.id, { ...RELEASE_PARKING_FIELDS, updatedAt: new Date() });
+      }
+    }
+    // 2. 清單內的車位 → 綁定本戶＋指定後台狀態（保留層級補保留人／到期日，其餘清空保留資訊）
+    for (const item of list) {
+      const spotId = item.spotId || item['車位編號'];
+      const existing = allParkingData.find(p => p && p.spotId === spotId);
+      if (!existing?.id) continue;
+      const statusBackend = item.status_backend || holdDefaultStatus.value;
+      if (!isPreparatoryParkingStatus(statusBackend)) {
+        throw new Error(`「${statusBackend}」屬正式成交狀態，請改用上方「車位明細」選擇車位`);
+      }
+      const isHeld = classifyCommitment(statusBackend, parkingTierOverrides.value) === 'held';
+      const wasHeldByUnit = existing.buyerUnitId === unitId && classifyCommitment(existing.status_backend, parkingTierOverrides.value) === 'held';
+      const payload = {
+        buyerUnitId: unitId,
+        buyerName: src.buyerName || null,
+        price_transaction: item.price_transaction ?? null,
+        status: statusBackend === '來賓車位' ? '來賓車位' : '已售',
+        status_backend: statusBackend,
+        salesperson: normalizeSalespersons(src.salesperson),
+        salespersonUserKey: normalizeSalespersons(src.salespersonUserKey),
+        remarks: item.remarks ?? existing.remarks ?? null,
+        updatedAt: new Date(),
+      };
+      if (isHeld) {
+        // 保留資訊以選車介面填寫為準；未填時保留人預設買方、到期日預設今天＋N 天
+        payload.reservedBy = item.reservedBy || src.buyerName || null;
+        payload.reservedUntil = toDateKey(item.reservedUntil) || addDaysKey(DEFAULT_RESERVATION_DAYS);
+        payload.reservedNote = item.reservedNote || null;
+        // 首次進入保留才記錄起算時間，原本就是本戶保留者不覆蓋（已保留天數以此計算）
+        payload.reservedAt = (wasHeldByUnit && existing.reservedAt) ? existing.reservedAt : new Date();
+      } else {
+        payload.reservedBy = null;
+        payload.reservedUntil = null;
+        payload.reservedNote = null;
+        payload.reservedAt = null;
+      }
+      await updateParkingLot(existing.id, payload);
+    }
+    const names = list.map(p => p.spotId || p['車位編號']).filter(Boolean).join('、');
+    toast.success(names ? `已更新加購或保留車位：${names}` : '已釋出本戶所有加購或保留車位');
+  } catch (e) {
+    console.error('🚗 更新加購或保留車位失敗:', e);
+    toast.error(`車位更新失敗：${e.message}`);
+  } finally {
+    isHoldParkingSaving.value = false;
+  }
+}
+// 單筆釋出：先確認再解除綁定
+const releaseHoldDialog = ref({ show: false, message: '', entry: null });
+function askReleaseHeldParking(entry) {
+  if (!entry?.raw) return;
+  releaseHoldDialog.value = {
+    show: true,
+    entry,
+    message: `確定要釋出車位 <strong>${entry.spotId}</strong>（${entry.status}）嗎？<br>釋出後將解除與 ${props.unitData?.unitId || '本戶'} 的綁定並清除保留資訊。`,
+  };
+}
+async function confirmReleaseHeldParking() {
+  const entry = releaseHoldDialog.value.entry;
+  const targetId = entry?.raw?.id || entry?.raw?.docId;
+  if (!targetId) { releaseHoldDialog.value.show = false; return; }
+  isHoldParkingSaving.value = true;
+  try {
+    await updateParkingLot(targetId, { ...RELEASE_PARKING_FIELDS, updatedAt: new Date() });
+    // 即時反映：Firestore 監聽器稍後也會覆蓋
+    Object.assign(entry.raw, RELEASE_PARKING_FIELDS);
+    toast.success(`已釋出車位 ${entry.spotId}`);
+    releaseHoldDialog.value.show = false;
+  } catch (e) {
+    console.error('🚗 釋出車位失敗:', e);
+    toast.error(`釋出失敗：${e.message}`);
+  } finally {
+    isHoldParkingSaving.value = false;
+  }
 }
 
 const houseTransactionPrice = computed(() => Number(props.unitData?.price_transaction_house) || 0);
@@ -3073,11 +3261,11 @@ async function saveChanges() {
     return;
   }
 
-  // ✅ 檢查價格是否被變更
+  // ✅ 檢查價格是否被變更（總額為衍生值，取衍生後的結果比較）
   const originalPriceList = Number(props.unitData?.price_list_house_total) || 0;
-  const newPriceList = Number(editingData.value?.price_list_house_total) || 0;
+  const newPriceList = Number(editingListTotal.value) || 0;
   const originalPriceFloor = Number(props.unitData?.price_floor_house_total) || 0;
-  const newPriceFloor = Number(editingData.value?.price_floor_house_total) || 0;
+  const newPriceFloor = Number(editingFloorTotal.value) || 0;
 
   if (originalPriceList !== newPriceList || originalPriceFloor !== newPriceFloor) {
     showPriceChangeDialog.value = true; // 打開確認彈窗
@@ -3115,12 +3303,8 @@ async function executeSaveChanges() {
 
     const data = editingData.value;
 
-    // ✅ 露臺表價異動時同步重算「露臺單價(表價)」，避免銷控表欄位殘留舊值
-    const terracePing = Number(data.area_terrace_ping) || 0;
-    if (terracePing > 0) {
-      const terraceListPrice = Number(data.price_list_terrace) || 0;
-      data.price_list_terrace_unit = Number((terraceListPrice / terracePing).toFixed(2));
-    }
+    // 💰 房屋總表價／總底價一律由明細衍生，露臺單價(表價)同步重算（見 utils/priceDerive.js）
+    applyDerivedPrices(data, props.unitData || {});
 
     // ✅ [備註留言] 備註改由檢視模式即時 CRUD 維護，編輯表單不再送出，
     // 避免以進入編輯時的舊快照覆蓋期間新增的留言（merge: true 會保留既有值）
@@ -5546,8 +5730,23 @@ onUnmounted(() => {
 }
 
 .parking-hold-block .parking-deal-row .pd-act {
-  flex: 0 0 28px;
+  flex: 0 0 56px;
   text-align: right;
+  white-space: nowrap;
+}
+
+.parking-hold-block .parking-deal-summary--clickable:hover {
+  background: rgba(249, 168, 37, 0.1);
+}
+
+.parking-hold-block .parking-hold-empty {
+  border-color: #ffd54f;
+  color: #8d6e00;
+}
+.parking-hold-block .parking-hold-empty:hover {
+  background: rgba(249, 168, 37, 0.1);
+  border-color: #f9a825;
+  color: #8d6e00;
 }
 
 .parking-hold-block .pd-hold-chip {
@@ -6049,6 +6248,15 @@ onUnmounted(() => {
   color: red !important;
   /* 紅色 (表價) */
   font-weight: bold;
+}
+
+/* 💰 自動計算欄位（房屋總表價／總底價）：不可輸入，視覺上與可編輯欄位區隔 */
+.input-price-derived :deep(input) {
+  cursor: default;
+}
+
+.input-price-derived :deep(.v-field__outline) {
+  --v-field-border-opacity: 0.12;
 }
 
 .fullscreen-actions {

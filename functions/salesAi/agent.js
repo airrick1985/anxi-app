@@ -9,7 +9,7 @@ const { getGlobalSettings, getProjectAiSettings, resolveProfiles, estimateCost }
 const { getProvider, ProviderError } = require('./providers');
 const { getSecret } = require('./secrets');
 const { toolsFor, toolSpecs, TOOL_MAP, ensureData } = require('./tools');
-const { buildProposal } = require('./validate');
+const { buildProposal, diffToText } = require('./validate');
 const { applyProposal } = require('./execute');
 const { buildSystemPrompt } = require('./prompt');
 const D = require('./data');
@@ -137,7 +137,9 @@ function normalizeHistory(history, limits) {
     const role = h.role === 'user' ? 'user' : 'assistant';
     let text = typeof h.text === 'string' ? h.text : (h.parts && h.parts[0] && typeof h.parts[0].text === 'string' ? h.parts[0].text : '');
     if (h.type === 'proposal' && h.payload?.summary) text = `[系統] 已建立變更草案：${h.payload.summary}${h.payload.status ? `（${h.payload.status}）` : ''}`;
-    if (h.type === 'result' && h.payload?.applied) text = `[系統] 已執行：${(h.payload.applied || []).join('；')}`;
+    if (h.type === 'result' && (h.payload?.applied || h.payload?.changeText)) {
+      text = `[系統] 已執行：${(h.payload.applied || []).join('；')}${h.payload.changeText ? `\n修改前後：\n${String(h.payload.changeText).slice(0, 1500)}` : ''}`;
+    }
     if (h.type === 'question' && h.payload?.questions) text = `[系統] 向使用者提問：${h.payload.questions.map(x => x.label).join('；')}`;
     if (!text) continue;
     out.push({ role, content: text.slice(0, maxChars) });
@@ -156,7 +158,7 @@ function normalizeHistory(history, limits) {
 // ---------------------------------------------------------------
 function proposalPayload(id, doc, validated, extra = {}) {
   return {
-    proposalId: id, kind: validated.kind, unitId: validated.unitId,
+    proposalId: id, kind: validated.kind, unitId: validated.unitId, unitIds: validated.unitIds || [],
     diff: validated.diff, missing: validated.missing, warnings: validated.warnings, blockers: validated.blockers,
     executable: validated.executable, requireTypedConfirm: validated.requireTypedConfirm, summary: validated.summary,
     status: doc.status, expiresAt: doc.expiresAt instanceof Timestamp ? doc.expiresAt.toDate().toISOString() : doc.expiresAt,
@@ -337,11 +339,20 @@ async function handleExecute(ctx, data) {
     await writeLog(ctx, ref.id, doc, validated, 'failed', e.message);
     throw new HttpsError('internal', `執行失敗：${e.message}`);
   }
-  await ref.set({ status: 'executed', executedAt: FieldValue.serverTimestamp(), validated, answers, result: { applied: result.applied } }, { merge: true });
+  // 修改前後差異：草案執行前以最新資料重算的 diff 就是「修改前 → 修改後」，轉成文字一併回給使用者與對話歷史
+  const changeText = diffToText(validated.diff);
+  await ref.set({ status: 'executed', executedAt: FieldValue.serverTimestamp(), validated, answers, result: { applied: result.applied, changeText } }, { merge: true });
   await writeLog(ctx, ref.id, doc, validated, 'success', null);
+  const unitCount = (result.unitIds || []).length;
+  const headline = validated.kind === 'cancel'
+    ? `已完成退戶 ${result.unitId}`
+    : `已完成修改${unitCount > 1 ? `（共 ${unitCount} 戶）` : result.unitId ? ` ${result.unitId}` : ''}`;
   return {
     status: 'success',
-    result: { proposalId: ref.id, unitId: result.unitId, applied: result.applied, diff: validated.diff, notification: result.notification, summary: validated.summary },
+    result: {
+      proposalId: ref.id, unitId: result.unitId, unitIds: result.unitIds || [], applied: result.applied, diff: validated.diff,
+      notification: result.notification, summary: validated.summary, headline, changeText,
+    },
   };
 }
 
@@ -355,7 +366,7 @@ async function writeLog(ctx, proposalId, doc, validated, result, error) {
   try {
     await ctx.db.collection('projects').doc(ctx.projectId).collection('aiActionLogs').add({
       projectId: ctx.projectId, userKey: ctx.user.userKey, userName: ctx.user.name, proposalId,
-      sourceMessage: doc.sourceMessage || '', kind: validated.kind, unitId: validated.unitId, summary: validated.summary,
+      sourceMessage: doc.sourceMessage || '', kind: validated.kind, unitId: validated.unitId, unitIds: validated.unitIds || [], summary: validated.summary,
       actions: validated.actions, diff: validated.diff, result, error: error || null, createdAt: FieldValue.serverTimestamp(),
     });
     if (result === 'success') {

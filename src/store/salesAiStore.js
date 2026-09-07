@@ -196,7 +196,7 @@ export const useSalesAiStore = defineStore('salesAi', () => {
   }
   function summarizeForHistory(m) {
     if (m.type === 'proposal') return { summary: m.payload?.proposal?.summary, status: m.payload?.proposal?.status };
-    if (m.type === 'result') return { applied: m.payload?.applied };
+    if (m.type === 'result') return { applied: m.payload?.applied, changeText: m.payload?.changeText };
     if (m.type === 'question') return { questions: (m.payload?.questions || []).map(q => ({ label: q.label })) };
     return undefined;
   }

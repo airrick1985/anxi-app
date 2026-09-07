@@ -1219,7 +1219,7 @@
             <div class="text-caption text-grey-darken-1 mb-3">AI 只會建立「變更草案」，仍需使用者在畫面上確認才會寫入。模型與提示詞由超級管理員在「AI 助理管理」統一維護。</div>
             <v-row v-if="project.aiAssistant">
               <v-col cols="12" md="6">
-                <v-switch v-model="project.aiAssistant.allowWrite" color="primary" inset density="compact" label="允許 AI 透過草案修改銷控" hint="關閉時 AI 只能查詢與試算" persistent-hint></v-switch>
+                <v-switch v-model="project.aiAssistant.allowWrite" color="primary" inset density="compact" label="允許 AI 透過草案修改銷控" hint="關閉時 AI 只能查詢與試算；開啟後 AI 可改的欄位與使用者本人在戶別資訊能編輯的欄位相同（含表價／底價／房土比／買方資料）" persistent-hint></v-switch>
                 <v-switch v-model="project.aiAssistant.allowCancel" color="error" inset density="compact" :disabled="!project.aiAssistant.allowWrite" label="允許 AI 建立退戶草案" hint="執行前需輸入戶別編號二次確認；超級／系統管理員恆可" persistent-hint></v-switch>
               </v-col>
               <v-col cols="12" md="6">

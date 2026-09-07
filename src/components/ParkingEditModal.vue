@@ -34,7 +34,8 @@
         </div>
 
         <div v-if="localParking.length > 0">
-          <div v-for="(p, index) in localParking" :key="p.spotId || p['車位編號']" class="parking-card">
+          <div v-for="(p, index) in localParking" :key="p.spotId || p['車位編號']" class="parking-card"
+            :class="{ 'parking-card--hold': holdMode }">
             <div class="parking-card-icon"><v-icon color="white" size="20">mdi-car</v-icon></div>
             <div class="parking-card-main">
               <div class="parking-card-id">
@@ -49,6 +50,10 @@
                   <span>底價 <strong>{{ priceFloorOf(p) }}</strong> 萬</span>
                 </template>
               </div>
+              <!-- 🚗 保留模式：每個車位各自指定後台狀態（保留／主管保留／已售…） -->
+              <v-select v-if="holdMode" v-model="p.status_backend" :items="holdStatusOptions"
+                label="後台狀態" density="compact" hide-details variant="outlined" bg-color="white"
+                class="parking-hold-status mt-2" @update:model-value="onHoldStatusChange(p)" />
             </div>
             <div class="parking-card-price">
               <template v-if="mode === 'quote'">
@@ -63,6 +68,28 @@
             </div>
             <v-btn icon="mdi-close" size="x-small" variant="text" color="grey"
               class="parking-card-remove" title="移除此車位" @click="removeParking(index)" />
+            <!-- 🚗 保留資訊：狀態屬「暫時保留」層級才需要（保留人／到期日／備註），確認後一併寫入 -->
+            <div v-if="holdMode && isHeldTier(p)" class="parking-hold-fields">
+              <div class="parking-hold-fields-title">
+                <v-icon size="14" class="mr-1">mdi-clock-outline</v-icon>保留資訊
+                <span v-if="holdOverdueDays(p) > 0" class="parking-hold-overdue">已逾期 {{ holdOverdueDays(p) }} 天</span>
+                <span v-else-if="p.reservedUntil" class="parking-hold-hint">{{ holdUntilHint(p) }}</span>
+              </div>
+              <v-row dense>
+                <v-col cols="12" sm="4">
+                  <v-text-field v-model="p.reservedBy" label="保留人 / 保留客戶" density="compact" hide-details
+                    variant="outlined" bg-color="white" clearable />
+                </v-col>
+                <v-col cols="12" sm="4">
+                  <v-text-field v-model="p.reservedUntil" label="保留到期日" type="date" density="compact" hide-details
+                    variant="outlined" bg-color="white" clearable :color="holdOverdueDays(p) > 0 ? 'error' : undefined" />
+                </v-col>
+                <v-col cols="12" sm="4">
+                  <v-text-field v-model="p.reservedNote" label="保留備註" density="compact" hide-details
+                    variant="outlined" bg-color="white" clearable />
+                </v-col>
+              </v-row>
+            </div>
           </div>
         </div>
 
@@ -185,6 +212,8 @@ import { getFloorPlansAPI } from '@/api';
 import { useToast } from 'vue-toastification';
 import { useTapUnlock } from '@/composables/useTapUnlock';
 import { vDialogDrag } from '@/composables/useDialogDrag';
+import { classifyCommitment } from '@/utils/salesStatusGroups';
+import { todayKey, toDateKey, addDaysKey, diffDays, DEFAULT_RESERVATION_DAYS } from '@/composables/useParkingRatio';
 
 // ✓ START: 匯入樣式 Store
 import { useTextStyleStore } from '@/store/textStyleStore';
@@ -215,8 +244,18 @@ const props = defineProps({
   salesControlViewMode: {
     type: String,
     default: 'sales' // 預設為 'sales'
-  }
+  },
   // ✓ END: 新增
+  // 🚗 保留模式：從戶別「成交總覽」選擇「加購或保留車位」
+  // Why: 這類車位不進成交／底價合計，改由每張卡片指定後台狀態（保留／主管保留／已售…），
+  //      狀態選項只允許「非小訂／補足／簽約」，避免選完後變成成交車位而與持有車位脫鉤。
+  holdMode: { type: Boolean, default: false },
+  holdStatusOptions: { type: Array, default: () => ['保留', '主管保留', '已售'] },
+  holdDefaultStatus: { type: String, default: '保留' },
+  // 建案在銷控設定指定的確定度層級覆蓋表 { 狀態名稱: tier }，判斷是否為「暫時保留」層級
+  tierOverrides: { type: Object, default: () => ({}) },
+  // 新加入保留車位時預設的保留人（通常帶買方姓名）
+  holdDefaultReservedBy: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:show', 'confirm']);
@@ -309,6 +348,7 @@ const title = computed(() => {
     const displayId = props.unitId;
     return `為 ${displayId} 選擇車位`;
   }
+  if (props.holdMode) return props.unitId ? `${props.unitId} 加購或保留車位` : '加購或保留車位';
   return '選擇車位';
 });
 
@@ -392,9 +432,38 @@ function addParking() {
       area: newSpotData.area ?? newSpotData['車位面積(m²)'] ?? newSpotData['車位面積'] ?? null,
       area_ping: newSpotData.area_ping ?? newSpotData['車位面積_坪'] ?? newSpotData['車位面積(坪)'] ?? null,
     };
+    // 🚗 保留模式：新加入的車位預設狀態（父層可依建案參數指定），保留層級補預設保留資訊
+    if (props.holdMode) {
+      newSpot.status_backend = props.holdDefaultStatus || props.holdStatusOptions[0] || '保留';
+      newSpot.reservedBy = null;
+      newSpot.reservedUntil = null;
+      newSpot.reservedNote = null;
+      onHoldStatusChange(newSpot);
+    }
     localParking.value.push(newSpot);
     newParkingSelection.value = null;
   }
+}
+
+// 🚗 保留資訊 helpers（與 ParkingSpotEditDialog 邏輯一致）
+const isHeldTier = p => classifyCommitment(p?.status_backend, props.tierOverrides) === 'held';
+const holdOverdueDays = p => {
+  const key = toDateKey(p?.reservedUntil);
+  if (!key) return 0;
+  const d = diffDays(key, todayKey());
+  return d > 0 ? d : 0;
+};
+const holdUntilHint = p => {
+  const key = toDateKey(p?.reservedUntil);
+  if (!key) return '';
+  const d = diffDays(todayKey(), key);
+  return d === 0 ? '今天到期' : `還有 ${d} 天到期`;
+};
+// 切到暫時保留：補預設保留人（買方）與到期日（今天＋N 天）；離開保留層級不清欄位，確認寫入時由父層清空
+function onHoldStatusChange(p) {
+  if (!isHeldTier(p)) return;
+  if (!p.reservedBy && props.holdDefaultReservedBy) p.reservedBy = props.holdDefaultReservedBy;
+  if (!toDateKey(p.reservedUntil)) p.reservedUntil = addDaysKey(DEFAULT_RESERVATION_DAYS);
 }
 
 function removeParking(index) {
@@ -406,6 +475,13 @@ function close() {
 }
 
 function confirm() {
+  if (props.holdMode) {
+    const missing = localParking.value.filter(p => !p.status_backend).map(spotIdOf);
+    if (missing.length) {
+      toast.warning(`請先指定後台狀態：${missing.join('、')}`);
+      return;
+    }
+  }
   // ✅ 回傳的 localParking.value 已是符合 Firestore 結構的資料
   emit('confirm', localParking.value);
   close();
@@ -608,6 +684,41 @@ onUnmounted(() => {
 
 .parking-card-remove {
   flex: 0 0 auto;
+}
+
+/* 🚗 保留模式：後台狀態下拉，寬度貼齊卡片主欄 */
+.parking-hold-status {
+  max-width: 220px;
+}
+.parking-card--hold {
+  flex-wrap: wrap;
+}
+/* 保留資訊：整列撐滿卡片，琥珀色底區隔 */
+.parking-hold-fields {
+  flex-basis: 100%;
+  order: 10;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fffbea;
+  border: 1px solid #ffe082;
+}
+.parking-hold-fields-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #8d6e00;
+  margin-bottom: 6px;
+}
+.parking-hold-hint {
+  font-weight: 400;
+  color: #9e9e9e;
+}
+.parking-hold-overdue {
+  font-weight: 600;
+  color: #c62828;
 }
 
 /* 空狀態 */

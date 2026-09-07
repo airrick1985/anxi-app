@@ -64,6 +64,8 @@ const path = require("path");
 const { normalizeSalespersons, formatSalespersons } = require("./utils/salesperson");
 // 試用沙盒（DEMO 建案）對外通知守衛：命中試用建案時不寄 Email／LINE，視同成功
 const { guardedSendMail, shouldBlockOutbound } = require("./utils/trialGuard");
+// 表價／底價總額衍生（房屋總表價＝房屋表價＋露臺表價；底價同理）
+const { applyDerivedPrices } = require("./utils/priceDerive");
 //  1. 在頂部也引入 @puppeteer/browsers 的元件，方便下方使用
 
 
@@ -1206,6 +1208,21 @@ exports.uploadHouseholds = onCall({
     ];
     const dateFields = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date', 'payment_complete_date'];
 
+    // 💰 表價／底價總額為衍生欄位：部分欄位上傳時，需要既有明細才能正確重算總額，
+    //    故先取回本建案現有戶別資料作為計算基底（一次查詢，不逐戶讀取）。
+    const existingHouseholdsByUnitId = new Map();
+    try {
+      const existingSnap = await db.collection("salesHouseholds")
+        .where("projectId", "==", projectId).get();
+      existingSnap.forEach(doc => {
+        const d = doc.data();
+        if (d?.unitId) existingHouseholdsByUnitId.set(String(d.unitId).trim(), d);
+      });
+      console.log(`[${functionName}] 已載入既有戶別 ${existingHouseholdsByUnitId.size} 筆，供價格衍生計算使用。`);
+    } catch (e) {
+      console.warn(`[${functionName}] 載入既有戶別失敗，價格衍生僅依本次上傳欄位計算: ${e.message}`);
+    }
+
     for (const row of householdsData) {
       const unitId = row.unitId;
       if (!unitId) {
@@ -1363,6 +1380,14 @@ exports.uploadHouseholds = onCall({
       } else if (batchHasStatus) {
         dataToSave.salesStatus_backend = dataToSave.status;
       }
+
+      // 💰 房屋總表價／總底價一律由明細（房屋＋露臺）衍生，不採用檔案內的總額欄位。
+      //    例外：檔案只給了總額、沒給明細 → 反推明細（房屋＝總額−露臺），維持「拿舊範本改總價上傳」可用。
+      applyDerivedPrices(
+        dataToSave,
+        existingHouseholdsByUnitId.get(String(unitId).trim()) || {},
+        { backfillFromTotal: true }
+      );
 
       const docId = `${projectId}_${unitId}`;
       const docRef = db.collection("salesHouseholds").doc(docId);
@@ -3033,6 +3058,15 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
         dataToSave[field] = isNaN(num) ? null : num;
       } else {
         dataToSave[field] = null;
+      }
+    }
+
+    // 💰 房屋總表價／總底價一律由明細（房屋＋露臺）衍生，露臺單價(表價)同步重算。
+    //    前端唯讀顯示，此處為權威計算點，避免任何呼叫端送進手打的總額。
+    {
+      const { changed } = applyDerivedPrices(dataToSave, {});
+      if (changed.length > 0) {
+        console.log(`[${functionName}] 衍生價格欄位已重算: ${changed.join(', ')}`);
       }
     }
 

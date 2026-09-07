@@ -2,7 +2,7 @@
   <div class="ai-pcard" :class="[`ai-pcard--${status}`, { 'ai-pcard--cancel-kind': proposal.kind === 'cancel' }]">
     <div class="ai-pcard__head">
       <v-icon size="18" :color="proposal.kind === 'cancel' ? 'error' : 'primary'">{{ proposal.kind === 'cancel' ? 'mdi-account-cancel-outline' : 'mdi-file-document-edit-outline' }}</v-icon>
-      <span class="ai-pcard__title">{{ proposal.kind === 'cancel' ? '退戶草案' : '變更預覽' }}</span>
+      <span class="ai-pcard__title">{{ proposal.kind === 'cancel' ? '退戶草案' : '變更預覽' }}<span v-if="proposal.unitIds && proposal.unitIds.length > 1" class="ai-pcard__count">共 {{ proposal.unitIds.length }} 戶</span></span>
       <v-chip size="x-small" :color="statusMeta.color" variant="flat" class="ml-auto">{{ statusMeta.label }}</v-chip>
     </div>
 
@@ -90,7 +90,9 @@ const expireText = computed(() => {
 });
 function fmt(v) {
   if (v === null || v === undefined || v === '') return '—';
+  if (typeof v === 'boolean') return v ? '是' : '否';
   if (typeof v === 'number') return v.toLocaleString('zh-TW');
+  if (typeof v === 'object' && v.year) return `民國${v.year}年${v.month}月${v.day}日`;
   if (Array.isArray(v)) return v.join('、');
   return String(v).replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$1/$2/$3');
 }
@@ -114,6 +116,7 @@ function fmt(v) {
 .ai-pcard__arrow { color: #B0BEC5; width: 18px; text-align: center; }
 .ai-pcard__to { color: #1A2B4C; font-weight: 600; word-break: break-word; }
 .ai-pcard__note { color: #78909C; font-weight: 400; font-size: 11.5px; }
+.ai-pcard__count { margin-left: 6px; font-size: 11.5px; font-weight: 500; color: #5C6BC0; background: #E8EAF6; border-radius: 10px; padding: 1px 7px; }
 .ai-pcard__warn { font-size: 12.5px; color: #8D6E00; background: #FFF8E1; border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; }
 .ai-pcard__block { font-size: 12.5px; color: #B71C1C; background: #FFEBEE; border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; }
 .ai-pcard__typed { display: flex; flex-direction: column; gap: 4px; }

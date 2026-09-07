@@ -92,7 +92,7 @@ const TOOLS = [
       const data = await ensureData(ctx);
       const { exact, candidates } = D.findById(data.units, args.unitId, 'unitId');
       if (!exact) return { found: false, candidates: candidates.map(u => u.unitId), message: candidates.length ? '有多個或近似的戶別，請確認' : '查無此戶別' };
-      return { found: true, unit: D.slimUnit(exact, data.parkings) };
+      return { found: true, unit: D.slimUnit(exact, data.parkings, { full: true }) };
     },
   },
   {
@@ -241,7 +241,7 @@ const TOOLS = [
         if (!matchUnit(u.unitId)) continue;
         const hits = [];
         if (inRange(u.payment_deposit_date)) hits.push(`小訂 ${D.toDateStr(u.payment_deposit_date)}`);
-        if (inRange(u.payment_supplement_date)) hits.push(`補足 ${D.toDateStr(u.payment_supplement_date)}`);
+        if (inRange(u.payment_complete_date)) hits.push(`補足 ${D.toDateStr(u.payment_complete_date)}`);
         if (inRange(u.payment_contract_date)) hits.push(`簽約 ${D.toDateStr(u.payment_contract_date)}`);
         if (hits.length) paymentHits.push({ 戶別: u.unitId, 目前狀態: u.salesStatus_backend || '可售', 付款日期: hits, 銷售人員: D.formatSalespersons(u.salesperson, '、', ''), 房屋成交價_萬: D.num(u.price_transaction_house) });
         if (inRange(u.updatedAt)) modified.push(u.unitId);
@@ -364,22 +364,43 @@ const TOOLS = [
   {
     name: 'propose_changes',
     requires: 'sales.write',
-    description: '為某戶別建立「變更草案」（不會直接寫入，使用者會在畫面確認）。可同時：修改銷控欄位、配置車位、解除車位、新增備註留言。缺少的必填資訊（如銷售人員）系統會自動向使用者詢問，你不必先問。可寫欄位：salesStatus_backend（銷控狀態）、price_transaction_house（房屋成交價，萬）、price_transaction_total（成交總價含車位，萬，未提供會自動計算）、buyerName、buyerPhone、salesperson（銷售人員姓名，可多人）、contractType、payment_deposit_date/amount（小訂）、payment_supplement_date/amount（補足）、payment_contract_date/amount（簽約）、payment_complete_date。表價、底價、面積不可修改。',
+    description: `為一戶或多戶建立「變更草案」（不會直接寫入，使用者會在畫面確認）。可同時：修改戶別欄位、規則式調價、配置車位、解除車位、新增備註留言。缺少的必填資訊（如銷售人員）系統會自動向使用者詢問，你不必先問。
+目標戶別三選一或併用：unitId（單戶）、unitIds（多戶清單）、filter（整棟／樓層範圍／狀態篩選，例如「A 棟全部」→ filter.building="A"；「A 棟 3～5 樓」→ building="A", floorFrom=3, floorTo=5）。多戶會在同一張草案逐戶列出，上限 30 戶；多戶時不可配置／解除車位。
+金額要「每坪加 N 萬」「加／減 N 萬」「加 N%」時，必須用 adjustments 交給系統依每戶現值與面積計算（可指定小數位數，預設取整數），不要自己算出數字放進 changes。
+可寫欄位與使用者本人在「戶別資訊 → 修改銷控」表單能編輯的欄位相同：${describeWritableFields()}。面積、戶別基本資料（棟別／樓層／格局）、繳款紀錄、圖片、標籤、地號不可修改；付款金額請使用者至繳款紀錄登錄。要清空欄位請傳 null。`,
     parameters: {
       type: 'object',
       properties: {
-        unitId: { type: 'string', description: '戶別編號' },
+        unitId: { type: 'string', description: '單一戶別編號，例如 A-3' },
+        unitIds: { type: 'array', items: { type: 'string' }, description: '多戶清單，例如 ["A-3","A-5"]' },
+        filter: {
+          type: 'object',
+          description: '依條件挑選多戶（與 unitIds 可併用）',
+          properties: {
+            building: { type: 'string', description: '棟別，例如 A' },
+            floors: { type: 'array', items: { type: 'string' }, description: '指定樓層清單，例如 ["3","5"]' },
+            floorFrom: { type: 'integer', description: '樓層下限（含）' },
+            floorTo: { type: 'integer', description: '樓層上限（含）' },
+            status: { type: 'string', description: '銷控狀態；「可售」＝空狀態、「已售」＝成交類' },
+          },
+        },
         changes: {
           type: 'object',
-          description: '要修改的欄位與新值（鍵為欄位名）',
-          properties: {
-            salesStatus_backend: { type: 'string' }, price_transaction_house: { type: 'number' }, price_transaction_total: { type: 'number' },
-            buyerName: { type: 'string' }, buyerPhone: { type: 'string' },
-            salesperson: { type: 'array', items: { type: 'string' } }, contractType: { type: 'string' },
-            payment_deposit_date: { type: 'string' }, payment_deposit_amount: { type: 'number' },
-            payment_supplement_date: { type: 'string' }, payment_supplement_amount: { type: 'number' },
-            payment_contract_date: { type: 'string' }, payment_contract_amount: { type: 'number' },
-            payment_complete_date: { type: 'string' },
+          description: '要修改的欄位與新值（鍵為欄位名）；多戶時同一組值套用到每一戶',
+          properties: changesSchemaProperties(),
+        },
+        adjustments: {
+          type: 'array',
+          description: '規則式調價：系統依每戶現值計算，例如每坪加 1 萬 → { field:"price_list_house_only", mode:"perPing", value:1 }。房屋總表價／總底價是自動計算的欄位，調價一律指定 price_list_house_only／price_floor_house_only',
+          items: {
+            type: 'object',
+            properties: {
+              field: { type: 'string', description: `金額欄位名，可用：${[...D.NUMERIC_FIELDS].join('、')}` },
+              mode: { type: 'string', enum: ['perPing', 'delta', 'percent', 'set'], description: 'perPing＝每坪加減（以房屋總面積計）、delta＝加減金額（萬）、percent＝加減百分比、set＝直接設為此值' },
+              value: { type: 'number', description: '數值；減少用負數' },
+              decimals: { type: 'integer', description: '小數位數 0～2，預設 0（取整數）' },
+            },
+            required: ['field', 'mode', 'value'],
           },
         },
         assignParkings: {
@@ -400,11 +421,14 @@ const TOOLS = [
           properties: { content: { type: 'string' }, category: { type: 'string', enum: ['general', 'customer', 'reminder', 'finance', 'contract'] } },
         },
       },
-      required: ['unitId'],
     },
     async handler(ctx, args) {
       requireCap(ctx, 'sales.write');
-      return { __proposal: { kind: 'changes', unitId: args.unitId, changes: args.changes || {}, assignParkings: args.assignParkings || [], releaseParkings: args.releaseParkings || [], addRemark: args.addRemark || null } };
+      return { __proposal: {
+        kind: 'changes', unitId: args.unitId || null, unitIds: Array.isArray(args.unitIds) ? args.unitIds : [], filter: args.filter && typeof args.filter === 'object' ? args.filter : null,
+        changes: args.changes || {}, adjustments: Array.isArray(args.adjustments) ? args.adjustments : [],
+        assignParkings: args.assignParkings || [], releaseParkings: args.releaseParkings || [], addRemark: args.addRemark || null,
+      } };
     },
   },
   {
@@ -426,6 +450,30 @@ const TOOLS = [
     },
   },
 ];
+
+/** propose_changes.changes 的 JSON schema：由 FIELD_DEFS 產生，新增可寫欄位只需改 data.js */
+function changesSchemaProperties() {
+  const out = {};
+  for (const [k, d] of Object.entries(D.FIELD_DEFS)) {
+    const desc = d.hint ? `${d.label}：${d.hint}` : d.label;
+    switch (d.type) {
+      case 'number': out[k] = { type: 'number', description: desc }; break;
+      case 'bool': out[k] = { type: 'boolean', description: desc }; break;
+      case 'date': out[k] = { type: 'string', description: `${desc}（YYYY-MM-DD 或「今天」）` }; break;
+      case 'rocDate': out[k] = { type: 'string', description: desc }; break;
+      case 'salesperson': out[k] = { type: 'array', items: { type: 'string' }, description: desc }; break;
+      default: out[k] = { type: 'string', description: desc };
+    }
+  }
+  return out;
+}
+
+/** 依區塊列出可寫欄位（給工具說明） */
+function describeWritableFields() {
+  const bySection = {};
+  for (const [k, d] of Object.entries(D.FIELD_DEFS)) (bySection[d.section] = bySection[d.section] || []).push(`${k}=${d.label}`);
+  return Object.entries(bySection).map(([sec, list]) => `【${sec}】${list.join('、')}`).join('；');
+}
 
 const TOOL_MAP = Object.fromEntries(TOOLS.map(t => [t.name, t]));
 
