@@ -427,6 +427,7 @@
 </template>
 
 <script setup>
+import { getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
 import { ref, computed, watch, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import ParkingEditModal from '@/components/ParkingEditModal.vue';
@@ -581,7 +582,8 @@ const totalParkingBasePrice = (ownedParkingSpots.value || []).reduce((sum, p) =>
 
 // ✅ [新增] Computed: 是否顯示優付選項 (依據專案設定)
 const showPreferredPaymentOption = computed(() => {
-    return projectStore.currentProject?.showPreferredPaymentInQuote === true;
+    const project = projectStore.getProjectById?.(props.projectId) || projectStore.currentProject;
+    return getProjectQuoteDefaults(project).preferredPayment === true;
 });
 
 // --- 監聽器 (Watchers) ---

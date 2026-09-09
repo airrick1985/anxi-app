@@ -204,16 +204,29 @@
             </div>
             <v-divider class="my-4"></v-divider>
 
-            <v-switch
-              v-model="project.showPreferredPaymentInQuote"
-              label="報價系統顯示「優付」欄位"
-              color="primary"
-              hide-details
-              class="mb-4"
-              inset
-              hint="開啟後，報價系統將會顯示優付價格與相關標籤；關閉則完全隱藏。"
-              persistent-hint
-            ></v-switch>
+            <!-- 報價系統可見欄位（專案預設）：個別戶別可於銷控網格右鍵「報價顯示」覆寫 -->
+            <div class="mb-4">
+              <p class="text-subtitle-1 mb-1">報價系統顯示欄位</p>
+              <p class="text-caption text-grey-darken-1 mb-3">全案預設。個別戶別可在銷控網格的快速選單「報價顯示」另行設定。</p>
+              <v-row dense v-if="project.quoteFieldDefaults">
+                <v-col v-for="g in QUOTE_FIELD_GROUPS" :key="g.key" cols="12" md="4">
+                  <div class="qfd-group">
+                    <div class="qfd-group-title"><v-icon size="16" class="mr-1">{{ g.icon }}</v-icon>{{ g.title }}</div>
+                    <v-switch
+                      v-for="it in g.items"
+                      :key="it.key"
+                      v-model="project.quoteFieldDefaults[it.key]"
+                      :label="it.label"
+                      color="primary"
+                      density="compact"
+                      hide-details
+                      inset
+                      class="qfd-switch"
+                    ></v-switch>
+                  </div>
+                </v-col>
+              </v-row>
+            </div>
 
             <v-divider class="my-4"></v-divider>
             <div class="mb-4">
@@ -1853,6 +1866,7 @@ import { getStorage, ref as fbStorageRef, uploadBytes, getDownloadURL, deleteObj
 import QrcodeVue from 'qrcode.vue';
 import PaymentTermsSettings from './PaymentTermsSettings.vue';
 import PriceFormulaDialog from '@/components/PriceFormulaDialog.vue';
+import { QUOTE_FIELD_GROUPS, getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
 import {
   formulaToDisplayString,
   roundingToDisplayString,
@@ -2152,6 +2166,10 @@ const loadProjectSettings = async () => {
     if (project.value && project.value.showPreferredPaymentInQuote === undefined) {
         project.value.showPreferredPaymentInQuote = false;
     }
+    // 報價系統可見欄位（專案預設）：由內建預設 + 舊「優付」開關 + 已存設定合併成完整鍵值
+    if (project.value) {
+      project.value.quoteFieldDefaults = getProjectQuoteDefaults(project.value);
+    }
 
     // ✅ [新增] 初始化「配套合約」標記：舊資料若已有「毛胚合約」則預設視為配套合約
     if (project.value && !Array.isArray(project.value.packageContractTypes)) {
@@ -2235,6 +2253,10 @@ const saveProjectSettings = async () => {
   isSavingProject.value = true;
   try {
     const { id, ...dataToUpdate } = project.value;
+    // 報價系統可見欄位：舊「優付」開關與新設定保持同步（其他頁面仍以新設定為準）
+    if (dataToUpdate.quoteFieldDefaults) {
+      dataToUpdate.showPreferredPaymentInQuote = dataToUpdate.quoteFieldDefaults.preferredPayment === true;
+    }
     // 更新知識庫的 updatedAt 時間戳
     if (dataToUpdate.projectKnowledge) {
       dataToUpdate.projectKnowledge.updatedAt = serverTimestamp();
@@ -3220,6 +3242,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 報價系統顯示欄位（專案預設） */
+.qfd-group { border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 10px; padding: 8px 12px 4px; height: 100%; }
+.qfd-group-title { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; margin-bottom: 2px; }
+.qfd-switch { margin-top: -6px; }
+
 /* ... (其他樣式) */
 
 .cursor-move {

@@ -450,6 +450,7 @@
     <QuoteUnitPickerDialog
       v-model="unitPickerVisible"
       :units="pickerUnits"
+      :project="salesProject"
       @confirm="onPickerConfirm"
       @cancel="onPickerCancel"
     />
@@ -508,6 +509,7 @@ import QuoteIntroUrlDialog from '@/components/QuoteIntroUrlDialog.vue';
 import QuotePlanEditorDialog from '@/components/QuotePlanEditorDialog.vue';
 import { useSalesDataStore } from '@/store/salesDataStore';
 import { toQuoteUnitData } from '@/utils/quoteUnitData';
+import { getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
 
 // ✅ [停用] 舊版「列印報價單」按鈕開關：暫時隱藏，只保留「列印報價單(含期款)」。
 // 改為 true 即可恢復顯示（相關的 openQuoteEditor / PrintQuotation 邏輯皆保留未刪除）。
@@ -710,8 +712,10 @@ const canUploadActivityMessage = computed(() => {
 
 // ✅ [新增] 判斷是否顯示優付欄位 (與 PaymentSettings.vue 邏輯一致)
 const showPreferredPaymentOption = computed(() => {
-    return projectStore.currentProject?.showPreferredPaymentInQuote === true;
+    return getProjectQuoteDefaults(salesProject.value || projectStore.currentProject).preferredPayment === true;
 });
+// 報價系統可見欄位：以銷控資料 store 的即時專案文件為準（含 quoteFieldDefaults）
+const salesProject = computed(() => salesDataStore.getProjectData(projectId.value)?.project || null);
 
 // --- 計算引擎 (維持不變) ---
 function applyRounding(value, method, precisionSpec) {
@@ -980,10 +984,10 @@ async function loadPageData() {
             const matchedUnit = allUnitData.find(unit => unit.unitId === item.unitId);
             if (matchedUnit) {
                 const prevList = Number(item.unitDetails?.price_list_house_total) || 0;
-                const mapped = toQuoteUnitData(matchedUnit);
+                const mapped = toQuoteUnitData(matchedUnit, salesProject.value);
                 // 確保 price_package_deal 正確對應
+                // 整包以伺服器快照替換（不保留舊鍵），被「報價顯示」設定隱藏的欄位才不會殘留在報價單裡
                 item.unitDetails = {
-                    ...item.unitDetails,
                     ...mapped,
                     price_package_deal: mapped.price_package_deal || mapped['配套價格'] || mapped['配套價']
                 };

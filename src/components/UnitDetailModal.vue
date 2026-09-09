@@ -356,7 +356,7 @@
               <div v-if="unitData" class="pa-2">
                 <v-row>
                   <v-col cols="12" md="4">
-                    <div v-if="householdImages.length > 0" class="carousel-viewer-container">
+                    <div v-if="qf('images') && householdImages.length > 0" class="carousel-viewer-container">
                       <v-carousel v-model="currentImageIndex" height="auto" hide-delimiters show-arrows="hover">
                         <v-carousel-item v-for="image in householdImages" :key="image.id">
                           <v-img :src="image.downloadURL" class="main-carousel-image" contain
@@ -373,7 +373,7 @@
                     </div>
                     <div v-else class="info-section d-flex align-center justify-center text-grey-darken-1"
                       style="height: 100%; min-height: 250px;">
-                      <span><v-icon class="mr-2">mdi-image-multiple-outline</v-icon>此戶別尚無圖片</span>
+                      <span><v-icon class="mr-2">mdi-image-multiple-outline</v-icon>{{ qf('images') ? '此戶別尚無圖片' : '不提供戶別圖片' }}</span>
                     </div>
                   </v-col>
 
@@ -384,37 +384,37 @@
                         <div class="area-summary-item">
                           <div>
                             <div class="total-area-title">房屋總面積</div>
-                            <div class="total-area-value">{{ formatNumber(unitData.area_house_ping, 2) }} 坪</div>
-                            <div class="total-area-subtitle">{{ formatNumber(unitData.area_house_sqm, 2) }} m²</div>
+                            <div class="total-area-value">{{ qf('areaTotal') ? `${formatNumber(unitData.area_house_ping, 2)} 坪` : '—' }}</div>
+                            <div class="total-area-subtitle">{{ qf('areaTotal') ? `${formatNumber(unitData.area_house_sqm, 2)} m²` : '\u00a0' }}</div>
                           </div>
                         </div>
                         <v-divider vertical class="mx-4"></v-divider>
                         <div class="area-summary-item">
                           <div>
                             <div class="total-area-title">公設比</div>
-                            <div class="total-area-value">{{ formatPercentage(unitData.common_area_ratio) }}</div>
+                            <div class="total-area-value">{{ qf('areaDetail') ? formatPercentage(unitData.common_area_ratio) : '—' }}</div>
                             <div class="total-area-subtitle">&nbsp;</div>
                           </div>
                         </div>
                       </div>
-                      <div class="area-details mt-3">
+                      <div v-if="qf('areaDetail') || qf('areaTerrace')" class="area-details mt-3">
                         <div class="area-group">
                           <div class="area-group-title"> <v-icon size="small" class="mr-1">mdi-home</v-icon>建物面積明細</div>
                           <div class="area-item-header"><span>項目</span><span>坪數</span><span>m²</span></div>
-                          <div class="area-item"><span>主建物 (室內)</span><span class="area-ping-value">{{
+                          <div v-if="qf('areaDetail')" class="area-item"><span>主建物 (室內)</span><span class="area-ping-value">{{
                             formatNumber(unitData.area_main_ping, 2) }}</span><span>{{
                                 formatNumber(unitData.area_main_sqm, 2) }}</span></div>
-                          <div class="area-item"><span>附屬建物 (陽台)</span><span class="area-ping-value">{{
+                          <div v-if="qf('areaDetail')" class="area-item"><span>附屬建物 (陽台)</span><span class="area-ping-value">{{
                             formatNumber(unitData.area_ancillary_ping, 2) }}</span><span>{{
                                 formatNumber(unitData.area_ancillary_sqm, 2) }}</span></div>
-                          <div class="area-item"><span>共用部分 (公設)</span><span class="area-ping-value">{{
+                          <div v-if="qf('areaDetail')" class="area-item"><span>共用部分 (公設)</span><span class="area-ping-value">{{
                             formatNumber(unitData.area_common_ping, 2) }}</span><span>{{
                                 formatNumber(unitData.area_common_sqm, 2) }}</span></div>
-                          <div class="area-item"><span>露臺 (不計坪)</span><span class="area-ping-value">{{
+                          <div v-if="qf('areaTerrace')" class="area-item"><span>露臺 (不計坪)</span><span class="area-ping-value">{{
                             formatNumber(unitData.area_terrace_ping, 2) }}</span></div>
                         </div>
                       </div>
-                      <div class="area-details mt-2">
+                      <div v-if="qf('landShare')" class="area-details mt-2">
                         <div class="area-group">
                           <div class="area-group-title">
                             <v-icon size="small" class="mr-1">mdi-earth</v-icon>
@@ -445,7 +445,7 @@
                       <div class="section-title d-flex justify-space-between align-center">
                         <!-- 🔐 手機版隱藏解鎖：連點戶別 8 次切換已售報價顯示 -->
                         <span><span class="tap-unlock-target" @click="tapUnlockPriceQuote">{{ unitData.unitId }}</span> 價格資訊</span>
-                        <v-chip v-if="unitData.isPreferredPayment" color="primary" size="small" label
+                        <v-chip v-if="qf('preferredPayment') && unitData.isPreferredPayment" color="primary" size="small" label
                           class="font-weight-bold">
                           <v-icon start icon="mdi-check-circle" size="small"></v-icon>
                           優付
@@ -457,7 +457,7 @@
                           <div class="price-block mb-2">
                             <div class="price-block-title d-flex align-center">
                               <span>房價</span>
-                              <v-menu v-if="unitData.priceRemarks || (unitData.priceRemarkImages && unitData.priceRemarkImages.length > 0)"
+                              <v-menu v-if="qf('priceRemarks') && (unitData.priceRemarks || (unitData.priceRemarkImages && unitData.priceRemarkImages.length > 0))"
                                 location="bottom start" :close-on-content-click="false" max-width="400">
                                 <template v-slot:activator="{ props: activatorProps }">
                                   <v-btn v-bind="activatorProps" icon="mdi-note-text-outline" size="x-small"
@@ -477,15 +477,15 @@
                                 </v-card>
                               </v-menu>
                             </div>
-                            <template v-if="props.viewMode === 'quote' && unitData.salesStatus_quote === '已售'">
+                            <template v-if="isQuotePriceRestricted">
                               <div v-if="!showHiddenPriceQuote" class="price-block-value text-grey">
-                                已售不提供報價
+                                {{ unitData.salesStatus_quote === '已售' ? '已售不提供報價' : '面議' }}
                               </div>
                               <div v-else class="price-block-value text-red-darken-2">
                                 {{ formatNumber(unitData.price_list_house_total) }} <span
                                   class="price-block-currency">萬</span>
                               </div>
-                              <div v-if="!showHiddenPriceQuote" class="price-block-unit">&nbsp;</div>
+                              <div v-if="!showHiddenPriceQuote || !qf('unitPrice')" class="price-block-unit">&nbsp;</div>
                               <div v-else class="price-block-unit">({{ calculatedUnitPrice }} 萬/坪)</div>
                             </template>
                             <template v-else>
@@ -493,7 +493,8 @@
                                 {{ formatNumber(unitData.price_list_house_total) }} <span
                                   class="price-block-currency">萬</span>
                               </div>
-                              <div class="price-block-unit">({{ calculatedUnitPrice }} 萬/坪)</div>
+                              <div v-if="qf('unitPrice')" class="price-block-unit">({{ calculatedUnitPrice }} 萬/坪)</div>
+                              <div v-else class="price-block-unit">&nbsp;</div>
                             </template>
 
                             <!-- ✅ [新增] 表價拆分明細：與底價側一致的呈現 -->
@@ -1512,6 +1513,8 @@ import { buildRemarksSummary } from '@/utils/remarkNotes';
 import { computeHouseLandPrices, buildDefaultFormulas, isSpecialContractType } from '@/composables/usePriceFormula';
 import { deriveTotalPrice, applyDerivedPrices } from '@/utils/priceDerive';
 import { useQuoteStore } from '@/store/quoteStore';
+import { getEffectiveQuoteFields } from '@/utils/quoteFieldVisibility';
+import { toQuoteUnitData } from '@/utils/quoteUnitData';
 import PaymentSettings from '@/views/PaymentSettings.vue';
 // ✅ [效能] 合約製作彈窗（約 220KB）改為非同步載入；模板以 v-if 於開啟時建立，故安全
 const ContractDocDialog = defineAsyncComponent(() => import('@/components/contractDoc/ContractDocDialog.vue'));
@@ -1626,6 +1629,13 @@ const editingParkingSelection = ref(null);   // 用於「修改銷控」暫存
 // 🔐 [隱藏功能] 連續按 8 次 'a' 鍵來顯示已售不提供報價
 const keySequence = ref('');
 const showHiddenPriceQuote = ref(false);
+// ✅ [報價顯示] 報價系統可見欄位（專案預設 + 本戶覆寫）；銷控模式一律可見
+const quoteFields = computed(() => getEffectiveQuoteFields(props.unitData, props.project));
+const qf = (key) => props.viewMode !== 'quote' || quoteFields.value[key] !== false;
+// 報價模式下價格受限（已售或本戶隱藏總價）；8 連點解鎖可一併顯示
+const isQuotePriceRestricted = computed(() =>
+  props.viewMode === 'quote' && (props.unitData?.salesStatus_quote === '已售' || !qf('priceTotal'))
+);
 
 // 🔐 [隱藏功能] 手機版無鍵盤：連續點按「價格資訊的戶別」8 次，效果同連按 8 次 'a'
 const { tap: tapUnlockPriceQuote } = useTapUnlock(() => {
@@ -1938,6 +1948,7 @@ const props = defineProps({
   contractTypes: { type: Array, default: () => [] },
   projectId: { type: String, required: true }, // ✅ 修正：新增這一行
   priceFormulas: { type: Object, default: () => null }, // 房土比計算公式（建案層級）
+  project: { type: Object, default: () => null }, // ✅ [報價顯示] projects/{id} 文件（含 quoteFieldDefaults）
   planOptions: { type: Array, default: () => [] }, // ✅ [新增] 建案方案清單（可選方案編輯用）
   // ✅ [快速選單] 開啟時的初始分頁（info / aiAssistant）與是否直接進入「修改銷控」（僅銷控模式生效）
   initialTab: { type: String, default: 'info' },
@@ -2052,10 +2063,9 @@ const calculatedUnitPrice = computed(() => {
 // ✅ [新增] 表價拆分明細顯示條件：需有露臺；報價模式的已售戶在未解鎖前不揭露價格
 const canShowListSplit = computed(() => {
   if (!(Number(props.unitData?.area_terrace_ping) > 0)) return false;
-  const isHiddenSoldQuote = props.viewMode === 'quote'
-    && props.unitData?.salesStatus_quote === '已售'
-    && !showHiddenPriceQuote.value;
-  return !isHiddenSoldQuote;
+  if (!qf('priceSplit')) return false;
+  const isHiddenQuote = isQuotePriceRestricted.value && !showHiddenPriceQuote.value;
+  return !isHiddenQuote;
 });
 
 // ✅ [新增] 表價拆分單價：房屋(不含露臺) / 露臺，與底價側對稱
@@ -3375,8 +3385,8 @@ const currentSalesStatus = computed(() => {
 const canAddToQuote = computed(() => {
   if (!props.unitData) return false;
 
-  // 在報價模式下檢查銷售狀態 (🔐 隱藏功能：已售可加報價)
-  if (props.viewMode === 'quote' && props.unitData.salesStatus_quote === '已售' && !showHiddenPriceQuote.value) {
+  // 在報價模式下檢查銷售狀態／本戶隱藏總價 (🔐 隱藏功能：解鎖後可加報價)
+  if (isQuotePriceRestricted.value && !showHiddenPriceQuote.value) {
     return false;
   }
 
@@ -3412,6 +3422,10 @@ function handleAddToQuote() {
       toast.error('報價模式下無法加入已售出的單位', {
         position: POSITION.BOTTOM_CENTER
       });
+    } else if (props.viewMode === 'quote' && !qf('priceTotal')) {
+      toast.error('此戶別不提供報價', {
+        position: POSITION.BOTTOM_CENTER
+      });
     } else {
       toast.error('此單位目前無法加入報價', {
         position: POSITION.BOTTOM_CENTER
@@ -3422,20 +3436,10 @@ function handleAddToQuote() {
 
   // 確保必要資料的完整性
   console.log('Adding unit with area:', props.unitData.area_house_ping);
-  const unitData = {
-    ...props.unitData,
-    房屋總表價: props.unitData.price_list_house_total,
-    戶別: props.unitData.unitId,
-    area_house_ping: Number(props.unitData.area_house_ping),  // 主要面積，確保轉換為數字
-    area_main_ping: props.unitData.area_main_ping,  // 主建物面積
-    area_ancillary_ping: props.unitData.area_ancillary_ping,  // 附屬建物面積
-    area_common_ping: props.unitData.area_common_ping,  // 共用部分面積
-    area_terrace_ping: props.unitData.area_terrace_ping,  // 露臺面積
-    common_area_ratio: props.unitData.common_area_ratio,  // 公設比
-    area_main_sqm: props.unitData.area_main_sqm,  // 主建物平方公尺
-    area_ancillary_sqm: props.unitData.area_ancillary_sqm,  // 附屬建物平方公尺
-    area_common_sqm: props.unitData.area_common_sqm,  // 共用部分平方公尺
-  };
+  // 白名單投影（底價／買方不進報價單）；報價模式再套用「報價顯示」設定
+  // 🔐 已解鎖時不套可見性（與已售解鎖後可報價一致）
+  const applyVisibility = props.viewMode === 'quote' && !showHiddenPriceQuote.value;
+  const unitData = toQuoteUnitData(props.unitData, applyVisibility ? props.project : undefined);
 
   // ✅ [打勾] 3. 捕捉 addItem 的回傳值
   const success = quoteStore.addItem(unitData);
@@ -3456,7 +3460,7 @@ const proxiedFirstImageUrl = computed(() => {
   return '';
 });
 
-const shouldHidePrice = computed(() => props.viewMode === 'quote' && props.unitData?.salesStatus_quote === '已售');
+const shouldHidePrice = computed(() => isQuotePriceRestricted.value);
 
 const nextImage = () => {
   if (householdImages.value.length > 1) {

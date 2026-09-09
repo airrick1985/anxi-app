@@ -70,10 +70,17 @@
                         variant="flat"
                         class="unit-opt-sold"
                       >已售</v-chip>
+                      <v-chip
+                        v-if="item.raw.priceHidden"
+                        size="x-small"
+                        color="grey"
+                        variant="flat"
+                        class="unit-opt-sold"
+                      >面議</v-chip>
                       <span class="unit-opt-spacer"></span>
-                      <span class="unit-opt-meta">{{ item.raw.ping }} 坪</span>
+                      <span v-if="item.raw.pingText" class="unit-opt-meta">{{ item.raw.pingText }}</span>
                       <span
-                        v-if="!item.raw.sold"
+                        v-if="!item.raw.sold && !item.raw.priceHidden"
                         class="unit-opt-meta unit-opt-price"
                       >{{ item.raw.total.toLocaleString() }} 萬</span>
                     </div>
@@ -84,9 +91,10 @@
                 <span class="unit-opt-selection">
                   <strong>{{ item.raw.unitId }}</strong>
                   <span class="unit-opt-sel-meta">
-                    {{ item.raw.ping }} 坪<template v-if="!item.raw.sold"> · {{ item.raw.total.toLocaleString() }} 萬</template>
+                    {{ item.raw.pingText }}<template v-if="!item.raw.sold && !item.raw.priceHidden">{{ item.raw.pingText ? ' · ' : '' }}{{ item.raw.total.toLocaleString() }} 萬</template>
                   </span>
                   <span v-if="item.raw.sold" class="unit-opt-sel-sold">（已售）</span>
+                  <span v-else-if="item.raw.priceHidden" class="unit-opt-sel-meta">（面議）</span>
                 </span>
               </template>
             </v-select>
@@ -139,11 +147,14 @@ import { useToast, POSITION } from 'vue-toastification';
 import { useTapUnlock } from '@/composables/useTapUnlock';
 import { useKeyUnlock } from '@/composables/useKeyUnlock';
 import { toQuoteUnitData } from '@/utils/quoteUnitData';
+import { getEffectiveQuoteFields } from '@/utils/quoteFieldVisibility';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   // 戶別清單：salesDataStore.getProjectData().households（Firestore salesHouseholds）
   units: { type: Array, default: () => [] },
+  // ✅ [報價顯示] projects/{id} 文件（含 quoteFieldDefaults），用於判斷各戶可見欄位
+  project: { type: Object, default: () => null },
 });
 const emit = defineEmits(['update:modelValue', 'confirm', 'cancel']);
 
@@ -176,19 +187,24 @@ function unitOptionsFor(building) {
     .sort((a, b) => naturalCompare(a.unitId, b.unitId))
     .map((u) => {
       const sold = isSold(u);
+      const qv = getEffectiveQuoteFields(u, props.project);
+      const priceHidden = !sold && qv.priceTotal === false;   // 面議
+      const areaHidden = qv.areaTotal === false;
       const ping = Number(u.area_house_ping) || 0;
       const total = Number(u.price_list_house_total) || 0;
+      const pingText = areaHidden ? '' : `${ping} 坪`;
+      const priceText = sold ? '（已售）' : (priceHidden ? '面議' : `${total.toLocaleString()} 萬`);
       return {
-        // 後備純文字（未套用 #item / #selection slot 時）；已售不顯示房屋總價
-        title: sold
-          ? `${u.unitId}　${ping} 坪（已售）`
-          : `${u.unitId}　${ping} 坪　${total.toLocaleString()} 萬`,
+        // 後備純文字（未套用 #item / #selection slot 時）；已售／面議不顯示房屋總價
+        title: [u.unitId, pingText, priceText].filter(Boolean).join('　'),
         value: u.unitId,
         unitId: u.unitId,
         ping,
+        pingText,
         total,
         sold,
-        disabled: sold && !unlocked.value,
+        priceHidden,
+        disabled: (sold || priceHidden) && !unlocked.value,
         raw: u,
       };
     });
@@ -218,7 +234,8 @@ function onBuildingChange(row) {
 
 // 將戶別物件轉成 quoteStore.addItem 所需結構
 // （與 UnitDetailModal.handleAddToQuote、QuoteSettings 進頁重整 unitDetails 共用 utils/quoteUnitData）
-const toUnitData = toQuoteUnitData;
+// 🔐 已解鎖時不套可見性（與已售解鎖後可報價一致）
+const toUnitData = (u) => toQuoteUnitData(u, unlocked.value ? undefined : props.project);
 
 function onConfirm() {
   const result = [];

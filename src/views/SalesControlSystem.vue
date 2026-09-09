@@ -386,7 +386,19 @@
       </v-row>
 
       <v-divider v-if="currentViewMode !== 'quote'" class="my-3 border-dashed"></v-divider>
-      
+
+      <v-row dense v-if="currentViewMode !== 'quote'">
+        <v-col cols="12" class="pb-0">
+          <v-switch
+            v-model="filters.quoteCustomized"
+            label="只看報價顯示已自訂的戶別"
+            color="blue"
+            density="compact"
+            hide-details
+            inset
+          ></v-switch>
+        </v-col>
+      </v-row>
       <v-row dense v-if="currentViewMode !== 'quote'">
         <v-col cols="12" sm="6" md="3">
           <v-select
@@ -534,7 +546,12 @@
   @touchcancel="onUnitCardTouchEnd"
 >
             <!-- ✅ [新增] 文字標籤帶：右上角，最多露出 2 個、其餘折成 +N；hover 顯示全部 -->
-            <template v-if="getUnitTags(item.data).length > 0">
+            <!-- ✅ [報價顯示] 銷控模式：此戶報價顯示已自訂 → 左上角小眼睛 -->
+            <span v-if="currentViewMode === 'sales' && unitHasQuoteOverrides(item.data)" class="quote-vis-badge">
+              <v-icon size="10">mdi-eye-off-outline</v-icon>
+              <v-tooltip activator="parent" location="top">報價顯示已自訂</v-tooltip>
+            </span>
+            <template v-if="qf(item.data, 'unitTags') && getUnitTags(item.data).length > 0">
               <div class="unit-tags-strip">
                 <span
                   v-for="(tag, ti) in getUnitTags(item.data).slice(0, 2)"
@@ -559,7 +576,7 @@
               {{ item.data.unitId }}
               
               <!-- ✅ [優化] 露臺標示：由 icon 改為小 chip，文字直接標明「露臺」 -->
-              <v-tooltip location="top" v-if="item.data.area_terrace_ping && Number(item.data.area_terrace_ping) > 0">
+              <v-tooltip location="top" v-if="qf(item.data, 'areaTerrace') && item.data.area_terrace_ping && Number(item.data.area_terrace_ping) > 0">
                 <template v-slot:activator="{ props }">
                   <span v-bind="props" class="terrace-chip">露台</span>
                 </template>
@@ -568,7 +585,13 @@
             </span>
                 <template v-if="statusField === 'salesStatus_quote' && item.data.salesStatus_quote === '已售'">
                   <span class="unit-total-price sold-text">已售</span>
-                  <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
+                  <span class="unit-area"><template v-if="qf(item.data, 'areaTotal')">{{ item.data.area_house_ping }} 坪</template></span>
+                  <span class="unit-per-price"></span>
+                </template>
+                <!-- ✅ [報價顯示] 報價模式隱藏總價 → 面議 -->
+                <template v-else-if="currentViewMode === 'quote' && !qf(item.data, 'priceTotal')">
+                  <span class="unit-total-price negotiable-text">面議</span>
+                  <span class="unit-area"><template v-if="qf(item.data, 'areaTotal')">{{ item.data.area_house_ping }} 坪</template></span>
                   <span class="unit-per-price"></span>
                 </template>
                 <!-- ✅ [新增] 網格主要顯示內容：簽約日期 -->
@@ -585,8 +608,8 @@
                 </template>
                 <template v-else>
                   <span class="unit-total-price">{{ getDisplayTotalPrice(item.data) }} 萬</span>
-                  <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
-                  <span class="unit-per-price">{{ calculateUnitPrice(item.data) }} 萬/坪</span>
+                  <span class="unit-area"><template v-if="qf(item.data, 'areaTotal')">{{ item.data.area_house_ping }} 坪</template></span>
+                  <span class="unit-per-price"><template v-if="qf(item.data, 'unitPrice')">{{ calculateUnitPrice(item.data) }} 萬/坪</template></span>
                 </template>
               </div>
               <div v-else class="unit-card empty"></div>
@@ -631,7 +654,8 @@
 
           <!-- ✅ [新增] 文字標籤欄：完整顯示所有標籤 chip -->
           <template v-slot:item.unitTags="{ item }">
-            <div class="d-flex flex-wrap align-center ga-1 py-1" style="max-width: 220px;">
+            <span v-if="item._qv && item._qv.unitTags === false" class="text-grey">—</span>
+            <div v-else class="d-flex flex-wrap align-center ga-1 py-1" style="max-width: 220px;">
               <!-- ✅ [新增] 網格邊框特效：以迷你方塊即時呈現特效，hover 顯示範本名稱 -->
               <span
                 v-if="getUnitEffect(item)"
@@ -652,11 +676,13 @@
           </template>
 
           <template v-slot:item.area_house_ping="{ item }">
-            {{ formatNumber(item.area_house_ping, 2) }}
+            <span v-if="item._qv && item._qv.areaTotal === false" class="text-grey">—</span>
+            <template v-else>{{ formatNumber(item.area_house_ping, 2) }}</template>
           </template>
 
         <template v-slot:item.area_terrace_ping="{ item }">
-          <span :class="{ 'font-weight-bold text-success': Number(item.area_terrace_ping) > 0 }">
+          <span v-if="item._qv && item._qv.areaTerrace === false" class="text-grey">—</span>
+          <span v-else :class="{ 'font-weight-bold text-success': Number(item.area_terrace_ping) > 0 }">
             {{ item.area_terrace_ping > 0 ? formatNumber(item.area_terrace_ping, 2) : '-' }}
           </span>
         </template>
@@ -699,7 +725,8 @@
           </template>
 
           <template v-slot:item.isPreferredPayment="{ item }">
-            <div class="d-flex justify-center" @click.stop>
+            <span v-if="item._qv && item._qv.preferredPayment === false" class="text-grey d-block text-center">—</span>
+            <div v-else class="d-flex justify-center" @click.stop>
               <v-switch
                 :model-value="item.isPreferredPayment"
                 :readonly="currentViewMode === 'quote'"
@@ -715,6 +742,7 @@
 
           <template v-slot:item.quote_mode_total_price="{ item }">
             <span v-if="item.status === '已售'" class="text-red font-weight-bold">已售</span>
+            <span v-else-if="item._priceHidden" class="text-grey">面議</span>
             <span v-else class="text-indigo font-weight-medium">
               {{ formatNumber(item.price_list_house_total, 0) }} 萬 
             </span>
@@ -774,6 +802,7 @@
           <template v-slot:item.price_list_house_total="{ item }">
             <template v-if="currentViewMode === 'quote'">
               <span v-if="item.status === '已售'" class="text-red font-weight-bold">已售</span>
+              <span v-else-if="item._priceHidden" class="text-grey">面議</span>
               <span v-else class="text-indigo font-weight-medium">
                 {{ formatNumber(item.price_list_house_total, 0) }} 萬 
               </span>
@@ -1144,6 +1173,7 @@
       :all-data="allDataForModal"
       :contract-types="project.contractTypes || []"
       :price-formulas="project.priceFormulaSettings || null"
+      :project="project"
       :plan-options="quotePlansList"
       :initial-tab="unitModalInitial.tab"
       :initial-editing="unitModalInitial.editing"
@@ -1333,6 +1363,17 @@
       trigger-type="update" :operator-name="notifyDialog.operatorName"
       :recipients="notifyDialog.recipients"
       @finished="onQuickNotifyFinished" />
+
+    <!-- ✅ [報價顯示] 戶別報價系統可見欄位 -->
+    <QuoteFieldVisibilityDialog
+      v-if="quoteFieldDialog.unit"
+      v-model="quoteFieldDialog.show"
+      :project-id="projectId"
+      :project="project"
+      :unit="quoteFieldDialog.unit"
+      :status-color="statusColorMap.get(quoteFieldDialog.unit.salesStatus_quote) || '#ffffff'"
+      :can-edit-project="canManageAnnouncements"
+      @saved="onQuoteFieldSaved" />
 
     <!-- ✅ [快速選單] 編輯文字標籤／網格邊框特效：不必進入修改銷控，直接寫入 unitTags / unitEffect -->
     <v-dialog v-model="tagQuickDialog.show" max-width="640" :persistent="tagQuickDialog.saving" scrollable>
@@ -2127,6 +2168,9 @@ import { useSalesDataStore } from '@/store/salesDataStore';
 import { useParkingRatio, PARKING_RATIO_LEVEL_META } from '@/composables/useParkingRatio';
 import { buildCommitmentOverrides, isDealParking } from '@/utils/salesStatusGroups';
 import { useProjectStore } from '@/store/projectStore';
+import { getEffectiveQuoteFields, hasQuoteOverrides, getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
+import { toQuoteUnitData } from '@/utils/quoteUnitData';
+import QuoteFieldVisibilityDialog from '@/components/QuoteFieldVisibilityDialog.vue';
 // ✅ [效能] xlsx-js-style 約 1.3MB，只有匯出 / 上傳 Excel 時才需要 → 改為動態載入，不再隨銷控頁進入時下載
 const loadXLSX = () => import('xlsx-js-style');
 import {
@@ -2352,6 +2396,7 @@ const filters = reactive({
   depositDateEnd: null,   // 小訂日期 迄
   contractDateStart: null, // 簽約日期 起
   contractDateEnd: null,    // 簽約日期 迄
+  quoteCustomized: false,   // ✅ [報價顯示] 只看報價顯示已自訂的戶別
 
 
 // --- ✅ [新增] 銷控模式專用 - 進階價格 ---
@@ -2434,6 +2479,7 @@ const activeFilterCount = computed(() => {
   if (filters.buyerName) count++;
   if (filters.depositDateStart || filters.depositDateEnd) count++;
   if (filters.contractDateStart || filters.contractDateEnd) count++;
+  if (filters.quoteCustomized) count++;
 
   // ✅ [新增]
   if (filters.floorPriceMin || filters.floorPriceMax) count++;
@@ -2448,6 +2494,7 @@ const activeFilterCount = computed(() => {
 // 4. 修改 clearFilters (重置新欄位)
 const clearFilters = () => {
   filters.keyword = '';
+  filters.quoteCustomized = false;
   filters.buildings = [];
   filters.floors = [];
   filters.tags = [];
@@ -2554,6 +2601,12 @@ const itemMatchesFilters = (item, kwTokens, skipStatus = false) => {
        }
     }
 
+    // ✅ [報價顯示] 報價模式隱藏總價的戶別：任何價格條件都不符合
+    if (currentViewMode.value === 'quote' && item._priceHidden) {
+      const hasPriceFilter = [filters.totalPriceMin, filters.totalPriceMax, filters.unitPriceMin, filters.unitPriceMax]
+        .some(v => v !== null && v !== undefined && v !== '');
+      if (hasPriceFilter) return false;
+    }
     // 3. 總價範圍
     if (filters.totalPriceMin !== null && filters.totalPriceMin !== '' && targetTotalPrice < Number(filters.totalPriceMin)) return false;
     if (filters.totalPriceMax !== null && filters.totalPriceMax !== '' && targetTotalPrice > Number(filters.totalPriceMax)) return false;
@@ -2564,6 +2617,8 @@ const itemMatchesFilters = (item, kwTokens, skipStatus = false) => {
 
     // --- ✅ [新增] 銷控模式專用篩選 ---
     if (currentViewMode.value !== 'quote') {
+        // ✅ [報價顯示] 只看「報價顯示已自訂」的戶別
+        if (filters.quoteCustomized && !unitHasQuoteOverrides(item)) return false;
         
         // 5. 銷控狀態 (多選)
         if (!skipStatus && filters.statuses && filters.statuses.length > 0) {
@@ -3869,6 +3924,16 @@ const error = ref(null);
 
 const projectData = computed(() => salesDataStore.getProjectData(projectId.value));
 const project = computed(() => projectData.value.project);
+// ✅ [報價顯示] 報價系統可見欄位：專案預設 + 戶別覆寫
+const quoteFieldsOf = (u) => getEffectiveQuoteFields(u, project.value);
+const unitHasQuoteOverrides = (u) => hasQuoteOverrides(u, project.value);
+// 銷控模式一律可見；報價模式依設定
+const qf = (u, key) => currentViewMode.value !== 'quote' || quoteFieldsOf(u)[key] !== false;
+// 報價模式「優付」欄：專案預設開啟，或任一戶別個別開啟時顯示
+const showPreferredColumnInQuote = computed(() => {
+  if (getProjectQuoteDefaults(project.value).preferredPayment === true) return true;
+  return (salesHouseholds.value || []).some(u => quoteFieldsOf(u).preferredPayment === true);
+});
 const salesParameters = computed(() => projectData.value.parameters);
 const salesHouseholds = computed(() => projectData.value.households);
 const salesParkings = computed(() => projectData.value.parkings);
@@ -4227,7 +4292,7 @@ const tableHeaders = computed(() => {
 
     // 2. ✅ [修改] 根據專案設定決定是否顯示「優付」欄位
     // 只有當設定為 true 時才顯示 (預設或 undefined 都不顯示)
-    if (project.value && project.value.showPreferredPaymentInQuote === true) {
+    if (showPreferredColumnInQuote.value) {
       headers.push({ 
         title: '優付', 
         key: 'isPreferredPayment', 
@@ -4458,6 +4523,18 @@ const enrichUnitItem = (unit, parkingMap) => {
     } else {
         item.unit_price_value = item.unit_price_list;
         item.quote_mode_total_price = Number(item.price_list_house_total) || 0;
+    }
+    // ✅ [報價顯示] 報價模式：依可見欄位設定清空總價／單價（隱藏總價 → 面議）
+    if (currentViewMode.value === 'quote') {
+        const qv = getEffectiveQuoteFields(unit, project.value);
+        item._qv = qv;
+        if (qv.priceTotal === false) {
+            item._priceHidden = true;
+            item.unit_price_value = null;
+            item.quote_mode_total_price = null;
+        } else if (qv.unitPrice === false) {
+            item.unit_price_value = null;
+        }
     }
 
     // ✅ [新增] 文字標籤：攤平成三個逗號分隔欄位（Excel 匯出 / 資料透視 / 指定戶別下載共用）
@@ -4881,28 +4958,21 @@ function enrichQuickMenuUnit(unit) {
 
 // 加入報價：欄位對應與 UnitDetailModal 的 handleAddToQuote 一致
 function quickAddUnitToQuote(unit) {
+  const isQuote = currentViewMode.value === 'quote';
+  if (isQuote && quoteFieldsOf(unit).priceTotal === false) {
+    toast.error('此戶別不提供報價', { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
   if (!(Number(unit.price_list_house_total) > 0)) {
     toast.error('此戶別尚未設定表價，無法加入報價', { position: POSITION.BOTTOM_CENTER });
     return;
   }
-  if (currentViewMode.value === 'quote' && unit.salesStatus_quote === '已售') {
+  if (isQuote && unit.salesStatus_quote === '已售') {
     toast.error('報價模式下無法加入已售出的戶別', { position: POSITION.BOTTOM_CENTER });
     return;
   }
-  const payload = {
-    ...unit,
-    房屋總表價: unit.price_list_house_total,
-    戶別: unit.unitId,
-    area_house_ping: Number(unit.area_house_ping),
-    area_main_ping: unit.area_main_ping,
-    area_ancillary_ping: unit.area_ancillary_ping,
-    area_common_ping: unit.area_common_ping,
-    area_terrace_ping: unit.area_terrace_ping,
-    common_area_ratio: unit.common_area_ratio,
-    area_main_sqm: unit.area_main_sqm,
-    area_ancillary_sqm: unit.area_ancillary_sqm,
-    area_common_sqm: unit.area_common_sqm,
-  };
+  // 白名單投影（底價／買方不進報價單）；報價模式再套用可見欄位設定
+  const payload = toQuoteUnitData(unit, isQuote ? project.value : undefined);
   if (quoteStore.addItem(payload)) {
     toast.success(`戶別 ${unit.unitId} 已加入報價單`, { position: POSITION.BOTTOM_CENTER });
   }
@@ -4914,10 +4984,11 @@ async function copyUnitSummary(unit) {
   const lines = [`【${project.value?.name || ''}】${unit.unitId}`];
   const status = unit[statusField.value];
   if (status) lines.push(`狀態：${status}`);
-  if (unit.area_house_ping) lines.push(`房屋面積：${unit.area_house_ping} 坪${Number(unit.area_terrace_ping) > 0 ? `（含露臺 ${unit.area_terrace_ping} 坪）` : ''}`);
+  if (qf(unit, 'areaTotal') && unit.area_house_ping) lines.push(`房屋面積：${unit.area_house_ping} 坪${qf(unit, 'areaTerrace') && Number(unit.area_terrace_ping) > 0 ? `（含露臺 ${unit.area_terrace_ping} 坪）` : ''}`);
   const hideSold = currentViewMode.value === 'quote' && unit.salesStatus_quote === '已售';
-  if (!hideSold) {
-    if (unit.price_list_house_total) lines.push(`表價：${formatNumber(unit.price_list_house_total, 0)} 萬（${formatNumber(e.unit_price_list, 2)} 萬/坪）`);
+  if (currentViewMode.value === 'quote' && !hideSold && !qf(unit, 'priceTotal')) lines.push('表價：面議');
+  if (!hideSold && qf(unit, 'priceTotal')) {
+    if (unit.price_list_house_total) lines.push(`表價：${formatNumber(unit.price_list_house_total, 0)} 萬${qf(unit, 'unitPrice') ? `（${formatNumber(e.unit_price_list, 2)} 萬/坪）` : ''}`);
     if (currentViewMode.value === 'sales') {
       // 底價／成交價同表價格式，附單價
       const unitPriceText = (v) => (v ? `（${formatNumber(v, 2)} 萬/坪）` : '');
@@ -5077,6 +5148,17 @@ async function confirmQuickStatusChange() {
 // --- 快速編輯標籤：直寫 salesHouseholds.unitTags（同備註留言作法，不經整份儲存）---
 const tagQuickDialog = reactive({ show: false, unit: null, tags: [], effect: null, saving: false });
 const quickTagSuggestions = computed(() => collectTagSuggestions(salesHouseholds.value || []));
+// ✅ [報價顯示] 戶別層級的報價系統可見欄位設定（mac 風格小視窗，含即時預覽）
+const quoteFieldDialog = reactive({ show: false, unit: null });
+function openQuoteFieldDialog(unit) {
+  const latest = (salesHouseholds.value || []).find(u => u.unitId === unit.unitId) || unit;
+  quoteFieldDialog.unit = latest;
+  quoteFieldDialog.show = true;
+}
+function onQuoteFieldSaved({ unitId, overrides }) {
+  const raw = (salesHouseholds.value || []).find(u => u.unitId === unitId);
+  if (raw) raw.quoteFieldOverrides = overrides || undefined;
+}
 function openQuickTagDialog(unit) {
   const latest = (salesHouseholds.value || []).find(u => u.unitId === unit.unitId) || unit;
   tagQuickDialog.unit = latest;
@@ -5141,7 +5223,9 @@ const unitQuickActions = computed(() => {
       ? `${enriched.payment_ratio.toFixed(0)}%`
       : (enriched.payment_records_count > 0 ? `${enriched.payment_records_count} 筆` : ''))
     : '';
-  const canQuote = Number(u.price_list_house_total) > 0 && !(isQuoteMode && u.salesStatus_quote === '已售');
+  const quotePriceHidden = isQuoteMode && quoteFieldsOf(u).priceTotal === false;
+  const canQuote = Number(u.price_list_house_total) > 0 && !(isQuoteMode && u.salesStatus_quote === '已售') && !quotePriceHidden;
+  const quoteVisCustom = !isQuoteMode && unitHasQuoteOverrides(u);
 
   const imageCount = getUnitImages(u).length;
   const tagCount = getUnitTags(u).length;
@@ -5156,6 +5240,7 @@ const unitQuickActions = computed(() => {
       { key: 'edit', icon: 'mdi-pencil-outline', label: '修改銷控', subtitle: '直接進入編輯模式', run: unit => openUnitDetail(unit, { editing: true }) },
       { key: 'status', icon: 'mdi-swap-horizontal', label: '變更狀態', subtitle: `目前：${u.salesStatus_backend || '未設定'}`, color: 'indigo-darken-3', run: unit => openQuickStatusDialog(unit) },
       { key: 'tags', icon: 'mdi-tag-multiple-outline', label: '編輯標籤／特效', subtitle: tagSubtitle, badge: tagCount > 0 ? String(tagCount) : '', run: unit => openQuickTagDialog(unit) },
+      { key: 'quoteFields', icon: 'mdi-eye-settings-outline', label: '報價顯示', subtitle: quoteVisCustom ? '已自訂，與專案預設不同' : '依專案預設', badge: quoteVisCustom ? '自訂' : '', badgeColor: 'blue', run: unit => openQuoteFieldDialog(unit) },
       { key: 'divider-1', divider: true },
       { key: 'remarks', icon: 'mdi-comment-text-multiple-outline', label: '備註留言', subtitle: remarkCount > 0 ? `${remarkCount} 則留言` : '尚無留言，點此新增', badge: remarkCount > 0 ? String(remarkCount) : '', run: unit => openRemarkDialog(unit) },
       { key: 'payments', icon: 'mdi-cash-multiple', label: '繳款紀錄', subtitle: paymentBadge ? `已繳 ${paymentBadge}` : '尚無繳款紀錄', badge: paymentBadge, badgeColor: enriched && enriched.payment_ratio >= 100 ? 'green' : 'deep-orange', run: unit => openPaymentRecordsPopup(enrichQuickMenuUnit(unit)) },
@@ -5167,7 +5252,7 @@ const unitQuickActions = computed(() => {
     { key: 'images', icon: 'mdi-floor-plan', label: '查看平面圖', subtitle: imageCount > 0 ? `${imageCount} 張戶別圖片` : '尚未設定戶別圖片', badge: imageCount > 0 ? String(imageCount) : '', badgeColor: 'teal', disabled: imageCount === 0, run: unit => openUnitImageLightbox(unit) },
     inQuote
       ? { key: 'quote', icon: 'mdi-cart-check', label: '開啟報價單', subtitle: '此戶已在報價單中', color: 'orange-darken-3', run: () => { isQuoteSidebarOpen.value = true; } }
-      : { key: 'quote', icon: 'mdi-cart-plus', label: '加入報價單', subtitle: canQuote ? '加入後可於右側報價單試算' : '尚未設定表價或已售', disabled: !canQuote, color: 'success', run: unit => quickAddUnitToQuote(unit) },
+      : { key: 'quote', icon: 'mdi-cart-plus', label: '加入報價單', subtitle: canQuote ? '加入後可於右側報價單試算' : (quotePriceHidden ? '此戶不提供報價' : '尚未設定表價或已售'), disabled: !canQuote, color: 'success', run: unit => quickAddUnitToQuote(unit) },
     { key: 'copy', icon: 'mdi-content-copy', label: '複製摘要', subtitle: '純文字，可貼到 LINE', run: unit => copyUnitSummary(unit) },
   );
   if (!isQuoteMode) {
@@ -6545,6 +6630,26 @@ overflow: hidden;
 /* ✅ [新增] 文字標籤帶：右上角獨立一條 14px 空間，內容整體下移不與戶別名稱重疊 */
 .unit-card.has-tags {
   padding-top: 18px;
+}
+/* ✅ [報價顯示] 銷控模式：報價顯示已自訂的小眼睛徽章（左上角） */
+.quote-vis-badge {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(10, 122, 255, 0.9);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+/* 徽章佔左上角時，標籤帶右側對齊不受影響（標籤帶本身靠右） */
+.negotiable-text {
+  color: rgba(0, 0, 0, 0.55) !important;
+  font-weight: 600;
 }
 .unit-tags-strip {
   position: absolute;

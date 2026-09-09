@@ -982,6 +982,7 @@
 </template>
 
 <script setup>
+import { getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
 import { ref, computed, defineProps, defineEmits, onMounted, watch } from 'vue'; // ★★★ 1. 引入 watch ★★★
 import { useQuoteStore, applyNegotiation, deriveNegotiationMode } from '@/store/quoteStore';
 import { useToast } from 'vue-toastification';
@@ -1233,7 +1234,11 @@ watch(isPackageDealAllowed, (allowed) => {
 
 // ✅ [新增] Computed: 是否顯示優付選項 (依據專案設定)
 const showPreferredPaymentOption = computed(() => {
-    return projectStore.currentProject?.showPreferredPaymentInQuote === true;
+    const project = projectStore.getProjectById?.(props.projectId) || projectStore.currentProject;
+    // 依「報價系統可見欄位」：專案預設 + 本戶覆寫（unitDetails 內含 quoteFieldsEffective 快照）
+    const eff = props.item?.unitDetails?.quoteFieldsEffective;
+    if (eff && typeof eff.preferredPayment === 'boolean') return eff.preferredPayment;
+    return getProjectQuoteDefaults(project).preferredPayment === true;
 });
 
 /// ✅ [修改] Computed: 判斷戶別是否具備優付資格
