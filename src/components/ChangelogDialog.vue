@@ -1,32 +1,57 @@
 <!-- src/components/ChangelogDialog.vue -->
 <!-- ✅ HOME「更新日誌」終端機視窗：讀取 public/changelog.json（generateReleaseNotes.js 產生，
      含 CHANGELOG.md 全部歷史版本），以工程師 IDE／終端機風格呈現，類似 git log 可逐版展開。
-     電腦版固定寬度置中、手機版全螢幕；僅登入內部人員的 HOME 會掛載此元件。 -->
+     電腦版固定寬度置中、手機版全螢幕；僅登入內部人員的 HOME 會掛載此元件。
+     左上角 macOS 紅黃綠燈號為真實按鈕：紅＝關閉、黃＝最小化（縮到畫面底部 Dock 小卡，可還原）、
+     綠＝切換全螢幕（電腦版）；雙擊標題列亦可縮放，hover 燈號會顯示 × − + 符號。 -->
 <template>
   <v-dialog
-    :model-value="modelValue"
-    :fullscreen="isMobile"
-    :max-width="isMobile ? undefined : 820"
+    :model-value="modelValue && !minimized"
+    :fullscreen="isFull"
+    :max-width="isFull ? undefined : 820"
     scrollable
-    @update:model-value="$emit('update:modelValue', $event)"
+    @update:model-value="onDialogModel"
   >
-    <div class="term" :class="{ 'term--mobile': isMobile }">
-      <!-- 視窗標題列（macOS 紅黃綠 + 標題） -->
-      <header class="term__titlebar">
-        <div class="term__lights" aria-hidden="true">
-          <span class="term__light term__light--r" />
-          <span class="term__light term__light--y" />
-          <span class="term__light term__light--g" />
+    <div class="term" :class="{ 'term--full': isFull, 'term--zoomed': zoomed }">
+      <!-- 視窗標題列（macOS 紅黃綠：真實按鈕；雙擊標題列可縮放） -->
+      <header class="term__titlebar" @dblclick="onTitleDblClick">
+        <div class="term__lights" role="group" aria-label="視窗控制">
+          <button
+            type="button"
+            class="term__light term__light--r"
+            aria-label="關閉視窗"
+            title="關閉"
+            @click="close"
+          ><span class="term__light-glyph">×</span></button>
+          <button
+            type="button"
+            class="term__light term__light--y"
+            aria-label="最小化視窗"
+            title="最小化"
+            @click="minimize"
+          ><span class="term__light-glyph">−</span></button>
+          <button
+            type="button"
+            class="term__light term__light--g"
+            :aria-label="zoomed ? '還原視窗大小' : '全螢幕'"
+            :title="isMobile ? '手機版已是全螢幕' : (zoomed ? '還原' : '全螢幕')"
+            :disabled="isMobile"
+            @click="toggleZoom"
+          ><span class="term__light-glyph">{{ zoomed ? '⤡' : '⤢' }}</span></button>
         </div>
-        <span class="term__titletext">changelog — anxi-app — {{ entries.length }} releases</span>
-        <button type="button" class="term__close" aria-label="關閉" @click="$emit('update:modelValue', false)">✕</button>
+        <span class="term__titletext" :title="isMobile ? undefined : '雙擊標題列可切換全螢幕'">
+          changelog — anxi-app — {{ entries.length }} releases
+        </span>
+        <!-- 手機：燈號太小不好按，右側保留較大的關閉鈕；電腦版由紅燈負責 -->
+        <button v-if="isMobile" type="button" class="term__close" aria-label="關閉" @click="close">✕</button>
       </header>
 
-      <!-- 搜尋列：grep 提示符 -->
+      <!-- 搜尋列：grep 提示符（按 / 可快速聚焦） -->
       <div class="term__search">
         <span class="term__prompt-sym">❯</span>
         <span class="term__grep">grep</span>
         <input
+          ref="searchInput"
           v-model="keyword"
           class="term__input"
           type="text"
@@ -34,10 +59,11 @@
           spellcheck="false"
         />
         <button v-if="keyword" type="button" class="term__clear" aria-label="清除搜尋" @click="keyword = ''">✕</button>
+        <kbd v-else-if="!isMobile" class="term__kbd" aria-hidden="true">/</kbd>
       </div>
 
       <!-- 內容捲動區 -->
-      <div class="term__body">
+      <div ref="bodyEl" class="term__body">
         <div v-if="loading" class="term__state">
           <span class="term__state-line">$ git log --oneline</span>
           <span class="term__state-line term__state-line--dim">loading changelog<span class="term__cursor" />…</span>
@@ -97,22 +123,47 @@
       <footer class="term__statusbar">
         <span class="term__status-item">⎇ main</span>
         <span class="term__status-item">{{ filteredEntries.length }} / {{ entries.length }} versions</span>
+        <button
+          v-if="shownEntries.length > 0"
+          type="button"
+          class="term__status-item term__status-btn"
+          @click="toggleAll"
+        >{{ allOpen ? '▸ 全部收合' : '▾ 全部展開' }}</button>
         <span class="term__status-spacer" />
+        <span v-if="zoomed" class="term__status-item">⤢ 全螢幕</span>
         <span class="term__status-item">UTF-8</span>
         <span class="term__status-item">CHANGELOG.md</span>
       </footer>
     </div>
   </v-dialog>
+
+  <!-- 最小化後的 Dock 小卡：固定於畫面底部，點擊還原；狀態（搜尋、展開、捲動）都會保留 -->
+  <Teleport to="body">
+    <Transition name="term-dock">
+      <div v-if="modelValue && minimized" class="term-dock" role="status">
+        <button type="button" class="term-dock__restore" aria-label="還原更新日誌視窗" @click="restore">
+          <span class="term-dock__lights" aria-hidden="true">
+            <span class="term-dock__light term-dock__light--r" />
+            <span class="term-dock__light term-dock__light--y" />
+            <span class="term-dock__light term-dock__light--g" />
+          </span>
+          <span class="term-dock__text">changelog — anxi-app</span>
+          <span class="term-dock__hint">▲ 點擊還原</span>
+        </button>
+        <button type="button" class="term-dock__close" aria-label="關閉更新日誌" @click="close">✕</button>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useDisplay } from 'vuetify';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
 });
-defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue']);
 
 const { smAndDown } = useDisplay();
 const isMobile = computed(() => smAndDown.value);
@@ -126,6 +177,52 @@ const loaded = ref(false);
 const keyword = ref('');
 const shownCount = ref(PAGE_SIZE);
 const openSet = ref(new Set());
+const searchInput = ref(null);
+const bodyEl = ref(null);
+
+// ── 視窗狀態（macOS 燈號）───────────────────────────
+const minimized = ref(false);   // 黃燈：縮到底部 Dock 小卡，元件不卸載、狀態保留
+const zoomed = ref(false);      // 綠燈：電腦版全螢幕
+const isFull = computed(() => isMobile.value || zoomed.value);
+
+const close = () => {
+  minimized.value = false;
+  emit('update:modelValue', false);
+};
+const minimize = () => { minimized.value = true; };
+const restore = async () => {
+  minimized.value = false;
+  await nextTick();
+  searchInput.value?.focus?.({ preventScroll: true });
+};
+const toggleZoom = () => {
+  if (isMobile.value) return;
+  zoomed.value = !zoomed.value;
+};
+// 雙擊標題列（非按鈕區）＝ macOS 縮放
+const onTitleDblClick = (e) => {
+  if (e.target.closest('button')) return;
+  toggleZoom();
+};
+// v-dialog 自身觸發的關閉（Esc／點遮罩）
+const onDialogModel = (val) => {
+  if (!val) close();
+};
+// 快捷鍵（視窗開啟且未最小化時掛在 document）：/ 聚焦搜尋
+const onKeydown = (e) => {
+  if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  if (t === searchInput.value) return;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  e.preventDefault();
+  searchInput.value?.focus();
+};
+const hotkeyActive = computed(() => props.modelValue && !minimized.value && !isMobile.value);
+watch(hotkeyActive, (on) => {
+  if (on) document.addEventListener('keydown', onKeydown);
+  else document.removeEventListener('keydown', onKeydown);
+}, { immediate: true });
+onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
 
 // 終端機風格：以 conventional-commit 前綴呈現分類
 const TYPE_LABELS = { feature: 'feat', fix: 'fix', improve: 'perf', other: 'chore' };
@@ -158,6 +255,15 @@ const toggle = (version) => {
   else next.add(version);
   openSet.value = next;
 };
+const allOpen = computed(() =>
+  shownEntries.value.length > 0 && shownEntries.value.every(e => openSet.value.has(e.version))
+);
+const toggleAll = () => {
+  const next = new Set(openSet.value);
+  if (allOpen.value) shownEntries.value.forEach(e => next.delete(e.version));
+  else shownEntries.value.forEach(e => next.add(e.version));
+  openSet.value = next;
+};
 
 const fetchChangelog = async () => {
   loading.value = true;
@@ -179,7 +285,10 @@ const fetchChangelog = async () => {
 };
 
 watch(() => props.modelValue, (isOpenDialog) => {
-  if (isOpenDialog && !loaded.value && !loading.value) fetchChangelog();
+  if (isOpenDialog) {
+    minimized.value = false;
+    if (!loaded.value && !loading.value) fetchChangelog();
+  }
 });
 
 // 搜尋時重置顯示數量，避免停留在「已翻很多頁」狀態
@@ -213,8 +322,10 @@ watch(keyword, () => { shownCount.value = PAGE_SIZE; });
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
   font-family: var(--t-mono);
   color: var(--t-fg);
+  outline: none;
 }
-.term--mobile {
+/* 手機版與電腦版全螢幕（綠燈）共用：填滿、去圓角 */
+.term--full {
   max-height: 100%;
   height: 100%;
   border-radius: 0;
@@ -230,12 +341,49 @@ watch(keyword, () => { shownCount.value = PAGE_SIZE; });
   background: linear-gradient(180deg, #2c313a 0%, #262b33 100%);
   border-bottom: 1px solid var(--t-border);
   flex-shrink: 0;
+  user-select: none;
 }
-.term__lights { display: flex; gap: 7px; }
-.term__light { width: 12px; height: 12px; border-radius: 50%; }
+
+/* macOS 紅黃綠燈號：真實按鈕；hover 整組時顯示 × − + 符號，按下略縮 */
+.term__lights { display: flex; gap: 8px; }
+.term__light {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: filter 0.12s, transform 0.08s;
+}
+/* 放大點擊／觸控範圍（視覺仍是 12px） */
+.term__light::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; }
 .term__light--r { background: #ff5f56; }
 .term__light--y { background: #ffbd2e; }
 .term__light--g { background: #27c93f; }
+.term__light:hover { filter: brightness(1.12); }
+.term__light:active { transform: scale(0.9); filter: brightness(0.85); }
+.term__light:focus-visible { outline: 2px solid var(--t-blue); outline-offset: 2px; }
+.term__light:disabled { background: #4b5058; border-color: rgba(0, 0, 0, 0.2); cursor: default; }
+.term__light:disabled:hover { filter: none; }
+.term__light-glyph {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+.term__light--g .term__light-glyph { font-size: 8px; }
+.term__lights:hover .term__light:not(:disabled) .term__light-glyph,
+.term__lights:focus-within .term__light:not(:disabled) .term__light-glyph { opacity: 1; }
+
 .term__titletext {
   flex: 1;
   text-align: center;
@@ -295,6 +443,15 @@ watch(keyword, () => { shownCount.value = PAGE_SIZE; });
   border-radius: 4px;
 }
 .term__clear:hover { color: var(--t-fg); background: rgba(255, 255, 255, 0.08); }
+.term__kbd {
+  font-family: inherit;
+  font-size: 0.7rem;
+  color: var(--t-comment);
+  border: 1px solid var(--t-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
 
 /* 內容捲動區 */
 .term__body {
@@ -309,6 +466,8 @@ watch(keyword, () => { shownCount.value = PAGE_SIZE; });
 .term__body::-webkit-scrollbar { width: 10px; }
 .term__body::-webkit-scrollbar-thumb { background: #4a5060; border-radius: 5px; border: 2px solid var(--t-bg); }
 .term__body::-webkit-scrollbar-track { background: transparent; }
+/* 全螢幕時內容置中、限制行寬，長句更好讀 */
+.term--zoomed .term__body { padding-left: max(8px, calc(50% - 480px)); padding-right: max(8px, calc(50% - 480px)); }
 
 /* 狀態訊息 */
 .term__state {
@@ -391,8 +550,8 @@ watch(keyword, () => { shownCount.value = PAGE_SIZE; });
 }
 
 /* 手機：一行擠不下，摘要換行縮排全寬顯示 */
-.term--mobile .commit__head { flex-wrap: wrap; row-gap: 2px; }
-.term--mobile .commit__summary {
+.term--full:not(.term--zoomed) .commit__head { flex-wrap: wrap; row-gap: 2px; }
+.term--full:not(.term--zoomed) .commit__summary {
   flex-basis: 100%;
   padding-left: calc(1em + 8px); /* 對齊箭頭後的內容 */
 }
@@ -470,4 +629,76 @@ watch(keyword, () => { shownCount.value = PAGE_SIZE; });
 }
 .term__status-spacer { flex: 1; }
 .term__status-item { white-space: nowrap; }
+.term__status-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  padding: 2px 6px;
+  margin: -2px 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.term__status-btn:hover { background: rgba(255, 255, 255, 0.18); }
+</style>
+
+<style>
+/* ── 最小化 Dock 小卡（Teleport 到 body，故不 scoped） ─────────────── */
+.term-dock {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 2400;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px 4px 4px;
+  border-radius: 12px;
+  background: #23272e;
+  border: 1px solid #3a3f4b;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  font-family: 'Cascadia Code', 'JetBrains Mono', Consolas, 'SF Mono', Menlo, 'Courier New', monospace;
+  color: #d7dae0;
+  max-width: calc(100vw - 24px);
+}
+.term-dock__restore {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: 9px;
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  min-width: 0;
+}
+.term-dock__restore:hover { background: rgba(255, 255, 255, 0.07); }
+.term-dock__restore:focus-visible { outline: 2px solid #61afef; outline-offset: -2px; }
+.term-dock__lights { display: flex; gap: 5px; flex-shrink: 0; }
+.term-dock__light { width: 8px; height: 8px; border-radius: 50%; }
+.term-dock__light--r { background: #ff5f56; }
+.term-dock__light--y { background: #ffbd2e; }
+.term-dock__light--g { background: #27c93f; }
+.term-dock__text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term-dock__hint { color: #6b7280; font-size: 0.68rem; white-space: nowrap; }
+.term-dock__close {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 8px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.term-dock__close:hover { color: #d7dae0; background: rgba(255, 255, 255, 0.08); }
+
+/* 最小化／還原動畫：往下縮進 Dock */
+.term-dock-enter-active, .term-dock-leave-active { transition: transform 0.22s ease, opacity 0.22s ease; }
+.term-dock-enter-from, .term-dock-leave-to { opacity: 0; transform: translateX(-50%) translateY(24px) scale(0.92); }
 </style>
