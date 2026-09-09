@@ -5,6 +5,17 @@
       <v-toolbar-title>
         {{ isEditMode ? '編輯表單' : '新增自訂表單' }}
       </v-toolbar-title>
+      <!-- ✅ [新增] 套用其他建案表單：顯示模板來源 -->
+      <v-chip
+        v-if="!isEditMode && templateSource && !isMobile"
+        color="primary"
+        variant="tonal"
+        size="small"
+        prepend-icon="mdi-content-copy"
+        class="ml-2"
+      >
+        套用自：{{ templateSource.projectName }}／{{ templateSource.title }}
+      </v-chip>
       <v-spacer></v-spacer>
       <!-- ✅ 手機版：預覽縮為 icon、儲存縮短文字，避免工具列擠壓 -->
       <v-btn
@@ -202,6 +213,18 @@
 
         <h3 class="text-h6 mb-4 font-weight-bold text-grey-darken-3">表單設定</h3>
 
+        <!-- ✅ [新增] 套用其他建案表單：提示已帶入的內容 -->
+        <v-alert
+          v-if="!isEditMode && templateSource"
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mb-4"
+          icon="mdi-content-copy"
+        >
+          已套用「{{ templateSource.projectName }}」的表單「{{ templateSource.title }}」作為模板，欄位、說明與送出訊息已帶入，可修改後儲存為本建案的新表單。通知名單不會跨建案套用。
+        </v-alert>
+
         <v-text-field
           v-model="form.title"
           label="表單標題 (例如: 客戶資料調查表)"
@@ -279,6 +302,8 @@ import { isCustomerDataCardForm } from '@/utils/customerCardImport';
 const props = defineProps<{
   projectId: string;
   formId?: string | null;
+  /** ✅ [新增] 套用其他建案表單：新增模式時以此模板初始化（由 CustomFormManager 經後端權限過濾後傳入） */
+  templateSource?: any | null;
 }>();
 
 const emit = defineEmits(['close', 'saved']);
@@ -395,8 +420,33 @@ const isCardSwitch = computed({
   set: (val: boolean) => { form.value.isCustomerDataCard = val; },
 });
 
+// ✅ [新增] 以其他建案的表單作為模板初始化（僅新增模式）
+const applyTemplateSource = () => {
+  const t = props.templateSource;
+  if (!t) return;
+  const fields = JSON.parse(JSON.stringify(Array.isArray(t.fields) ? t.fields : []));
+  form.value = {
+    ...form.value,
+    title: t.title || '未命名表單',
+    description: t.description || '',
+    submitSuccessMessage: t.submitSuccessMessage || '',
+    isActive: true,
+    fields,
+    notifySalesAdmins: true,
+    notifyUnitSalesPerson: typeof t.notifyUnitSalesPerson === 'boolean' ? t.notifyUnitSalesPerson : true,
+    // 通知名單屬各建案人員，不跨建案套用
+    notificationExcludedUserKeys: [],
+    requireLineLogin: t.requireLineLogin === true,
+    isCustomerDataCard: typeof t.isCustomerDataCard === 'boolean' ? t.isCustomerDataCard : undefined,
+  };
+};
+
 const loadForm = async () => {
   if (!props.formId) {
+    if (props.templateSource) {
+      applyTemplateSource();
+      return;
+    }
     // Default Fields Template
     form.value.fields = [
       { id: uuidv4(), type: 'system', label: '戶別 (鎖定/選擇)', systemKey: 'unitId', required: true, readOnly: true },

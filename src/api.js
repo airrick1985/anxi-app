@@ -6745,6 +6745,22 @@ export const getFormNotificationCandidates = async (payload) => {
 };
 
 
+/**
+ * ✅ [新增] 自訂表單「套用其他建案表單」：取得使用者具銷控權限之其他建案的表單模板（後端依 userPermissions 過濾）
+ * @param {{ userKey: string, currentProjectId: string }} payload
+ * @returns {Promise<{ templates: Array, projects: Array<{id: string, name: string}> }>}
+ */
+export const listReusableCustomFormTemplates = async (payload) => {
+  try {
+    const fn = httpsCallable(functions, 'listReusableCustomFormTemplates');
+    const result = await fn(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in listReusableCustomFormTemplates:", error);
+    throw new Error(error.message);
+  }
+};
+
 // --- 驗屋系統設定 API ---
 
 /**

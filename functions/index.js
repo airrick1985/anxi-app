@@ -30351,6 +30351,83 @@ exports.getFormNotificationCandidates = onCall({
 });
 
 /**
+ * ✅ [新增] 自訂表單「套用其他建案表單」：列出使用者具「銷控系統」權限之「其他建案」的表單模板
+ * - 權限一律以 userPermissions/{userKey}.permissions 為準，非權限內建案的表單不會回傳
+ * - 回傳內容供前端「新增表單」時作為模板套用（欄位／說明／送出訊息等），不含通知名單
+ */
+exports.listReusableCustomFormTemplates = onCall({
+  region: "asia-east1",
+  memory: "512MiB",
+}, async (request) => {
+  const { userKey, currentProjectId } = request.data || {};
+  if (!userKey) throw new HttpsError("invalid-argument", "缺少 userKey");
+  if (!currentProjectId) throw new HttpsError("invalid-argument", "缺少 currentProjectId");
+
+  try {
+    const db = defaultDb;
+    const permSnap = await db.collection('userPermissions').doc(String(userKey)).get();
+    if (!permSnap.exists) return { templates: [], projects: [] };
+    const perms = permSnap.data()?.permissions || {};
+
+    // 僅取「銷控系統」權限且非目前建案的建案
+    const allowedProjects = [];
+    for (const projectId of Object.keys(perms)) {
+      if (projectId === currentProjectId) continue;
+      const systems = perms[projectId]?.systems;
+      if (Array.isArray(systems) && systems.includes('銷控系統')) {
+        allowedProjects.push({ id: projectId, name: perms[projectId]?.projectName || projectId });
+      }
+    }
+    if (allowedProjects.length === 0) return { templates: [], projects: [] };
+
+    const nameById = new Map(allowedProjects.map(p => [p.id, p.name]));
+    const ids = allowedProjects.map(p => p.id);
+    const toMillis = (ts) => (ts && typeof ts.toMillis === 'function') ? ts.toMillis() : null;
+    const templates = [];
+
+    for (let i = 0; i < ids.length; i += 30) {
+      const chunk = ids.slice(i, i + 30);
+      const snap = await db.collection('customFormTemplates').where('projectId', 'in', chunk).get();
+      snap.forEach(d => {
+        const data = d.data() || {};
+        if (!nameById.has(data.projectId)) return; // 雙重保險：僅回傳權限內建案
+        const fields = Array.isArray(data.fields) ? data.fields : [];
+        templates.push({
+          id: d.id,
+          projectId: data.projectId,
+          projectName: nameById.get(data.projectId),
+          title: data.title || '未命名表單',
+          description: data.description || '',
+          fields,
+          fieldCount: fields.length,
+          isActive: data.isActive !== false,
+          submitSuccessMessage: data.submitSuccessMessage || '',
+          requireLineLogin: data.requireLineLogin === true,
+          notifyUnitSalesPerson: data.notifyUnitSalesPerson !== false,
+          isCustomerDataCard: typeof data.isCustomerDataCard === 'boolean' ? data.isCustomerDataCard : null,
+          updatedAt: toMillis(data.updatedAt) || toMillis(data.createdAt) || null,
+        });
+      });
+    }
+
+    templates.sort((a, b) =>
+      String(a.projectName).localeCompare(String(b.projectName), 'zh-Hant') ||
+      (b.updatedAt || 0) - (a.updatedAt || 0)
+    );
+
+    // 只回傳實際有表單的建案，供前端篩選下拉使用
+    const projectIdsWithForms = new Set(templates.map(t => t.projectId));
+    return {
+      templates,
+      projects: allowedProjects.filter(p => projectIdsWithForms.has(p.id)),
+    };
+  } catch (e) {
+    console.error('[listReusableCustomFormTemplates] 失敗:', e);
+    throw new HttpsError("internal", e.message || '查詢失敗');
+  }
+});
+
+/**
  * 自訂表單提交通知 trigger
  * 監聽 customFormSubmissions 新增事件，依表單設定通知銷控管理員與該戶銷售人員
  * - notifySalesAdmins / notifyUnitSalesPerson 兩設定皆 false → 不執行

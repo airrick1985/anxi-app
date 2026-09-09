@@ -6,13 +6,24 @@
           <h2 class="text-h5 text-primary">自訂表單管理</h2>
           <p class="text-subtitle-2 text-grey-darken-1">設計與管理此建案的公開表單 (無需登入即可瀏覽)</p>
         </div>
-        <v-btn
-          color="primary"
-          prepend-icon="mdi-plus"
-          @click="openFormEditor()"
-        >
-          新增表單
-        </v-btn>
+        <div class="d-flex align-center flex-wrap justify-end" style="gap: 8px">
+          <!-- ✅ [新增] 套用使用者具銷控權限之其他建案的既有表單作為模板 -->
+          <v-btn
+            color="primary"
+            variant="tonal"
+            prepend-icon="mdi-content-copy"
+            @click="openTemplatePicker"
+          >
+            套用其他建案表單
+          </v-btn>
+          <v-btn
+            color="primary"
+            prepend-icon="mdi-plus"
+            @click="openFormEditor()"
+          >
+            新增表單
+          </v-btn>
+        </div>
       </v-col>
     </v-row>
     <v-divider class="my-4"></v-divider>
@@ -122,9 +133,162 @@
         v-if="editorDialog"
         :projectId="projectId"
         :formId="editingFormId"
+        :templateSource="templateSource"
         @close="closeEditor"
         @saved="onFormSaved"
       />
+    </v-dialog>
+
+    <!-- ✅ [新增] 套用其他建案表單：模板選擇視窗（僅列出使用者具銷控權限之其他建案的表單，由後端依權限過濾） -->
+    <v-dialog v-model="templateDialog" max-width="960" scrollable>
+      <v-card class="template-picker">
+        <v-toolbar color="primary" density="comfortable">
+          <v-icon class="ml-4">mdi-content-copy</v-icon>
+          <v-toolbar-title class="text-subtitle-1 font-weight-bold">套用其他建案表單</v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" @click="templateDialog = false"></v-btn>
+        </v-toolbar>
+
+        <div class="px-4 pt-4 pb-2 bg-grey-lighten-5">
+          <div class="text-body-2 text-grey-darken-1 mb-3">
+            選擇您有「銷控系統」權限之其他建案已建立的表單，套用後會以該表單的欄位、說明與送出訊息建立本建案的新表單（可再修改後儲存）。通知名單不會跨建案套用。
+          </div>
+          <v-row dense>
+            <v-col cols="12" sm="5">
+              <v-select
+                v-model="templateProjectFilter"
+                :items="templateProjectOptions"
+                item-title="name"
+                item-value="id"
+                label="篩選建案"
+                placeholder="全部建案"
+                variant="outlined"
+                density="compact"
+                hide-details
+                clearable
+                prepend-inner-icon="mdi-office-building-outline"
+              ></v-select>
+            </v-col>
+            <v-col cols="12" sm="7">
+              <v-text-field
+                v-model="templateSearch"
+                label="搜尋表單名稱／說明"
+                variant="outlined"
+                density="compact"
+                hide-details
+                clearable
+                prepend-inner-icon="mdi-magnify"
+              ></v-text-field>
+            </v-col>
+          </v-row>
+        </div>
+
+        <v-card-text class="pa-4" style="min-height: 320px">
+          <v-row v-if="templateLoading">
+            <v-col cols="12" md="6" v-for="n in 4" :key="n">
+              <v-skeleton-loader type="article"></v-skeleton-loader>
+            </v-col>
+          </v-row>
+
+          <v-alert
+            v-else-if="templateError"
+            type="error"
+            variant="tonal"
+            density="compact"
+          >
+            {{ templateError }}
+          </v-alert>
+
+          <v-alert
+            v-else-if="reusableTemplates.length === 0"
+            type="info"
+            variant="tonal"
+            density="compact"
+            icon="mdi-information-outline"
+          >
+            您有銷控權限的其他建案目前尚無已建立的表單可供套用。
+          </v-alert>
+
+          <v-alert
+            v-else-if="filteredTemplates.length === 0"
+            type="info"
+            variant="tonal"
+            density="compact"
+            icon="mdi-filter-remove-outline"
+          >
+            沒有符合篩選條件的表單。
+          </v-alert>
+
+          <v-row v-else dense>
+            <v-col cols="12" md="6" v-for="t in filteredTemplates" :key="t.id">
+              <v-card
+                variant="outlined"
+                class="h-100 d-flex flex-column template-card"
+                :class="{ 'template-card--selected': selectedTemplateId === t.id }"
+                @click="selectedTemplateId = t.id"
+              >
+                <v-card-title class="d-flex align-start pb-1">
+                  <div class="flex-grow-1 mr-2" style="min-width: 0">
+                    <div class="text-caption text-primary font-weight-medium d-flex align-center mb-1">
+                      <v-icon size="14" class="mr-1">mdi-office-building-outline</v-icon>
+                      <span class="text-truncate">{{ templateProjectName(t) }}</span>
+                    </div>
+                    <div class="text-subtitle-1 font-weight-bold text-truncate">{{ t.title }}</div>
+                  </div>
+                  <v-chip size="x-small" :color="t.isActive ? 'success' : 'grey'" variant="tonal">
+                    {{ t.isActive ? '啟用中' : '草稿' }}
+                  </v-chip>
+                </v-card-title>
+                <v-card-text class="flex-grow-1 pt-0">
+                  <div class="text-body-2 text-grey-darken-1 text-truncate-2 mb-2">
+                    {{ t.description || '無描述' }}
+                  </div>
+                  <div class="d-flex flex-wrap align-center" style="gap: 6px">
+                    <v-chip size="small" variant="outlined">{{ t.fieldCount }} 個欄位</v-chip>
+                    <v-chip
+                      v-if="isCustomerDataCardForm({ title: t.title, isCustomerDataCard: t.isCustomerDataCard ?? undefined })"
+                      size="small"
+                      color="teal"
+                      variant="tonal"
+                      prepend-icon="mdi-card-account-details-outline"
+                    >客戶資料卡</v-chip>
+                    <span class="text-caption text-grey ml-auto">更新於 {{ formatMillis(t.updatedAt) }}</span>
+                  </div>
+                </v-card-text>
+                <v-card-actions class="pt-0">
+                  <v-spacer></v-spacer>
+                  <v-btn
+                    color="primary"
+                    variant="flat"
+                    size="small"
+                    prepend-icon="mdi-check"
+                    @click.stop="applyTemplate(t)"
+                  >
+                    套用此表單
+                  </v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-col>
+          </v-row>
+        </v-card-text>
+
+        <v-divider></v-divider>
+        <v-card-actions class="px-4">
+          <span class="text-caption text-grey">
+            共 {{ filteredTemplates.length }} 份表單，來自 {{ templateProjectOptions.length }} 個建案
+          </span>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="templateDialog = false">取消</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :disabled="!selectedTemplate"
+            @click="selectedTemplate && applyTemplate(selectedTemplate)"
+          >
+            套用選取的表單
+          </v-btn>
+        </v-card-actions>
+      </v-card>
     </v-dialog>
 
     <!-- Responses Dialog -->
@@ -475,8 +639,10 @@ import {
 } from 'firebase/firestore'; // Assuming 'firebase/firestore' or local db instance
 import { db } from '@/firebase'; // Adjust based on your project structure, e.g., '@/firebase/config' or just 'firebase/firestore'
 import { useToast } from 'vue-toastification';
-import { listGoogleSheets, syncCustomFormSubmissionsToSheet } from '@/api';
+import { listGoogleSheets, syncCustomFormSubmissionsToSheet, listReusableCustomFormTemplates } from '@/api';
 import { isCustomerDataCardForm } from '@/utils/customerCardImport';
+import { useUserStore } from '@/store/user';
+import { useProjectStore } from '@/store/projectStore';
 
 // 假設 CustomFormEditor 是另一個要建立的組件
 const CustomFormEditor = defineAsyncComponent(() => import('./CustomFormEditor.vue'));
@@ -491,9 +657,24 @@ const toast = useToast();
 const loading = ref(false);
 const forms = ref<any[]>([]);
 
+const userStore = useUserStore();
+const projectStore = useProjectStore();
+
 // Editor State
 const editorDialog = ref(false);
 const editingFormId = ref<string | null>(null);
+// ✅ [新增] 套用其他建案表單：帶入編輯器的模板來源（僅新增模式使用）
+const templateSource = ref<any>(null);
+
+// ✅ [新增] 套用其他建案表單：模板選擇視窗狀態
+const templateDialog = ref(false);
+const templateLoading = ref(false);
+const templateError = ref('');
+const reusableTemplates = ref<any[]>([]);
+const templateProjects = ref<{ id: string; name: string }[]>([]);
+const templateProjectFilter = ref<string | null>(null);
+const templateSearch = ref('');
+const selectedTemplateId = ref<string | null>(null);
 
 // Responses State
 const responsesDialog = ref(false);
@@ -553,12 +734,91 @@ const loadForms = async () => {
 
 const openFormEditor = (form: any = null) => {
   editingFormId.value = form ? form.id : null;
+  templateSource.value = null;
   editorDialog.value = true;
 };
 
 const closeEditor = () => {
   editorDialog.value = false;
   editingFormId.value = null;
+  templateSource.value = null;
+};
+
+// --- ✅ [新增] 套用其他建案表單 ---
+
+const idToNameMap = computed<Record<string, string>>(() => (projectStore.idToNameMap as any) || {});
+
+const templateProjectName = (t: any): string =>
+  idToNameMap.value[t.projectId] || t.projectName || t.projectId;
+
+const templateProjectOptions = computed(() =>
+  templateProjects.value
+    .map(p => ({ id: p.id, name: idToNameMap.value[p.id] || p.name || p.id }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant-TW'))
+);
+
+const filteredTemplates = computed(() => {
+  const kw = (templateSearch.value || '').trim().toLowerCase();
+  return reusableTemplates.value.filter(t => {
+    if (templateProjectFilter.value && t.projectId !== templateProjectFilter.value) return false;
+    if (!kw) return true;
+    return String(t.title || '').toLowerCase().includes(kw)
+      || String(t.description || '').toLowerCase().includes(kw)
+      || templateProjectName(t).toLowerCase().includes(kw);
+  });
+});
+
+const selectedTemplate = computed(() =>
+  filteredTemplates.value.find(t => t.id === selectedTemplateId.value) || null
+);
+
+const loadReusableTemplates = async () => {
+  const userKey = (userStore.user as any)?.key;
+  if (!userKey) {
+    templateError.value = '無法取得登入資訊，請重新登入後再試';
+    return;
+  }
+  templateLoading.value = true;
+  templateError.value = '';
+  try {
+    // 後端以 userPermissions 為準，僅回傳使用者具「銷控系統」權限之其他建案的表單
+    const res = await listReusableCustomFormTemplates({ userKey, currentProjectId: props.projectId });
+    reusableTemplates.value = Array.isArray(res?.templates) ? res.templates : [];
+    templateProjects.value = Array.isArray(res?.projects) ? res.projects : [];
+  } catch (err) {
+    console.error('載入其他建案表單失敗:', err);
+    templateError.value = '載入其他建案表單失敗，請稍後再試';
+    reusableTemplates.value = [];
+    templateProjects.value = [];
+  } finally {
+    templateLoading.value = false;
+  }
+};
+
+const openTemplatePicker = async () => {
+  templateDialog.value = true;
+  templateProjectFilter.value = null;
+  templateSearch.value = '';
+  selectedTemplateId.value = null;
+  await loadReusableTemplates();
+};
+
+const applyTemplate = (t: any) => {
+  if (!t) return;
+  templateSource.value = {
+    ...t,
+    projectName: templateProjectName(t),
+    fields: JSON.parse(JSON.stringify(Array.isArray(t.fields) ? t.fields : [])),
+  };
+  templateDialog.value = false;
+  editingFormId.value = null;
+  editorDialog.value = true;
+};
+
+const formatMillis = (ms: any) => {
+  if (!ms) return '-';
+  const d = new Date(Number(ms));
+  return isNaN(d.getTime()) ? '-' : d.toLocaleDateString();
 };
 
 const onFormSaved = () => {
@@ -952,6 +1212,20 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ✅ 套用其他建案表單：模板卡片 */
+.template-card {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.template-card:hover {
+  border-color: rgb(var(--v-theme-primary));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+.template-card--selected {
+  border-color: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.25);
+}
 .text-truncate-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
