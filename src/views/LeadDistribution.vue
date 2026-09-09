@@ -1,55 +1,66 @@
 <template>
   <v-container fluid class="pa-4 bg-grey-lighten-4 fill-height align-start">
     <v-row>
-      <v-col cols="12" class="d-flex align-center pb-0">
-      <v-btn 
-          v-if="!hideBack"
-          icon="mdi-arrow-left" 
-          variant="text" 
-          @click="router.push({ name: 'LeadDistributionEntry' })" 
-          class="me-2"
-        ></v-btn>
-        <div>
-          <h2 class="text-h6 font-weight-bold text-primary">聯絡名單管理</h2>
-          <div class="text-caption text-grey">{{ projectName }}</div>
+      <!-- ✅ 標題列：標題可壓縮省略、右側工具列可換行，避免小螢幕下 icon 被容器裁切 -->
+      <v-col cols="12" class="d-flex align-center flex-wrap ga-2 pb-0">
+        <div class="d-flex align-center flex-grow-1 header-title-block">
+          <v-btn
+            v-if="!hideBack"
+            icon="mdi-arrow-left"
+            variant="text"
+            :size="smAndDown ? 'small' : 'default'"
+            @click="router.push({ name: 'LeadDistributionEntry' })"
+            class="me-2 flex-shrink-0"
+          ></v-btn>
+          <div class="header-title-text">
+            <h2 class="text-h6 font-weight-bold text-primary text-truncate">聯絡名單管理</h2>
+            <div class="text-caption text-grey text-truncate">{{ projectName }}</div>
+          </div>
         </div>
-        <v-spacer></v-spacer>
-        <v-btn 
-        v-if="isAdmin || isReceptionist"
-        icon="mdi-text-box-plus" 
-        variant="text" 
-        color="primary" 
-        @click="showUploadDialog = true" 
-        v-tooltip:bottom="'名單解析與分配'"
-      ></v-btn>
 
-<v-btn
-  v-if="isAdmin || isReceptionist"
-  icon="mdi-trash-can-outline"
-  variant="text"
-  color="error"
-  @click="showRecycleBin = true"
-  v-tooltip:bottom="'名單垃圾桶'"
-></v-btn>
+        <!-- 工具列：整組不被拆散，空間不足時整組換到下一行並靠右對齊 -->
+        <div class="d-flex align-center flex-wrap justify-end ga-1 flex-shrink-0 ms-auto">
+          <v-btn
+            v-if="isAdmin || isReceptionist"
+            icon="mdi-text-box-plus"
+            variant="text"
+            color="primary"
+            :size="smAndDown ? 'small' : 'default'"
+            @click="showUploadDialog = true"
+            v-tooltip:bottom="'名單解析與分配'"
+          ></v-btn>
 
-<v-btn
-  v-if="isAdmin || isReceptionist"
-  icon="mdi-cog"
-  variant="text"
-  color="grey-darken-1"
-  @click="showSettings = true"
-  v-tooltip:bottom="'聯絡名單系統設定'"
-></v-btn>
+          <v-btn
+            v-if="isAdmin || isReceptionist"
+            icon="mdi-trash-can-outline"
+            variant="text"
+            color="error"
+            :size="smAndDown ? 'small' : 'default'"
+            @click="showRecycleBin = true"
+            v-tooltip:bottom="'名單垃圾桶'"
+          ></v-btn>
 
-<!-- ✅ [危險操作] 清除該建案全部名單（僅限超級管理員） -->
-<v-btn
-  v-if="isSuperAdmin"
-  icon="mdi-delete-forever"
-  variant="text"
-  color="red-darken-3"
-  @click="openClearAllDialog"
-  v-tooltip:bottom="'清除該建案全部名單（超級管理員）'"
-></v-btn>
+          <v-btn
+            v-if="isAdmin || isReceptionist"
+            icon="mdi-cog"
+            variant="text"
+            color="grey-darken-1"
+            :size="smAndDown ? 'small' : 'default'"
+            @click="showSettings = true"
+            v-tooltip:bottom="'聯絡名單系統設定'"
+          ></v-btn>
+
+          <!-- ✅ [危險操作] 清除該建案全部名單（僅限超級管理員） -->
+          <v-btn
+            v-if="isSuperAdmin"
+            icon="mdi-delete-forever"
+            variant="text"
+            color="red-darken-3"
+            :size="smAndDown ? 'small' : 'default'"
+            @click="openClearAllDialog"
+            v-tooltip:bottom="'清除該建案全部名單（超級管理員）'"
+          ></v-btn>
+        </div>
       </v-col>
 
       <v-col cols="12">
@@ -1371,7 +1382,7 @@
                       hide-details="auto"
                       variant="outlined"
                       class="mt-1 font-weight-bold"
-                      style="max-width: 260px;"
+                      style="max-width: 320px;"
                       :menu-props="{ maxHeight: 400 }"
                       @update:model-value="(val) => { updateAssignedInfo(lead, val); lead.autoAssignInfo = null; applySorting(); }"
                     >
@@ -1381,7 +1392,9 @@
                             <div class="d-flex align-center flex-wrap">
                               <span class="font-weight-bold me-2">{{ item.raw.name }}</span>
                               <v-chip size="x-small" color="primary" variant="tonal" label class="me-1">共 {{ item.raw.totalCount }} 筆</v-chip>
-                              <v-chip size="x-small" color="teal" variant="tonal" label>本週 {{ item.raw.weekCount }} 筆</v-chip>
+                              <v-chip size="x-small" color="teal" variant="tonal" label class="me-1">本週 {{ item.raw.weekCount }} 筆</v-chip>
+                              <v-chip size="x-small" color="blue-grey" variant="tonal" label class="me-1">上週 {{ item.raw.lastWeekCount }} 筆</v-chip>
+                              <v-chip size="x-small" color="deep-purple" variant="tonal" label>本月 {{ item.raw.monthCount }} 筆</v-chip>
                             </div>
                           </template>
                           <template v-slot:subtitle>
@@ -1392,7 +1405,7 @@
                         </v-list-item>
                       </template>
                       <template v-slot:selection="{ item }">
-                        <span class="text-truncate">{{ item.raw.name }}（共 {{ item.raw.totalCount }}．週 {{ item.raw.weekCount }}）</span>
+                        <span class="text-truncate">{{ item.raw.name }}（共 {{ item.raw.totalCount }}．週 {{ item.raw.weekCount }}．月 {{ item.raw.monthCount }}）</span>
                       </template>
                     </v-select>
                     <div
@@ -1560,7 +1573,9 @@
                                         <div class="d-flex align-center flex-wrap">
                                           <span class="font-weight-bold me-2">{{ item.raw.name }}</span>
                                           <v-chip size="x-small" color="primary" variant="tonal" label class="me-1">共 {{ item.raw.totalCount }} 筆</v-chip>
-                                          <v-chip size="x-small" color="teal" variant="tonal" label>本週 {{ item.raw.weekCount }} 筆</v-chip>
+                                          <v-chip size="x-small" color="teal" variant="tonal" label class="me-1">本週 {{ item.raw.weekCount }} 筆</v-chip>
+                                          <v-chip size="x-small" color="blue-grey" variant="tonal" label class="me-1">上週 {{ item.raw.lastWeekCount }} 筆</v-chip>
+                                          <v-chip size="x-small" color="deep-purple" variant="tonal" label>本月 {{ item.raw.monthCount }} 筆</v-chip>
                                         </div>
                                       </template>
                                       <template v-slot:subtitle>
@@ -1571,7 +1586,7 @@
                                     </v-list-item>
                                   </template>
                                   <template v-slot:selection="{ item }">
-                                    <span class="text-truncate">{{ item.raw.name }}（共 {{ item.raw.totalCount }}．週 {{ item.raw.weekCount }}）</span>
+                                    <span class="text-truncate">{{ item.raw.name }}（共 {{ item.raw.totalCount }}．週 {{ item.raw.weekCount }}．月 {{ item.raw.monthCount }}）</span>
                                   </template>
                                 </v-select>
                                 <div
@@ -2986,7 +3001,8 @@ const formatYMDHM = (ms) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-// ✅ [新增] 取得本週 (週一～週日，台灣時區) 的日期字串範圍，供「本週分配數量」統計
+// ✅ [新增] 取得本週／上週 (週一～週日，台灣時區) 的日期字串範圍與本月月份字串，
+//           供「本週 / 上週 / 本月分配數量」統計
 const currentWeekRange = () => {
   const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }); // YYYY-MM-DD
   const d = new Date(todayStr); // 解析為 UTC 午夜，僅用於推算星期與加減天數
@@ -2995,12 +3011,23 @@ const currentWeekRange = () => {
   start.setUTCDate(d.getUTCDate() - mondayOffset);
   const end = new Date(start);
   end.setUTCDate(start.getUTCDate() + 6);
+  // 上週 = 本週往前推 7 天的週一～週日
+  const prevStart = new Date(start);
+  prevStart.setUTCDate(start.getUTCDate() - 7);
+  const prevEnd = new Date(start);
+  prevEnd.setUTCDate(start.getUTCDate() - 1);
   const fmt = (x) => x.toISOString().split('T')[0];
-  return { startStr: fmt(start), endStr: fmt(end) };
+  return {
+    startStr: fmt(start),
+    endStr: fmt(end),
+    prevStartStr: fmt(prevStart),
+    prevEndStr: fmt(prevEnd),
+    monthStr: todayStr.slice(0, 7) // YYYY-MM，本月分配數量以此前綴比對
+  };
 };
 
 const salesStaffWithCounts = computed(() => {
-  const { startStr, endStr } = currentWeekRange();
+  const { startStr, endStr, prevStartStr, prevEndStr, monthStr } = currentWeekRange();
   return salesStaff.value.map(staff => {
     // A. 統計資料庫中已有的名單數量
     const dbLeads = allLeads.value.filter(l => l.assignedTo === staff.id);
@@ -3012,9 +3039,11 @@ const salesStaffWithCounts = computed(() => {
     // 總計 = 現有 + 預計
     const totalCount = dbCount + previewCount;
 
-    // C. 取得該銷售名下所有名單中「最後一次被分配」的時間，並統計本週分配數
+    // C. 取得該銷售名下所有名單中「最後一次被分配」的時間，並統計本週／上週／本月分配數
     let lastAssignedMs = 0;
     let weekDbCount = 0;
+    let lastWeekDbCount = 0;
+    let monthDbCount = 0;
     dbLeads.forEach(l => {
       const ms = l.assignedAt?.toMillis ? l.assignedAt.toMillis()
                : (l.assignedAt?.toDate ? l.assignedAt.toDate().getTime() : 0);
@@ -3022,21 +3051,29 @@ const salesStaffWithCounts = computed(() => {
       if (ms) {
         const dateStr = new Date(ms).toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
         if (dateStr >= startStr && dateStr <= endStr) weekDbCount++;
+        else if (dateStr >= prevStartStr && dateStr <= prevEndStr) lastWeekDbCount++;
+        if (dateStr.startsWith(monthStr)) monthDbCount++;
       }
     });
     const lastAssignedText = lastAssignedMs ? formatYMDHM(lastAssignedMs) : '尚未分配';
 
     // 本週分配 = 資料庫中本週已分配 + 本次預覽已選擇 (即將於本週分配)
     const weekCount = weekDbCount + previewCount;
+    // 上週分配為已成定局的歷史數字，不含本次預覽
+    const lastWeekCount = lastWeekDbCount;
+    // 本月分配 = 資料庫中本月已分配 + 本次預覽已選擇 (即將於本月分配)
+    const monthCount = monthDbCount + previewCount;
 
     return {
       ...staff,
       totalCount,
       weekCount,
+      lastWeekCount,
+      monthCount,
       lastAssignedMs,
       lastAssignedText,
       // 精簡顯示格式 (下拉選單改用自訂 slot 呈現完整資訊)
-      displayName: `${staff.name}（共 ${totalCount}．本週 ${weekCount}）`
+      displayName: `${staff.name}（共 ${totalCount}．本週 ${weekCount}．本月 ${monthCount}）`
     };
   }).sort((a, b) => {
     // 🚩 排序邏輯：被分配的時間最早的排最前面
@@ -5398,6 +5435,15 @@ const handleExcelFileSelect = async (input) => {
 </style>
 
 <style scoped>
+/* ✅ 標題列自適應：標題區可被壓縮（min-width:0 才能讓 text-truncate 生效），
+   右側 icon 工具列不縮小、空間不足時整組換行，避免被容器裁切 */
+.header-title-block {
+  min-width: 0;
+}
+.header-title-text {
+  min-width: 0;
+  overflow: hidden;
+}
 .chart-center-label {
   position: absolute;
   top: 50%; /* 修改：精準置中 */

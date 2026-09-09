@@ -80,17 +80,26 @@
           聯絡狀況選項 (Status)
         </div>
         <v-card variant="outlined" class="pa-2 mb-6">
-          <v-chip-group column>
-            <v-chip
-              v-for="(opt, idx) in settings.statusOptions"
-              :key="idx"
-              closable
-              size="small"
-              @click:close="removeItem('statusOptions', idx)"
-            >
-              {{ opt }}
-            </v-chip>
-          </v-chip-group>
+          <div class="text-caption text-grey mb-1 px-1">此處順序即為回報表單、狀態篩選與統計的顯示順序，可拖曳 <v-icon size="x-small">mdi-drag</v-icon> 或用上下箭頭調整</div>
+          <draggable
+            v-model="settings.statusOptions"
+            :item-key="(el) => el"
+            handle=".option-drag-handle"
+            class="option-sort-list"
+          >
+            <template #item="{ element: opt, index: idx }">
+              <div class="option-sort-row">
+                <v-icon class="option-drag-handle" size="small" color="grey">mdi-drag</v-icon>
+                <span class="option-sort-index text-caption text-grey">{{ idx + 1 }}</span>
+                <v-chip size="small" color="primary" variant="tonal" label class="option-sort-chip">{{ opt }}</v-chip>
+                <v-spacer></v-spacer>
+                <v-btn icon="mdi-chevron-up" size="x-small" variant="text" :disabled="idx === 0" @click="moveItem('statusOptions', idx, -1)" v-tooltip:top="'上移'"></v-btn>
+                <v-btn icon="mdi-chevron-down" size="x-small" variant="text" :disabled="idx === settings.statusOptions.length - 1" @click="moveItem('statusOptions', idx, 1)" v-tooltip:top="'下移'"></v-btn>
+                <v-btn icon="mdi-close" size="x-small" variant="text" color="grey-darken-1" @click="removeItem('statusOptions', idx)" v-tooltip:top="'刪除'"></v-btn>
+              </div>
+            </template>
+          </draggable>
+          <div v-if="settings.statusOptions.length === 0" class="text-caption text-grey px-1 py-2">尚無選項，請於下方新增</div>
           <v-text-field
             v-model="newItem.status"
             label="新增選項..."
@@ -168,18 +177,26 @@
           未約原因選項 (Reason)
         </div>
         <v-card variant="outlined" class="pa-2 mb-2">
-          <v-chip-group column>
-            <v-chip
-              v-for="(opt, idx) in settings.reasonOptions"
-              :key="idx"
-              closable
-              size="small"
-              color="orange-darken-2"
-              @click:close="removeItem('reasonOptions', idx)"
-            >
-              {{ opt }}
-            </v-chip>
-          </v-chip-group>
+          <div class="text-caption text-grey mb-1 px-1">此處順序即為回報表單「未約原因」下拉的顯示順序，可拖曳 <v-icon size="x-small">mdi-drag</v-icon> 或用上下箭頭調整</div>
+          <draggable
+            v-model="settings.reasonOptions"
+            :item-key="(el) => el"
+            handle=".option-drag-handle"
+            class="option-sort-list"
+          >
+            <template #item="{ element: opt, index: idx }">
+              <div class="option-sort-row">
+                <v-icon class="option-drag-handle" size="small" color="grey">mdi-drag</v-icon>
+                <span class="option-sort-index text-caption text-grey">{{ idx + 1 }}</span>
+                <v-chip size="small" color="orange-darken-2" variant="tonal" label class="option-sort-chip">{{ opt }}</v-chip>
+                <v-spacer></v-spacer>
+                <v-btn icon="mdi-chevron-up" size="x-small" variant="text" :disabled="idx === 0" @click="moveItem('reasonOptions', idx, -1)" v-tooltip:top="'上移'"></v-btn>
+                <v-btn icon="mdi-chevron-down" size="x-small" variant="text" :disabled="idx === settings.reasonOptions.length - 1" @click="moveItem('reasonOptions', idx, 1)" v-tooltip:top="'下移'"></v-btn>
+                <v-btn icon="mdi-close" size="x-small" variant="text" color="grey-darken-1" @click="removeItem('reasonOptions', idx)" v-tooltip:top="'刪除'"></v-btn>
+              </div>
+            </template>
+          </draggable>
+          <div v-if="settings.reasonOptions.length === 0" class="text-caption text-grey px-1 py-2">尚無選項，請於下方新增</div>
           <v-text-field
             v-model="newItem.reason"
             label="新增原因..."
@@ -211,6 +228,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { db } from '@/firebase';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { useUiStore } from '@/store/uiStore';
+import draggable from 'vuedraggable';
 import {
   LEAD_STATUS_UNPROCESSED, LEAD_STATUS_LEGACY, LEAD_STATUS_COLOR_PRESETS,
   resolveLeadStatusColor, getDefaultLeadStatusColor, normalizeHexColor, hexToRgba, pruneLeadStatusColors,
@@ -296,6 +314,15 @@ const removeItem = (listKey, index) => {
   settings.value[listKey].splice(index, 1);
 };
 
+// ✅ 選項排序：上移／下移一格（拖曳由 vuedraggable 直接回寫 v-model），
+//    陣列順序即為前端各處（回報表單、篩選、統計）的顯示順序
+const moveItem = (listKey, index, delta) => {
+  const list = settings.value[listKey];
+  const target = index + delta;
+  if (target < 0 || target >= list.length) return;
+  [list[index], list[target]] = [list[target], list[index]];
+};
+
 const saveSettings = async () => {
   try {
     uiStore.setLoading(true);
@@ -326,6 +353,34 @@ const saveSettings = async () => {
 </script>
 
 <style scoped>
+/* ✅ 選項排序列表（聯絡狀況／未約原因） */
+.option-sort-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.option-sort-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: #fff;
+}
+.option-sort-row:hover { background: rgba(0, 0, 0, 0.03); }
+.option-sort-row.sortable-ghost { opacity: 0.4; background: rgba(25, 118, 210, 0.08); }
+.option-drag-handle { cursor: grab; flex-shrink: 0; }
+.option-drag-handle:active { cursor: grabbing; }
+.option-sort-index {
+  width: 18px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.option-sort-chip {
+  min-width: 0;
+  max-width: 100%;
+}
+
 /* 🎨 狀態顏色設定列表 */
 .status-color-list {
   display: flex;
