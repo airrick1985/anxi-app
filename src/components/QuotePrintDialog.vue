@@ -1,12 +1,14 @@
 <template>
   <v-dialog v-model="show" max-width="640" scrollable>
-    <v-card>
-      <v-card-title class="d-flex align-center bg-teal-darken-1 text-white py-3">
-        <v-icon start>mdi-printer-outline</v-icon>
-        列印報價單(含期款)
-        <v-spacer></v-spacer>
-        <v-btn icon="mdi-close" variant="text" size="small" @click="show = false"></v-btn>
-      </v-card-title>
+    <!-- ✅ [改版] macOS sheet 風格：淡灰標題列、白色內容、淡灰底部按鈕列 -->
+    <v-card class="mac-sheet">
+      <div class="mac-sheet-head">
+        <v-icon size="18">mdi-printer-outline</v-icon>
+        <span>列印報價單(含期款)</span>
+        <button type="button" class="mac-sheet-close" aria-label="關閉" @click="show = false">
+          <v-icon size="18">mdi-close</v-icon>
+        </button>
+      </div>
 
       <!-- ✅ 固定區：說明、銷售顧問資訊、全選（不隨戶別清單捲動） -->
       <div class="px-4 pt-3 pb-1">
@@ -33,7 +35,7 @@
             :model-value="isAllSelected"
             :indeterminate="isSomeSelected && !isAllSelected"
             label="全選"
-            color="teal-darken-1"
+            color="#0071e3"
             density="compact"
             hide-details
             @update:model-value="toggleAll"
@@ -58,7 +60,7 @@
             <template v-slot:prepend>
               <v-checkbox-btn
                 :model-value="selectedIds.includes(item.internalId)"
-                color="teal-darken-1"
+                color="#0071e3"
                 density="compact"
                 @click.stop="toggleItem(item.internalId)"
               ></v-checkbox-btn>
@@ -110,7 +112,7 @@
           <v-switch
             v-model="optShowNegotiation"
             label="顯示議價資訊"
-            color="teal-darken-1"
+            color="#0071e3"
             density="compact"
             hide-details
             class="mr-8"
@@ -118,7 +120,7 @@
           <v-switch
             v-model="optShowNotes"
             label="列印期款說明"
-            color="teal-darken-1"
+            color="#0071e3"
             density="compact"
             hide-details
             class="mr-8"
@@ -127,7 +129,7 @@
           <v-switch
             v-model="optShowPlans"
             label="顯示採用方案"
-            color="teal-darken-1"
+            color="#0071e3"
             density="compact"
             hide-details
             class="mr-8"
@@ -136,7 +138,7 @@
           <v-switch
             v-model="optShowLoan"
             label="公司借貸攤還表"
-            color="teal-darken-1"
+            color="#0071e3"
             density="compact"
             hide-details
             class="mr-8"
@@ -145,7 +147,7 @@
           <v-switch
             v-model="optShowApproval"
             label="主管簽核欄"
-            color="teal-darken-1"
+            color="#0071e3"
             density="compact"
             hide-details
             :class="{ 'mr-8': hasIntroQr }"
@@ -155,7 +157,7 @@
             v-if="hasIntroQr"
             v-model="optShowQr"
             label="建案簡介 QR Code"
-            color="teal-darken-1"
+            color="#0071e3"
             density="compact"
             hide-details
           ></v-switch>
@@ -190,12 +192,12 @@
       <!-- ✅ 報價單備註：預設收合（唯讀；編輯入口在報價設定頁工具列） -->
       <div class="remark-panel">
         <div class="d-flex align-center px-4 py-2 remark-toggle" @click="isRemarkExpanded = !isRemarkExpanded">
-          <v-icon size="small" color="blue-grey-darken-2" class="mr-1">mdi-note-text-outline</v-icon>
-          <span class="text-body-2 font-weight-medium text-blue-grey-darken-2">
+          <v-icon size="small" color="#6e6e73" class="mr-1">mdi-note-text-outline</v-icon>
+          <span class="text-body-2 font-weight-medium" style="color:#1d1d1f;">
             報價單備註（{{ remarkLoadError ? '載入失敗' : (remarkHtml ? '有內容' : '無') }}）
           </span>
           <v-spacer></v-spacer>
-          <v-icon size="small" color="blue-grey-darken-2">
+          <v-icon size="small" color="#6e6e73">
             {{ isRemarkExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}
           </v-icon>
         </div>
@@ -212,7 +214,7 @@
 
       <!-- ✅ [新增] 列印前底價守門（規格 docs/SPEC_QuoteFloorPriceApproval.md §6）：不顯示任何金額 -->
       <div v-if="floorCheck.loading" class="px-4 py-2">
-        <v-progress-linear indeterminate color="teal-darken-1" height="3"></v-progress-linear>
+        <v-progress-linear indeterminate color="#0071e3" height="3"></v-progress-linear>
         <div class="text-caption text-grey-darken-1 mt-1">正在核對報價…</div>
       </div>
       <v-alert
@@ -224,7 +226,7 @@
       >
         <div class="d-flex align-center flex-wrap ga-2">
           <span>報價核對失敗，無法列印：{{ floorCheck.error }}</span>
-          <v-btn size="small" variant="outlined" color="error" prepend-icon="mdi-refresh" @click="runFloorCheck(true)">重新核對</v-btn>
+          <button type="button" class="mac-btn mac-btn--danger" @click="runFloorCheck(true)"><v-icon size="15">mdi-refresh</v-icon><span>重新核對</span></button>
         </div>
       </v-alert>
       <template v-else>
@@ -287,17 +289,17 @@
                 <v-chip v-bind="chipProps" :color="supervisorChip(item.raw).color" size="small" label>{{ item.raw.name }}</v-chip>
               </template>
             </v-select>
-            <v-btn
-              color="red-darken-2"
-              variant="flat"
-              prepend-icon="mdi-send"
-              :loading="notifying"
-              :disabled="selectedSupervisorKeys.length === 0 || supervisorsLoading"
-              :block="smAndDown"
+            <button
+              type="button"
+              class="mac-btn mac-btn--danger-fill"
+              :class="{ 'mac-btn--block': smAndDown }"
+              :disabled="notifying || selectedSupervisorKeys.length === 0 || supervisorsLoading"
               @click="notifySupervisors"
             >
-              {{ pendingApprovalItems.length > 0 ? '通知主管' : '再次通知' }}
-            </v-btn>
+              <v-progress-circular v-if="notifying" indeterminate size="14" width="2" color="white"></v-progress-circular>
+              <v-icon v-else size="15">mdi-send</v-icon>
+              <span>{{ pendingApprovalItems.length > 0 ? '通知主管' : '再次通知' }}</span>
+            </button>
           </div>
           <div v-if="supervisorOptions.length === 0 && !supervisorsLoading" class="text-caption text-red-darken-2 mt-2">
             本案沒有可通知的主管（未綁定 LINE 且無 Email），請先完成綁定或洽系統管理員。
@@ -312,68 +314,48 @@
 
       <v-divider></v-divider>
 
-      <v-card-actions class="pa-3 flex-wrap justify-end ga-1">
-        <v-btn variant="text" @click="show = false">取消</v-btn>
-        <v-spacer></v-spacer>
+      <div class="mac-sheet-foot">
+        <button type="button" class="mac-btn" @click="show = false">取消</button>
+        <span class="mac-spacer"></span>
+        <span v-if="actionBlockReason" class="text-caption text-red-darken-2 mr-1">{{ actionBlockReason }}</span>
         <!-- ✅ [新增] 預覽：iframe 渲染與列印完全相同的版面 -->
-        <span v-if="actionBlockReason" class="text-caption text-red-darken-2 mr-2">{{ actionBlockReason }}</span>
-        <v-btn
-          color="teal-darken-1"
-          variant="outlined"
-          prepend-icon="mdi-eye-outline"
-          :disabled="actionsDisabled"
-          @click="openPdfPreview"
-        >
-          預覽
-        </v-btn>
+        <button type="button" class="mac-btn" :disabled="actionsDisabled" @click="openPdfPreview">
+          <v-icon size="15">mdi-eye-outline</v-icon><span>預覽</span>
+        </button>
         <!-- ✅ [新增] 下載 PDF：逐頁轉圖嵌入 A4 PDF 下載 -->
-        <v-btn
-          color="red-darken-1"
-          variant="tonal"
-          prepend-icon="mdi-file-pdf-box"
-          :disabled="actionsDisabled"
-          :loading="isDownloadingPdf"
-          @click="downloadPdf"
-        >
-          下載PDF
-        </v-btn>
-        <v-btn
-          color="teal-darken-1"
-          variant="flat"
-          prepend-icon="mdi-printer"
-          :disabled="actionsDisabled"
-          @click="handlePrint"
-        >
-          列印 ({{ selectedIds.length }})
-        </v-btn>
-      </v-card-actions>
+        <button type="button" class="mac-btn" :disabled="actionsDisabled || isDownloadingPdf" @click="downloadPdf">
+          <v-progress-circular v-if="isDownloadingPdf" indeterminate size="14" width="2" color="#6e6e73"></v-progress-circular>
+          <v-icon v-else size="15">mdi-file-pdf-box</v-icon>
+          <span>下載 PDF</span>
+        </button>
+        <button type="button" class="mac-btn mac-btn--primary" :disabled="actionsDisabled" @click="handlePrint">
+          <v-icon size="15">mdi-printer</v-icon><span>列印 ({{ selectedIds.length }})</span>
+        </button>
+      </div>
     </v-card>
   </v-dialog>
 
   <!-- ✅ [新增] 報價單預覽（與列印/PDF 同一份版面），可直接下載 PDF -->
   <v-dialog v-model="isPdfPreviewVisible" fullscreen transition="dialog-bottom-transition">
     <v-card class="d-flex flex-column">
-      <v-toolbar color="teal-darken-1" density="compact">
-        <v-btn icon="mdi-close" variant="text" @click="isPdfPreviewVisible = false"></v-btn>
-        <v-toolbar-title>報價單預覽（{{ selectedIds.length }} 戶）</v-toolbar-title>
-        <v-spacer></v-spacer>
-        <!-- ✅ [新增] 預覽完可直接列印（與「列印」按鈕同一份版面） -->
-        <v-btn
-          variant="text"
-          prepend-icon="mdi-printer"
-          @click="handlePrint"
-        >
-          列印
-        </v-btn>
-        <v-btn
-          variant="text"
-          prepend-icon="mdi-file-pdf-box"
-          :loading="isDownloadingPdf"
-          @click="downloadPdf"
-        >
-          下載PDF
-        </v-btn>
-      </v-toolbar>
+      <!-- ✅ [改版] 預覽工具列：macOS 淡灰標題列＋右側白底/藍底按鈕 -->
+      <div class="mac-sheet-head preview-head">
+        <button type="button" class="mac-sheet-close preview-close" aria-label="關閉預覽" @click="isPdfPreviewVisible = false">
+          <v-icon size="18">mdi-close</v-icon>
+        </button>
+        <span>報價單預覽（{{ selectedIds.length }} 戶）</span>
+        <div class="preview-actions">
+          <button type="button" class="mac-btn" :disabled="isDownloadingPdf" @click="downloadPdf">
+            <v-progress-circular v-if="isDownloadingPdf" indeterminate size="14" width="2" color="#6e6e73"></v-progress-circular>
+            <v-icon v-else size="15">mdi-file-pdf-box</v-icon>
+            <span>下載 PDF</span>
+          </button>
+          <!-- ✅ [新增] 預覽完可直接列印（與「列印」按鈕同一份版面） -->
+          <button type="button" class="mac-btn mac-btn--primary" @click="handlePrint">
+            <v-icon size="15">mdi-printer</v-icon><span>列印</span>
+          </button>
+        </div>
+      </div>
       <iframe class="pdf-preview-frame flex-grow-1" :srcdoc="previewHtml" title="報價單預覽"></iframe>
     </v-card>
   </v-dialog>
@@ -1668,6 +1650,11 @@ async function downloadPdf() {
 </script>
 
 <style scoped>
+/* ✅ [改版] 預覽視窗標題列：關閉鈕在左、按鈕群在右（mac-sheet-head 共用樣式） */
+.preview-head { flex-shrink: 0; padding-left: 8px; }
+.preview-close { margin-left: 0; }
+.preview-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
 /* ✅ [新增] 報價單預覽 iframe：填滿剩餘空間 */
 .pdf-preview-frame {
   width: 100%;
@@ -1678,9 +1665,9 @@ async function downloadPdf() {
 
 /* ✅ [新增] 列印前底價守門區塊 */
 .approval-panel {
-  border: 1px solid rgba(198, 40, 40, 0.5);
-  background: rgba(198, 40, 40, 0.04);
-  border-radius: 6px;
+  border: 1px solid rgba(214, 45, 32, 0.35);
+  background: rgba(214, 45, 32, 0.04);
+  border-radius: 10px;
   padding: 12px 14px;
 }
 .approval-row {
@@ -1699,7 +1686,7 @@ async function downloadPdf() {
 .approval-select { min-width: 220px; }
 
 .remark-panel {
-  background: #fafbfc;
+  background: #fafafc;
 }
 
 .remark-toggle {
@@ -1710,8 +1697,8 @@ async function downloadPdf() {
 .remark-preview {
   max-height: 140px;
   overflow-y: auto;
-  border: 1px solid #eceff1;
-  border-radius: 4px;
+  border: 1px solid #e5e5ea;
+  border-radius: 8px;
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.7;

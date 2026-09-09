@@ -16,7 +16,7 @@
       </div>
     </v-overlay>
 
-   <!-- ✅ [改版] 頁首工具列：對齊銷控系統 .toolbar 樣式
+   <!-- ✅ [改版] 頁首工具列：macOS 風格（淡灰毛玻璃底、細底線、統一白底/藍底按鈕、建案下拉改為 popup button 樣式）
         群組 1 建案下拉＋標題｜群組 2 返回／新增戶別／移除全部｜群組 3 活動訊息＋「功能」分群磚格選單（管理功能整合）
         手機：標題與右側鈕同列 → 建案下拉整行 → 動作鈕整行 -->
    <div class="page-toolbar">
@@ -27,22 +27,26 @@
         :items="authorizedProjects"
         item-title="name"
         item-value="id"
-        label="選擇建案"
-        variant="outlined"
+        placeholder="選擇建案"
+        variant="solo"
+        flat
         density="compact"
         hide-details
-        prepend-inner-icon="mdi-office-building-marker"
+        prepend-inner-icon="mdi-office-building-marker-outline"
+        menu-icon="mdi-unfold-more-horizontal"
         class="project-selector"
       ></v-select>
     </div>
 
     <!-- 🔐 隱藏解鎖：連點標題 8 次（或鍵盤連按 8 次 a）→ 期款類別/方式可選條件外範本；解鎖後顯示開鎖 icon，點擊重新上鎖 -->
     <span class="toolbar-title tap-unlock-target" @click="tapTemplateUnlock">
-      <v-icon size="20" color="primary" class="mr-1">mdi-file-document-edit-outline</v-icon>
-      <span class="d-none d-md-inline">{{ projectName }}-</span>報價單設定
+      <v-icon size="18" class="toolbar-title-icon">mdi-file-document-edit-outline</v-icon>
+      <span class="d-none d-md-inline toolbar-title-project">{{ projectName }}</span>
+      <span class="d-none d-md-inline toolbar-title-sep">/</span>
+      <span>報價單設定</span>
       <v-icon
         v-if="templateUnlocked"
-        size="18"
+        size="16"
         color="orange-darken-2"
         class="ml-1 template-unlock-icon"
         title="已解鎖：可選擇條件外的期款範本（點擊重新上鎖）"
@@ -54,44 +58,30 @@
 
     <div class="toolbar-group toolbar-group-main">
       <!-- 從「列印報價」(?pick=1) 進入時不提供返回（避免回到報價系統銷控模式） -->
-      <v-btn
-        v-if="!isPickEntry"
-        color="black"
-        variant="tonal"
-        prepend-icon="mdi-arrow-left"
-        :size="smAndDown ? 'small' : 'default'"
-        @click="goBack"
-      >返回銷控</v-btn>
+      <button v-if="!isPickEntry" type="button" class="mac-btn" @click="goBack">
+        <v-icon size="16">mdi-chevron-left</v-icon><span>返回銷控</span>
+      </button>
 
-      <v-btn
-        color="primary"
-        variant="flat"
-        prepend-icon="mdi-home-plus"
-        :size="smAndDown ? 'small' : 'default'"
-        @click="openUnitPicker"
-      >新增戶別</v-btn>
+      <button type="button" class="mac-btn mac-btn--primary" @click="openUnitPicker">
+        <v-icon size="16">mdi-plus</v-icon><span>新增戶別</span>
+      </button>
 
-      <v-btn
+      <button
         v-if="quoteStore.items.length > 0"
-        color="error"
-        variant="tonal"
-        prepend-icon="mdi-delete-sweep"
-        :size="smAndDown ? 'small' : 'default'"
+        type="button"
+        class="mac-btn mac-btn--danger"
         @click="confirmClearDialog = true"
-      >移除全部戶別</v-btn>
+      >
+        <v-icon size="16">mdi-trash-can-outline</v-icon><span>移除全部戶別</span>
+      </button>
     </div>
 
     <div class="toolbar-group toolbar-group-actions">
       <v-tooltip text="活動訊息" location="bottom">
         <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            icon="mdi-bullhorn-outline"
-            color="red"
-            variant="tonal"
-            :size="smAndDown ? 'small' : 'default'"
-            @click="handleOpenActivityMessage"
-          ></v-btn>
+          <button v-bind="props" type="button" class="mac-btn mac-btn--icon" aria-label="活動訊息" @click="handleOpenActivityMessage">
+            <v-icon size="17">mdi-bullhorn-outline</v-icon>
+          </button>
         </template>
       </v-tooltip>
 
@@ -104,14 +94,9 @@
         :offset="8"
       >
         <template v-slot:activator="{ props }">
-          <v-btn
-            v-bind="props"
-            color="indigo-darken-3"
-            variant="flat"
-            prepend-icon="mdi-apps"
-            append-icon="mdi-chevron-down"
-            :size="smAndDown ? 'small' : 'default'"
-          >功能</v-btn>
+          <button v-bind="props" type="button" class="mac-btn" :class="{ 'is-open': isToolsMenuOpen }">
+            <v-icon size="16">mdi-view-grid-outline</v-icon><span>功能</span><v-icon size="14" class="mac-btn-chevron">mdi-chevron-down</v-icon>
+          </button>
         </template>
         <v-card class="desktop-tools-menu" rounded="lg" elevation="8">
           <div v-for="group in toolGroups" :key="group.title" class="desktop-tools-section">
@@ -166,24 +151,14 @@
           <v-btn v-else color="primary" class="mt-4" @click="goBack">返回銷控表</v-btn>
         </div>
         <div v-else class="quote-list">
+          <!-- ✅ [重構] 表頭與 QuoteItem 桌機列同步：5 個資訊群組（戶別／房屋價格／車位／購屋條件／總價）＋ 操作欄 -->
           <div class="quote-item-header d-none d-md-flex">
-            <div class="item-cell flex-1">戶別</div>
-            <div class="item-cell flex-1">物件類型</div>
-            <div class="item-cell flex-1">面積(坪)</div>
-            <div class="item-cell flex-1">房屋總價</div>
-            <div class="item-cell flex-1">房屋單價</div>
-            <div class="item-cell flex-2">車位</div>
-            <div class="item-cell flex-1">車位價格</div>
-            <div class="item-cell flex-1">首購</div>
-            
-            <div class="item-cell flex-1" v-if="showPreferredPaymentOption">優付</div>
-
-            <div class="item-cell flex-1">總價</div>
-            <template v-if="showPackageDealColumns">
-              <div class="item-cell flex-1">配套</div>
-              <div class="item-cell flex-1">配套價</div>
-            </template>
-            <div class="item-cell flex-shrink-0" style="width: 50px;"></div>
+            <div class="qi-cell qi-col-unit">戶別</div>
+            <div class="qi-cell qi-col-house">房屋價格</div>
+            <div class="qi-cell qi-col-parking">車位</div>
+            <div class="qi-cell qi-col-options">購屋條件</div>
+            <div class="qi-cell qi-col-total">總價</div>
+            <div class="qi-cell qi-col-actions"></div>
           </div>
           <v-card v-for="item in quoteStore.items" :key="item.internalId" class="quote-item-card">
           <QuoteItem
@@ -231,16 +206,15 @@
                   :loading="loading"  ></v-text-field>
           </v-col>
           <v-col cols="12" md="8" class="text-center text-md-right">
-          <!-- ✅ [新增] 列印報價單(含期款)：勾選戶別後每戶產生一頁 A4 報價單；手機版滿版按鈕 -->
-          <v-btn
-          color="teal-darken-1"
-          :size="smAndDown ? 'large' : 'x-large'"
-          :block="smAndDown"
-          class="mb-2 mb-md-0"
-          :class="{ 'mr-3': showLegacyQuotePrintButton && !smAndDown }"
-          @click="isQuotePrintDialogVisible = true" prepend-icon="mdi-printer-outline"
-        >
-          列印報價單(含期款) </v-btn>
+          <!-- ✅ [新增] 列印報價單(含期款)：勾選戶別後每戶產生一頁 A4 報價單；macOS 主要按鈕，手機版滿版 -->
+          <button
+            type="button"
+            class="mac-btn mac-btn--primary mac-btn--lg mb-2 mb-md-0"
+            :class="{ 'mac-btn--block': smAndDown, 'mr-3': showLegacyQuotePrintButton && !smAndDown }"
+            @click="handleOpenQuotePrint"
+          >
+            <v-icon size="18">mdi-printer-outline</v-icon><span>列印報價單(含期款)</span>
+          </button>
           <!-- ✅ [停用] 舊版「列印報價單」：暫時隱藏，僅保留上方(含期款)版本。
                欲恢復顯示，將 showLegacyQuotePrintButton 改為 true 即可。 -->
           <v-btn
@@ -312,6 +286,13 @@
       :project-id="projectId"
       :project-name="projectName"
       :can-upload="canUploadActivityMessage"
+    />
+
+    <!-- ✅ [新增] 列印前配套提醒：有配套價但未勾選配套的戶別，先讓使用者決定再進入列印 -->
+    <QuotePackageReminderDialog
+      v-model="isPackageReminderVisible"
+      :units="packageReminderUnits"
+      @confirm="handlePackageReminderConfirm"
     />
 
     <!-- ✅ [新增] 列印報價單(含期款)：勾選戶別 → 每戶一頁 A4 報價單 -->
@@ -474,7 +455,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, nextTick, defineAsyncComponent } from 'vue';
 import { useToast, POSITION } from 'vue-toastification';
 import { useRoute, useRouter } from 'vue-router';
 import { useDisplay } from 'vuetify';
@@ -502,6 +483,7 @@ const PrintQuotation = defineAsyncComponent(() => import('@/views/PrintQuotation
 import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
 import QuoteUnitPickerDialog from '@/components/QuoteUnitPickerDialog.vue';
 import QuotePrintDialog from '@/components/QuotePrintDialog.vue';
+import QuotePackageReminderDialog from '@/components/QuotePackageReminderDialog.vue';
 import QuoteRemarkEditorDialog from '@/components/QuoteRemarkEditorDialog.vue';
 import QuotePackageLimitDialog from '@/components/QuotePackageLimitDialog.vue';
 import QuoteApprovalSettingDialog from '@/components/QuoteApprovalSettingDialog.vue';
@@ -509,7 +491,6 @@ import QuoteIntroUrlDialog from '@/components/QuoteIntroUrlDialog.vue';
 import QuotePlanEditorDialog from '@/components/QuotePlanEditorDialog.vue';
 import { useSalesDataStore } from '@/store/salesDataStore';
 import { toQuoteUnitData } from '@/utils/quoteUnitData';
-import { getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
 
 // ✅ [停用] 舊版「列印報價單」按鈕開關：暫時隱藏，只保留「列印報價單(含期款)」。
 // 改為 true 即可恢復顯示（相關的 openQuoteEditor / PrintQuotation 邏輯皆保留未刪除）。
@@ -665,6 +646,58 @@ const isActivityDialogVisible = ref(false);
 // ✅ [新增] 列印報價單(含期款) 對話框
 const isQuotePrintDialogVisible = ref(false);
 
+// ✅ [新增] 列印前配套提醒：找出「有配套價、達配套門檻、但尚未勾選配套」的戶別
+const isPackageReminderVisible = ref(false);
+const packageReminderUnits = ref([]);
+const packagePriceThreshold = computed(() => {
+  const project = projectStore.getProjectById(projectId.value) || projectStore.currentProject;
+  const raw = project?.quotePackageThreshold;
+  if (raw === null || raw === undefined || raw === '') return null;
+  const num = Number(raw);
+  return Number.isFinite(num) && num > 0 ? num : null;
+});
+function collectPackageReminderUnits() {
+  return quoteStore.items
+    .filter(item => {
+      const pkg = Number(item.unitDetails?.price_package_deal) || 0;
+      if (pkg <= 0 || item.usePackageDeal) return false;
+      // 與 QuoteItem 的 isPackageDealAllowed 一致：以未套配套的原始總價（房屋表價＋車位）判斷門檻
+      if (packagePriceThreshold.value !== null) {
+        const housePrice = Number(item.unitDetails?.price_list_house_total) || 0;
+        const parkingTotal = quoteStore.getParkingTotalPrice(item.internalId);
+        if ((housePrice + parkingTotal) < packagePriceThreshold.value) return false;
+      }
+      return true;
+    })
+    .map(item => {
+      const originalTotal = quoteStore.getNegotiatedHousePrice(item.internalId) + quoteStore.getParkingTotalPrice(item.internalId);
+      const packagePrice = Number(item.unitDetails?.price_package_deal) || 0;
+      return {
+        internalId: item.internalId,
+        unitId: item.unitId,
+        propertyType: item.unitDetails?.propertyType || item.unitDetails?.layout || '',
+        originalTotal,
+        packagePrice,
+        packageAmount: originalTotal - packagePrice
+      };
+    });
+}
+function handleOpenQuotePrint() {
+  const pending = collectPackageReminderUnits();
+  if (pending.length === 0) {
+    isQuotePrintDialogVisible.value = true;
+    return;
+  }
+  packageReminderUnits.value = pending;
+  isPackageReminderVisible.value = true;
+}
+async function handlePackageReminderConfirm(selectedIds) {
+  (selectedIds || []).forEach(id => quoteStore.updateUnitField(id, 'usePackageDeal', true));
+  // 等 QuoteItem 的 watcher 依新配套狀態同步 printPaymentData 後，再開啟列印視窗
+  await nextTick();
+  isQuotePrintDialogVisible.value = true;
+}
+
 // ✅ [新增] 報價單備註編輯器對話框
 const isRemarkEditorVisible = ref(false);
 
@@ -710,10 +743,6 @@ const canUploadActivityMessage = computed(() => {
   return userStore.hasProjectPermission('銷控系統', projectName.value);
 });
 
-// ✅ [新增] 判斷是否顯示優付欄位 (與 PaymentSettings.vue 邏輯一致)
-const showPreferredPaymentOption = computed(() => {
-    return getProjectQuoteDefaults(salesProject.value || projectStore.currentProject).preferredPayment === true;
-});
 // 報價系統可見欄位：以銷控資料 store 的即時專案文件為準（含 quoteFieldDefaults）
 const salesProject = computed(() => salesDataStore.getProjectData(projectId.value)?.project || null);
 
@@ -1305,19 +1334,27 @@ function runTool(action) {
 
 <style scoped>
 
-/* ✅ [優化] 功能列：標題列＋動作列兩層，動作列以 gap 均勻排版（取代原 mr-4） */
-/* ✅ [改版] 頁首工具列：樣式對齊銷控系統 .toolbar（白底、細底線、群組＋分隔線）
+/* ✅ [改版] 頁首工具列：macOS 風格（淡灰毛玻璃底、細底線、群組＋分隔線）
    以負邊距貼齊 v-container 邊緣，左側留空給全域浮動漢堡鈕（fixed 左上角，寬約 50px） */
 .page-toolbar {
+  --tb-text: #1d1d1f;
+  --tb-secondary: #6e6e73;
+  --tb-tertiary: #aeaeb2;
+  --tb-accent: #0071e3;
+  --tb-danger: #d62d20;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   margin: -16px -16px 14px;
-  padding: 6px 12px 6px 58px;
-  row-gap: 6px;
+  padding: 8px 14px 8px 58px;
+  row-gap: 8px;
   column-gap: 12px;
-  background-color: #ffffff;
-  border-bottom: 1px solid #eceff1;
+  background: rgba(246, 246, 248, 0.92);
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+  color: var(--tb-text);
 }
 .toolbar-group {
   display: flex;
@@ -1331,24 +1368,29 @@ function runTool(action) {
 }
 .toolbar-divider {
   width: 1px;
-  height: 28px;
-  background-color: #e0e0e0;
+  height: 22px;
+  background-color: rgba(0, 0, 0, 0.12);
   flex-shrink: 0;
   align-self: center;
 }
 .toolbar-title {
   display: inline-flex;
   align-items: center;
-  font-size: 1.15rem;
+  gap: 4px;
+  font-size: 15px;
   font-weight: 600;
-  color: #37474f;
+  letter-spacing: -0.1px;
+  color: var(--tb-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
   flex: 0 1 auto;
-  max-width: 320px;
+  max-width: 360px;
 }
+.toolbar-title-icon { color: var(--tb-secondary); margin-right: 2px; }
+.toolbar-title-project { color: var(--tb-secondary); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.toolbar-title-sep { color: var(--tb-tertiary); font-weight: 400; margin: 0 2px; }
 /* 🔐 隱藏解鎖點按目標：無可點擊暗示、防連點選取文字 */
 .tap-unlock-target {
   user-select: none;
@@ -1360,24 +1402,40 @@ function runTool(action) {
   cursor: pointer;
   flex-shrink: 0;
 }
+
+/* 建案下拉：macOS popup button（白底、7px 圓角、細陰影） */
 .project-selector {
-  min-width: 170px;
-  max-width: 220px;
+  min-width: 190px;
+  max-width: 240px;
 }
+.project-selector :deep(.v-field) {
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tb-text);
+}
+.project-selector :deep(.v-field--focused) { box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.project-selector :deep(.v-field__input) { min-height: 30px; padding-top: 0; padding-bottom: 0; font-size: 13px; }
+.project-selector :deep(.v-field__prepend-inner .v-icon) { color: var(--tb-secondary); font-size: 17px; opacity: 1; }
+.project-selector :deep(.v-field__append-inner .v-icon) { color: var(--tb-secondary); font-size: 16px; opacity: 1; }
+
 @media (max-width: 1400px) {
   .toolbar-divider { display: none; }
 }
 /* 手機：第一列 標題＋右側鈕，第二列 建案下拉整行，第三列 動作鈕平分寬度 */
 @media (max-width: 959px) {
   .page-toolbar { padding: 8px 10px 8px 54px; column-gap: 8px; }
-  .toolbar-title { order: 1; flex: 1 1 0; font-size: 1.05rem; }
+  .toolbar-title { order: 1; flex: 1 1 0; font-size: 14px; }
   .toolbar-group-actions { order: 2; margin-left: 0; }
   .toolbar-group-project { order: 3; flex: 1 1 100%; }
   .project-selector { max-width: none; width: 100%; }
   .toolbar-group-main { order: 4; flex: 1 1 100%; flex-wrap: nowrap; }
-  .toolbar-group-main > .v-btn { flex: 1 1 0; min-width: 0; }
+  .toolbar-group-main > .mac-btn { flex: 1 1 0; min-width: 0; padding: 0 8px; }
+  .toolbar-group-main > .mac-btn span { overflow: hidden; text-overflow: ellipsis; }
 }
-/* 「功能」下拉選單：分群磚格（與銷控系統桌面版功能選單一致） */
+/* 「功能」下拉選單：分群磚格（與銷控系統桌面版功能選單一致，配色改為工具列同套中性色） */
 .desktop-tools-menu {
   width: 396px;
   max-width: calc(100vw - 24px);
@@ -1389,7 +1447,7 @@ function runTool(action) {
 .desktop-tools-label {
   font-size: .75rem;
   font-weight: 700;
-  color: #8493a8;
+  color: #6e6e73;
   letter-spacing: .05em;
   margin-bottom: 6px;
 }
@@ -1404,27 +1462,49 @@ function runTool(action) {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: #f7f9fc;
-  border: 1px solid #e6ebf2;
-  border-radius: 12px;
+  background: #f5f5f7;
+  border: 1px solid #e5e5ea;
+  border-radius: 10px;
   padding: 12px 6px;
   min-height: 72px;
   cursor: pointer;
-  color: #44546a;
+  color: #1d1d1f;
   font: inherit;
   transition: background-color .15s ease, border-color .15s ease;
 }
-.desktop-tool:hover { background: #eef3fa; border-color: #c9d7ec; }
-.desktop-tool:active { background: #e8eef7; }
-.desktop-tool-icon { color: #1a3a6e; }
+.desktop-tool:hover { background: #ebebf0; border-color: #d2d2d7; }
+.desktop-tool:active { background: #e1e1e6; }
+.desktop-tool-icon { color: #0071e3; }
 .desktop-tool-label { font-size: .74rem; line-height: 1.25; text-align: center; }
-.quote-item-header { font-weight: bold; padding: 8px 16px; background-color: #f5f5f5; border-radius: 4px; margin-bottom: 8px; }
-.quote-item-header .item-cell { display: flex; justify-content: center; align-items: center; text-align: center; }
+/* ✅ [重構] 報價項目表頭／卡片：macOS 風格（灰色小標、平面白卡、細邊框、圓角） */
+.quote-item-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #6e6e73;
+}
+.quote-item-header .qi-cell { display: flex; align-items: center; padding: 0 10px; min-width: 0; }
+.qi-col-unit { flex: 1.1 1 0; }
+.qi-col-house { flex: 1.5 1 0; }
+.qi-col-parking { flex: 1.2 1 0; }
+.qi-col-options { flex: 1.9 1 0; }
+.qi-col-total { flex: 1.1 1 0; justify-content: flex-end; }
+.qi-col-actions { flex: 0 0 44px; padding: 0 !important; }
 .flex-1 { flex: 1; }
 .flex-2 { flex: 2; }
 .flex-shrink-0 { flex-shrink: 0; }
-.quote-item-card { margin-bottom: 12px; transition: box-shadow 0.2s ease-in-out; }
-.quote-item-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.quote-item-card {
+  margin-bottom: 10px;
+  border: 1px solid #e5e5ea;
+  border-radius: 12px;
+  box-shadow: none !important;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+.quote-item-card:hover { border-color: #c7c7cc; }
 .iframe-container { width: 100%; height: calc(100vh - 48px); overflow: hidden; }
 .iframe-container iframe { width: 100%; height: 100%; border: none; }
 .qr-code-container { border: 1px solid #e0e0e0; padding: 16px; border-radius: 8px; background-color: white; }

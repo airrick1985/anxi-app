@@ -12,13 +12,14 @@
          <v-icon v-if="hasHouseholdImages" size="small" class="ml-1">mdi-image-multiple-outline</v-icon>
        </span>
         <v-btn
-          color="red"
-          variant="flat"
-     size="small"
-     @click="emit('remove')"
-    >
-     移除本戶
-    </v-btn>
+          icon="mdi-trash-can-outline"
+          color="red-darken-1"
+          variant="text"
+          size="small"
+          title="移除本戶"
+          aria-label="移除本戶"
+          @click="emit('remove')"
+        ></v-btn>
       </div>
 
       <div class="text-caption text-grey-darken-1 mb-2">
@@ -119,132 +120,139 @@
    </v-list>
     </div>
 
-    <div v-else class="quote-item-row">
-      <div
-        class="item-cell flex-1 text-h6 font-weight-bold text-primary"
-        :class="{ 'unit-id-clickable': hasHouseholdImages }"
-        :title="hasHouseholdImages ? '點擊檢視戶別圖片' : ''"
-        @click="openImageLightbox"
-      >
-        {{ item.unitId }}
-        <v-icon v-if="hasHouseholdImages" size="small" class="ml-1">mdi-image-multiple-outline</v-icon>
-      </div>
-   
-   <div class="item-cell flex-1 text-body-2 text-grey-darken-2">
-        {{ item.unitDetails.propertyType || item.unitDetails.layout || '-' }}
-      </div>
-   
-   
-   <div class="item-cell flex-1">
-    <v-menu open-on-click location="top">
-     <template v-slot:activator="{ props: menuProps }">
-      <v-btn v-bind="menuProps" variant="tonal" density="compact">
-       {{ formatNumber(item.unitDetails.area_house_ping) }} 坪
-      </v-btn>
-     </template>
-     <v-card min-width="300">
-      <v-card-title class="text-subtitle-1 font-weight-bold pa-3 text-center bg-grey-lighten-5">
-       詳細面積資訊
-      </v-card-title>
-      <v-divider></v-divider>
-      <v-table density="compact">
-       <tbody>
-        <tr class="font-weight-bold bg-blue-grey-lighten-5">
-         <td>房屋總面積</td>
-         <td class="text-right">{{ formatNumber(item.unitDetails.area_house_ping) }} 坪{{ formatSqmSuffix(item.unitDetails.area_house_sqm) }}</td>
-        </tr>
-        <tr v-for="(detail, i) in areaDetails" :key="i">
-         <td class="text-grey-darken-1">{{ detail.label }}</td>
-         <td class="text-right">
-          {{ detail.isPercentage ? formatPercentage(detail.value) : `${formatNumber(detail.value)} ${detail.unit}${formatSqmSuffix(detail.sqm)}` }}
-         </td>
-        </tr>
-       </tbody>
-      </v-table>
-     </v-card>
-    </v-menu>
-   </div>
+    <!-- ✅ [重構] 桌機報價項目列：macOS 風格，13 欄整併為 5 個資訊群組（戶別／房屋價格／車位／購屋條件／總價）＋ 刪除 -->
+    <div v-else class="quote-item-row qi-row">
 
-   <div class="item-cell flex-1 highlight-dark">
-    <div class="d-flex flex-column align-center" style="width: 100%;">
-      <div class="d-flex align-center justify-center gap-2">
-        <span>{{ displayHousePrice }} 萬</span>
-        <v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip>
-        <!-- ✅ 銷控「議價開關」關閉 → 紅色「不可議價」chip 取代議價調整按鈕 -->
-        <v-chip v-if="isNegotiationLocked" size="x-small" color="error" variant="flat" label class="font-weight-bold no-negotiation-chip" title="銷控系統已關閉此戶議價開關">不可議價</v-chip>
-        <template v-else>
-          <v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" :disabled="isNegotiationDisabled" @click="openNegotiationDialog" :title="negotiationDisabledHint || '議價調整'"></v-btn>
-          <v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn>
-        </template>
+      <!-- 戶別：編號 + 類型 · 面積（面積可點開詳細） -->
+      <div class="qi-cell qi-col-unit">
+        <div class="qi-stack">
+          <span
+            class="qi-unit-id"
+            :class="{ 'unit-id-clickable': hasHouseholdImages }"
+            :title="hasHouseholdImages ? '點擊檢視戶別圖片' : ''"
+            @click="openImageLightbox"
+          >
+            {{ item.unitId }}
+            <v-icon v-if="hasHouseholdImages" size="14" class="ml-1">mdi-image-multiple-outline</v-icon>
+          </span>
+          <span class="qi-caption">
+            <span>{{ item.unitDetails.propertyType || item.unitDetails.layout || '-' }}</span>
+            <span class="qi-dot">·</span>
+            <v-menu open-on-click location="bottom start">
+              <template v-slot:activator="{ props: menuProps }">
+                <button type="button" v-bind="menuProps" class="qi-link" title="查看詳細面積">
+                  {{ formatNumber(item.unitDetails.area_house_ping) }} 坪
+                </button>
+              </template>
+              <v-card min-width="300" class="qi-popover">
+                <div class="qi-popover-title">詳細面積資訊</div>
+                <v-table density="compact">
+                  <tbody>
+                    <tr class="font-weight-bold">
+                      <td>房屋總面積</td>
+                      <td class="text-right">{{ formatNumber(item.unitDetails.area_house_ping) }} 坪{{ formatSqmSuffix(item.unitDetails.area_house_sqm) }}</td>
+                    </tr>
+                    <tr v-for="(detail, i) in areaDetails" :key="i">
+                      <td class="text-grey-darken-1">{{ detail.label }}</td>
+                      <td class="text-right">
+                        {{ detail.isPercentage ? formatPercentage(detail.value) : `${formatNumber(detail.value)} ${detail.unit}${formatSqmSuffix(detail.sqm)}` }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </v-card>
+            </v-menu>
+          </span>
+        </div>
       </div>
-      <!-- ✅ [新增] 露臺戶表價拆分：房屋(不含露臺) ＋ 露臺 -->
-      <div v-if="showTerraceSplit" class="terrace-split">
-        房屋 {{ formatNumber(item.unitDetails.price_list_house_only) }}
-        <span class="terrace-split-plus">＋</span>
-        露臺 {{ formatNumber(item.unitDetails.price_list_terrace) }}
-        <span class="terrace-split-area">({{ formatNumber(item.unitDetails.area_terrace_ping, 2) }} 坪)</span>
-      </div>
-    </div>
-   </div>
-   <div class="item-cell flex-1">
-    <div class="d-flex flex-column align-center" style="width: 100%;">
-      <span>{{ displayUnitPrice }} 萬/坪</span>
-      <!-- ✅ [新增] 露臺戶：房屋/露臺單價分開呈現 -->
-      <div v-if="showTerraceUnitSplit" class="terrace-split">
-        <span class="terrace-split-tag">露臺</span> {{ displayTerraceUnitPrice }} 萬/坪
-      </div>
-    </div>
-   </div>
-   <div class="item-cell flex-2">
-    <v-btn variant="tonal" @click="openParkingModal">{{ parkingDisplayText }}</v-btn>
-    <v-btn v-if="canApplyParking" icon="mdi-content-copy" size="x-small" variant="text" color="primary"
-      class="ml-1" title="套用車位至其他戶別" @click="openApplyParkingDialog"></v-btn>
-   </div>
-   <div class="item-cell flex-1 highlight-dark"><span>{{ formattedParkingPrice }}</span></div>
-   
-   <div class="item-cell flex-1">
-    <v-btn-toggle
-      v-model="isFirstTimeBuyerModel"
-      mandatory
-      density="comfortable"
-      color="primary"
-      variant="outlined"
-      divided
-    >
-      <v-btn value="是" size="small">首購</v-btn>
-      <v-btn value="否" size="small">非首購</v-btn>
-    </v-btn-toggle>
-   </div>
 
-   <div class="item-cell flex-1" v-if="showPreferredPaymentOption">
-      <v-checkbox 
-        v-model="usePreferredPaymentModel" 
-        label="優付"
-        color="black"
-        
-        hide-details
-        :disabled="!isPreferredPaymentEligible"
-      ></v-checkbox>
-   </div>
-   <div class="item-cell flex-1 final-price">{{ finalTotalPrice.toLocaleString() }} 萬</div>
-   
-   <template v-if="showPackageDeal">
-    
-    <div class="item-cell flex-1">
-      <v-checkbox
-        v-model="usePackageDealModel"
-        hide-details
-        :disabled="!isPackageDealAllowed"
-        :title="packageDisabledHint"
-      ></v-checkbox>
-    </div>
-    
-    <div class="item-cell flex-1 final-price">{{ packagePrice.toLocaleString() }} 萬</div>
-   </template>
+      <!-- 房屋價格：總價（含議價）+ 單價；露臺戶附拆分 -->
+      <div class="qi-cell qi-col-house">
+        <div class="qi-stack">
+          <div class="qi-price-line">
+            <span class="qi-price">{{ displayHousePrice }} <small>萬</small></span>
+            <span v-if="hasNegotiation" class="qi-badge" :class="negotiationDelta < 0 ? 'qi-badge--down' : 'qi-badge--up'">
+              {{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬
+            </span>
+            <span v-if="isNegotiationLocked" class="qi-badge qi-badge--locked" title="銷控系統已關閉此戶議價開關">不可議價</span>
+            <template v-else>
+              <button type="button" class="qi-icon-btn" :disabled="isNegotiationDisabled" :title="negotiationDisabledHint || '議價調整'" @click="openNegotiationDialog">
+                <v-icon size="15">mdi-percent-outline</v-icon>
+              </button>
+              <button v-if="hasNegotiation" type="button" class="qi-icon-btn" title="恢復原始價格" @click="resetNegotiation">
+                <v-icon size="15">mdi-restore</v-icon>
+              </button>
+            </template>
+          </div>
+          <span class="qi-caption">
+            {{ displayUnitPrice }} 萬/坪
+            <template v-if="showTerraceUnitSplit"><span class="qi-dot">·</span>露臺 {{ displayTerraceUnitPrice }} 萬/坪</template>
+          </span>
+          <span v-if="showTerraceSplit" class="qi-caption qi-caption--muted">
+            房屋 {{ formatNumber(item.unitDetails.price_list_house_only) }} ＋ 露臺 {{ formatNumber(item.unitDetails.price_list_terrace) }}
+            <span class="qi-dim">({{ formatNumber(item.unitDetails.area_terrace_ping, 2) }} 坪)</span>
+          </span>
+        </div>
+      </div>
 
-   <div class="item-cell flex-shrink-0">
-    <v-btn color="red" variant="flat" size="small" @click="emit('remove')">移除本戶</v-btn>
-   </div>
+      <!-- 車位：編號按鈕 + 價格 -->
+      <div class="qi-cell qi-col-parking">
+        <div class="qi-stack">
+          <div class="qi-price-line">
+            <button type="button" class="qi-pill-btn" :class="{ 'qi-pill-btn--empty': item.selectedParking.length === 0 }" @click="openParkingModal">
+              <v-icon v-if="item.selectedParking.length === 0" size="14" class="mr-1">mdi-plus</v-icon>{{ parkingDisplayText }}
+            </button>
+            <button v-if="canApplyParking" type="button" class="qi-icon-btn" title="套用車位至其他戶別" @click="openApplyParkingDialog">
+              <v-icon size="15">mdi-content-copy</v-icon>
+            </button>
+          </div>
+          <span class="qi-caption">{{ formattedParkingPrice }}</span>
+        </div>
+      </div>
+
+      <!-- 購屋條件：首購分段控制 + 優付／配套切換 -->
+      <div class="qi-cell qi-col-options">
+        <div class="qi-options">
+          <div class="qi-segment" role="radiogroup" aria-label="首購">
+            <button type="button" class="qi-segment-btn" :class="{ 'is-active': isFirstTimeBuyerModel === '是' }" role="radio" :aria-checked="isFirstTimeBuyerModel === '是'" @click="isFirstTimeBuyerModel = '是'">首購</button>
+            <button type="button" class="qi-segment-btn" :class="{ 'is-active': isFirstTimeBuyerModel === '否' }" role="radio" :aria-checked="isFirstTimeBuyerModel === '否'" @click="isFirstTimeBuyerModel = '否'">非首購</button>
+          </div>
+          <button
+            v-if="showPreferredPaymentOption"
+            type="button"
+            class="qi-toggle"
+            :class="{ 'is-on': usePreferredPaymentModel }"
+            :disabled="!isPreferredPaymentEligible"
+            :aria-pressed="usePreferredPaymentModel"
+            @click="usePreferredPaymentModel = !usePreferredPaymentModel"
+          ><v-icon size="13" class="qi-toggle-check">mdi-check</v-icon>優付</button>
+          <button
+            v-if="showPackageDeal"
+            type="button"
+            class="qi-toggle"
+            :class="{ 'is-on': usePackageDealModel }"
+            :disabled="!isPackageDealAllowed"
+            :title="packageDisabledHint"
+            :aria-pressed="usePackageDealModel"
+            @click="usePackageDealModel = !usePackageDealModel"
+          ><v-icon size="13" class="qi-toggle-check">mdi-check</v-icon>配套</button>
+        </div>
+      </div>
+
+      <!-- 總價：主數字；配套開啟時附配套價 -->
+      <div class="qi-cell qi-col-total">
+        <div class="qi-stack qi-stack--end">
+          <span class="qi-total">{{ finalTotalPrice.toLocaleString() }} <small>萬</small></span>
+          <span v-if="showPackageDeal && usePackageDealModel" class="qi-caption qi-caption--accent">配套 {{ packagePrice.toLocaleString() }} 萬</span>
+        </div>
+      </div>
+
+      <!-- 刪除本戶 -->
+      <div class="qi-cell qi-col-actions">
+        <button type="button" class="qi-icon-btn qi-icon-btn--danger" title="移除本戶" aria-label="移除本戶" @click="emit('remove')">
+          <v-icon size="17">mdi-trash-can-outline</v-icon>
+        </button>
+      </div>
     </div>
 
 <!-- ✅ [優化] 付款方式展開列：整列可點擊、狀態一目了然；選擇方案與已套用方案 chips 集中於此，不再塞在表格欄位內 -->
@@ -264,38 +272,30 @@
     </span>
     <v-icon size="18" class="payment-toggle-icon">mdi-cash-multiple</v-icon>
     <span class="payment-toggle-label">付款方式</span>
-    <span class="payment-toggle-state">{{ isPaymentDetailsVisible ? '收合明細' : '展開明細' }}</span>
-    <v-chip
-      v-if="hasNewTemplates"
-      size="x-small"
-      :color="isManualTemplateActive ? 'orange-darken-2' : 'green-darken-1'"
-      variant="flat"
-      class="payment-toggle-mode"
-    >{{ isManualTemplateActive ? '手動指定' : '自動判斷' }}</v-chip>
     <span v-if="paymentSummaryText" class="payment-toggle-summary" :title="paymentSummaryText">{{ paymentSummaryText }}</span>
   </div>
+  <!-- ✅ [優化] 選擇方案：置於付款方式列右側（方案決定下方期款範本），macOS 藍色小按鈕；已套用方案改為灰色標籤 -->
   <div class="payment-toggle-side" @click.stop @keydown.stop>
-    <div v-if="appliedPlansList.length > 0" class="d-flex flex-wrap ga-1">
-      <v-chip
+    <div v-if="appliedPlansList.length > 0" class="plan-tags">
+      <span
         v-for="ap in appliedPlansList"
         :key="ap.planId"
-        size="x-small"
-        color="deep-purple-darken-1"
-        :variant="isPlanModified(ap) ? 'outlined' : 'flat'"
-        :class="{ 'plan-chip-modified': isPlanModified(ap) }"
-        closable
-        @click:close="removeAppliedPlan(ap)"
-      >{{ ap.planName }}{{ isPlanModified(ap) ? '（已修改）' : '' }}</v-chip>
+        class="plan-tag"
+        :class="{ 'plan-tag--modified': isPlanModified(ap) }"
+        :title="isPlanModified(ap) ? '已套用此方案，但內容已手動修改' : '已套用方案'"
+      >
+        <v-icon size="12" class="plan-tag-icon">mdi-star-four-points</v-icon>
+        <span class="plan-tag-name">{{ ap.planName }}</span>
+        <span v-if="isPlanModified(ap)" class="plan-tag-note">已修改</span>
+        <button type="button" class="plan-tag-close" title="移除方案" aria-label="移除方案" @click="removeAppliedPlan(ap)">
+          <v-icon size="12">mdi-close</v-icon>
+        </button>
+      </span>
     </div>
-    <!-- ✅ [優化] 選擇方案：加大尺寸、置於展開列最右側醒目位置；手機版整行滿版 -->
-    <v-btn
-      :size="isMobile ? 'large' : 'default'"
-      :block="isMobile"
-      class="plan-select-btn plan-select-btn--hero"
-      prepend-icon="mdi-star-box-multiple"
-      elevation="3"
-      @click="isPlanPickerVisible = true"
-    >選擇方案</v-btn>
+    <button type="button" class="plan-select-btn" @click="isPlanPickerVisible = true">
+      <v-icon size="15" class="plan-select-btn-icon">mdi-star-four-points-outline</v-icon>
+      選擇方案
+    </button>
   </div>
 </div>
 
@@ -2314,42 +2314,26 @@ function isPlanModified(appliedPlan) {
   opacity: 0.7;
 }
 
-/* ✅ [新增] 選擇方案按鈕：漸層醒目樣式 */
-.plan-select-btn {
-  background: linear-gradient(135deg, #5e35b1, #d81b60);
-  color: #fff !important;
-  box-shadow: 0 2px 6px rgba(94, 53, 177, 0.35);
-}
-.plan-chip-modified {
-  border-style: dashed !important;
-}
 
-/* ✅ [優化] 付款方式展開列：整列可點擊、左側色條 + 大箭頭，展開時轉色 */
+/* ✅ [優化] 付款方式展開列：macOS 風格淡灰列，整列可點擊，展開時僅以箭頭與底色提示 */
 .payment-toggle-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px 16px;
   min-height: 48px;
-  padding: 6px 12px 6px 10px;
-  margin-top: 4px;
-  border-top: 1px solid #e3e8ee;
-  border-left: 4px solid #90a4ae;
-  background: linear-gradient(90deg, #f4f7fa, #fafbfc);
+  padding: 6px 12px;
+  border-top: 1px solid #ececf0;
+  background: #fafafa;
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.15s, border-color 0.15s;
+  transition: background-color 0.15s;
   outline: none;
 }
-.payment-toggle-bar:hover { background: #eef3f8; border-left-color: #1976d2; }
-.payment-toggle-bar:focus-visible { box-shadow: inset 0 0 0 2px rgba(25, 118, 210, 0.45); }
-.payment-toggle-bar.is-open {
-  background: #e3f2fd;
-  border-left-color: #1976d2;
-  border-bottom: 1px solid #bbdefb;
-}
-.payment-toggle-bar.is-mobile { flex-wrap: wrap; padding: 8px 10px; margin-top: 0; border: 1px solid #e0e0e0; border-left: 4px solid #90a4ae; }
-.payment-toggle-bar.is-mobile.is-open { border-left-color: #1976d2; }
+.payment-toggle-bar:hover { background: #f2f2f7; }
+.payment-toggle-bar:focus-visible { box-shadow: inset 0 0 0 2px rgba(0, 113, 227, 0.35); }
+.payment-toggle-bar.is-open { background: #f2f6fc; border-bottom: 1px solid #e3e9f2; }
+.payment-toggle-bar.is-mobile { flex-wrap: wrap; padding: 8px 10px; margin-top: 0; border: 1px solid #e0e0e0; border-top: 1px solid #e0e0e0; }
 .payment-toggle-main {
   display: flex;
   align-items: center;
@@ -2361,19 +2345,16 @@ function isPlanModified(appliedPlan) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #cfd8dc;
-  color: #37474f;
-  transition: transform 0.2s ease, background-color 0.15s;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: #6e6e73;
+  transition: transform 0.2s ease, color 0.15s;
   flex-shrink: 0;
 }
-.payment-toggle-chevron.is-open { transform: rotate(180deg); background: #1976d2; color: #fff; }
-.payment-toggle-icon { color: #546e7a; flex-shrink: 0; }
-.payment-toggle-label { font-weight: 700; font-size: 0.95rem; color: #263238; white-space: nowrap; }
-.payment-toggle-state { font-size: 0.8rem; color: #1976d2; white-space: nowrap; }
-.payment-toggle-mode { flex-shrink: 0; }
+.payment-toggle-chevron.is-open { transform: rotate(180deg); color: #0071e3; }
+.payment-toggle-icon { color: #8e8e93; flex-shrink: 0; }
+.payment-toggle-label { font-weight: 600; font-size: 0.9rem; color: #1d1d1f; white-space: nowrap; }
 .payment-toggle-summary {
   font-size: 0.8rem;
   color: #607d8b;
@@ -2392,42 +2373,196 @@ function isPlanModified(appliedPlan) {
   flex-shrink: 0;
   cursor: default;
 }
-.payment-toggle-bar.is-mobile .payment-toggle-side { width: 100%; justify-content: space-between; }
-.payment-toggle-bar.is-mobile .payment-toggle-side > .plan-select-btn--hero { width: 100%; margin-top: 2px; }
+.payment-toggle-bar.is-mobile .payment-toggle-side { width: 100%; justify-content: flex-start; }
+.payment-toggle-bar.is-mobile .payment-toggle-side > .plan-select-btn { width: 100%; height: 36px; margin-top: 2px; }
 
-/* ✅ [優化] 選擇方案主按鈕：加大字級與內距、動態光暈，讓它成為該列最醒目的操作 */
-.plan-select-btn--hero {
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  padding-inline: 20px !important;
-  min-height: 40px;
-  border-radius: 10px;
-  box-shadow: 0 3px 10px rgba(94, 53, 177, 0.45), 0 0 0 0 rgba(216, 27, 96, 0.5);
-  animation: plan-btn-pulse 2.4s ease-out infinite;
-  transition: transform 0.15s, box-shadow 0.15s;
+/* ✅ [優化] 選擇方案：macOS 預設按鈕（藍底、細微漸層、7px 圓角），不再脈動 */
+.plan-select-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #2b8cf2, #0a6fdc);
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.18), inset 0 0.5px 0 rgba(255, 255, 255, 0.28);
+  transition: filter 0.12s, transform 0.12s;
 }
-.plan-select-btn--hero:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 5px 14px rgba(94, 53, 177, 0.55);
-  animation: none;
+.plan-select-btn:hover { filter: brightness(1.06); }
+.plan-select-btn:active { filter: brightness(0.92); transform: translateY(0.5px); }
+.plan-select-btn:focus-visible { outline: 2px solid rgba(0, 113, 227, 0.4); outline-offset: 2px; }
+.plan-select-btn-icon { opacity: 0.9; }
+
+/* 已套用方案標籤：灰底膠囊、可移除；已手動修改者改為虛線框 */
+.plan-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.plan-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border-radius: 12px;
+  background: #eef2f8;
+  color: #3a4a63;
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 220px;
 }
-.plan-select-btn--hero :deep(.v-btn__prepend) { margin-inline-end: 8px; }
-.plan-select-btn--hero :deep(.v-icon) { font-size: 1.3rem; }
-@keyframes plan-btn-pulse {
-  0%   { box-shadow: 0 3px 10px rgba(94, 53, 177, 0.45), 0 0 0 0 rgba(216, 27, 96, 0.45); }
-  70%  { box-shadow: 0 3px 10px rgba(94, 53, 177, 0.45), 0 0 0 10px rgba(216, 27, 96, 0); }
-  100% { box-shadow: 0 3px 10px rgba(94, 53, 177, 0.45), 0 0 0 0 rgba(216, 27, 96, 0); }
+.plan-tag-icon { color: #0071e3; }
+.plan-tag-name { overflow: hidden; text-overflow: ellipsis; }
+.plan-tag-note { color: #b26a00; font-size: 10.5px; }
+.plan-tag--modified { background: #fff; box-shadow: inset 0 0 0 1px #c7c7cc; }
+.plan-tag--modified .plan-tag-icon { color: #b26a00; }
+.plan-tag-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
+  color: #8e8e93;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
 }
+.plan-tag-close:hover { background: rgba(0, 0, 0, 0.08); color: #1d1d1f; }
 .payment-toggle-bar.is-mobile .payment-toggle-summary { white-space: normal; }
 
-/* Styles remain the same */
-.quote-item-row { display: flex; align-items: center; width: 100%; padding: 8px 0; border-bottom: 1px solid #eee; }
-.item-cell { padding: 0 8px; display: flex; align-items: center; justify-content: center; text-align: center; }
+/* ✅ [重構] 桌機報價項目列：macOS 風格（系統字體、細灰分隔、主資訊＋灰色副標、幽靈圖示鈕） */
+.qi-row {
+  --qi-text: #1d1d1f;
+  --qi-secondary: #6e6e73;
+  --qi-tertiary: #aeaeb2;
+  --qi-accent: #0071e3;
+  --qi-fill: #f2f2f7;
+  --qi-fill-hover: #e5e5ea;
+  --qi-danger: #ff3b30;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 8px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 13px;
+  color: var(--qi-text);
+  line-height: 1.35;
+}
+.qi-cell { display: flex; align-items: center; min-width: 0; padding: 0 10px; }
+.qi-col-unit { flex: 1.1 1 0; }
+.qi-col-house { flex: 1.5 1 0; }
+.qi-col-parking { flex: 1.2 1 0; }
+.qi-col-options { flex: 1.9 1 0; }
+.qi-col-total { flex: 1.1 1 0; justify-content: flex-end; }
+.qi-col-actions { flex: 0 0 44px; justify-content: center; padding: 0; }
+
+.qi-stack { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.qi-stack--end { align-items: flex-end; text-align: right; }
+.qi-caption {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-size: 11.5px;
+  color: var(--qi-secondary);
+  white-space: nowrap;
+}
+.qi-caption--muted { color: var(--qi-tertiary); }
+.qi-caption--accent { color: #2e7d32; font-weight: 600; }
+.qi-dot { margin: 0 4px; color: var(--qi-tertiary); }
+.qi-dim { color: var(--qi-tertiary); margin-left: 2px; }
+
+.qi-unit-id { font-size: 15px; font-weight: 600; letter-spacing: -0.1px; display: inline-flex; align-items: center; }
+.qi-link {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; color: var(--qi-accent);
+  cursor: pointer; border-radius: 3px;
+}
+.qi-link:hover { text-decoration: underline; }
+.qi-link:focus-visible { outline: 2px solid rgba(0, 113, 227, 0.4); outline-offset: 1px; }
+
+.qi-price-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.qi-price { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qi-price small, .qi-total small { font-size: 11px; font-weight: 500; color: var(--qi-secondary); margin-left: 1px; }
+.qi-total { font-size: 17px; font-weight: 700; color: var(--qi-accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.qi-badge {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 9px;
+  font-size: 11px; font-weight: 600; white-space: nowrap; line-height: 1;
+}
+.qi-badge--down { background: rgba(52, 199, 89, 0.14); color: #1f8f3e; }
+.qi-badge--up { background: rgba(255, 59, 48, 0.12); color: #d62d20; }
+.qi-badge--locked { background: rgba(255, 59, 48, 0.12); color: #d62d20; }
+
+/* 幽靈圖示鈕：預設淡灰、hover 才浮現底色 */
+.qi-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0;
+  background: transparent; color: var(--qi-secondary); cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+.qi-icon-btn:hover:not(:disabled) { background: var(--qi-fill); color: var(--qi-text); }
+.qi-icon-btn:disabled { opacity: 0.35; cursor: default; }
+.qi-icon-btn--danger { color: var(--qi-tertiary); }
+.qi-icon-btn--danger:hover:not(:disabled) { background: rgba(255, 59, 48, 0.1); color: var(--qi-danger); }
+.qi-row:hover .qi-icon-btn--danger { color: var(--qi-secondary); }
+
+/* 車位膠囊鈕 */
+.qi-pill-btn {
+  display: inline-flex; align-items: center; max-width: 100%;
+  height: 26px; padding: 0 10px; border: 0; border-radius: 7px;
+  background: var(--qi-fill); color: var(--qi-text); font: inherit; font-weight: 500;
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background-color 0.12s;
+}
+.qi-pill-btn:hover { background: var(--qi-fill-hover); }
+.qi-pill-btn--empty { color: var(--qi-accent); background: rgba(0, 113, 227, 0.08); }
+.qi-pill-btn--empty:hover { background: rgba(0, 113, 227, 0.14); }
+
+/* 購屋條件：分段控制 + 切換膠囊 */
+.qi-options { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.qi-segment {
+  display: inline-flex; padding: 2px; border-radius: 8px; background: var(--qi-fill); gap: 2px;
+}
+.qi-segment-btn {
+  height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent;
+  font: inherit; font-size: 12px; font-weight: 500; color: var(--qi-secondary); cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, box-shadow 0.15s; white-space: nowrap;
+}
+.qi-segment-btn.is-active {
+  background: #fff; color: var(--qi-text); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+}
+.qi-toggle {
+  display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 10px 0 8px;
+  border: 1px solid #d2d2d7; border-radius: 13px; background: #fff;
+  font: inherit; font-size: 12px; font-weight: 500; color: var(--qi-secondary); cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s; white-space: nowrap;
+}
+.qi-toggle .qi-toggle-check { opacity: 0; width: 0; margin-right: -3px; transition: opacity 0.15s, width 0.15s, margin 0.15s; }
+.qi-toggle.is-on { background: var(--qi-accent); border-color: var(--qi-accent); color: #fff; }
+.qi-toggle.is-on .qi-toggle-check { opacity: 1; width: 13px; margin-right: 0; }
+.qi-toggle:hover:not(:disabled):not(.is-on) { background: var(--qi-fill); }
+.qi-toggle:disabled { opacity: 0.4; cursor: default; }
+
+/* 面積詳細 popover */
+.qi-popover { border-radius: 12px !important; }
+.qi-popover-title { padding: 10px 14px 6px; font-size: 12px; font-weight: 600; color: #6e6e73; }
+
+/* 通用版面工具（手機版與舊區塊沿用） */
 .flex-1 { flex: 1; }
 .flex-2 { flex: 2; }
 .flex-shrink-0 { flex-shrink: 0; }
-.item-cell > .v-input { flex: none; }
 .quote-item-mobile { border: 1px solid #e0e0e0; border-radius: 8px 8px 0 0; border-bottom: none; padding: 8px 12px; margin-bottom: 0; background-color: #fafafa; }
 .quote-item-mobile .v-list-item { padding-left: 0; padding-right: 0; min-height: 40px; }
 /* ✅ [優化] 手機版：append 區允許收縮、露臺拆分可換行，避免窄螢幕溢位 */
