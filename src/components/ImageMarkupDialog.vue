@@ -15,12 +15,6 @@
           <button class="imk-light imk-light--close" title="關閉" @click="requestClose">
             <svg viewBox="0 0 12 12"><path d="M3.5 3.5l5 5M8.5 3.5l-5 5" /></svg>
           </button>
-          <button class="imk-light imk-light--min" title="適合視窗" @click="fitToStage">
-            <svg viewBox="0 0 12 12"><path d="M3 6h6" /></svg>
-          </button>
-          <button class="imk-light imk-light--max" title="全螢幕" @click="toggleFullscreen">
-            <svg viewBox="0 0 12 12"><path d="M3.5 8.5l5-5M5 3.5h3.5V7" /></svg>
-          </button>
         </div>
         <div class="imk-title">
           <v-icon size="14" class="mr-1" color="rgba(0,0,0,.55)">mdi-image-outline</v-icon>
@@ -314,13 +308,6 @@ function fitToStage() {
   canvas.setDimensions({ width: w, height: h });
   canvas.setZoom(s);
   canvas.requestRenderAll();
-}
-
-function toggleFullscreen() {
-  const el = stageRef.value?.closest('.imk-window');
-  if (!el) return;
-  if (document.fullscreenElement) document.exitFullscreen?.();
-  else el.requestFullscreen?.();
 }
 
 // ---------- 工具 ----------
@@ -680,7 +667,6 @@ function requestClose() {
 }
 function forceClose() {
   closeConfirm.value = false;
-  if (document.fullscreenElement) document.exitFullscreen?.();
   open.value = false;
 }
 
@@ -757,10 +743,6 @@ onBeforeUnmount(() => {
   height: 100dvh;
   border-radius: 0;
 }
-.imk-window:fullscreen {
-  height: 100vh;
-  border-radius: 0;
-}
 
 /* 標題列 */
 .imk-titlebar {
@@ -801,8 +783,6 @@ onBeforeUnmount(() => {
 }
 .imk-lights:hover .imk-light svg { opacity: 1; }
 .imk-light--close { background: #ff5f57; }
-.imk-light--min { background: #febc2e; }
-.imk-light--max { background: #28c840; }
 .imk-title {
   position: absolute;
   left: 0;

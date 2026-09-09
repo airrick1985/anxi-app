@@ -193,6 +193,16 @@
 
     <div class="content-wrapper">
 
+      <!-- 📣 公告板（常駐、可收合；不遮蓋網格，收合狀態依建案／模式記憶） -->
+      <AnnouncementBoard
+        v-if="projectId"
+        ref="announcementBoardRef"
+        :project-id="projectId"
+        :project-name="projectName || ''"
+        :mode="currentViewMode"
+        :can-manage="canManageAnnouncements"
+      />
+
       <!-- 📱 全案概況（常駐）：手機沒有頂部工具列，固定顯示在網格上方；點擊開速覽面板 -->
       <button
         v-if="isMobile && currentViewMode === 'sales' && projectOverviewText"
@@ -2154,6 +2164,7 @@ const SalesGridDownloadDialog = defineAsyncComponent(() => import('@/components/
 import { useUserStore } from '@/store/user';
 import { useSalesAiStore } from '@/store/salesAiStore';
 import SalesAiFab from '@/components/salesAi/SalesAiFab.vue';
+import AnnouncementBoard from '@/components/announcements/AnnouncementBoard.vue';
 import SalesAiPanel from '@/components/salesAi/SalesAiPanel.vue';
 import { useTextStyleStore } from '@/store/textStyleStore';
 import { useStatusColorStore } from '@/store/statusColorStore'; 
@@ -2192,6 +2203,7 @@ const moreToolGroups = computed(() => {
       { icon: 'mdi-bullhorn-outline', label: '活動訊息', action: handleOpenActivityMessage },
       { icon: 'mdi-refresh', label: '重新載入', action: handleRefreshData },
     ];
+    if (canManageAnnouncements.value) tools.push({ icon: 'mdi-bullhorn-variant-outline', label: '公告管理', action: openAnnouncementManager });
     if (viewFormat.value === 'grid') {
       tools.push({ icon: 'mdi-file-pdf-box', label: '下載銷控表', action: () => { isGridDownloadDialogVisible.value = true; } });
     }
@@ -2261,6 +2273,7 @@ const desktopToolGroups = computed(() => {
       { icon: 'mdi-car-side', label: '車位銷控', action: openParkingCanvasEditor },
       { icon: 'mdi-bullhorn-outline', label: '活動訊息', action: handleOpenActivityMessage },
     );
+    if (canManageAnnouncements.value) common.push({ icon: 'mdi-bullhorn-variant-outline', label: '公告管理', action: openAnnouncementManager });
     const groups = [{ title: '常用', tools: common }];
     if (dataTools.length > 0) groups.push({ title: '資料', tools: dataTools });
     return groups;
@@ -2271,6 +2284,7 @@ const desktopToolGroups = computed(() => {
     { icon: 'mdi-map-marker-multiple-outline', label: '銷售圖面', action: goToSalesDrawings },
     { icon: 'mdi-bullhorn-outline', label: '活動訊息', action: handleOpenActivityMessage },
   );
+  if (canManageAnnouncements.value) common.push({ icon: 'mdi-bullhorn-variant-outline', label: '公告管理', action: openAnnouncementManager });
   dataTools.push(
     { icon: 'mdi-tray-arrow-down', label: '下載戶別EXCEL', action: exportToExcel },
     { icon: 'mdi-table-arrow-down', label: '指定戶別下載', action: () => { isUnitExportDialogVisible.value = true; } },
@@ -2282,6 +2296,7 @@ const desktopToolGroups = computed(() => {
   const manageTools = [
     { icon: 'mdi-account-cancel', label: '退戶記錄管理', action: () => { isCancelledPurchaseDialogVisible.value = true; } },
   ];
+  if (canManageAnnouncements.value) manageTools.push({ icon: 'mdi-bullhorn-variant-outline', label: '公告管理', action: openAnnouncementManager });
   if (canUseSalesAi.value) manageTools.push({ icon: 'mdi-robot-outline', label: 'AI 智能助理', action: () => { aiStore.open(); } });
   if (canAccessCommission.value) {
     manageTools.push({ icon: 'mdi-cash-multiple', label: '請佣獎金', action: goToCommissionBonus });
@@ -4013,6 +4028,17 @@ const canUploadActivityMessage = computed(() => {
   if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
   return userStore.hasProjectPermission('銷控系統', project.value?.name);
 });
+
+// 📣 公告管理權限：與活動訊息相同（超管／系管或具該案「銷控系統」權限）
+const canManageAnnouncements = computed(() => {
+  const roles = userStore.user?.roles || [];
+  if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
+  return userStore.hasProjectPermission('銷控系統', project.value?.name);
+});
+const announcementBoardRef = ref(null);
+function openAnnouncementManager() {
+  announcementBoardRef.value?.openManager?.();
+}
 
 // ✅ [新增] 報價單設定直接入口權限：與報價單設定頁管理功能相同標準
 // （系統/超級管理員或具該案「銷控系統」權限），免先加入戶別即可進入
