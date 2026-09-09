@@ -26,7 +26,7 @@
       </div>
 
    <v-list lines="one" class="bg-transparent">
-    <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><div class="d-flex flex-column align-end"><div class="d-flex align-center gap-2"><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong><v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'" class="ml-1">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip><v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" :disabled="isNegotiationDisabled" @click="openNegotiationDialog" :title="negotiationDisabledHint || '議價調整'"></v-btn><v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn></div><div v-if="showTerraceSplit" class="terrace-split">房屋 {{ formatNumber(item.unitDetails.price_list_house_only) }} <span class="terrace-split-plus">＋</span> 露臺 {{ formatNumber(item.unitDetails.price_list_terrace) }} <span class="terrace-split-area">({{ formatNumber(item.unitDetails.area_terrace_ping, 2) }} 坪)</span></div></div></template></v-list-item>
+    <v-list-item class="pl-0"><v-list-item-title>房屋總價</v-list-item-title><template v-slot:append><div class="d-flex flex-column align-end"><div class="d-flex align-center gap-2"><strong class="highlight-dark">{{ displayHousePrice }} 萬</strong><v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'" class="ml-1">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip><v-chip v-if="isNegotiationLocked" size="x-small" color="error" variant="flat" label class="ml-1 font-weight-bold no-negotiation-chip" title="銷控系統已關閉此戶議價開關">不可議價</v-chip><template v-else><v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" :disabled="isNegotiationDisabled" @click="openNegotiationDialog" :title="negotiationDisabledHint || '議價調整'"></v-btn><v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn></template></div><div v-if="showTerraceSplit" class="terrace-split">房屋 {{ formatNumber(item.unitDetails.price_list_house_only) }} <span class="terrace-split-plus">＋</span> 露臺 {{ formatNumber(item.unitDetails.price_list_terrace) }} <span class="terrace-split-area">({{ formatNumber(item.unitDetails.area_terrace_ping, 2) }} 坪)</span></div></div></template></v-list-item>
     <v-list-item class="pl-0"><v-list-item-title>房屋單價</v-list-item-title><template v-slot:append><div class="d-flex flex-column align-end"><strong>{{ displayUnitPrice }} 萬/坪</strong><div v-if="showTerraceUnitSplit" class="terrace-split"><span class="terrace-split-tag">露臺</span> {{ displayTerraceUnitPrice }} 萬/坪</div></div></template></v-list-item>
     <v-divider class="my-2"></v-divider>
     
@@ -170,8 +170,12 @@
       <div class="d-flex align-center justify-center gap-2">
         <span>{{ displayHousePrice }} 萬</span>
         <v-chip v-if="hasNegotiation" size="x-small" :color="negotiationDelta < 0 ? 'success' : 'error'">{{ negotiationDelta > 0 ? '+' : '' }}{{ negotiationDelta }} 萬</v-chip>
-        <v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" :disabled="isNegotiationDisabled" @click="openNegotiationDialog" :title="negotiationDisabledHint || '議價調整'"></v-btn>
-        <v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn>
+        <!-- ✅ 銷控「議價開關」關閉 → 紅色「不可議價」chip 取代議價調整按鈕 -->
+        <v-chip v-if="isNegotiationLocked" size="x-small" color="error" variant="flat" label class="font-weight-bold no-negotiation-chip" title="銷控系統已關閉此戶議價開關">不可議價</v-chip>
+        <template v-else>
+          <v-btn icon="mdi-percent" size="x-small" variant="text" color="primary" :disabled="isNegotiationDisabled" @click="openNegotiationDialog" :title="negotiationDisabledHint || '議價調整'"></v-btn>
+          <v-btn v-if="hasNegotiation" icon="mdi-restore" size="x-small" variant="text" color="warning" @click="resetNegotiation" title="恢復原始價格"></v-btn>
+        </template>
       </div>
       <!-- ✅ [新增] 露臺戶表價拆分：房屋(不含露臺) ＋ 露臺 -->
       <div v-if="showTerraceSplit" class="terrace-split">
@@ -1199,6 +1203,15 @@ const usePackageDealModel = computed({
 // 議價按鈕：配套／非配套皆可議價（折讓以表價為基準；配套模式自配套金額扣除）
 const isNegotiationDisabled = computed(() => false);
 const negotiationDisabledHint = computed(() => '');
+// ✅ [新增] 銷控系統「議價開關」關閉（unitDetails.allowNegotiation === false）→ 不可議價：按鈕改為紅色 chip、方案的議價項目不套用
+const isNegotiationLocked = computed(() => props.item.unitDetails?.allowNegotiation === false);
+// 開關由開啟改為關閉（重新整理報價單時同步到快照）而此戶已有議價 → 自動恢復表價並提示
+watch(isNegotiationLocked, (locked) => {
+  if (locked && quoteStore.hasNegotiation(props.item.internalId)) {
+    quoteStore.resetNegotiationPrice(props.item.internalId);
+    toast.warning(`${props.item.unitId} 已設為不可議價，議價調整已恢復表價`);
+  }
+});
 
 // ✅ [新增] 配套總價門檻（萬，由銷控權限人員於報價單設定頁設定；null = 不限制）
 const packagePriceThreshold = computed(() => {
@@ -2006,6 +2019,10 @@ function openParkingModal() {
 
 // ✅ [新增] 議價調整相關方法
 function openNegotiationDialog() {
+  if (isNegotiationLocked.value) {
+    toast.warning(`${props.item.unitId} 已由銷控設為不可議價`);
+    return;
+  }
   // 從 negotiationState 讀取暫存的調整設定
   const savedState = props.item.negotiationState;
   negotiationPerTsuboValue.value = savedState?.perTsuboValue || '';
@@ -2157,6 +2174,11 @@ function applyPlans(selections) {
   // 1) 議價方案（至多一個）先試算，加價時沿用現有二次確認；取消則整批不套用
   const negSelection = selections.find(s => Array.isArray(s.plan.adjustments) && s.plan.adjustments.length > 0);
   let negResult = null;
+  // ✅ 不可議價：整批不套用，避免付款方式套了、議價卻沒套造成方案 chip 與實際不一致
+  if (negSelection && isNegotiationLocked.value) {
+    toast.warning(`${props.item.unitId} 已由銷控設為不可議價，方案「${negSelection.plan.name}」含議價調整，無法套用`);
+    return;
+  }
   if (negSelection) {
     negResult = computePlanNegotiation(negSelection.plan.adjustments);
     // 配套模式：折讓不得超過配套金額（配套金額 = 議價後房價＋車位 − 配套價）
@@ -2652,6 +2674,9 @@ function isPlanModified(appliedPlan) {
   border-top: 2px solid rgba(121, 85, 72, 0.4);
   background: rgba(121, 85, 72, 0.05);
 }
+
+/* ✅ 不可議價 chip（銷控議價開關關閉） */
+.no-negotiation-chip { letter-spacing: 0.5px; }
 
 /* ✅ [新增] 議價調整視窗：頂部總覽帶／欄位群組／「或」分隔線／預覽數字對齊 */
 .neg-summary {

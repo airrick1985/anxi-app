@@ -121,6 +121,7 @@ export const QUOTE_UNIT_WHITELIST = [
   'propertyType', 'layout',
   'salesStatus_quote',
   'isPreferredPayment', 'isFirstTimeBuyer', 'contractType',
+  'allowNegotiation', // ✅ 議價開關（false = 報價單不可議價；缺省視為可議價）
   'area_house_ping', 'area_house_sqm',
   'area_main_ping', 'area_main_sqm',
   'area_ancillary_ping', 'area_ancillary_sqm',

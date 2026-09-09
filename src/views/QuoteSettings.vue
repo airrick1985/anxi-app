@@ -980,6 +980,7 @@ async function loadPageData() {
         // 更新 quoteStore 中每個 item 的 unitDetails（伺服器快照整包替換；議價由參數推導，無需重套）
         const repricedUnits = [];
         const missingUnits = [];
+        const lockedUnits = []; // ✅ 銷控議價開關已關閉但仍有議價 → 恢復表價
         quoteStore.items.forEach(item => {
             const matchedUnit = allUnitData.find(unit => unit.unitId === item.unitId);
             if (matchedUnit) {
@@ -993,13 +994,19 @@ async function loadPageData() {
                 };
                 const nextList = Number(item.unitDetails?.price_list_house_total) || 0;
                 // ✅ [A2] 表價異動且有議價 → 告知使用者議價已依新表價重新計算
-                if (prevList !== nextList && quoteStore.hasNegotiation(item.internalId)) {
+                if (item.unitDetails.allowNegotiation === false && quoteStore.hasNegotiation(item.internalId)) {
+                    quoteStore.resetNegotiationPrice(item.internalId);
+                    lockedUnits.push(item.unitId);
+                } else if (prevList !== nextList && quoteStore.hasNegotiation(item.internalId)) {
                     repricedUnits.push(item.unitId);
                 }
             } else if (!missingUnits.includes(item.unitId)) {
                 missingUnits.push(item.unitId);
             }
         });
+        if (lockedUnits.length > 0) {
+            toast.warning(`${lockedUnits.join('、')} 已由銷控設為不可議價，議價調整已恢復表價`);
+        }
         if (repricedUnits.length > 0) {
             toast.info(`${repricedUnits.join('、')} 表價已更新，議價已依新表價重新計算`);
         }

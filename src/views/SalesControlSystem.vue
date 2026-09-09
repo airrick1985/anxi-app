@@ -2227,6 +2227,7 @@ import { mdiViewDashboardVariantOutline } from '@mdi/js';
 import { normalizeSalespersons, formatSalespersons, salespersonsIntersect } from '@/utils/salespersonUtils';
 import { getUnitTags, unitTagsToExportColumns, parseUnitTagsFromExport, unitTagsSortValue, collectTagSuggestions } from '@/utils/unitTags';
 import { getUnitEffect, unitEffectClass, unitEffectStyle, unitEffectLabel, unitEffectToExportColumns, parseUnitEffectFromExport } from '@/utils/unitEffects';
+import { unitAnnotationPlainText } from '@/utils/unitAnnotation';
 import { getUnitParkings, getParkingTransactionTotal, getParkingFloorTotal, getUnitTotalTransactionPrice, getUnitTotalFloorPrice } from '@/utils/analyticsCalculations';
 
 // 2. 變數與狀態定義 (由上而下)
@@ -5030,6 +5031,9 @@ async function copyUnitSummary(unit) {
   if (tags.length) lines.push(`標籤：${tags.join('、')}`);
   const effectName = unitEffectLabel(unit.unitEffect);
   if (effectName) lines.push(`邊框特效：${effectName}`);
+  // ✅ 加註說明：純文字摘要
+  const annotation = unitAnnotationPlainText(unit.unitAnnotation);
+  if (annotation) lines.push(`說明：${annotation}`);
   try {
     await navigator.clipboard.writeText(lines.join('\n'));
     toast.success(`已複製 ${unit.unitId} 戶別摘要`, { position: POSITION.BOTTOM_CENTER, timeout: 2000 });
@@ -5057,6 +5061,7 @@ function buildQuickSavePayload(raw, patch) {
   delete data.paymentRecords;
   delete data.unitTags;
   delete data.unitEffect;
+  delete data.unitAnnotation; // ✅ 加註說明由戶別資訊檢視模式即時維護
   delete data.id;
   return { ...data, ...patch };
 }

@@ -403,6 +403,18 @@
         <v-col cols="12" :md="sectionColMd" v-show="isSectionShown('system')">
           <div class="info-section">
             <div class="section-title"><v-icon>mdi-cog-outline</v-icon>系統設定</div>
+            <!-- ✅ [新增] 議價開關：關閉後報價單設定該戶「議價調整」改為紅色「不可議價」chip，方案的議價項目也不套用；空值視為開啟 -->
+            <div class="negotiation-switch mb-4" :class="{ 'negotiation-switch--off': !allowNegotiationModel }">
+              <v-switch
+                v-model="allowNegotiationModel"
+                :label="allowNegotiationModel ? '議價開關：開啟（報價單可議價調整）' : '議價開關：關閉（報價單顯示不可議價）'"
+                :color="allowNegotiationModel ? 'success' : 'error'"
+                hide-details
+                inset
+                density="comfortable"
+              ></v-switch>
+              <div class="negotiation-switch__hint">關閉時報價單設定該戶的「議價調整」按鈕改為「不可議價」，且無法透過方案套用議價。</div>
+            </div>
             <!-- 🖥️ [調整] 可選方案／戶別圖片自「銷售資訊」抽出，統一於系統設定管理 -->
             <v-select
               label="可選方案"
@@ -833,6 +845,14 @@ const firstTimeBuyerModel = computed({
   get: () => (editableData.value?.isFirstTimeBuyer === false ? false : true),
   set: (val) => {
     if (editableData.value) editableData.value.isFirstTimeBuyer = val;
+  }
+});
+
+// ✅ [新增] 議價開關顯示模型：資料為空值（非明確 false）時視為「開啟」；寫回一律存明確布林值
+const allowNegotiationModel = computed({
+  get: () => (editableData.value?.allowNegotiation === false ? false : true),
+  set: (val) => {
+    if (editableData.value) editableData.value.allowNegotiation = !!val;
   }
 });
 
@@ -1476,6 +1496,18 @@ watch(() => editableData.value?.salesStatus_backend, (newVal, oldVal) => {
 }
 .section-title { font-size: 1.1rem; font-weight: 600; color: #1a3a6e; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; display: flex; align-items: center; gap: 8px; }
 .form-label { font-size: 0.9rem; color: #555; font-weight: 500; margin-bottom: 4px; display: block; }
+/* ✅ 議價開關：開啟綠框、關閉紅框，讓狀態一眼可辨 */
+.negotiation-switch {
+  padding: 4px 12px 8px;
+  border: 1px solid #c8e6c9;
+  border-radius: 8px;
+  background: #f1f8e9;
+}
+.negotiation-switch--off {
+  border-color: #ffcdd2;
+  background: #fff5f5;
+}
+.negotiation-switch__hint { font-size: 0.75rem; color: #757575; line-height: 1.4; }
 .base-price-field :deep(.v-field) {
   background-color: #fce4ec; 
 }

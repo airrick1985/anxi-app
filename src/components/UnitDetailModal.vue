@@ -13,8 +13,19 @@
 
       <div class="header-section">
         <v-card-title class="d-flex justify-space-between align-center text-h5">
-          <span>
-            {{ unitData ? unitData.unitId : '詳細資訊' }}
+          <!-- ✅ 標題列：戶別 + 文字標籤 chip（沿用標籤底色／文字色，尺寸比照戶別文字）；有邊框特效時戶別套用同一光環樣式 -->
+          <span class="header-unit-title">
+            <span class="header-unit-id" :class="headerEffectClass" :style="headerEffectStyle">
+              {{ unitData ? unitData.unitId : '詳細資訊' }}
+            </span>
+            <template v-if="qf('unitTags')">
+              <span
+                v-for="(tag, i) in viewUnitTags"
+                :key="i"
+                class="header-unit-tag"
+                :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
+              >{{ tag.text }}</span>
+            </template>
             <span v-if="isEditing && focusedEditSection" class="text-body-2 font-weight-regular ml-2">編輯{{ focusedEditSectionTitle }}</span>
           </span>
           <div>
@@ -445,11 +456,19 @@
                       <div class="section-title d-flex justify-space-between align-center">
                         <!-- 🔐 手機版隱藏解鎖：連點戶別 8 次切換已售報價顯示 -->
                         <span><span class="tap-unlock-target" @click="tapUnlockPriceQuote">{{ unitData.unitId }}</span> 價格資訊</span>
-                        <v-chip v-if="qf('preferredPayment') && unitData.isPreferredPayment" color="primary" size="small" label
-                          class="font-weight-bold">
-                          <v-icon start icon="mdi-check-circle" size="small"></v-icon>
-                          優付
-                        </v-chip>
+                        <span class="d-inline-flex align-center ga-1">
+                          <!-- ✅ 銷控「議價開關」關閉 → 紅色不可議價 chip（報價單設定同步顯示） -->
+                          <v-chip v-if="unitData.allowNegotiation === false" color="error" size="small" label variant="flat"
+                            class="font-weight-bold">
+                            <v-icon start icon="mdi-cash-lock" size="small"></v-icon>
+                            不可議價
+                          </v-chip>
+                          <v-chip v-if="qf('preferredPayment') && unitData.isPreferredPayment" color="primary" size="small" label
+                            class="font-weight-bold">
+                            <v-icon start icon="mdi-check-circle" size="small"></v-icon>
+                            優付
+                          </v-chip>
+                        </span>
                       </div>
 
                       <v-row dense>
@@ -578,6 +597,27 @@
                     </div>
                   </v-col>
                 </v-row>
+
+                <!-- ✅ 說明（unitAnnotation）：全寬醒目便條，緊接在圖片／面積／價格之下。
+                     銷控模式可新增／編輯／刪除（富文本，檢視模式即時寫入，不必進修改銷控）；報價模式唯讀，無內容則不顯示 -->
+                <div v-if="viewMode === 'sales' || viewAnnotation" class="unit-annotation" :class="{ 'unit-annotation--empty': !viewAnnotation }">
+                  <div class="unit-annotation__head">
+                    <span class="unit-annotation__title">
+                      <v-icon size="20" class="mr-1">mdi-note-text-outline</v-icon>{{ unitData.unitId }} 說明
+                    </span>
+                    <span class="unit-annotation__right">
+                      <template v-if="viewMode === 'sales'">
+                        <v-btn size="x-small" variant="tonal" color="amber-darken-4" prepend-icon="mdi-pencil"
+                          class="section-edit-btn" @click="openAnnotationEditor">{{ viewAnnotation ? '編輯' : '新增說明' }}</v-btn>
+                        <v-btn v-if="viewAnnotation" size="x-small" variant="text" color="error" icon="mdi-delete-outline"
+                          class="section-edit-btn unit-annotation__delete" title="刪除說明" :loading="annotationDialog.saving"
+                          @click="deleteAnnotation"></v-btn>
+                      </template>
+                    </span>
+                  </div>
+                  <div v-if="viewAnnotation" class="unit-annotation__body" v-html="viewAnnotation.safeHtml"></div>
+                  <div v-else class="unit-annotation__empty">尚無說明。點「新增說明」補充此戶需特別留意的事項（可用粗體、顏色、清單、連結）。</div>
+                </div>
 
                 <div v-if="viewMode === 'sales'">
                   <v-divider class="my-4"></v-divider>
@@ -1300,6 +1340,29 @@
     </v-card>
   </v-dialog>
 
+  <!-- ✅ 說明編輯（富文本 TipTap）：銷控模式專用；儲存即寫入 salesHouseholds.unitAnnotation -->
+  <v-dialog v-model="annotationDialog.show" max-width="760px" :fullscreen="isMobile" persistent scrollable>
+    <v-card class="d-flex flex-column">
+      <v-card-title class="unit-annotation-dialog__title d-flex align-center">
+        <v-icon class="mr-2">mdi-note-edit-outline</v-icon>{{ unitData ? unitData.unitId : '' }} 說明
+        <v-spacer />
+        <v-btn icon="mdi-close" variant="text" size="small" :disabled="annotationDialog.saving" @click="closeAnnotationEditor" />
+      </v-card-title>
+      <v-card-text class="pt-4 unit-annotation-dialog__body">
+        <RichTextEditor v-if="annotationDialog.show" v-model="annotationDialog.html" :disabled="annotationDialog.saving" />
+        <div class="text-caption text-grey mt-2">說明會顯示在戶別資訊最上方；報價系統可看到但不可修改。清空內容後儲存等同刪除。</div>
+      </v-card-text>
+      <v-divider />
+      <v-card-actions>
+        <v-btn v-if="viewAnnotation" variant="text" color="error" prepend-icon="mdi-delete-outline"
+          :disabled="annotationDialog.saving" @click="deleteAnnotation">刪除說明</v-btn>
+        <v-spacer />
+        <v-btn variant="text" color="grey-darken-1" :disabled="annotationDialog.saving" @click="closeAnnotationEditor">取消</v-btn>
+        <v-btn color="success" variant="flat" :loading="annotationDialog.saving" @click="saveAnnotation">儲存</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
   <PaymentSettings v-if="paymentSettingsDialog" :show="paymentSettingsDialog"
     @update:show="paymentSettingsDialog = $event" :unit-data="enrichedUnitData" :project-name="projectName"
     :project-id="projectId" :all-data="allData" :contract-types="props.contractTypes"
@@ -1493,14 +1556,14 @@
 
 <script setup>
 import FloorplanSizingTool from '@/views/FloorplanSizingTool.vue';
-import { ref, watch, computed, defineProps, defineEmits, onUnmounted, onMounted, nextTick, defineAsyncComponent } from 'vue';
+import { ref, reactive, watch, computed, defineProps, defineEmits, onUnmounted, onMounted, nextTick, defineAsyncComponent } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot, paymentProofApi, unitDocumentApi } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 import { getUnitTags, collectTagSuggestions, getContrastTextColor } from '@/utils/unitTags';
-import { unitEffectLabel } from '@/utils/unitEffects';
+import { unitEffectLabel, unitEffectClass, unitEffectStyle } from '@/utils/unitEffects';
 import { useStatusColorStore } from '@/store/statusColorStore';
 import SalesAiChat from './salesAi/SalesAiChat.vue';
 import LandParcelsPanel from './LandParcelsPanel.vue';
@@ -1510,6 +1573,9 @@ import RemarkNotesPanel from './RemarkNotesPanel.vue';
 import { db } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { buildRemarksSummary } from '@/utils/remarkNotes';
+import { normalizeUnitAnnotation, sanitizeAnnotationHtml, isAnnotationHtmlEmpty } from '@/utils/unitAnnotation';
+// ✅ [效能] 加註說明富文本編輯器（TipTap）只在開啟編輯時載入
+const RichTextEditor = defineAsyncComponent(() => import('@/components/RichTextEditor.vue'));
 import { computeHouseLandPrices, buildDefaultFormulas, isSpecialContractType } from '@/composables/usePriceFormula';
 import { deriveTotalPrice, applyDerivedPrices } from '@/utils/priceDerive';
 import { useQuoteStore } from '@/store/quoteStore';
@@ -1706,7 +1772,9 @@ const editSections = computed(() => {
     },
     {
       key: 'system', title: '系統設定', icon: 'mdi-cog-outline', color: 'blue-grey-darken-1',
-      summary: (planCount + imageCount + tagCount) > 0 || effectName ? `方案 ${planCount} · 圖片 ${imageCount} · 標籤 ${tagCount}${effectName ? ` · 特效 ${effectName}` : ''}` : '可選方案 · 戶別圖片 · 文字標籤 · 邊框特效',
+      summary: (planCount + imageCount + tagCount) > 0 || effectName || d.allowNegotiation === false
+        ? `${d.allowNegotiation === false ? '不可議價 · ' : ''}方案 ${planCount} · 圖片 ${imageCount} · 標籤 ${tagCount}${effectName ? ` · 特效 ${effectName}` : ''}`
+        : '議價開關 · 可選方案 · 戶別圖片 · 文字標籤 · 邊框特效',
     },
   ];
 });
@@ -2557,6 +2625,9 @@ const statusOptions = computed(() => (props.allData['參數'] || []).map(p => p.
 
 // ✅ [新增] 文字標籤：檢視模式顯示 + 編輯時的常用標籤建議（由全建案戶別推導）
 const viewUnitTags = computed(() => getUnitTags(props.unitData));
+// ✅ 標題列戶別套用網格邊框特效（報價模式受「文字標籤」顯示設定一併控制，與 quoteFieldVisibility 的 unitTags → unitEffect 對應一致）
+const headerEffectClass = computed(() => (qf('unitTags') ? unitEffectClass(props.unitData?.unitEffect) : []));
+const headerEffectStyle = computed(() => (qf('unitTags') ? unitEffectStyle(props.unitData?.unitEffect) : {}));
 
 // ── 檢視模式「銷售資訊 / 買方資訊」改版：狀態色、進度、買方摘要 ──
 const statusColorStore = useStatusColorStore();
@@ -3084,6 +3155,77 @@ async function persistRemarkNotes(newNotes) {
   }
 }
 
+// ── ✅ 加註說明（檢視模式即時 CRUD；報價模式唯讀） ──
+// Why: 需特別留意的事項（例如客戶特殊需求、交屋注意）要一開戶別資訊就看到，
+//      且不必進入修改銷控；資料直接寫 Firestore，父層即時監聽會同步，這裡另存本地覆寫供立即刷新。
+const annotationOverride = ref(undefined); // undefined = 以 props 為準
+watch(() => props.unitData, () => { annotationOverride.value = undefined; });
+const viewAnnotation = computed(() => {
+  const a = annotationOverride.value !== undefined
+    ? annotationOverride.value
+    : normalizeUnitAnnotation(props.unitData?.unitAnnotation);
+  return a ? { ...a, safeHtml: sanitizeAnnotationHtml(a.html) } : null;
+});
+const annotationDialog = reactive({ show: false, html: '', saving: false });
+
+function openAnnotationEditor() {
+  if (props.viewMode !== 'sales') return;
+  annotationDialog.html = viewAnnotation.value?.html || '';
+  annotationDialog.show = true;
+}
+function closeAnnotationEditor() {
+  if (annotationDialog.saving) return;
+  annotationDialog.show = false;
+}
+async function persistUnitAnnotation(value) {
+  const docId = `${props.projectId}_${props.unitData.unitId}`;
+  await updateDoc(doc(db, 'salesHouseholds', docId), {
+    unitAnnotation: value,
+    updatedAt: serverTimestamp(),
+  });
+  annotationOverride.value = value ? normalizeUnitAnnotation(value) : null;
+  if (props.unitData) props.unitData.unitAnnotation = value;
+}
+async function saveAnnotation() {
+  if (props.viewMode !== 'sales' || !props.unitData) return;
+  const html = annotationDialog.html || '';
+  annotationDialog.saving = true;
+  try {
+    if (isAnnotationHtmlEmpty(html)) {
+      await persistUnitAnnotation(null);
+      toast.success('已清除說明');
+    } else {
+      await persistUnitAnnotation({
+        html,
+        updatedAt: new Date().toISOString(),
+        updatedBy: userStore.user?.name || '',
+      });
+      toast.success('說明已儲存');
+    }
+    annotationDialog.show = false;
+  } catch (err) {
+    console.error('儲存加註說明失敗:', err);
+    toast.error(`儲存失敗：${err.message || err}`);
+  } finally {
+    annotationDialog.saving = false;
+  }
+}
+async function deleteAnnotation() {
+  if (props.viewMode !== 'sales' || !props.unitData || !viewAnnotation.value) return;
+  if (!window.confirm(`確定刪除 ${props.unitData.unitId} 的說明？`)) return;
+  annotationDialog.saving = true;
+  try {
+    await persistUnitAnnotation(null);
+    annotationDialog.show = false;
+    toast.success('已刪除說明');
+  } catch (err) {
+    console.error('刪除加註說明失敗:', err);
+    toast.error(`刪除失敗：${err.message || err}`);
+  } finally {
+    annotationDialog.saving = false;
+  }
+}
+
 /**
  * [戶別繳款紀錄] 快速新增（檢視模式，不經修改銷控）：
  * 有圖檔則後端一併上傳並命名，寫入成功後即時更新本地列表。
@@ -3322,6 +3464,8 @@ async function executeSaveChanges() {
     // 避免以進入編輯時的舊快照覆蓋期間新增的留言（merge: true 會保留既有值）
     delete data.remarks;
     delete data.remarkNotes;
+    // ✅ [加註說明] 同備註：由檢視模式即時維護，編輯表單不送出
+    delete data.unitAnnotation;
 
     const payload = {
       projectName: props.projectName,
@@ -4605,6 +4749,46 @@ onUnmounted(() => {
 .header-section .v-card-title {
   background-color: #1a3a6e;
   color: white;
+  /* 標籤 chip 可換行、特效光環不被裁切（Vuetify 預設 nowrap + overflow hidden） */
+  white-space: normal;
+  overflow: visible;
+}
+
+/* ✅ 標題列：戶別 + 文字標籤 chip */
+.header-unit-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.header-unit-id {
+  display: inline-block;
+  line-height: 1.25;
+  border-radius: 6px;
+}
+/* 有邊框特效時，戶別留出內距讓光環包住文字（光環畫在 ::before，見 styles/unitEffects.css） */
+.header-unit-id.unit-fx {
+  padding: 0 10px;
+  margin: 2px 4px;
+}
+/* 標籤 chip：字級／行高承襲標題（text-h5），尺寸與戶別文字一致 */
+.header-unit-tag {
+  display: inline-block;
+  max-width: 12em;
+  font-size: inherit;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  padding: 0 0.55em;
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
+  vertical-align: middle;
 }
 
 .main-content {
@@ -4825,6 +5009,74 @@ onUnmounted(() => {
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 2px solid #1a3a6e;
+}
+
+/* ── ✅ 加註說明：琥珀色便條風格，全寬置於圖片／面積／價格之下 ── */
+.unit-annotation {
+  margin: 14px 0 4px;
+  padding: 10px 14px 12px;
+  border-radius: 10px;
+  border: 1px solid #f3d47c;
+  border-left: 6px solid #f9a825;
+  background: linear-gradient(180deg, #fffbe6 0%, #fff6cc 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.unit-annotation--empty {
+  background: #fffdf4;
+  border-style: dashed;
+  border-left-style: solid;
+  border-left-color: #f3d47c;
+  box-shadow: none;
+}
+.unit-annotation__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.unit-annotation__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #7a5c00;
+}
+.unit-annotation__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.unit-annotation__delete {
+  width: 22px !important;
+}
+.unit-annotation__body {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: #3e3a2a;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.unit-annotation__body :deep(p) { margin: 0 0 4px; }
+.unit-annotation__body :deep(p:last-child) { margin-bottom: 0; }
+.unit-annotation__body :deep(ul),
+.unit-annotation__body :deep(ol) { padding-left: 1.4em; margin: 2px 0 4px; }
+.unit-annotation__body :deep(a) { color: #1565c0; text-decoration: underline; }
+.unit-annotation__body :deep(h1),
+.unit-annotation__body :deep(h2),
+.unit-annotation__body :deep(h3) { font-size: 1.05rem; margin: 4px 0; }
+.unit-annotation__empty {
+  font-size: 0.85rem;
+  color: #a08c4a;
+}
+.unit-annotation-dialog__title {
+  background: #1e3a5f;
+  color: #fff;
+}
+.unit-annotation-dialog__body {
+  max-height: 70vh;
 }
 
 /* ── 檢視模式：銷售資訊 / 買方資訊 改版 ── */
