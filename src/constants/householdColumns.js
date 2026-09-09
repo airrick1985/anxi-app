@@ -90,6 +90,9 @@ export const COLUMN_DEFINITIONS = [
     { key: 'unitTags_text', title: '文字標籤' },
     { key: 'unitTags_bgColor', title: '標籤顏色' },
     { key: 'unitTags_textColor', title: '文字顏色' },
+    // ✅ [新增] 網格邊框特效：Firestore 存 unitEffect { preset, color }，Excel 拆成「範本名稱 / 色碼」兩欄
+    { key: 'unitEffect_preset', title: '邊框特效' },
+    { key: 'unitEffect_color', title: '特效顏色' },
     { key: 'availablePlans', title: '可選方案' },
     { key: 'salesImages', title: '戶別圖片' },
     { key: 'svgName', title: 'SVG圖檔' },
@@ -121,6 +124,7 @@ export const UNIT_EXPORT_COMPUTED_COLUMNS = [
 export const DRAWING_EXCLUDED_FIELD_KEYS = new Set([
   'salespersonUserKey', 'salesImages', 'svgName', 'driveFolderUrl', 'contractDrawingFolderUrl',
   'unitTags_bgColor', 'unitTags_textColor',
+  'unitEffect_preset', 'unitEffect_color',
 ]);
 
 /**

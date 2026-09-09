@@ -518,14 +518,14 @@
             <div v-for="item in flatGridData" :key="item.key" class="data-cell">
              <div v-if="item.data"
   class="unit-card"
-  :class="{
+  :class="[{
     'in-quote': quoteStore.isItemInQuote(item.data.unitId),
     'has-terrace': item.data.area_terrace_ping > 0,
     'filtered-out': isUnitFilteredOut(item.data),
     'has-tags': getUnitTags(item.data).length > 0,
     'quick-menu-active': quickMenu.open && quickMenu.unit && quickMenu.unit.unitId === item.data.unitId
-  }"
-  :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff' }"
+  }, unitEffectClass(item.data.unitEffect)]"
+  :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff', ...unitEffectStyle(item.data.unitEffect) }"
   @click="handleUnitCardClick(item.data)"
   @contextmenu.prevent="onUnitCardContextMenu($event, item.data)"
   @touchstart.passive="onUnitCardTouchStart($event, item.data)"
@@ -631,14 +631,23 @@
 
           <!-- ✅ [新增] 文字標籤欄：完整顯示所有標籤 chip -->
           <template v-slot:item.unitTags="{ item }">
-            <div class="d-flex flex-wrap ga-1 py-1" style="max-width: 220px;">
+            <div class="d-flex flex-wrap align-center ga-1 py-1" style="max-width: 220px;">
+              <!-- ✅ [新增] 網格邊框特效：以迷你方塊即時呈現特效，hover 顯示範本名稱 -->
+              <span
+                v-if="getUnitEffect(item)"
+                class="unit-effect-swatch"
+                :class="unitEffectClass(item.unitEffect)"
+                :style="unitEffectStyle(item.unitEffect)"
+              >
+                <v-tooltip activator="parent" location="top">邊框特效：{{ unitEffectLabel(item.unitEffect) }}</v-tooltip>
+              </span>
               <span
                 v-for="(tag, ti) in getUnitTags(item)"
                 :key="ti"
                 class="unit-tag-chip unit-tag-chip--lg"
                 :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
               >{{ tag.text }}</span>
-              <span v-if="getUnitTags(item).length === 0" class="text-grey-lighten-1">-</span>
+              <span v-if="getUnitTags(item).length === 0 && !getUnitEffect(item)" class="text-grey-lighten-1">-</span>
             </div>
           </template>
 
@@ -1325,18 +1334,19 @@
       :recipients="notifyDialog.recipients"
       @finished="onQuickNotifyFinished" />
 
-    <!-- ✅ [快速選單] 編輯文字標籤：不必進入修改銷控，直接寫入 unitTags -->
-    <v-dialog v-model="tagQuickDialog.show" max-width="520" :persistent="tagQuickDialog.saving" scrollable>
+    <!-- ✅ [快速選單] 編輯文字標籤／網格邊框特效：不必進入修改銷控，直接寫入 unitTags / unitEffect -->
+    <v-dialog v-model="tagQuickDialog.show" max-width="640" :persistent="tagQuickDialog.saving" scrollable>
       <v-card rounded="lg">
         <v-toolbar color="indigo-darken-3" density="compact">
           <v-toolbar-title class="text-subtitle-1">
             <v-icon size="small" class="mr-1">mdi-tag-multiple-outline</v-icon>
-            {{ tagQuickDialog.unit ? tagQuickDialog.unit.unitId : '' }} 編輯標籤
+            {{ tagQuickDialog.unit ? tagQuickDialog.unit.unitId : '' }} 編輯標籤與邊框特效
           </v-toolbar-title>
           <v-btn icon="mdi-close" variant="text" :disabled="tagQuickDialog.saving" @click="tagQuickDialog.show = false"></v-btn>
         </v-toolbar>
         <v-card-text class="pt-4">
           <UnitTagEditor v-if="tagQuickDialog.show" v-model="tagQuickDialog.tags" :suggestions="quickTagSuggestions" />
+          <UnitEffectPicker v-if="tagQuickDialog.show" v-model="tagQuickDialog.effect" :tags="tagQuickDialog.tags" class="mt-3" />
         </v-card-text>
         <v-card-actions class="px-4 pb-4">
           <v-btn variant="text" :disabled="tagQuickDialog.saving" @click="tagQuickDialog.show = false">取消</v-btn>
@@ -2139,6 +2149,7 @@ import RemarkNotesPanel from '@/components/RemarkNotesPanel.vue';
 // 動態匯入無法拆成獨立 chunk（Vite 警告），統一為靜態較單純
 import SalesStatusNotifyDialog from '@/components/SalesStatusNotifyDialog.vue';
 import UnitTagEditor from '@/components/UnitTagEditor.vue';
+import UnitEffectPicker from '@/components/UnitEffectPicker.vue';
 import UnitImageLightbox from '@/components/UnitImageLightbox.vue';
 import { db } from '@/firebase';
 import { doc as fsDoc, updateDoc as fsUpdateDoc, serverTimestamp as fsServerTimestamp } from 'firebase/firestore';
@@ -2171,6 +2182,7 @@ import { useStatusColorStore } from '@/store/statusColorStore';
 import { mdiViewDashboardVariantOutline } from '@mdi/js';
 import { normalizeSalespersons, formatSalespersons, salespersonsIntersect } from '@/utils/salespersonUtils';
 import { getUnitTags, unitTagsToExportColumns, parseUnitTagsFromExport, unitTagsSortValue, collectTagSuggestions } from '@/utils/unitTags';
+import { getUnitEffect, unitEffectClass, unitEffectStyle, unitEffectLabel, unitEffectToExportColumns, parseUnitEffectFromExport } from '@/utils/unitEffects';
 import { getUnitParkings, getParkingTransactionTotal, getParkingFloorTotal, getUnitTotalTransactionPrice, getUnitTotalFloorPrice } from '@/utils/analyticsCalculations';
 
 // 2. 變數與狀態定義 (由上而下)
@@ -2657,6 +2669,8 @@ const PIVOT_EXCLUDED_KEYS = new Set([
   'salesImages',          // 圖片物件，無法作為維度
   'unitTags_bgColor',     // 文字標籤色碼，無分析意義（標籤文字 unitTags_text 仍可作維度）
   'unitTags_textColor',
+  'unitEffect_preset',    // 網格邊框特效，無分析意義
+  'unitEffect_color',
   'svgName',              // SVG 圖檔名
   'driveFolderUrl',       // 資料夾連結
   'contractDrawingFolderUrl', // 合約分戶圖連結
@@ -4448,6 +4462,8 @@ const enrichUnitItem = (unit, parkingMap) => {
 
     // ✅ [新增] 文字標籤：攤平成三個逗號分隔欄位（Excel 匯出 / 資料透視 / 指定戶別下載共用）
     Object.assign(item, unitTagsToExportColumns(unit.unitTags));
+    // ✅ [新增] 網格邊框特效：攤平成「範本名稱 / 色碼」兩欄
+    Object.assign(item, unitEffectToExportColumns(unit.unitEffect));
 
     return item;
 };
@@ -4941,6 +4957,8 @@ async function copyUnitSummary(unit) {
   }
   const tags = getUnitTags(unit).map(t => t.text);
   if (tags.length) lines.push(`標籤：${tags.join('、')}`);
+  const effectName = unitEffectLabel(unit.unitEffect);
+  if (effectName) lines.push(`邊框特效：${effectName}`);
   try {
     await navigator.clipboard.writeText(lines.join('\n'));
     toast.success(`已複製 ${unit.unitId} 戶別摘要`, { position: POSITION.BOTTOM_CENTER, timeout: 2000 });
@@ -4967,6 +4985,7 @@ function buildQuickSavePayload(raw, patch) {
   delete data.remarkNotes;
   delete data.paymentRecords;
   delete data.unitTags;
+  delete data.unitEffect;
   delete data.id;
   return { ...data, ...patch };
 }
@@ -5056,12 +5075,13 @@ async function confirmQuickStatusChange() {
 }
 
 // --- 快速編輯標籤：直寫 salesHouseholds.unitTags（同備註留言作法，不經整份儲存）---
-const tagQuickDialog = reactive({ show: false, unit: null, tags: [], saving: false });
+const tagQuickDialog = reactive({ show: false, unit: null, tags: [], effect: null, saving: false });
 const quickTagSuggestions = computed(() => collectTagSuggestions(salesHouseholds.value || []));
 function openQuickTagDialog(unit) {
   const latest = (salesHouseholds.value || []).find(u => u.unitId === unit.unitId) || unit;
   tagQuickDialog.unit = latest;
   tagQuickDialog.tags = JSON.parse(JSON.stringify(getUnitTags(latest)));
+  tagQuickDialog.effect = getUnitEffect(latest);
   tagQuickDialog.saving = false;
   tagQuickDialog.show = true;
 }
@@ -5071,14 +5091,16 @@ async function saveQuickTags() {
   tagQuickDialog.saving = true;
   try {
     const tags = (tagQuickDialog.tags || []).map(t => ({ text: t.text, bgColor: t.bgColor, textColor: t.textColor }));
+    const effect = getUnitEffect({ unitEffect: tagQuickDialog.effect }); // 正規化；無特效 → null
     await fsUpdateDoc(fsDoc(db, 'salesHouseholds', `${projectId.value}_${unit.unitId}`), {
       unitTags: tags,
+      unitEffect: effect,
       updatedAt: fsServerTimestamp(),
     });
     const raw = (salesHouseholds.value || []).find(u => u.unitId === unit.unitId);
-    if (raw) raw.unitTags = tags;
+    if (raw) { raw.unitTags = tags; raw.unitEffect = effect; }
     tagQuickDialog.show = false;
-    toast.success(`${unit.unitId} 標籤已更新`, { position: POSITION.BOTTOM_CENTER, timeout: 2000 });
+    toast.success(`${unit.unitId} 標籤與特效已更新`, { position: POSITION.BOTTOM_CENTER, timeout: 2000 });
   } catch (err) {
     console.error('儲存標籤失敗:', err);
     toast.error(`儲存標籤失敗：${err.message || '請稍後再試'}`, { position: POSITION.BOTTOM_CENTER });
@@ -5123,6 +5145,8 @@ const unitQuickActions = computed(() => {
 
   const imageCount = getUnitImages(u).length;
   const tagCount = getUnitTags(u).length;
+  const effectName = unitEffectLabel(u.unitEffect);
+  const tagSubtitle = [tagCount > 0 ? `${tagCount} 個標籤` : '', effectName ? `特效：${effectName}` : ''].filter(Boolean).join('・') || '尚無標籤，點此新增';
 
   const actions = [
     { key: 'detail', icon: 'mdi-information-outline', label: '戶別資訊', subtitle: '完整資料、平面圖與車位', run: unit => openUnitDetail(unit) },
@@ -5131,7 +5155,7 @@ const unitQuickActions = computed(() => {
     actions.push(
       { key: 'edit', icon: 'mdi-pencil-outline', label: '修改銷控', subtitle: '直接進入編輯模式', run: unit => openUnitDetail(unit, { editing: true }) },
       { key: 'status', icon: 'mdi-swap-horizontal', label: '變更狀態', subtitle: `目前：${u.salesStatus_backend || '未設定'}`, color: 'indigo-darken-3', run: unit => openQuickStatusDialog(unit) },
-      { key: 'tags', icon: 'mdi-tag-multiple-outline', label: '編輯標籤', subtitle: tagCount > 0 ? `${tagCount} 個標籤` : '尚無標籤，點此新增', badge: tagCount > 0 ? String(tagCount) : '', run: unit => openQuickTagDialog(unit) },
+      { key: 'tags', icon: 'mdi-tag-multiple-outline', label: '編輯標籤／特效', subtitle: tagSubtitle, badge: tagCount > 0 ? String(tagCount) : '', run: unit => openQuickTagDialog(unit) },
       { key: 'divider-1', divider: true },
       { key: 'remarks', icon: 'mdi-comment-text-multiple-outline', label: '備註留言', subtitle: remarkCount > 0 ? `${remarkCount} 則留言` : '尚無留言，點此新增', badge: remarkCount > 0 ? String(remarkCount) : '', run: unit => openRemarkDialog(unit) },
       { key: 'payments', icon: 'mdi-cash-multiple', label: '繳款紀錄', subtitle: paymentBadge ? `已繳 ${paymentBadge}` : '尚無繳款紀錄', badge: paymentBadge, badgeColor: enriched && enriched.payment_ratio >= 100 ? 'green' : 'deep-orange', run: unit => openPaymentRecordsPopup(enrichQuickMenuUnit(unit)) },
@@ -5482,6 +5506,10 @@ const exportToExcel = async () => {
             if (key === 'unitTags_text' || key === 'unitTags_bgColor' || key === 'unitTags_textColor') {
                 return unitTagsToExportColumns(item.unitTags)[key];
             }
+            // ✅ [新增] 網格邊框特效：{ preset, color } → 「範本名稱 / 色碼」兩欄
+            if (key === 'unitEffect_preset' || key === 'unitEffect_color') {
+                return unitEffectToExportColumns(item.unitEffect)[key];
+            }
             // ✅ [新增] 可選方案：id 陣列 → 方案名稱逗號分隔（失效 id 不輸出），重新上傳時再反查回 id
             if (key === 'availablePlans') {
                 return planIdsToNames(value).join(',');
@@ -5625,6 +5653,7 @@ const handleFileChange = () => {
             // ✅ [新增] 文字標籤：色碼格式警示收集器
             const tagWarnings = [];
             const TAG_IMPORT_KEYS = ['unitTags_text', 'unitTags_bgColor', 'unitTags_textColor'];
+            const EFFECT_IMPORT_KEYS = ['unitEffect_preset', 'unitEffect_color'];
           const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
                 const newRow = {};
                 for (const [colIndex, englishKey] of indexToKeyMap.entries()) {
@@ -5684,6 +5713,14 @@ const handleFileChange = () => {
                     newRow.unitTags = parsed.tags;
                     tagWarnings.push(...parsed.warnings);
                     for (const k of TAG_IMPORT_KEYS) delete newRow[k];
+                }
+                // ✅ [新增] 網格邊框特效：兩個虛擬欄位合併回 unitEffect（任一欄存在即處理；
+                // 「邊框特效」欄空白 → 清除該戶特效；範本查不到／顏色不合法 → 警示、不擋整批）
+                if (EFFECT_IMPORT_KEYS.some(k => k in newRow)) {
+                    const parsedFx = parseUnitEffectFromExport(newRow.unitEffect_preset, newRow.unitEffect_color, String(newRow.unitId || ''));
+                    newRow.unitEffect = parsedFx.effect;
+                    tagWarnings.push(...parsedFx.warnings);
+                    for (const k of EFFECT_IMPORT_KEYS) delete newRow[k];
                 }
                 return newRow;
             });
@@ -5763,7 +5800,7 @@ const handleFileChange = () => {
             if (tagWarnings.length > 0) {
                 uploadMessageType.value = 'warning';
                 const shown = tagWarnings.slice(0, 5);
-                uploadMessage.value += `\n標籤提醒：${shown.join('；')}${tagWarnings.length > 5 ? `…（共 ${tagWarnings.length} 筆）` : ''}`;
+                uploadMessage.value += `\n標籤／特效提醒：${shown.join('；')}${tagWarnings.length > 5 ? `…（共 ${tagWarnings.length} 筆）` : ''}`;
             }
         } catch (err) {
             uploadMessageType.value = 'error';
@@ -6547,6 +6584,19 @@ overflow: hidden;
   background-color: #eceff1;
   color: #455a64;
   max-width: none;
+}
+/* ✅ [新增] 列表「標籤」欄的邊框特效迷你方塊（光環樣式由全域 unitEffects.css 提供） */
+.unit-effect-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background: #fff;
+  box-sizing: border-box;
+  margin: 3px 4px 3px 3px;
+  cursor: help;
+  --fx-radius: 6px;
 }
 /* 列表 / tooltip / 篩選選單用的較大尺寸 */
 .unit-tag-chip--lg {

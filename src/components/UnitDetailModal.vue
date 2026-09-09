@@ -1499,6 +1499,7 @@ import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot
 import SalesInfoForm from './SalesInfoForm.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 import { getUnitTags, collectTagSuggestions, getContrastTextColor } from '@/utils/unitTags';
+import { unitEffectLabel } from '@/utils/unitEffects';
 import { useStatusColorStore } from '@/store/statusColorStore';
 import SalesAiChat from './salesAi/SalesAiChat.vue';
 import LandParcelsPanel from './LandParcelsPanel.vue';
@@ -1661,6 +1662,7 @@ const editSections = computed(() => {
   const planCount = Array.isArray(d.availablePlans) ? d.availablePlans.length : 0;
   const imageCount = Array.isArray(d.salesImages) ? d.salesImages.length : 0;
   const tagCount = Array.isArray(d.unitTags) ? d.unitTags.length : 0;
+  const effectName = unitEffectLabel(d.unitEffect); // ✅ 網格邊框特效範本名稱（無則空字串）
   return [
     {
       key: 'sales', title: '銷售資訊', icon: 'mdi-information-outline', color: 'primary',
@@ -1694,7 +1696,7 @@ const editSections = computed(() => {
     },
     {
       key: 'system', title: '系統設定', icon: 'mdi-cog-outline', color: 'blue-grey-darken-1',
-      summary: (planCount + imageCount + tagCount) > 0 ? `方案 ${planCount} · 圖片 ${imageCount} · 標籤 ${tagCount}` : '可選方案 · 戶別圖片 · 文字標籤',
+      summary: (planCount + imageCount + tagCount) > 0 || effectName ? `方案 ${planCount} · 圖片 ${imageCount} · 標籤 ${tagCount}${effectName ? ` · 特效 ${effectName}` : ''}` : '可選方案 · 戶別圖片 · 文字標籤 · 邊框特效',
     },
   ];
 });

@@ -1,0 +1,168 @@
+/* ==========================================================
+ * 戶別網格「邊框特效」（全域樣式）
+ * 用法：元素加 class `unit-fx unit-fx--<preset>`，以 --fx-color 指定顏色
+ *   （範本定義見 src/utils/unitEffects.js）
+ * 實作：全部畫在 ::before 光環上（不動元素本身的 border / box-shadow），
+ *   避免與露臺內陰影、報價外框等既有樣式互相覆蓋；光環只落在元素外緣，
+ *   內部保持透明，不遮蓋文字。元素需為 position: relative（銷控 .unit-card 已是）。
+ * ========================================================== */
+
+@property --fx-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.unit-fx {
+  position: relative;
+  --fx-color: #E53935;
+  --fx-w: 2px;          /* 光環寬度 */
+  --fx-radius: 8px;     /* 光環圓角（元素圓角 6px + 2px） */
+}
+.unit-fx::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--fx-w));
+  border-radius: var(--fx-radius);
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---- 實線加粗（靜態） ---- */
+.unit-fx--solid { --fx-w: 3px; --fx-radius: 9px; }
+.unit-fx--solid::before {
+  border: var(--fx-w) solid var(--fx-color);
+}
+
+/* ---- 柔光暈染（靜態） ---- */
+.unit-fx--glow::before {
+  border: var(--fx-w) solid var(--fx-color);
+  box-shadow:
+    0 0 6px 1px color-mix(in srgb, var(--fx-color) 70%, transparent),
+    0 0 16px 4px color-mix(in srgb, var(--fx-color) 35%, transparent);
+}
+
+/* ---- 呼吸暈光 ---- */
+.unit-fx--breath::before {
+  border: var(--fx-w) solid var(--fx-color);
+  animation: unit-fx-breath 2.2s ease-in-out infinite;
+}
+@keyframes unit-fx-breath {
+  0%, 100% {
+    opacity: 0.65;
+    box-shadow: 0 0 2px 0 color-mix(in srgb, var(--fx-color) 40%, transparent);
+  }
+  50% {
+    opacity: 1;
+    box-shadow:
+      0 0 8px 2px color-mix(in srgb, var(--fx-color) 75%, transparent),
+      0 0 18px 6px color-mix(in srgb, var(--fx-color) 35%, transparent);
+  }
+}
+
+/* ---- 閃爍邊框 ---- */
+.unit-fx--blink { --fx-w: 3px; --fx-radius: 9px; }
+.unit-fx--blink::before {
+  border: var(--fx-w) solid var(--fx-color);
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--fx-color) 55%, transparent);
+  animation: unit-fx-blink 1s steps(1, end) infinite;
+}
+@keyframes unit-fx-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.12; }
+}
+
+/* ---- 霓虹燈管 ---- */
+.unit-fx--neon::before {
+  border: var(--fx-w) solid color-mix(in srgb, var(--fx-color) 55%, #ffffff);
+  box-shadow:
+    0 0 3px 0 var(--fx-color),
+    0 0 8px 1px var(--fx-color),
+    0 0 18px 4px color-mix(in srgb, var(--fx-color) 45%, transparent),
+    inset 0 0 4px 0 color-mix(in srgb, var(--fx-color) 45%, transparent);
+  animation: unit-fx-neon 3.2s linear infinite;
+}
+@keyframes unit-fx-neon {
+  0%, 17%, 21%, 24%, 52%, 56%, 100% { opacity: 1; }
+  19%, 23% { opacity: 0.35; }
+  54% { opacity: 0.5; }
+  90% { opacity: 0.85; }
+}
+
+/* ---- 波紋擴散 ---- */
+.unit-fx--ripple::before {
+  border: var(--fx-w) solid var(--fx-color);
+  animation: unit-fx-ripple 1.8s ease-out infinite;
+}
+@keyframes unit-fx-ripple {
+  0% {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--fx-color) 70%, transparent),
+      0 0 0 0 color-mix(in srgb, var(--fx-color) 45%, transparent);
+  }
+  60% {
+    box-shadow:
+      0 0 0 7px color-mix(in srgb, var(--fx-color) 25%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--fx-color) 35%, transparent);
+  }
+  100% {
+    box-shadow:
+      0 0 0 14px color-mix(in srgb, var(--fx-color) 0%, transparent),
+      0 0 0 9px color-mix(in srgb, var(--fx-color) 0%, transparent);
+  }
+}
+
+/* ---- 光環遮罩共用（流光 / 斜紋 / 彩虹）：只留邊框環，中央挖空 ---- */
+.unit-fx--flow::before,
+.unit-fx--stripes::before,
+.unit-fx--rainbow::before {
+  padding: var(--fx-w);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* ---- 流光環繞 ---- */
+.unit-fx--flow { --fx-w: 3px; --fx-radius: 9px; }
+.unit-fx--flow::before {
+  background:
+    conic-gradient(from var(--fx-angle),
+      transparent 0 58%,
+      color-mix(in srgb, var(--fx-color) 35%, transparent) 78%,
+      var(--fx-color) 93%,
+      transparent 100%),
+    linear-gradient(color-mix(in srgb, var(--fx-color) 22%, transparent) 0 0);
+  animation: unit-fx-spin 2.2s linear infinite;
+}
+@keyframes unit-fx-spin {
+  to { --fx-angle: 360deg; }
+}
+
+/* ---- 斜紋流動 ---- */
+.unit-fx--stripes { --fx-w: 4px; --fx-radius: 10px; }
+.unit-fx--stripes::before {
+  background: repeating-linear-gradient(45deg,
+    var(--fx-color) 0 6px,
+    color-mix(in srgb, var(--fx-color) 12%, #263238) 6px 12px);
+  /* 45° 斜紋週期 12px → 水平 tile 12/sin45 ≈ 16.97px，平移一格即無縫循環 */
+  background-size: 16.97px 16.97px;
+  animation: unit-fx-stripes 0.6s linear infinite;
+}
+@keyframes unit-fx-stripes {
+  to { background-position: 16.97px 0; }
+}
+
+/* ---- 彩虹流轉（不使用 --fx-color） ---- */
+.unit-fx--rainbow { --fx-w: 3px; --fx-radius: 9px; }
+.unit-fx--rainbow::before {
+  background: conic-gradient(from var(--fx-angle),
+    #ff1744, #ff9100, #ffea00, #00e676, #00b0ff, #d500f9, #ff1744);
+  animation: unit-fx-spin 3s linear infinite;
+}
+
+/* 使用者系統設定「減少動態效果」→ 全部改為靜態 */
+@media (prefers-reduced-motion: reduce) {
+  .unit-fx::before { animation: none !important; opacity: 1 !important; }
+}

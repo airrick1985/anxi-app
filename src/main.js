@@ -8,6 +8,7 @@ import VueAxios from 'vue-axios'
 import '@mdi/font/css/materialdesignicons.css' // 確保 MDI 圖標 CSS 被導入
 import VueDraggableResizable from 'vue-draggable-resizable'
 import 'vue-draggable-resizable/style.css'
+import './styles/unitEffects.css' // 銷控網格「邊框特效」全域樣式（網格／列表／範本預覽共用）
 import { vReveal } from './directives/vReveal' // 首頁捲動「模糊→清晰」特效指令
 
 // AG Grid 模組註冊已移至 HouseholdGrid.vue（唯一消費者），首頁不再被迫載入 ag-grid 整包

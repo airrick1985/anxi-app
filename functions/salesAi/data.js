@@ -107,7 +107,7 @@ const FORBIDDEN_HINT = {
   payment_supplement_amount: '補足金額請至戶別資訊的「繳款紀錄」登錄，AI 目前無法代填',
   payment_contract_amount: '簽約金額請至戶別資訊的「繳款紀錄」登錄，AI 目前無法代填',
   paymentRecords: '繳款紀錄請至戶別資訊操作', landParcels: '土地標的清冊請至戶別資訊操作',
-  salesImages: '戶別圖片請至戶別資訊操作', unitTags: '文字標籤請至戶別資訊操作', availablePlans: '可選方案請至戶別資訊操作',
+  salesImages: '戶別圖片請至戶別資訊操作', unitTags: '文字標籤請至戶別資訊操作', unitEffect: '網格邊框特效請至戶別資訊操作', availablePlans: '可選方案請至戶別資訊操作',
   remarks: '備註請用 addRemark 新增留言', remarkNotes: '備註請用 addRemark 新增留言',
 };
 

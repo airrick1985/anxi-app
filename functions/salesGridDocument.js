@@ -15,6 +15,7 @@
  *              cells: [ { empty:true } |
  *                       { unitId, bgColor, soldOnly, hasTerrace,
  *                         tags: [ { text, bgColor, textColor } ],   // 文字標籤（右上角 chip，最多畫 2 個 + '+N'，可省略）
+ *                         effectColor,                             // 網格邊框特效顏色 → 畫加粗實線邊框（可省略）
  *                         lines: { total,       // 總價（紅色粗體、無「萬」）
  *                                  breakdown,   // 露臺戶拆分「房屋+露臺」（如 '1,100+134'，可省略）
  *                                  area, unit } } ] } ]   // cells 依 floor×building 攤平
@@ -218,6 +219,16 @@ function drawPage(pdf, docData, page) {
 
     pdf.roundedRect(x, y, cellW, cellH, radius)
       .fillAndStroke(safeColor(cell.bgColor, "#ffffff"), CELL_STROKE);
+
+    // 網格邊框特效：畫面上是動態光環，PDF 以特效顏色加粗實線邊框呈現
+    if (cell.effectColor) {
+      const fxW = Math.max(1, 1.5 * scale);
+      pdf.save();
+      pdf.lineWidth(fxW);
+      pdf.roundedRect(x + fxW / 2, y + fxW / 2, cellW - fxW, cellH - fxW, Math.max(0, radius - fxW / 2))
+        .stroke(safeColor(cell.effectColor, CELL_STROKE));
+      pdf.restore();
+    }
 
     // 露台標示：右上角小綠點（格子過小則省略）
     if (cell.hasTerrace && cellW >= 40) {

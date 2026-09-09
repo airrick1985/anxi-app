@@ -436,6 +436,12 @@
               :suggestions="tagSuggestions"
               class="mb-4"
             />
+            <!-- ✅ [新增] 網格邊框特效：範本即時預覽、點選套用，與文字標籤同時顯示於銷控網格 -->
+            <UnitEffectPicker
+              v-model="editableData.unitEffect"
+              :tags="editableData.unitTags || []"
+              class="mb-4"
+            />
           </div>
         </v-col>
       </v-row>
@@ -666,6 +672,7 @@ import TwCitiesData from '@/assets/TwCities.json' with { type: 'json' };
 import { normalizeSalespersons } from '@/utils/salespersonUtils';
 import { getUnitDealParkings } from '@/utils/salesStatusGroups';
 import UnitTagEditor from './UnitTagEditor.vue';
+import UnitEffectPicker from './UnitEffectPicker.vue';
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
 const CustomerCardImportDialog = defineAsyncComponent(() => import('./CustomerCardImportDialog.vue'));
 const CoBuyerEditor = defineAsyncComponent(() => import('./CoBuyerEditor.vue'));

@@ -146,7 +146,8 @@
                   top: px(rowY(Math.floor(idx / page.buildings.length))),
                   width: px(plan.cellW), height: px(plan.cellH),
                   borderRadius: px(Math.min(4 * plan.scale, plan.cellW / 4, plan.cellH / 4)),
-                  backgroundColor: cell.empty ? '#e9ecef' : (cell.bgColor || '#ffffff')
+                  backgroundColor: cell.empty ? '#e9ecef' : (cell.bgColor || '#ffffff'),
+                  ...(cell.effectColor ? { borderColor: cell.effectColor, borderWidth: px(Math.max(1, 1.5 * plan.scale)) } : {})
                 }"
               >
                 <template v-if="!cell.empty">
@@ -263,6 +264,7 @@ import { saveAs } from 'file-saver';
 import { generateSalesGridPdf } from '@/api';
 import { buildPagePlan, groupLegendRows } from '@/utils/salesGridLayout';
 import { getUnitTags } from '@/utils/unitTags';
+import { getUnitEffect } from '@/utils/unitEffects';
 
 // 文字標籤帶尺寸（畫面 px 基準，乘 scale；與後端 salesGridDocument.js 同值）
 const TAG_STRIP_H = 14;
@@ -380,6 +382,8 @@ function getCell(floor, building) {
     hasTerrace: content.terrace && Number(data.area_terrace_ping) > 0,
     // ✅ 文字標籤（右上角 chip，最多 2 個 + '+N'；後端照 text/bgColor/textColor 繪製）
     tags: content.tags ? getUnitTags(data).map(t => ({ text: t.text, bgColor: t.bgColor, textColor: t.textColor })) : [],
+    // ✅ 網格邊框特效：PDF 無法動畫，以特效顏色畫一圈加粗實線邊框代替（跟隨「文字標籤」勾選）
+    effectColor: content.tags ? (getUnitEffect(data)?.color || '') : '',
     lines: {},
   };
   if (!soldOnly) {
