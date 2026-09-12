@@ -30771,7 +30771,11 @@ const commissionClaims = require("./commissionClaims");
 exports.submitCommissionEntries = commissionClaims.submitCommissionEntries;
 exports.voidCommissionRecord = commissionClaims.voidCommissionRecord;
 exports.importCommissionHistory = commissionClaims.importCommissionHistory;
+exports.voidCommissionPeriod = commissionClaims.voidCommissionPeriod;
+exports.purgeVoidedCommissionPeriod = commissionClaims.purgeVoidedCommissionPeriod;
+exports.undoCommissionImport = commissionClaims.undoCommissionImport;
 exports.generateCommissionPdf = commissionClaims.generateCommissionPdf;
+exports.sendCommissionPersonEmail = commissionClaims.sendCommissionPersonEmail;
 
 
 /* ==========================================================

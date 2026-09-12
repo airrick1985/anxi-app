@@ -61,3 +61,7 @@ docs/*.pdf
 
 # 本機專用文件（資料備份、log、對話紀錄、行銷文案草稿），不進版控
 docs/local/
+
+# Excel 暫存鎖定檔與 docs 內的資料樣本（含個資，不進版）
+~$*
+docs/*.xlsx

@@ -11,8 +11,8 @@
       </template>
     </div>
 
-    <!-- 快速定位列（手機版置頂；電腦版改在右側欄） -->
-    <div v-if="entries.length > 1" class="quick-nav d-flex d-md-none flex-wrap ga-1 mb-3">
+    <!-- 快速定位列（置頂跟隨捲動；可跳至各戶別卡片或底部「本次合計」） -->
+    <div v-if="entries.length" class="quick-nav d-flex flex-wrap align-center ga-1 mb-3">
       <v-chip
         v-for="e in entries"
         :key="e.id"
@@ -24,104 +24,86 @@
         {{ e.unitId }}
         <span class="text-caption ml-1 text-medium-emphasis">{{ money(entryResult(e).claim.thisClaim) }}</span>
       </v-chip>
+      <v-spacer></v-spacer>
+      <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-arrow-down-bold" @click="gotoSummary">
+        本次合計 {{ money(summary.thisClaimSum) }} 元
+      </v-chip>
     </div>
 
     <v-alert v-if="!entries.length" type="info" variant="tonal" class="mb-4">
       尚未選擇戶別，請點「新增戶別」（僅列出已成交且有簽約日期的戶別；已請畢 100% 者不可再選）。
     </v-alert>
 
-    <!-- 電腦版左右配置：左＝戶別卡片編輯區、右＝即時彙總側欄；手機版維持上下堆疊 -->
-    <v-row dense>
-      <v-col cols="12" :md="entries.length ? 8 : 12">
-        <!-- 戶別卡片 -->
-        <CommissionUnitCard
-          v-for="e in entries"
-          :key="e.id"
-          :entry="e"
-          :settings="settings"
-          :profiles="personProfiles"
-          :project-id="projectId"
-          :project-name="projectName"
-          :local-personnel="personnel"
-          :claimed-pct="claimedPctOf(e.unitId)"
-          @remove="removeEntry(e)"
-        />
-      </v-col>
+    <!-- 上下配置：上＝戶別卡片編輯區（全寬）、下＝本次合計（全寬） -->
+    <div class="cards-area">
+      <CommissionUnitCard
+        v-for="e in entries"
+        :key="e.id"
+        :entry="e"
+        :settings="settings"
+        :profiles="personProfiles"
+        :project-id="projectId"
+        :project-name="projectName"
+        :local-personnel="personnel"
+        :claimed-pct="claimedPctOf(e.unitId)"
+        @remove="removeEntry(e)"
+      />
+    </div>
 
-      <v-col v-if="entries.length" cols="12" md="4">
-        <div class="side-sticky">
-          <!-- 快速定位（電腦版） -->
-          <div v-if="entries.length > 1" class="d-none d-md-flex flex-wrap ga-1 mb-2">
-            <v-chip
-              v-for="e in entries"
-              :key="e.id"
-              size="small"
-              variant="outlined"
-              color="primary"
-              @click="gotoCard(e)"
-            >
-              {{ e.unitId }}
-              <span class="text-caption ml-1 text-medium-emphasis">{{ money(entryResult(e).claim.thisClaim) }}</span>
-            </v-chip>
-          </div>
-
-          <!-- 彙總 -->
-          <v-card v-if="entries.length" variant="outlined" class="mb-4 summary-card">
-            <v-card-title class="text-subtitle-1 bg-green-lighten-5">
-              本次合計（{{ entries.length }} 戶）
-            </v-card-title>
-            <v-card-text>
-              <v-row dense class="mb-2">
-                <v-col cols="6"><div class="sum-item"><label>獎金總銷（折數後合計）</label><div>{{ money(summary.grandAfter) }} 元</div></div></v-col>
-                <v-col cols="6"><div class="sum-item"><label>實際請領金額合計</label><div>{{ money(summary.claimSum) }} 元</div></div></v-col>
-                <v-col cols="6"><div class="sum-item"><label>請佣保留款合計</label><div>{{ money(summary.keepSum) }} 元</div></div></v-col>
-                <v-col cols="6"><div class="sum-item highlight"><label>本次請佣合計</label><div>{{ money(summary.thisClaimSum) }} 元</div></div></v-col>
-              </v-row>
-              <div class="text-caption font-weight-bold mb-1">每人獎金彙總（所有戶別加總）</div>
-              <div class="table-scroll">
-                <v-table density="compact">
-                  <thead>
-                    <tr>
-                      <th>人員</th><th>來源</th>
-                      <th class="text-right">小計</th><th class="text-right">保留款</th>
-                      <th class="text-right">稅金</th><th class="text-right">二代健保</th><th class="text-right">實發</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="p in summary.people" :key="p.personKey">
-                      <td class="font-weight-medium">{{ p.name }}</td>
-                      <td>
-                        <v-chip v-if="p.sourceProjectId && p.sourceProjectId !== projectId" size="x-small" color="orange" variant="tonal">{{ p.sourceProjectName || p.sourceProjectId }}</v-chip>
-                        <span v-else class="text-caption text-medium-emphasis">本案</span>
-                      </td>
-                      <td class="text-right">{{ money(p.subtotal) }}</td>
-                      <td class="text-right">{{ money(p.keep) }}</td>
-                      <td class="text-right">{{ money(p.tax) }}</td>
-                      <td class="text-right">{{ money(p.nhi) }}</td>
-                      <td class="text-right text-success font-weight-bold">{{ money(p.net) }}</td>
-                    </tr>
-                    <tr class="font-weight-bold bg-green-lighten-5">
-                      <td>合計</td><td></td>
-                      <td class="text-right">{{ money(summary.totals.subtotal) }}</td>
-                      <td class="text-right">{{ money(summary.totals.keep) }}</td>
-                      <td class="text-right">{{ money(summary.totals.tax) }}</td>
-                      <td class="text-right">{{ money(summary.totals.nhi) }}</td>
-                      <td class="text-right text-success">{{ money(summary.totals.net) }}</td>
-                    </tr>
-                  </tbody>
-                </v-table>
-              </div>
-            </v-card-text>
-            <v-divider></v-divider>
-            <v-card-actions>
-              <v-spacer></v-spacer>
-              <v-btn color="primary" size="large" variant="flat" prepend-icon="mdi-check-bold"
-                :loading="submitting" :disabled="!entries.length" @click="submitAll">確認送出</v-btn>
-            </v-card-actions>
-          </v-card>
+    <!-- 彙總 -->
+    <v-card v-if="entries.length" id="comm-summary" variant="outlined" class="mb-4 summary-card">
+      <v-card-title class="text-subtitle-1 bg-green-lighten-5">
+        本次合計（{{ entries.length }} 戶）
+      </v-card-title>
+      <v-card-text>
+        <v-row dense class="mb-3">
+          <v-col cols="6" md="3"><div class="sum-item"><label>獎金總銷（折數後合計）</label><div>{{ money(summary.grandAfter) }} 元</div></div></v-col>
+          <v-col cols="6" md="3"><div class="sum-item"><label>實際請領金額合計</label><div>{{ money(summary.claimSum) }} 元</div></div></v-col>
+          <v-col cols="6" md="3"><div class="sum-item"><label>請佣保留款合計</label><div>{{ money(summary.keepSum) }} 元</div></div></v-col>
+          <v-col cols="6" md="3"><div class="sum-item highlight"><label>本次請佣合計</label><div>{{ money(summary.thisClaimSum) }} 元</div></div></v-col>
+        </v-row>
+        <div class="text-caption font-weight-bold mb-1">每人獎金彙總（所有戶別加總）</div>
+        <div class="table-scroll">
+          <v-table density="compact" class="people-table">
+            <thead>
+              <tr>
+                <th class="col-name">人員</th><th class="col-source">來源</th>
+                <th class="text-right">小計</th><th class="text-right">保留款</th>
+                <th class="text-right">稅金</th><th class="text-right">二代健保</th><th class="text-right">實發</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in summary.people" :key="p.personKey">
+                <td class="font-weight-medium">{{ p.name }}</td>
+                <td>
+                  <v-chip v-if="p.sourceProjectId && p.sourceProjectId !== projectId" size="x-small" color="orange" variant="tonal">{{ p.sourceProjectName || p.sourceProjectId }}</v-chip>
+                  <span v-else class="text-caption text-medium-emphasis">本案</span>
+                </td>
+                <td class="text-right">{{ money(p.subtotal) }}</td>
+                <td class="text-right">{{ money(p.keep) }}</td>
+                <td class="text-right">{{ money(p.tax) }}</td>
+                <td class="text-right">{{ money(p.nhi) }}</td>
+                <td class="text-right text-success font-weight-bold">{{ money(p.net) }}</td>
+              </tr>
+              <tr class="font-weight-bold bg-green-lighten-5">
+                <td>合計</td><td></td>
+                <td class="text-right">{{ money(summary.totals.subtotal) }}</td>
+                <td class="text-right">{{ money(summary.totals.keep) }}</td>
+                <td class="text-right">{{ money(summary.totals.tax) }}</td>
+                <td class="text-right">{{ money(summary.totals.nhi) }}</td>
+                <td class="text-right text-success">{{ money(summary.totals.net) }}</td>
+              </tr>
+            </tbody>
+          </v-table>
         </div>
-      </v-col>
-    </v-row>
+      </v-card-text>
+      <v-divider></v-divider>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="primary" size="large" variant="flat" prepend-icon="mdi-check-bold"
+          :loading="submitting" :disabled="!entries.length" @click="submitAll">確認送出</v-btn>
+      </v-card-actions>
+    </v-card>
 
     <!-- 戶別選擇 dialog -->
     <v-dialog v-model="pickerOpen" max-width="520">
@@ -206,7 +188,7 @@ import CommissionUnitCard from './CommissionUnitCard.vue';
 import { submitCommissionEntriesAPI } from '@/api';
 import {
   calcUnitBonus, computeUnitFinance, resolveCommPct, formatDateTW,
-  money, toNum, evenShares, paymentRatioPct,
+  money, toNum, evenShares, paymentRatioPct, matchesRolePositions,
 } from '@/utils/commissionCalculation';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
 
@@ -365,10 +347,7 @@ function addUnit(unitId) {
       });
       allocations = evenAlloc(persons);
     } else if (cat.mode === 'role') {
-      const roles = cat.rolePositions || [];
-      const pool = props.personnel.filter(p =>
-        (p.positions || []).some(pos => roles.some(r => String(pos).includes(r) || String(r).includes(pos)))
-      );
+      const pool = props.personnel.filter(p => matchesRolePositions(p.positions, cat.rolePositions));
       if (pool.length === 1) {
         const personKey = personKeyOf(pool[0]);
         ensureProfile(personKey, pool[0].name);
@@ -416,6 +395,11 @@ function gotoCard(e) {
     const el = document.getElementById(`comm-card-${e.id}`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+}
+
+function gotoSummary() {
+  const el = document.getElementById('comm-summary');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ---------- 計算 ----------
@@ -583,18 +567,13 @@ async function doSubmit() {
   padding: 6px 0;
 }
 .picker-list { max-height: 50vh; overflow-y: auto; border: 1px solid rgba(0,0,0,.08); border-radius: 8px; }
-/* 電腦版右側彙總欄固定跟隨捲動 */
-@media (min-width: 960px) {
-  .side-sticky {
-    position: sticky;
-    top: 8px;
-    max-height: calc(100vh - 24px);
-    overflow-y: auto;
-  }
-}
 .sum-item { background: #f4f8f6; border-radius: 8px; padding: 8px 12px; }
 .sum-item label { font-size: 11px; color: #789; display: block; }
 .sum-item div { font-size: 17px; font-weight: 700; color: #1a4; }
 .sum-item.highlight div { color: #087f23; }
 .table-scroll { overflow-x: auto; }
+/* 每人彙總表：人員／來源欄固定合理寬度，其餘金額欄平均分配 */
+.people-table th, .people-table td { white-space: nowrap; }
+.people-table .col-name { min-width: 110px; }
+.people-table .col-source { min-width: 90px; }
 </style>

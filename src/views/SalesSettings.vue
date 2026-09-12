@@ -380,11 +380,17 @@
                 color="blue-darken-2"
                 @click="openPersonnelDialog()"
                 prepend-icon="mdi-plus"
-                class="mb-3"
+                class="mb-2"
                 block
               >
                 新增銷售人員
               </v-btn>
+              <div class="d-flex ga-2 mb-3">
+                <v-btn variant="tonal" color="success" prepend-icon="mdi-microsoft-excel" size="small" class="flex-grow-1"
+                  :disabled="!personnelList.length" @click="exportPersonnel">匯出 Excel</v-btn>
+                <v-btn variant="tonal" color="primary" prepend-icon="mdi-tray-arrow-up" size="small" class="flex-grow-1"
+                  @click="openPersonnelImport">匯入 Excel</v-btn>
+              </div>
 
               <v-text-field
                 v-model="personnelSearch"
@@ -1743,6 +1749,13 @@
       />
     </v-dialog>
 
+    <SalesPersonnelImportDialog
+      v-model="personnelImportOpen"
+      :project-id="projectId"
+      :personnel="personnelList"
+      :team-groups="commissionTeamGroups || []"
+    />
+
     <v-dialog v-model="deletePersonnelDialog" persistent max-width="400px">
         <v-card>
             <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
@@ -1874,6 +1887,7 @@ import {
 
 
 const SalesPersonnelForm = defineAsyncComponent(() => import('./SalesPersonnelForm.vue'));
+const SalesPersonnelImportDialog = defineAsyncComponent(() => import('@/components/SalesPersonnelImportDialog.vue'));
 // ✅ [新增] 合約製作範本設定（docs/合約製作資料範本-spec.md）
 const ContractDocConfigEditor = defineAsyncComponent(() => import('@/components/ContractDocConfigEditor.vue'));
 
@@ -2727,6 +2741,23 @@ const openPersonnelDialog = (person = null) => {
   } else {
     personnelDialog.value = true;
   }
+};
+
+// ✅ [新增] 銷售人員 Excel 匯出／匯入
+const personnelImportOpen = ref(false);
+const exportPersonnel = async () => {
+  await loadCommissionTeamGroups();
+  try {
+    const { exportPersonnelExcel } = await import('@/utils/salesPersonnelExcel');
+    exportPersonnelExcel(personnelList.value, commissionTeamGroups.value || [], project.value?.name || projectId.value);
+    toast.success('銷售人員 Excel 已下載');
+  } catch (e) {
+    toast.error(`匯出失敗：${e.message}`);
+  }
+};
+const openPersonnelImport = async () => {
+  await loadCommissionTeamGroups();
+  personnelImportOpen.value = true;
 };
 
 const closePersonnelDialog = () => {

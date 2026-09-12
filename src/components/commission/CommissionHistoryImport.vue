@@ -1,5 +1,9 @@
 <template>
   <div class="history-import">
+    <v-alert v-if="presetPeriodValue" type="info" variant="tonal" density="compact" class="mb-3" closable @click:close="presetPeriodValue = null">
+      正在<b>重新匯入第 {{ presetPeriodValue }} 期</b>：請上傳修正後的檔案，匯入時會先將第 {{ presetPeriodValue }} 期既有有效紀錄整期作廢再寫入（已自動勾選覆蓋）。
+    </v-alert>
+
     <!-- 三步驟 -->
     <v-row dense class="mb-1">
       <!-- 步驟 1：下載範本 -->
@@ -72,6 +76,21 @@
               color="warning" density="compact" hide-details
             ></v-switch>
           </div>
+
+          <!-- 期別衝突：檔內期別已有有效紀錄 -->
+          <v-alert v-if="conflictPeriods.length" :type="replaceExisting ? 'warning' : 'error'" variant="tonal" density="compact" class="mb-3">
+            <div class="font-weight-bold mb-1">
+              第 {{ conflictPeriods.join('、') }} 期已有有效請佣紀錄（{{ conflictActiveCount }} 戶）
+            </div>
+            <div class="text-body-2 mb-1">
+              為避免重複計入，同一期別不可直接再匯入。可勾選下方選項於匯入時先整期作廢既有資料，或到「歷期總覽」先處理。
+            </div>
+            <v-checkbox v-model="replaceExisting" color="error" density="compact" hide-details
+              :label="`先整期作廢第 ${conflictPeriods.join('、')} 期既有資料再匯入（覆蓋；每戶已請比例將先回溯）`"></v-checkbox>
+            <div v-if="replaceExisting" class="text-caption text-medium-emphasis mt-1">
+              作廢的舊紀錄會保留在歷期總覽（可開啟「顯示作廢紀錄」查看），之後可用「清除已作廢紀錄」移除。
+            </div>
+          </v-alert>
 
           <!-- 驗證摘要 -->
           <v-row dense class="mb-2">
@@ -161,13 +180,17 @@
         <!-- 匯入動作列 -->
         <v-divider></v-divider>
         <v-card-actions class="px-4 py-3 action-bar">
-          <v-alert v-if="errorCount" type="warning" variant="tonal" density="compact" class="flex-grow-1 mr-3">
+          <v-alert v-if="conflictPeriods.length && !replaceExisting" type="error" variant="tonal" density="compact" class="flex-grow-1 mr-3">
+            第 {{ conflictPeriods.join('、') }} 期已有有效紀錄，請勾選覆蓋或先於歷期總覽整期作廢。
+          </v-alert>
+          <v-alert v-else-if="errorCount" type="warning" variant="tonal" density="compact" class="flex-grow-1 mr-3">
             {{ errorCount }} 列錯誤將被略過，僅匯入通過驗證的資料。
           </v-alert>
           <v-spacer v-else></v-spacer>
-          <v-btn color="primary" size="large" variant="flat" prepend-icon="mdi-database-import"
-            :loading="importing" :disabled="!validClaimCount" @click="doImport">
-            確認匯入（{{ validClaimCount }} 筆請佣／{{ validBonusCount }} 筆獎金）
+          <v-btn :color="replaceExisting && conflictPeriods.length ? 'error' : 'primary'" size="large" variant="flat"
+            :prepend-icon="replaceExisting && conflictPeriods.length ? 'mdi-database-refresh' : 'mdi-database-import'"
+            :loading="importing" :disabled="!validClaimCount || (conflictPeriods.length > 0 && !replaceExisting)" @click="doImport">
+            {{ replaceExisting && conflictPeriods.length ? '作廢並覆蓋匯入' : '確認匯入' }}（{{ validClaimCount }} 筆請佣／{{ validBonusCount }} 筆獎金）
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -176,7 +199,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import * as XLSX from 'xlsx-js-style';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
@@ -193,6 +216,7 @@ const props = defineProps({
   parkings: { type: Array, default: () => [] },
   personnel: { type: Array, default: () => [] },
   ledgers: { type: Object, default: () => ({}) },
+  records: { type: Array, default: () => [] },   // 既有 commissionRecords（期別衝突檢查用）
 });
 const emit = defineEmits(['imported']);
 
@@ -205,8 +229,55 @@ const parsed = ref(false);
 const importing = ref(false);
 const claimRows = ref([]);
 const bonusRows = ref([]);
+const rawClaimRows = ref([]);    // 解析前原始列（切換覆蓋時重新驗證用）
+const rawBonusRows = ref([]);
 const previewTab = ref('claims');
 const showOnlyIssues = ref(false);
+const replaceExisting = ref(false);
+const presetPeriodValue = ref(null);
+
+/** 檔內出現的期別 */
+const filePeriods = computed(() => {
+  const set = new Set();
+  rawClaimRows.value.forEach(r => { const p = toNum(r['期別']); if (p > 0) set.add(p); });
+  return [...set].sort((a, b) => a - b);
+});
+
+/** 既有有效紀錄（依期別） */
+const activeByPeriod = computed(() => {
+  const map = {};
+  props.records.forEach(r => {
+    if (r.status === 'voided') return;
+    const p = toNum(r.period);
+    (map[p] = map[p] || []).push(r);
+  });
+  return map;
+});
+
+/** 檔內期別中，已有有效紀錄者 */
+const conflictPeriods = computed(() => filePeriods.value.filter(p => (activeByPeriod.value[p] || []).length > 0));
+const conflictActiveCount = computed(() => conflictPeriods.value.reduce((s, p) => s + (activeByPeriod.value[p] || []).length, 0));
+
+/** 比例基準：勾選覆蓋時，扣掉將被整期作廢的既有比例 */
+function ledgerBase(unitId) {
+  let base = toNum(props.ledgers[unitId]);
+  if (replaceExisting.value) {
+    conflictPeriods.value.forEach(p => {
+      (activeByPeriod.value[p] || []).forEach(r => { if (r.unitId === unitId) base -= toNum(r.ratioPct); });
+    });
+  }
+  return Math.max(0, Math.round(base * 1000) / 1000);
+}
+
+/** 由歷期總覽「重新匯入此期」進入：預帶期別並自動勾選覆蓋 */
+function presetPeriod(period) {
+  presetPeriodValue.value = Number(period) || null;
+  replaceExisting.value = true;
+}
+defineExpose({ presetPeriod });
+
+// 切換覆蓋 → 以新的比例基準重新驗證
+watch(replaceExisting, () => { if (parsed.value) reparse(); });
 
 const mergedSettings = computed(() => mergeSettings(props.settings));
 const enabledCats = computed(() => (mergedSettings.value.bonusCategories || []).filter(c => c.enabled !== false));
@@ -234,7 +305,7 @@ const ratioSummary = computed(() => {
     add[r.unitId] = (add[r.unitId] || 0) + toNum(r.ratioPct);
   });
   return Object.keys(add).map(unitId => {
-    const before = Math.round(toNum(props.ledgers[unitId]) * 10) / 10;
+    const before = Math.round(ledgerBase(unitId) * 10) / 10;
     return { unitId, before, after: Math.round((before + add[unitId]) * 10) / 10 };
   });
 });
@@ -335,8 +406,9 @@ async function parseFile(f) {
     const claimWs = findSheet(wb, '請佣紀錄') || wb.Sheets[wb.SheetNames[0]];
     const bonusWs = findSheet(wb, '獎金紀錄') || (wb.SheetNames[1] ? wb.Sheets[wb.SheetNames[1]] : null);
 
-    parseClaims(sheetToObjects(claimWs).rows);
-    parseBonuses(bonusWs ? sheetToObjects(bonusWs).rows : []);
+    rawClaimRows.value = sheetToObjects(claimWs).rows;
+    rawBonusRows.value = bonusWs ? sheetToObjects(bonusWs).rows : [];
+    reparse();
     parsed.value = true;
     // 解析後：有錯誤預設只看問題列，並切到有錯誤的頁籤
     showOnlyIssues.value = errorCount.value > 0 || warnCount.value > 0;
@@ -348,6 +420,11 @@ async function parseFile(f) {
   } finally {
     parsing.value = false;
   }
+}
+
+function reparse() {
+  parseClaims(rawClaimRows.value);
+  parseBonuses(rawBonusRows.value);
 }
 
 function parseClaims(rows) {
@@ -404,7 +481,7 @@ function parseClaims(rows) {
 
     // 比例累計檢查（既有 ledger + 檔內累計）
     if (status !== 'error' && unitId) {
-      const before = toNum(props.ledgers[unitId]) + (cumulative[unitId] || 0);
+      const before = ledgerBase(unitId) + (cumulative[unitId] || 0);
       if (before + ratioPct > 100.0001) {
         messages.push(`累計比例將達 ${Math.round((before + ratioPct) * 10) / 10}%，超過 100%`);
         status = 'error';
@@ -521,18 +598,29 @@ async function doImport() {
       .filter(r => r.status !== 'error' && idxMap[r.claimIndex] !== undefined)
       .map(r => ({ ...r, claimIndex: idxMap[r.claimIndex], status: undefined, messages: undefined }));
 
+    const target = Array.isArray(file.value) ? file.value[0] : file.value;
     const res = await importCommissionHistoryAPI({
       projectId: props.projectId,
       createdBy: userStore.user?.name || '',
+      operatorKey: userStore.user?.key || userStore.user?.phone || '',
+      replaceExisting: replaceExisting.value && conflictPeriods.value.length > 0,
+      importFileName: target?.name || '',
       claims: validClaims.map(r => ({ ...r, status: undefined, messages: undefined })),
       bonuses: validBonuses,
     });
     if (res?.ok) {
-      toast.success(`匯入完成：${res.claims} 筆請佣紀錄、${res.bonuses} 筆獎金明細`);
+      const replacedText = res.replaced?.length
+        ? `；已先整期作廢第 ${res.replaced.map(x => x.period).join('、')} 期（${res.replaced.reduce((a, x) => a + x.records, 0)} 戶）`
+        : '';
+      toast.success(`匯入完成：${res.claims} 筆請佣紀錄、${res.bonuses} 筆獎金明細${replacedText}`);
       claimRows.value = [];
       bonusRows.value = [];
+      rawClaimRows.value = [];
+      rawBonusRows.value = [];
       parsed.value = false;
       file.value = null;
+      replaceExisting.value = false;
+      presetPeriodValue.value = null;
       emit('imported');
     }
   } catch (e) {

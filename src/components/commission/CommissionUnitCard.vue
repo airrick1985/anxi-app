@@ -20,15 +20,15 @@
         <v-card-text>
           <!-- 戶別資訊（唯讀） -->
           <div class="fgroup-h">戶別資訊</div>
-          <v-row dense class="mb-1">
-            <v-col cols="6" sm="3" md="2"><div class="ro-field"><label>簽約日期</label><div>{{ contractDateText || '—' }}</div></div></v-col>
-            <v-col cols="6" sm="3" md="2"><div class="ro-field"><label>小訂日期</label><div>{{ depositDateText || '—' }}</div></div></v-col>
-            <v-col cols="6" sm="3" md="2"><div class="ro-field"><label>買方姓名</label><div>{{ entry.unit.buyerName || '—' }}</div></div></v-col>
-            <v-col cols="6" sm="3" md="2"><div class="ro-field"><label>持有車位</label><div>{{ entry.finance.parkingSpots || '—' }}</div></div></v-col>
-            <v-col cols="6" sm="3" md="2"><div class="ro-field"><label>成交總價(含車)</label><div>{{ money(entry.finance.dealTotal * 10000) }} 元</div></div></v-col>
-            <v-col cols="6" sm="3" md="2"><div class="ro-field"><label>溢差價</label><div :class="{ 'text-error': entry.finance.spread < 0 }">{{ money(entry.finance.spread * 10000) }} 元</div></div></v-col>
-            <v-col cols="6" sm="3" md="2"><div class="ro-field"><label>繳款比例</label><div :class="paymentRatio === null ? '' : 'text-teal'">{{ paymentRatio === null ? '—' : paymentRatio + '%' }}</div></div></v-col>
-          </v-row>
+          <div class="info-grid mb-2">
+            <div class="ro-field"><label>簽約日期</label><div>{{ contractDateText || '—' }}</div></div>
+            <div class="ro-field"><label>小訂日期</label><div>{{ depositDateText || '—' }}</div></div>
+            <div class="ro-field"><label>買方姓名</label><div>{{ entry.unit.buyerName || '—' }}</div></div>
+            <div class="ro-field"><label>持有車位</label><div>{{ entry.finance.parkingSpots || '—' }}</div></div>
+            <div class="ro-field"><label>成交總價(含車)</label><div>{{ money(entry.finance.dealTotal * 10000) }} 元</div></div>
+            <div class="ro-field"><label>溢差價</label><div :class="{ 'text-error': entry.finance.spread < 0 }">{{ money(entry.finance.spread * 10000) }} 元</div></div>
+            <div class="ro-field"><label>繳款比例</label><div :class="paymentRatio === null ? '' : 'text-teal'">{{ paymentRatio === null ? '—' : paymentRatio + '%' }}</div></div>
+          </div>
           <v-alert v-if="hasNote" :type="feeHint ? 'error' : 'warning'" variant="tonal" density="compact" class="mb-3">
             <b>{{ feeHint ? '🎁 備註可能提及介紹費/贈品：' : '📝 備註：' }}</b>{{ noteText }}
           </v-alert>
@@ -36,16 +36,16 @@
           <!-- 請佣設定 -->
           <div class="fgroup-h">請佣設定</div>
           <v-row dense class="mb-1">
-            <v-col cols="6" sm="3" md="2">
+            <v-col cols="6" sm="3" md="2" lg="1">
               <v-text-field v-model.number="entry.period" label="期別" type="number" variant="outlined" density="compact" hide-details></v-text-field>
             </v-col>
-            <v-col cols="6" sm="3" md="2">
+            <v-col cols="6" sm="3" md="2" lg="2">
               <v-text-field v-model="entry.requestDate" label="請佣日期" placeholder="yyyy/mm/dd" variant="outlined" density="compact" hide-details></v-text-field>
             </v-col>
-            <v-col cols="6" sm="3" md="2">
+            <v-col cols="6" sm="3" md="2" lg="2">
               <div class="ro-field claimed"><label>已請佣金比例</label><div :class="claimedPct > 0 ? 'text-orange-darken-3' : ''">{{ claimedPct }}%</div></div>
             </v-col>
-            <v-col cols="6" sm="3" md="2">
+            <v-col cols="6" sm="3" md="2" lg="3">
               <v-text-field
                 :model-value="entry.ratioPct"
                 label="本次請佣比例(%)"
@@ -53,22 +53,22 @@
                 @update:model-value="onRatioInput"
               ></v-text-field>
             </v-col>
-            <v-col cols="6" sm="3" md="2">
+            <v-col cols="6" sm="3" md="2" lg="2">
               <v-text-field v-model.number="entry.commPct" label="佣金比例(%)" type="number" step="0.01" variant="outlined" density="compact"
                 :hint="entry.unit.isPreferredPayment ? '優付戶預設減半' : '折數計算用'" persistent-hint></v-text-field>
             </v-col>
-            <v-col cols="6" sm="3" md="2">
+            <v-col cols="6" sm="3" md="2" lg="2">
               <v-text-field v-model.number="entry.keepPct" label="請佣保留款(%)" type="number" step="1" variant="outlined" density="compact" hide-details></v-text-field>
             </v-col>
-            <v-col cols="12" sm="6" md="4">
+            <v-col cols="12" sm="6" md="4" lg="3">
               <v-text-field v-model.number="entry.partyAFee" :label="`${settings.partyALabel}(元)`" type="number" variant="outlined" density="compact"
                 hint="計入獎金折數" persistent-hint></v-text-field>
             </v-col>
-            <v-col cols="12" sm="6" md="4">
+            <v-col cols="12" sm="6" md="4" lg="3">
               <v-text-field v-model.number="entry.partyBFee" :label="`${settings.partyBLabel}(元)`" type="number" variant="outlined" density="compact"
                 hint="計入請佣基準、不計折數" persistent-hint></v-text-field>
             </v-col>
-            <v-col cols="12" md="4" class="d-flex align-center">
+            <v-col cols="12" md="4" lg="6" class="d-flex align-center">
               <v-chip :color="ratioOver ? 'error' : 'success'" variant="tonal">
                 {{ ratioOver ? `⚠ 已超過 ${round1(totalPct - 100)}%` : `尚餘 ${round1(100 - totalPct)}% 未請佣` }}
                 <span class="text-caption ml-1">（既有 {{ claimedPct }}% ＋ 本次 {{ entry.ratioPct }}%）</span>
@@ -144,7 +144,7 @@
                   <th v-for="cat in enabledCategories" :key="cat.key" class="text-right">{{ cat.label }}</th>
                   <th class="text-right">小計</th>
                   <th class="text-right">保留款</th><th class="text-right">稅金</th><th class="text-right">二代健保</th>
-                  <th class="text-right">實發</th><th>備註</th>
+                  <th class="text-right">實發</th><th class="col-remark">備註</th>
                 </tr>
               </thead>
               <tbody>
@@ -174,7 +174,7 @@
                     <div class="text-caption text-medium-emphasis">{{ money(p.nhi) }}</div>
                   </td>
                   <td class="text-right text-success font-weight-bold">{{ money(p.net) }}</td>
-                  <td>
+                  <td class="col-remark">
                     <input class="rmk-input" type="text" :value="profileOf(p.personKey).remark" @change="e => setProfile(p.personKey, 'remark', e.target.value)">
                   </td>
                 </tr>
@@ -200,6 +200,7 @@ import AllocationEditor from './AllocationEditor.vue';
 import CrossProjectPersonPicker from './CrossProjectPersonPicker.vue';
 import {
   calcUnitBonus, money, toNum, round2, formatDateTW, evenShares, toDateValue, paymentRatioPct,
+  matchesRolePositions,
 } from '@/utils/commissionCalculation';
 
 const props = defineProps({
@@ -282,9 +283,8 @@ const poolOptionsByCat = computed(() => {
   enabledCategories.value.forEach(cat => {
     let list = [];
     if (cat.mode === 'role') {
-      const roles = cat.rolePositions || [];
       list = props.localPersonnel
-        .filter(p => (p.positions || []).some(pos => roles.some(r => String(pos).includes(r) || String(r).includes(pos))))
+        .filter(p => matchesRolePositions(p.positions, cat.rolePositions))
         .map(p => ({ personKey: personKeyOf(p), name: p.name, hint: '', disabled: false }));
     } else if (cat.mode === 'team') {
       list = props.localPersonnel
@@ -440,6 +440,8 @@ function onPickPerson(person) {
   display: flex; align-items: center; gap: 6px;
 }
 .fgroup-h::before { content: ''; width: 3px; height: 12px; background: rgb(var(--v-theme-primary)); border-radius: 2px; }
+/* 戶別資訊：自適應網格，全寬時 7 欄一列、窄螢幕自動換行（手機 2 欄） */
+.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
 .ro-field { background: #f8fafc; border-radius: 6px; padding: 4px 8px; min-height: 46px; }
 .ro-field label { display: block; font-size: 11px; color: #789; }
 .ro-field div { font-weight: 600; font-size: 13px; }
@@ -447,6 +449,7 @@ function onPickPerson(person) {
 .claim-table th, .claim-table td { white-space: nowrap; text-align: right; }
 .claim-table th { text-align: center; }
 .matrix-table th, .matrix-table td { white-space: nowrap; }
+.matrix-table .col-remark { width: 100%; min-width: 160px; }
 .pct-input { width: 58px; border: 1px solid #cdd8ec; border-radius: 4px; padding: 1px 4px; text-align: right; font-size: 12px; }
-.rmk-input { width: 130px; border: 1px solid #cdd8ec; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+.rmk-input { width: 100%; min-width: 130px; border: 1px solid #cdd8ec; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
 </style>

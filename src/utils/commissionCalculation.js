@@ -50,6 +50,7 @@ export const DEFAULT_COMMISSION_SETTINGS = {
   note2: '2、請領費用按合約第7條分別以50%匯款或現金票給付，另50%開立45天期票支付。',
   bonusCategories: DEFAULT_BONUS_CATEGORIES,
   teamGroups: [],
+  personDetailShowAllRoles: [],   // 個人明細：職務含這些關鍵字者，每戶明細顯示全部戶別（含非本人銷售）
 };
 
 /** 合併建案設定與預設值（缺欄補預設） */
@@ -59,7 +60,19 @@ export function mergeSettings(saved) {
     s.bonusCategories = DEFAULT_BONUS_CATEGORIES.map(c => ({ ...c }));
   }
   if (!Array.isArray(s.teamGroups)) s.teamGroups = [];
+  if (!Array.isArray(s.personDetailShowAllRoles)) s.personDetailShowAllRoles = [];
   return s;
+}
+
+/**
+ * 人員職務是否符合獎金類別的「對應職務」（rolePositions）。
+ * 類別對應職務由設定分頁自本建案人員實際設定的職務多選而來，故採精確比對（忽略前後空白），
+ * 不再做關鍵字包含比對（避免「專案」誤中「輔導專案／專案團獎」）。
+ */
+export function matchesRolePositions(personPositions, rolePositions) {
+  const roles = (rolePositions || []).map(r => String(r || '').trim()).filter(Boolean);
+  if (!roles.length) return false;
+  return (personPositions || []).some(pos => roles.includes(String(pos || '').trim()));
 }
 
 // ---------- 戶別財務數字 ----------

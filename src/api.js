@@ -9459,16 +9459,51 @@ export const voidCommissionRecordAPI = async (payload) => {
   return result.data;
 };
 
-/** 歷史資料批次匯入 */
+/** 歷史資料批次匯入（payload 可帶 operatorKey、replaceExisting、importFileName） */
 export const importCommissionHistoryAPI = async (payload) => {
   const fn = httpsCallable(functions, 'importCommissionHistory', { timeout: 540000 });
   const result = await fn(payload);
   return result.data;
 };
 
-/** 請佣總表 / 獎金表 PDF 產製 */
+/** 整期作廢（該期全部有效紀錄比例回溯＋獎金明細連動作廢） */
+export const voidCommissionPeriodAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'voidCommissionPeriod', { timeout: 120000 });
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 清除該期已作廢紀錄（實體刪除，只刪 status=voided） */
+export const purgeVoidedCommissionPeriodAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'purgeVoidedCommissionPeriod', { timeout: 120000 });
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 撤銷一次歷史匯入（依 importBatchId） */
+export const undoCommissionImportAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'undoCommissionImport', { timeout: 120000 });
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 讀取建案的請佣稽核紀錄（整期作廢／清除／匯入／撤銷匯入；排序由前端處理） */
+export const fetchCommissionAuditLogs = async (projectId) => {
+  const q = query(collection(db, 'commissionAuditLogs'), where('projectId', '==', projectId));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+/** 請佣總表 / 獎金表 / 個人明細 PDF 產製（個人明細可帶 payload.encrypt.userPassword） */
 export const generateCommissionPdfAPI = async (payload) => {
   const fn = httpsCallable(functions, 'generateCommissionPdf', { timeout: 120000 });
+  const result = await fn(payload);
+  return result.data;
+};
+
+/** 個人獎金明細 PDF 以 Email 寄送給指定人員 */
+export const sendCommissionPersonEmailAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'sendCommissionPersonEmail', { timeout: 120000 });
   const result = await fn(payload);
   return result.data;
 };

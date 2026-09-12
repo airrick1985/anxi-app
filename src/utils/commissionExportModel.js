@@ -5,8 +5,22 @@
  */
 
 import {
-  toNum, money, toMinguo, toMinguoYM, fillPattern,
+  toNum, money, toMinguo, toMinguoYM, fillPattern, formatDateTW,
 } from '@/utils/commissionCalculation';
+
+// ================= 檔名：統一加上建案名 =================
+/**
+ * 下載檔名一律以建案名開頭（{建案名}_原檔名）；若檔名已含建案名則不重複加。
+ * 同時移除檔名中不合法的字元（/ \ : * ? " < > |）。
+ */
+export function withProjectName(fileName, projectName) {
+  const clean = v => String(v || '').replace(/[\/\\:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+  const name = clean(fileName);
+  const pn = clean(projectName);
+  if (!pn) return name;
+  if (name.includes(pn)) return name;
+  return name ? `${pn}_${name}` : pn;
+}
 
 // ================= 請佣總表 欄位登錄表 =================
 // 欄位擴充點：在此新增一筆（含 get），所有版型即可勾用。
@@ -124,10 +138,10 @@ export function buildClaimModel(records, opts) {
   const title = fillPattern(cfg.titlePattern, {
     projectName, shortName: settings.projectShortName || '', period, minguoYM,
   });
-  const fileName = fillPattern(cfg.fileNamePattern, {
+  const fileName = withProjectName(fillPattern(cfg.fileNamePattern, {
     projectName, shortName: settings.projectShortName || '', period,
     minguoYM: minguoYM.replace('/', '.'),
-  });
+  }), projectName);
 
   return {
     docType: 'claim',
@@ -360,10 +374,10 @@ export function buildBonusModel(opts) {
       };
     });
 
-  const fileName = fillPattern(cfg.fileNamePattern, {
+  const fileName = withProjectName(fillPattern(cfg.fileNamePattern, {
     projectName, shortName: settings.projectShortName || '', period,
     minguoYM: minguoYM.replace('/', '.'),
-  });
+  }), projectName);
 
   return {
     docType: 'bonus',
@@ -374,6 +388,200 @@ export function buildBonusModel(opts) {
     includeClaimSheet: cfg.includeClaimSheet !== false,
     groups: modelGroups,
     paper: cfg.paper || 'A3',
+    orientation: cfg.orientation || 'landscape',
+  };
+}
+
+// ================= 個人獎金明細 model =================
+/** 預設個人明細版型 config */
+export function defaultPersonConfig(settings) {
+  return {
+    style: {
+      fontFamily: 'DFKai-SB',
+      titleFontSize: 18, headerFontSize: 11, dataFontSize: 11,
+      headerBg: '#e7e6e6', totalRowBg: '#fff2cc', summaryColor: '#DD0806', borders: true,
+    },
+    showBuyerName: true,
+    showDealTotal: true,
+    fileNamePattern: settings?.personFileNamePattern || '{建案名}NO.{期別}獎金明細-{姓名}',
+    paper: 'A4',
+    orientation: 'landscape',
+  };
+}
+
+/** 期別陣列 → 顯示文字（1、2、3）與檔名文字（1-3 或 1.3） */
+export function periodsLabel(periods, forFile = false) {
+  const list = [...new Set((periods || []).map(toNum))].sort((a, b) => a - b);
+  if (!list.length) return '';
+  if (list.length === 1) return String(list[0]);
+  const consecutive = list.every((p, i) => i === 0 || p === list[i - 1] + 1);
+  if (forFile) return consecutive ? `${list[0]}-${list[list.length - 1]}` : list.join('.');
+  return list.join('、');
+}
+
+/** 該期別範圍內有獎金紀錄的人員清單（供選擇器） */
+export function listPersonsInPeriods(bonusRecords, periods, personnelOrder = []) {
+  const set = new Set((periods || []).map(toNum));
+  const orderIdx = {};
+  personnelOrder.forEach((n, i) => { orderIdx[n] = i; });
+  const map = {};
+  (bonusRecords || []).forEach(b => {
+    if (b.status === 'voided' || !set.has(toNum(b.period))) return;
+    const key = b.personKey || b.name;
+    if (!map[key]) {
+      map[key] = { personKey: key, name: b.name, role: b.role || '', sourceProjectId: b.sourceProjectId || '', sourceProjectName: b.sourceProjectName || '', count: 0, net: 0 };
+    }
+    map[key].count++;
+    map[key].net += toNum(b.net);
+    if (b.role && !map[key].role) map[key].role = b.role;
+  });
+  const ord = n => (orderIdx[n] !== undefined ? orderIdx[n] : 9999);
+  return Object.values(map).sort((a, b) => (ord(a.name) - ord(b.name)) || String(a.name).localeCompare(String(b.name), 'zh-Hant'));
+}
+
+/**
+ * 個人獎金明細 model：指定人員 × 指定期別（可多期），僅含該人自己的金額。
+ * @param {object} opts - { records, bonusRecords, payouts, personnel, settings, config, periods, personKey, projectName, projectId }
+ */
+export function buildPersonModel(opts) {
+  const {
+    records = [], bonusRecords = [], payouts = [], personnel = [],
+    settings = {}, config = {}, periods = [], personKey, projectName = '', projectId = '',
+  } = opts;
+  const cfg = { ...defaultPersonConfig(settings), ...config };
+  const periodSet = new Set((periods || []).map(toNum));
+
+  const recById = {};
+  records.forEach(r => { recById[r.id] = r; });
+
+  const personAll = bonusRecords.filter(b => b.status !== 'voided' && (b.personKey || b.name) === personKey);
+  const personRows = personAll.filter(b => periodSet.has(toNum(b.period)));
+
+  // 類別：依建案設定順序，另補歷史紀錄中存在但設定已停用/移除的 key；僅保留該人有金額的類別
+  const catDefs = (settings.bonusCategories || []).slice().sort((a, b) => toNum(a.order) - toNum(b.order));
+  const catMap = {};
+  catDefs.forEach(c => { catMap[c.key] = { key: c.key, label: c.label || c.key, ratePct: toNum(c.ratePct), sum: 0 }; });
+  personRows.forEach(b => {
+    Object.keys(b.amounts || {}).forEach(k => {
+      if (!catMap[k]) catMap[k] = { key: k, label: k, ratePct: 0, sum: 0 };
+      catMap[k].sum += toNum(b.amounts[k]);
+    });
+  });
+  const categories = Object.values(catMap).filter(c => c.sum !== 0);
+
+  const sorted = personRows.slice().sort((a, b) =>
+    (toNum(a.period) - toNum(b.period))
+    || String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true }));
+
+  const staffEarly = personnel.find(p => p.phone === personKey) || null;
+  const personNames = new Set(
+    [...personRows.map(b => b.name), staffEarly?.name].map(n => String(n || '').trim()).filter(Boolean)
+  );
+  const normSales = v => (Array.isArray(v) ? v : String(v || '').split(/[、,，/\s]+/)).map(x => String(x).trim()).filter(Boolean);
+
+  const rows = sorted.map(b => {
+    const rec = recById[b.commissionRecordId] || records.find(r => r.projectId === b.projectId && r.unitId === b.unitId && toNum(r.period) === toNum(b.period)) || {};
+    const snap = rec.snapshot || {};
+    const amounts = {};
+    categories.forEach(c => { amounts[c.key] = Math.round(toNum(b.amounts?.[c.key])); });
+    const isOwnSale = normSales(snap.salesperson).some(n => personNames.has(n));
+    return {
+      isOwnSale,
+      period: toNum(b.period),
+      requestDate: toMinguo(b.requestDate || rec.requestDate),
+      unit: `${b.unitId || rec.unitId || ''}`,
+      contractDate: toMinguo(snap.contractDate),
+      buyerName: snap.buyerName || '',
+      dealTotal: toNum(snap.dealTotal),
+      ratioPct: toNum(rec.ratioPct),
+      amounts,
+      subtotal: toNum(b.subtotal),
+      keepPct: toNum(b.keepPct), keep: toNum(b.keep),
+      taxPct: toNum(b.taxPct), tax: toNum(b.tax),
+      nhiPct: toNum(b.nhiPct), nhi: toNum(b.nhi),
+      net: toNum(b.net),
+      remark: b.remark || '',
+    };
+  });
+
+  const sumKeys = ['subtotal', 'keep', 'tax', 'nhi', 'net', 'dealTotal'];
+  const sumRows = list => {
+    const t = { amounts: {} };
+    sumKeys.forEach(k => { t[k] = list.reduce((s, r) => s + toNum(r[k]), 0); });
+    categories.forEach(c => { t.amounts[c.key] = list.reduce((s, r) => s + toNum(r.amounts[c.key]), 0); });
+    return t;
+  };
+  const totals = sumRows(rows);
+
+  // 每戶明細預設只列「本人為該戶銷售人員」的戶別；其餘（專案／主委／團獎等）彙整為一列，不揭露戶別資訊。
+  // 建案設定 personDetailShowAllRoles：職務含關鍵字者改為顯示全部戶別。
+  const latestRole = String((sorted[sorted.length - 1] || personAll[personAll.length - 1] || {}).role || staffEarly?.positions?.join('、') || '');
+  const showAllUnits = (settings.personDetailShowAllRoles || [])
+    .map(k => String(k || '').trim()).filter(Boolean)
+    .some(k => latestRole.includes(k));
+  const detailRows = showAllUnits ? rows : rows.filter(r => r.isOwnSale);
+  const otherRows = showAllUnits ? [] : rows.filter(r => !r.isOwnSale);
+  const otherAggregate = otherRows.length ? { count: otherRows.length, ...sumRows(otherRows) } : null;
+
+  // 期別彙總
+  const byPeriod = {};
+  rows.forEach(r => {
+    if (!byPeriod[r.period]) byPeriod[r.period] = { period: r.period, requestDate: r.requestDate, count: 0, subtotal: 0, keep: 0, tax: 0, nhi: 0, net: 0 };
+    const p = byPeriod[r.period];
+    p.count++;
+    p.subtotal += r.subtotal; p.keep += r.keep; p.tax += r.tax; p.nhi += r.nhi; p.net += r.net;
+    if (!p.requestDate) p.requestDate = r.requestDate;
+  });
+  const periodSummaries = Object.values(byPeriod).sort((a, b) => a.period - b.period);
+
+  // 保留款累計（該人於本建案全部期別）
+  const keepTotal = personAll.reduce((s, b) => s + toNum(b.keep), 0);
+  const keepPaid = (payouts || [])
+    .filter(p => p.type === 'person' && p.personKey === personKey)
+    .reduce((s, p) => s + toNum(p.amount), 0);
+
+  // 人員資訊：以最新一筆紀錄為準，email 取自人員名冊
+  const latest = sorted[sorted.length - 1] || personAll[personAll.length - 1] || {};
+  const staff = personnel.find(p => p.phone === personKey) || null;
+  const person = {
+    personKey,
+    name: latest.name || staff?.name || '',
+    role: latest.role || (staff?.positions || []).join('、') || '',
+    sourceProjectId: latest.sourceProjectId || '',
+    sourceProjectName: latest.sourceProjectId && latest.sourceProjectId !== projectId ? (latest.sourceProjectName || '') : '',
+    email: staff?.email || '',
+    isExternal: !!latest.isExternal,
+  };
+
+  const label = periodsLabel(periods);
+  const fileLabel = periodsLabel(periods, true);
+  const shortName = settings.projectShortName || '';
+  const fileName = withProjectName(
+    fillPattern(cfg.fileNamePattern, { projectName, shortName, period: fileLabel }).replace(/\{姓名\}/g, person.name),
+    projectName,
+  );
+
+  return {
+    docType: 'person',
+    projectId, projectName,
+    periods: [...periodSet].sort((a, b) => a - b),
+    periodsLabel: label,
+    title: `${projectName}－業務獎金個人明細`,
+    subtitle: `第 ${label} 期`,
+    fileName,
+    generatedAt: formatDateTW(new Date()),
+    style: cfg.style,
+    showBuyerName: cfg.showBuyerName !== false,
+    showDealTotal: cfg.showDealTotal !== false,
+    person,
+    categories,
+    rows, totals,
+    detailRows, otherAggregate,
+    detailScope: showAllUnits ? 'all' : 'own',
+    showDetail: detailRows.length > 0,
+    periodSummaries,
+    retention: { keepTotal, keepPaid, keepUnpaid: keepTotal - keepPaid },
+    paper: cfg.paper || 'A4',
     orientation: cfg.orientation || 'landscape',
   };
 }

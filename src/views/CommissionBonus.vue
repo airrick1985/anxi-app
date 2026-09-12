@@ -51,8 +51,9 @@
           :records="records"
           :bonus-records="bonusRecords"
           :loading="recordsLoading"
-          @refresh="loadRecords"
+          @refresh="handleSubmitted"
           @export-period="goExportPeriod"
+          @reimport-period="goReimportPeriod"
         />
       </v-window-item>
 
@@ -83,12 +84,14 @@
         <CommissionSettingsTab
           :project-id="projectId"
           :settings="settings"
+          :personnel="personnel"
           @saved="loadSettings"
         />
       </v-window-item>
 
       <v-window-item value="import">
         <CommissionHistoryImport
+          ref="importRef"
           :project-id="projectId"
           :project-name="projectName"
           :settings="settings"
@@ -96,6 +99,7 @@
           :parkings="parkings"
           :personnel="personnel"
           :ledgers="ledgerMap"
+          :records="records"
           @imported="handleSubmitted"
         />
       </v-window-item>
@@ -133,6 +137,7 @@ const tab = ref('workbench');
 const isLoading = ref(true);
 const recordsLoading = ref(false);
 const exportCenterRef = ref(null);
+const importRef = ref(null);
 
 const settings = ref(mergeSettings(null));
 const records = ref([]);
@@ -203,6 +208,14 @@ async function reloadAll() {
 /** 送出/匯入完成後：刷新 ledger 與紀錄 */
 async function handleSubmitted() {
   await Promise.all([loadLedgers(), loadRecords()]);
+}
+
+/** 歷期總覽「重新匯入此期」：切到歷史匯入並預帶期別（自動勾選覆蓋） */
+function goReimportPeriod(period) {
+  tab.value = 'import';
+  requestAnimationFrame(() => {
+    importRef.value?.presetPeriod?.(period);
+  });
 }
 
 function goExportPeriod(period) {

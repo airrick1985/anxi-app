@@ -161,6 +161,7 @@ net  = subtotal − keep − tax − nhi
   ],
   // 團獎分組（可自訂，對應舊「首馥團獎/天雋團獎」）
   teamGroups: [ { key: 'g1', label: '首馥團獎' }, { key: 'g2', label: '天雋團獎' } ],
+  personDetailShowAllRoles: ['專案'],        // 個人明細：職務含關鍵字者每戶明細顯示全部戶別
   updatedAt, updatedBy
 }
 ```
@@ -189,6 +190,10 @@ net  = subtotal − keep − tax − nhi
 
 - 人員管理 UI：`SalesSettings.vue` 的 `personnel` 分頁擴充（`SalesPersonnelForm.vue` 加「請佣獎金設定」區塊，僅具「請佣獎金」權限者可見可編輯）。
 - **跨案人員識別鍵 `personKey` = phone**（沿用 `salespersonUserKey` 慣例）。
+
+- **Excel 匯出／匯入**（銷控設定 → 銷售人員管理）：`src/utils/salesPersonnelExcel.js` ＋ `src/components/SalesPersonnelImportDialog.vue`。
+  - 匯出：工作表「銷售人員」（排序／姓名／電話／Email／職位／保留款%／稅金%／二代健保%／團獎分組（名稱）／進場時間／結案時間／預設備註／人員ID）＋「填寫說明」。
+  - 匯入：以人員ID＞電話比對；相符者更新（僅寫入有差異之列）、不相符者新增（order＝檔案排序或最大值+10）；檔案中沒有的人員不刪除。寫入前顯示新增／更新／無變更／錯誤預覽，錯誤列（缺姓名電話、Email／日期格式、分組名稱不存在、電話重複）略過。bonusConfig 僅在原本已有或檔案有填任一值時寫入。
 
 ### 4.3 `commissionRecords` — 請佣紀錄（每戶每期一筆）
 
@@ -227,6 +232,7 @@ docId：`${projectId}_${unitId}_${period}_${yyyyMMddHHmmss}`
   },
   keepPct: 10,                        // 請佣保留款 %
   source: 'system' | 'import',        // 歷史匯入標記
+  importBatchId, importFileName,      // source='import' 時：匯入批次 ID（imp_yyyyMMddHHmmssNNN）與原檔名，供「撤銷匯入」
   createdAt, createdBy,
   voidedAt, voidedBy, voidReason      // 作廢資訊
 }
@@ -315,6 +321,20 @@ docId 自動。
   createdAt, createdBy }
 ```
 
+### 4.6.1 `commissionAuditLogs` — 請佣破壞性操作稽核紀錄
+
+docId 自動；由後端寫入，前端唯讀（歷期總覽「操作紀錄」）。
+```js
+{ projectId,
+  action: 'voidPeriod' | 'purgeVoided' | 'import' | 'undoImport',
+  period,                             // 單期操作
+  periods: [1, 2],                    // 匯入／撤銷匯入涉及期別
+  importBatchId, importFileName,
+  operator, operatorKey, reason,
+  impact: { records, bonuses, claims, units: [{ unitId, before, after, ratioPct }], replaced: [...] },
+  createdAt }
+```
+
 ### 4.7 期別規則
 
 - 期別為建案層級流水號：`nextPeriod = max(commissionRecords[projectId 全部，含 voided、含 import].period) + 1`，送出時可手動改（同期可多戶）。
@@ -331,9 +351,15 @@ docId 自動。
 | `submitCommissionEntries` | onCall | 送出請佣：transaction 內重新驗證「已請＋本次 ≤ 100%」（以 DB 為準防並發）、伺服器端重算全部金額（不信任前端數值）、批次寫入 `commissionRecords` + `bonusRecords`。回傳 `{ ok, results }` 或逐戶錯誤。 |
 | `voidCommissionRecord` | onCall | 作廢：權限檢查 → 該 `commissionRecordId` 與關聯 `bonusRecords` 標記 `voided` ＋作廢人/時間/原因。 |
 | `generateCommissionPdf` | onCall | 產 PDF（pdfkit）：參數 `{ projectId, docType, period(s), configSnapshot }`，前端傳入版型 config 快照與資料列，後端照畫（同 `generateSalesGridPdf` 模式：前端算版面、後端渲染）。字型用 `functions/assets/fonts/TW-Kai`（楷體）/ NotoSansTC。回傳 `{ fileName, mimeType, base64 }`，7MB 上限保護。 |
-| `importCommissionHistory` | onCall | 歷史匯入：接收前端解析驗證後的列資料，分批（450 筆/batch）寫入，`source:'import'`；timeout 540s。回傳成功/失敗明細。 |
+| `sendCommissionPersonEmail` | onCall | 個人獎金明細 PDF 寄送：`{ projectId, projectName, to, personName, subject, body, payload }`，`payload` 同 `generateCommissionPdf`（可含 `encrypt.userPassword`）。secrets `SENDER_EMAIL` / `GMAIL_APP_PASSWORD`；附件 PDF 7MB 上限。 |
+| `importCommissionHistory` | onCall | 歷史匯入：需 `operatorKey` 通過權限檢查。先檢查檔內期別是否已有有效紀錄：未帶 `replaceExisting` 則整批擋下；帶則先對衝突期別執行整期作廢（有保留款發還登記者擋下）再寫入。分批（450 筆/batch）寫入，`source:'import'` 並帶 `importBatchId`／`importFileName`；寫入稽核紀錄；timeout 540s。回傳 `{ ok, claims, bonuses, importBatchId, replaced }`。 |
+| `voidCommissionPeriod` | onCall | 整期作廢：`{ projectId, period, voidReason, voidedBy, operatorKey }`。權限檢查 → 該期有保留款發還登記則擋下 → transaction 內將該期全部 active 請佣紀錄標記 voided 並回溯每戶 ledger → 該期 active 獎金明細連動作廢 → 寫稽核紀錄。 |
+| `purgeVoidedCommissionPeriod` | onCall | 清除該期已作廢紀錄：實體刪除該期 `status='voided'` 的請佣紀錄與獎金明細（不動有效資料、不變動 ledger）。寫稽核紀錄。 |
+| `undoCommissionImport` | onCall | 撤銷一次匯入：依 `importBatchId` 找出該批全部請佣紀錄（跨期），仍 active 者於 transaction 回溯 ledger，全部實體刪除，連同該批獎金明細；涉及期別有保留款發還登記且仍有效者擋下。寫稽核紀錄。 |
 
-- 部署：`firebase deploy --only functions:submitCommissionEntries,functions:voidCommissionRecord,functions:generateCommissionPdf,functions:importCommissionHistory`（必要時加 `FUNCTIONS_DISCOVERY_TIMEOUT=120`）。
+- 權限檢查 `ensureManagePermission_`：`users/{operatorKey}.roles` 含「超級管理員/系統管理員」，或 `userPermissions/{operatorKey}.permissions[projectId].systems` 含「銷控系統」。
+
+- 部署：`firebase deploy --only functions:submitCommissionEntries,functions:voidCommissionRecord,functions:generateCommissionPdf,functions:importCommissionHistory,functions:voidCommissionPeriod,functions:purgeVoidedCommissionPeriod,functions:undoCommissionImport`（必要時加 `FUNCTIONS_DISCOVERY_TIMEOUT=120`）。
 - 計算引擎抽成 `functions/utils/commissionCalculation.js` 與前端 `src/utils/commissionCalculation.js` **同構雙份**（同付款表 `paymentCalculation.js` 慣例），單元測試比對前後端結果一致。
 
 ---
@@ -372,6 +398,12 @@ docId 自動。
 - 期別卡片列表（前端排序，新→舊）：期別、請佣日期、戶數、實際請領合計、本次請佣合計、獎金實發合計、狀態（含作廢戶數）。
 - 點入期別 → 戶別明細表（含快照值）＋每人獎金明細；單戶紀錄可「作廢」（輸入原因，confirm 二次確認，呼叫 `voidCommissionRecord`）；作廢列灰色刪除線顯示。
 - 每期右上：「匯出此期」捷徑 → 跳匯出中心並帶入期別。
+- 工具列：「顯示作廢紀錄」開關（預設隱藏作廢列）、「操作紀錄」（讀 `commissionAuditLogs`，時間軸顯示）。整期皆作廢的期別標示「已全數作廢」。
+- 每期「⋯」選單（僅具管理權限者顯示）：
+  - **整期作廢**：確認視窗列出影響範圍（戶數、獎金明細筆數、本次請佣合計、每戶比例回溯清單），並先查該期是否有保留款發還登記（有則擋下）；需填原因並輸入期別數字才可確認。呼叫 `voidCommissionPeriod`。
+  - **清除已作廢紀錄**：實體刪除該期作廢資料；輸入期別數字確認。呼叫 `purgeVoidedCommissionPeriod`。
+  - **重新匯入此期**：切到歷史匯入分頁並預帶期別、自動勾選「覆蓋」。
+  - **撤銷匯入（每個匯入批次一項）**：顯示檔名、操作人、批次跨期資訊；輸入「撤銷」確認。呼叫 `undoCommissionImport`。
 
 ### 6.3 累計統計
 
@@ -397,9 +429,32 @@ docId 自動。
   - **PDF**：呼叫 `generateCommissionPdf`，後端 pdfkit 依同一 config 渲染；產生後顯示手動下載連結。
   - 檔名依 pattern 產生（民國年月自動計算），下載前可改。
 
+#### 6.4.1 個人獎金明細（docType `person`）
+
+供「指定單一人員、指定期別，下載其個人獎金明細給該人員審閱」。
+
+- 入口：匯出中心文件切換第三項「個人明細」。不使用欄位版型（固定 `defaultPersonConfig`），版型控制列隱藏。
+- 條件：期別可多選（預設最新一期）；人員多選（清單＝所選期別內有有效 `bonusRecords` 的人，含他案人員標示來源建案；支援全選）。
+- 內容（僅含該人自己的金額）：
+  1. 表頭：建案、期別（`第 1、2 期`）、姓名／職務／來源建案、產出日期。
+  2. 每戶獎金明細：**只列「本人為該戶銷售人員」（`snapshot.salesperson` 含本人姓名）的戶別**：期別、請佣日期、戶別、簽約日期、買方、成交總價(萬)、請佣比例、各獎金類別（只列該人有金額者；表頭第二列顯示類別比例，格式 `0.00%`）、小計、保留款、稅金、二代健保、實發、備註。非本人銷售之戶別（專案／主委／團獎等）彙整為一列「其他戶別（N 戶，非本人銷售）」只顯示金額、不揭露戶別與買方；合計列含全部。若沒有任何本人銷售戶別，整個區塊不顯示（Excel 亦不產「每戶明細」工作表），章節序號順延。建案設定 `personDetailShowAllRoles: string[]`（設定分頁「個人明細匯出」）：職務（送出請佣時快照）含任一關鍵字者，改為顯示全部戶別、不做彙整。扣款比例全列一致時顯示於表頭，否則補註於備註。
+  3. 期別彙總：每期戶數／小計／扣款／實發＋合計。
+  4. 保留款累計：本建案全部期別累計保留款、已發還（`retentionPayouts` type=person）、未發還。
+- 輸出：
+  - 預覽／PDF：單張合併 grid（A4 橫式）。
+  - Excel：兩張工作表「彙總」「每戶明細」。
+  - 多人：Excel／PDF 皆打包 ZIP（jszip），每人一檔；檔名 `{建案名}NO.{期別}獎金明細-{姓名}`（建案名為完整名稱，非簡稱），多期期別以 `1-3`（連續）或 `1.3` 呈現。
+- PDF 加密（僅個人明細）：`不加密` / `自訂密碼`（所有人同一組）/ `人員 USERKEY`（personKey＝電話，每人各自密碼）。後端 pdfkit `userPassword` AES-256（`pdfVersion 1.7ext3`），允許列印、禁止複製／修改。Excel 不加密。
+- Email 寄送：對話框列出收件人（Email 預設取 `salesPersonnel.email`，可臨時修改，不回寫名冊）、主旨、內文（`{姓名}` 逐人替換）；逐人呼叫 `sendCommissionPersonEmail`，缺 Email 者略過並標示；自訂密碼不寫入信件。
+- 檔案：`commissionExportModel.js`（`defaultPersonConfig` / `buildPersonModel` / `listPersonsInPeriods` / `periodsLabel`）、`commissionExcelService.js`（`buildPersonGrid` / `buildPersonExcelGrids` / `gridsToExcelBlob`）、`functions/commissionDocument.js`（`encrypt` 支援、`buildPersonPdf`）、`functions/commissionClaims.js`（`generateCommissionPdf` 放行 `person`、`sendCommissionPersonEmail`）。
+- PDF 渲染防溢出（`commissionDocument.js` `drawGrid`，所有 docType 共用）：繪製前先量測每格——數值格縮字至單行可容納（最小 6pt）；文字格依換行高度自動撐高該列（跨列合併差額加到最後一列）；繪製時以儲存格範圍裁切，任何情況不溢出鄰格。前端 grid 端另以字數估算列高，供 Excel／預覽避免截斷。
+- 部署：`firebase deploy --only functions:generateCommissionPdf,functions:sendCommissionPersonEmail`。
+
 ### 6.5 設定分頁
 
 對應 `commissionSettings` 全欄位的表單：基本比例（佣金/優付倍率/保留款/現金）、文字自訂（介紹費欄名×2、千4、優付列、標題/檔名 pattern、條文）、獎金類別管理（可拖曳排序、新增/改名/停用、每類 label/ratePct/mode/rolePositions）、團獎分組管理。變更僅影響之後的新請佣（歷史紀錄有快照）。
+- `teamGroups`（團獎分組／案場）改為 `v-select` 多選，選項為登入使用者於 `userPermissions` 具「銷控系統」權限的建案（本建案排最前）；儲存格式維持 `{ key, label }`，其中 `key` = 建案 id、`label` = 建案名稱，故人員 `bonusConfig.teamGroupKeys` 與工作台案場勾選無需變更。已儲存但不在權限清單內的舊版自訂分組以 warning chip 標示，可移除。
+- `rolePositions`（對應職務）為 `v-combobox` 多選，選項來自本建案銷售人員實際設定的職務（`personnel[].positions` 聯集、去重），尚未建立的職務可手動輸入（Enter 或 ，、, 分隔）；本建案目前無人設定的職務 chip 以 warning 色標示提醒。儲存時 trim、去空、去重。人員是否符合類別以 `matchesRolePositions()` **精確比對**（trim 後相等），不再做關鍵字包含比對（避免「專案」誤中「輔導專案／專案團獎」）。工作台新增戶別自動帶入唯一符合者、戶別卡片依職務候選名單皆走同一比對。
 
 ### 6.6 歷史匯入分頁（舊資料銜接）
 
@@ -410,6 +465,8 @@ docId 自動。
 3. **預覽**：驗證結果表（成功/警告/錯誤分色），錯誤列可下載失敗明細 Excel；顯示匯入後每戶已請比例與 nextPeriod 變化摘要。
 4. **寫入**：呼叫 `importCommissionHistory` 分批寫入（`source:'import'`），進度條＋結果報告。
 5. 匯入紀錄同樣可在歷期總覽檢視、作廢、列入累計統計與匯出。
+6. **期別衝突與覆蓋**：解析後若檔內期別已有有效紀錄，顯示錯誤提示並停用匯入按鈕；勾選「先整期作廢再匯入（覆蓋）」後，比例驗證改以「既有 ledger − 將被作廢期別的比例」為基準重新驗證，按鈕變為「作廢並覆蓋匯入」。由歷期總覽「重新匯入此期」進入時自動勾選並顯示提示。
+7. 每次匯入帶 `importBatchId` 與原檔名，可於歷期總覽對該批次「撤銷匯入」。
 
 ---
 

@@ -3,8 +3,13 @@
  *
  * - submitCommissionEntries：送出請佣（transaction 驗證比例上限＋伺服器端重算金額）
  * - voidCommissionRecord：作廢請佣紀錄（比例回溯、關聯獎金明細連動作廢）
- * - importCommissionHistory：歷史資料批次匯入（source: 'import'）
- * - generateCommissionPdf：請佣總表 / 獎金表 PDF 產製
+ * - importCommissionHistory：歷史資料批次匯入（source: 'import'，帶 importBatchId；可先整期作廢再覆蓋）
+ * - voidCommissionPeriod：整期作廢（該期全部有效紀錄比例回溯＋獎金明細連動作廢）
+ * - purgeVoidedCommissionPeriod：清除該期「已作廢」的請佣紀錄與獎金明細（實體刪除）
+ * - undoCommissionImport：撤銷一次歷史匯入（依 importBatchId 回溯比例並實體刪除）
+ * - 以上破壞性操作皆需 operatorKey 通過權限檢查，並寫入 commissionAuditLogs 稽核紀錄
+ * - generateCommissionPdf：請佣總表 / 獎金表 / 個人獎金明細 PDF 產製（個人明細可加密）
+ * - sendCommissionPersonEmail：個人獎金明細 PDF 以 Email 寄送給指定人員
  *
  * 比例累計以 commissionUnitLedgers/{projectId}_{unitId} 為準（transaction 內讀寫，防並發超額）。
  */
@@ -12,6 +17,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { Firestore, FieldValue } = require("@google-cloud/firestore");
 const { formatInTimeZone } = require("date-fns-tz");
+const nodemailer = require("nodemailer");
 const calc = require("./utils/commissionCalculation");
 
 const REGION = "asia-east1";
@@ -31,6 +37,113 @@ function rand3_() {
 
 function ledgerId_(projectId, unitId) {
   return `${projectId}_${unitId}`;
+}
+
+/**
+ * 破壞性操作的權限檢查（本系統未使用 Firebase Auth，operatorKey 由前端帶入使用者 key）。
+ * 通過條件：users.roles 含「超級管理員/系統管理員」，或 userPermissions[projectId].systems 含「銷控系統」。
+ */
+async function ensureManagePermission_(db, operatorKey, projectId) {
+  if (!operatorKey) throw new HttpsError("unauthenticated", "缺少操作者識別（operatorKey）。");
+  const userSnap = await db.collection("users").doc(String(operatorKey)).get();
+  if (!userSnap.exists) throw new HttpsError("permission-denied", "找不到對應使用者資料。");
+  const roles = userSnap.data().roles || [];
+  if (roles.includes("超級管理員") || roles.includes("系統管理員")) return;
+  const permSnap = await db.collection("userPermissions").doc(String(operatorKey)).get();
+  const permissions = permSnap.exists ? (permSnap.data().permissions || {}) : {};
+  const systems = permissions[projectId]?.systems || [];
+  if (!systems.includes("銷控系統")) {
+    throw new HttpsError("permission-denied", "您沒有此建案的「銷控系統」管理權限，無法執行此操作。");
+  }
+}
+
+/** 寫入稽核紀錄 commissionAuditLogs */
+async function writeAudit_(db, entry) {
+  await db.collection("commissionAuditLogs").add({
+    ...entry,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+}
+
+/** 該期別是否已有保留款發還登記（periods 可能存數字或字串） */
+async function findRetentionPayoutsForPeriod_(db, projectId, period) {
+  const col = db.collection("retentionPayouts").where("projectId", "==", projectId);
+  const [a, b] = await Promise.all([
+    col.where("periods", "array-contains", Number(period)).get(),
+    col.where("periods", "array-contains", String(period)).get(),
+  ]);
+  const map = new Map();
+  [...a.docs, ...b.docs].forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+  return Array.from(map.values());
+}
+
+/** 分批 commit（每批最多 450 筆） */
+function batcher_(db) {
+  let batch = db.batch();
+  let ops = 0;
+  return {
+    async add(fn) {
+      fn(batch); ops++;
+      if (ops >= 450) { await batch.commit(); batch = db.batch(); ops = 0; }
+    },
+    async flush() {
+      if (ops > 0) { await batch.commit(); batch = db.batch(); ops = 0; }
+    },
+  };
+}
+
+/**
+ * 整期作廢核心：該期所有 active 請佣紀錄 → voided、每戶 ledger 回溯、獎金明細連動作廢。
+ * 回傳 { records, bonuses, units: [{unitId, before, after, ratioPct}] }
+ */
+async function voidPeriodCore_(db, projectId, period, { reason, by }) {
+  const p = Number(period);
+  const recSnap = await db.collection("commissionRecords")
+    .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "active").get();
+  const recs = recSnap.docs.map(d => ({ ref: d.ref, ...d.data() }));
+  if (!recs.length) return { records: 0, bonuses: 0, units: [] };
+
+  const rollback = {};
+  recs.forEach(r => { rollback[r.unitId] = (rollback[r.unitId] || 0) + calc.toNum(r.ratioPct); });
+  const unitIds = Object.keys(rollback);
+  const units = [];
+
+  await db.runTransaction(async (tx) => {
+    const ledgerRefs = unitIds.map(u => db.collection("commissionUnitLedgers").doc(ledgerId_(projectId, u)));
+    const ledgerSnaps = await Promise.all(ledgerRefs.map(ref => tx.get(ref)));
+    // 再次確認紀錄仍為 active（避免並發重複回溯）
+    const recSnaps = await Promise.all(recs.map(r => tx.get(r.ref)));
+    const stillActive = recSnaps.filter(sn => sn.exists && sn.data().status === "active");
+    const rb = {};
+    stillActive.forEach(sn => { const d = sn.data(); rb[d.unitId] = (rb[d.unitId] || 0) + calc.toNum(d.ratioPct); });
+
+    stillActive.forEach(sn => {
+      tx.update(sn.ref, {
+        status: "voided",
+        voidedAt: FieldValue.serverTimestamp(),
+        voidedBy: by || "",
+        voidReason: reason || "",
+      });
+    });
+    unitIds.forEach((u, i) => {
+      const existing = ledgerSnaps[i].exists ? calc.toNum(ledgerSnaps[i].data().claimedRatioPct) : 0;
+      const dec = rb[u] || 0;
+      const next = Math.max(0, Math.round((existing - dec) * 1000) / 1000);
+      units.push({ unitId: u, before: existing, after: next, ratioPct: dec });
+      tx.set(ledgerRefs[i], { projectId, unitId: u, claimedRatioPct: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    });
+  });
+
+  // 獎金明細連動作廢
+  const bonusSnap = await db.collection("bonusRecords")
+    .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "active").get();
+  const bt = batcher_(db);
+  for (const d of bonusSnap.docs) {
+    await bt.add(b => b.update(d.ref, { status: "voided", voidedAt: FieldValue.serverTimestamp(), voidedBy: by || "" }));
+  }
+  await bt.flush();
+
+  return { records: recs.length, bonuses: bonusSnap.size, units };
 }
 
 /** 讀取建案的請佣設定（合併預設值） */
@@ -356,22 +469,55 @@ exports.importCommissionHistory = onCall({
   timeoutSeconds: 540,
   memory: "512MiB",
 }, async (request) => {
-  const { projectId, claims, bonuses, createdBy } = request.data || {};
+  const {
+    projectId, claims, bonuses, createdBy, operatorKey,
+    replaceExisting = false, importFileName = "",
+  } = request.data || {};
   if (!projectId || !Array.isArray(claims) || claims.length === 0) {
     throw new HttpsError("invalid-argument", "缺少 projectId 或 claims。");
   }
   const bonusList = Array.isArray(bonuses) ? bonuses : [];
 
   const db = db_();
+  await ensureManagePermission_(db, operatorKey, projectId);
 
-  // 驗證每戶比例累計（含既有 ledger）
   const ratioAdd = {};
+  const filePeriods = new Set();
   claims.forEach(c => {
     if (!c.unitId || !Number.isFinite(Number(c.period))) {
       throw new HttpsError("invalid-argument", `匯入資料缺少 unitId 或期別（${c.unitId || "?"}）。`);
     }
     ratioAdd[c.unitId] = (ratioAdd[c.unitId] || 0) + calc.toNum(c.ratioPct);
+    filePeriods.add(Number(c.period));
   });
+
+  // 期別衝突檢查：檔案內期別已有有效紀錄 → 未勾選覆蓋則擋下；勾選則先整期作廢
+  const conflictPeriods = [];
+  for (const p of [...filePeriods].sort((a, b) => a - b)) {
+    const snap = await db.collection("commissionRecords")
+      .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "active").limit(1).get();
+    if (!snap.empty) conflictPeriods.push(p);
+  }
+  const replaced = [];
+  if (conflictPeriods.length) {
+    if (!replaceExisting) {
+      throw new HttpsError("failed-precondition",
+        `第 ${conflictPeriods.join("、")} 期已有有效請佣紀錄。請先於「歷期總覽」整期作廢，或勾選「先整期作廢再匯入（覆蓋）」後重試。未寫入任何資料。`);
+    }
+    for (const p of conflictPeriods) {
+      const payouts = await findRetentionPayoutsForPeriod_(db, projectId, p);
+      if (payouts.length) {
+        throw new HttpsError("failed-precondition",
+          `第 ${p} 期已有 ${payouts.length} 筆保留款發還登記，請先於「保留款追蹤」刪除後再覆蓋匯入。未寫入任何資料。`);
+      }
+    }
+    for (const p of conflictPeriods) {
+      const r = await voidPeriodCore_(db, projectId, p, { reason: `重新匯入覆蓋（${importFileName || "歷史匯入"}）`, by: createdBy || "" });
+      replaced.push({ period: p, ...r });
+    }
+  }
+
+  // 驗證每戶比例累計（含既有 ledger；若有覆蓋，ledger 已回溯）
   const ledgerBase = {};
   for (const unitId of Object.keys(ratioAdd)) {
     const snap = await db.collection("commissionUnitLedgers").doc(ledgerId_(projectId, unitId)).get();
@@ -384,17 +530,11 @@ exports.importCommissionHistory = onCall({
   }
 
   const stamp = nowStamp_();
+  const importBatchId = `imp_${stamp}${rand3_()}`;
   const claimIds = [];
-  let batch = db.batch();
-  let ops = 0;
-  const flush = async () => {
-    if (ops > 0) { await batch.commit(); batch = db.batch(); ops = 0; }
-  };
-  const add = async (fn) => {
-    fn(batch);
-    ops++;
-    if (ops >= 450) await flush();
-  };
+  const bt = batcher_(db);
+  const add = (fn) => bt.add(fn);
+  const flush = () => bt.flush();
 
   // 寫入請佣紀錄
   for (let i = 0; i < claims.length; i++) {
@@ -417,6 +557,8 @@ exports.importCommissionHistory = onCall({
       calc: c.calc || {},
       categories: c.categories || {},
       source: "import",
+      importBatchId,
+      importFileName: importFileName || "",
       createdAt: FieldValue.serverTimestamp(),
       createdBy: createdBy || "",
     }));
@@ -453,6 +595,7 @@ exports.importCommissionHistory = onCall({
       net: calc.toNum(bRow.net),
       remark: bRow.remark || "",
       source: "import",
+      importBatchId,
       createdAt: FieldValue.serverTimestamp(),
       createdBy: createdBy || "",
     }));
@@ -469,7 +612,166 @@ exports.importCommissionHistory = onCall({
   }
   await flush();
 
-  return { ok: true, claims: claims.length, bonuses: bonusList.length };
+  await writeAudit_(db, {
+    projectId,
+    action: "import",
+    periods: [...filePeriods].sort((a, b) => a - b),
+    importBatchId,
+    importFileName: importFileName || "",
+    operator: createdBy || "",
+    operatorKey: String(operatorKey),
+    reason: replaced.length ? `覆蓋匯入（先整期作廢第 ${replaced.map(r => r.period).join("、")} 期）` : "歷史匯入",
+    impact: {
+      claims: claims.length,
+      bonuses: bonusList.length,
+      replaced: replaced.map(r => ({ period: r.period, records: r.records, bonuses: r.bonuses })),
+    },
+  });
+
+  return {
+    ok: true, claims: claims.length, bonuses: bonusList.length, importBatchId,
+    replaced: replaced.map(r => ({ period: r.period, records: r.records, bonuses: r.bonuses })),
+  };
+});
+
+/* ==========================================================
+ * 整期作廢
+ * data: { projectId, period, voidReason, voidedBy, operatorKey }
+ * ========================================================== */
+exports.voidCommissionPeriod = onCall({
+  region: REGION,
+  timeoutSeconds: 120,
+  memory: "512MiB",
+}, async (request) => {
+  const { projectId, period, voidReason, voidedBy, operatorKey } = request.data || {};
+  const p = Number(period);
+  if (!projectId || !Number.isFinite(p) || p <= 0) throw new HttpsError("invalid-argument", "缺少 projectId 或期別。");
+  if (!String(voidReason || "").trim()) throw new HttpsError("invalid-argument", "作廢原因為必填。");
+
+  const db = db_();
+  await ensureManagePermission_(db, operatorKey, projectId);
+
+  const payouts = await findRetentionPayoutsForPeriod_(db, projectId, p);
+  if (payouts.length) {
+    throw new HttpsError("failed-precondition",
+      `第 ${p} 期已有 ${payouts.length} 筆保留款發還登記，請先於「保留款追蹤」刪除後再整期作廢。`);
+  }
+
+  const result = await voidPeriodCore_(db, projectId, p, { reason: voidReason, by: voidedBy || "" });
+  if (!result.records) throw new HttpsError("failed-precondition", `第 ${p} 期沒有有效的請佣紀錄可作廢。`);
+
+  await writeAudit_(db, {
+    projectId, action: "voidPeriod", period: p,
+    operator: voidedBy || "", operatorKey: String(operatorKey), reason: voidReason,
+    impact: { records: result.records, bonuses: result.bonuses, units: result.units },
+  });
+  return { ok: true, period: p, ...result };
+});
+
+/* ==========================================================
+ * 清除該期「已作廢」紀錄（實體刪除；只刪 status=voided，不會動到有效資料）
+ * data: { projectId, period, purgedBy, operatorKey }
+ * ========================================================== */
+exports.purgeVoidedCommissionPeriod = onCall({
+  region: REGION,
+  timeoutSeconds: 120,
+  memory: "512MiB",
+}, async (request) => {
+  const { projectId, period, purgedBy, operatorKey } = request.data || {};
+  const p = Number(period);
+  if (!projectId || !Number.isFinite(p) || p <= 0) throw new HttpsError("invalid-argument", "缺少 projectId 或期別。");
+
+  const db = db_();
+  await ensureManagePermission_(db, operatorKey, projectId);
+
+  const recSnap = await db.collection("commissionRecords")
+    .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "voided").get();
+  const bonusSnap = await db.collection("bonusRecords")
+    .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "voided").get();
+  if (recSnap.empty && bonusSnap.empty) {
+    throw new HttpsError("failed-precondition", `第 ${p} 期沒有已作廢的紀錄可清除。`);
+  }
+
+  const bt = batcher_(db);
+  for (const d of recSnap.docs) await bt.add(b => b.delete(d.ref));
+  for (const d of bonusSnap.docs) await bt.add(b => b.delete(d.ref));
+  await bt.flush();
+
+  await writeAudit_(db, {
+    projectId, action: "purgeVoided", period: p,
+    operator: purgedBy || "", operatorKey: String(operatorKey), reason: "",
+    impact: { records: recSnap.size, bonuses: bonusSnap.size },
+  });
+  return { ok: true, period: p, records: recSnap.size, bonuses: bonusSnap.size };
+});
+
+/* ==========================================================
+ * 撤銷一次歷史匯入：依 importBatchId 回溯有效紀錄的比例並實體刪除該批全部請佣／獎金紀錄
+ * data: { projectId, importBatchId, undoneBy, operatorKey }
+ * ========================================================== */
+exports.undoCommissionImport = onCall({
+  region: REGION,
+  timeoutSeconds: 120,
+  memory: "512MiB",
+}, async (request) => {
+  const { projectId, importBatchId, undoneBy, operatorKey } = request.data || {};
+  if (!projectId || !importBatchId) throw new HttpsError("invalid-argument", "缺少 projectId 或 importBatchId。");
+
+  const db = db_();
+  await ensureManagePermission_(db, operatorKey, projectId);
+
+  const recSnap = await db.collection("commissionRecords")
+    .where("projectId", "==", projectId).where("importBatchId", "==", importBatchId).get();
+  if (recSnap.empty) throw new HttpsError("not-found", "找不到此匯入批次的紀錄（可能已被撤銷或清除）。");
+
+  const recs = recSnap.docs.map(d => ({ ref: d.ref, ...d.data() }));
+  const periods = [...new Set(recs.map(r => Number(r.period)))].sort((a, b) => a - b);
+  for (const p of periods) {
+    const payouts = await findRetentionPayoutsForPeriod_(db, projectId, p);
+    if (payouts.length && recs.some(r => Number(r.period) === p && r.status === "active")) {
+      throw new HttpsError("failed-precondition",
+        `第 ${p} 期已有 ${payouts.length} 筆保留款發還登記，請先於「保留款追蹤」刪除後再撤銷匯入。`);
+    }
+  }
+
+  // 有效紀錄需回溯 ledger（transaction）
+  const rollback = {};
+  recs.filter(r => r.status === "active").forEach(r => {
+    rollback[r.unitId] = (rollback[r.unitId] || 0) + calc.toNum(r.ratioPct);
+  });
+  const unitIds = Object.keys(rollback);
+  const units = [];
+  if (unitIds.length) {
+    await db.runTransaction(async (tx) => {
+      const refs = unitIds.map(u => db.collection("commissionUnitLedgers").doc(ledgerId_(projectId, u)));
+      const snaps = await Promise.all(refs.map(ref => tx.get(ref)));
+      unitIds.forEach((u, i) => {
+        const existing = snaps[i].exists ? calc.toNum(snaps[i].data().claimedRatioPct) : 0;
+        const next = Math.max(0, Math.round((existing - rollback[u]) * 1000) / 1000);
+        units.push({ unitId: u, before: existing, after: next, ratioPct: rollback[u] });
+        tx.set(refs[i], { projectId, unitId: u, claimedRatioPct: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      });
+      recs.forEach(r => tx.delete(r.ref));
+    });
+  } else {
+    const bt0 = batcher_(db);
+    for (const r of recs) await bt0.add(b => b.delete(r.ref));
+    await bt0.flush();
+  }
+
+  const bonusSnap = await db.collection("bonusRecords")
+    .where("projectId", "==", projectId).where("importBatchId", "==", importBatchId).get();
+  const bt = batcher_(db);
+  for (const d of bonusSnap.docs) await bt.add(b => b.delete(d.ref));
+  await bt.flush();
+
+  await writeAudit_(db, {
+    projectId, action: "undoImport", periods, importBatchId,
+    importFileName: recs[0]?.importFileName || "",
+    operator: undoneBy || "", operatorKey: String(operatorKey), reason: "撤銷匯入",
+    impact: { records: recs.length, bonuses: bonusSnap.size, units },
+  });
+  return { ok: true, periods, records: recs.length, bonuses: bonusSnap.size, units };
 });
 
 /* ==========================================================
@@ -483,14 +785,13 @@ exports.generateCommissionPdf = onCall({
   memory: "512MiB",
 }, async (request) => {
   const { projectId, docType, payload } = request.data || {};
-  if (!projectId || !["claim", "bonus"].includes(docType) || !payload) {
-    throw new HttpsError("invalid-argument", "缺少 projectId、docType(claim|bonus) 或 payload。");
+  if (!projectId || !["claim", "bonus", "person"].includes(docType) || !payload) {
+    throw new HttpsError("invalid-argument", "缺少 projectId、docType(claim|bonus|person) 或 payload。");
   }
   try {
-    const { buildClaimPdf, buildBonusPdf } = require("./commissionDocument");
-    const buffer = docType === "claim"
-      ? await buildClaimPdf(payload)
-      : await buildBonusPdf(payload);
+    const { buildClaimPdf, buildBonusPdf, buildPersonPdf } = require("./commissionDocument");
+    const builders = { claim: buildClaimPdf, bonus: buildBonusPdf, person: buildPersonPdf };
+    const buffer = await builders[docType](payload);
     const MAX = 7 * 1024 * 1024;
     if (buffer.length > MAX) {
       throw new HttpsError("resource-exhausted", "PDF 檔案超過 7MB 上限，請減少期別資料量或分次匯出。");
@@ -507,3 +808,68 @@ exports.generateCommissionPdf = onCall({
     throw new HttpsError("internal", `PDF 產製失敗: ${error.message}`);
   }
 });
+
+/**
+ * 寄送個人獎金明細 PDF
+ * data: {
+ *   projectId, projectName,
+ *   to, personName, subject, body,          // body：純文字（換行以 \n）
+ *   payload: { fileName, paper, orientation, grids, encrypt? }
+ * }
+ */
+exports.sendCommissionPersonEmail = onCall({
+  region: REGION,
+  timeoutSeconds: 120,
+  memory: "512MiB",
+  secrets: ["SENDER_EMAIL", "GMAIL_APP_PASSWORD"],
+}, async (request) => {
+  // 本系統未使用 Firebase Auth 登入（request.auth 恆為空），比照同模組其他函式不檢查 auth；
+  // 入口已由前端「請佣獎金」權限把關。
+  const { projectId, projectName, to, personName, subject, body, payload } = request.data || {};
+  if (!projectId || !payload || !Array.isArray(payload.grids) || !payload.grids.length) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 或 payload.grids。");
+  }
+  const email = String(to || "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError("invalid-argument", `收件人 Email 格式不正確：${email || "(空白)"}`);
+  }
+  if (!process.env.SENDER_EMAIL || !process.env.GMAIL_APP_PASSWORD) {
+    throw new HttpsError("failed-precondition", "系統未設定寄件信箱。");
+  }
+  try {
+    const { buildPersonPdf } = require("./commissionDocument");
+    const buffer = await buildPersonPdf(payload);
+    const MAX = 7 * 1024 * 1024;
+    if (buffer.length > MAX) throw new HttpsError("resource-exhausted", "PDF 超過 7MB 上限，請減少期別後再寄送。");
+
+    const fileName = `${payload.fileName || "獎金明細"}.pdf`;
+    const safeSubject = String(subject || `【${projectName || projectId}】獎金明細`).slice(0, 200);
+    const text = String(body || "").slice(0, 5000);
+    const html = `<div style="font-family:Arial,'Microsoft JhengHei',sans-serif;line-height:1.7;white-space:pre-wrap;">${escapeHtml_(text)}</div>
+      <hr style="border:0;border-top:1px solid #eee;margin:20px 0;">
+      <p style="font-size:12px;color:#888;">此為系統自動發送的郵件，請勿直接回覆。</p>`;
+
+    const transport = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
+    });
+    await transport.sendMail({
+      from: `"安熙智慧系統" <${process.env.SENDER_EMAIL}>`,
+      to: email,
+      subject: safeSubject,
+      text,
+      html,
+      attachments: [{ filename: fileName, content: buffer, contentType: "application/pdf" }],
+    });
+    console.log(`[sendCommissionPersonEmail] ${projectId} → ${personName || ""} <${email}> ${fileName} (${buffer.length} bytes, encrypted=${!!payload.encrypt?.userPassword})`);
+    return { ok: true, to: email, fileName };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error("[sendCommissionPersonEmail] ERROR:", error);
+    throw new HttpsError("internal", `寄送失敗: ${error.message}`);
+  }
+});
+
+function escapeHtml_(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}

@@ -7,7 +7,8 @@
  *
  * payload: {
  *   fileName, paper: 'A4'|'A3', orientation: 'landscape'|'portrait',
- *   grids: [{ name, nCols, nRows, cols[], rowHeights[], cells[][], merges[], base:{fontFamily,sz} }]
+ *   grids: [{ name, nCols, nRows, cols[], rowHeights[], cells[][], merges[], base:{fontFamily,sz} }],
+ *   encrypt?: { userPassword }   // 有值即以 AES-256 加密（開啟需密碼；個人明細用）
  * }
  */
 
@@ -70,6 +71,53 @@ function drawGrid(doc, grid, pageW, pageH) {
   const colX = [MARGIN];
   for (let c = 0; c < grid.nCols; c++) colX.push(colX[c] + colW[c]);
 
+  const pad = 2;
+  const MIN_SZ = 6;
+  const baseSz = s => Math.max(MIN_SZ, (s.sz || grid.base?.sz || 12) * scale * 0.92);
+
+  // ---- 前置量測：數值／不換行格縮字以單行放入；文字格依換行需求撐高列（避免溢出）----
+  const fitSz = {};   // "r,c" -> 實際字級
+  const usableH = pageH - MARGIN * 2;
+  for (let r = 0; r < grid.nRows; r++) {
+    for (let c = 0; c < grid.nCols; c++) {
+      const key = `${r},${c}`;
+      if (covered[key]) continue;
+      const cell = grid.cells[r]?.[c];
+      if (!cell || cell.v === "" || cell.v === null || cell.v === undefined) continue;
+      const s = cell.s || {};
+      const text = fmtValue(cell.v, s.fmt);
+      if (text === "") continue;
+      const span = anchor[key] || { rs: 1, cs: 1 };
+      const w = colW.slice(c, c + span.cs).reduce((a, v) => a + v, 0);
+      const textW = Math.max(4, w - pad * 2);
+      let sz = baseSz(s);
+      doc.font(fontFor(grid, s.bold));
+      const singleLine = cell.t === "n" || s.nowrap;
+      if (singleLine) {
+        // 數值不可斷行：縮字直到單行寬度可容納
+        while (sz > MIN_SZ && doc.fontSize(sz).widthOfString(text) > textW) sz -= 0.5;
+        fitSz[key] = sz;
+        continue;
+      }
+      // 文字：先以原字級量測換行後高度；超過可用高度時縮字
+      let need = doc.fontSize(sz).heightOfString(text, { width: textW });
+      let spanH = 0;
+      for (let rr = r; rr < r + span.rs && rr < grid.nRows; rr++) spanH += rowH[rr];
+      const maxH = span.rs === 1 ? Math.min(usableH * 0.6, Math.max(spanH, need + pad * 2)) : spanH;
+      while (sz > MIN_SZ && need + pad * 2 > maxH) {
+        sz -= 0.5;
+        need = doc.fontSize(sz).heightOfString(text, { width: textW });
+      }
+      fitSz[key] = sz;
+      const needH = need + pad * 2 + 1;
+      if (span.rs === 1) {
+        rowH[r] = Math.max(rowH[r], needH);
+      } else if (spanH < needH) {
+        rowH[r + span.rs - 1] += needH - spanH;   // 跨列合併：差額加到最後一列
+      }
+    }
+  }
+
   let y = MARGIN;
   for (let r = 0; r < grid.nRows; r++) {
     const h = rowH[r];
@@ -97,20 +145,23 @@ function drawGrid(doc, grid, pageW, pageH) {
       if (cell && cell.v !== "" && cell.v !== null && cell.v !== undefined) {
         const text = fmtValue(cell.v, s.fmt);
         if (text !== "") {
-          const sz = Math.max(6, (s.sz || grid.base?.sz || 12) * scale * 0.92);
+          const sz = fitSz[key] || baseSz(s);
           const fontName = fontFor(grid, s.bold);
           doc.font(fontName).fontSize(sz).fillColor(s.color || "#000000");
-          const pad = 2;
           const align = s.align || (cell.t === "n" ? "right" : "center");
-          const textW = w - pad * 2;
-          const textH = doc.heightOfString(text, { width: textW, align });
+          const textW = Math.max(4, w - pad * 2);
+          const singleLine = cell.t === "n" || s.nowrap;
+          const opts = { width: textW, align, lineBreak: !singleLine, ellipsis: false };
+          const textH = singleLine ? doc.currentLineHeight() : doc.heightOfString(text, opts);
           const ty = y + Math.max(pad, (hh - textH) / 2);
-          const opts = { width: textW, align, lineBreak: true };
+          // 裁切於儲存格範圍內，確保任何情況都不溢出到鄰格
+          doc.save().rect(x, y, w, hh).clip();
           doc.text(text, x + pad, ty, opts);
           // 楷體粗體：描邊模擬
           if (s.bold && fontName === "Kai") {
             doc.text(text, x + pad + 0.3, ty, opts);
           }
+          doc.restore();
         }
       }
     }
@@ -124,7 +175,15 @@ async function buildGridsPdf(payload) {
   const pageW = landscape ? paper[1] : paper[0];
   const pageH = landscape ? paper[0] : paper[1];
 
-  const doc = new PDFDocument({ size: [pageW, pageH], margin: 0, autoFirstPage: false });
+  const docOpts = { size: [pageW, pageH], margin: 0, autoFirstPage: false };
+  const pwd = String(payload.encrypt?.userPassword || "").trim();
+  if (pwd) {
+    docOpts.userPassword = pwd;
+    docOpts.ownerPassword = pwd;
+    docOpts.pdfVersion = "1.7ext3";   // AES-256
+    docOpts.permissions = { printing: "highResolution", copying: false, modifying: false };
+  }
+  const doc = new PDFDocument(docOpts);
   const chunks = [];
   doc.on("data", c => chunks.push(c));
   const done = new Promise(resolve => doc.on("end", () => resolve(Buffer.concat(chunks))));
@@ -154,4 +213,9 @@ async function buildBonusPdf(payload) {
   return buildGridsPdf(payload);
 }
 
-module.exports = { buildClaimPdf, buildBonusPdf };
+/** 個人獎金明細 PDF（單張合併 grid；可加密） */
+async function buildPersonPdf(payload) {
+  return buildGridsPdf(payload);
+}
+
+module.exports = { buildClaimPdf, buildBonusPdf, buildPersonPdf, buildGridsPdf };

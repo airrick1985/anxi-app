@@ -46,6 +46,7 @@ const DEFAULT_COMMISSION_SETTINGS = {
   note2: '2、請領費用按合約第7條分別以50%匯款或現金票給付，另50%開立45天期票支付。',
   bonusCategories: DEFAULT_BONUS_CATEGORIES,
   teamGroups: [],
+  personDetailShowAllRoles: [],   // 個人明細：職務含這些關鍵字者，每戶明細顯示全部戶別（含非本人銷售）
 };
 
 function mergeSettings(saved) {
@@ -242,12 +243,20 @@ function toChineseNum(n) {
   return String(n);
 }
 
+/** 人員職務是否符合獎金類別「對應職務」（精確比對，與前端 matchesRolePositions 一致） */
+function matchesRolePositions(personPositions, rolePositions) {
+  const roles = (rolePositions || []).map(r => String(r || '').trim()).filter(Boolean);
+  if (!roles.length) return false;
+  return (personPositions || []).some(pos => roles.includes(String(pos || '').trim()));
+}
+
 module.exports = {
   toNum,
   round2,
   DEFAULT_BONUS_CATEGORIES,
   DEFAULT_COMMISSION_SETTINGS,
   mergeSettings,
+  matchesRolePositions,
   computeUnitFinance,
   resolveCommPct,
   calcClaim,
