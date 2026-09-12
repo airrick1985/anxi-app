@@ -9,6 +9,7 @@ import {
   where,
   onSnapshot,
   getDocs,
+  getDocsFromServer,
   getDoc,
   doc,
   updateDoc,
@@ -5549,8 +5550,7 @@ export async function getSvgBySvgName(projectId, svgName) {
  * @param {function} onDataChange - 收到資料時的回呼函式
  * @returns {function} - 用於停止監聽的 unsubscribe 函式
  */
-export const listenToSalesPersonnel = (projectId, onDataChange) => {
-  const q = query(
+const salesPersonnelManagementQuery = (projectId) => query(
     collection(db, "salesPersonnel"),
     where("projectId", "==", projectId),
     // ✅ [修改] 改為先依 order 排序，再依 name 排序
@@ -5558,11 +5558,20 @@ export const listenToSalesPersonnel = (projectId, onDataChange) => {
     orderBy("name", "asc")
   );
 
+export const fetchSalesPersonnelForManagement = async (projectId) => {
+  if (!projectId) throw new Error('缺少建案 ID');
+  const snapshot = await getDocsFromServer(salesPersonnelManagementQuery(projectId));
+  return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+};
+
+export const listenToSalesPersonnel = (projectId, onDataChange, onError) => {
+  const q = salesPersonnelManagementQuery(projectId);
   const unsubscribe = onSnapshot(q, (snapshot) => {
     const personnel = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     onDataChange(personnel);
   }, (error) => {
     console.error(`監聽銷售人員時發生錯誤 (Project: ${projectId}):`, error);
+    onError?.(error);
   });
 
   return unsubscribe;
@@ -6757,6 +6766,22 @@ export const listReusableCustomFormTemplates = async (payload) => {
     return result.data;
   } catch (error) {
     console.error("API Error in listReusableCustomFormTemplates:", error);
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * ✅ [新增] 銷售人員管理「從其他建案引入人員」：取得使用者具銷控權限之其他建案的銷售人員（後端依 userPermissions 過濾）
+ * @param {{ userKey: string, currentProjectId: string }} payload
+ * @returns {Promise<{ personnel: Array, projects: Array<{id: string, name: string}> }>}
+ */
+export const listImportableSalesPersonnel = async (payload) => {
+  try {
+    const fn = httpsCallable(functions, 'listImportableSalesPersonnel');
+    const result = await fn(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in listImportableSalesPersonnel:", error);
     throw new Error(error.message);
   }
 };

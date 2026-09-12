@@ -22,7 +22,8 @@ function splitList(v) {
   return String(v ?? '').split(SEP).map(s => s.trim()).filter(Boolean);
 }
 
-function normPhone(v) {
+/** 電話正規化（去除所有空白），供比對「電話是否已存在」使用 */
+export function normPhone(v) {
   return String(v ?? '').replace(/\s+/g, '').trim();
 }
 

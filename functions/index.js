@@ -30428,6 +30428,81 @@ exports.listReusableCustomFormTemplates = onCall({
 });
 
 /**
+ * ✅ [新增] 銷售人員管理「從其他建案引入人員」：列出使用者具「銷控系統」權限之「其他建案」的銷售人員
+ * - 權限一律以 userPermissions/{userKey}.permissions 為準，非權限內建案的人員不會回傳
+ * - 回傳姓名／電話／Email／職位／請佣獎金設定，供前端引入為本建案的新人員（電話重複者由前端擋下）
+ */
+exports.listImportableSalesPersonnel = onCall({
+  region: "asia-east1",
+  memory: "512MiB",
+}, async (request) => {
+  const { userKey, currentProjectId } = request.data || {};
+  if (!userKey) throw new HttpsError("invalid-argument", "缺少 userKey");
+  if (!currentProjectId) throw new HttpsError("invalid-argument", "缺少 currentProjectId");
+
+  try {
+    const db = defaultDb;
+    const permSnap = await db.collection('userPermissions').doc(String(userKey)).get();
+    if (!permSnap.exists) return { personnel: [], projects: [] };
+    const perms = permSnap.data()?.permissions || {};
+
+    // 僅取「銷控系統」權限且非目前建案的建案
+    const allowedProjects = [];
+    for (const projectId of Object.keys(perms)) {
+      if (projectId === currentProjectId) continue;
+      const systems = perms[projectId]?.systems;
+      if (Array.isArray(systems) && systems.includes('銷控系統')) {
+        allowedProjects.push({ id: projectId, name: perms[projectId]?.projectName || projectId });
+      }
+    }
+    if (allowedProjects.length === 0) return { personnel: [], projects: [] };
+
+    const nameById = new Map(allowedProjects.map(p => [p.id, p.name]));
+    const ids = allowedProjects.map(p => p.id);
+    const personnel = [];
+
+    for (let i = 0; i < ids.length; i += 30) {
+      const chunk = ids.slice(i, i + 30);
+      const snap = await db.collection('salesPersonnel').where('projectId', 'in', chunk).get();
+      snap.forEach(d => {
+        const data = d.data() || {};
+        if (!nameById.has(data.projectId)) return; // 雙重保險：僅回傳權限內建案
+        const bc = data.bonusConfig && typeof data.bonusConfig === 'object' ? data.bonusConfig : null;
+        personnel.push({
+          id: d.id,
+          projectId: data.projectId,
+          projectName: nameById.get(data.projectId),
+          name: String(data.name || ''),
+          phone: String(data.phone || ''),
+          email: String(data.email || ''),
+          positions: Array.isArray(data.positions) ? data.positions.map(String) : [],
+          bonusConfig: bc ? {
+            keepPct: Number(bc.keepPct) || 0,
+            taxPct: Number(bc.taxPct) || 0,
+            nhiPct: Number(bc.nhiPct) || 0,
+            remark: String(bc.remark || ''),
+          } : null,
+        });
+      });
+    }
+
+    personnel.sort((a, b) =>
+      String(a.projectName).localeCompare(String(b.projectName), 'zh-Hant') ||
+      String(a.name).localeCompare(String(b.name), 'zh-Hant')
+    );
+
+    const projectIdsWithPeople = new Set(personnel.map(p => p.projectId));
+    return {
+      personnel,
+      projects: allowedProjects.filter(p => projectIdsWithPeople.has(p.id)),
+    };
+  } catch (e) {
+    console.error('[listImportableSalesPersonnel] 失敗:', e);
+    throw new HttpsError("internal", e.message || '查詢失敗');
+  }
+});
+
+/**
  * 自訂表單提交通知 trigger
  * 監聽 customFormSubmissions 新增事件，依表單設定通知銷控管理員與該戶銷售人員
  * - notifySalesAdmins / notifyUnitSalesPerson 兩設定皆 false → 不執行

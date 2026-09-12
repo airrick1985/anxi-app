@@ -362,180 +362,22 @@
         </v-card>
       </v-window-item>
       
-       <v-window-item value="personnel">
-        <v-card class="pa-4" elevation="2">
-          <v-card-title class="text-h5 text-blue-darken-2">
-            銷售人員管理
-          </v-card-title>
-          <v-card-subtitle>管理此建案的銷售人員資料 (可拖曳排序)</v-card-subtitle>
-          <v-divider class="my-4"></v-divider>
-
-          <v-skeleton-loader v-if="personnelLoading" type="list-item-two-line@5"></v-skeleton-loader>
-
-          <!-- ✅ [改版] 電腦版左右配置：左側人員清單、右側整合編輯區（手機維持 dialog） -->
-          <v-row v-if="!personnelLoading">
-            <!-- 左：人員清單 -->
-            <v-col cols="12" md="5" lg="4">
-              <v-btn
-                color="blue-darken-2"
-                @click="openPersonnelDialog()"
-                prepend-icon="mdi-plus"
-                class="mb-2"
-                block
-              >
-                新增銷售人員
-              </v-btn>
-              <div class="d-flex ga-2 mb-3">
-                <v-btn variant="tonal" color="success" prepend-icon="mdi-microsoft-excel" size="small" class="flex-grow-1"
-                  :disabled="!personnelList.length" @click="exportPersonnel">匯出 Excel</v-btn>
-                <v-btn variant="tonal" color="primary" prepend-icon="mdi-tray-arrow-up" size="small" class="flex-grow-1"
-                  @click="openPersonnelImport">匯入 Excel</v-btn>
-              </div>
-
-              <v-text-field
-                v-model="personnelSearch"
-                label="搜尋姓名 / 電話 / 職位"
-                variant="outlined"
-                density="compact"
-                prepend-inner-icon="mdi-magnify"
-                clearable
-                hide-details
-                class="mb-3"
-              ></v-text-field>
-
-              <v-list lines="two" class="personnel-scroll-list pa-0 bg-transparent">
-                <!-- 無搜尋：完整清單可拖曳排序 -->
-                <draggable
-                  v-if="!personnelSearch"
-                  v-model="personnelList"
-                  item-key="id"
-                  handle=".drag-handle"
-                  @end="onPersonnelDragEnd"
-                >
-                  <template #item="{ element: person }">
-                    <v-list-item
-                      class="mb-2"
-                      elevation="1"
-                      border
-                      rounded="lg"
-                      :active="personnelPanelOpen && editingPersonnel.id === person.id"
-                      color="blue-darken-2"
-                      @click="openPersonnelDialog(person)"
-                    >
-                      <template v-slot:prepend>
-                        <v-icon class="drag-handle cursor-move mr-4 text-grey" @click.stop>mdi-drag</v-icon>
-                      </template>
-
-                      <v-list-item-title class="font-weight-bold">{{ person.name }}</v-list-item-title>
-                      <v-list-item-subtitle>
-                        {{ person.phone }} <span v-if="person.email">| {{ person.email }}</span>
-                      </v-list-item-subtitle>
-
-                      <div class="py-1">
-                        <v-chip
-                          v-for="pos in person.positions"
-                          :key="pos"
-                          size="small"
-                          class="mr-2"
-                          label
-                        >
-                          {{ pos }}
-                        </v-chip>
-                      </div>
-
-                      <template v-slot:append>
-                        <v-btn icon="mdi-delete" variant="text" color="error" size="small" @click.stop="confirmPersonnelDelete(person)"></v-btn>
-                      </template>
-                    </v-list-item>
-                  </template>
-                </draggable>
-
-                <!-- 搜尋中：顯示過濾結果（暫停拖曳排序） -->
-                <template v-else>
-                  <v-list-item
-                    v-for="person in filteredPersonnelList"
-                    :key="person.id"
-                    class="mb-2"
-                    elevation="1"
-                    border
-                    rounded="lg"
-                    :active="personnelPanelOpen && editingPersonnel.id === person.id"
-                    color="blue-darken-2"
-                    @click="openPersonnelDialog(person)"
-                  >
-                    <template v-slot:prepend>
-                      <v-icon class="mr-4 text-grey">mdi-account</v-icon>
-                    </template>
-
-                    <v-list-item-title class="font-weight-bold">{{ person.name }}</v-list-item-title>
-                    <v-list-item-subtitle>
-                      {{ person.phone }} <span v-if="person.email">| {{ person.email }}</span>
-                    </v-list-item-subtitle>
-
-                    <div class="py-1">
-                      <v-chip
-                        v-for="pos in person.positions"
-                        :key="pos"
-                        size="small"
-                        class="mr-2"
-                        label
-                      >
-                        {{ pos }}
-                      </v-chip>
-                    </div>
-
-                    <template v-slot:append>
-                      <v-btn icon="mdi-delete" variant="text" color="error" size="small" @click.stop="confirmPersonnelDelete(person)"></v-btn>
-                    </template>
-                  </v-list-item>
-                </template>
-              </v-list>
-
-              <v-alert
-                v-if="personnelList.length === 0"
-                type="info"
-                variant="tonal"
-              >
-                目前尚無銷售人員資料。
-              </v-alert>
-              <v-alert
-                v-else-if="personnelSearch && filteredPersonnelList.length === 0"
-                type="info"
-                variant="tonal"
-                density="compact"
-              >
-                找不到符合「{{ personnelSearch }}」的人員。
-              </v-alert>
-            </v-col>
-
-            <!-- 右：整合編輯區（僅電腦版顯示；手機以 dialog 編輯） -->
-            <v-col cols="12" md="7" lg="8" class="d-none d-md-block">
-              <div class="personnel-editor-sticky">
-                <SalesPersonnelForm
-                  v-if="personnelPanelOpen"
-                  :key="editingPersonnel.id || 'new'"
-                  v-model="editingPersonnel"
-                  :loading="isSavingPersonnel"
-                  :project-id="projectId"
-                  :team-groups="commissionTeamGroups"
-                  @cancel="closePersonnelDialog"
-                  @save="savePersonnel"
-                />
-                <v-sheet
-                  v-else
-                  border
-                  rounded="lg"
-                  class="d-flex flex-column justify-center align-center text-center pa-8"
-                  min-height="320"
-                >
-                  <v-icon size="56" color="grey-lighten-1">mdi-account-edit-outline</v-icon>
-                  <p class="text-grey mt-3 mb-1">點選左側人員即可在此編輯</p>
-                  <p class="text-caption text-grey mb-0">或按「新增銷售人員」建立新資料</p>
-                </v-sheet>
-              </div>
-            </v-col>
-          </v-row>
-        </v-card>
+      <v-window-item value="personnel">
+        <SalesPersonnelDirectory
+          :personnel="personnelList"
+          :loading="personnelLoading"
+          :saving-order="isSavingPersonnelOrder"
+          :error="personnelError"
+          :recent-ids="recentPersonnelIds"
+          @add="openPersonnelDialog()"
+          @edit="openPersonnelDialog"
+          @delete="confirmPersonnelDelete"
+          @cross-import="openPersonnelCrossImport"
+          @excel-import="openPersonnelImport"
+          @export="exportPersonnel"
+          @refresh="refreshPersonnel"
+          @reorder="onPersonnelDragEnd"
+        />
       </v-window-item>
 
       <v-window-item value="paymentTerms">
@@ -1738,7 +1580,7 @@
             </v-card-actions>
         </v-card>
     </v-dialog>
-     <v-dialog v-model="personnelDialog" persistent max-width="500px">
+     <v-dialog v-model="personnelDialog" persistent scrollable max-width="640px">
       <SalesPersonnelForm
         v-model="editingPersonnel"
         :loading="isSavingPersonnel"
@@ -1754,6 +1596,15 @@
       :project-id="projectId"
       :personnel="personnelList"
       :team-groups="commissionTeamGroups || []"
+      @imported="onPersonnelImported"
+    />
+
+    <!-- ✅ [新增] 從其他建案引入人員 -->
+    <SalesPersonnelCrossProjectImportDialog
+      v-model="personnelCrossImportOpen"
+      :project-id="projectId"
+      :personnel="personnelList"
+      @imported="onPersonnelImported"
     />
 
     <v-dialog v-model="deletePersonnelDialog" persistent max-width="400px">
@@ -1840,9 +1691,7 @@
 <script setup>
 import { COMMITMENT_TIER_OPTIONS, COMMITMENT_TIERS, inferCommitmentTier } from '@/utils/salesStatusGroups';
 import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick, defineAsyncComponent } from 'vue';
-import { useDisplay } from 'vuetify';
 import { useRoute, useRouter } from 'vue-router';
-import draggable from 'vuedraggable';
 import { useToast } from 'vue-toastification';
 import {
   getProjectSettings, 
@@ -1862,6 +1711,7 @@ import {
   deleteSalesSvgViaFunction,
   batchDeleteSalesSvgsViaFunction, 
   listenToSalesPersonnel,
+  fetchSalesPersonnelForManagement,
   setSalesPersonnel,
   updateSalesPersonnel,
   deleteSalesPersonnel,
@@ -1886,8 +1736,10 @@ import {
 } from '@/composables/usePriceFormula';
 
 
+const SalesPersonnelDirectory = defineAsyncComponent(() => import('@/components/SalesPersonnelDirectory.vue'));
 const SalesPersonnelForm = defineAsyncComponent(() => import('./SalesPersonnelForm.vue'));
 const SalesPersonnelImportDialog = defineAsyncComponent(() => import('@/components/SalesPersonnelImportDialog.vue'));
+const SalesPersonnelCrossProjectImportDialog = defineAsyncComponent(() => import('@/components/SalesPersonnelCrossProjectImportDialog.vue'));
 // ✅ [新增] 合約製作範本設定（docs/合約製作資料範本-spec.md）
 const ContractDocConfigEditor = defineAsyncComponent(() => import('@/components/ContractDocConfigEditor.vue'));
 
@@ -1906,19 +1758,11 @@ let unsubscribePersonnel = null;
 const personnelDialog = ref(false);
 const editingPersonnel = ref({});
 const isSavingPersonnel = ref(false);
-// ✅ [改版] 電腦版左右配置：右側整合編輯面板狀態＋清單搜尋
-const { mdAndUp } = useDisplay();
-const personnelPanelOpen = ref(false);
-const personnelSearch = ref('');
-const filteredPersonnelList = computed(() => {
-  const q = String(personnelSearch.value || '').trim().toLowerCase();
-  if (!q) return personnelList.value;
-  return personnelList.value.filter(p =>
-    String(p.name || '').toLowerCase().includes(q) ||
-    String(p.phone || '').includes(q) ||
-    (Array.isArray(p.positions) && p.positions.some(pos => String(pos).toLowerCase().includes(q)))
-  );
-});
+const personnelError = ref('');
+const recentPersonnelIds = ref([]);
+const isSavingPersonnelOrder = ref(false);
+let personnelRevision = 0;
+let personnelDisposed = false;
 const deletePersonnelDialog = ref(false);
 const personnelToDelete = ref({});
 const isDeletingPersonnel = ref(false);
@@ -2700,11 +2544,45 @@ const openImageViewer = (image) => {
 
 // ✅ 7. 新增銷售人員管理的 Methods
 const setupPersonnelListener = () => {
+  unsubscribePersonnel?.();
   personnelLoading.value = true;
+  personnelError.value = '';
   unsubscribePersonnel = listenToSalesPersonnel(projectId.value, (data) => {
+    personnelRevision++;
     personnelList.value = data;
-    if(personnelLoading.value) personnelLoading.value = false;
+    personnelLoading.value = false;
+    personnelError.value = '';
+  }, () => {
+    personnelLoading.value = false;
+    personnelError.value = '人員即時更新中斷，請重新整理後再試。';
   });
+};
+
+// 引入完成後向伺服器讀取完整資料（含獎金設定），避免只依賴快取或監聽。
+const refreshPersonnel = async () => {
+  const revision = personnelRevision;
+  const reconnect = !!personnelError.value;
+  personnelLoading.value = true;
+  personnelError.value = '';
+  try {
+    const data = await fetchSalesPersonnelForManagement(projectId.value);
+    if (personnelDisposed) return;
+    // 讀取期間若已收到更新的即時快照，不用較舊的查詢結果覆蓋。
+    if (revision === personnelRevision) personnelList.value = data;
+    if (reconnect) setupPersonnelListener();
+  } catch (error) {
+    if (!personnelDisposed) {
+      personnelError.value = '人員資料重新整理失敗，請按重試；已成功寫入的人員不受影響。';
+    }
+  } finally {
+    if (!personnelDisposed) personnelLoading.value = false;
+  }
+};
+
+const onPersonnelImported = async ({ ok, ids = [] }) => {
+  if (!ok) return;
+  recentPersonnelIds.value = ids;
+  await refreshPersonnel();
 };
 
 // ✅ [新增] 請佣獎金團獎分組選項：首次開啟人員視窗時載入一次（傳入表單，免每次開窗重讀）
@@ -2734,13 +2612,7 @@ const openPersonnelDialog = (person = null) => {
       email: ''
     };
   }
-  // ✅ [改版] 電腦版改用右側整合編輯區，手機維持 dialog
-  if (mdAndUp.value) {
-    personnelPanelOpen.value = true;
-    personnelDialog.value = false;
-  } else {
-    personnelDialog.value = true;
-  }
+  personnelDialog.value = true;
 };
 
 // ✅ [新增] 銷售人員 Excel 匯出／匯入
@@ -2760,9 +2632,14 @@ const openPersonnelImport = async () => {
   personnelImportOpen.value = true;
 };
 
+// ✅ [新增] 從其他建案引入人員（後端依 userPermissions 僅回傳具銷控權限之建案人員；電話重複者不可引入）
+const personnelCrossImportOpen = ref(false);
+const openPersonnelCrossImport = () => {
+  personnelCrossImportOpen.value = true;
+};
+
 const closePersonnelDialog = () => {
   personnelDialog.value = false;
-  personnelPanelOpen.value = false;
   editingPersonnel.value = {};
 };
 
@@ -2807,22 +2684,20 @@ const savePersonnel = async (data) => {
 
 
 // --- ✅ [新增] 處理拖曳結束的函式 ---
-const onPersonnelDragEnd = async () => {
-  // 1. 計算新的排序值 (使用 index * 10 重新編號)
-  const updates = personnelList.value.map((person, index) => ({
-    id: person.id,
-    order: (index + 1) * 10
-  }));
-
-  // 2. 呼叫 API 進行批次更新
+const onPersonnelDragEnd = async (people) => {
+  if (isSavingPersonnelOrder.value) return;
+  const previous = personnelList.value;
+  personnelList.value = people.map((person, index) => ({ ...person, order: (index + 1) * 10 }));
+  const updates = personnelList.value.map(({ id, order }) => ({ id, order }));
+  isSavingPersonnelOrder.value = true;
   try {
     await updateSalesPersonnelOrders(projectId.value, updates);
-    // 可以選擇顯示成功提示，或是保持靜默以提供流暢體驗
-    // toast.success('排序已更新');
   } catch (error) {
+    personnelList.value = previous;
     toast.error(`排序更新失敗: ${error.message}`);
-    // 失敗時建議重新載入列表以恢復正確順序
-    setupPersonnelListener();
+    await refreshPersonnel();
+  } finally {
+    isSavingPersonnelOrder.value = false;
   }
 };
 
@@ -3264,6 +3139,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  personnelDisposed = true;
   if (unsubscribeParams) unsubscribeParams();
   if (unsubscribeImages) unsubscribeImages();
   if (unsubscribePersonnel) unsubscribePersonnel(); 
@@ -3286,18 +3162,6 @@ onUnmounted(() => {
 }
 .cursor-move:active {
   cursor: grabbing;
-}
-
-/* ✅ [改版] 銷售人員管理：電腦版左右配置 */
-@media (min-width: 960px) {
-  .personnel-scroll-list {
-    max-height: calc(100vh - 320px);
-    overflow-y: auto;
-  }
-  .personnel-editor-sticky {
-    position: sticky;
-    top: 80px;
-  }
 }
 
 /* ✅ [新增] 付款表產製設定：logo 預覽框 */
