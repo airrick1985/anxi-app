@@ -1227,15 +1227,17 @@ export async function logSalesStatusNotification(payload) {
 /**
  * 讀取指定專案的所有退戶資料列表
  * @param {string} projectId - 專案 ID
+ * @param {boolean} includeDeleted - 是否包含冷刪除的紀錄
+ * @param {boolean} includeRestored - 是否包含「復原時選擇保留」的紀錄（已復原、僅供查閱；預設不含，避免計入統計）
  * @returns {Promise<object>}
  */
-export async function getCancelledPurchases(projectId, includeDeleted = true) {
+export async function getCancelledPurchases(projectId, includeDeleted = true, includeRestored = false) {
   if (!projectId) {
     return { status: "error", message: "前端錯誤：缺少 projectId。" };
   }
   try {
     const func = httpsCallable(functions, 'getCancelledPurchases');
-    const result = await func({ projectId, includeDeleted });
+    const result = await func({ projectId, includeDeleted, includeRestored });
     return result.data;
   } catch (error) {
     console.error("呼叫 getCancelledPurchases 雲端函式時發生錯誤:", error);
@@ -1248,15 +1250,16 @@ export async function getCancelledPurchases(projectId, includeDeleted = true) {
  * @param {string} projectId - 專案 ID
  * @param {string} cancelledDocId - 退戶備份文件 ID
  * @param {string} operatorName - 操作者名稱
+ * @param {boolean} keepRecord - true：保留這筆退戶紀錄並標記為已復原；false：復原後連同紀錄刪除
  * @returns {Promise<object>}
  */
-export async function restoreCancelledPurchase(projectId, cancelledDocId, operatorName) {
+export async function restoreCancelledPurchase(projectId, cancelledDocId, operatorName, keepRecord = false) {
   if (!projectId || !cancelledDocId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少必要參數。" };
   }
   try {
     const func = httpsCallable(functions, 'restoreCancelledPurchase');
-    const result = await func({ projectId, cancelledDocId, operatorName });
+    const result = await func({ projectId, cancelledDocId, operatorName, keepRecord: keepRecord === true });
     return result.data;
   } catch (error) {
     console.error("呼叫 restoreCancelledPurchase 雲端函式時發生錯誤:", error);

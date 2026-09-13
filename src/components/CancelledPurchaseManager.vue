@@ -52,7 +52,7 @@
         <template v-else>
           <!-- 搜索欄 -->
           <v-row class="mb-4">
-            <v-col cols="12" md="6">
+            <v-col cols="12" md="4">
               <v-text-field
                 v-model="searchQuery"
                 prepend-inner-icon="mdi-magnify"
@@ -62,12 +62,22 @@
                 clearable
               ></v-text-field>
             </v-col>
-            <v-col cols="12" md="3">
+            <v-col cols="6" md="2">
               <v-switch
                 v-model="showDeleted"
                 label="顯示已刪除記錄"
                 density="compact"
                 color="error"
+                hide-details
+                class="pt-2"
+              />
+            </v-col>
+            <v-col cols="6" md="3">
+              <v-switch
+                v-model="showRestored"
+                label="顯示已復原記錄"
+                density="compact"
+                color="success"
                 hide-details
                 class="pt-2"
               />
@@ -92,13 +102,19 @@
           >
             <!-- 戶別 + 車位 chips -->
             <template v-slot:item.unitId="{ item }">
-              <div class="d-flex align-center gap-1" :class="{ 'text-grey': item.isDeleted, 'deleted-text': item.isDeleted }">
+              <div class="d-flex align-center gap-1 flex-wrap" :class="{ 'text-grey': item.isDeleted, 'deleted-text': item.isDeleted }">
                 <span class="font-weight-bold">{{ item.unitId }}</span>
                 <v-chip v-if="item.parkingCount > 0" size="x-small" color="info" variant="tonal">
                   車位 {{ item.parkingCount }}
                 </v-chip>
                 <v-chip v-if="item.isDeleted" size="x-small" color="error" variant="tonal">
                   已刪除
+                </v-chip>
+                <v-chip v-if="item.isRestored" size="x-small" color="success" variant="tonal" prepend-icon="mdi-check-circle-outline">
+                  已復原
+                  <v-tooltip activator="parent" location="top">
+                    {{ item.restoredBy || '—' }} 於 {{ formatDate(item.restoredAt) }} 復原，此紀錄僅供查閱
+                  </v-tooltip>
                 </v-chip>
               </div>
             </template>
@@ -351,9 +367,24 @@
 
                     <!-- 退戶資訊 & 復原 & 冷刪除 -->
                     <v-divider class="my-3"></v-divider>
+
+                    <!-- 已復原（保留紀錄）提示 -->
+                    <v-alert
+                      v-if="item.isRestored"
+                      type="success"
+                      variant="tonal"
+                      density="compact"
+                      class="mb-3"
+                      icon="mdi-check-circle-outline"
+                    >
+                      此筆退戶紀錄已由 <strong>{{ item.restoredBy || '—' }}</strong> 於 <strong>{{ formatDate(item.restoredAt) }}</strong> 復原，
+                      戶別銷售資料已回寫至 【{{ item.unitId }}】。本紀錄僅保留供查閱，不計入退戶統計，也無法再次復原。
+                    </v-alert>
+
                     <div class="d-flex align-center justify-space-between flex-wrap gap-2">
 
                       <v-btn
+                        v-if="!item.isRestored"
                         color="success"
                         variant="flat"
                         prepend-icon="mdi-restore"
@@ -362,6 +393,9 @@
                       >
                         復原此筆退戶
                       </v-btn>
+                      <v-chip v-else color="success" size="small" variant="tonal" prepend-icon="mdi-check-circle-outline">
+                        已復原（僅供查閱）
+                      </v-chip>
 
                       <!-- 冷刪除按鈕（未刪除狀態） -->
                       <v-btn
@@ -405,7 +439,7 @@
     </v-card>
 
     <!-- 復原確認 Dialog -->
-    <v-dialog v-model="confirmDialog.show" max-width="500" persistent>
+    <v-dialog v-model="confirmDialog.show" max-width="560" persistent>
       <v-card>
         <v-card-title class="bg-success text-white d-flex align-center">
           <v-icon left color="white" class="mr-2">mdi-restore</v-icon>
@@ -413,17 +447,57 @@
         </v-card-title>
         <v-card-text class="py-4">
           <p class="text-body-1" v-html="confirmDialog.message"></p>
+
+          <v-divider class="my-4"></v-divider>
+
+          <p class="text-body-2 font-weight-bold mb-2">
+            <v-icon size="small" class="mr-1" color="primary">mdi-file-document-outline</v-icon>
+            本次退戶紀錄要如何處理？
+          </p>
+          <v-radio-group
+            v-model="confirmDialog.keepRecord"
+            hide-details
+            density="comfortable"
+            :disabled="confirmDialog.loading"
+          >
+            <v-radio :value="true" color="success">
+              <template #label>
+                <div class="py-1">
+                  <div class="font-weight-medium">保留退戶紀錄</div>
+                  <div class="text-caption text-grey">紀錄會標記為「已復原」留在列表中供日後查閱，不再計入退戶統計，也無法再次復原。</div>
+                </div>
+              </template>
+            </v-radio>
+            <v-radio :value="false" color="error">
+              <template #label>
+                <div class="py-1">
+                  <div class="font-weight-medium">連同退戶紀錄一併刪除</div>
+                  <div class="text-caption text-grey">復原後這筆退戶紀錄（含退戶原因、備註留言）將永久從資料庫移除，無法找回。</div>
+                </div>
+              </template>
+            </v-radio>
+          </v-radio-group>
+
+          <v-alert
+            v-if="confirmDialog.keepRecord === false"
+            type="warning"
+            variant="tonal"
+            density="compact"
+            class="mt-3"
+          >
+            <strong>注意：</strong>刪除後將無法再查閱此次退戶的原因與備註。
+          </v-alert>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn variant="text" @click="confirmDialog.show = false">取消</v-btn>
+          <v-btn variant="text" @click="confirmDialog.show = false" :disabled="confirmDialog.loading">取消</v-btn>
           <v-btn
-            color="success"
+            :color="confirmDialog.keepRecord ? 'success' : 'error'"
             variant="flat"
             @click="executeRestore"
             :loading="confirmDialog.loading"
           >
-            確認復原
+            {{ confirmDialog.keepRecord ? '復原並保留紀錄' : '復原並刪除紀錄' }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -462,27 +536,8 @@
             戶別：<strong>【{{ editReasonsDialog.targetItem?.unitId }}】</strong>
             買方：<strong>{{ editReasonsDialog.targetItem?.buyerName || '—' }}</strong>
           </p>
-          <p class="text-body-2 font-weight-bold mb-3">選擇退戶原因（可複選）</p>
-          <v-container class="pa-0">
-            <v-row>
-              <v-col
-                v-for="reason in CANCEL_REASONS"
-                :key="reason"
-                cols="12"
-                sm="6"
-                class="pb-2"
-              >
-                <v-checkbox
-                  :model-value="editReasonsDialog.selectedReasons"
-                  :label="reason"
-                  :value="reason"
-                  @update:model-value="editReasonsDialog.selectedReasons = $event"
-                  density="compact"
-                  hide-details
-                ></v-checkbox>
-              </v-col>
-            </v-row>
-          </v-container>
+          <p class="text-body-2 font-weight-bold mb-3">選擇退戶原因（可複選，亦可自行輸入）</p>
+          <CancelReasonSelector v-model="editReasonsDialog.selectedReasons" />
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
@@ -677,6 +732,7 @@ import { useToast, POSITION } from 'vue-toastification';
 import CancelledPurchaseStatistics from './CancelledPurchaseStatistics.vue';
 import { formatSalespersons } from '@/utils/salespersonUtils';
 import RemarkNotesPanel from './RemarkNotesPanel.vue';
+import CancelReasonSelector from './CancelReasonSelector.vue';
 import { resolveDisplayNotes } from '@/utils/remarkNotes';
 
 const props = defineProps({
@@ -689,26 +745,6 @@ const emit = defineEmits(['update:show', 'data-updated']);
 const userStore = useUserStore();
 const toast = useToast();
 
-// 退戶原因選項列表
-const CANCEL_REASONS = [
-  '總價太高',
-  '單價太高',
-  '自備款不足',
-  '貸款成數太少',
-  '地點不符',
-  '家人反對',
-  '家人意外、重病',
-  '資金斷鏈',
-  '神明指示',
-  '風水忌諱',
-  '生活機能不足',
-  '環境不喜歡',
-  '換戶',
-  '景氣不好',
-  '工期太久',
-  '財務規劃暫不買房'
-];
-
 const isLoading = ref(false);
 const items = ref([]);
 const expanded = ref([]);
@@ -716,6 +752,7 @@ const restoringDocId = ref(null);
 const statisticsDialog = ref(false);
 const searchQuery = ref('');
 const showDeleted = ref(false);
+const showRestored = ref(true); // 復原時選擇保留的紀錄（已復原、僅供查閱）預設顯示，可切換隱藏
 
 // Table headers
 const tableHeaders = [
@@ -740,6 +777,11 @@ const filteredItems = computed(() => {
   // 過濾冷刪除項目
   if (!showDeleted.value) {
     result = result.filter(item => !item.isDeleted);
+  }
+
+  // 過濾已復原（保留紀錄）項目
+  if (!showRestored.value) {
+    result = result.filter(item => !item.isRestored);
   }
 
   // 搜尋過濾
@@ -769,6 +811,7 @@ const confirmDialog = reactive({
   message: '',
   loading: false,
   targetItem: null,
+  keepRecord: true, // true：保留退戶紀錄（標記已復原）；false：復原後連同紀錄刪除
 });
 
 const conflictDialog = reactive({
@@ -816,7 +859,8 @@ const hardDeleteDialog = reactive({
 async function loadData() {
   isLoading.value = true;
   try {
-    const result = await getCancelledPurchases(props.projectId, true);
+    // 管理畫面需要完整列表：含冷刪除與「復原時保留」的紀錄
+    const result = await getCancelledPurchases(props.projectId, true, true);
     if (result.status === 'success') {
       items.value = result.data || [];
     } else {
@@ -905,7 +949,12 @@ function calculatePremiumPrice(item) {
 }
 
 function handleRestore(item) {
+  if (item.isRestored) {
+    toast.info('此筆退戶紀錄已復原過，僅供查閱，無法再次復原。', { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
   confirmDialog.targetItem = item;
+  confirmDialog.keepRecord = true; // 每次開啟都回到預設「保留紀錄」
   const totalPrice = calculateTotalTransactionPrice(item);
   confirmDialog.message = `確定要將 <strong>【${item.unitId}】</strong> 的退戶資料復原嗎？<br><br>` +
     `買方：<strong>${item.buyerName || '—'}</strong><br>` +
@@ -923,19 +972,61 @@ async function executeRestore() {
   confirmDialog.loading = true;
   restoringDocId.value = item.docId;
 
+  const operatorName = userStore.user?.name || '未知用戶';
+  const keepRecord = confirmDialog.keepRecord === true;
+
   try {
     const result = await restoreCancelledPurchase(
       props.projectId,
       item.docId,
-      userStore.user?.name || '未知用戶'
+      operatorName,
+      keepRecord
     );
 
     if (result.status === 'success') {
       toast.success(result.message, { position: POSITION.BOTTOM_CENTER });
       confirmDialog.show = false;
-      items.value = items.value.filter(i => i.docId !== item.docId);
+      if (keepRecord) {
+        // 保留紀錄：留在列表中並標記為已復原
+        const itemIndex = items.value.findIndex(i => i.docId === item.docId);
+        if (itemIndex !== -1) {
+          const target = items.value[itemIndex];
+          target.isRestored = true;
+          target.restoredBy = result.restoredBy || operatorName;
+          target.restoredAt = result.restoredAt || new Date();
+          // 同步後端追加的系統留言，展開列立即可見完整軌跡
+          target.remarkNotes = [
+            ...(Array.isArray(target.remarkNotes) ? target.remarkNotes : []),
+            {
+              noteId: `system-restored-record-${Date.now()}`,
+              type: 'system',
+              category: 'general',
+              content: '此筆退戶紀錄已復原（戶別銷售資料已回寫），紀錄保留供查閱',
+              images: [],
+              authorName: operatorName,
+              authorKey: '',
+              createdAt: new Date(),
+              updatedAt: null,
+              pinned: false,
+            },
+          ];
+        }
+      } else {
+        // 連同紀錄刪除：直接自列表移除
+        items.value = items.value.filter(i => i.docId !== item.docId);
+      }
       expanded.value = [];
       emit('data-updated');
+    } else if (result.status === 'already-restored') {
+      // 後端判定此筆已復原過（例如其他人剛操作）：同步本地狀態並提示
+      confirmDialog.show = false;
+      const itemIndex = items.value.findIndex(i => i.docId === item.docId);
+      if (itemIndex !== -1) {
+        items.value[itemIndex].isRestored = true;
+        items.value[itemIndex].restoredBy = result.restoredBy || '';
+        items.value[itemIndex].restoredAt = result.restoredAt || null;
+      }
+      toast.warning(result.message, { position: POSITION.BOTTOM_CENTER });
     } else if (result.status === 'conflict') {
       confirmDialog.show = false;
       conflictDialog.message = result.message;

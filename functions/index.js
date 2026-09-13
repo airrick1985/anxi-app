@@ -3950,7 +3950,7 @@ exports.logSalesStatusNotification = onCall(
  * 讀取指定專案的所有退戶資料列表
  */
 exports.getCancelledPurchases = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
-  const { projectId, includeDeleted } = request.data;
+  const { projectId, includeDeleted, includeRestored } = request.data;
   const functionName = `getCancelledPurchases (Project: ${projectId})`;
 
   if (!projectId) {
@@ -3978,10 +3978,15 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1", memory: "512MiB" 
       const meta = data._cancellationMeta || {};
       const parkingData = data.parkingData || [];
       const deletedMeta = data._deletedMeta || {};
+      const restoredMeta = data._restoredMeta || {};
 
       // 過濾：若未指定 includeDeleted，則排除已被冷刪除的文件
       if (!includeDeleted && data._isDeleted === true) {
         return; // 跳過此筆
+      }
+      // 過濾：若未指定 includeRestored，則排除「復原時選擇保留」的紀錄（已不是有效退戶，不應計入統計）
+      if (!includeRestored && data._isRestored === true) {
+        return;
       }
 
       items.push({
@@ -4037,6 +4042,10 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1", memory: "512MiB" 
         isDeleted: data._isDeleted || false,
         deletedBy: deletedMeta.deletedBy || '',
         deletedAt: deletedMeta.deletedAt || null,
+        // 復原並保留紀錄相關字段
+        isRestored: data._isRestored || false,
+        restoredBy: restoredMeta.restoredBy || '',
+        restoredAt: restoredMeta.restoredAt || null,
         // 持有車位
         '持有車位': data['持有車位'] || [],
       });
@@ -4213,6 +4222,8 @@ exports.updateRemarks = onCall({ region: "asia-east1", memory: "512MiB" }, async
  */
 exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   const { projectId, cancelledDocId, operatorName } = request.data;
+  // ✅ keepRecord：復原後是否保留這筆退戶紀錄（標記為已復原，僅供查閱）；預設 false → 連同紀錄刪除
+  const keepRecord = request.data.keepRecord === true;
   const functionName = `restoreCancelledPurchase (Doc: ${cancelledDocId})`;
 
   if (!projectId || !cancelledDocId || !operatorName) {
@@ -4223,7 +4234,7 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
 
   try {
     console.log(`[${functionName}] 開始復原退戶資料...`);
-    console.log(`[${functionName}] 操作人員: ${operatorName}`);
+    console.log(`[${functionName}] 操作人員: ${operatorName}，保留退戶紀錄: ${keepRecord}`);
 
     // ========================================
     // 步驟 1：讀取退戶備份資料
@@ -4241,6 +4252,18 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
     const targetDocId = `${projectId}_${unitId}`;
 
     console.log(`[${functionName}] 目標戶別: ${unitId}, 文檔 ID: ${targetDocId}`);
+
+    // ✅ 已復原過（保留紀錄）的退戶紀錄不可再次復原，避免舊備份覆蓋現況
+    if (cancelledData._isRestored === true) {
+      const restoredMeta = cancelledData._restoredMeta || {};
+      console.log(`[${functionName}] 此筆退戶紀錄已於先前復原，拒絕重複復原`);
+      return {
+        status: "already-restored",
+        message: `此筆退戶紀錄已由 ${restoredMeta.restoredBy || '—'} 復原過，僅供查閱，無法再次復原。若需重新處理，請至銷控畫面操作。`,
+        restoredBy: restoredMeta.restoredBy || '',
+        restoredAt: restoredMeta.restoredAt || null,
+      };
+    }
 
     // ========================================
     // 步驟 2：檢查目標戶別是否有有效資料
@@ -4268,10 +4291,14 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
 
     const parkingBackup = cancelledData.parkingData || [];
 
-    // 準備戶別復原資料（去除退戶元資料和車位資料）
+    // 準備戶別復原資料（去除退戶元資料、車位資料與退戶紀錄專屬的標記欄位）
     const householdRestoreData = { ...cancelledData };
     delete householdRestoreData._cancellationMeta;
     delete householdRestoreData.parkingData;
+    delete householdRestoreData._isDeleted;
+    delete householdRestoreData._deletedMeta;
+    delete householdRestoreData._isRestored;
+    delete householdRestoreData._restoredMeta;
     householdRestoreData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
     // 銷售人員（複選）：備份可能是舊單人字串或新陣列，復原時統一正規化為陣列
     householdRestoreData.salesperson = normalizeSalespersons(cancelledData.salesperson);
@@ -4326,21 +4353,55 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
       batch.set(parkingDocRef, parkingRestoreData, { merge: true });
     }
 
-    // 3. 刪除已復原的退戶備份
-    batch.delete(cancelledDocRef);
+    // 3. 處理退戶備份：保留（標記已復原）或刪除
+    const restoredAt = admin.firestore.Timestamp.now();
+    if (keepRecord) {
+      // ✅ 保留紀錄：標記為已復原並留下軌跡，紀錄本身不再參與統計、也不可再次復原
+      const keptNotes = (Array.isArray(cancelledData.remarkNotes) ? cancelledData.remarkNotes : [])
+        .map(sanitizeRemarkNote).filter(Boolean);
+      keptNotes.push({
+        noteId: `system-restored-record-${Date.now()}`,
+        type: 'system',
+        category: 'general',
+        content: '此筆退戶紀錄已復原（戶別銷售資料已回寫），紀錄保留供查閱',
+        images: [],
+        authorName: operatorName,
+        authorKey: '',
+        createdAt: restoredAt,
+        updatedAt: null,
+        pinned: false,
+      });
+      batch.update(cancelledDocRef, {
+        _isRestored: true,
+        _restoredMeta: {
+          restoredBy: operatorName,
+          restoredAt,
+          restoredToDocId: targetDocId,
+        },
+        remarkNotes: keptNotes,
+        remarks: buildRemarksSummaryFromNotes(keptNotes),
+      });
+    } else {
+      batch.delete(cancelledDocRef);
+    }
 
     await batch.commit();
 
     console.log(`[${functionName}] 退戶復原完成！`);
     console.log(`[${functionName}] - 已回寫戶別資料: ${targetDocId}`);
     console.log(`[${functionName}] - 已復原車位數量: ${parkingBackup.length}`);
-    console.log(`[${functionName}] - 已刪除退戶備份: ${cancelledDocId}`);
+    console.log(`[${functionName}] - 退戶備份 ${cancelledDocId}: ${keepRecord ? '已保留並標記為已復原' : '已刪除'}`);
 
     return {
       status: "success",
-      message: `戶別 ${unitId} 已成功復原！`,
+      message: keepRecord
+        ? `戶別 ${unitId} 已成功復原，退戶紀錄已保留（標記為已復原）。`
+        : `戶別 ${unitId} 已成功復原，退戶紀錄已一併刪除。`,
       restoredUnitId: unitId,
-      restoredParkingCount: parkingBackup.length
+      restoredParkingCount: parkingBackup.length,
+      keepRecord,
+      restoredBy: operatorName,
+      restoredAt,
     };
 
   } catch (error) {

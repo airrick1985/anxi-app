@@ -138,9 +138,9 @@ const props = defineProps({
 
 defineEmits(['update:show']);
 
-// 過濾掉冷刪除的項目
+// 過濾掉冷刪除與「復原時保留」（已復原、僅供查閱）的項目，兩者皆不算有效退戶
 const validItems = computed(() => {
-  return props.items.filter(item => !item.isDeleted);
+  return props.items.filter(item => !item.isDeleted && !item.isRestored);
 });
 
 // 退戶原因統計
