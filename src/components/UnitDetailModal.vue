@@ -3,12 +3,28 @@
     :max-width="isMobile ? '100%' : (isEditing ? '1360px' : '80vw')" :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'">
     <v-card class="d-flex flex-column" style="height: 100%; overflow: hidden;">
 
-      <v-overlay :model-value="isSaving" class="align-center justify-center blur-background" persistent
-        scrim="grey-darken-3">
-        <div class="d-flex flex-column align-center">
-          <v-progress-circular indeterminate size="48" color="#008cff" class="mb-4"></v-progress-circular>
-          <p class="text-h6 text-black">{{ savingText }}</p>
-        </div>
+      <v-overlay :model-value="isSaving" class="align-center justify-center unit-saving-overlay" persistent
+        :opacity="1" :no-click-animation="true">
+        <section class="unit-saving-card" role="status" aria-live="polite" aria-atomic="true">
+          <div v-if="unitData?.unitId" class="unit-saving-card__unit">
+            <span>戶別</span><strong>{{ unitData.unitId }}</strong>
+          </div>
+          <div class="unit-saving-card__icon" aria-hidden="true">
+            <span class="unit-saving-card__orbit"></span>
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 5h15l5 5v17H5V5h2Z" />
+              <path d="M10 5v9h12V5M10 27v-9h12v9M18 8v3" />
+            </svg>
+          </div>
+          <h2 class="unit-saving-card__title">{{ savingText }}</h2>
+          <p class="unit-saving-card__description">正在處理本次作業，請稍候。</p>
+          <div class="unit-saving-card__activity" aria-hidden="true"><i></i><i></i><i></i></div>
+          <p class="unit-saving-card__hint">
+            <v-icon size="14" aria-hidden="true">mdi-lock-outline</v-icon>
+            <span>處理期間，請保持此視窗開啟</span>
+          </p>
+        </section>
       </v-overlay>
 
       <div class="header-section">
@@ -1684,7 +1700,7 @@ const priceRemarkFileInputRef = ref(null);
 const isFullscreenImageOpen = ref(false);
 const fullscreenImageUrl = ref('');
 
-const savingText = ref('儲存中，請稍候...');
+const savingText = ref('正在儲存變更');
 const toast = useToast(); // ✅ [打勾] 2. 實例化 toast
 const showInfoOverlay = ref(false); // 控制全螢幕下的資訊面板顯示
 
@@ -1961,7 +1977,7 @@ async function handleConfirmCancelPurchase(data) {
   }
 
   isSaving.value = true;
-  savingText.value = '正在辦理退戶...';
+  savingText.value = '正在辦理退戶';
   showCancelDialog.value = false;
   try {
     console.log('🔍 [UnitDetailModal] 準備執行退戶:', {
@@ -2000,7 +2016,7 @@ async function handleConfirmCancelPurchase(data) {
     alert(`退戶失敗: ${error.message}`);
   } finally {
     isSaving.value = false;
-    savingText.value = '儲存中，請稍候...';
+    savingText.value = '正在儲存變更';
   }
 }
 
@@ -3369,7 +3385,7 @@ async function preparePaymentRecordsForSave() {
   for (let i = 0; i < list.length; i++) {
     const r = list[i];
     if (!r._pendingFile) continue;
-    savingText.value = `正在上傳繳款憑證 (繳款 #${i + 1})...`;
+    savingText.value = `正在上傳繳款憑證（第 ${i + 1} 筆）`;
     const base64 = await paymentProofFileToBase64(r._pendingFile);
     const res = await paymentProofApi({
       action: 'upload',
@@ -3433,11 +3449,11 @@ async function saveChanges() {
 async function executeSaveChanges() {
   showPriceChangeDialog.value = false; // 關閉彈窗
   isSaving.value = true;
-  savingText.value = '儲存中，請稍候...';
+  savingText.value = '正在儲存變更';
   try {
     // ✅ [新增] 先上傳備註待上傳圖片，將 URL 合併到 priceRemarkImages
     if (priceRemarkPendingFiles.value.length > 0) {
-      savingText.value = '正在上傳備註圖片...';
+      savingText.value = '正在上傳備註圖片';
       const uploaded = await uploadPriceRemarkPendingImages();
       if (!Array.isArray(editingData.value.priceRemarkImages)) {
         editingData.value.priceRemarkImages = [];
@@ -3448,12 +3464,12 @@ async function executeSaveChanges() {
         try { URL.revokeObjectURL(item.previewUrl); } catch (e) { /* noop */ }
       }
       priceRemarkPendingFiles.value = [];
-      savingText.value = '儲存中，請稍候...';
+      savingText.value = '正在儲存變更';
     }
 
     // ✅ [戶別繳款紀錄] 驗證 → Drive 檔名同步 → 上傳待上傳憑證（失敗會 throw 中止儲存）
     await preparePaymentRecordsForSave();
-    savingText.value = '儲存中，請稍候...';
+    savingText.value = '正在儲存變更';
 
     const data = editingData.value;
 
@@ -5644,10 +5660,144 @@ onUnmounted(() => {
   border: none;
 }
 
-.blur-background :deep(.v-overlay__scrim) {
-  background: rgba(30, 30, 30, 0.5) !important;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+.unit-saving-overlay :deep(.v-overlay__scrim) {
+  background: rgba(63, 76, 100, 0.24);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.unit-saving-overlay :deep(.v-overlay__content) {
+  max-width: calc(100vw - 32px);
+}
+
+.unit-saving-card {
+  box-sizing: border-box;
+  width: 345px;
+  max-width: 100%;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 29px 24px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 24px;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.92), rgba(245, 246, 251, 0.84));
+  backdrop-filter: blur(26px) saturate(140%);
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  box-shadow: 0 24px 48px rgba(44, 57, 83, 0.18), inset 0 1px 0 #fff;
+  color: #243249;
+  text-align: center;
+}
+
+.unit-saving-card__unit {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  max-width: 100%;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.4);
+  color: #68768b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.unit-saving-card__unit strong {
+  color: #4b5a6f;
+  font-weight: 600;
+}
+
+.unit-saving-card__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  margin: 27px auto;
+  border-radius: 20px;
+  background: linear-gradient(155deg, #68b2ff, #0877f3);
+  box-shadow: 0 9px 19px rgba(22, 130, 251, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.65);
+  color: #fff;
+}
+
+.unit-saving-card__icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.unit-saving-card__orbit {
+  position: absolute;
+  inset: -7px;
+  border: 1.5px solid rgba(59, 131, 204, 0.1);
+  border-top-color: #5396e5;
+  border-radius: 25px;
+  animation: unit-saving-orbit 2.4s linear infinite;
+}
+
+.unit-saving-card__title {
+  margin: 0 0 10px;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.3px;
+  overflow-wrap: anywhere;
+}
+
+.unit-saving-card__description {
+  margin: 0;
+  color: #66758a;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.unit-saving-card__activity {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  height: 8px;
+  margin-top: 23px;
+}
+
+.unit-saving-card__activity i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #4589e3;
+  animation: unit-saving-pulse 1.4s ease-in-out infinite;
+}
+
+.unit-saving-card__activity i:nth-child(2) { animation-delay: 0.2s; }
+.unit-saving-card__activity i:nth-child(3) { animation-delay: 0.4s; }
+
+.unit-saving-card__hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 22px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(174, 188, 210, 0.25);
+  color: #68768b;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@keyframes unit-saving-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes unit-saving-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unit-saving-card__orbit,
+  .unit-saving-card__activity i {
+    animation: none;
+  }
 }
 
 .total-area-card {

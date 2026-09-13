@@ -57,15 +57,28 @@
               </draggable>
 
               <v-overlay
-                v-model="isValidating"
-                contained
-                class="align-center justify-center"
+                :model-value="isValidating"
+                class="align-center justify-center project-entry-overlay"
                 persistent
+                :opacity="1"
+                :no-click-animation="true"
               >
-                <v-progress-circular indeterminate :color="pageColor" size="48" width="4"></v-progress-circular>
-                <div class="mt-3" style="color: white; font-weight: 500;">
-                  正在進入 {{ projectToEnterName }}...
-                </div>
+                <section class="project-entry-card" role="status" aria-live="polite" aria-atomic="true">
+                  <div class="project-entry-card__project">
+                    <span>建案</span><strong>{{ projectToEnterName }}</strong>
+                  </div>
+                  <div class="project-entry-card__icon" aria-hidden="true">
+                    <span class="project-entry-card__orbit"></span>
+                    <v-icon size="30">mdi-domain</v-icon>
+                  </div>
+                  <h2 class="project-entry-card__title">正在進入建案</h2>
+                  <p class="project-entry-card__description">正在開啟{{ pageTitle }}，請稍候。</p>
+                  <div class="project-entry-card__activity" aria-hidden="true"><i></i><i></i><i></i></div>
+                  <p class="project-entry-card__hint">
+                    <v-icon size="14" aria-hidden="true">mdi-lock-outline</v-icon>
+                    <span>進入期間，請保持此視窗開啟</span>
+                  </p>
+                </section>
               </v-overlay>
 
             </div>
@@ -186,6 +199,7 @@ onMounted(async () => {
 });
 
 const enterProject = async (project) => {
+  if (isValidating.value) return;
   if (!project || !project.id) {
     error.value = '無效的建案。';
     return;
@@ -238,7 +252,7 @@ const enterProject = async (project) => {
         throw new Error('路由 meta 未設定 targetRouteName');
       }
 
-      router.push({ 
+      await router.push({
         name: routeName, 
         params: { [paramKey]: project.id } // 動態使用 paramKey
       });
@@ -258,6 +272,140 @@ const goToLogin = () => router.push({ name: 'Login' });
 </script>
 
 <style scoped>
+.project-entry-overlay :deep(.v-overlay__scrim) {
+  background: rgba(63, 76, 100, 0.24);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.project-entry-overlay :deep(.v-overlay__content) {
+  max-width: calc(100vw - 32px);
+}
+
+.project-entry-card {
+  box-sizing: border-box;
+  width: 345px;
+  max-width: 100%;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 29px 24px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 24px;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.92), rgba(245, 246, 251, 0.84));
+  backdrop-filter: blur(26px) saturate(140%);
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  box-shadow: 0 24px 48px rgba(44, 57, 83, 0.18), inset 0 1px 0 #fff;
+  color: #243249;
+  text-align: center;
+}
+
+.project-entry-card__project {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  max-width: 100%;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.4);
+  color: #68768b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.project-entry-card__project strong {
+  color: #4b5a6f;
+  font-weight: 600;
+}
+
+.project-entry-card__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  margin: 27px auto;
+  border-radius: 20px;
+  background: linear-gradient(155deg, #68b2ff, #0877f3);
+  box-shadow: 0 9px 19px rgba(22, 130, 251, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.65);
+  color: #fff;
+}
+
+.project-entry-card__orbit {
+  position: absolute;
+  inset: -7px;
+  border: 1.5px solid rgba(59, 131, 204, 0.1);
+  border-top-color: #5396e5;
+  border-radius: 25px;
+  animation: project-entry-orbit 2.4s linear infinite;
+}
+
+.project-entry-card__title {
+  margin: 0 0 10px;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.3px;
+}
+
+.project-entry-card__description {
+  margin: 0;
+  color: #66758a;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.project-entry-card__activity {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  height: 8px;
+  margin-top: 23px;
+}
+
+.project-entry-card__activity i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #4589e3;
+  animation: project-entry-pulse 1.4s ease-in-out infinite;
+}
+
+.project-entry-card__activity i:nth-child(2) { animation-delay: 0.2s; }
+.project-entry-card__activity i:nth-child(3) { animation-delay: 0.4s; }
+
+.project-entry-card__hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 22px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(174, 188, 210, 0.25);
+  color: #68768b;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@keyframes project-entry-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes project-entry-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-entry-card__orbit,
+  .project-entry-card__activity i {
+    animation: none;
+  }
+}
+
 .fill-height {
   min-height: calc(100vh - 64px); 
 }

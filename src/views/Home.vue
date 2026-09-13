@@ -60,31 +60,14 @@ import { appVersion as versionString } from '@/version';
 import { useOnboardingTour } from '@/composables/useOnboardingTour';
 import { trackTrialEvent } from '@/utils/trialTracking';
 import { useProspectStore } from '@/store/prospectStore';
+import { useHomeFeatures } from '@/composables/useHomeFeatures';
 
 // ✓ 導入新元件
 import IconButton from '@/components/IconButton.vue';
 import ChangelogDialog from '@/components/ChangelogDialog.vue';
 import FestivalEffect from '@/components/FestivalEffect.vue';
 
-// 引入所有需要的圖片
-import databaseIcon from '@/assets/icons/database.png';
 import myBackgroundImage from '@/assets/login-bg.webp';
-import subscriptionIcon from '@/assets/icons/subscription.png';
-import userManagementIcon from '@/assets/icons/user-management.png';
-import statusIcon from '@/assets/icons/status.png';
-import emailIcon from '@/assets/icons/email.png';
-import sendEmailIcon from '@/assets/icons/send-email.png';
-import propertyIcon from '@/assets/icons/property.png';
-import priceIcon from '@/assets/icons/price.png';
-import tableIcon from '@/assets/icons/table.png';
-import customerIcon from '@/assets/icons/customer.png';
-import blueprintIcon from '@/assets/icons/blueprint.png';
-import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
-import reservationCalenderIcon from '@/assets/icons/reservation-calender.png';
-import profileIcon from '@/assets/icons/profile.png';
-import SMSIcon from '@/assets/icons/SMS.png';
-import fileIcon from '@/assets/icons/file.png';
-
 
 const router = useRouter();
 const route = useRoute();
@@ -111,135 +94,7 @@ const containerStyle = computed(() => ({
   '--bg-image-url': `url(${backgroundImageUrl.value})`
 }));
 
-const allButtons = ref([
-
- { 
-    id: 'userProfile', 
-    text: '個人資料', 
-    icon: profileIcon, 
-    permissionType: 'loggedIn', // 權限類型：只要登入就可見
-    nav: { name: 'UserProfile' } // 導航目標：UserProfile 頁面
-  },
-   { 
-    id: 'backupManagement', 
-    text: '資料庫管理', 
-    icon: databaseIcon, // 請替換為您的圖示
-    permissionType: 'system', 
-    permissionArgs: ['超級管理員'], // 權限檢查，只檢查 roles 是否包含 '超級管理員'
-    nav: { name: 'BackupManagement' } 
-  },
-  { id: 'subscriptionManagement', text: '訂閱管理', icon: subscriptionIcon, permissionType: 'system', permissionArgs: ['系統管理員', '超級管理員'], nav: { name: 'SubscriptionManagement' } },
-  { id: 'UserManagement', text: '人員管理', icon: userManagementIcon, permissionType: 'system', permissionArgs: ['人員管理'], nav: { name: 'UserManagement' } },
-  { id: 'subscriptionStatus', text: '訂閱查詢', icon: statusIcon, permissionType: 'system', permissionArgs: ['訂閱查詢'], nav: { name: 'SubscriptionStatus' } },
-  { id: 'messageCenter', text: '訊息中心', icon: emailIcon, permissionType: 'loggedIn', nav: { name: 'MessageCenter' } },
-  { id: 'sendMessage', text: '發送訊息', icon: sendEmailIcon, permissionType: 'getter', permissionArgs: ['canSendMessage'], nav: { name: 'SendMessage' } },
-  { id: 'inspectionSystem', text: '驗屋系統', icon: propertyIcon, permissionType: 'system', permissionArgs: ['驗屋系統'],  nav: { name: 'InspectionConsole' } },
-  { id: 'quoteSystem', text: '報價系統', icon: priceIcon, permissionType: 'system', permissionArgs: ['報價系統'], nav: { name: 'QuoteSystemEntry', query: { viewMode: 'quote' } } },
-  { id: 'salesSystem', text: '銷控系統', icon: tableIcon, permissionType: 'system', permissionArgs: ['銷控系統'], nav: { name: 'SalesControlSystemEntry', query: { viewMode: 'sales' } } },
-  
-
-
-
-  // ✓ START: 新增「客資系統」按鈕
-  { 
-    id: 'customerSystem', 
-    text: '客資系統', 
-    icon: customerIcon, 
-    permissionType: 'anySystem', // 使用 'anySystem'
-    permissionArgs: ['客資系統-櫃台', '客資系統-銷售'], // 檢查這兩個權限
-    nav: { name: 'CustomerSystemEntry' } // 導向新的路由入口
-  },
-  // ✓ END: 新增按鈕
-
-  { id: 'designChangeSystem', text: '客變系統', icon: blueprintIcon, permissionType: 'system', permissionArgs: ['客變系統'], nav: null },
-  { id: 'inspectionTimetable', text: '驗屋預約', icon: inspectionCalenderIcon, permissionType: 'anySystem', permissionArgs:  ['驗屋預約管理-修改', '驗屋預約管理-檢視'], nav: { name: 'ProjectSelector' }
-  },
-
-  // 驗屋報告管理：獨立權限、獨立入口
-  {
-    id: 'inspectionReportManager',
-    text: '驗屋報告',
-    icon: fileIcon,
-    permissionType: 'system',
-    permissionArgs: ['驗屋報告管理'],
-    nav: { name: 'InspectionReportManager' }
-  },
-   { 
-    id: 'ViewingReservation', 
-    text: '賞屋預約', 
-    icon: reservationCalenderIcon, 
-    permissionType: 'anySystem', // 使用 'anySystem'
-    permissionArgs: ['客資系統-櫃台', '客資系統-銷售'], // 檢查這兩個權限
-    nav: { name: 'ViewingReservationCalendarEntry' } // 導向新的路由入口
-  },
-
-  {
-    id: 'smsMonitor',
-    text: '簡訊監控',
-    icon: SMSIcon, // 建議使用代表監控或狀態的圖示
-    permissionType: 'system',
-    permissionArgs: ['系統管理員','超級管理員'], // 依照您的 Home.vue 邏輯，會檢查角色是否包含此權限
-    nav: { name: 'SmsReportMonitor' } // 導向您在 router/index.js 定義的名稱
-  },
-
-  // ✅ 新增：管理員工具中心
-  {
-    id: 'adminToolsCenter',
-    text: '管理員工具',
-    icon: userManagementIcon, // 使用現有的管理圖標
-    permissionType: 'system',
-    permissionArgs: ['系統管理員', '超級管理員'],
-    nav: { name: 'AdminToolsCenter' }
-  },
-
-  // ✅ 試用留資管理（僅超級管理員；docs/SPEC_LandingTrialLeadsOnboarding.md §5）
-  {
-    id: 'trialLeads',
-    text: '試用留資',
-    icon: customerIcon,
-    permissionType: 'system',
-    permissionArgs: ['超級管理員'],
-    nav: { name: 'TrialLeadsManager' }
-  },
-
-  // ✅ AI 助理管理（僅超級管理員；docs/銷控AI智能助理-spec.md §12）
-  {
-    id: 'aiAssistantAdmin',
-    text: 'AI 助理管理',
-    icon: userManagementIcon,
-    permissionType: 'system',
-    permissionArgs: ['超級管理員'],
-    nav: { name: 'AiAssistantAdmin' }
-  },
-
-  // ✅ 客戶開發（僅超級管理員；docs/SPEC_CustomerProspecting.md §3.1）
-  {
-    id: 'prospecting',
-    text: '客戶開發',
-    icon: customerIcon,
-    permissionType: 'system',
-    permissionArgs: ['超級管理員'],
-    nav: { name: 'ProspectManager' }
-  },
-
-  // 預約頁功能測試（僅超級管理員）
-  {
-    id: 'bookingTest',
-    text: '預約頁測試',
-    icon: inspectionCalenderIcon,
-    permissionType: 'system',
-    permissionArgs: ['超級管理員'],
-    nav: { name: 'BookingTest' }
-  },
-]);
-
-const visibleButtons = ref([]);
-
-// ✅ 試用帳號隱藏的管理類功能（docs/SPEC_LandingTrialLeadsOnboarding.md §3.7）
-const HIDE_FOR_TRIAL = new Set([
-  'backupManagement', 'subscriptionManagement', 'UserManagement', 'subscriptionStatus',
-  'sendMessage', 'smsMonitor', 'adminToolsCenter', 'bookingTest', 'trialLeads', 'prospecting',
-]);
+const { visibleButtons, saveButtonOrder } = useHomeFeatures();
 
 // ✅ Home 導覽文案（僅試用帳號；步驟由 visibleButtons 產生，沒權限的功能自然不出現）
 const TOUR_COPY = {
@@ -314,55 +169,6 @@ const startTour = async (force = false) => {
 const onRestartTour = () => startTour(true);
 
 onMounted(() => {
-  const savedOrder = localStorage.getItem('homeButtonOrder');
-  const buttonOrder = savedOrder ? JSON.parse(savedOrder) : allButtons.value.map(b => b.id);
-
-  const sortedButtons = [];
-  buttonOrder.forEach(id => {
-    const button = allButtons.value.find(b => b.id === id);
-    if (button) {
-      sortedButtons.push(button);
-    }
-  });
-
-  allButtons.value.forEach(button => {
-    if (!sortedButtons.some(b => b.id === button.id)) {
-      sortedButtons.push(button);
-    }
-  });
-
-   visibleButtons.value = sortedButtons.filter(button => {
-    //  新增：直接從 userStore 讀取角色列表
-    const userRoles = userStore.currentUserRoles;
-
-    // ✅ 試用帳號：隱藏管理類功能
-    if (isTrialUser.value && HIDE_FOR_TRIAL.has(button.id)) return false;
-
-    switch(button.permissionType) {
-      case 'project':
-        return userStore.hasProjectPermission(button.permissionArgs[0], button.permissionArgs[1]);
-      case 'anySystem':
-        // ✓ 您的 'anySystem' 邏輯已存在，完全符合需求
-        return userStore.hasAnyPermission(button.permissionArgs);
-      case 'system': {
-        //  修改：讓 'system' 類型可以同時檢查 detailedPermissions 和 roles
-        // 若 permissionArgs 內含角色（超級管理員／系統管理員），就檢查 roles，命中任一角色即可
-        const roleArgs = button.permissionArgs.filter(arg => ['超級管理員', '系統管理員'].includes(arg));
-        if (roleArgs.length > 0) {
-            return roleArgs.some(role => userRoles.includes(role));
-        }
-        // 否則，維持原有的系統權限檢查
-        return userStore.hasPermission(button.permissionArgs[0]);
-      }
-      case 'getter':
-        return userStore[button.permissionArgs[0]];
-      case 'loggedIn':
-        return !!userStore.user;
-      default:
-        return false;
-    }
-  });
-
   // ✅ 客戶開發徽章：超管才載入
   if (visibleButtons.value.some(b => b.id === 'prospecting')) {
     prospectStore.load().catch((e) => console.warn('[Home] 載入客戶開發待追蹤數失敗', e));
@@ -385,11 +191,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('anxi:restart-tour', onRestartTour);
   tour.cancel();
 });
-
-const saveButtonOrder = () => {
-  const newOrder = visibleButtons.value.map(b => b.id);
-  localStorage.setItem('homeButtonOrder', JSON.stringify(newOrder));
-};
 
 const handleNavigation = (button) => {
   if (button.nav) {

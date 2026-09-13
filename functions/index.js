@@ -22953,7 +22953,7 @@ exports.updateSalesPersonnelOrders = onCall(async (request) => {
  * [新增] 獲取單一客戶的詳細洽談資料 (包含權限檢查)
  * 整合：客戶資料 + 洽談紀錄 + 其他電話 + 編輯權限檢查
  */
-exports.getCustomerInteractionDetails = onCall(async (request) => {
+exports.getCustomerInteractionDetails = onCall({ memory: "512MiB" }, async (request) => {
   const { projectId, docId, userKey } = request.data;
   const functionName = `getCustomerInteractionDetails (Project: ${projectId}, Doc: ${docId})`;
 

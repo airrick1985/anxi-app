@@ -26,6 +26,31 @@
       <v-list density="compact" nav>
         <v-list-item v-if="user" prepend-icon="mdi-home" title="首頁" @click="onMenuClick(goHome)" />
 
+        <template v-if="user && navigationEntries.length">
+          <v-list-subheader>可用功能</v-list-subheader>
+          <v-list-item
+            v-for="entry in navigationEntries"
+            :key="entry.id"
+            :title="entry.text"
+            :to="entry.nav"
+            class="drawer-feature-entry"
+            color="primary"
+            @click="drawerOpen = false"
+          >
+            <template #prepend>
+              <v-badge
+                :content="unreadCount"
+                :model-value="entry.id === 'messageCenter' && unreadCount > 0"
+                color="red"
+                class="drawer-feature-icon"
+              >
+                <img :src="entry.icon" alt="" width="24" height="24" />
+              </v-badge>
+            </template>
+          </v-list-item>
+          <v-divider class="my-2" />
+        </template>
+
         <v-list-subheader>工具</v-list-subheader>
         <v-list-item prepend-icon="mdi-account-group" title="BY序" @click="onMenuClick(openStandbyDialog)" />
         <v-list-item prepend-icon="mdi-clipboard-text-outline" title="貴賓資料表" @click="onMenuClick(() => router.push('/vip-login'))" />
@@ -41,14 +66,7 @@
             :title="isFullscreen ? '離開全螢幕' : '全螢幕模式'"
             @click="onMenuClick(toggleFullscreen)"
           />
-          <v-list-item title="訊息中心" @click="onMenuClick(goToMessageCenter)">
-            <template v-slot:prepend>
-              <v-badge :content="unreadCount" :model-value="unreadCount > 0" color="red" overlap>
-                <v-icon>mdi-email-outline</v-icon>
-              </v-badge>
-            </template>
-          </v-list-item>
-          <v-list-item prepend-icon="mdi-account-circle-outline" :title="`個人資料 (${user.name})`" @click="onMenuClick(() => dialog = true)" />
+          <v-list-item prepend-icon="mdi-account-circle-outline" :title="`編輯個人資料 (${user.name})`" @click="onMenuClick(() => dialog = true)" />
 
           <!-- ✅ 試用帳號：Home 頁重新開始導覽（docs/SPEC_LandingTrialLeadsOnboarding.md §7.2） -->
           <v-list-item
@@ -208,6 +226,7 @@ import EditProfileDialog from '../components/EditProfileDialog.vue';
 import MortgageCalculator from '../components/MortgageCalculator.vue';
 import { appVersion as versionString } from '@/version';
 import { useAutoLogout } from '../composables/useAutoLogout';
+import { useHomeFeatures } from '@/composables/useHomeFeatures';
 
 // 引入我們的新元件
 import AiAssistant from '../components/AiAssistant.vue';
@@ -218,6 +237,7 @@ const { showIdleWarning, remainingSeconds, keepAlive, performLogout } = useAutoL
 const userStore = useUserStore();
 const uiStore = useUiStore();
 const { user, unreadCount } = storeToRefs(userStore);
+const { navigationEntries } = useHomeFeatures();
 const isTrialUser = computed(() => userStore.isTrialUser);
 
 // 試用提示條（sessionStorage 記住已關閉）
@@ -304,10 +324,6 @@ const goHome = () => {
     router.push('/home');
   }
 };
-const goToMessageCenter = () => {
-  router.push('/messages');
-};
-
 // ✅ [新增] 開啟 BY序 Dialog
 function openStandbyDialog() {
   standbyProjectId.value = '';
@@ -378,6 +394,15 @@ watch(user, (newUser, oldUser) => {
 /* 抽屜上緣留空，避免被浮動關閉鈕（fixed 於視窗左上）壓到第一個項目 */
 .drawer-top-spacer {
   height: 52px;
+}
+
+.drawer-feature-entry {
+  min-height: 44px;
+}
+
+.drawer-feature-icon img {
+  display: block;
+  object-fit: contain;
 }
 
 .clickable {
