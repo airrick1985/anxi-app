@@ -334,6 +334,12 @@ exports.submitCommissionEntries = onCall({
           dealAfter: result.claim.dealAfter,
         },
         categories: entry.categories || {},
+        // 交屋團獎（自個獎提撥、本期不發放）快照：total＝本次（已乘請佣比例）、totalFull＝100% 重算
+        handover: {
+          total: calc.toNum(result.handoverTotal),
+          totalFull: calc.toNum(result.handoverTotalFull),
+          byCat: result.handover || {},
+        },
         source: "system",
         createdAt: FieldValue.serverTimestamp(),
         createdBy: createdBy || "",

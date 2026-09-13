@@ -27,7 +27,7 @@
               <v-chip v-else-if="pd.voidedCount" size="x-small" variant="tonal" color="error">作廢 {{ pd.voidedCount }} 戶</v-chip>
               <v-chip v-if="pd.hasImport" size="x-small" variant="tonal" color="grey">含歷史匯入</v-chip>
               <v-spacer></v-spacer>
-              <span v-if="pd.activeCount" class="text-body-2 mr-2">實際請領 <b class="text-primary">{{ money(pd.claimSum) }}</b>｜本次請佣 <b class="text-success">{{ money(pd.thisClaimSum) }}</b>｜獎金實發 <b>{{ money(pd.netSum) }}</b></span>
+              <span v-if="pd.activeCount" class="text-body-2 mr-2">實際請領 <b class="text-primary">{{ money(pd.claimSum) }}</b>｜本次請佣 <b class="text-success">{{ money(pd.thisClaimSum) }}</b>｜獎金實發 <b>{{ money(pd.netSum) }}</b><template v-if="pd.handoverSum">｜交屋團獎暫留 <b class="text-orange-darken-3">{{ money(pd.handoverSum) }}</b></template></span>
               <v-btn v-if="pd.activeCount" size="small" variant="tonal" color="primary" prepend-icon="mdi-file-export-outline"
                 @click.stop="$emit('export-period', pd.period)">匯出此期</v-btn>
               <v-menu v-if="canManage">
@@ -67,6 +67,7 @@
                     <th class="text-right">請佣比例</th><th class="text-right">佣金比例</th>
                     <th class="text-right">折數後總價(萬)</th>
                     <th class="text-right">實際請領(元)</th><th class="text-right">保留款(元)</th><th class="text-right">本次請佣(元)</th>
+                    <th v-if="pd.handoverSum" class="text-right">交屋團獎暫留(元)</th>
                     <th class="text-center">人數</th><th>狀態</th><th></th>
                   </tr>
                 </thead>
@@ -81,6 +82,7 @@
                     <td class="text-right">{{ money(r.calc?.realClaim || 0) }}</td>
                     <td class="text-right">{{ money(r.calc?.claimKeep || 0) }}</td>
                     <td class="text-right font-weight-bold">{{ money(r.calc?.thisClaim || 0) }}</td>
+                    <td v-if="pd.handoverSum" class="text-right text-orange-darken-3">{{ money(r.handover?.total || 0) }}</td>
                     <td class="text-center">{{ bonusCountOf(r.id) }}</td>
                     <td>
                       <v-chip v-if="r.status === 'voided'" size="x-small" color="error" variant="tonal" :title="r.voidReason">已作廢</v-chip>
@@ -93,7 +95,7 @@
                     </td>
                   </tr>
                   <tr v-if="!visibleRecords(pd).length">
-                    <td colspan="12" class="text-center text-medium-emphasis py-3">沒有可顯示的紀錄</td>
+                    <td :colspan="pd.handoverSum ? 13 : 12" class="text-center text-medium-emphasis py-3">沒有可顯示的紀錄</td>
                   </tr>
                 </tbody>
               </v-table>
@@ -408,6 +410,7 @@ const periods = computed(() => {
       const active = recs.filter(r => r.status !== 'voided');
       const claimSum = active.reduce((s, r) => s + toNum(r.calc?.realClaim), 0);
       const thisClaimSum = active.reduce((s, r) => s + toNum(r.calc?.thisClaim), 0);
+      const handoverSum = active.reduce((s, r) => s + toNum(r.handover?.total), 0);   // 交屋團獎暫留（本期不發放）
 
       // 該期每人彙總（有效獎金明細）
       const byPerson = {};
@@ -447,7 +450,7 @@ const periods = computed(() => {
         voidedCount: recs.length - active.length,
         hasImport: recs.some(r => r.source === 'import'),
         requestDate: (active[0] || recs[0])?.requestDate || '',
-        claimSum, thisClaimSum, netSum, people,
+        claimSum, thisClaimSum, netSum, handoverSum, people,
         batches: Object.values(batchMap),
       };
     });

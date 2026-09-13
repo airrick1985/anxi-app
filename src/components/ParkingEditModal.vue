@@ -4,21 +4,27 @@
     :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'" persistent>
     <v-card :class="{ 'd-flex flex-column': isMobile }" :style="isMobile ? 'height: 100%;' : ''">
       <!-- 標題列可拖曳（電腦版），方便挪開看底下的戶別資訊 -->
-      <v-card-title v-dialog-drag class="d-flex justify-space-between align-center flex-wrap ga-2">
+      <!-- 標題列：左上為文字「關閉」鈕（與標題明確區隔），標題含圖示與戶別膠囊，右側為車位銷控 -->
+      <v-card-title v-dialog-drag class="parking-modal-head pa-0">
+        <button class="mac-btn parking-modal-close" @click="close">關閉</button>
         <!-- 🔐 手機版隱藏解鎖：連點標題（含戶別）8 次解除已售車位禁用（效果同連按 8 次 A） -->
-        <span class="parking-modal-title tap-unlock-target" @click="tapUnlockSoldParking">{{ title }}</span>
-        <div class="d-flex align-center ga-1">
-          <v-btn
-            prepend-icon="mdi-car-side"
-            variant="tonal"
-            color="info"
-            :size="isMobile ? 'small' : 'default'"
-            @click="openParkingEditor"
-          >
-            車位銷控
-          </v-btn>
-          <v-btn v-if="isMobile" icon="mdi-close" variant="text" @click="close"></v-btn>
+        <div class="parking-modal-title tap-unlock-target" @click="tapUnlockSoldParking">
+          <span class="parking-modal-title-icon"><v-icon size="15" color="white">mdi-car-multiple</v-icon></span>
+          <template v-if="mode === 'quote' && unitId">
+            <span class="parking-modal-title-text">為</span>
+            <span class="parking-modal-unit">{{ unitId }}</span>
+            <span class="parking-modal-title-text">選擇車位</span>
+          </template>
+          <template v-else-if="holdMode && unitId">
+            <span class="parking-modal-unit">{{ unitId }}</span>
+            <span class="parking-modal-title-text">加購或保留車位</span>
+          </template>
+          <span v-else class="parking-modal-title-text">{{ title }}</span>
         </div>
+        <button class="mac-btn parking-modal-editor-btn" @click="openParkingEditor">
+          <v-icon size="16">mdi-car-side</v-icon>
+          車位銷控
+        </button>
       </v-card-title>
       <v-card-text :class="{ 'flex-grow-1 overflow-y-auto': isMobile }">
 
@@ -97,7 +103,7 @@
         <div v-else class="parking-empty">
           <v-icon size="36" color="grey-lighten-1">mdi-car-off</v-icon>
           <div class="mt-1">尚未選擇任何車位</div>
-          <div class="text-caption">請由下方「加入車位」選擇樓層與車位</div>
+          <div class="text-caption">請由下方「加入車位」選擇樓層與車位<template v-if="mode === 'quote'">，或開啟「車位銷控」點選車位直接加入</template></div>
         </div>
 
         <!-- ✅ 加入車位：樓層改為 chips 一目了然，車位維持下拉（數量多） -->
@@ -157,14 +163,13 @@
 
     <v-dialog v-model="isParkingEditorDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition" :eager="true">
       <v-card class="d-flex flex-column">
-        <v-toolbar dark color="f5f5f7" density="compact">
-          <v-btn icon dark @click="isParkingEditorDialogVisible = false">
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-          <v-toolbar-title>車位銷控</v-toolbar-title>
-          <v-spacer></v-spacer>
-      
-        </v-toolbar>
+        <!-- 標題列由 ParkingCanvas 以 macOS 風格渲染（含樓層／縮放／列印）；載入中或無樓層時先以簡易標題列頂替，確保有關閉鈕 -->
+        <div v-if="isEditorLoading || !activeEditorFloorPlan" class="mac-sheet-head parking-editor-fallback-head">
+          <button class="mac-sheet-close parking-editor-fallback-close" title="關閉" @click="isParkingEditorDialogVisible = false">
+            <v-icon size="18">mdi-close</v-icon>
+          </button>
+          <span>車位銷控</span>
+        </div>
         
         <div class="flex-grow-1" style="position: relative; overflow: hidden; background-color: #f0f2f5;">
           <v-overlay
@@ -189,12 +194,28 @@
             
             :allow-import="false" :allow-adjust-all="false" :show-status-toggle="props.mode === 'sales'" 
             :context-mode="props.mode"
+            :quote-unit-id="props.mode === 'quote' ? props.unitId : ''"
+            :quote-selected-ids="localParkingIds"
+            :quote-allow-sold="canSelectSoldParking"
+            @add-to-quote="addParkingFromCanvas"
+            @remove-from-quote="removeParkingFromCanvas"
             :text-styles="textStyleStore.styles" 
             :status-colors="statusColorStore.colors" 
             @floor-switched="handleEditorFloorSwitch"
             @spots-changed="console.log('ParkingEditModal 偵測到畫布變更')"
+            header-title="車位銷控"
+            show-close
+            @close="isParkingEditorDialogVisible = false"
             style="height: 100%; width: 100%;"
-          />
+          >
+            <!-- 報價模式：提示可直接在資訊卡加入車位，並即時顯示已選數量 -->
+            <template v-if="props.mode === 'quote' && props.unitId" #header-extra>
+              <span class="parking-editor-hint d-none d-md-inline">點選車位 → 為 {{ props.unitId }} 加入此車位</span>
+              <span class="parking-editor-count">
+                <v-icon size="14">mdi-car-multiple</v-icon>已選 {{ localParking.length }} 個
+              </span>
+            </template>
+          </ParkingCanvas>
         </div>
       </v-card>
     </v-dialog>
@@ -414,35 +435,71 @@ const itemProps = (item) => ({
   class: (item.disabled && !canSelectSoldParking.value) ? 'text-grey' : ''
 });
 
+// ✅ 由原始車位資料組出已選車位項目（下拉「加入」與車位銷控資訊卡「加入此車位」共用）
+function buildSpotEntry(newSpotData) {
+  const newSpot = {
+    // ✅ 使用統一的欄位名稱，支援中英文兩種格式
+    spotId: newSpotData.spotId || newSpotData['車位編號'],
+    '車位編號': newSpotData.spotId || newSpotData['車位編號'],
+    size: newSpotData.size || newSpotData['車位尺寸'] || newSpotData['坪數'] || '標準',
+    type: newSpotData.type || newSpotData['類型'] || newSpotData['車位類型'],
+    price_list: newSpotData.price_list || newSpotData['表價'] || newSpotData['車位表價'],
+    price_floor: newSpotData.price_floor || newSpotData['底價'] || newSpotData['車位底價'],
+    // ✅ 如果成交價不存在或為空，預設帶入表價
+    price_transaction: newSpotData.price_transaction || newSpotData['車位成交價'] || newSpotData.price_list || newSpotData['表價'] || newSpotData['車位表價'],
+    // ✅ [新增] 車位持分面積（m² / 坪）：供列印報價單「詳細面積」顯示
+    area: newSpotData.area ?? newSpotData['車位面積(m²)'] ?? newSpotData['車位面積'] ?? null,
+    area_ping: newSpotData.area_ping ?? newSpotData['車位面積_坪'] ?? newSpotData['車位面積(坪)'] ?? null,
+  };
+  // 🚗 保留模式：新加入的車位預設狀態（父層可依建案參數指定），保留層級補預設保留資訊
+  if (props.holdMode) {
+    newSpot.status_backend = props.holdDefaultStatus || props.holdStatusOptions[0] || '保留';
+    newSpot.reservedBy = null;
+    newSpot.reservedUntil = null;
+    newSpot.reservedNote = null;
+    onHoldStatusChange(newSpot);
+  }
+  return newSpot;
+}
+
 // ✅ 更新新增邏輯，使其使用正確的欄位名稱
 function addParking() {
   if (newParkingSelection.value && newParkingSelection.value.originalData) {
-    const newSpotData = newParkingSelection.value.originalData;
-    const newSpot = {
-      // ✅ 使用統一的欄位名稱，支援中英文兩種格式
-      spotId: newSpotData.spotId || newSpotData['車位編號'],
-      '車位編號': newSpotData.spotId || newSpotData['車位編號'],
-      size: newSpotData.size || newSpotData['車位尺寸'] || newSpotData['坪數'] || '標準',
-      type: newSpotData.type || newSpotData['類型'] || newSpotData['車位類型'],
-      price_list: newSpotData.price_list || newSpotData['表價'] || newSpotData['車位表價'],
-      price_floor: newSpotData.price_floor || newSpotData['底價'] || newSpotData['車位底價'],
-      // ✅ 如果成交價不存在或為空，預設帶入表價
-      price_transaction: newSpotData.price_transaction || newSpotData['車位成交價'] || newSpotData.price_list || newSpotData['表價'] || newSpotData['車位表價'],
-      // ✅ [新增] 車位持分面積（m² / 坪）：供列印報價單「詳細面積」顯示
-      area: newSpotData.area ?? newSpotData['車位面積(m²)'] ?? newSpotData['車位面積'] ?? null,
-      area_ping: newSpotData.area_ping ?? newSpotData['車位面積_坪'] ?? newSpotData['車位面積(坪)'] ?? null,
-    };
-    // 🚗 保留模式：新加入的車位預設狀態（父層可依建案參數指定），保留層級補預設保留資訊
-    if (props.holdMode) {
-      newSpot.status_backend = props.holdDefaultStatus || props.holdStatusOptions[0] || '保留';
-      newSpot.reservedBy = null;
-      newSpot.reservedUntil = null;
-      newSpot.reservedNote = null;
-      onHoldStatusChange(newSpot);
-    }
-    localParking.value.push(newSpot);
+    localParking.value.push(buildSpotEntry(newParkingSelection.value.originalData));
     newParkingSelection.value = null;
   }
+}
+
+// 已選車位編號（傳給車位銷控畫布，讓資訊卡顯示「已加入」）
+const localParkingIds = computed(() => localParking.value.map(p => String(spotIdOf(p))));
+
+// 🅿️ 車位銷控資訊卡「為『戶別』加入此車位」：畫布回傳該車位文件資料
+// Why: 原本在畫布看中車位後得關掉畫布、回選擇器再從下拉找一次；這裡直接加入，畫布保持開啟可連續加入多個。
+function addParkingFromCanvas(data) {
+  const key = String(data?.spotId || data?.number || '');
+  if (!key) {
+    toast.error('此車位缺少車位編號，無法加入');
+    return;
+  }
+  if (localParkingIds.value.includes(key)) {
+    toast.info(`${key} 已在已選車位中`);
+    return;
+  }
+  // 優先採用報價單載入的即時車位資料（與下拉選單同一來源），找不到才以畫布資料備援
+  const source = props.allParkingData.find(p =>
+    (data?.id && p.docId === data.id) || String(p.spotId || p['車位編號'] || '') === key
+  ) || { ...data, spotId: key };
+  localParking.value.push(buildSpotEntry(source));
+  toast.success(`已為 ${props.unitId || '此戶別'} 加入車位 ${key}`);
+}
+
+// 🅿️ 車位銷控資訊卡「取消選取此車位」：從已選清單移除（畫布光環與 badge 會隨之消失）
+function removeParkingFromCanvas(spotKey) {
+  const key = String(spotKey || '');
+  const index = localParking.value.findIndex(p => String(spotIdOf(p)) === key);
+  if (index === -1) return;
+  localParking.value.splice(index, 1);
+  toast.info(`已取消 ${props.unitId || '此戶別'} 的車位 ${key}`);
 }
 
 // 🚗 保留資訊 helpers（與 ParkingSpotEditDialog 邏輯一致）
@@ -589,12 +646,91 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.parking-modal-title {
-  min-width: 0;
-  overflow-wrap: anywhere;
+/* ── 選擇器標題列（macOS 風格） ── */
+.parking-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  padding: 8px 12px 8px 12px !important;
+  background: #f6f6f8;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
   white-space: normal;
-  line-height: 1.3;
 }
+/* 關閉鈕：左上文字「關閉」（白底細陰影按鈕），與標題明確區隔 */
+.parking-modal-close {
+  flex: 0 0 auto;
+  color: #6e6e73;
+}
+.parking-modal-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1d1d1f;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.parking-modal-title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #2b8cf2, #0a6fdc);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.3);
+  flex: 0 0 auto;
+}
+.parking-modal-title-text { color: #1d1d1f; }
+/* 戶別膠囊：讓「為 A1-3F 選擇車位」的戶別一眼可辨 */
+.parking-modal-unit {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: #fff;
+  color: #0071e3;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+}
+.parking-modal-editor-btn { flex: 0 0 auto; gap: 5px; }
+.parking-modal-editor-btn .v-icon { color: #0071e3; }
+@media (max-width: 600px) {
+  .parking-modal-head { min-height: 46px; padding: 6px 10px !important; gap: 8px; }
+  .parking-modal-title { font-size: 14px; }
+}
+
+/* 車位銷控標題列提示與計數（報價模式，插入 ParkingCanvas 的 header-extra slot） */
+.parking-editor-hint {
+  font-size: 12.5px;
+  color: #6e6e73;
+}
+.parking-editor-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(0, 113, 227, 0.1);
+  color: #0071e3;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* 載入中的簡易標題列：關閉鈕靠左，與 ParkingCanvas 標題列位置一致 */
+.parking-editor-fallback-head { flex: 0 0 auto; }
+.parking-editor-fallback-close { margin-left: 0; margin-right: 2px; }
 
 /* 🔐 手機版隱藏解鎖點按目標：無可點擊暗示、防連點選取 */
 .tap-unlock-target {

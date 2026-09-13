@@ -25,8 +25,10 @@ const DEFAULT_BONUS_CATEGORIES = [
   { key: 'pm',       label: '專案獎金', ratePct: 0.1,  mode: 'role', rolePositions: ['專案'], enabled: true, order: 4 },
   { key: 'apm',      label: '副專獎金', ratePct: 0.05, mode: 'role', rolePositions: ['副專'], enabled: true, order: 5 },
   { key: 'indiv',    label: '銷售個獎', ratePct: 0.32, mode: 'individual', rolePositions: [], enabled: true, order: 6 },
-  { key: 'team',     label: '銷售團獎', ratePct: 0.08, mode: 'team', rolePositions: [], enabled: true, order: 7 },
-  { key: 'pmTeam',   label: '專案團獎', ratePct: 0.02, mode: 'role', rolePositions: ['專案團獎'], enabled: true, order: 8 },
+  // 交屋團獎：自「銷售個獎」獎金池提撥 ratePct%（此處 ratePct 為提撥比例，非總價比例），本期不發放、不分配給人員
+  { key: 'handover', label: '交屋團獎', ratePct: 5, mode: 'handover', sourceCatKey: 'indiv', rolePositions: [], enabled: true, order: 7 },
+  { key: 'team',     label: '銷售團獎', ratePct: 0.08, mode: 'team', rolePositions: [], enabled: true, order: 8 },
+  { key: 'pmTeam',   label: '專案團獎', ratePct: 0.02, mode: 'role', rolePositions: ['專案團獎'], enabled: true, order: 9 },
 ];
 
 const DEFAULT_COMMISSION_SETTINGS = {
@@ -45,6 +47,8 @@ const DEFAULT_COMMISSION_SETTINGS = {
   note1: '1、本次請領按委託銷售契約第六條，請領佣金計銷售實際請款按2.2%，請領本次佣金費用',
   note2: '2、請領費用按合約第7條分別以50%匯款或現金票給付，另50%開立45天期票支付。',
   bonusCategories: DEFAULT_BONUS_CATEGORIES,
+  teamSplitMode: 'lastAbsorb',
+  equalSplitScope: 'team',
   teamGroups: [],
   personDetailShowAllRoles: [],   // 個人明細：職務含這些關鍵字者，每戶明細顯示全部戶別（含非本人銷售）
 };
@@ -112,8 +116,25 @@ function categoryPool(dealAfter, ratePct, ratioPct) {
   return dealAfter * (toNum(ratePct) / 100) * 10000 * (toNum(ratioPct) / 100);
 }
 
-function allocateAmounts(pool, allocations, lockedScale) {
+function evenShares(n) {
+  if (!n) return [];
+  const base = Math.floor((100 / n) * 100) / 100;
+  const shares = new Array(n).fill(base);
+  shares[n - 1] = round2(100 - base * (n - 1));
+  return shares;
+}
+
+/** 這組 % 模式分配是否為預設均分（與前端 isEvenShares 一致） */
+function isEvenShares(pctAllocations) {
+  const list = Array.isArray(pctAllocations) ? pctAllocations : [];
+  if (!list.length) return false;
+  const shares = evenShares(list.length);
+  return list.every((a, i) => Math.abs(toNum(a.sharePct) - shares[i]) < 0.011);
+}
+
+function allocateAmounts(pool, allocations, lockedScale, splitMode) {
   if (lockedScale === undefined) lockedScale = 1;
+  if (!splitMode) splitMode = 'lastAbsorb';
   const target = Math.round(toNum(pool));
   const amounts = {};
   const list = Array.isArray(allocations) ? allocations : [];
@@ -153,6 +174,21 @@ function allocateAmounts(pool, allocations, lockedScale) {
   }
 
   const remaining = target - lockedSum;
+
+  // 均分尾差處理（建案設定 teamSplitMode）：非「最後一人吸收」且目前為均分比例時，每人金額完全相同、尾差不發放
+  if (splitMode && splitMode !== 'lastAbsorb' && isEvenShares(pcts)) {
+    const n = pcts.length;
+    const per = remaining / n;
+    let amt;
+    if (splitMode === 'equalRound') amt = Math.round(per);
+    else if (splitMode === 'equalFloor10') amt = Math.floor(per / 10) * 10;
+    else if (splitMode === 'equalFloor100') amt = Math.floor(per / 100) * 100;
+    else amt = Math.floor(per);   // equalFloor
+    pcts.forEach(a => { amounts[a.personKey] = amt; });
+    const total = lockedSum + amt * n;
+    return { amounts, total, valid: true, diff: target - total, remainder: target - total, perHead: amt, splitMode, error: '' };
+  }
+
   let assigned = 0;
   pcts.forEach((a, i) => {
     let amt;
@@ -167,6 +203,25 @@ function allocateAmounts(pool, allocations, lockedScale) {
   return { amounts, total: target, valid: true, diff: 0, error: '' };
 }
 
+/** 類別是否為「自個獎提撥」（交屋團獎）：本期不發放、不分配給人員（與前端 isHandoverCategory 一致） */
+function isHandoverCategory(cat) {
+  return !!cat && cat.mode === 'handover';
+}
+
+function categoryList(categories) {
+  if (Array.isArray(categories)) return categories.filter(Boolean);
+  return Object.keys(categories || {}).map(k => Object.assign({ key: k }, categories[k] || {}));
+}
+
+/** 提撥類別的來源類別 key（與前端 resolveHandoverSourceKey 一致） */
+function resolveHandoverSourceKey(cat, categories) {
+  const list = categoryList(categories);
+  const wanted = String((cat && cat.sourceCatKey) || '').trim();
+  if (wanted && list.some(c => c.key === wanted && !isHandoverCategory(c))) return wanted;
+  const indiv = list.find(c => c.mode === 'individual');
+  return indiv ? indiv.key : '';
+}
+
 function calcUnitBonus(finance, input, personProfiles) {
   const claim = calcClaim(finance, input);
   const ratioPct = toNum(input.ratioPct);
@@ -174,19 +229,61 @@ function calcUnitBonus(finance, input, personProfiles) {
   const pools = {};
   const categoryResults = {};
   const errors = [];
+  const handover = {};
+  let handoverTotal = 0;
+  let handoverTotalFull = 0;
 
   const perPerson = {};
   const cats = input.categories || {};
-  Object.keys(cats).forEach(catKey => {
+  const catList = categoryList(cats);
+  const payKeys = catList.filter(c => !isHandoverCategory(c)).map(c => c.key);
+  const handoverKeys = catList.filter(c => isHandoverCategory(c)).map(c => c.key);
+
+  // 1) 各發放類別原始獎金池
+  const rawPools = {};
+  const rawPoolsFull = {};
+  payKeys.forEach(catKey => {
+    const cat = cats[catKey] || {};
+    rawPools[catKey] = categoryPool(claim.dealAfter, cat.ratePct, ratioPct);
+    rawPoolsFull[catKey] = categoryPool(claim.dealAfter, cat.ratePct, 100);
+  });
+
+  // 2) 提撥類別（交屋團獎）：自來源類別池先提撥 ratePct%，來源池扣除後再分配；提撥金額不分配給人員
+  const deduct = {};
+  const deductFull = {};
+  handoverKeys.forEach(catKey => {
+    const cat = cats[catKey] || {};
+    const enabled = cat.enabled !== false;   // 逐戶可關閉提撥（工作台開關）
+    const rate = enabled ? toNum(cat.ratePct) : 0;
+    const sourceCatKey = resolveHandoverSourceKey(Object.assign({}, cat, { key: catKey }), catList);
+    if (rate < 0 || rate > 100) errors.push({ catKey, error: '提撥比例須介於 0～100%' });
+    const sourcePool = sourceCatKey ? toNum(rawPools[sourceCatKey]) : 0;
+    const sourcePoolFull = sourceCatKey ? toNum(rawPoolsFull[sourceCatKey]) : 0;
+    const amount = Math.round(sourcePool * rate / 100);
+    const amountFull = Math.round(sourcePoolFull * rate / 100);
+    if (sourceCatKey) {
+      deduct[sourceCatKey] = (deduct[sourceCatKey] || 0) + amount;
+      deductFull[sourceCatKey] = (deductFull[sourceCatKey] || 0) + amountFull;
+    }
+    handover[catKey] = { sourceCatKey, enabled, ratePct: rate, sourcePool, sourcePoolFull, amount, amountFull };
+    handoverTotal += amount;
+    handoverTotalFull += amountFull;
+    pools[catKey] = amount;
+    categoryResults[catKey] = { amounts: {}, total: amount, valid: true, error: '', diff: 0 };
+  });
+
+  // 3) 發放類別分配（來源類別以提撥後的池分配）
+  payKeys.forEach(catKey => {
     const cat = cats[catKey] || {};
     const allocations = Array.isArray(cat.allocations) ? cat.allocations : [];
-    const pool = categoryPool(claim.dealAfter, cat.ratePct, ratioPct);
-    const fullPool = categoryPool(claim.dealAfter, cat.ratePct, 100);
+    const pool = rawPools[catKey] - (deduct[catKey] || 0);
+    const fullPool = rawPoolsFull[catKey] - (deductFull[catKey] || 0);
     pools[catKey] = pool;
 
-    const res = allocateAmounts(pool, allocations, 1);
+    const splitMode = cat.splitMode || 'lastAbsorb';
+    const res = allocateAmounts(pool, allocations, 1, splitMode);
     const lockedScale = ratioPct > 0 ? 100 / ratioPct : 0;
-    const resFull = allocateAmounts(fullPool, allocations, lockedScale);
+    const resFull = allocateAmounts(fullPool, allocations, lockedScale, splitMode);
     categoryResults[catKey] = res;
     if (allocations.length > 0 && !res.valid) {
       errors.push({ catKey, error: res.error });
@@ -226,7 +323,7 @@ function calcUnitBonus(finance, input, personProfiles) {
     };
   });
 
-  return { claim, pools, categoryResults, people, errors };
+  return { claim, pools, categoryResults, people, errors, handover, handoverTotal, handoverTotalFull };
 }
 
 function toChineseNum(n) {
@@ -257,11 +354,15 @@ module.exports = {
   DEFAULT_COMMISSION_SETTINGS,
   mergeSettings,
   matchesRolePositions,
+  isHandoverCategory,
+  resolveHandoverSourceKey,
   computeUnitFinance,
   resolveCommPct,
   calcClaim,
   categoryPool,
   allocateAmounts,
+  evenShares,
+  isEvenShares,
   calcUnitBonus,
   toChineseNum,
 };

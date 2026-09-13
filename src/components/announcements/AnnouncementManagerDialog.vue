@@ -92,8 +92,8 @@
             <label class="anm-label">標題</label>
             <input v-model="form.title" class="anm-input" type="text" maxlength="80" placeholder="例如：本週 A 棟 3F 保留至週五" />
 
-            <label class="anm-label">內容</label>
-            <textarea v-model="form.content" class="anm-input anm-textarea" rows="5" placeholder="公告內容（支援換行，網址會自動變成連結）"></textarea>
+            <label class="anm-label">內容 <span class="anm-hint">可設定文字大小、顏色、底線、斜體與編號；網址會自動變成連結</span></label>
+            <AnnouncementRichEditor v-model="form.content" placeholder="輸入公告內容…" />
 
             <div class="anm-row">
               <div class="anm-col">
@@ -232,11 +232,13 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useToast, POSITION } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
+import AnnouncementRichEditor from './AnnouncementRichEditor.vue';
 import {
   ANNOUNCEMENT_TARGETS, ANNOUNCEMENT_LEVELS, ANNOUNCEMENT_STATUS,
   levelMeta, announcementStatus, formatRelativeTime, formatDateTime, toInputDateTime,
   newAnnouncementId, createAnnouncement, updateAnnouncement, deleteAnnouncement,
   uploadAnnouncementImages, deleteAnnouncementImages,
+  isRichContent, isRichHtmlEmpty, plainTextToHtml,
 } from '@/services/announcementService';
 
 const props = defineProps({
@@ -281,7 +283,7 @@ const mobilePane = ref('list');
 
 function blankForm() {
   return {
-    title: '', content: '', images: [],
+    title: '', content: '', contentFormat: 'html', images: [],
     targets: props.defaultTarget === 'quote' ? ['quote'] : ['sales'],
     level: 'info', pinned: false, popup: false, active: true, startAt: '', endAt: '',
   };
@@ -307,9 +309,13 @@ const previewStatus = computed(() => announcementStatus({
 
 const canSave = computed(() => form.value.title.trim().length > 0 && form.value.targets.length > 0);
 
+/** 表單快照（比對是否有變更用）：空的富文本（如 <p></p>）一律視為空字串 */
+function snapshot(f) {
+  return JSON.stringify({ ...f, content: isRichHtmlEmpty(f?.content) ? '' : f?.content });
+}
 const dirty = computed(() => {
   if (!editing.value) return false;
-  return JSON.stringify(form.value) !== JSON.stringify(baseline.value) || pending.value.length > 0 || removedImages.value.length > 0;
+  return snapshot(form.value) !== snapshot(baseline.value) || pending.value.length > 0 || removedImages.value.length > 0;
 });
 const baseline = ref(null);
 
@@ -317,7 +323,9 @@ const baseline = ref(null);
 function loadForm(a) {
   form.value = {
     title: a.title || '',
-    content: a.content || '',
+    // 舊的純文字公告轉成每行一段的 HTML 進編輯器；儲存後即成為富文本格式
+    content: isRichContent(a) ? (a.content || '') : plainTextToHtml(a.content || ''),
+    contentFormat: 'html',
     images: [...(a.images || [])],
     targets: [...targetsOf(a)],
     level: a.level || 'info',
@@ -566,7 +574,6 @@ defineExpose({ startCreate, startEdit });
   outline: none; transition: box-shadow .12s, border-color .12s;
 }
 .anm-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(10,122,255,.25); }
-.anm-textarea { resize: vertical; min-height: 96px; line-height: 1.5; }
 .anm-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
 .anm-row--dates { gap: 12px; }
 .anm-col { flex: 1; min-width: 200px; }

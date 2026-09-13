@@ -29,8 +29,10 @@ export const DEFAULT_BONUS_CATEGORIES = [
   { key: 'pm',       label: '專案獎金', ratePct: 0.1,  mode: 'role', rolePositions: ['專案'], enabled: true, order: 4 },
   { key: 'apm',      label: '副專獎金', ratePct: 0.05, mode: 'role', rolePositions: ['副專'], enabled: true, order: 5 },
   { key: 'indiv',    label: '銷售個獎', ratePct: 0.32, mode: 'individual', rolePositions: [], enabled: true, order: 6 },
-  { key: 'team',     label: '銷售團獎', ratePct: 0.08, mode: 'team', rolePositions: [], enabled: true, order: 7 },
-  { key: 'pmTeam',   label: '專案團獎', ratePct: 0.02, mode: 'role', rolePositions: ['專案團獎'], enabled: true, order: 8 },
+  // 交屋團獎：自「銷售個獎」獎金池提撥 ratePct%（此處 ratePct 為提撥比例，非總價比例），本期不發放、不分配給人員
+  { key: 'handover', label: '交屋團獎', ratePct: 5, mode: 'handover', sourceCatKey: 'indiv', rolePositions: [], enabled: true, order: 7 },
+  { key: 'team',     label: '銷售團獎', ratePct: 0.08, mode: 'team', rolePositions: [], enabled: true, order: 8 },
+  { key: 'pmTeam',   label: '專案團獎', ratePct: 0.02, mode: 'role', rolePositions: ['專案團獎'], enabled: true, order: 9 },
 ];
 
 export const DEFAULT_COMMISSION_SETTINGS = {
@@ -49,9 +51,28 @@ export const DEFAULT_COMMISSION_SETTINGS = {
   note1: '1、本次請領按委託銷售契約第六條，請領佣金計銷售實際請款按2.2%，請領本次佣金費用',
   note2: '2、請領費用按合約第7條分別以50%匯款或現金票給付，另50%開立45天期票支付。',
   bonusCategories: DEFAULT_BONUS_CATEGORIES,
+  teamSplitMode: 'lastAbsorb',    // 均分尾差處理（見 SPLIT_MODES）
+  equalSplitScope: 'team',        // 'team'＝僅團隊類別套用；'all'＝所有類別的均分皆套用
   teamGroups: [],
   personDetailShowAllRoles: [],   // 個人明細：職務含這些關鍵字者，每戶明細顯示全部戶別（含非本人銷售）
 };
+
+/** 均分尾差處理方式（建案設定 teamSplitMode） */
+export const SPLIT_MODES = [
+  { value: 'lastAbsorb',   label: '最後一人吸收尾差', desc: '每人＝池×比例四捨五入，最後一人拿剩餘金額；合計恰等於獎金池，但金額可能差 1～數元。' },
+  { value: 'equalFloor',   label: '每人相同（捨去至元）', desc: '每人＝池÷人數無條件捨去到元；所有人金額一致，尾差不發放。' },
+  { value: 'equalRound',   label: '每人相同（四捨五入至元）', desc: '每人＝池÷人數四捨五入到元；所有人金額一致，合計可能比獎金池多或少幾元。' },
+  { value: 'equalFloor10', label: '每人相同（捨去至十元）', desc: '每人＝池÷人數捨去到十元；所有人金額一致，尾差不發放。' },
+  { value: 'equalFloor100', label: '每人相同（捨去至百元）', desc: '每人＝池÷人數捨去到百元；所有人金額一致，尾差不發放。' },
+];
+
+/** 依建案設定決定某類別的均分尾差處理方式 */
+export function resolveSplitMode(settings, cat) {
+  const mode = settings?.teamSplitMode || 'lastAbsorb';
+  if (mode === 'lastAbsorb') return 'lastAbsorb';
+  const scope = settings?.equalSplitScope || 'team';
+  return (scope === 'all' || cat?.mode === 'team') ? mode : 'lastAbsorb';
+}
 
 /** 合併建案設定與預設值（缺欄補預設） */
 export function mergeSettings(saved) {
@@ -73,6 +94,29 @@ export function matchesRolePositions(personPositions, rolePositions) {
   const roles = (rolePositions || []).map(r => String(r || '').trim()).filter(Boolean);
   if (!roles.length) return false;
   return (personPositions || []).some(pos => roles.includes(String(pos || '').trim()));
+}
+
+/**
+ * 類別是否為「自個獎提撥」（交屋團獎）：
+ * 自來源類別（預設銷售個獎）的獎金池提撥 ratePct%，本期不發放、不分配給人員，暫留待日後另製交屋獎金。
+ */
+export function isHandoverCategory(cat) {
+  return !!cat && cat.mode === 'handover';
+}
+
+/** 類別清單正規化：陣列直接用；物件（entry.categories）轉為含 key 的陣列 */
+function categoryList(categories) {
+  if (Array.isArray(categories)) return categories.filter(Boolean);
+  return Object.keys(categories || {}).map(k => ({ key: k, ...(categories[k] || {}) }));
+}
+
+/** 提撥類別的來源類別 key：設定的 sourceCatKey 優先（須存在且非提撥類別），否則取第一個「個人」類別；找不到回傳 '' */
+export function resolveHandoverSourceKey(cat, categories) {
+  const list = categoryList(categories);
+  const wanted = String(cat?.sourceCatKey || '').trim();
+  if (wanted && list.some(c => c.key === wanted && !isHandoverCategory(c))) return wanted;
+  const indiv = list.find(c => c.mode === 'individual');
+  return indiv ? indiv.key : '';
 }
 
 // ---------- 戶別財務數字 ----------
@@ -157,9 +201,10 @@ export function categoryPool(dealAfter, ratePct, ratioPct) {
  * @param {number} pool - 池金額（元，可含小數）
  * @param {Array} allocations - [{ personKey, mode:'pct'|'locked', sharePct, lockedAmount }]
  * @param {number} lockedScale - 鎖定金額縮放倍率（100% 重算時傳 100/ratioPct）
- * @returns {{ amounts: Object, total: number, valid: boolean, error: string, diff: number }}
+ * @param {string} splitMode - 均分尾差處理（SPLIT_MODES.value；預設 lastAbsorb）
+ * @returns {{ amounts: Object, total: number, valid: boolean, error: string, diff: number, remainder?: number, perHead?: number }}
  */
-export function allocateAmounts(pool, allocations, lockedScale = 1) {
+export function allocateAmounts(pool, allocations, lockedScale = 1, splitMode = 'lastAbsorb') {
   const target = Math.round(toNum(pool));
   const amounts = {};
   const list = Array.isArray(allocations) ? allocations : [];
@@ -200,6 +245,21 @@ export function allocateAmounts(pool, allocations, lockedScale = 1) {
   }
 
   const remaining = target - lockedSum;
+
+  // 均分尾差處理（建案設定 teamSplitMode）：非「最後一人吸收」且目前為均分比例時，每人金額完全相同、尾差不發放
+  if (splitMode && splitMode !== 'lastAbsorb' && isEvenShares(pcts)) {
+    const n = pcts.length;
+    const per = remaining / n;
+    let amt;
+    if (splitMode === 'equalRound') amt = Math.round(per);
+    else if (splitMode === 'equalFloor10') amt = Math.floor(per / 10) * 10;
+    else if (splitMode === 'equalFloor100') amt = Math.floor(per / 100) * 100;
+    else amt = Math.floor(per);   // equalFloor
+    pcts.forEach(a => { amounts[a.personKey] = amt; });
+    const total = lockedSum + amt * n;
+    return { amounts, total, valid: true, diff: target - total, remainder: target - total, perHead: amt, splitMode, error: '' };
+  }
+
   let assigned = 0;
   pcts.forEach((a, i) => {
     let amt;
@@ -223,6 +283,14 @@ export function evenShares(n) {
   return shares;
 }
 
+/** 這組 % 模式分配是否為預設均分（比例與 evenShares 一致，容差 0.011） */
+export function isEvenShares(pctAllocations) {
+  const list = Array.isArray(pctAllocations) ? pctAllocations : [];
+  if (!list.length) return false;
+  const shares = evenShares(list.length);
+  return list.every((a, i) => Math.abs(toNum(a.sharePct) - shares[i]) < 0.011);
+}
+
 // ---------- 整戶獎金計算 ----------
 /**
  * 計算一戶的完整請佣＋獎金結果。
@@ -232,7 +300,9 @@ export function evenShares(n) {
  *   categories: { [catKey]: { ratePct, allocations: [{ personKey, name, sourceProjectId, sourceProjectName, mode, sharePct, lockedAmount }] } }
  * }
  * @param {object} personProfiles - { [personKey]: { name, role, keepPct, taxPct, nhiPct, remark } }（覆寫已套用）
- * @returns {{ claim, pools, categoryResults, people, errors }}
+ * @returns {{ claim, pools, categoryResults, people, errors, handover, handoverTotal, handoverTotalFull }}
+ *   handover: { [catKey]: { sourceCatKey, ratePct, sourcePool, sourcePoolFull, amount, amountFull } }（提撥類別，本期不發放）
+ *   pools[來源類別] 為「提撥後」的實際分配池；pools[提撥類別] 為提撥金額
  */
 export function calcUnitBonus(finance, input, personProfiles) {
   const claim = calcClaim(finance, input);
@@ -241,19 +311,61 @@ export function calcUnitBonus(finance, input, personProfiles) {
   const pools = {};
   const categoryResults = {};
   const errors = [];
+  const handover = {};
+  let handoverTotal = 0;
+  let handoverTotalFull = 0;
 
   const perPerson = {};   // personKey -> { amounts:{}, amountsFull:{} }
   const cats = input.categories || {};
-  Object.keys(cats).forEach(catKey => {
+  const catList = categoryList(cats);
+  const payKeys = catList.filter(c => !isHandoverCategory(c)).map(c => c.key);
+  const handoverKeys = catList.filter(c => isHandoverCategory(c)).map(c => c.key);
+
+  // 1) 各發放類別原始獎金池
+  const rawPools = {};
+  const rawPoolsFull = {};
+  payKeys.forEach(catKey => {
+    const cat = cats[catKey] || {};
+    rawPools[catKey] = categoryPool(claim.dealAfter, cat.ratePct, ratioPct);
+    rawPoolsFull[catKey] = categoryPool(claim.dealAfter, cat.ratePct, 100);
+  });
+
+  // 2) 提撥類別（交屋團獎）：自來源類別池先提撥 ratePct%，來源池扣除後再分配；提撥金額不分配給人員
+  const deduct = {};
+  const deductFull = {};
+  handoverKeys.forEach(catKey => {
+    const cat = cats[catKey] || {};
+    const enabled = cat.enabled !== false;   // 逐戶可關閉提撥（工作台開關）
+    const rate = enabled ? toNum(cat.ratePct) : 0;
+    const sourceCatKey = resolveHandoverSourceKey({ ...cat, key: catKey }, catList);
+    if (rate < 0 || rate > 100) errors.push({ catKey, error: '提撥比例須介於 0～100%' });
+    const sourcePool = sourceCatKey ? toNum(rawPools[sourceCatKey]) : 0;
+    const sourcePoolFull = sourceCatKey ? toNum(rawPoolsFull[sourceCatKey]) : 0;
+    const amount = Math.round(sourcePool * rate / 100);
+    const amountFull = Math.round(sourcePoolFull * rate / 100);
+    if (sourceCatKey) {
+      deduct[sourceCatKey] = (deduct[sourceCatKey] || 0) + amount;
+      deductFull[sourceCatKey] = (deductFull[sourceCatKey] || 0) + amountFull;
+    }
+    handover[catKey] = { sourceCatKey, enabled, ratePct: rate, sourcePool, sourcePoolFull, amount, amountFull };
+    handoverTotal += amount;
+    handoverTotalFull += amountFull;
+    pools[catKey] = amount;
+    categoryResults[catKey] = { amounts: {}, total: amount, valid: true, error: '', diff: 0 };
+  });
+
+  // 3) 發放類別分配（來源類別以提撥後的池分配）
+  payKeys.forEach(catKey => {
     const cat = cats[catKey] || {};
     const allocations = Array.isArray(cat.allocations) ? cat.allocations : [];
-    const pool = categoryPool(claim.dealAfter, cat.ratePct, ratioPct);
-    const fullPool = categoryPool(claim.dealAfter, cat.ratePct, 100);
+    const pool = rawPools[catKey] - (deduct[catKey] || 0);
+    const fullPool = rawPoolsFull[catKey] - (deductFull[catKey] || 0);
     pools[catKey] = pool;
 
-    const res = allocateAmounts(pool, allocations, 1);
+    const splitMode = cat.splitMode || 'lastAbsorb';
+    const res = allocateAmounts(pool, allocations, 1, splitMode);
     const lockedScale = ratioPct > 0 ? 100 / ratioPct : 0;
-    const resFull = allocateAmounts(fullPool, allocations, lockedScale);
+    const resFull = allocateAmounts(fullPool, allocations, lockedScale, splitMode);
     categoryResults[catKey] = res;
     if (allocations.length > 0 && !res.valid) {
       errors.push({ catKey, error: res.error });
@@ -293,7 +405,7 @@ export function calcUnitBonus(finance, input, personProfiles) {
     };
   });
 
-  return { claim, pools, categoryResults, people, errors };
+  return { claim, pools, categoryResults, people, errors, handover, handoverTotal, handoverTotalFull };
 }
 
 // ---------- 日期 / 文字工具 ----------

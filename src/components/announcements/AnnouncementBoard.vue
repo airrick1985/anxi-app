@@ -58,7 +58,7 @@
             </span>
             <span class="ab-card-time">{{ formatRelativeTime(a.createdAt, now) }}</span>
           </span>
-          <span class="ab-card-text">{{ a.content || '（點擊查看圖片）' }}</span>
+          <span class="ab-card-text">{{ announcementPlainText(a) || '（點擊查看圖片）' }}</span>
           <span v-if="(a.images || []).length || a.endAt" class="ab-card-foot">
             <span v-if="(a.images || []).length" class="ab-card-thumbs">
               <img v-for="img in a.images.slice(0, 3)" :key="img.path || img.url" :src="img.url" alt="" />
@@ -94,7 +94,7 @@
             <span><v-icon size="12">mdi-calendar-outline</v-icon> {{ formatDateTime(detail.item.createdAt) }}</span>
             <span v-if="detail.item.endAt"><v-icon size="12">mdi-clock-outline</v-icon> 至 {{ formatDateTime(detail.item.endAt) }}（{{ formatRemaining(detail.item.endAt, now) }}）</span>
           </div>
-          <div v-if="detail.item.content" class="ab-win-content" v-html="contentToHtml(detail.item.content)"></div>
+          <div v-if="detail.item.content" class="ab-win-content" :class="{ 'ab-win-content--rich': isRichContent(detail.item) }" v-html="announcementContentHtml(detail.item)"></div>
           <div v-if="(detail.item.images || []).length" class="ab-win-images">
             <img
               v-for="(img, i) in detail.item.images"
@@ -131,7 +131,7 @@
             <span v-if="popupItem.authorName"><v-icon size="12">mdi-account-outline</v-icon> {{ popupItem.authorName }}</span>
             <span><v-icon size="12">mdi-calendar-outline</v-icon> {{ formatDateTime(popupItem.createdAt) }}</span>
           </div>
-          <div v-if="popupItem.content" class="ab-win-content" v-html="contentToHtml(popupItem.content)"></div>
+          <div v-if="popupItem.content" class="ab-win-content" :class="{ 'ab-win-content--rich': isRichContent(popupItem) }" v-html="announcementContentHtml(popupItem)"></div>
           <div v-if="(popupItem.images || []).length" class="ab-win-images">
             <img v-for="(img, i) in popupItem.images" :key="img.path || img.url" :src="img.url" :alt="img.name" @click="openLightbox(popupItem.images, i)" />
           </div>
@@ -177,7 +177,8 @@ import { useDisplay } from 'vuetify';
 import AnnouncementManagerDialog from './AnnouncementManagerDialog.vue';
 import {
   listenToProjectAnnouncements, isAnnouncementVisible, sortForDisplay, levelMeta, toDate,
-  formatRelativeTime, formatDateTime, formatRemaining, contentToHtml,
+  formatRelativeTime, formatDateTime, formatRemaining,
+  isRichContent, announcementContentHtml, announcementPlainText,
 } from '@/services/announcementService';
 
 const props = defineProps({
@@ -511,6 +512,25 @@ onBeforeUnmount(() => {
 .ab-win-meta span { display: inline-flex; align-items: center; gap: 3px; }
 .ab-win-content { margin-top: 14px; font-size: 14px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
 .ab-win-content :deep(a) { color: var(--blue); }
+/* 富文本公告：保留編輯器設定的字級／顏色／底線／斜體／清單樣式 */
+.ab-win-content--rich { white-space: normal; overflow-wrap: anywhere; }
+.ab-win-content--rich :deep(p) { margin: 0 0 .5em; }
+.ab-win-content--rich :deep(p:last-child) { margin-bottom: 0; }
+.ab-win-content--rich :deep(ul),
+.ab-win-content--rich :deep(ol) { padding-left: 1.6em; margin: 0 0 .5em; }
+.ab-win-content--rich :deep(ul) { list-style-type: disc; }
+.ab-win-content--rich :deep(ol) { list-style-type: decimal; }
+.ab-win-content--rich :deep(li) { margin: .15em 0; }
+.ab-win-content--rich :deep(li p) { margin: 0; }
+.ab-win-content--rich :deep(u) { text-decoration: underline; }
+.ab-win-content--rich :deep(s),
+.ab-win-content--rich :deep(strike),
+.ab-win-content--rich :deep(del) { text-decoration: line-through; }
+.ab-win-content--rich :deep(strong),
+.ab-win-content--rich :deep(b) { font-weight: 700; }
+.ab-win-content--rich :deep(em),
+.ab-win-content--rich :deep(i) { font-style: italic; }
+.ab-win-content--rich :deep(a) { text-decoration: underline; }
 .ab-win-images { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin-top: 14px; }
 .ab-win-images img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; cursor: zoom-in; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
 .ab-win-foot { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid rgba(0,0,0,.1); background: #ececec; flex-shrink: 0; }

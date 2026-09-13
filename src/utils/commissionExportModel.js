@@ -178,18 +178,19 @@ function isMgmtRole(role) {
   return null;
 }
 
-/** 類別歸位：indiv（個獎欄）/ team（團獎欄）/ 其他右側列 / 管理左側 */
+/** 類別歸位：indiv（個獎欄）/ team（團獎欄）/ 其他右側列 / 管理左側 / handover（提撥類別，上段獨立欄、不計入任何人） */
 export function classifyCategories(settings) {
   const cats = (settings.bonusCategories || []).filter(c => c.enabled !== false);
   const mgmtRoles = ['主委', '副總', '輔導'];
-  const indiv = [], team = [], mgmt = [], others = [];
+  const indiv = [], team = [], mgmt = [], others = [], handover = [];
   cats.forEach(c => {
-    if (c.mode === 'individual') indiv.push(c);
+    if (c.mode === 'handover') handover.push(c);
+    else if (c.mode === 'individual') indiv.push(c);
     else if (c.mode === 'team' || String(c.label).includes('團獎')) team.push(c);
     else if ((c.rolePositions || []).some(r => mgmtRoles.some(m => String(r).includes(m)))) mgmt.push(c);
     else others.push(c);
   });
-  return { indiv, team, mgmt, others };
+  return { indiv, team, mgmt, others, handover };
 }
 
 /**
@@ -207,6 +208,13 @@ export function buildBonusModel(opts) {
   const cls = classifyCategories(settings);
   const indivKeys = cls.indiv.map(c => c.key);
   const teamKeys = cls.team.map(c => c.key);
+
+  // 交屋團獎（自個獎提撥、本期不發放）：設定有啟用提撥類別，或紀錄快照含金額時，上段多一欄
+  const handoverRecordAmt = r => toNum(r.handover?.totalFull !== undefined ? r.handover.totalFull : r.handover?.total);
+  const hasHandover = cls.handover.length > 0 || records.some(r => handoverRecordAmt(r) !== 0);
+  const handoverLabel = cls.handover[0]?.label || '交屋團獎';
+  const handoverRate = cls.handover.reduce((s, c) => s + toNum(c.ratePct), 0);
+  const handoverX = handoverRate ? `${cls.indiv[0]?.label || '個獎'}×${handoverRate}%` : '';
 
   const orderIdx = {};
   personnelOrder.forEach((n, i) => { orderIdx[n] = i; });
@@ -323,14 +331,16 @@ export function buildBonusModel(opts) {
           after: toNum(r.calc?.dealAfter),
           sales: Array.isArray(r.snapshot?.salesperson) ? r.snapshot.salesperson.join('、') : String(r.snapshot?.salesperson || ''),
           team: teamCount,
+          handover: Math.round(handoverRecordAmt(r)),   // 交屋團獎暫留（100% 重算，與個獎欄一致）
           pp,
         };
       });
 
-      const topTotal = { total: 0, after: 0, referral: 0, pp: {} };
+      const topTotal = { total: 0, after: 0, referral: 0, handover: 0, pp: {} };
       topPersons.forEach(p => { topTotal.pp[p.personKey] = { indiv: 0, team: 0 }; });
       unitRows.forEach(row => {
         topTotal.total += row.total; topTotal.after += row.after; topTotal.referral += row.referral;
+        topTotal.handover += row.handover;
         topPersons.forEach(p => {
           topTotal.pp[p.personKey].indiv += row.pp[p.personKey].indiv;
           topTotal.pp[p.personKey].team += row.pp[p.personKey].team;
@@ -366,6 +376,7 @@ export function buildBonusModel(opts) {
         sheetName: `業務獎金-${pctKey}%`,
         title: `${projectName}－業務獎金　第 ${period} 期　請佣比例 ${pctKey}%`,
         kiloLabel: cfg.kiloLabel, indivX, teamX,
+        hasHandover, handoverLabel, handoverX,
         saleYM,
         topPersons, unitRows, topTotal,
         left, right, rightRows,
@@ -386,6 +397,7 @@ export function buildBonusModel(opts) {
     partyALabel: settings.partyALabel || '一研九鼎負擔介紹費',
     showSourceProjectTag: cfg.showSourceProjectTag !== false,
     includeClaimSheet: cfg.includeClaimSheet !== false,
+    hasHandover, handoverLabel,
     groups: modelGroups,
     paper: cfg.paper || 'A3',
     orientation: cfg.orientation || 'landscape',

@@ -75,6 +75,7 @@
         <v-card-text>
           <ul class="text-caption text-medium-emphasis mb-3 cat-hints">
             <li><b>發放方式</b>：依職務＝發給符合職務的人；個人＝發給該戶銷售；團隊＝依團獎分組發放。</li>
+            <li><b>自個獎提撥</b>（交屋團獎）：自「來源類別」（預設銷售個獎）的獎金池提撥「比例(%)」，本期不發放、不分配給人員，暫留供日後另行製作交屋獎金；來源類別以提撥後的餘額分配。</li>
             <li><b>對應職務</b>：可多選，選項是本建案人員的職務；沒有的職務可直接打字新增。</li>
             <li>不用的類別請「停用」，不要刪除，歷史資料才會保留。</li>
           </ul>
@@ -87,7 +88,7 @@
               <thead>
                 <tr>
                   <th>順序</th><th>名稱</th><th>比例(%)</th>
-                  <th>發放方式</th><th>對應職務</th>
+                  <th>發放方式</th><th>對應職務 / 來源類別</th>
                   <th>啟用</th><th></th>
                 </tr>
               </thead>
@@ -98,13 +99,19 @@
                     <v-btn icon="mdi-arrow-down" size="x-small" variant="text" :disabled="i === local.bonusCategories.length - 1" @click="moveCat(i, 1)"></v-btn>
                   </td>
                   <td><v-text-field v-model="cat.label" variant="outlined" density="compact" hide-details></v-text-field></td>
-                  <td><v-text-field v-model.number="cat.ratePct" type="number" step="0.001" variant="outlined" density="compact" hide-details></v-text-field></td>
+                  <td>
+                    <v-text-field v-model.number="cat.ratePct" type="number" step="0.001" variant="outlined" density="compact" hide-details></v-text-field>
+                    <div v-if="cat.mode === 'handover'" class="text-caption text-medium-emphasis mt-1">自來源池提撥 %</div>
+                  </td>
                   <td>
                     <v-select v-model="cat.mode" :items="modeOptions" item-title="title" item-value="value"
                       variant="outlined" density="compact" hide-details></v-select>
                   </td>
                   <td>
-                    <v-combobox v-model="cat.rolePositions" :items="projectPositions" multiple chips closable-chips
+                    <v-select v-if="cat.mode === 'handover'" v-model="cat.sourceCatKey" :items="sourceOptions(cat)"
+                      item-title="title" item-value="value" variant="outlined" density="compact" hide-details
+                      placeholder="來源類別（預設：個人類別）" clearable></v-select>
+                    <v-combobox v-else v-model="cat.rolePositions" :items="projectPositions" multiple chips closable-chips
                       variant="outlined" density="compact" hide-details :disabled="cat.mode !== 'role'"
                       placeholder="選擇或輸入" no-data-text="本建案尚未設定人員職務，可直接輸入新增"
                       :delimiters="[',', '，', '、']">
@@ -123,6 +130,35 @@
               </tbody>
             </v-table>
           </div>
+        </v-card-text>
+      </v-card>
+
+      <!-- 均分尾差處理 -->
+      <v-card variant="outlined" class="mb-4">
+        <v-card-title class="text-subtitle-1"><v-icon start size="small">mdi-scale-balance</v-icon>均分尾差處理（團獎每人金額是否一致）</v-card-title>
+        <v-card-text>
+          <div class="text-caption text-medium-emphasis mb-2">
+            獎金池 ÷ 人數常有零頭。預設「最後一人吸收尾差」讓合計恰等於獎金池，但最後一人會多或少幾元；
+            選擇「每人相同」則所有人金額一致、尾差不發放。僅在該戶為「均分」時生效，自訂比例或鎖定金額不受影響。變更只影響之後的新請佣。
+          </div>
+          <v-radio-group v-model="local.teamSplitMode" density="compact" hide-details class="split-radios">
+            <v-radio v-for="m in splitModes" :key="m.value" :value="m.value" color="primary">
+              <template #label>
+                <div>
+                  <div class="font-weight-medium">{{ m.label }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ m.desc }}　例：3 人分 10,000 元 → {{ splitExample(m.value) }}</div>
+                </div>
+              </template>
+            </v-radio>
+          </v-radio-group>
+          <v-expand-transition>
+            <div v-if="local.teamSplitMode !== 'lastAbsorb'" class="mt-3">
+              <v-btn-toggle v-model="local.equalSplitScope" mandatory color="primary" variant="outlined" divided density="comfortable">
+                <v-btn value="team" size="small">只套用團隊類別（銷售團獎）</v-btn>
+                <v-btn value="all" size="small">所有類別的均分都套用</v-btn>
+              </v-btn-toggle>
+            </div>
+          </v-expand-transition>
         </v-card-text>
       </v-card>
 
@@ -179,7 +215,7 @@ import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { setCommissionSettings } from '@/api';
-import { mergeSettings } from '@/utils/commissionCalculation';
+import { mergeSettings, SPLIT_MODES, allocateAmounts, evenShares, money } from '@/utils/commissionCalculation';
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -248,11 +284,30 @@ const positionSuggestionItems = computed(() => {
   return [...projectPositions.value, ...positionSuggestions.filter(v => !s.has(v))];
 });
 
+const splitModes = SPLIT_MODES;
+/** 範例：3 人分 10,000 元在各模式下的結果 */
+function splitExample(mode) {
+  const shares = evenShares(3);
+  const allocs = shares.map((s, i) => ({ personKey: `p${i}`, mode: 'pct', sharePct: s }));
+  const r = allocateAmounts(10000, allocs, 1, mode);
+  const list = allocs.map(a => money(r.amounts[a.personKey])).join('／');
+  const rem = 10000 - r.total;
+  return rem ? `${list}，尾差 ${money(rem)} 元不發放` : list;
+}
+
 const modeOptions = [
   { title: '依職務', value: 'role' },
   { title: '個人（銷售）', value: 'individual' },
   { title: '團隊', value: 'team' },
+  { title: '自個獎提撥（交屋團獎）', value: 'handover' },
 ];
+
+/** 提撥類別可選的來源類別：其他非提撥類別 */
+function sourceOptions(cat) {
+  return (local.value.bonusCategories || [])
+    .filter(c => c !== cat && c.mode !== 'handover')
+    .map(c => ({ title: `${c.label || c.key}${c.mode === 'individual' ? '（個人）' : ''}`, value: c.key }));
+}
 
 watch(() => props.settings, (v) => { local.value = clone(v); syncTeamSiteIdsFromLocal(); });
 
@@ -286,9 +341,17 @@ async function save() {
   saving.value = true;
   try {
     const data = JSON.parse(JSON.stringify(local.value));
+    const firstIndivKey = (data.bonusCategories.find(c => c.mode === 'individual') || {}).key || '';
     data.bonusCategories.forEach((c, idx) => {
       c.order = idx + 1;
       c.rolePositions = Array.from(new Set((c.rolePositions || []).map(r => String(r || '').trim()).filter(Boolean)));
+      if (c.mode === 'handover') {
+        c.rolePositions = [];
+        const valid = data.bonusCategories.some(o => o !== c && o.mode !== 'handover' && o.key === c.sourceCatKey);
+        c.sourceCatKey = valid ? c.sourceCatKey : firstIndivKey;
+      } else {
+        delete c.sourceCatKey;
+      }
     });
     // 團獎分組：依勾選案場輸出 { key: projectId, label: 建案名稱 }；舊版自訂分組保留原 label
     const optionMap = Object.fromEntries(teamSiteOptions.value.map(o => [o.key, o]));
@@ -314,6 +377,8 @@ async function save() {
 <style scoped>
 .table-scroll { overflow-x: auto; }
 .cat-hints { padding-left: 18px; line-height: 1.7; }
+.split-radios :deep(.v-selection-control) { align-items: flex-start; margin-bottom: 6px; }
+.split-radios :deep(.v-label) { opacity: 1; }
 /* 獎金類別表：所有欄位固定寬度、表格不撐滿（總寬 1050px），寬螢幕靠左緊湊、窄螢幕橫向捲動 */
 .cat-table :deep(table) { table-layout: fixed; width: 1050px; }
 .cat-table :deep(th) { white-space: nowrap; }

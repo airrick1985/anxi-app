@@ -84,7 +84,15 @@ pool[cat]  = dealAfter × rates[cat] × 10000 × ratio       // 該類獎金池�
 - 預設行為：勾選人員即自動均分（n 人各 100/n%，與舊系統相容）。
 - 鎖定金額者：`amt = lockedAmount`；其餘未鎖定者按彼此 sharePct 相對比例分配 `pool − Σlocked`。
 - 每人金額 `amt[cat][person] = round(pool[cat] × sharePct/100)` 或鎖定值；分配後以「最後一人吃差額」修正 rounding，使 Σ = round(pool)。
+- **均分尾差處理**（建案設定 `teamSplitMode`，預設 `lastAbsorb`；`equalSplitScope: 'team' | 'all'` 決定僅團隊類別或所有類別套用）：當該類別為預設均分（sharePct 與 `evenShares(n)` 一致）且模式非 `lastAbsorb` 時，每人 `= f((pool − Σlocked) ÷ n)`，`f` 依模式為捨去至元 `equalFloor`／四捨五入至元 `equalRound`／捨去至十元 `equalFloor10`／捨去至百元 `equalFloor100`；所有人金額相同，尾差（`remainder`）不發放。自訂比例或鎖定金額不受影響。模式於工作台建卡時寫入 `categories[cat].splitMode` 隨紀錄快照，後端與匯出重算沿用。
 - 驗證：`Σlocked ≤ pool`；未鎖定者 sharePct 合計 = 100%（容差 0.01）；違反即擋送出。
+
+**自個獎提撥（交屋團獎，`mode: 'handover'`）**：
+- 類別 `ratePct` 意義不同：為「自來源類別獎金池提撥的比例（%）」（例 5），非折數後總價比例。來源類別 `sourceCatKey` 預設為第一個 `individual` 類別（銷售個獎）。
+- 每戶：`handover[cat] = round(pool[source] × ratePct/100)`（另算 100% 版 `amountFull`）；來源類別實際分配池 `pool[source] − Σhandover`，人員分配（比例／鎖定金額）以提撥後的池為準。
+- 提撥金額**不分配給任何人員、本期不發放**（不進 `bonusRecords`、不計入任何人小計／保留款／稅金／實發），快照存於 `commissionRecords.handover`，累計於統計分頁「交屋團獎累積」，供日後另行製作交屋獎金。
+- 驗證：`0 ≤ ratePct ≤ 100`，違反擋送出；找不到來源類別時提撥為 0。
+- 逐戶開關：工作台每戶可關閉提撥（`categories[cat].enabled = false`），關閉時提撥為 0、來源類別全額分配；快照 `handover.byCat[cat].enabled` 記錄。
 
 **每人扣款與實發**：
 ```
@@ -156,8 +164,9 @@ net  = subtotal − keep − tax − nhi
     { key: 'pm',        label: '專案獎金',  ratePct: 0.1,   mode: 'role',       rolePositions: ['專案'],   enabled: true, order: 4 },
     { key: 'apm',       label: '副專獎金',  ratePct: 0.05,  mode: 'role',       rolePositions: ['副專'],   enabled: true, order: 5 },
     { key: 'indiv',     label: '銷售個獎',  ratePct: 0.32,  mode: 'individual', rolePositions: [],         enabled: true, order: 6 },
-    { key: 'team',      label: '銷售團獎',  ratePct: 0.08,  mode: 'team',       rolePositions: [],         enabled: true, order: 7 },
-    { key: 'pmTeam',    label: '專案團獎',  ratePct: 0.02,  mode: 'role',       rolePositions: ['專案團獎'], enabled: true, order: 8 },
+    { key: 'handover',  label: '交屋團獎',  ratePct: 5,     mode: 'handover',   sourceCatKey: 'indiv',     rolePositions: [], enabled: true, order: 7 },   // 自個獎提撥 5%，本期不發放
+    { key: 'team',      label: '銷售團獎',  ratePct: 0.08,  mode: 'team',       rolePositions: [],         enabled: true, order: 8 },
+    { key: 'pmTeam',    label: '專案團獎',  ratePct: 0.02,  mode: 'role',       rolePositions: ['專案團獎'], enabled: true, order: 9 },
   ],
   // 團獎分組（可自訂，對應舊「首馥團獎/天雋團獎」）
   teamGroups: [ { key: 'g1', label: '首馥團獎' }, { key: 'g2', label: '天雋團獎' } ],
@@ -167,6 +176,7 @@ net  = subtotal − keep − tax − nhi
 ```
 
 - `mode`：`role`＝依職務勾選、`individual`＝預設帶入該戶 `salesperson`、`team`＝依團獎分組＋進退場資格預設勾選。三種 mode 僅影響「預設名單」，最終皆可手動增刪與跨案加入。
+- `mode: 'handover'`（自個獎提撥／交屋團獎）：不勾選人員，`ratePct` 為提撥比例、`sourceCatKey` 為來源類別（設定分頁改以來源類別下拉取代對應職務；儲存時無效來源自動回退為第一個 individual 類別）。工作台每戶可覆寫提撥比例。計算規則見 §2.3。歷史匯入的獎金紀錄欄位不含提撥類別。
 - `ratePct` 單位為 %（0.32 = 0.32%），存值即 %，計算時 ÷100。
 - 類別可新增/改名/停用（`enabled:false` 隱藏但保留歷史資料可讀）。key 一經建立不可改（歷史紀錄以 key 關聯）。
 
@@ -223,12 +233,19 @@ docId：`${projectId}_${unitId}_${period}_${yyyyMMddHHmmss}`
   // 各類獎金設定與分配（供匯出時 100% 重算）
   categories: {
     [catKey]: {
-      ratePct,                        // 本次使用比例（%）
-      allocations: [                  // 參與人員與分配
+      ratePct,                        // 本次使用比例（%）；提撥類別為提撥比例
+      sourceCatKey,                   // 提撥類別的來源類別 key（其他類別為空）
+      allocations: [                  // 參與人員與分配（提撥類別恆為空）
         { personKey, name, sourceProjectId, sourceProjectName,
           mode: 'pct' | 'locked', sharePct: 70, lockedAmount: null }
       ]
     }
+  },
+  // 交屋團獎（自個獎提撥、本期不發放）快照
+  handover: {
+    total,                            // 本次暫留合計（已乘請佣比例，元）
+    totalFull,                        // 100% 重算合計（供非 100% 分組獎金表上段）
+    byCat: { [catKey]: { sourceCatKey, ratePct, sourcePool, sourcePoolFull, amount, amountFull } }
   },
   keepPct: 10,                        // 請佣保留款 %
   source: 'system' | 'import',        // 歷史匯入標記
@@ -380,7 +397,7 @@ docId 自動；由後端寫入，前端唯讀（歷期總覽「操作紀錄」�
 - 頂部工具列：期別（預設 nextPeriod，可改）、請佣日期（預設今天，台灣時區）、「＋新增戶別」。
 - **戶別選擇器**（v-dialog）：僅列簽約戶（`salesStatus_backend` ∈ DEAL 狀態且有簽約日期），每列顯示戶別/買方/已請 %/尚餘 %；已請畢（100%）與已加入者禁選；支援搜尋、多選。
 - **快速定位列**（sticky）：每戶一個 chip（戶別＋本次請佣金額），點擊捲動展開該卡；「全部展開/收合」。
-- **戶別卡片**（可收合，預設收合、單戶加入時自動展開）：
+- **戶別卡片**（可收合，預設收合、單戶加入時自動展開）。版面為三步驟：①請佣條件（比例＋進度條、佣金比例；介紹費／保留款收在「進階」；精簡試算條，可展開完整試算與戶別資料）②獎金人員與分配（每類別一區塊：點選人員 chip 即加入、預設均分，「自訂比例／鎖定金額」才展開分配表；未選人類別橘框標示；提撥類別有本戶開關）③每人獎金結果。標頭顯示「N 項待處理」或「人員已設定」，工作台頂部有流程說明與快速定位列（待處理戶別以警示色標示）。以下為各區內容：
   1. **戶別資訊**（唯讀）：銷控狀態、簽約/小訂日期、持有車位、成交總價（可展開房/車明細）、溢差價、備註。備註含「介紹/贈品」關鍵字時卡片標頭顯示 ⚠ 紅色 chip 提醒。
   2. **請佣設定**（可編輯）：期別、請佣日期、已請比例（唯讀）、本次請佣比例（超過剩餘額度即鉗制＋toast）、佣金比例（優付戶自動帶減半值並顯示「優付」標記）、兩種介紹費（欄名取自建案設定）。
   3. **請佣試算表**（唯讀即時更新）：同匯出請佣總表欄位的單列預覽（底價/成交價/溢差/介紹費/實際溢差/佣金比例/實際請領/保留款/本次請佣），含取值說明列。
@@ -408,6 +425,7 @@ docId 自動；由後端寫入，前端唯讀（歷期總覽「操作紀錄」�
 ### 6.3 累計統計
 
 - **人員累計**：視角切換「本建案／跨建案」。本建案：查本案 `bonusRecords`（active）依 personKey 彙總各類金額/小計/保留款/稅金/健保/實發；跨建案：對使用者具「請佣獎金」權限的建案逐案查詢後前端依 personKey（電話）合併，人員列可展開看各案分佈。
+- **交屋團獎累積**（本建案）：依 active `commissionRecords.handover.total` 按期別彙總（期別／請佣日期／戶數／本期暫留／累積至本期），期別可展開看每戶（戶別／買方／請佣比例／提撥比例／個獎池／暫留）；頂部顯示累積總額。作廢紀錄不計。此為「暫留未發放」金額，日後製作交屋獎金時查閱。
 - **保留款追蹤**：
   - 業主請佣保留款：Σ `commissionRecords.calc.claimKeep`（active）− Σ `retentionPayouts(type=owner).amount` ＝ 未發還餘額。
   - 人員獎金保留款：每人 Σ `bonusRecords.keep` − Σ 該人 payouts ＝ 未發還餘額。
@@ -482,6 +500,7 @@ docId 自動；由後端寫入，前端唯讀（歷期總覽「操作紀錄」�
 
 - 依請佣比例分組，每組一張「業務獎金-XX%」。
 - 上段：戶別列表（編號/小訂/簽約/戶別/停車位/姓名/房價/車價/總成交價/介紹費/折數/折數後總價/銷售人員/團獎人數）＋動態人員欄（每人「個獎/團獎」兩欄，表頭合併姓名）；標題下「千4」列（比例×10000 小字）；黃底合計列。
+- 上段「交屋團獎(暫留不發放)」欄：建案設定有啟用提撥類別、或該期紀錄含 `handover` 金額時，於「團獎人數」後多一欄（每戶 `handover.totalFull`，合計列加總；千4 列顯示「個獎×5%」）。人員「個獎」欄為提撥後金額；此欄不計入任何人小計／實發，下段獎金合計亦不列入。
 - 下段「獎金合計」：左側管理區（銷售日期/總銷/主委獎金%/輔導獎金%列，管理人員每人一欄）＋右側業務區（項目標籤欄含比例文字：個獎/團獎/專案/副專/合計/【優付方案請款XX%】/保留款/稅金/二代健保/實發/備註）。
 - 非 100% 組：金額以 100% 重算呈現，合計下加優付列（§2.6）；扣款四列以折算後金額。
 - 底部合計區：實發合計/稅金合計/二代健保合計/獎金總計（紅字），末列黃底。

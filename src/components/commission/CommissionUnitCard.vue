@@ -1,185 +1,281 @@
 <template>
-  <v-card class="mb-3 unit-card" :id="`comm-card-${entry.id}`" variant="outlined">
-    <!-- 標頭 -->
+  <v-card class="mb-3 unit-card" :id="`comm-card-${entry.id}`" variant="outlined" :class="{ 'has-issue': issueCount > 0 }">
+    <!-- 標頭：戶別 / 買方 / 狀態 / 本次請佣 / 完成度 -->
     <div class="card-head d-flex align-center flex-wrap ga-2 px-4 py-2" @click="entry.collapsed = !entry.collapsed">
       <v-icon size="small" :class="{ 'rotate-collapsed': entry.collapsed }">mdi-chevron-down</v-icon>
       <span class="text-subtitle-1 font-weight-bold text-primary">{{ entry.unitId }}</span>
+      <span class="text-body-2">{{ entry.unit.buyerName || '—' }}</span>
       <v-chip size="x-small" variant="tonal">{{ entry.unit.salesStatus_backend || '—' }}</v-chip>
       <v-chip v-if="entry.unit.isPreferredPayment" size="x-small" color="deep-purple" variant="tonal">優付</v-chip>
       <v-chip v-if="feeHint" size="x-small" color="error" variant="tonal">⚠ 介紹費/贈品</v-chip>
       <v-chip v-else-if="hasNote" size="x-small" color="warning" variant="tonal">含備註</v-chip>
-      <v-chip size="x-small" variant="tonal" color="grey-darken-1">折數後總價 {{ money(result.claim.dealAfter * 10000) }} 元</v-chip>
-      <v-chip size="x-small" variant="tonal" color="success">本次請佣 {{ money(result.claim.thisClaim) }} 元</v-chip>
       <v-spacer></v-spacer>
-      <v-btn icon="mdi-close" size="small" variant="text" color="error" @click.stop="$emit('remove')"></v-btn>
+      <v-chip size="x-small" variant="tonal" color="success">本次請佣 {{ money(result.claim.thisClaim) }} 元</v-chip>
+      <v-chip v-if="result.handoverTotal" size="x-small" variant="tonal" color="orange-darken-3">{{ handoverLabel }}暫留 {{ money(result.handoverTotal) }} 元</v-chip>
+      <v-chip v-if="issueCount" size="x-small" color="warning" variant="flat">
+        <v-icon start size="x-small">mdi-alert</v-icon>{{ issueCount }} 項待處理
+      </v-chip>
+      <v-chip v-else size="x-small" color="success" variant="flat"><v-icon start size="x-small">mdi-check-bold</v-icon>人員已設定</v-chip>
+      <v-btn icon="mdi-close" size="small" variant="text" color="error" title="移除此戶" @click.stop="$emit('remove')"></v-btn>
     </div>
 
     <v-expand-transition>
       <div v-show="!entry.collapsed">
         <v-divider></v-divider>
-        <v-card-text>
-          <!-- 戶別資訊（唯讀） -->
-          <div class="fgroup-h">戶別資訊</div>
-          <div class="info-grid mb-2">
-            <div class="ro-field"><label>簽約日期</label><div>{{ contractDateText || '—' }}</div></div>
-            <div class="ro-field"><label>小訂日期</label><div>{{ depositDateText || '—' }}</div></div>
-            <div class="ro-field"><label>買方姓名</label><div>{{ entry.unit.buyerName || '—' }}</div></div>
-            <div class="ro-field"><label>持有車位</label><div>{{ entry.finance.parkingSpots || '—' }}</div></div>
-            <div class="ro-field"><label>成交總價(含車)</label><div>{{ money(entry.finance.dealTotal * 10000) }} 元</div></div>
-            <div class="ro-field"><label>溢差價</label><div :class="{ 'text-error': entry.finance.spread < 0 }">{{ money(entry.finance.spread * 10000) }} 元</div></div>
-            <div class="ro-field"><label>繳款比例</label><div :class="paymentRatio === null ? '' : 'text-teal'">{{ paymentRatio === null ? '—' : paymentRatio + '%' }}</div></div>
+        <v-card-text class="pt-3">
+          <!-- ========== ① 請佣條件 ========== -->
+          <div class="step-h">
+            <span class="step-no">1</span>
+            <span class="step-title">請佣條件</span>
+            <span class="text-caption text-medium-emphasis">填本次請佣比例即可，其餘已帶預設值</span>
           </div>
-          <v-alert v-if="hasNote" :type="feeHint ? 'error' : 'warning'" variant="tonal" density="compact" class="mb-3">
-            <b>{{ feeHint ? '🎁 備註可能提及介紹費/贈品：' : '📝 備註：' }}</b>{{ noteText }}
-          </v-alert>
+          <div class="step-body">
+            <v-row dense align="start">
+              <v-col cols="6" sm="3" md="2">
+                <v-text-field v-model.number="entry.period" label="期別" type="number" variant="outlined" density="compact" hide-details></v-text-field>
+              </v-col>
+              <v-col cols="6" sm="3" md="3" lg="2">
+                <v-text-field v-model="entry.requestDate" label="請佣日期" placeholder="yyyy/mm/dd" variant="outlined" density="compact" hide-details></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6" md="4" lg="3">
+                <v-text-field
+                  :model-value="entry.ratioPct"
+                  label="本次請佣比例(%) *"
+                  type="number" step="0.1" variant="outlined" density="compact" hide-details
+                  color="primary"
+                  @update:model-value="onRatioInput"
+                >
+                  <template #append-inner>
+                    <v-btn v-if="claimedPct < 100" size="x-small" variant="text" color="primary" @click.stop="onRatioInput(100 - claimedPct)">全部</v-btn>
+                  </template>
+                </v-text-field>
+                <div class="ratio-bar mt-1" :title="`已請 ${claimedPct}%　本次 ${entry.ratioPct}%　尚餘 ${round1(Math.max(0, 100 - totalPct))}%`">
+                  <span class="seg done" :style="{ width: Math.min(100, claimedPct) + '%' }"></span>
+                  <span class="seg now" :style="{ width: Math.min(100 - Math.min(100, claimedPct), toNum(entry.ratioPct)) + '%' }"></span>
+                </div>
+                <div class="text-caption mt-1" :class="ratioOver ? 'text-error' : 'text-medium-emphasis'">
+                  已請 {{ claimedPct }}%・本次 {{ entry.ratioPct }}%・{{ ratioOver ? `超過 ${round1(totalPct - 100)}%` : `尚餘 ${round1(100 - totalPct)}%` }}
+                </div>
+              </v-col>
+              <v-col cols="6" sm="4" md="3" lg="2">
+                <v-text-field v-model.number="entry.commPct" label="佣金比例(%)" type="number" step="0.01" variant="outlined" density="compact"
+                  :hint="entry.unit.isPreferredPayment ? '優付戶預設減半' : '折數計算用'" persistent-hint></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="8" md="12" lg="3" class="d-flex align-center flex-wrap ga-1">
+                <v-btn size="small" variant="text" :prepend-icon="showAdvanced ? 'mdi-chevron-up' : 'mdi-chevron-down'" @click="showAdvanced = !showAdvanced">
+                  進階：介紹費／保留款
+                </v-btn>
+                <v-chip v-if="advancedSummary" size="x-small" color="orange" variant="tonal">{{ advancedSummary }}</v-chip>
+              </v-col>
+            </v-row>
 
-          <!-- 請佣設定 -->
-          <div class="fgroup-h">請佣設定</div>
-          <v-row dense class="mb-1">
-            <v-col cols="6" sm="3" md="2" lg="1">
-              <v-text-field v-model.number="entry.period" label="期別" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-            </v-col>
-            <v-col cols="6" sm="3" md="2" lg="2">
-              <v-text-field v-model="entry.requestDate" label="請佣日期" placeholder="yyyy/mm/dd" variant="outlined" density="compact" hide-details></v-text-field>
-            </v-col>
-            <v-col cols="6" sm="3" md="2" lg="2">
-              <div class="ro-field claimed"><label>已請佣金比例</label><div :class="claimedPct > 0 ? 'text-orange-darken-3' : ''">{{ claimedPct }}%</div></div>
-            </v-col>
-            <v-col cols="6" sm="3" md="2" lg="3">
-              <v-text-field
-                :model-value="entry.ratioPct"
-                label="本次請佣比例(%)"
-                type="number" step="0.1" variant="outlined" density="compact" hide-details
-                @update:model-value="onRatioInput"
-              ></v-text-field>
-            </v-col>
-            <v-col cols="6" sm="3" md="2" lg="2">
-              <v-text-field v-model.number="entry.commPct" label="佣金比例(%)" type="number" step="0.01" variant="outlined" density="compact"
-                :hint="entry.unit.isPreferredPayment ? '優付戶預設減半' : '折數計算用'" persistent-hint></v-text-field>
-            </v-col>
-            <v-col cols="6" sm="3" md="2" lg="2">
-              <v-text-field v-model.number="entry.keepPct" label="請佣保留款(%)" type="number" step="1" variant="outlined" density="compact" hide-details></v-text-field>
-            </v-col>
-            <v-col cols="12" sm="6" md="4" lg="3">
-              <v-text-field v-model.number="entry.partyAFee" :label="`${settings.partyALabel}(元)`" type="number" variant="outlined" density="compact"
-                hint="計入獎金折數" persistent-hint></v-text-field>
-            </v-col>
-            <v-col cols="12" sm="6" md="4" lg="3">
-              <v-text-field v-model.number="entry.partyBFee" :label="`${settings.partyBLabel}(元)`" type="number" variant="outlined" density="compact"
-                hint="計入請佣基準、不計折數" persistent-hint></v-text-field>
-            </v-col>
-            <v-col cols="12" md="4" lg="6" class="d-flex align-center">
-              <v-chip :color="ratioOver ? 'error' : 'success'" variant="tonal">
-                {{ ratioOver ? `⚠ 已超過 ${round1(totalPct - 100)}%` : `尚餘 ${round1(100 - totalPct)}% 未請佣` }}
-                <span class="text-caption ml-1">（既有 {{ claimedPct }}% ＋ 本次 {{ entry.ratioPct }}%）</span>
-              </v-chip>
-            </v-col>
-          </v-row>
+            <v-expand-transition>
+              <v-row v-if="showAdvanced" dense class="mt-1 adv-row">
+                <v-col cols="12" sm="6" md="4">
+                  <v-text-field v-model.number="entry.partyAFee" :label="`${settings.partyALabel}(元)`" type="number" variant="outlined" density="compact"
+                    hint="計入獎金折數，會降低所有獎金" persistent-hint></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="6" md="4">
+                  <v-text-field v-model.number="entry.partyBFee" :label="`${settings.partyBLabel}(元)`" type="number" variant="outlined" density="compact"
+                    hint="計入請佣基準，不影響獎金折數" persistent-hint></v-text-field>
+                </v-col>
+                <v-col cols="6" sm="4" md="2">
+                  <v-text-field v-model.number="entry.keepPct" label="請佣保留款(%)" type="number" step="1" variant="outlined" density="compact" hide-details></v-text-field>
+                </v-col>
+              </v-row>
+            </v-expand-transition>
 
-          <!-- 請佣試算 -->
-          <div class="fgroup-h">請佣試算（同「匯出請佣總表」，即時更新）</div>
-          <div class="table-scroll mb-1">
-            <v-table density="compact" class="claim-table">
-              <thead>
-                <tr>
-                  <th>總底價(萬)</th><th>總成交價(萬)</th><th>溢差價(萬)</th><th>介紹費(萬)</th><th>實際溢差價(萬)</th>
-                  <th>佣金比例</th><th>獎金折數</th><th>折數後總價(萬)</th><th>實際請領金額(元)</th><th>保留款(元)</th><th>本次請佣(元)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ fmtWan(entry.finance.totalFloor) }}</td>
-                  <td>{{ fmtWan(entry.finance.dealTotal) }}</td>
-                  <td :class="{ 'text-error': entry.finance.spread < 0 }">{{ fmtWan(entry.finance.spread) }}</td>
-                  <td>{{ fmtWan(result.claim.feeWan, 4) }}</td>
-                  <td :class="{ 'text-error': result.claim.realSpread < 0 }">{{ fmtWan(result.claim.realSpread) }}</td>
-                  <td>{{ (Number(entry.commPct) || 0).toFixed(2) }}%</td>
-                  <td>{{ result.claim.discount.toFixed(2) }}</td>
-                  <td>{{ money(result.claim.dealAfter) }}</td>
-                  <td class="text-primary font-weight-bold">{{ money(result.claim.realClaim) }}</td>
-                  <td>{{ money(result.claim.claimKeep) }}</td>
-                  <td class="text-success font-weight-bold">{{ money(result.claim.thisClaim) }}</td>
-                </tr>
-              </tbody>
-            </v-table>
+            <v-alert v-if="hasNote" :type="feeHint ? 'error' : 'info'" variant="tonal" density="compact" class="mt-2 mb-0">
+              <b>{{ feeHint ? '🎁 銷控備註提到介紹費/贈品，請確認是否要填進階欄位：' : '📝 銷控備註：' }}</b>{{ noteText }}
+            </v-alert>
+
+            <!-- 試算結果（精簡） -->
+            <div class="result-strip mt-3">
+              <div class="rs-item"><label>成交總價(含車)</label><div>{{ money(entry.finance.dealTotal * 10000) }}</div></div>
+              <div class="rs-item"><label>獎金折數</label><div>{{ result.claim.discount.toFixed(2) }}</div></div>
+              <div class="rs-item"><label>折數後總價</label><div>{{ money(result.claim.dealAfter * 10000) }}</div></div>
+              <div class="rs-item"><label>實際請領</label><div class="text-primary">{{ money(result.claim.realClaim) }}</div></div>
+              <div class="rs-item"><label>保留款</label><div>{{ money(result.claim.claimKeep) }}</div></div>
+              <div class="rs-item hl"><label>本次請佣</label><div>{{ money(result.claim.thisClaim) }}</div></div>
+              <v-btn size="x-small" variant="text" class="align-self-center" :prepend-icon="showCalc ? 'mdi-chevron-up' : 'mdi-table-eye'" @click="showCalc = !showCalc">
+                {{ showCalc ? '收合明細' : '試算與戶別明細' }}
+              </v-btn>
+            </div>
+            <v-expand-transition>
+              <div v-if="showCalc" class="mt-2">
+                <div class="info-grid mb-2">
+                  <div class="ro-field"><label>簽約日期</label><div>{{ contractDateText || '—' }}</div></div>
+                  <div class="ro-field"><label>小訂日期</label><div>{{ depositDateText || '—' }}</div></div>
+                  <div class="ro-field"><label>持有車位</label><div>{{ entry.finance.parkingSpots || '—' }}</div></div>
+                  <div class="ro-field"><label>溢差價</label><div :class="{ 'text-error': entry.finance.spread < 0 }">{{ money(entry.finance.spread * 10000) }} 元</div></div>
+                  <div class="ro-field"><label>繳款比例</label><div :class="paymentRatio === null ? '' : 'text-teal'">{{ paymentRatio === null ? '—' : paymentRatio + '%' }}</div></div>
+                  <div class="ro-field"><label>銷控銷售人員</label><div>{{ unitSalesText || '—' }}</div></div>
+                </div>
+                <div class="table-scroll">
+                  <v-table density="compact" class="claim-table">
+                    <thead>
+                      <tr>
+                        <th>總底價(萬)</th><th>總成交價(萬)</th><th>溢差價(萬)</th><th>介紹費(萬)</th><th>實際溢差價(萬)</th>
+                        <th>佣金比例</th><th>獎金折數</th><th>折數後總價(萬)</th><th>實際請領金額(元)</th><th>保留款(元)</th><th>本次請佣(元)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>{{ fmtWan(entry.finance.totalFloor) }}</td>
+                        <td>{{ fmtWan(entry.finance.dealTotal) }}</td>
+                        <td :class="{ 'text-error': entry.finance.spread < 0 }">{{ fmtWan(entry.finance.spread) }}</td>
+                        <td>{{ fmtWan(result.claim.feeWan, 4) }}</td>
+                        <td :class="{ 'text-error': result.claim.realSpread < 0 }">{{ fmtWan(result.claim.realSpread) }}</td>
+                        <td>{{ (Number(entry.commPct) || 0).toFixed(2) }}%</td>
+                        <td>{{ result.claim.discount.toFixed(2) }}</td>
+                        <td>{{ money(result.claim.dealAfter) }}</td>
+                        <td class="text-primary font-weight-bold">{{ money(result.claim.realClaim) }}</td>
+                        <td>{{ money(result.claim.claimKeep) }}</td>
+                        <td class="text-success font-weight-bold">{{ money(result.claim.thisClaim) }}</td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                </div>
+                <div class="text-caption text-medium-emphasis">
+                  請佣基準＝min(總成交價−介紹費, 總底價)，本戶取 {{ result.claim.baseWan === entry.finance.totalFloor ? '總底價' : '總成交價−介紹費' }}
+                  {{ fmtWan(result.claim.baseWan) }} 萬；介紹費(萬)＝「{{ settings.partyBLabel }}」÷10,000。
+                </div>
+              </div>
+            </v-expand-transition>
           </div>
-          <div class="text-caption text-medium-emphasis mb-3">
-            請佣基準＝min(總成交價−介紹費, 總底價)，本戶取 {{ result.claim.baseWan === entry.finance.totalFloor ? '總底價' : '總成交價−介紹費' }}
-            {{ fmtWan(result.claim.baseWan) }} 萬；介紹費(萬)＝「{{ settings.partyBLabel }}」÷10,000。
+
+          <!-- ========== ② 獎金人員 ========== -->
+          <div class="step-h mt-4">
+            <span class="step-no">2</span>
+            <span class="step-title">獎金人員與分配</span>
+            <span class="text-caption text-medium-emphasis">點選人員即加入、預設均分；橘框的類別尚未選人</span>
+            <v-spacer></v-spacer>
+            <v-chip v-if="missingCats.length" size="x-small" color="warning" variant="tonal">尚未選人：{{ missingCats.map(c => c.label).join('、') }}</v-chip>
+          </div>
+          <div class="step-body">
+            <!-- 團獎案場 -->
+            <div v-if="settings.teamGroups.length" class="team-site mb-3">
+              <div class="d-flex align-center flex-wrap ga-2">
+                <span class="text-body-2 font-weight-medium">團獎案場</span>
+                <v-chip
+                  v-for="g in settings.teamGroups"
+                  :key="g.key"
+                  size="small"
+                  :color="entry.teamSiteKeys.includes(g.key) ? 'primary' : undefined"
+                  :variant="entry.teamSiteKeys.includes(g.key) ? 'flat' : 'outlined'"
+                  @click="toggleTeamSite(g.key)"
+                >
+                  <v-icon start size="x-small">{{ entry.teamSiteKeys.includes(g.key) ? 'mdi-check-circle' : 'mdi-plus-circle-outline' }}</v-icon>{{ g.label }}
+                </v-chip>
+                <span class="text-caption text-medium-emphasis">勾選後自動帶入該案場符合進退場資格的團獎人員</span>
+              </div>
+            </div>
+
+            <AllocationEditor
+              v-for="cat in payCategories"
+              :key="cat.key"
+              :category="entry.categories[cat.key]"
+              :pool="result.pools[cat.key] || 0"
+              :result="result.categoryResults[cat.key] || { amounts: {}, valid: true, error: '', total: 0 }"
+              :pool-options="poolOptionsByCat[cat.key] || []"
+              :project-id="projectId"
+              @add-person="openPicker(cat.key)"
+            />
+
+            <!-- 提撥類別（交屋團獎）：本戶可關閉 -->
+            <template v-for="cat in handoverCategories" :key="cat.key">
+              <div v-if="entry.categories[cat.key]" class="handover-box" :class="{ off: !isHandoverOn(cat) }">
+                <div class="d-flex align-center flex-wrap ga-2">
+                  <v-switch
+                    :model-value="isHandoverOn(cat)"
+                    color="orange-darken-3" density="compact" hide-details inset
+                    @update:model-value="v => setHandoverOn(cat, v)"
+                  >
+                    <template #label>
+                      <span class="text-subtitle-2 font-weight-bold">本戶提撥{{ cat.label }}</span>
+                    </template>
+                  </v-switch>
+                  <template v-if="isHandoverOn(cat)">
+                    <span class="d-inline-flex align-center text-body-2">
+                      提撥
+                      <v-text-field
+                        :model-value="entry.categories[cat.key].ratePct"
+                        type="number" step="0.1" min="0" max="100"
+                        density="compact" hide-details variant="outlined" style="width: 110px" class="mx-1" suffix="%"
+                        @update:model-value="v => { entry.categories[cat.key].ratePct = Number(v) || 0; }"
+                      ></v-text-field>
+                    </span>
+                    <span class="text-caption text-medium-emphasis">自「{{ handoverSourceLabel(cat) }}」池 {{ money(handoverInfo(cat).sourcePool) }} 元提撥</span>
+                    <v-spacer></v-spacer>
+                    <v-chip size="small" color="orange-darken-3" variant="tonal">暫留 {{ money(handoverInfo(cat).amount) }} 元・本期不發放</v-chip>
+                  </template>
+                  <template v-else>
+                    <span class="text-caption text-medium-emphasis">本戶不提撥，「{{ handoverSourceLabel(cat) }}」全額分配給人員</span>
+                  </template>
+                </div>
+                <div v-if="isHandoverOn(cat)" class="text-caption text-medium-emphasis mt-1">
+                  提撥後「{{ handoverSourceLabel(cat) }}」實際分配池 {{ money(result.pools[handoverInfo(cat).sourceCatKey] || 0) }} 元；暫留金額不計入任何人員小計／實發，日後另製交屋獎金時發放。
+                  <span v-if="!handoverInfo(cat).sourceCatKey" class="text-error">（找不到來源類別，請至設定分頁指定）</span>
+                </div>
+              </div>
+            </template>
           </div>
 
-          <!-- 團獎案場 -->
-          <div class="fgroup-h" v-if="settings.teamGroups.length">團獎案場（勾選後自動帶入符合資格的團獎人員）</div>
-          <div class="d-flex flex-wrap ga-1 mb-3" v-if="settings.teamGroups.length">
-            <v-chip
-              v-for="g in settings.teamGroups"
-              :key="g.key"
-              size="small"
-              :color="entry.teamSiteKeys.includes(g.key) ? 'primary' : undefined"
-              :variant="entry.teamSiteKeys.includes(g.key) ? 'flat' : 'outlined'"
-              @click="toggleTeamSite(g.key)"
-            >{{ g.label }}</v-chip>
+          <!-- ========== ③ 結果 ========== -->
+          <div class="step-h mt-4">
+            <span class="step-no">3</span>
+            <span class="step-title">每人獎金結果</span>
+            <span class="text-caption text-medium-emphasis">保留款／稅金／二代健保比例與備註可直接改（跨戶共用）</span>
           </div>
-
-          <!-- 各類獎金分配 -->
-          <div class="fgroup-h">獎金人員與分配</div>
-          <AllocationEditor
-            v-for="cat in enabledCategories"
-            :key="cat.key"
-            :category="entry.categories[cat.key]"
-            :pool="result.pools[cat.key] || 0"
-            :result="result.categoryResults[cat.key] || { amounts: {}, valid: true, error: '', total: 0 }"
-            :pool-options="poolOptionsByCat[cat.key] || []"
-            :project-id="projectId"
-            @add-person="openPicker(cat.key)"
-          />
-
-          <!-- 每人明細 -->
-          <div class="fgroup-h">獎金明細（每人；保留款/稅金/二代健保比例與備註可覆寫，跨戶共用）</div>
-          <div class="table-scroll">
-            <v-table density="compact" class="matrix-table">
-              <thead>
-                <tr>
-                  <th>人員</th><th>職務/來源</th>
-                  <th v-for="cat in enabledCategories" :key="cat.key" class="text-right">{{ cat.label }}</th>
-                  <th class="text-right">小計</th>
-                  <th class="text-right">保留款</th><th class="text-right">稅金</th><th class="text-right">二代健保</th>
-                  <th class="text-right">實發</th><th class="col-remark">備註</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="!result.people.length">
-                  <td :colspan="enabledCategories.length + 8" class="text-center text-medium-emphasis">尚無勾選人員</td>
-                </tr>
-                <tr v-for="p in result.people" :key="p.personKey">
-                  <td class="font-weight-medium">{{ p.name }}</td>
-                  <td>
-                    {{ p.role || '—' }}
-                    <v-chip v-if="p.sourceProjectId && p.sourceProjectId !== projectId" size="x-small" color="orange" variant="tonal">{{ p.sourceProjectName || p.sourceProjectId }}</v-chip>
-                  </td>
-                  <td v-for="cat in enabledCategories" :key="cat.key" class="text-right" :class="{ 'text-disabled': !p.amounts[cat.key] }">
-                    {{ money(p.amounts[cat.key] || 0) }}
-                  </td>
-                  <td class="text-right font-weight-medium">{{ money(p.subtotal) }}</td>
-                  <td class="text-right">
-                    <input class="pct-input" type="number" step="0.01" :value="profileOf(p.personKey).keepPct" @change="e => setProfile(p.personKey, 'keepPct', e.target.value)">%
-                    <div class="text-caption text-medium-emphasis">{{ money(p.keep) }}</div>
-                  </td>
-                  <td class="text-right">
-                    <input class="pct-input" type="number" step="0.01" :value="profileOf(p.personKey).taxPct" @change="e => setProfile(p.personKey, 'taxPct', e.target.value)">%
-                    <div class="text-caption text-medium-emphasis">{{ money(p.tax) }}</div>
-                  </td>
-                  <td class="text-right">
-                    <input class="pct-input" type="number" step="0.01" :value="profileOf(p.personKey).nhiPct" @change="e => setProfile(p.personKey, 'nhiPct', e.target.value)">%
-                    <div class="text-caption text-medium-emphasis">{{ money(p.nhi) }}</div>
-                  </td>
-                  <td class="text-right text-success font-weight-bold">{{ money(p.net) }}</td>
-                  <td class="col-remark">
-                    <input class="rmk-input" type="text" :value="profileOf(p.personKey).remark" @change="e => setProfile(p.personKey, 'remark', e.target.value)">
-                  </td>
-                </tr>
-              </tbody>
-            </v-table>
+          <div class="step-body">
+            <div class="table-scroll">
+              <v-table density="compact" class="matrix-table">
+                <thead>
+                  <tr>
+                    <th>人員</th><th>職務/來源</th>
+                    <th v-for="cat in payCategories" :key="cat.key" class="text-right">{{ cat.label }}</th>
+                    <th class="text-right">小計</th>
+                    <th class="text-right">保留款</th><th class="text-right">稅金</th><th class="text-right">二代健保</th>
+                    <th class="text-right">實發</th><th class="col-remark">備註</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="!result.people.length">
+                    <td :colspan="payCategories.length + 8" class="text-center text-medium-emphasis">尚未選擇任何人員，請於步驟 2 點選</td>
+                  </tr>
+                  <tr v-for="p in result.people" :key="p.personKey">
+                    <td class="font-weight-medium">{{ p.name }}</td>
+                    <td>
+                      {{ p.role || '—' }}
+                      <v-chip v-if="p.sourceProjectId && p.sourceProjectId !== projectId" size="x-small" color="orange" variant="tonal">{{ p.sourceProjectName || p.sourceProjectId }}</v-chip>
+                    </td>
+                    <td v-for="cat in payCategories" :key="cat.key" class="text-right" :class="{ 'text-disabled': !p.amounts[cat.key] }">
+                      {{ money(p.amounts[cat.key] || 0) }}
+                    </td>
+                    <td class="text-right font-weight-medium">{{ money(p.subtotal) }}</td>
+                    <td class="text-right">
+                      <input class="pct-input" type="number" step="0.01" :value="profileOf(p.personKey).keepPct" @change="e => setProfile(p.personKey, 'keepPct', e.target.value)">%
+                      <div class="text-caption text-medium-emphasis">{{ money(p.keep) }}</div>
+                    </td>
+                    <td class="text-right">
+                      <input class="pct-input" type="number" step="0.01" :value="profileOf(p.personKey).taxPct" @change="e => setProfile(p.personKey, 'taxPct', e.target.value)">%
+                      <div class="text-caption text-medium-emphasis">{{ money(p.tax) }}</div>
+                    </td>
+                    <td class="text-right">
+                      <input class="pct-input" type="number" step="0.01" :value="profileOf(p.personKey).nhiPct" @change="e => setProfile(p.personKey, 'nhiPct', e.target.value)">%
+                      <div class="text-caption text-medium-emphasis">{{ money(p.nhi) }}</div>
+                    </td>
+                    <td class="text-right text-success font-weight-bold">{{ money(p.net) }}</td>
+                    <td class="col-remark">
+                      <input class="rmk-input" type="text" :value="profileOf(p.personKey).remark" @change="e => setProfile(p.personKey, 'remark', e.target.value)">
+                    </td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </div>
+            <div v-if="result.handoverTotal" class="text-caption text-orange-darken-3 mt-1">
+              另有 {{ handoverLabel }}暫留 {{ money(result.handoverTotal) }} 元（本期不發放，未計入上表）。
+            </div>
           </div>
         </v-card-text>
       </div>
@@ -200,7 +296,7 @@ import AllocationEditor from './AllocationEditor.vue';
 import CrossProjectPersonPicker from './CrossProjectPersonPicker.vue';
 import {
   calcUnitBonus, money, toNum, round2, formatDateTW, evenShares, toDateValue, paymentRatioPct,
-  matchesRolePositions,
+  matchesRolePositions, isHandoverCategory,
 } from '@/utils/commissionCalculation';
 
 const props = defineProps({
@@ -225,6 +321,10 @@ const enabledCategories = computed(() =>
     .slice()
     .sort((a, b) => (a.order || 0) - (b.order || 0))
 );
+/** 發放類別（分配給人員）；提撥類別（交屋團獎）另列 */
+const payCategories = computed(() => enabledCategories.value.filter(c => !isHandoverCategory(c)));
+const handoverCategories = computed(() => enabledCategories.value.filter(isHandoverCategory));
+const handoverLabel = computed(() => handoverCategories.value.map(c => c.label).join('／') || '交屋團獎');
 
 const noteText = computed(() => String(props.entry.unit.remarks || ''));
 const hasNote = computed(() => noteText.value.trim() !== '');
@@ -235,6 +335,18 @@ const paymentRatio = computed(() => paymentRatioPct(props.entry.unit, props.entr
 
 const totalPct = computed(() => props.claimedPct + toNum(props.entry.ratioPct));
 const ratioOver = computed(() => totalPct.value > 100.0001);
+const unitSalesText = computed(() => normalizeNames(props.entry.unit.salesperson).join('、'));
+
+// ---------- 版面開關 ----------
+const showCalc = ref(false);
+const showAdvanced = ref(toNum(props.entry.partyAFee) !== 0 || toNum(props.entry.partyBFee) !== 0);
+const advancedSummary = computed(() => {
+  const parts = [];
+  if (toNum(props.entry.partyAFee)) parts.push(`${props.settings.partyALabel} ${money(props.entry.partyAFee)}`);
+  if (toNum(props.entry.partyBFee)) parts.push(`${props.settings.partyBLabel} ${money(props.entry.partyBFee)}`);
+  if (toNum(props.entry.keepPct) !== toNum(props.settings.defaultKeepPct)) parts.push(`保留款 ${props.entry.keepPct}%`);
+  return parts.join('・');
+});
 
 /** 即時計算（分配/比例/介紹費任一變動即重算） */
 const result = computed(() => calcUnitBonus(props.entry.finance, {
@@ -246,7 +358,40 @@ const result = computed(() => calcUnitBonus(props.entry.finance, {
   categories: props.entry.categories,
 }, props.profiles));
 
-defineExpose({ result });
+/** 尚未選人的發放類別（比例 > 0 者） */
+const missingCats = computed(() => payCategories.value.filter(cat => {
+  const c = props.entry.categories[cat.key];
+  return c && toNum(c.ratePct) > 0 && c.allocations.length === 0;
+}));
+/** 待處理項目數：未選人類別 + 分配錯誤 + 比例問題 */
+const issueCount = computed(() =>
+  missingCats.value.length + result.value.errors.length + (ratioOver.value || !(toNum(props.entry.ratioPct) > 0) ? 1 : 0)
+);
+
+defineExpose({ result, issueCount });
+
+// ---------- 提撥類別（交屋團獎）本戶開關 ----------
+function isHandoverOn(cat) {
+  const c = props.entry.categories[cat.key];
+  return !!c && c.enabled !== false;
+}
+function setHandoverOn(cat, v) {
+  const c = props.entry.categories[cat.key];
+  if (c) c.enabled = !!v;
+}
+
+/** 提撥類別（交屋團獎）本戶計算結果 */
+function handoverInfo(cat) {
+  return result.value.handover?.[cat.key] || { sourceCatKey: '', ratePct: 0, sourcePool: 0, amount: 0 };
+}
+
+function handoverSourceLabel(cat) {
+  const key = handoverInfo(cat).sourceCatKey;
+  if (!key) return '—';
+  return props.entry.categories[key]?.label
+    || (props.settings.bonusCategories || []).find(c => c.key === key)?.label
+    || key;
+}
 
 function round1(n) { return Math.round((Number(n) || 0) * 10) / 10; }
 function fmtWan(n, d = 2) {
@@ -280,7 +425,7 @@ function qualified(p, contractDate) {
 const poolOptionsByCat = computed(() => {
   const map = {};
   const contractDate = props.entry.unit.payment_contract_date;
-  enabledCategories.value.forEach(cat => {
+  payCategories.value.forEach(cat => {
     let list = [];
     if (cat.mode === 'role') {
       list = props.localPersonnel
@@ -433,13 +578,35 @@ function onPickPerson(person) {
 
 <style scoped>
 .unit-card { border-radius: 12px; overflow: hidden; }
+.unit-card.has-issue { border-color: #fb8c00; }
 .card-head { cursor: pointer; background: linear-gradient(180deg, #fafbff, #fff); }
-.rotate-collapsed { transform: rotate(-90deg); }
-.fgroup-h {
-  font-size: 12px; font-weight: 700; color: #556; margin: 10px 0 6px;
-  display: flex; align-items: center; gap: 6px;
+/* 步驟標題 */
+.step-h { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.step-no {
+  width: 22px; height: 22px; border-radius: 50%; background: rgb(var(--v-theme-primary)); color: #fff;
+  font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
 }
-.fgroup-h::before { content: ''; width: 3px; height: 12px; background: rgb(var(--v-theme-primary)); border-radius: 2px; }
+.step-title { font-size: 14px; font-weight: 700; color: #334; }
+.step-body { padding-left: 30px; }
+@media (max-width: 600px) { .step-body { padding-left: 0; } }
+/* 請佣比例進度條 */
+.ratio-bar { height: 6px; border-radius: 3px; background: #e8ecf3; display: flex; overflow: hidden; }
+.ratio-bar .seg.done { background: #9aa8c0; }
+.ratio-bar .seg.now { background: rgb(var(--v-theme-primary)); }
+.adv-row { background: #fffaf3; border-radius: 8px; margin: 0; padding: 6px 4px 2px; }
+/* 試算結果條 */
+.result-strip { display: flex; flex-wrap: wrap; gap: 6px; }
+.rs-item { background: #f4f6fb; border-radius: 6px; padding: 4px 10px; min-width: 120px; }
+.rs-item label { display: block; font-size: 11px; color: #789; }
+.rs-item div { font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
+.rs-item.hl { background: #e8f5e9; }
+.rs-item.hl div { color: #087f23; }
+.team-site { background: #f4f6fb; border-radius: 8px; padding: 8px 10px; }
+.rotate-collapsed { transform: rotate(-90deg); }
+.handover-box {
+  border: 1px dashed #f0a36a; border-radius: 8px; padding: 6px 12px 8px; margin-bottom: 10px; background: #fff7ed;
+}
+.handover-box.off { border-color: #d5d9e0; background: #f8f9fb; }
 /* 戶別資訊：自適應網格，全寬時 7 欄一列、窄螢幕自動換行（手機 2 欄） */
 .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
 .ro-field { background: #f8fafc; border-radius: 6px; padding: 4px 8px; min-height: 46px; }

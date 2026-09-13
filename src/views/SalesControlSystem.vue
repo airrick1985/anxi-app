@@ -2017,14 +2017,13 @@
 
     <v-dialog v-model="isParkingCanvasDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition" :eager="true">
       <v-card class="d-flex flex-column">
-        <v-toolbar dark color="#f5f5f7" density="compact">
-          <v-btn icon dark @click="isParkingCanvasDialogVisible = false">
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-          <v-toolbar-title> {{ projectName }} 車位銷控</v-toolbar-title>
-          <v-spacer></v-spacer>
-          
-        </v-toolbar>
+        <!-- 標題列由 ParkingCanvas 以 macOS 風格渲染（含樓層／縮放／列印）；載入中或無樓層時先以簡易標題列頂替，確保有關閉鈕 -->
+        <div v-if="isParkingCanvasLoading || !activeParkingCanvasFloorPlan" class="mac-sheet-head" style="flex: 0 0 auto;">
+          <button class="mac-sheet-close" style="margin-left: 0; margin-right: 2px;" title="關閉" @click="isParkingCanvasDialogVisible = false">
+            <v-icon size="18">mdi-close</v-icon>
+          </button>
+          <span>{{ projectName }} 車位銷控</span>
+        </div>
         
         <div class="flex-grow-1" style="position: relative; overflow: hidden; background-color: #f0f2f5;">
           <v-overlay
@@ -2054,6 +2053,9 @@
             :status-colors="statusColorStore.colors" 
             @floor-switched="handleParkingCanvasFloorSwitch"
             @spots-changed="handleParkingCanvasSpotsChanged"
+            :header-title="`${projectName || ''} 車位銷控`.trim()"
+            show-close
+            @close="isParkingCanvasDialogVisible = false"
             style="height: 100%; width: 100%;"
           />
         </div>

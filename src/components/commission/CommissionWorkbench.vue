@@ -11,20 +11,32 @@
       </template>
     </div>
 
+    <!-- 流程說明 -->
+    <div class="flow-strip mb-3">
+      <span class="fs-step"><b>1</b> 新增戶別</span>
+      <v-icon size="small" class="fs-arrow">mdi-chevron-right</v-icon>
+      <span class="fs-step"><b>2</b> 每戶填「本次請佣比例」、點選獎金人員</span>
+      <v-icon size="small" class="fs-arrow">mdi-chevron-right</v-icon>
+      <span class="fs-step"><b>3</b> 核對底部「本次合計」後送出</span>
+      <span class="text-caption text-medium-emphasis ml-auto">卡片標頭顯示「待處理」表示該戶仍有類別未選人或分配有誤</span>
+    </div>
+
     <!-- 快速定位列（置頂跟隨捲動；可跳至各戶別卡片或底部「本次合計」） -->
     <div v-if="entries.length" class="quick-nav d-flex flex-wrap align-center ga-1 mb-3">
       <v-chip
         v-for="e in entries"
         :key="e.id"
         size="small"
-        variant="outlined"
-        color="primary"
+        :variant="entryIssueCount(e) ? 'tonal' : 'outlined'"
+        :color="entryIssueCount(e) ? 'warning' : 'primary'"
         @click="gotoCard(e)"
       >
+        <v-icon v-if="entryIssueCount(e)" start size="x-small">mdi-alert</v-icon>
         {{ e.unitId }}
         <span class="text-caption ml-1 text-medium-emphasis">{{ money(entryResult(e).claim.thisClaim) }}</span>
       </v-chip>
       <v-spacer></v-spacer>
+      <v-chip v-if="totalIssues" size="small" variant="tonal" color="warning">{{ totalIssues }} 項待處理</v-chip>
       <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-arrow-down-bold" @click="gotoSummary">
         本次合計 {{ money(summary.thisClaimSum) }} 元
       </v-chip>
@@ -61,6 +73,12 @@
           <v-col cols="6" md="3"><div class="sum-item"><label>實際請領金額合計</label><div>{{ money(summary.claimSum) }} 元</div></div></v-col>
           <v-col cols="6" md="3"><div class="sum-item"><label>請佣保留款合計</label><div>{{ money(summary.keepSum) }} 元</div></div></v-col>
           <v-col cols="6" md="3"><div class="sum-item highlight"><label>本次請佣合計</label><div>{{ money(summary.thisClaimSum) }} 元</div></div></v-col>
+          <v-col v-if="hasHandover" cols="12" md="6">
+            <div class="sum-item handover">
+              <label>{{ handoverLabel }}暫留（自個獎提撥，本期不發放、不計入下表）</label>
+              <div>{{ money(summary.handoverSum) }} 元</div>
+            </div>
+          </v-col>
         </v-row>
         <div class="text-caption font-weight-bold mb-1">每人獎金彙總（所有戶別加總）</div>
         <div class="table-scroll">
@@ -188,7 +206,7 @@ import CommissionUnitCard from './CommissionUnitCard.vue';
 import { submitCommissionEntriesAPI } from '@/api';
 import {
   calcUnitBonus, computeUnitFinance, resolveCommPct, formatDateTW,
-  money, toNum, evenShares, paymentRatioPct, matchesRolePositions,
+  money, toNum, evenShares, paymentRatioPct, matchesRolePositions, isHandoverCategory, resolveSplitMode,
 } from '@/utils/commissionCalculation';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
 
@@ -224,6 +242,9 @@ const enabledCategories = computed(() =>
     .slice()
     .sort((a, b) => (a.order || 0) - (b.order || 0))
 );
+const handoverCategories = computed(() => enabledCategories.value.filter(isHandoverCategory));
+const hasHandover = computed(() => handoverCategories.value.length > 0);
+const handoverLabel = computed(() => handoverCategories.value.map(c => c.label).join('／') || '交屋團獎');
 
 // ---------- 已請比例（ledger + 本場已送出即時更新由父層 refresh） ----------
 function claimedPctOf(unitId) {
@@ -359,7 +380,10 @@ function addUnit(unitId) {
       label: cat.label,
       mode: cat.mode,
       ratePct: toNum(cat.ratePct),
-      allocations,
+      sourceCatKey: cat.sourceCatKey || '',   // 提撥類別的來源類別（其他類別為空）
+      enabled: true,                          // 提撥類別：本戶是否提撥（工作台可關閉）
+      splitMode: resolveSplitMode(props.settings, cat),   // 均分尾差處理（建案設定；隨紀錄快照）
+      allocations,                            // 提撥類別不分配人員，恆為空
     };
   });
 
@@ -418,8 +442,22 @@ function entryResult(e) {
   return calcUnitBonus(e.finance, entryInput(e), personProfiles);
 }
 
+/** 該戶待處理項目數（與卡片標頭一致）：未選人類別 + 分配錯誤 + 比例問題 */
+function entryIssueCount(e) {
+  const r = entryResult(e);
+  const claimed = claimedPctOf(e.unitId);
+  const missing = enabledCategories.value.filter(cat => {
+    if (isHandoverCategory(cat)) return false;
+    const c = e.categories[cat.key];
+    return c && toNum(c.ratePct) > 0 && c.allocations.length === 0;
+  }).length;
+  const ratioBad = (claimed + toNum(e.ratioPct) > 100.0001) || !(toNum(e.ratioPct) > 0);
+  return missing + r.errors.length + (ratioBad ? 1 : 0);
+}
+const totalIssues = computed(() => entries.value.reduce((s, e) => s + entryIssueCount(e), 0));
+
 const summary = computed(() => {
-  let grandAfter = 0, claimSum = 0, keepSum = 0, thisClaimSum = 0;
+  let grandAfter = 0, claimSum = 0, keepSum = 0, thisClaimSum = 0, handoverSum = 0;
   const byPerson = {};
   const order = [];
   entries.value.forEach(e => {
@@ -428,6 +466,7 @@ const summary = computed(() => {
     claimSum += r.claim.realClaim;
     keepSum += r.claim.claimKeep;
     thisClaimSum += r.claim.thisClaim;
+    handoverSum += toNum(r.handoverTotal);
     r.people.forEach(p => {
       if (!byPerson[p.personKey]) {
         byPerson[p.personKey] = {
@@ -446,7 +485,7 @@ const summary = computed(() => {
     subtotal: t.subtotal + p.subtotal, keep: t.keep + p.keep,
     tax: t.tax + p.tax, nhi: t.nhi + p.nhi, net: t.net + p.net,
   }), { subtotal: 0, keep: 0, tax: 0, nhi: 0, net: 0 });
-  return { grandAfter, claimSum, keepSum, thisClaimSum, people, totals };
+  return { grandAfter, claimSum, keepSum, thisClaimSum, handoverSum, people, totals };
 });
 
 // ---------- 送出 ----------
@@ -472,6 +511,7 @@ function collectIssues() {
     // 提醒：類別無人勾選（僅提醒有候選人的類別）
     const missCats = [];
     enabledCategories.value.forEach(cat => {
+      if (isHandoverCategory(cat)) return;   // 提撥類別不勾人
       const c = e.categories[cat.key];
       if (c && c.allocations.length === 0 && toNum(c.ratePct) > 0) missCats.push(cat.label);
     });
@@ -558,6 +598,15 @@ async function doSubmit() {
 </script>
 
 <style scoped>
+.flow-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+  background: #f4f6fb; border-radius: 8px; padding: 6px 12px; font-size: 13px;
+}
+.fs-step b {
+  display: inline-flex; width: 18px; height: 18px; border-radius: 50%; align-items: center; justify-content: center;
+  background: rgb(var(--v-theme-primary)); color: #fff; font-size: 11px; margin-right: 4px;
+}
+.fs-arrow { color: #9aa; }
 .quick-nav {
   position: sticky;
   top: 0;
@@ -571,6 +620,8 @@ async function doSubmit() {
 .sum-item label { font-size: 11px; color: #789; display: block; }
 .sum-item div { font-size: 17px; font-weight: 700; color: #1a4; }
 .sum-item.highlight div { color: #087f23; }
+.sum-item.handover { background: #fff7ed; }
+.sum-item.handover div { color: #c2410c; }
 .table-scroll { overflow-x: auto; }
 /* 每人彙總表：人員／來源欄固定合理寬度，其餘金額欄平均分配 */
 .people-table th, .people-table td { white-space: nowrap; }

@@ -280,7 +280,8 @@ defineExpose({ presetPeriod });
 watch(replaceExisting, () => { if (parsed.value) reparse(); });
 
 const mergedSettings = computed(() => mergeSettings(props.settings));
-const enabledCats = computed(() => (mergedSettings.value.bonusCategories || []).filter(c => c.enabled !== false));
+// 歷史匯入的獎金紀錄為「每人各類金額」，提撥類別（交屋團獎）不分配給人員，故不列入欄位
+const enabledCats = computed(() => (mergedSettings.value.bonusCategories || []).filter(c => c.enabled !== false && c.mode !== 'handover'));
 
 const claimErrorCount = computed(() => claimRows.value.filter(r => r.status === 'error').length);
 const bonusErrorCount = computed(() => bonusRows.value.filter(r => r.status === 'error').length);

@@ -3,7 +3,9 @@
  *
  * 集合：announcements（頂層，依 projectId 篩選，與 salesImages 相同模式）
  * 文件欄位：
- *   projectId, title, content, images: [{ url, path, name, size, type }],
+ *   projectId, title, content, contentFormat: 'html' | 'text', contentText, images: [{ url, path, name, size, type }],
+ *   - content：新版為富文本 HTML（tiptap 產生，contentFormat = 'html'），舊資料為純文字（無 contentFormat）
+ *   - contentText：由 HTML 抽出的純文字摘要（卡片預覽／搜尋用）
  *   targets: ['sales' | 'quote'], level: 'info' | 'important' | 'urgent',
  *   pinned: bool, popup: bool（進入頁面時強制以燈箱提醒）, active: bool,
  *   startAt: Timestamp|null, endAt: Timestamp|null,
@@ -11,6 +13,7 @@
  *
  * 只用單一 where（projectId），排序在前端做，避免額外的複合索引。
  */
+import DOMPurify from 'dompurify';
 import { db, storage } from '@/firebase';
 import {
   collection, doc, onSnapshot, query, where,
@@ -96,9 +99,14 @@ export function newAnnouncementId() {
 
 function normalizePayload(data) {
   const targets = Array.isArray(data.targets) ? data.targets.filter(t => t === 'sales' || t === 'quote') : [];
+  const contentFormat = data.contentFormat === 'html' ? 'html' : 'text';
+  let content = String(data.content || '').trim();
+  if (contentFormat === 'html' && isRichHtmlEmpty(content)) content = '';
   return {
     title: String(data.title || '').trim(),
-    content: String(data.content || '').trim(),
+    content,
+    contentFormat,
+    contentText: contentFormat === 'html' ? htmlToPlainText(content) : content,
     images: Array.isArray(data.images) ? data.images : [],
     targets: targets.length ? targets : ['sales', 'quote'],
     level: ['info', 'important', 'urgent'].includes(data.level) ? data.level : 'info',
@@ -211,4 +219,88 @@ export function contentToHtml(text) {
   const esc = String(text || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   return esc.replace(/(https?:\/\/[^\s<]+)/g, (m) => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
+}
+
+// ---------- 富文本內容 ----------
+/** 富文本 HTML 是否為空（只剩空段落／空白／nbsp 視為空） */
+export function isRichHtmlEmpty(html) {
+  if (!html) return true;
+  const text = String(html)
+    .replace(/<br\s*\/?>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .trim();
+  return text.length === 0;
+}
+
+/** 字串是否看起來是區塊 HTML（舊資料無 contentFormat 時的備援判斷） */
+export function looksLikeHtml(s) {
+  return /^<(p|ul|ol|h[1-6]|blockquote|div)[\s>]/i.test(String(s || '').trim());
+}
+
+/** 公告內容是否為富文本 */
+export function isRichContent(a) {
+  if (!a) return false;
+  if (a.contentFormat === 'html') return true;
+  if (a.contentFormat === 'text') return false;
+  return looksLikeHtml(a.content);
+}
+
+/** 純文字（含換行）→ 編輯器用 HTML：每行一段落、網址自動連結 */
+export function plainTextToHtml(text) {
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+  return lines.map(l => (l.trim() ? `<p>${contentToHtml(l)}</p>` : '<p></p>')).join('');
+}
+
+/** HTML → 純文字（卡片預覽／搜尋用；區塊結尾換行、清單項目加符號） */
+export function htmlToPlainText(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<\/(p|div|li|h[1-6]|blockquote|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+}
+
+/** 公告內容的純文字摘要 */
+export function announcementPlainText(a, maxLen = 0) {
+  if (!a) return '';
+  const text = isRichContent(a) ? htmlToPlainText(a.content) : String(a.content || '');
+  return maxLen > 0 && text.length > maxLen ? `${text.slice(0, maxLen)}…` : text;
+}
+
+const RICH_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'del', 'span', 'ol', 'ul', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'hr', 'code', 'pre', 'mark'],
+  ALLOWED_ATTR: ['style', 'href', 'target', 'rel', 'start', 'class'],
+  ALLOW_DATA_ATTR: false,
+};
+const ALLOWED_STYLE_PROPS = new Set(['color', 'font-size', 'text-align', 'text-decoration', 'font-weight', 'font-style']);
+
+/** 只保留允許的行內樣式（顏色、字級等），其餘一律移除 */
+function restrictInlineStyles(html) {
+  if (typeof document === 'undefined') return html;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  tpl.content.querySelectorAll('[style]').forEach((el) => {
+    const kept = [];
+    for (let i = 0; i < el.style.length; i += 1) {
+      const prop = el.style[i];
+      if (ALLOWED_STYLE_PROPS.has(prop)) kept.push(`${prop}: ${el.style.getPropertyValue(prop)}`);
+    }
+    if (kept.length) el.setAttribute('style', kept.join('; '));
+    else el.removeAttribute('style');
+  });
+  return tpl.innerHTML;
+}
+
+/** 顯示用 HTML：富文本經 DOMPurify 清理（連結另開新視窗）；舊純文字走跳脫＋自動連結 */
+export function announcementContentHtml(a) {
+  if (!a) return '';
+  if (!isRichContent(a)) return contentToHtml(a.content);
+  const clean = DOMPurify.sanitize(String(a.content || ''), RICH_SANITIZE_CONFIG);
+  return restrictInlineStyles(clean).replace(/<a\s/gi, '<a target="_blank" rel="noopener noreferrer" ');
 }

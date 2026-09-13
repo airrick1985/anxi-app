@@ -187,7 +187,9 @@ function personHeaderName(p, model) {
 
 export function buildBonusGroupGrid(group, model) {
   const st = model.style || {};
-  const FIX = 14;
+  const HAS_H = !!(group.hasHandover ?? model.hasHandover);   // 交屋團獎欄（自個獎提撥、本期不發放）
+  const HCOL = 14;                                             // 交屋團獎欄位置（團獎人數之後）
+  const FIX = HAS_H ? 15 : 14;
   const P = group.topPersons.length;
   const L = group.left.length;
   const R = group.right.length;
@@ -221,6 +223,7 @@ export function buildBonusGroupGrid(group, model) {
 
   const g = new Grid(group.sheetName, NC, nRows, { fontFamily: st.fontFamily || 'DFKai-SB', sz: st.dataFontSize || 12 });
   const FW = [46, 82, 82, 84, 72, 96, 66, 62, 90, 96, 56, 96, 84, 72];
+  if (HAS_H) FW.push(92);
   for (let c = 0; c < NC; c++) g.cols[c] = c < FW.length ? FW[c] : 66;
   g.cols[RLAB] = Math.max(g.cols[RLAB] || 66, 116);   // 右側「項目」標籤欄需容納「類別＋比例」單行
 
@@ -235,21 +238,23 @@ export function buildBonusGroupGrid(group, model) {
 
   // 千4 列
   g.set(rKilo, 13, group.kiloLabel, { sz: 9, align: 'center', border: true });
+  if (HAS_H) g.set(rKilo, HCOL, group.handoverX || '', { sz: 9, align: 'center', border: true });
   group.topPersons.forEach((p, i) => {
     const col = FIX + 2 * i;
     g.set(rKilo, col, group.indivX || '', { sz: 9, align: 'center', border: true });
     g.set(rKilo, col + 1, group.teamX || '', { sz: 9, align: 'center', border: true });
   });
-  if (P > 0) g.region(rKilo, 13, rKilo, 13 + 2 * P, { border: true });
+  if (P > 0) g.region(rKilo, 13, rKilo, FIX - 1 + 2 * P, { border: true });
   g.rowHeights[rKilo] = 18;
 
   // 上方表頭
   const H1 = ['編號', '小訂日期', '簽約日期', '戶別', '停車位', '姓名', '成交價(萬)', '', '總成交價(萬)', model.partyALabel, '折數', '折數後總價(萬)', '銷售人員', '團獎人數'];
+  if (HAS_H) H1.push(`${group.handoverLabel || model.handoverLabel || '交屋團獎'}\n(暫留不發放)`);
   const hStyle = { sz: st.headerFontSize || 12, bold: true, align: 'center', wrap: true, bg: headerBg, border: true };
   H1.forEach((h, c) => { if (h) g.set(rH1, c, h, hStyle); });
   g.set(rH2, 6, '房價', hStyle); g.set(rH2, 7, '車價', hStyle);
   g.merge(rH1, 6, rH1, 7);
-  [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13].forEach(c => g.merge(rH1, c, rH2, c));
+  [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13].concat(HAS_H ? [HCOL] : []).forEach(c => g.merge(rH1, c, rH2, c));
   group.topPersons.forEach((p, i) => {
     const col = FIX + 2 * i;
     g.set(rH1, col, personHeaderName(p, model), hStyle);
@@ -276,6 +281,7 @@ export function buildBonusGroupGrid(group, model) {
     g.set(r, 11, d.after || '', { fmt: '#,##0', border: true });
     g.set(r, 12, d.sales, { align: 'center', border: true });
     g.set(r, 13, d.team || '', { align: 'center', border: true });
+    if (HAS_H) g.set(r, HCOL, d.handover || '', { fmt: '#,##0', border: true });
     group.topPersons.forEach((p, j) => {
       const col = FIX + 2 * j;
       const v = d.pp[p.personKey] || { indiv: 0, team: 0 };
@@ -290,6 +296,7 @@ export function buildBonusGroupGrid(group, model) {
   g.set(rTopTotal, 8, group.topTotal.total || '', { fmt: '#,##0', bold: true });
   g.set(rTopTotal, 9, group.topTotal.referral || '', { fmt: '#,##0', bold: true });
   g.set(rTopTotal, 11, group.topTotal.after || '', { fmt: '#,##0', bold: true });
+  if (HAS_H) g.set(rTopTotal, HCOL, group.topTotal.handover || '', { fmt: '#,##0', bold: true });
   group.topPersons.forEach((p, j) => {
     const col = FIX + 2 * j;
     g.set(rTopTotal, col, group.topTotal.pp[p.personKey].indiv || '', { fmt: '#,##0', bold: true });
