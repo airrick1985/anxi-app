@@ -27,7 +27,7 @@
 
         <div v-if="showReasonSelection" class="mt-4">
           <div class="d-flex align-center justify-space-between mb-3">
-            <p class="font-weight-bold">請選擇退戶原因（可複選）</p>
+            <p class="font-weight-bold">請選擇退戶原因（可複選，亦可自行輸入）</p>
             <v-chip
               label
               color="error"
@@ -37,26 +37,10 @@
               至少須選一項
             </v-chip>
           </div>
-          <v-container class="pa-0">
-            <v-row>
-              <v-col
-                v-for="reason in cancelReasons"
-                :key="reason"
-                cols="12"
-                sm="6"
-                class="pb-2"
-              >
-                <v-checkbox
-                  :model-value="selectedReasons"
-                  :label="reason"
-                  :value="reason"
-                  @update:model-value="updateSelectedReasons"
-                  density="compact"
-                  hide-details
-                ></v-checkbox>
-              </v-col>
-            </v-row>
-          </v-container>
+          <CancelReasonSelector
+            :model-value="selectedReasons"
+            @update:model-value="updateSelectedReasons"
+          />
           <v-alert
             v-if="showReasonError"
             type="error"
@@ -94,6 +78,7 @@
 
 <script setup>
 import { defineProps, defineEmits, ref, watch, computed } from 'vue';
+import CancelReasonSelector from './CancelReasonSelector.vue';
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -118,26 +103,6 @@ const isConfirmDisabled = computed(() => {
   // 如果沒有選擇任何原因，禁用
   return selectedReasons.value.length === 0;
 });
-
-// 退戶原因選項
-const cancelReasons = [
-  '總價太高',
-  '單價太高',
-  '自備款不足',
-  '貸款成數太少',
-  '地點不符',
-  '家人反對',
-  '家人意外、重病',
-  '資金斷鏈',
-  '神明指示',
-  '風水忌諱',
-  '生活機能不足',
-  '環境不喜歡',
-  '換戶',
-  '景氣不好',
-  '工期太久',
-  '財務規劃暫不買房'
-];
 
 function getTodayDate() {
   const today = new Date();
