@@ -3032,6 +3032,34 @@ export const cleanupTestAuthSessions = async (projectId, driveFileIds = []) => {
 };
 
 /**
+ * [API] 授權書格式設定專用：將後台以目前範本產生的測試授權書 PNG 寄至測試信箱（附件＋內嵌）
+ * 不建立簽署 session、不上傳 Drive、不寫入戶別資料
+ * @param {object} p
+ * @param {string} p.projectId
+ * @param {string|string[]} p.toEmail - 測試收件信箱（可多位）
+ * @param {string} p.base64Data - PNG dataURL 或純 base64
+ * @param {string} p.fileName - 附件檔名（.png）
+ * @param {string} [p.unitId] - 範例戶別
+ * @param {object} [p.sample] - 範例資料（委託人／受託人姓名、關係等，僅用於信件摘要）
+ */
+export const sendTestAuthLetter = async ({ projectId, toEmail, base64Data, fileName, unitId, sample }) => {
+  if (!projectId || !toEmail || (Array.isArray(toEmail) && !toEmail.length) || !base64Data) {
+    return { status: 'error', message: '缺少 projectId、toEmail 或圖檔內容。' };
+  }
+  const pureBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+  try {
+    const result = await bookingApiRouter({
+      action: 'sendTestAuthLetter',
+      data: { projectId, testKey: projectId, toEmail, base64: pureBase64, fileName, unitId, sample }
+    });
+    return result.data;
+  } catch (error) {
+    console.error("API sendTestAuthLetter 錯誤:", error);
+    return { status: 'error', message: error.message };
+  }
+};
+
+/**
  * [API] 呼叫後端，為預約確認步驟產生一個有時效性的 Token (V2: 呼叫 bookingApi 路由)
  * @param {object} payload - 包含 { projectId, unitId, bookingType }
  */
@@ -6756,6 +6784,22 @@ export const getFormNotificationCandidates = async (payload) => {
   }
 };
 
+
+/**
+ * 授權流程測試：取得此建案具「驗屋預約管理-修改」權限的人員名單（含 Email），供測試收件人多選
+ * @param {{ projectId: string }} payload
+ * @returns {Promise<{ candidates: Array<{ userKey: string, name: string, phone: string, email: string, hasEmail: boolean }> }>}
+ */
+export const getAuthTestRecipientCandidates = async (payload) => {
+  try {
+    const fn = httpsCallable(functions, 'getAuthTestRecipientCandidates');
+    const result = await fn(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in getAuthTestRecipientCandidates:", error);
+    throw new Error(error.message);
+  }
+};
 
 /**
  * ✅ [新增] 自訂表單「套用其他建案表單」：取得使用者具銷控權限之其他建案的表單模板（後端依 userPermissions 過濾）

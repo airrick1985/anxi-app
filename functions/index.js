@@ -8570,6 +8570,7 @@ exports.getAuthSigningSession = onCall(async (request) => {
       projectName: projectName,
       projectConfig: {
         logoUrl: projectConfig.logoUrl || '',
+        logoSize: projectConfig.logoSize || 'medium', // LOGO 顯示尺寸，授權書圖檔需與後台預覽一致
         authLetterTemplate: projectConfig.authLetterTemplate || ''
       }
     }
@@ -15120,6 +15121,9 @@ exports.bookingApi = onCall({
       case 'cleanupTestAuthSessions':
         // BookingPage 功能測試頁專用：清除授權書簽署流程的測試資料
         return await _handleCleanupTestAuthSessions(data);
+      case 'sendTestAuthLetter':
+        // 授權書格式設定專用：將後台以目前範本產生的測試授權書圖檔寄至測試信箱
+        return await _handleSendTestAuthLetter(data);
 
       // --- 報告上傳流程 ---
       case 'verifyUploadPrerequisites':
@@ -16420,6 +16424,109 @@ async function _handleCleanupTestAuthSessions(data) {
     console.error(`[${functionName}] 錯誤:`, error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError('internal', `清除授權書測試資料時發生錯誤: ${error.message}`);
+  }
+}
+
+/**
+ * [內部函式] 授權書格式設定專用：寄出測試授權書
+ * 後台以「目前編輯中的範本」套入範例資料、以 html2canvas 渲染出的授權書 PNG，直接以附件＋內嵌圖片寄至指定測試信箱。
+ * 不建立簽署 session、不上傳 Drive、不寫入戶別資料；主旨固定加【系統測試】。
+ */
+async function _handleSendTestAuthLetter(data) {
+  const { projectId, testKey, toEmail, base64, fileName, unitId, sample } = data || {};
+  const functionName = `_handleSendTestAuthLetter (Project: ${projectId})`;
+
+  if (!projectId || testKey !== projectId) {
+    throw new HttpsError('permission-denied', '無效的測試寄送請求。');
+  }
+  // toEmail 可為單一字串、逗號分隔字串或陣列（多位收件人）
+  const toList = (Array.isArray(toEmail) ? toEmail : String(toEmail || '').split(/[,\s;]+/))
+    .map(e => String(e || '').trim()).filter(Boolean);
+  const uniqueTo = Array.from(new Set(toList.map(e => e.toLowerCase())));
+  if (!uniqueTo.length || uniqueTo.some(e => !/.+@.+\..+/.test(e))) {
+    throw new HttpsError('invalid-argument', '測試收件 Email 格式不正確。');
+  }
+  if (uniqueTo.length > 30) {
+    throw new HttpsError('invalid-argument', '測試收件人最多 30 位。');
+  }
+  if (!base64 || typeof base64 !== 'string') {
+    throw new HttpsError('invalid-argument', '缺少授權書圖檔內容。');
+  }
+  // 附件上限約 8MB（Gmail 單封信 25MB，Callable 請求 10MB）
+  if (base64.length > 8 * 1024 * 1024 * 4 / 3) {
+    throw new HttpsError('invalid-argument', '授權書圖檔過大（超過 8MB），請縮小 LOGO 或範本內容後再試。');
+  }
+
+  const db = new Firestore({ databaseId: 'anxi-app' });
+  try {
+    const projectDoc = await db.collection('projects').doc(projectId).get();
+    const projectName = projectDoc.exists ? (projectDoc.data().name || projectId) : projectId;
+    const safeUnit = String(unitId || 'A1-1');
+    const s = sample && typeof sample === 'object' ? sample : {};
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const attachName = (typeof fileName === 'string' && /\.png$/i.test(fileName))
+      ? fileName
+      : `【系統測試】${safeUnit}驗屋授權書.png`;
+    const buffer = Buffer.from(base64, 'base64');
+    const sizeKb = Math.round(buffer.length / 1024);
+
+    const mailTransport = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
+    });
+
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; background-color: #f4f4f7; padding: 20px;">
+        <div style="max-width: 720px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
+          <div style="background-color: #5e35b1; color: #ffffff; padding: 20px; text-align: center;">
+            <h2 style="margin: 0; font-size: 22px;">【系統測試】驗屋授權書範本測試</h2>
+          </div>
+          <div style="padding: 24px; color: #333333;">
+            <p>這是一封由「${esc(projectName)}」後台「驗屋授權書格式設定」寄出的<strong>測試信件</strong>，用來確認目前授權書範本的實際輸出效果。</p>
+            <p>下方圖片即為以目前範本套入範例資料後產生的授權書（與受託人完成簽署後實際產出的圖檔格式相同），同時也已附加為附件 <strong>${esc(attachName)}</strong>（約 ${sizeKb} KB）。</p>
+            <div style="padding: 15px; background-color: #f9f9f9; border-radius: 5px; margin: 16px 0;">
+              <h4 style="margin-top:0; color: #555;">範例資料</h4>
+              <p style="margin: 5px 0;"><strong>建案:</strong> ${esc(projectName)}</p>
+              <p style="margin: 5px 0;"><strong>戶別:</strong> ${esc(safeUnit)}</p>
+              <p style="margin: 5px 0;"><strong>委託人:</strong> ${esc(s.委託人姓名 || '')}</p>
+              <p style="margin: 5px 0;"><strong>受託人:</strong> ${esc(s.受託人姓名 || '')}</p>
+              <p style="margin: 5px 0;"><strong>與委託人關係:</strong> ${esc(s.受託人關係 || '')}</p>
+            </div>
+            <div style="text-align: center; margin: 20px 0;">
+              <img src="cid:anxi-test-auth-letter" alt="測試授權書" style="max-width: 100%; border: 1px solid #ddd; box-shadow: 0 2px 8px rgba(0,0,0,.1);">
+            </div>
+            <p style="font-size: 13px; color: #888;">此信僅寄至您在後台指定的測試信箱，未寄給任何客戶或副本收件人，也未建立任何簽署紀錄或寫入戶別資料。</p>
+          </div>
+          <div style="background-color: #f4f4f7; padding: 16px; text-align: center; font-size: 12px; color: #777777;">
+            <p style="margin: 0;">此為系統自動發送郵件，請勿直接回覆。</p>
+            <p style="margin: 5px 0 0 0;">${esc(projectName)} 預約系統</p>
+            <p style="margin: 10px 0 0 0; font-size: 11px; color: #999999;">
+            本服務由 <a href="https://anxismart.com/" target="_blank" style="color: #007bff; text-decoration: none; font-weight: bold;">anxismart安熙智慧建案管理系統</a> 提供技術支援
+            </p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    await guardedSendMail(mailTransport, { // [TrialGuard]
+      from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
+      to: uniqueTo.join(', '),
+      subject: `【系統測試】【${projectName}】驗屋授權書範本測試 (戶別: ${safeUnit})`,
+      html: htmlBody,
+      attachments: [{
+        filename: attachName,
+        content: buffer,
+        contentType: 'image/png',
+        cid: 'anxi-test-auth-letter',
+      }],
+    }, { projectId });
+
+    console.log(`[${functionName}] 已寄出測試授權書（${sizeKb} KB）至 ${uniqueTo.join(', ')}`);
+    return { status: 'success', message: `測試授權書已寄至 ${uniqueTo.join(', ')}`, data: { sizeKb, fileName: attachName, recipients: uniqueTo } };
+  } catch (error) {
+    console.error(`[${functionName}] 錯誤:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', `寄出測試授權書時發生錯誤: ${error.message}`);
   }
 }
 
@@ -30407,6 +30514,54 @@ exports.getFormNotificationCandidates = onCall({
     return { candidates };
   } catch (e) {
     console.error('[getFormNotificationCandidates] 失敗:', e);
+    throw new HttpsError("internal", e.message || '查詢失敗');
+  }
+});
+
+/**
+ * ✅ [新增] 授權流程測試收件人候選名單
+ * 回傳此建案具「驗屋預約管理-修改」權限的人員（userPermissions/{userKey}.permissions[projectId].systems），
+ * 附帶 users 集合中的姓名／Email；沒有 Email 的人員也回傳（hasEmail=false），前端會標示不可選。
+ */
+exports.getAuthTestRecipientCandidates = onCall({
+  region: "asia-east1",
+  memory: "512MiB",
+}, async (request) => {
+  const { projectId } = request.data || {};
+  if (!projectId) {
+    throw new HttpsError("invalid-argument", "缺少 projectId");
+  }
+  const TARGET_SYSTEM = '驗屋預約管理-修改';
+  try {
+    const db = defaultDb;
+    const permSnap = await db.collection('userPermissions')
+      .where(`permissions.${projectId}.systems`, 'array-contains', TARGET_SYSTEM)
+      .get();
+    if (permSnap.empty) return { candidates: [] };
+
+    const userKeys = permSnap.docs.map(d => d.id);
+    const candidates = [];
+    for (let i = 0; i < userKeys.length; i += 30) {
+      const chunk = userKeys.slice(i, i + 30);
+      const usersSnap = await db.collection('users')
+        .where(FieldPath.documentId(), 'in', chunk)
+        .get();
+      usersSnap.forEach(d => {
+        const data = d.data() || {};
+        const email = typeof data.email === 'string' ? data.email.trim() : '';
+        candidates.push({
+          userKey: d.id,
+          name: data.name || data.displayName || d.id,
+          phone: data.phone || d.id,
+          email,
+          hasEmail: /.+@.+\..+/.test(email),
+        });
+      });
+    }
+    candidates.sort((a, b) => (Number(b.hasEmail) - Number(a.hasEmail)) || String(a.name).localeCompare(String(b.name), 'zh-Hant'));
+    return { candidates };
+  } catch (e) {
+    console.error('[getAuthTestRecipientCandidates] 失敗:', e);
     throw new HttpsError("internal", e.message || '查詢失敗');
   }
 });

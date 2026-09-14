@@ -99,6 +99,7 @@ import { useRoute } from 'vue-router';
 import { getAuthSigningSession, uploadAuthLetter, markAuthSessionComplete } from '@/api';
 import { VueSignaturePad } from 'vue-signature-pad';
 import html2canvas from 'html2canvas';
+import { applyAuthLogoSize } from '@/utils/authLetterLogo'; // LOGO 尺寸與後台預覽同步
 
 const route = useRoute();
 const token = ref(route.params.token);
@@ -138,7 +139,7 @@ const handleSubmitSignature = async () => {
   try {
     const delegateeSignature = delegateeSignaturePad.value.saveSignature('image/png').data;
 
-    const populatedHtml = sessionData.value.projectConfig.authLetterTemplate
+    const populatedHtml = applyAuthLogoSize(sessionData.value.projectConfig.authLetterTemplate, sessionData.value.projectConfig.logoSize)
       .replace(/{logoUrl}/g, sessionData.value.projectConfig.logoUrl)
       .replace(/{委託人姓名}/g, sessionData.value.formData.委託人姓名)
       .replace(/{建案名稱}/g, sessionData.value.projectName)

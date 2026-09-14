@@ -3887,7 +3887,7 @@ const goBackToStep0 = () => {
 
 <style scoped>
 /* 頂部建案 LOGO：無論原圖寬高比例，自動縮放至合適大小
-   - 固定高度呈現（小圖會等比放大，避免過小），高度依後台「LOGO 顯示尺寸」設定（小/中/大）
+   - 固定高度呈現（小圖會等比放大，避免過小），高度依後台「LOGO 顯示尺寸」設定（小/中/大/特大/超大）
    - 超寬橫式 LOGO：受最大寬度限制，由 object-fit: contain 在框內等比縮小，
      不變形、不裁切、不撐爆手機版面
    - 尺寸定義需與 BookingRuleManager.vue 的 .logo-preview-img--* 預覽一致 */
@@ -3911,6 +3911,16 @@ const goBackToStep0 = () => {
 .booking-page-logo--large {
   height: 80px;
   max-width: min(400px, 90vw);
+}
+
+.booking-page-logo--xlarge {
+  height: 110px;
+  max-width: min(520px, 92vw);
+}
+
+.booking-page-logo--xxlarge {
+  height: 140px;
+  max-width: min(640px, 94vw);
 }
 
 .prose {

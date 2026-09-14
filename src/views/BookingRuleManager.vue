@@ -728,10 +728,12 @@
                           <v-btn value="small">小</v-btn>
                           <v-btn value="medium">中</v-btn>
                           <v-btn value="large">大</v-btn>
+                          <v-btn value="xlarge">特大</v-btn>
+                          <v-btn value="xxlarge">超大</v-btn>
                         </v-btn-toggle>
                       </div>
                       <div class="text-caption text-grey mb-4">
-                        小：40px 高 / 中：56px 高 / 大：80px 高，依原圖等比縮放不變形；設定後請按「儲存設定」生效。
+                        小：40px / 中：56px / 大：80px / 特大：110px / 超大：140px（高度），依原圖等比縮放不變形，超寬橫式圖會依螢幕寬度自動縮小；設定後請按「儲存設定」生效。
                       </div>
 
                       <v-file-input label="選擇 Logo 圖片" accept="image/*" variant="outlined" density="compact"
@@ -774,7 +776,8 @@
                               <v-icon start size="small">mdi-lightbulb-outline</v-icon>
                               下方為「所見即所得」編輯區，排版即為最終預覽結果。
                               <strong class="auth-var-inline mx-1" style="background:#fef3c7;">黃底</strong>區塊為動態變數的範例值（不可編輯），
-                              其餘文字、區段標題、欄位標籤皆可直接點按修改。完成後請點「套用至範本」儲存。
+                              其餘文字、區段標題、欄位標籤皆可直接點按修改；委託人／受託人資料列可按右側 <v-icon size="x-small" color="error">mdi-minus-circle-outline</v-icon> 移除、於下方加回（簽名列為必要欄位）。
+                              所有修改會即時同步至範本，完成後請按頁面下方「儲存設定」。
                             </v-alert>
 
                             <!-- 可點按插入的變數工具列 -->
@@ -799,10 +802,14 @@
                             </v-sheet>
 
                             <!-- ========== WYSIWYG 文件樣式編輯器 ========== -->
+                            <!-- 以實際輸出寬度（794px）排版再等比縮放，讓編輯時的換行與最終輸出一致 -->
+                            <div class="auth-preview-stage">
+                            <FixedWidthScaler :width="AUTH_LETTER_OUTPUT_WIDTH" @scale="authEditorScale = $event">
                             <div class="auth-letter-doc-editor">
                               <!-- 頁首：Logo + 主標題 -->
                               <header class="auth-doc-header">
-                                <img v-if="projectSettings.logoUrl" :src="projectSettings.logoUrl" class="auth-doc-logo" alt="Logo">
+                                <img v-if="projectSettings.logoUrl" :src="projectSettings.logoUrl" class="auth-doc-logo" alt="Logo"
+                                  :style="{ height: getAuthLogoHeightPx(projectSettings.logoSize) + 'px' }">
                                 <div v-else class="auth-doc-logo-placeholder">[ 建案 Logo ]</div>
                                 <h1 class="auth-doc-h1">驗屋授權書</h1>
                               </header>
@@ -861,30 +868,18 @@
                                         placeholder="委託人 (立書人)"
                                         @focus="(e) => handleAuthFieldFocus('principalTitle', e)" />
                                     </div>
-                                    <p class="auth-doc-p">
-                                      <input v-model="authLetterFields.principalLabels.name"
-                                        class="auth-doc-input auth-doc-label-input"
-                                        placeholder="姓名"
-                                        @focus="(e) => handleAuthFieldFocus('principalLabels.name', e)" />：<span class="auth-var-inline">王大明</span>
-                                    </p>
-                                    <p class="auth-doc-p">
-                                      <input v-model="authLetterFields.principalLabels.phone"
-                                        class="auth-doc-input auth-doc-label-input"
-                                        placeholder="聯絡電話"
-                                        @focus="(e) => handleAuthFieldFocus('principalLabels.phone', e)" />：<span class="auth-var-inline">0912-345-678</span>
-                                    </p>
-                                    <p class="auth-doc-p">
-                                      <input v-model="authLetterFields.principalLabels.idNumber"
-                                        class="auth-doc-input auth-doc-label-input"
-                                        placeholder="身分證字號"
-                                        @focus="(e) => handleAuthFieldFocus('principalLabels.idNumber', e)" />：<span class="auth-var-inline">A123456789</span>
-                                    </p>
-                                    <p class="auth-doc-p">
-                                      <input v-model="authLetterFields.principalLabels.address"
-                                        class="auth-doc-input auth-doc-label-input"
-                                        placeholder="戶籍地址"
-                                        @focus="(e) => handleAuthFieldFocus('principalLabels.address', e)" />：<span class="auth-var-inline">台北市信義區市府路1號</span>
-                                    </p>
+                                    <!-- 可加入/移除的資料欄位：每列右側「移除」，移除後顯示於下方可加回 -->
+                                    <template v-for="def in PRINCIPAL_FIELD_DEFS" :key="'p-' + def.key">
+                                      <p v-if="authLetterFields.principalFields[def.key] !== false" class="auth-doc-p auth-doc-row">
+                                        <input v-model="authLetterFields.principalLabels[def.key]"
+                                          class="auth-doc-input auth-doc-label-input"
+                                          :placeholder="def.label"
+                                          @focus="(e) => handleAuthFieldFocus('principalLabels.' + def.key, e)" />：<span class="auth-var-inline">{{ def.sample }}</span>
+                                        <v-btn icon="mdi-minus-circle-outline" size="x-small" variant="text" color="error"
+                                          class="auth-doc-row-remove" title="移除此欄位"
+                                          @click="toggleAuthLetterField('principalFields', def.key, false)"></v-btn>
+                                      </p>
+                                    </template>
                                     <p class="auth-doc-p">
                                       <input v-model="authLetterFields.principalLabels.signature"
                                         class="auth-doc-input auth-doc-label-input"
@@ -892,6 +887,14 @@
                                         @focus="(e) => handleAuthFieldFocus('principalLabels.signature', e)" />：
                                     </p>
                                     <div class="auth-doc-signature-box">[ 委託人簽名圖檔 ]</div>
+                                    <div v-if="removedAuthFields('principalFields', PRINCIPAL_FIELD_DEFS).length" class="auth-doc-removed">
+                                      <span class="text-caption text-grey">已移除欄位（點選加回）：</span>
+                                      <v-chip v-for="def in removedAuthFields('principalFields', PRINCIPAL_FIELD_DEFS)" :key="'pr-' + def.key"
+                                        size="x-small" variant="tonal" color="primary" class="ma-1 cursor-pointer"
+                                        prepend-icon="mdi-plus" @click="toggleAuthLetterField('principalFields', def.key, true)">
+                                        {{ authLetterFields.principalLabels[def.key] || def.label }}
+                                      </v-chip>
+                                    </div>
                                   </td>
                                   <!-- 受託人 -->
                                   <td>
@@ -902,36 +905,17 @@
                                         placeholder="受託人"
                                         @focus="(e) => handleAuthFieldFocus('trusteeTitle', e)" />
                                     </div>
-                                    <p class="auth-doc-p">
-                                      <input v-model="authLetterFields.trusteeLabels.name"
-                                        class="auth-doc-input auth-doc-label-input"
-                                        placeholder="姓名"
-                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.name', e)" />：<span class="auth-var-inline">林小華</span>
-                                    </p>
-                                    <p class="auth-doc-p">
-                                      <input v-model="authLetterFields.trusteeLabels.phone"
-                                        class="auth-doc-input auth-doc-label-input"
-                                        placeholder="聯絡電話"
-                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.phone', e)" />：<span class="auth-var-inline">0987-654-321</span>
-                                    </p>
-                                    <p class="auth-doc-p">
-                                      <input v-model="authLetterFields.trusteeLabels.idNumber"
-                                        class="auth-doc-input auth-doc-label-input"
-                                        placeholder="身分證字號"
-                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.idNumber', e)" />：<span class="auth-var-inline">F223456789</span>
-                                    </p>
-                                    <p class="auth-doc-p">
-                                      <input v-model="authLetterFields.trusteeLabels.relationship"
-                                        class="auth-doc-input auth-doc-label-input"
-                                        placeholder="與委託人關係"
-                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.relationship', e)" />：<span class="auth-var-inline">配偶</span>
-                                    </p>
-                                    <p class="auth-doc-p">
-                                      <input v-model="authLetterFields.trusteeLabels.address"
-                                        class="auth-doc-input auth-doc-label-input"
-                                        placeholder="戶籍地址"
-                                        @focus="(e) => handleAuthFieldFocus('trusteeLabels.address', e)" />：<span class="auth-var-inline">台北市中正區重慶南路一段122號</span>
-                                    </p>
+                                    <template v-for="def in TRUSTEE_FIELD_DEFS" :key="'t-' + def.key">
+                                      <p v-if="authLetterFields.trusteeFields[def.key] !== false" class="auth-doc-p auth-doc-row">
+                                        <input v-model="authLetterFields.trusteeLabels[def.key]"
+                                          class="auth-doc-input auth-doc-label-input"
+                                          :placeholder="def.label"
+                                          @focus="(e) => handleAuthFieldFocus('trusteeLabels.' + def.key, e)" />：<span class="auth-var-inline">{{ def.sample }}</span>
+                                        <v-btn icon="mdi-minus-circle-outline" size="x-small" variant="text" color="error"
+                                          class="auth-doc-row-remove" title="移除此欄位"
+                                          @click="toggleAuthLetterField('trusteeFields', def.key, false)"></v-btn>
+                                      </p>
+                                    </template>
                                     <p class="auth-doc-p">
                                       <input v-model="authLetterFields.trusteeLabels.signature"
                                         class="auth-doc-input auth-doc-label-input"
@@ -939,6 +923,14 @@
                                         @focus="(e) => handleAuthFieldFocus('trusteeLabels.signature', e)" />：
                                     </p>
                                     <div class="auth-doc-signature-box">[ 受託人簽名圖檔 ]</div>
+                                    <div v-if="removedAuthFields('trusteeFields', TRUSTEE_FIELD_DEFS).length" class="auth-doc-removed">
+                                      <span class="text-caption text-grey">已移除欄位（點選加回）：</span>
+                                      <v-chip v-for="def in removedAuthFields('trusteeFields', TRUSTEE_FIELD_DEFS)" :key="'tr-' + def.key"
+                                        size="x-small" variant="tonal" color="primary" class="ma-1 cursor-pointer"
+                                        prepend-icon="mdi-plus" @click="toggleAuthLetterField('trusteeFields', def.key, true)">
+                                        {{ authLetterFields.trusteeLabels[def.key] || def.label }}
+                                      </v-chip>
+                                    </div>
                                   </td>
                                 </tr>
                               </table>
@@ -969,19 +961,20 @@
                                 </p>
                               </footer>
                             </div>
+                            </FixedWidthScaler>
+                            </div>
+                            <div v-if="authEditorScale < 1" class="text-caption text-grey mt-1">
+                              編輯區依實際輸出寬度 {{ AUTH_LETTER_OUTPUT_WIDTH }}px 排版，目前縮放 {{ Math.round(authEditorScale * 100) }}%。
+                            </div>
 
                             <v-divider class="my-4"></v-divider>
                             <div class="d-flex align-center gap-2">
-                              <v-btn variant="tonal" color="primary" prepend-icon="mdi-content-save-outline"
-                                @click="applyAuthLetterFieldsToTemplate">
-                                套用至範本
-                              </v-btn>
                               <v-btn variant="tonal" color="warning" prepend-icon="mdi-restore"
                                 @click="loadDefaultAuthLetterTemplate">
                                 還原系統預設範本
                               </v-btn>
                               <v-spacer></v-spacer>
-                              <span class="text-caption text-grey">修改後請記得儲存設定</span>
+                              <span class="text-caption text-grey">修改已即時同步至範本，請記得按「儲存設定」</span>
                             </div>
                           </div>
                         </v-expand-transition>
@@ -1015,12 +1008,165 @@
                             <v-icon start>mdi-information-outline</v-icon>
                             此為唯讀預覽模式，您可以查看目前授權書的版面配置，但無法進行編輯。
                           </v-alert>
-                          <div class="border rounded pa-4 bg-white preview-container" v-html="authLetterPreviewHtml">
+                          <!-- 預覽以實際輸出寬度（794px）排版，再依可用寬度等比縮放，與 html2canvas 產出的 PNG 比例一致 -->
+                          <div class="auth-preview-stage">
+                            <FixedWidthScaler :width="AUTH_LETTER_OUTPUT_WIDTH" @scale="authPreviewScale = $event">
+                              <div class="auth-preview-paper" v-html="authLetterPreviewHtml"></div>
+                            </FixedWidthScaler>
                           </div>
                           <div class="text-caption text-center text-grey mt-2">
                             <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>此為系統帶入測試資料後的預覽結果。簽名圖片僅供示意。
                           </div>
+                          <div class="text-caption text-center text-grey">
+                            預覽依實際輸出寬度 {{ AUTH_LETTER_OUTPUT_WIDTH }}px（A4 寬）排版，目前縮放 {{ Math.round(authPreviewScale * 100) }}%；高度隨內容延伸，與受託人簽署後產出的圖檔比例一致。
+                          </div>
                         </div>
+
+                        <!-- ====== 授權流程測試：以目前範本實際產生並寄出測試授權書 ====== -->
+                        <template v-if="isAdmin">
+                          <v-divider class="my-6"></v-divider>
+                          <div class="auth-test-panel">
+                            <div class="d-flex align-center flex-wrap mb-1">
+                              <v-icon start color="deep-purple">mdi-test-tube</v-icon>
+                              <span class="text-subtitle-1 font-weight-bold">授權流程測試</span>
+                              <v-chip size="x-small" color="deep-purple" variant="tonal" class="ml-2">信件主旨加【系統測試】</v-chip>
+                            </div>
+                            <div class="text-caption text-grey-darken-1 mb-3">
+                              以「目前編輯中的範本」（含尚未儲存的修改）套入範例資料，實際產生授權書圖檔並寄給下方收件人。
+                              收件人可從此建案具「驗屋預約管理-修改」權限的人員名單中多選，所有測試信件只會寄給這些信箱，不會寄給客戶或副本收件人，也不會寫入戶別正式資料。
+                            </div>
+
+                            <v-row dense>
+                              <v-col cols="12" md="6">
+                                <v-combobox v-model="authTest.emails" :items="authTestRecipientItems"
+                                  item-title="title" item-value="value" :return-object="false"
+                                  label="測試收件人（可多選，僅寄給這些信箱）"
+                                  variant="outlined" density="compact" prepend-inner-icon="mdi-email-lock"
+                                  multiple chips closable-chips clearable
+                                  :loading="authTest.loadingCandidates" :disabled="isAuthTestBusy" hide-details="auto"
+                                  :error-messages="authTestInvalidEmails.length ? [`Email 格式不正確：${authTestInvalidEmails.join('、')}`] : []"
+                                  hint="名單為此建案具「驗屋預約管理-修改」權限且已設定 Email 的人員；也可直接輸入其他 Email 後按 Enter 加入"
+                                  persistent-hint>
+                                  <template v-slot:item="{ props: itemProps, item }">
+                                    <v-list-item v-bind="itemProps" :title="item.raw.name" :subtitle="item.raw.email || '（未設定 Email，無法寄送）'"
+                                      :disabled="!item.raw.hasEmail">
+                                      <template v-slot:prepend>
+                                        <v-icon size="small" :color="item.raw.hasEmail ? 'primary' : 'grey'">
+                                          {{ item.raw.hasEmail ? 'mdi-account-check-outline' : 'mdi-account-off-outline' }}
+                                        </v-icon>
+                                      </template>
+                                    </v-list-item>
+                                  </template>
+                                  <template v-slot:append-inner>
+                                    <v-btn size="x-small" variant="text" color="primary" class="mr-1"
+                                      :disabled="isAuthTestBusy || !authTestRecipientItems.some(i => i.hasEmail)"
+                                      @mousedown.prevent @click.stop="selectAllAuthTestRecipients">全選名單</v-btn>
+                                  </template>
+                                </v-combobox>
+                              </v-col>
+                              <v-col cols="12" md="6">
+                                <v-autocomplete v-model="authTest.unitId" :items="authTest.units" label="測試戶別（完整流程上傳圖檔用，可不選）"
+                                  variant="outlined" density="compact" prepend-inner-icon="mdi-home-search-outline" clearable
+                                  :loading="authTest.loadingUnits" :disabled="isAuthTestBusy" hide-details="auto"
+                                  hint="未選擇時以 A1-1 作為範例戶別；完整流程需選擇已設定文件資料夾的戶別，測試圖檔才會上傳至 Drive"
+                                  persistent-hint></v-autocomplete>
+                              </v-col>
+                            </v-row>
+
+                            <!-- 範例資料（可自訂，預設與上方預覽相同） -->
+                            <v-expansion-panels variant="accordion" class="my-3 auth-test-sample-panels">
+                              <v-expansion-panel elevation="0">
+                                <v-expansion-panel-title class="text-caption">
+                                  <v-icon size="small" color="primary" class="mr-2">mdi-account-edit-outline</v-icon>
+                                  <span class="font-weight-medium">範例資料（委託人／受託人，可自訂）</span>
+                                  <span class="text-grey-darken-1 ml-2">
+                                    {{ authTest.sample.委託人姓名 || '（未填）' }} → {{ authTest.sample.受託人姓名 || '（未填）' }}（{{ authTest.sample.受託人關係 || '未填' }}）
+                                  </span>
+                                </v-expansion-panel-title>
+                                <v-expansion-panel-text>
+                                  <v-row dense>
+                                    <v-col cols="12" md="6">
+                                      <div class="text-caption font-weight-bold text-primary mb-1">委託人（屋主）</div>
+                                      <v-text-field v-model="authTest.sample.委託人姓名" label="姓名" variant="outlined" density="compact" hide-details class="mb-2" :disabled="isAuthTestBusy"></v-text-field>
+                                      <v-text-field v-model="authTest.sample.委託人電話" label="聯絡電話" variant="outlined" density="compact" hide-details class="mb-2" :disabled="isAuthTestBusy"></v-text-field>
+                                      <v-text-field v-model="authTest.sample.委託人身分證" label="身分證字號" variant="outlined" density="compact" hide-details class="mb-2" :disabled="isAuthTestBusy"></v-text-field>
+                                      <v-text-field v-model="authTest.sample.委託人戶籍地" label="戶籍地址" variant="outlined" density="compact" hide-details :disabled="isAuthTestBusy"></v-text-field>
+                                    </v-col>
+                                    <v-col cols="12" md="6">
+                                      <div class="text-caption font-weight-bold text-teal mb-1">受託人</div>
+                                      <v-text-field v-model="authTest.sample.受託人姓名" label="姓名" variant="outlined" density="compact" hide-details class="mb-2" :disabled="isAuthTestBusy"></v-text-field>
+                                      <v-text-field v-model="authTest.sample.受託人電話" label="聯絡電話" variant="outlined" density="compact" hide-details class="mb-2" :disabled="isAuthTestBusy"></v-text-field>
+                                      <v-text-field v-model="authTest.sample.受託人身分證" label="身分證字號" variant="outlined" density="compact" hide-details class="mb-2" :disabled="isAuthTestBusy"></v-text-field>
+                                      <v-text-field v-model="authTest.sample.受託人戶籍地" label="戶籍地址" variant="outlined" density="compact" hide-details class="mb-2" :disabled="isAuthTestBusy"></v-text-field>
+                                      <v-combobox v-model="authTest.sample.受託人關係" :items="AUTH_TEST_RELATION_OPTIONS" label="與委託人關係" variant="outlined" density="compact" hide-details :disabled="isAuthTestBusy"></v-combobox>
+                                    </v-col>
+                                  </v-row>
+                                  <div class="d-flex justify-end mt-2">
+                                    <v-btn size="x-small" variant="text" color="grey-darken-1" prepend-icon="mdi-restore" :disabled="isAuthTestBusy" @click="resetAuthTestSample">還原預設範例</v-btn>
+                                  </div>
+                                </v-expansion-panel-text>
+                              </v-expansion-panel>
+                            </v-expansion-panels>
+
+                            <v-checkbox v-model="authTest.autoComplete" density="compact" hide-details class="mb-2" :disabled="isAuthTestBusy">
+                              <template v-slot:label>
+                                <span class="text-body-2">完整流程由系統自動模擬受託人完成簽署並寄出完成信</span>
+                              </template>
+                            </v-checkbox>
+                            <div class="text-caption text-grey-darken-1 mb-3 ml-1">
+                              取消勾選則只寄出邀請信，您可親自從信中連結以受託人身分完成簽署（48 小時內有效）；此情況下簽署頁會使用「已儲存」的範本，請先按下方「儲存設定」。
+                            </div>
+
+                            <div class="d-flex flex-wrap align-center ga-2 mb-3">
+                              <v-btn color="deep-purple" prepend-icon="mdi-email-fast-outline"
+                                :loading="authTest.sending" :disabled="!canRunAuthTest || authTest.runningFlow || authTest.cleaning"
+                                @click="sendTestAuthLetterNow">
+                                寄出測試授權書
+                              </v-btn>
+                              <v-btn color="primary" variant="tonal" prepend-icon="mdi-play-circle-outline"
+                                :loading="authTest.runningFlow" :disabled="!canRunAuthTest || authTest.sending || authTest.cleaning"
+                                @click="runAuthFlowTest">
+                                執行完整授權流程測試
+                              </v-btn>
+                              <v-btn variant="text" color="grey-darken-1" prepend-icon="mdi-broom"
+                                :loading="authTest.cleaning" :disabled="isAuthTestBusy"
+                                @click="cleanupAuthTestData">
+                                清除測試資料
+                              </v-btn>
+                              <v-spacer></v-spacer>
+                              <v-btn v-if="authTest.lastImage" size="small" variant="text" color="primary" prepend-icon="mdi-download"
+                                @click="downloadAuthTestImage">下載最近產生的圖檔</v-btn>
+                            </div>
+                            <div class="text-caption text-grey-darken-1 mb-3">
+                              <strong>寄出測試授權書</strong>：立即以目前範本產生圖檔，直接以附件寄到測試信箱（最快確認版面）。
+                              <strong>完整授權流程測試</strong>：實際走一次「委託人發起 → 【系統測試】邀請信 → 受託人簽署頁讀取 → 產生圖檔並上傳戶別文件資料夾 → 【系統測試】完成信」，
+                              測試資料與圖檔會保留供您從信中查看，確認後請按「清除測試資料」。
+                            </div>
+
+                            <!-- 執行步驟結果 -->
+                            <v-sheet v-if="authTest.steps.length" border rounded class="pa-3 mb-3">
+                              <div v-for="(step, idx) in authTest.steps" :key="idx" class="d-flex align-start text-caption py-1">
+                                <v-progress-circular v-if="step.status === 'running'" indeterminate size="14" width="2" color="primary" class="mr-2 mt-1"></v-progress-circular>
+                                <v-icon v-else size="16" :color="authTestStatusColor(step.status)" class="mr-2 mt-1">{{ authTestStatusIcon(step.status) }}</v-icon>
+                                <div>
+                                  <span class="font-weight-medium mr-2">{{ step.label }}</span>
+                                  <span class="text-medium-emphasis">{{ step.message }}</span>
+                                </div>
+                              </div>
+                            </v-sheet>
+
+                            <!-- 最近一次產生的圖檔 -->
+                            <div v-if="authTest.lastImage">
+                              <div class="text-caption text-grey mb-1">
+                                <v-icon size="small" class="mr-1">mdi-image-check-outline</v-icon>
+                                最近一次產生的測試授權書圖檔（即實際寄出／上傳的內容，{{ authTest.lastFileName }}）：
+                              </div>
+                              <div class="auth-preview-stage">
+                                <img :src="authTest.lastImage" alt="測試授權書" class="auth-test-result-img">
+                              </div>
+                            </div>
+                          </div>
+                        </template>
                       </v-card-text>
                     </v-card>
                   </v-window-item>
@@ -3539,6 +3685,10 @@
 
 
 
+    <!-- 授權流程測試：html2canvas 渲染用隱藏容器（與 AuthSigningPage 相同的 794px A4 寬度） -->
+    <div ref="authTestRenderRef"
+      style="position: absolute; left: -9999px; top: -9999px; width: 794px; background-color: white;"></div>
+
     <!-- QR Code 產生器 Dialog -->
     <QrCodeGenerator v-model="showQrDialog" :target-url="bookingPageUrl" />
 
@@ -3560,6 +3710,9 @@ import QrCodeGenerator from '@/components/QrCodeGenerator.vue'; // QR Code 產�
 import InspProjectSettings from '@/views/admin/InspProjectSettings.vue';
 import inspCategoriesItems from '@/views/admin/inspCategoriesItems.vue';
 import PdfTemplateSettings from '@/components/PdfTemplateSettings.vue';
+import FixedWidthScaler from '@/components/FixedWidthScaler.vue'; // 授權書預覽：固定輸出寬度等比縮放
+import { applyAuthLogoSize, getAuthLogoHeightPx } from '@/utils/authLetterLogo'; // 授權書 LOGO 尺寸與首頁 LOGO 尺寸設定同步
+import html2canvas from 'html2canvas'; // 授權流程測試：以目前範本實際渲染授權書圖檔
 import draggable from 'vuedraggable'; // [New]
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
@@ -3592,7 +3745,16 @@ import {
   syncHouseholdsToSheet,      // 同步
   syncAppointmentsToSheet,    // 同步預約
   markNewBookingItemsUnopened,
-  fetchActiveAppointmentsForPreview // 批次預覽：讀取有效預約以計算已約/剩餘名額
+  fetchActiveAppointmentsForPreview, // 批次預覽：讀取有效預約以計算已約/剩餘名額
+  // 授權流程測試（驗屋授權書格式設定）
+  fetchAllUnitsForBooking,
+  initiateAuthSigningProcess,
+  getAuthSigningSession,
+  uploadAuthLetter,
+  markAuthSessionComplete,
+  cleanupTestAuthSessions,
+  sendTestAuthLetter,
+  getAuthTestRecipientCandidates
 } from '@/api';
 
 
@@ -4247,7 +4409,7 @@ const defaultSettings = computed(() => ({
   titleColor: '#FFFFFF',
   themeColor: '#0D47A1',
   logoUrl: '',
-  logoSize: 'medium', // 預約頁 LOGO 顯示尺寸: small(40px) / medium(56px) / large(80px)
+  logoSize: 'medium', // 預約頁 LOGO 顯示尺寸: small(40px) / medium(56px) / large(80px) / xlarge(110px) / xxlarge(140px)
   checkDuplicate: "OFF",
   validateId: "OFF",
   bookingTypes: [],
@@ -4394,6 +4556,11 @@ const editedMethodTitle = ref('');
 
 // --- Auth Letter Template State ---
 const authLetterEditMode = ref('form'); // 三模式切換：'form' | 'html' | 'preview'
+// 授權書實際輸出寬度：AuthSigningPage.vue 以 html2canvas 在 width: 794px（A4 @96dpi）的隱藏容器渲染成 PNG，
+// 後台表單編輯區與預覽區皆以此寬度排版再等比縮放，確保換行、比例與最終輸出完全一致
+const AUTH_LETTER_OUTPUT_WIDTH = 794;
+const authPreviewScale = ref(1);
+const authEditorScale = ref(1);
 
 // 表單編輯模式的欄位
 const DEFAULT_AUTH_LETTER_FIELDS = {
@@ -4414,6 +4581,8 @@ const DEFAULT_AUTH_LETTER_FIELDS = {
     address: '戶籍地址',
     signature: '簽名'
   },
+  // 委託人資料列是否加入授權書（簽名列固定加入）
+  principalFields: { name: true, phone: true, idNumber: true, address: true },
   // 受託人 區段
   trusteeTitle: '受託人',
   trusteeLabels: {
@@ -4423,10 +4592,32 @@ const DEFAULT_AUTH_LETTER_FIELDS = {
     relationship: '與委託人關係',
     address: '戶籍地址',
     signature: '簽名'
-  }
+  },
+  trusteeFields: { name: true, phone: true, idNumber: true, relationship: true, address: true }
 };
 
+// 委託人 / 受託人 可加入或移除的資料列定義（順序即輸出順序；簽名列另外固定輸出）
+const PRINCIPAL_FIELD_DEFS = [
+  { key: 'name', label: '姓名', variable: '{委託人姓名}', sample: '王大明' },
+  { key: 'phone', label: '聯絡電話', variable: '{委託人電話}', sample: '0912-345-678' },
+  { key: 'idNumber', label: '身分證字號', variable: '{委託人身分證字號}', sample: 'A123456789' },
+  { key: 'address', label: '戶籍地址', variable: '{委託人戶籍地址}', sample: '台北市信義區市府路1號' },
+];
+const TRUSTEE_FIELD_DEFS = [
+  { key: 'name', label: '姓名', variable: '{受託人姓名}', sample: '林小華' },
+  { key: 'phone', label: '聯絡電話', variable: '{受託人電話}', sample: '0987-654-321' },
+  { key: 'idNumber', label: '身分證字號', variable: '{受託人身分證字號}', sample: 'F223456789' },
+  { key: 'relationship', label: '與委託人關係', variable: '{與委託人關係}', sample: '配偶' },
+  { key: 'address', label: '戶籍地址', variable: '{受託人戶籍地址}', sample: '台北市中正區重慶南路一段122號' },
+];
+
 const authLetterFields = reactive(JSON.parse(JSON.stringify(DEFAULT_AUTH_LETTER_FIELDS)));
+
+const toggleAuthLetterField = (group, key, enabled) => {
+  if (!authLetterFields[group]) authLetterFields[group] = {};
+  authLetterFields[group][key] = enabled;
+};
+const removedAuthFields = (group, defs) => defs.filter(d => authLetterFields[group]?.[d.key] === false);
 
 // 可用變數清單（給點按插入使用）
 const AUTH_LETTER_VARIABLES = [
@@ -4534,18 +4725,31 @@ const loadDefaultAuthLetterTemplate = () => {
   Object.assign(authLetterFields, defaults);
   authLetterFields.principalLabels = defaults.principalLabels;
   authLetterFields.trusteeLabels = defaults.trusteeLabels;
+  authLetterFields.principalFields = defaults.principalFields;
+  authLetterFields.trusteeFields = defaults.trusteeFields;
   // 產生完整 HTML 範本
   projectSettings.value.authLetterTemplate = generateAuthLetterHtml(authLetterFields);
   showSnackbar('已載入系統預設授權書範本', 'info');
 };
 
 // 從表單欄位產生完整 HTML 範本
+// 開頭以 HTML 註解內嵌欄位 JSON（AUTH_FIELDS_MARK），重新載入時可精確還原所有欄位與加入/移除狀態；
+// 註解不會出現在 html2canvas 輸出畫面
+const AUTH_FIELDS_MARK = 'authLetterFields:';
 function generateAuthLetterHtml(fields) {
   const pl = fields.principalLabels || {};
   const tl = fields.trusteeLabels || {};
-  return `<div style="padding: 40px; font-family: 'Helvetica Neue', Arial, 'Heiti TC', 'Microsoft JhengHei', sans-serif; line-height: 1.8; color: #333; background-color: white;">
+  const pf = fields.principalFields || {};
+  const tf = fields.trusteeFields || {};
+  const rows = (defs, labels, enabled) => defs
+    .filter(d => enabled[d.key] !== false)
+    .map(d => `          <p style="margin: 5px 0;">${labels[d.key] || d.label}：${d.variable}</p>`)
+    .join('\n');
+  const meta = JSON.stringify(fields).replace(/>/g, '\\u003e'); // 避免內容含 "-->" 提前結束註解（JSON.parse 可正常還原）
+  return `<!--${AUTH_FIELDS_MARK}${meta}-->
+<div style="padding: 40px; font-family: 'Helvetica Neue', Arial, 'Heiti TC', 'Microsoft JhengHei', sans-serif; line-height: 1.8; color: #333; background-color: white;">
   <header style="text-align: center; margin-bottom: 40px;">
-    <img src="{logoUrl}" alt="Logo" style="max-height: 60px; margin-bottom: 20px;">
+    <img src="{logoUrl}" alt="Logo" style="height: {logoHeight}px; width: auto; margin-bottom: 20px;">
     <h1 style="font-size: 28px; margin: 0; font-weight: bold;">驗屋授權書</h1>
   </header>
   <section>
@@ -4559,20 +4763,13 @@ function generateAuthLetterHtml(fields) {
       <tr>
         <td style="width: 50%; padding: 15px; vertical-align: top; border: 1px solid #ddd;">
           <strong style="display: block; margin-bottom: 10px;">${fields.principalTitle || '委託人 (立書人)'}</strong>
-          <p style="margin: 5px 0;">${pl.name || '姓名'}：{委託人姓名}</p>
-          <p style="margin: 5px 0;">${pl.phone || '聯絡電話'}：{委託人電話}</p>
-          <p style="margin: 5px 0;">${pl.idNumber || '身分證字號'}：{委託人身分證字號}</p>
-          <p style="margin: 5px 0;">${pl.address || '戶籍地址'}：{委託人戶籍地址}</p>
+${rows(PRINCIPAL_FIELD_DEFS, pl, pf)}
           <p style="margin: 5px 0;">${pl.signature || '簽名'}：</p>
           <img src="{委託人簽名圖檔}" style="max-width: 200px; height: auto; border-bottom: 1px solid #ccc; padding-bottom: 5px;">
         </td>
         <td style="width: 50%; padding: 15px; vertical-align: top; border: 1px solid #ddd;">
           <strong style="display: block; margin-bottom: 10px;">${fields.trusteeTitle || '受託人'}</strong>
-          <p style="margin: 5px 0;">${tl.name || '姓名'}：{受託人姓名}</p>
-          <p style="margin: 5px 0;">${tl.phone || '聯絡電話'}：{受託人電話}</p>
-          <p style="margin: 5px 0;">${tl.idNumber || '身分證字號'}：{受託人身分證字號}</p>
-          <p style="margin: 5px 0;">${tl.relationship || '與委託人關係'}：{與委託人關係}</p>
-          <p style="margin: 5px 0;">${tl.address || '戶籍地址'}：{受託人戶籍地址}</p>
+${rows(TRUSTEE_FIELD_DEFS, tl, tf)}
           <p style="margin: 5px 0;">${tl.signature || '簽名'}：</p>
           <img src="{受託人簽名圖檔}" style="max-width: 200px; height: auto; border-bottom: 1px solid #ccc; padding-bottom: 5px;">
         </td>
@@ -4598,7 +4795,32 @@ const applyAuthLetterFieldsToTemplate = () => {
 const parseAuthLetterFieldsFromTemplate = () => {
   const html = projectSettings.value.authLetterTemplate || '';
   if (!html) return;
+  suppressAuthFieldSync = true;
+  parseAuthLetterFieldsFromTemplateInner(html);
+  // deep watch 於 pre-flush 執行；需在「欄位已變更」之後才呼叫 nextTick，才能確保回呼排在 flush 之後
+  nextTick(() => { suppressAuthFieldSync = false; });
+};
 
+const parseAuthLetterFieldsFromTemplateInner = (html) => {
+
+  // 新版範本：開頭註解內嵌完整欄位 JSON，直接還原（含標籤、標題、加入/移除狀態）
+  const metaMatch = html.match(new RegExp('^\\s*<!--' + AUTH_FIELDS_MARK + '([\\s\\S]*?)-->'));
+  if (metaMatch) {
+    try {
+      const parsed = JSON.parse(metaMatch[1]);
+      const defaults = JSON.parse(JSON.stringify(DEFAULT_AUTH_LETTER_FIELDS));
+      Object.assign(authLetterFields, defaults, parsed);
+      authLetterFields.principalLabels = { ...defaults.principalLabels, ...(parsed.principalLabels || {}) };
+      authLetterFields.trusteeLabels = { ...defaults.trusteeLabels, ...(parsed.trusteeLabels || {}) };
+      authLetterFields.principalFields = { ...defaults.principalFields, ...(parsed.principalFields || {}) };
+      authLetterFields.trusteeFields = { ...defaults.trusteeFields, ...(parsed.trusteeFields || {}) };
+      return;
+    } catch (e) {
+      console.warn('[授權書] 範本內嵌欄位 JSON 解析失敗，改用舊版規則解析', e);
+    }
+  }
+
+  // 舊版範本（無內嵌 JSON）：以正規表示式盡力提取主要欄位
   // 嘗試提取宣告文（第一個 <section> 中的 <p> 標籤內容）
   const declarationMatch = html.match(/<section>\s*<p[^>]*>([\s\S]*?)<\/p>/);
   if (declarationMatch) {
@@ -4617,6 +4839,15 @@ const parseAuthLetterFieldsFromTemplate = () => {
     authLetterFields.closing = closingMatch[1].replace(/<[^>]*>/g, '').trim();
   }
 };
+
+// 表單模式下任何欄位變更即時同步回 HTML 範本，避免「改了表單、按了儲存設定、卻沒生效」
+// （舊流程需另外按「套用至範本」，容易漏按）。載入/解析範本時以 suppress 旗標避免反向覆寫既有範本。
+let suppressAuthFieldSync = false;
+watch(authLetterFields, () => {
+  if (suppressAuthFieldSync) return;
+  if (authLetterEditMode.value !== 'form') return;
+  projectSettings.value.authLetterTemplate = generateAuthLetterHtml(authLetterFields);
+}, { deep: true });
 
 // 切換到表單模式時自動解析
 const autoResizeAllAuthTextareas = () => {
@@ -4646,7 +4877,8 @@ const authLetterPreviewHtml = computed(() => {
   const today = new Date();
   const yyyymmdd = `${today.getFullYear()}年${(today.getMonth() + 1).toString().padStart(2, '0')}月${today.getDate().toString().padStart(2, '0')}日`;
 
-  return projectSettings.value.authLetterTemplate
+  // LOGO 高度依「LOGO 顯示尺寸」設定套用（與簽署頁實際輸出共用同一份對照）
+  return applyAuthLogoSize(projectSettings.value.authLetterTemplate, projectSettings.value.logoSize)
     .replace(/{建案名稱}/g, projectName.value || '測試建案')
     .replace(/{戶別}/g, 'A1-1')
     .replace(/{委託人姓名}/g, '王大明')
@@ -4665,6 +4897,405 @@ const authLetterPreviewHtml = computed(() => {
     .replace(/{委託人簽名圖檔}/g, 'https://dummyimage.com/200x80/cccccc/000000.png&text=Signature+1')
     .replace(/{受託人簽名圖檔}/g, 'https://dummyimage.com/200x80/cccccc/000000.png&text=Signature+2');
 });
+
+// ====== 授權流程測試：以目前範本實際產生授權書圖檔並寄出【系統測試】信件 ======
+const AUTH_TEST_DEFAULT_SAMPLE = {
+  委託人姓名: '王大明',
+  委託人電話: '0912-345-678',
+  委託人身分證: 'A123456789',
+  委託人戶籍地: '台北市信義區市府路1號',
+  受託人姓名: '林小華',
+  受託人電話: '0987-654-321',
+  受託人身分證: 'F223456789',
+  受託人戶籍地: '台北市中正區重慶南路一段122號',
+  受託人關係: '配偶',
+};
+const AUTH_TEST_RELATION_OPTIONS = ['配偶', '父母', '子女', '兄弟姊妹', '親戚', '朋友', '驗屋公司', '其他'];
+const AUTH_TEST_FALLBACK_URL = 'https://anxismart.com/#/booking-test';
+
+const authTest = reactive({
+  emails: [],            // 測試收件人 Email 清單（可多位）
+  candidates: [],        // 此建案具「驗屋預約管理-修改」權限的人員（含 Email）
+  candidatesLoadedFor: null,
+  loadingCandidates: false,
+  unitId: null,
+  units: [],
+  unitsLoadedFor: null, // 已載入戶別清單的建案 ID（切換建案時重載）
+  loadingUnits: false,
+  sample: { ...AUTH_TEST_DEFAULT_SAMPLE },
+  autoComplete: true,   // 完整流程是否由系統自動模擬受託人完成簽署
+  sending: false,
+  runningFlow: false,
+  cleaning: false,
+  steps: [],
+  lastImage: '',
+  lastFileName: '',
+  driveFileIds: [],     // 完整流程上傳的測試圖檔 ID，供「清除測試資料」安全刪除（後端會再確認檔名含「系統測試」）
+});
+const authTestRenderRef = ref(null);
+
+const AUTH_TEST_EMAIL_RE = /.+@.+\..+/;
+// 已選收件人：去除空白與重複（不分大小寫）
+const authTestEmailList = computed(() => {
+  const seen = new Set();
+  const out = [];
+  for (const raw of authTest.emails || []) {
+    const e = String(raw || '').trim();
+    if (!e) continue;
+    const k = e.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(e);
+  }
+  return out;
+});
+const authTestInvalidEmails = computed(() => authTestEmailList.value.filter(e => !AUTH_TEST_EMAIL_RE.test(e)));
+const isAuthTestEmailValid = computed(() => authTestEmailList.value.length > 0 && authTestInvalidEmails.value.length === 0);
+// 寄信用：逗號分隔字串（nodemailer 支援多收件人）
+const authTestEmailTo = computed(() => authTestEmailList.value.join(', '));
+// 下拉選單項目：有 Email 的人員可選，沒有的顯示但停用
+const authTestRecipientItems = computed(() => (authTest.candidates || []).map(c => ({
+  title: c.hasEmail ? `${c.name}（${c.email}）` : `${c.name}（未設定 Email）`,
+  value: c.hasEmail ? c.email : `__no_email__${c.userKey}`,
+  name: c.name,
+  email: c.email,
+  hasEmail: c.hasEmail,
+})));
+const selectAllAuthTestRecipients = () => {
+  const all = authTestRecipientItems.value.filter(i => i.hasEmail).map(i => i.value);
+  const merged = [...(authTest.emails || []), ...all];
+  const seen = new Set();
+  authTest.emails = merged.filter(e => {
+    const k = String(e || '').trim().toLowerCase();
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+};
+// 防呆：若誤選到「未設定 Email」的停用項目，自動移除
+watch(() => authTest.emails, (list) => {
+  if (Array.isArray(list) && list.some(e => String(e).startsWith('__no_email__'))) {
+    authTest.emails = list.filter(e => !String(e).startsWith('__no_email__'));
+  }
+});
+const isAuthTestBusy = computed(() => authTest.sending || authTest.runningFlow || authTest.cleaning);
+const canRunAuthTest = computed(() =>
+  !!projectId.value && isAuthTestEmailValid.value && !!projectSettings.value.authLetterTemplate && !isSavingSettings.value
+);
+
+const authTestStatusColor = (st) => ({ pass: 'success', fail: 'error', skip: 'warning', running: 'primary', info: 'info' }[st] || 'grey');
+const authTestStatusIcon = (st) => ({
+  pass: 'mdi-check-circle',
+  fail: 'mdi-close-circle',
+  skip: 'mdi-minus-circle',
+  info: 'mdi-information',
+}[st] || 'mdi-circle-outline');
+
+const resetAuthTestSample = () => {
+  Object.assign(authTest.sample, AUTH_TEST_DEFAULT_SAMPLE);
+};
+
+// 進入「頁面LOGO及授權書設定」分頁時才載入戶別清單與預設收件信箱（避免每次進頁面都多打一次 API）
+const loadAuthTestCandidates = async () => {
+  if (!projectId.value || authTest.candidatesLoadedFor === projectId.value || authTest.loadingCandidates) return;
+  authTest.loadingCandidates = true;
+  try {
+    const res = await getAuthTestRecipientCandidates({ projectId: projectId.value });
+    authTest.candidates = Array.isArray(res?.candidates) ? res.candidates : [];
+    authTest.candidatesLoadedFor = projectId.value;
+  } catch (e) {
+    console.warn('[授權流程測試] 載入收件人名單失敗:', e);
+  } finally {
+    authTest.loadingCandidates = false;
+  }
+};
+const ensureAuthTestReady = async () => {
+  // 預設收件人：登入者本人
+  const myEmail = userStore.user?.email || '';
+  if (!authTest.emails.length && AUTH_TEST_EMAIL_RE.test(myEmail)) authTest.emails = [myEmail];
+  loadAuthTestCandidates();
+  if (!projectId.value || authTest.unitsLoadedFor === projectId.value || authTest.loadingUnits) return;
+  authTest.loadingUnits = true;
+  try {
+    const res = await fetchAllUnitsForBooking(projectName.value, projectId.value);
+    const list = [];
+    for (const units of Object.values(res?.data || {})) {
+      if (!Array.isArray(units)) continue;
+      for (const u of units) {
+        const id = typeof u === 'string' ? u : u?.unit;
+        if (id) list.push(id);
+      }
+    }
+    authTest.units = list;
+    authTest.unitsLoadedFor = projectId.value;
+  } catch (e) {
+    console.warn('[授權流程測試] 載入戶別清單失敗:', e);
+  } finally {
+    authTest.loadingUnits = false;
+  }
+};
+watch([() => activeTab.value, () => settingsSubTab.value], ([tab, sub]) => {
+  if (tab === 'settings' && sub === 'shared-page-settings' && isAdmin.value) ensureAuthTestReady();
+}, { immediate: true });
+
+// 產生範例簽名圖（透明底 PNG dataURL），供渲染授權書與發起簽署流程使用
+function makeAuthTestSignature(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 400;
+  canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = 'italic 64px "Kaiti TC", "BiauKai", "DFKai-SB", "Noto Serif TC", "PMingLiU", cursive, serif';
+  ctx.fillStyle = '#1a237e';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(-0.06);
+  ctx.fillText(text || '簽名', 0, 0);
+  ctx.restore();
+  return canvas.toDataURL('image/png');
+}
+
+const authTestMinguoToday = () => {
+  const d = new Date();
+  return `中華民國 ${d.getFullYear() - 1911} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日`;
+};
+const authTestYmd = () => {
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// 以目前編輯中的範本 + 範例資料，用 html2canvas 渲染出與受託人簽署後相同格式的 PNG
+// 變數替換順序與 AuthSigningPage.vue 一致，確保測試結果即為正式輸出
+async function renderAuthTestLetter({ delegatorSignature, trusteeSignature } = {}) {
+  const el = authTestRenderRef.value;
+  if (!el) throw new Error('找不到渲染容器，請重新整理頁面後再試。');
+  const template = projectSettings.value.authLetterTemplate;
+  if (!template) throw new Error('尚未設定授權書範本。');
+
+  const s = authTest.sample;
+  const unitId = authTest.unitId || 'A1-1';
+  const relation = s.受託人關係 || '';
+  const delegatorSig = delegatorSignature || makeAuthTestSignature(s.委託人姓名);
+  const trusteeSig = trusteeSignature || makeAuthTestSignature(s.受託人姓名);
+
+  const populatedHtml = applyAuthLogoSize(template, projectSettings.value.logoSize)
+    .replace(/{logoUrl}/g, projectSettings.value.logoUrl || '')
+    .replace(/{委託人姓名}/g, s.委託人姓名 || '')
+    .replace(/{建案名稱}/g, projectName.value || projectId.value)
+    .replace(/{戶別}/g, unitId)
+    .replace(/{受託人姓名}/g, s.受託人姓名 || '')
+    .replace(/{委託人簽名圖檔}/g, delegatorSig)
+    .replace(/{委託人身分證字號}/g, s.委託人身分證 || '')
+    .replace(/{委託人戶籍地址}/g, s.委託人戶籍地 || '')
+    .replace(/{委託人電話}/g, s.委託人電話 || '')
+    .replace(/{受託人簽名圖檔}/g, trusteeSig)
+    .replace(/{受託人身分證字號}/g, s.受託人身分證 || '')
+    .replace(/{受託人戶籍地址}/g, s.受託人戶籍地 || '')
+    .replace(/{受託人電話}/g, s.受託人電話 || '')
+    .replace(/{與委託人關係}/g, relation)
+    .replace(/{與受託人關係}/g, relation) // 向下相容更早期錯誤命名
+    .replace(/{受託人關係}/g, relation)   // 向下相容舊版變數名
+    .replace(/{TODAY}/g, authTestMinguoToday());
+
+  el.innerHTML = populatedHtml;
+  // 等待圖片（LOGO／簽名）載入完成再截圖，避免 LOGO 缺漏
+  await Promise.all(Array.from(el.querySelectorAll('img')).map(img => (
+    img.complete ? Promise.resolve() : new Promise(resolve => { img.onload = resolve; img.onerror = resolve; })
+  )));
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  try {
+    const canvas = await html2canvas(el, { scale: 2, useCORS: true });
+    const dataUrl = canvas.toDataURL('image/png');
+    const fileName = `【系統測試】${unitId}驗屋授權書${authTestYmd()}.png`;
+    authTest.lastImage = dataUrl;
+    authTest.lastFileName = fileName;
+    return { dataUrl, fileName, unitId, delegatorSig, trusteeSig, sizeKb: Math.round(dataUrl.length * 0.75 / 1024) };
+  } finally {
+    el.innerHTML = '';
+  }
+}
+
+const pushAuthTestStep = (label) => {
+  const st = reactive({ label, status: 'running', message: '' });
+  authTest.steps.push(st);
+  return st;
+};
+
+// 模式 A：立即產生圖檔並以附件寄到測試信箱（不建立簽署紀錄）
+const sendTestAuthLetterNow = async () => {
+  if (!canRunAuthTest.value || isAuthTestBusy.value) return;
+  authTest.sending = true;
+  authTest.steps = [];
+  let st = pushAuthTestStep('以目前範本產生授權書圖檔');
+  try {
+    const r = await renderAuthTestLetter();
+    st.status = 'pass';
+    st.message = `${r.fileName}（約 ${r.sizeKb} KB）`;
+
+    st = pushAuthTestStep(`寄出測試授權書至 ${authTestEmailTo.value}`);
+    const res = await sendTestAuthLetter({
+      projectId: projectId.value,
+      toEmail: authTestEmailList.value,
+      base64Data: r.dataUrl,
+      fileName: r.fileName,
+      unitId: r.unitId,
+      sample: { ...authTest.sample },
+    });
+    if (res?.status !== 'success') throw new Error(res?.message || '寄送失敗。');
+    st.status = 'pass';
+    st.message = '已寄出，請至信箱查收（主旨含【系統測試】，圖檔同時內嵌於信件並附加為附件）。';
+    showSnackbar(`測試授權書已寄至 ${authTestEmailTo.value}`, 'success');
+  } catch (e) {
+    st.status = 'fail';
+    st.message = e.message || String(e);
+    showSnackbar(`寄出測試授權書失敗：${e.message}`, 'error');
+  } finally {
+    authTest.sending = false;
+  }
+};
+
+// 模式 B：實際走一次授權簽署流程（isTest：信件僅寄測試信箱、不 CC、不寫入戶別正式資料）
+const runAuthFlowTest = async () => {
+  if (!canRunAuthTest.value || isAuthTestBusy.value) return;
+  authTest.runningFlow = true;
+  authTest.steps = [];
+  const pid = projectId.value;
+  const unitId = authTest.unitId || 'A1-1';
+  const s = authTest.sample;
+  let st = null;
+  try {
+    // 1. 委託人發起簽署邀請
+    st = pushAuthTestStep('委託人發起簽署邀請並寄出【系統測試】邀請信');
+    const delegatorSig = makeAuthTestSignature(s.委託人姓名);
+    const initRes = await initiateAuthSigningProcess({
+      projectId: pid,
+      unitId,
+      formData: {
+        委託人姓名: s.委託人姓名 || '系統測試-委託人',
+        委託人電話: s.委託人電話 || '',
+        委託人身分證: s.委託人身分證 || '',
+        委託人戶籍地: s.委託人戶籍地 || '',
+        委託人Email: authTestEmailTo.value,
+        受託人姓名: s.受託人姓名 || '系統測試-受託人',
+        受託人Email: authTestEmailTo.value,
+        受託人身分證: s.受託人身分證 || '',
+        受託人戶籍地: s.受託人戶籍地 || '',
+        受託人電話: s.受託人電話 || '',
+        受託人關係: AUTH_TEST_RELATION_OPTIONS.includes(s.受託人關係) && s.受託人關係 !== '其他' ? s.受託人關係 : '其他',
+        受託人關係其他: AUTH_TEST_RELATION_OPTIONS.includes(s.受託人關係) && s.受託人關係 !== '其他' ? '' : (s.受託人關係 || '系統測試'),
+      },
+      delegatorSignature: delegatorSig,
+      isTest: true,
+    });
+    if (initRes?.status !== 'success' || !initRes.token) throw new Error(initRes?.message || '未取得測試簽署 Token。');
+    const token = initRes.token;
+    st.status = 'pass';
+    st.message = `邀請信已寄至 ${authTestEmailTo.value}（簽署連結 48 小時內有效）`;
+
+    // 未勾選自動完成：保留 pending 狀態，讓使用者親自從信中連結完成受託人簽署
+    if (!authTest.autoComplete) {
+      st = pushAuthTestStep('等待受託人簽署');
+      st.status = 'info';
+      st.message = '未自動完成。請至信箱點擊邀請信中的「前往簽署授權書」，以受託人身分完成簽署後，完成信會寄給同一批收件人；簽署頁使用「已儲存」的範本。全部確認後請按「清除測試資料」。';
+      showSnackbar('測試邀請信已寄出，請至信箱完成受託人簽署。', 'info');
+      return;
+    }
+
+    // 2. 模擬受託人開啟簽署頁
+    st = pushAuthTestStep('模擬受託人開啟簽署頁（讀取簽署資料）');
+    const sessionRes = await getAuthSigningSession({ token });
+    if (sessionRes?.status !== 'success') throw new Error(sessionRes?.message || '讀取簽署資料失敗。');
+    st.status = 'pass';
+    st.message = `受託人可正常開啟簽署頁（建案：${sessionRes.data?.projectName || projectName.value}）`;
+
+    // 3. 以目前範本渲染最終授權書（沿用發起時的委託人簽名，受託人以範例簽名模擬）
+    st = pushAuthTestStep('模擬受託人簽署並以目前範本產生授權書圖檔');
+    const r = await renderAuthTestLetter({ delegatorSignature: delegatorSig });
+    st.status = 'pass';
+    st.message = `${r.fileName}（約 ${r.sizeKb} KB）`;
+
+    // 4. 上傳至戶別文件資料夾（需已設定 inspectionDocsUrl）；不可用時改以附件寄出，確保仍收得到實際圖檔
+    let finalUrl = AUTH_TEST_FALLBACK_URL;
+    st = pushAuthTestStep('上傳測試授權書圖檔至戶別文件資料夾');
+    if (!authTest.unitId) {
+      st.status = 'skip';
+      st.message = '未選擇測試戶別，略過上傳；改以附件方式另寄一封測試授權書。';
+    } else {
+      const uploadRes = await uploadAuthLetter(r.dataUrl, r.fileName, pid, unitId);
+      if (uploadRes?.status === 'success' && uploadRes.url) {
+        finalUrl = uploadRes.url;
+        if (uploadRes.id) authTest.driveFileIds.push(uploadRes.id);
+        st.status = 'pass';
+        st.message = `已上傳至 ${unitId} 的文件資料夾（檔名含「系統測試」，可由「清除測試資料」刪除）`;
+      } else {
+        st.status = 'skip';
+        st.message = `上傳未執行（${uploadRes?.message || '戶別未設定文件資料夾'}），改以附件方式另寄一封測試授權書。`;
+      }
+    }
+    if (finalUrl === AUTH_TEST_FALLBACK_URL) {
+      const st2 = pushAuthTestStep(`以附件寄出測試授權書至 ${authTestEmailTo.value}`);
+      const sendRes = await sendTestAuthLetter({
+        projectId: pid, toEmail: authTestEmailList.value, base64Data: r.dataUrl, fileName: r.fileName, unitId, sample: { ...s },
+      });
+      if (sendRes?.status !== 'success') throw new Error(sendRes?.message || '附件寄送失敗。');
+      st2.status = 'pass';
+      st2.message = '已寄出（完成信中的「查看已簽署的授權書」將指向替代連結）。';
+    }
+
+    // 5. 完成簽署（isTest：不寫入 households、完成信僅寄測試信箱、不 CC）
+    st = pushAuthTestStep('完成簽署並寄出【系統測試】完成信');
+    const completeRes = await markAuthSessionComplete({ token, finalUrl });
+    if (completeRes?.status !== 'success') throw new Error(completeRes?.message || '完成簽署失敗。');
+    st.status = 'pass';
+    st.message = `完成信已寄至 ${authTestEmailTo.value}；測試模式未寫入戶別正式資料。`;
+
+    st = pushAuthTestStep('完成');
+    st.status = 'info';
+    st.message = '測試簽署紀錄與上傳的測試圖檔已保留，方便您從信中連結查看；確認無誤後請按「清除測試資料」。';
+    showSnackbar(`完整授權流程測試通過，信件已寄至 ${authTestEmailTo.value}`, 'success');
+  } catch (e) {
+    if (st && st.status === 'running') {
+      st.status = 'fail';
+      st.message = e.message || String(e);
+    }
+    showSnackbar(`授權流程測試失敗：${e.message}`, 'error');
+  } finally {
+    authTest.runningFlow = false;
+  }
+};
+
+// 清除本建案所有 isTest 標記的簽署紀錄與本次上傳的測試圖檔
+const cleanupAuthTestData = async () => {
+  if (!projectId.value || isAuthTestBusy.value) return;
+  authTest.cleaning = true;
+  try {
+    const res = await cleanupTestAuthSessions(projectId.value, authTest.driveFileIds);
+    if (res?.status !== 'success') throw new Error(res?.message || '清除失敗。');
+    authTest.driveFileIds = [];
+    const msg = `已刪除 ${res.data?.deletedSessions ?? 0} 筆測試簽署紀錄、${res.data?.deletedDriveFiles ?? 0} 個測試圖檔。`;
+    const st = pushAuthTestStep('清除測試資料');
+    st.status = 'pass';
+    st.message = msg;
+    showSnackbar(msg, 'success');
+  } catch (e) {
+    showSnackbar(`清除測試資料失敗：${e.message}`, 'error');
+  } finally {
+    authTest.cleaning = false;
+  }
+};
+
+const downloadAuthTestImage = () => {
+  if (!authTest.lastImage) return;
+  const a = document.createElement('a');
+  a.href = authTest.lastImage;
+  a.download = authTest.lastFileName || '測試授權書.png';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+};
 
 const editedMethodParentTitle = ref('');
 const editedMethodIndex = ref(-1);
@@ -5593,7 +6224,7 @@ async function loadDataForProject() {
         projectSettings.value.publishStartTime = settings.publishStartTime ? new Date(settings.publishStartTime) : null;
         projectSettings.value.publishEndTime = settings.publishEndTime ? new Date(settings.publishEndTime) : null;
         projectSettings.value.logoUrl = settings.logoUrl || '';
-        projectSettings.value.logoSize = settings.logoSize || 'medium'; // LOGO 顯示尺寸 (小/中/大)
+        projectSettings.value.logoSize = settings.logoSize || 'medium'; // LOGO 顯示尺寸 (小/中/大/特大/超大)
         projectSettings.value.pageTitle = settings.pageTitle || defaultSettings.value.pageTitle;
         projectSettings.value.titleColor = settings.titleColor || defaultSettings.value.titleColor;
         projectSettings.value.themeColor = settings.themeColor || defaultSettings.value.themeColor;
@@ -7551,7 +8182,7 @@ watch(menuAppEnd, (isOpen) => {
   border: 1px dashed #ccc;
   border-radius: 8px;
   padding: 12px;
-  min-height: 104px;
+  min-height: 164px;
 }
 
 .logo-preview-img {
@@ -7573,6 +8204,16 @@ watch(menuAppEnd, (isOpen) => {
 .logo-preview-img--large {
   height: 80px;
   max-width: min(400px, 90vw);
+}
+
+.logo-preview-img--xlarge {
+  height: 110px;
+  max-width: min(520px, 92vw);
+}
+
+.logo-preview-img--xxlarge {
+  height: 140px;
+  max-width: min(640px, 94vw);
 }
 
 .primary-bg {
@@ -7649,6 +8290,38 @@ watch(menuAppEnd, (isOpen) => {
   cursor: pointer;
 }
 
+/* 授權流程測試：產生的圖檔預覽 */
+.auth-test-result-img {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: #fff;
+}
+.auth-test-sample-panels :deep(.v-expansion-panel) {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+}
+
+/* 授權書預覽/編輯舞台：灰底襯托「紙張」，內容由 FixedWidthScaler 固定 794px 排版後等比縮放 */
+.auth-preview-stage {
+  background: #eceff1;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 16px;
+}
+
+/* 預覽「紙張」：與 AuthSigningPage 的隱藏渲染容器相同 — 白底、無額外內距/邊框，
+   並還原 v-card-text 覆寫的字距/字級，讓字元寬度與實際輸出一致 */
+.auth-preview-paper {
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  font-size: 16px;
+  letter-spacing: normal;
+  line-height: 1.5; /* 同 .v-application 預設，與簽署頁隱藏容器的繼承值一致 */
+  overflow: hidden;
+}
+
 /* ============================================================
  * WYSIWYG 文件樣式編輯器（驗屋授權書表單編輯模式）
  * 視覺上模擬最終預覽結果，所有可編輯欄位以無邊框內嵌方式呈現
@@ -7658,6 +8331,7 @@ watch(menuAppEnd, (isOpen) => {
   border: 1px solid #e0e0e0;
   border-radius: 4px;
   padding: 40px;
+  letter-spacing: normal;
   font-family: 'Helvetica Neue', Arial, 'Heiti TC', 'Microsoft JhengHei', sans-serif;
   line-height: 1.8;
   color: #333;
@@ -7671,7 +8345,8 @@ watch(menuAppEnd, (isOpen) => {
 }
 
 .auth-doc-logo {
-  max-height: 60px;
+  /* 高度由 LOGO 顯示尺寸設定決定（inline style），與生成範本、實際輸出一致 */
+  width: auto;
   margin-bottom: 20px;
 }
 
@@ -7772,6 +8447,30 @@ watch(menuAppEnd, (isOpen) => {
   display: inline-block;
   width: auto;
   min-width: 100px;
+}
+
+/* 委託人/受託人資料列：右側移除鈕，僅滑入時明顯 */
+.auth-doc-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.auth-doc-row-remove {
+  margin-left: auto;
+  opacity: 0.35;
+}
+
+.auth-doc-row:hover .auth-doc-row-remove {
+  opacity: 1;
+}
+
+.auth-doc-removed {
+  margin-top: 10px;
+  padding: 6px 8px;
+  border: 1px dashed #cfd8dc;
+  border-radius: 4px;
+  background: #fafafa;
 }
 
 .auth-doc-signature-box {
