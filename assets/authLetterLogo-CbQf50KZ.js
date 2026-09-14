@@ -1,0 +1,1 @@
+const t={small:40,medium:56,large:80,xlarge:110,xxlarge:140};function o(e){return t[e]||t.medium}function i(e,r){if(!e)return e;const g=o(r);return e.replace(/{logoHeight}/g,String(g)).replace(/(<img\b[^>]*src="\{logoUrl\}"[^>]*style="[^"]*?)max-height:\s*\d+px;?/g,`$1height: ${g}px; width: auto;`)}export{i as a,o as g};
