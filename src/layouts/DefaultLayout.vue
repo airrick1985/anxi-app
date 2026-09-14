@@ -61,6 +61,11 @@
           <v-list-subheader>功能</v-list-subheader>
           <v-list-item prepend-icon="mdi-calculator-variant-outline" title="房貸試算" @click="onMenuClick(() => mortgageDialog = true)" />
           <v-list-item prepend-icon="mdi-message-question" title="聯絡客服" @click="onMenuClick(() => contactDialog = true)" />
+          <v-list-item title="問題回報" @click="onMenuClick(() => uiStore.openBugReport())">
+            <template #prepend>
+              <v-icon class="bug-report-beacon" color="error">mdi-alarm-light</v-icon>
+            </template>
+          </v-list-item>
           <v-list-item
             :prepend-icon="isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"
             :title="isFullscreen ? '離開全螢幕' : '全螢幕模式'"
@@ -389,6 +394,18 @@ watch(user, (newUser, oldUser) => {
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* 問題回報：警示燈閃爍 */
+.bug-report-beacon {
+  animation: bug-report-blink 1.2s ease-in-out infinite;
+}
+@keyframes bug-report-blink {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 0 4px rgba(229, 57, 53, 0.9)); }
+  50% { opacity: 0.35; filter: drop-shadow(0 0 0 rgba(229, 57, 53, 0)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bug-report-beacon { animation: none; }
 }
 
 /* 抽屜上緣留空，避免被浮動關閉鈕（fixed 於視窗左上）壓到第一個項目 */

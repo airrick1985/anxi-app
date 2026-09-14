@@ -193,6 +193,7 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
+import { useUiStore } from '@/store/uiStore';
 import { functions } from '@/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from 'vue-toastification';
@@ -200,6 +201,7 @@ import { useToast } from 'vue-toastification';
 const route = useRoute();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
+const uiStore = useUiStore();
 const toast = useToast();
 
 // --- 狀態 ---
@@ -227,9 +229,12 @@ const formData = ref({
 });
 
 // --- FAB 顯示條件 ---
-// 所有頁面都顯示（含公開頁面），讓未登入的使用者也能回報問題
-const showFab = computed(() => {
-  return true;
+// 僅未登入（公開頁面）顯示浮動按鈕；登入後改由全域漢堡選單的「問題回報」項目開啟
+const showFab = computed(() => !userStore.user);
+
+// 漢堡選單觸發開啟
+watch(() => uiStore.bugReportOpenRequest, (n) => {
+  if (n > 0) openDialog();
 });
 
 // --- 驗證規則 ---

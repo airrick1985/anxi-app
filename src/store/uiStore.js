@@ -9,6 +9,9 @@ export const useUiStore = defineStore('ui', {
     
     // ✅ 新增：全域 Loading 狀態
     loading: false,
+
+    // 系統問題回報：漢堡選單觸發開啟（遞增計數，SystemBugReport 監聽）
+    bugReportOpenRequest: 0,
     
     // ✅ 新增：全域 Snackbar (提示框) 狀態
     snackbar: {
@@ -36,6 +39,11 @@ export const useUiStore = defineStore('ui', {
     setParkingEditMode(isEditMode) {
       this.isParkingEditMode = isEditMode
       this.showAppToolbar = !isEditMode
+    },
+
+    // 開啟系統問題回報 Dialog（登入後由漢堡選單呼叫）
+    openBugReport() {
+      this.bugReportOpenRequest += 1
     },
 
     // ✅ 新增：設置 Loading 狀態的函式
