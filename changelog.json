@@ -2,6 +2,16 @@
   "generatedAt": "2026-09-14",
   "entries": [
     {
+      "version": "1.0.747",
+      "date": "2026-09-14",
+      "notes": [
+        {
+          "type": "improve",
+          "text": "銷控繳款紀錄刪除紀錄或移除憑證時，Drive 上的憑證檔案會一併移至垃圾桶（可於 Drive 復原），不再殘留"
+        }
+      ]
+    },
+    {
       "version": "1.0.745",
       "date": "2026-09-14",
       "notes": [
