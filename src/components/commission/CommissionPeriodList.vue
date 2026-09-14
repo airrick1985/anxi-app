@@ -22,7 +22,8 @@
             <div class="d-flex align-center flex-wrap ga-2 w-100">
               <span class="text-subtitle-1 font-weight-bold" :class="{ 'text-medium-emphasis': !pd.activeCount }">第 {{ pd.period }} 期</span>
               <v-chip size="x-small" variant="tonal">{{ pd.requestDate || '—' }}</v-chip>
-              <v-chip v-if="pd.activeCount" size="x-small" variant="tonal" color="primary">{{ pd.activeCount }} 戶</v-chip>
+              <v-chip v-if="pd.claimCount" size="x-small" variant="tonal" color="primary">{{ pd.claimCount }} 戶</v-chip>
+              <v-chip v-if="pd.refundCount" size="x-small" variant="tonal" color="error" prepend-icon="mdi-cash-refund">退佣 {{ pd.refundCount }} 戶</v-chip>
               <v-chip v-if="!pd.activeCount && pd.voidedCount" size="x-small" variant="flat" color="error">已全數作廢</v-chip>
               <v-chip v-else-if="pd.voidedCount" size="x-small" variant="tonal" color="error">作廢 {{ pd.voidedCount }} 戶</v-chip>
               <v-chip v-if="pd.hasImport" size="x-small" variant="tonal" color="grey">含歷史匯入</v-chip>
@@ -72,8 +73,11 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="r in visibleRecords(pd)" :key="r.id" :class="{ 'voided-row': r.status === 'voided' }">
-                    <td class="font-weight-medium">{{ r.unitId }}</td>
+                  <tr v-for="r in visibleRecords(pd)" :key="r.id" :class="{ 'voided-row': r.status === 'voided', 'refund-row': r.type === 'refund' && r.status !== 'voided' }">
+                    <td class="font-weight-medium">
+                      {{ r.unitId }}
+                      <v-icon v-if="r.type === 'refund'" size="x-small" color="error" :title="r.reason || '退佣'">mdi-cash-refund</v-icon>
+                    </td>
                     <td>{{ r.snapshot?.buyerName || '—' }}</td>
                     <td>{{ r.requestDate || '—' }}</td>
                     <td class="text-right">{{ r.ratioPct }}%</td>
@@ -86,11 +90,15 @@
                     <td class="text-center">{{ bonusCountOf(r.id) }}</td>
                     <td>
                       <v-chip v-if="r.status === 'voided'" size="x-small" color="error" variant="tonal" :title="r.voidReason">已作廢</v-chip>
+                      <v-chip v-else-if="r.type === 'refund'" size="x-small" color="error" variant="flat" :title="refundTitle(r)">退佣</v-chip>
+                      <v-chip v-else-if="r.refundedBy" size="x-small" color="orange-darken-3" variant="tonal" :title="`已於第 ${r.refundPeriod || '?'} 期退佣`">已退佣</v-chip>
                       <v-chip v-else-if="r.source === 'import'" size="x-small" color="grey" variant="tonal" :title="r.importFileName || r.importBatchId">匯入</v-chip>
                       <v-chip v-else size="x-small" color="success" variant="tonal">有效</v-chip>
                     </td>
                     <td>
-                      <v-btn v-if="r.status !== 'voided'" size="x-small" variant="text" color="error" @click="openVoid(r)">作廢</v-btn>
+                      <v-btn v-if="r.status !== 'voided' && r.type === 'refund'" size="x-small" variant="text" color="error" @click="openVoid(r)">作廢退佣</v-btn>
+                      <v-btn v-else-if="r.status !== 'voided'" size="x-small" variant="text" color="error" :disabled="!!r.refundedBy"
+                        :title="r.refundedBy ? '已退佣，請先作廢對應的退佣紀錄' : ''" @click="openVoid(r)">作廢</v-btn>
                       <span v-else class="text-caption text-medium-emphasis" :title="r.voidReason">{{ r.voidedBy }}</span>
                     </td>
                   </tr>
@@ -139,13 +147,19 @@
     <v-dialog v-model="voidOpen" max-width="460" persistent>
       <v-card>
         <v-card-title class="text-subtitle-1 text-error">
-          <v-icon start>mdi-alert-circle-outline</v-icon>作廢請佣紀錄
+          <v-icon start>mdi-alert-circle-outline</v-icon>{{ voidTarget?.type === 'refund' ? '作廢退佣紀錄' : '作廢請佣紀錄' }}
         </v-card-title>
         <v-card-text>
           <p class="mb-2">
-            確定作廢 <b>第 {{ voidTarget?.period }} 期／{{ voidTarget?.unitId }}</b> 的請佣紀錄？
+            確定作廢 <b>第 {{ voidTarget?.period }} 期／{{ voidTarget?.unitId }}</b> 的{{ voidTarget?.type === 'refund' ? '退佣' : '請佣' }}紀錄？
           </p>
-          <ul class="text-body-2 mb-3 pl-4">
+          <ul v-if="voidTarget?.type === 'refund'" class="text-body-2 mb-3 pl-4">
+            <li>原請佣紀錄（{{ (voidTarget?.sources || []).map(x => `第${x.period}期`).join('、') }}）恢復有效、移除「已退佣」標記</li>
+            <li>該戶「已請比例」加回 {{ voidTarget?.refundRatioPct }}%（若已重新請佣致超過 100% 將被擋下）</li>
+            <li>負向獎金明細一併作廢，人員保留款與交屋團獎累積同步還原</li>
+            <li>作廢紀錄保留完整資料痕跡，不可復原</li>
+          </ul>
+          <ul v-else class="text-body-2 mb-3 pl-4">
             <li>該戶「已請比例」將回溯 {{ voidTarget?.ratioPct }}%（可重新請佣）</li>
             <li>關聯的每人獎金明細將一併作廢，不再列入統計與匯出</li>
             <li>作廢紀錄保留完整資料痕跡，不可復原</li>
@@ -182,12 +196,13 @@
           </v-row>
           <div class="text-caption text-medium-emphasis mb-1">各戶「已請比例」回溯：</div>
           <div class="d-flex flex-wrap ga-1 mb-3">
-            <v-chip v-for="r in periodTarget.records.filter(x => x.status !== 'voided')" :key="r.id" size="small" variant="tonal" color="error">
-              {{ r.unitId }} −{{ r.ratioPct }}%
+            <v-chip v-for="r in periodTarget.records.filter(x => x.status !== 'voided')" :key="r.id" size="small" variant="tonal" :color="r.type === 'refund' ? 'orange-darken-3' : 'error'">
+              {{ r.unitId }} {{ r.type === 'refund' ? `+${r.refundRatioPct}%（退佣還原）` : `−${r.ratioPct}%` }}
             </v-chip>
           </div>
           <ul class="text-body-2 mb-3 pl-4">
             <li>此期全部有效請佣紀錄改為「作廢」，每戶已請比例回溯後可重新請佣或重新匯入</li>
+            <li v-if="periodTarget.refundCount">此期退佣紀錄一併作廢：原請佣紀錄恢復有效、已請比例加回</li>
             <li>關聯獎金明細一併作廢，不再列入統計與匯出</li>
             <li>作廢紀錄保留資料痕跡；若要完全移除，作廢後再使用「清除已作廢紀錄」</li>
           </ul>
@@ -408,6 +423,7 @@ const periods = computed(() => {
     .map(p => {
       const recs = byPeriod[p].slice().sort((a, b) => String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant'));
       const active = recs.filter(r => r.status !== 'voided');
+      const refundCount = active.filter(r => r.type === 'refund').length;
       const claimSum = active.reduce((s, r) => s + toNum(r.calc?.realClaim), 0);
       const thisClaimSum = active.reduce((s, r) => s + toNum(r.calc?.thisClaim), 0);
       const handoverSum = active.reduce((s, r) => s + toNum(r.handover?.total), 0);   // 交屋團獎暫留（本期不發放）
@@ -447,6 +463,8 @@ const periods = computed(() => {
         period: Number(p),
         records: recs,
         activeCount: active.length,
+        claimCount: active.length - refundCount,
+        refundCount,
         voidedCount: recs.length - active.length,
         hasImport: recs.some(r => r.source === 'import'),
         requestDate: (active[0] || recs[0])?.requestDate || '',
@@ -462,6 +480,11 @@ function visibleRecords(pd) {
 
 function periodBonusCount(pd) {
   return props.bonusRecords.filter(b => toNum(b.period) === pd.period && b.status !== 'voided').length;
+}
+
+function refundTitle(r) {
+  const src = (r.sources || []).map(x => `第${x.period}期`).join('、');
+  return [r.reason, src ? `來源：${src}` : '', r.includeKeep ? '含保留款' : '不含保留款', r.refundBonus === false ? '不追回獎金' : '追回獎金'].filter(Boolean).join('｜');
 }
 
 // ---------- 單筆作廢 ----------
@@ -482,7 +505,7 @@ async function doVoid() {
       voidedBy: operatorName.value,
     });
     if (res?.ok) {
-      toast.success(`已作廢 ${voidTarget.value.unitId} 的請佣紀錄（連同 ${res.bonusVoided} 筆獎金明細）`);
+      toast.success(`已作廢 ${voidTarget.value.unitId} 的${voidTarget.value.type === 'refund' ? '退佣' : '請佣'}紀錄（連同 ${res.bonusVoided} 筆獎金明細）`);
       voidOpen.value = false;
       emit('refresh');
     }
@@ -651,6 +674,7 @@ function auditColor(a) {
 <style scoped>
 .table-scroll { overflow-x: auto; }
 .voided-row td { color: #aaa; text-decoration: line-through; }
+.refund-row td { color: #c62828; background: #fff8f8; }
 .voided-row td:last-child, .voided-row td:nth-last-child(2) { text-decoration: none; }
 .impact-tile { background: #fdf3f3; border-radius: 8px; padding: 6px 10px; }
 .impact-tile label { display: block; font-size: 11px; color: #a55; }

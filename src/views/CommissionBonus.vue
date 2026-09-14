@@ -39,6 +39,8 @@
           :personnel="personnel"
           :ledgers="ledgerMap"
           :next-period="nextPeriod"
+          :records="records"
+          :bonus-records="bonusRecords"
           @submitted="handleSubmitted"
         />
       </v-window-item>

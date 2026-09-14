@@ -3,9 +3,9 @@
     <!-- 工具列 -->
     <div class="d-flex align-center flex-wrap ga-2 mb-3">
       <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="openPicker">新增戶別</v-btn>
-      <span class="text-body-2 text-medium-emphasis">下一期別 {{ nextPeriod }}｜已選 {{ entries.length }} 戶</span>
+      <span class="text-body-2 text-medium-emphasis">下一期別 {{ nextPeriod }}｜已選 {{ entries.length }} 戶<template v-if="refunds.length">｜退佣 {{ refunds.length }} 戶</template></span>
       <v-spacer></v-spacer>
-      <template v-if="entries.length">
+      <template v-if="entries.length || refunds.length">
         <v-btn size="small" variant="text" @click="setAllCollapsed(false)">全部展開</v-btn>
         <v-btn size="small" variant="text" @click="setAllCollapsed(true)">全部收合</v-btn>
       </template>
@@ -22,7 +22,7 @@
     </div>
 
     <!-- 快速定位列（置頂跟隨捲動；可跳至各戶別卡片或底部「本次合計」） -->
-    <div v-if="entries.length" class="quick-nav d-flex flex-wrap align-center ga-1 mb-3">
+    <div v-if="entries.length || refunds.length" class="quick-nav d-flex flex-wrap align-center ga-1 mb-3">
       <v-chip
         v-for="e in entries"
         :key="e.id"
@@ -35,6 +35,18 @@
         {{ e.unitId }}
         <span class="text-caption ml-1 text-medium-emphasis">{{ money(entryResult(e).claim.thisClaim) }}</span>
       </v-chip>
+      <v-chip
+        v-for="e in refunds"
+        :key="e.id"
+        size="small"
+        :variant="refundIssueCount(e) ? 'tonal' : 'outlined'"
+        :color="refundIssueCount(e) ? 'warning' : 'error'"
+        @click="gotoCard(e)"
+      >
+        <v-icon start size="x-small">{{ refundIssueCount(e) ? 'mdi-alert' : 'mdi-cash-refund' }}</v-icon>
+        {{ e.unitId }}
+        <span class="text-caption ml-1 text-medium-emphasis">{{ money(refundPlan(e).calc.thisClaim) }}</span>
+      </v-chip>
       <v-spacer></v-spacer>
       <v-chip v-if="totalIssues" size="small" variant="tonal" color="warning">{{ totalIssues }} 項待處理</v-chip>
       <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-arrow-down-bold" @click="gotoSummary">
@@ -42,8 +54,8 @@
       </v-chip>
     </div>
 
-    <v-alert v-if="!entries.length" type="info" variant="tonal" class="mb-4">
-      尚未選擇戶別，請點「新增戶別」（僅列出已成交且有簽約日期的戶別；已請畢 100% 者不可再選）。
+    <v-alert v-if="!entries.length && !refunds.length" type="info" variant="tonal" class="mb-4">
+      尚未選擇戶別，請點「新增戶別」（僅列出已成交且有簽約日期的戶別；已請畢 100% 者不可再選）。買方解約需退回佣金時，切到「退佣」頁籤。
     </v-alert>
 
     <!-- 上下配置：上＝戶別卡片編輯區（全寬）、下＝本次合計（全寬） -->
@@ -60,12 +72,21 @@
         :claimed-pct="claimedPctOf(e.unitId)"
         @remove="removeEntry(e)"
       />
+      <CommissionRefundCard
+        v-for="e in refunds"
+        :key="e.id"
+        :entry="e"
+        :settings="settings"
+        :project-id="projectId"
+        :bonus-records="bonusRecords"
+        @remove="removeRefund(e)"
+      />
     </div>
 
     <!-- 彙總 -->
-    <v-card v-if="entries.length" id="comm-summary" variant="outlined" class="mb-4 summary-card">
+    <v-card v-if="entries.length || refunds.length" id="comm-summary" variant="outlined" class="mb-4 summary-card">
       <v-card-title class="text-subtitle-1 bg-green-lighten-5">
-        本次合計（{{ entries.length }} 戶）
+        本次合計（{{ entries.length }} 戶<template v-if="refunds.length">、退佣 {{ refunds.length }} 戶</template>）
       </v-card-title>
       <v-card-text>
         <v-row dense class="mb-3">
@@ -73,6 +94,7 @@
           <v-col cols="6" md="3"><div class="sum-item"><label>實際請領金額合計</label><div>{{ money(summary.claimSum) }} 元</div></div></v-col>
           <v-col cols="6" md="3"><div class="sum-item"><label>請佣保留款合計</label><div>{{ money(summary.keepSum) }} 元</div></div></v-col>
           <v-col cols="6" md="3"><div class="sum-item highlight"><label>本次請佣合計</label><div>{{ money(summary.thisClaimSum) }} 元</div></div></v-col>
+          <v-col v-if="refunds.length" cols="6" md="3"><div class="sum-item refund"><label>退佣合計（已含於本次請佣合計）</label><div>{{ money(summary.refundSum) }} 元</div></div></v-col>
           <v-col v-if="hasHandover" cols="12" md="6">
             <div class="sum-item handover">
               <label>{{ handoverLabel }}暫留（自個獎提撥，本期不發放、不計入下表）</label>
@@ -119,18 +141,52 @@
       <v-card-actions>
         <v-spacer></v-spacer>
         <v-btn color="primary" size="large" variant="flat" prepend-icon="mdi-check-bold"
-          :loading="submitting" :disabled="!entries.length" @click="submitAll">確認送出</v-btn>
+          :loading="submitting" :disabled="!entries.length && !refunds.length" @click="submitAll">確認送出</v-btn>
       </v-card-actions>
     </v-card>
 
     <!-- 戶別選擇 dialog -->
     <v-dialog v-model="pickerOpen" max-width="520">
       <v-card>
-        <v-card-title class="text-subtitle-1">選擇戶別（僅列已成交且有簽約日期）</v-card-title>
+        <v-tabs v-model="pickerTab" color="primary" density="compact">
+          <v-tab value="claim">請佣</v-tab>
+          <v-tab value="refund">退佣</v-tab>
+        </v-tabs>
+        <v-divider></v-divider>
+        <v-card-title class="text-subtitle-1">
+          {{ pickerTab === 'refund' ? '選擇退佣戶別（列出有有效請佣紀錄者）' : '選擇戶別（僅列已成交且有簽約日期）' }}
+        </v-card-title>
         <v-card-text class="pt-0">
           <v-text-field v-model="pickerSearch" placeholder="搜尋戶別 / 買方…" density="compact" variant="outlined"
             prepend-inner-icon="mdi-magnify" hide-details clearable class="mb-2"></v-text-field>
-          <div class="picker-list">
+          <div v-if="pickerTab === 'refund'" class="picker-list">
+            <v-list density="compact">
+              <v-list-item
+                v-for="u in filteredRefundUnits"
+                :key="u.unitId"
+                :disabled="u.disabled"
+                @click="!u.disabled && togglePick(u.unitId)"
+              >
+                <template #prepend>
+                  <v-checkbox-btn :model-value="!!pickSel[u.unitId]" :disabled="u.disabled" density="compact" color="error"></v-checkbox-btn>
+                </template>
+                <v-list-item-title>
+                  {{ u.unitId }}
+                  <v-chip v-if="u.released" size="x-small" color="error" variant="tonal" class="ml-1">{{ u.statusText }}</v-chip>
+                  <span v-else class="text-caption ml-1 text-medium-emphasis">{{ u.statusText }}</span>
+                </v-list-item-title>
+                <v-list-item-subtitle class="text-caption">
+                  <span v-if="u.buyerName" class="mr-2">{{ u.buyerName }}</span>
+                  <span>已請 {{ u.claimedPct }}%・{{ u.count }} 筆紀錄・可退 {{ money(u.thisClaimSum) }} 元</span>
+                </v-list-item-subtitle>
+                <template #append>
+                  <span v-if="u.isAdded" class="text-caption text-medium-emphasis">已加入</span>
+                </template>
+              </v-list-item>
+            </v-list>
+            <div v-if="!filteredRefundUnits.length" class="text-center text-medium-emphasis py-6">沒有可退佣的戶別</div>
+          </div>
+          <div v-else class="picker-list">
             <v-list density="compact">
               <v-list-item
                 v-for="u in filteredPickerUnits"
@@ -164,8 +220,8 @@
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn variant="text" @click="pickerOpen = false">關閉</v-btn>
-          <v-btn color="primary" variant="flat" :disabled="!pickCount" @click="confirmPick">
-            加入{{ pickCount ? `（${pickCount}）` : '' }}
+          <v-btn :color="pickerTab === 'refund' ? 'error' : 'primary'" variant="flat" :disabled="!pickCount" @click="confirmPick">
+            {{ pickerTab === 'refund' ? '加入退佣' : '加入' }}{{ pickCount ? `（${pickCount}）` : '' }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -199,10 +255,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, watch } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import CommissionUnitCard from './CommissionUnitCard.vue';
+import CommissionRefundCard from './CommissionRefundCard.vue';
+import { refundableRecordsByUnit, buildRefundEntryPlan } from './refundEntry';
 import { submitCommissionEntriesAPI } from '@/api';
 import {
   calcUnitBonus, computeUnitFinance, resolveCommPct, formatDateTW,
@@ -219,6 +277,8 @@ const props = defineProps({
   personnel: { type: Array, default: () => [] },
   ledgers: { type: Object, default: () => ({}) },   // unitId -> claimedRatioPct
   nextPeriod: { type: Number, default: 1 },
+  records: { type: Array, default: () => [] },        // 全建案請佣紀錄（退佣來源）
+  bonusRecords: { type: Array, default: () => [] },   // 全建案獎金明細（退佣追回原數）
 });
 
 const emit = defineEmits(['submitted']);
@@ -226,10 +286,12 @@ const toast = useToast();
 const userStore = useUserStore();
 
 const entries = ref([]);
+const refunds = ref([]);
 const personProfiles = reactive({});
 let seq = 0;
 
 const pickerOpen = ref(false);
+const pickerTab = ref('claim');
 const pickerSearch = ref('');
 const pickSel = reactive({});
 const submitting = ref(false);
@@ -284,6 +346,40 @@ const filteredPickerUnits = computed(() => {
   );
 });
 
+// ---------- 退佣戶別（有有效請佣紀錄者；解約／退戶排前） ----------
+const refundableByUnit = computed(() => refundableRecordsByUnit(props.records));
+
+const refundUnits = computed(() => {
+  const added = new Set(refunds.value.map(e => e.unitId));
+  return Object.keys(refundableByUnit.value).map(unitId => {
+    const recs = refundableByUnit.value[unitId];
+    const unit = props.households.find(u => u.unitId === unitId) || null;
+    const statusText = unit?.salesStatus_backend || '';
+    const released = classifySalesStatus(statusText) === 'released';
+    const isAdded = added.has(unitId);
+    return {
+      unitId,
+      buyerName: unit?.buyerName || recs[recs.length - 1]?.snapshot?.buyerName || '',
+      statusText: statusText || '—',
+      released,
+      claimedPct: claimedPctOf(unitId),
+      count: recs.length,
+      thisClaimSum: recs.reduce((s, r) => s + toNum(r.calc?.thisClaim), 0),
+      isAdded,
+      disabled: isAdded,
+    };
+  }).sort((a, b) => (Number(b.released) - Number(a.released))
+    || String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true }));
+});
+
+const filteredRefundUnits = computed(() => {
+  const f = String(pickerSearch.value || '').trim().toLowerCase();
+  if (!f) return refundUnits.value;
+  return refundUnits.value.filter(u =>
+    String(u.unitId).toLowerCase().includes(f) || String(u.buyerName || '').toLowerCase().includes(f)
+  );
+});
+
 const pickCount = computed(() => Object.keys(pickSel).filter(k => pickSel[k]).length);
 
 function openPicker() {
@@ -291,6 +387,7 @@ function openPicker() {
   pickerSearch.value = '';
   pickerOpen.value = true;
 }
+watch(pickerTab, () => { Object.keys(pickSel).forEach(k => delete pickSel[k]); });
 
 function togglePick(unitId) {
   if (pickSel[unitId]) delete pickSel[unitId];
@@ -298,14 +395,55 @@ function togglePick(unitId) {
 }
 
 function confirmPick() {
-  const before = entries.value.length;
-  Object.keys(pickSel).forEach(unitId => {
-    if (pickSel[unitId] && !entries.value.some(e => e.unitId === unitId)) addUnit(unitId);
-  });
-  // 只加入一戶時直接展開
-  if (entries.value.length - before === 1) entries.value[entries.value.length - 1].collapsed = false;
+  if (pickerTab.value === 'refund') {
+    const before = refunds.value.length;
+    Object.keys(pickSel).forEach(unitId => {
+      if (pickSel[unitId] && !refunds.value.some(e => e.unitId === unitId)) addRefund(unitId);
+    });
+    if (refunds.value.length - before === 1) refunds.value[refunds.value.length - 1].collapsed = false;
+  } else {
+    const before = entries.value.length;
+    Object.keys(pickSel).forEach(unitId => {
+      if (pickSel[unitId] && !entries.value.some(e => e.unitId === unitId)) addUnit(unitId);
+    });
+    // 只加入一戶時直接展開
+    if (entries.value.length - before === 1) entries.value[entries.value.length - 1].collapsed = false;
+  }
   Object.keys(pickSel).forEach(k => delete pickSel[k]);
   pickerOpen.value = false;
+}
+
+// ---------- 建立退佣卡片 ----------
+function addRefund(unitId) {
+  const candidates = (refundableByUnit.value[unitId] || []).slice();
+  if (!candidates.length) return;
+  refunds.value.push({
+    id: `r${seq++}`,
+    kind: 'refund',
+    unitId,
+    unit: props.households.find(u => u.unitId === unitId) || null,
+    period: props.nextPeriod,
+    requestDate: formatDateTW(new Date()),
+    reason: '買方解約',
+    includeKeep: false,
+    refundBonus: true,
+    candidates,
+    selectedIds: candidates.map(r => r.id),
+    people: null,           // 逐人調整（null＝原數反向）
+    collapsed: true,
+  });
+}
+
+function removeRefund(e) {
+  refunds.value = refunds.value.filter(x => x !== e);
+}
+
+function refundPlan(e) {
+  return buildRefundEntryPlan(e, props.bonusRecords);
+}
+
+function refundIssueCount(e) {
+  return (e.selectedIds.length ? 0 : 1) + (toNum(e.period) > 0 ? 0 : 1);
 }
 
 // ---------- 建立戶別卡片 ----------
@@ -411,6 +549,7 @@ function removeEntry(e) {
 
 function setAllCollapsed(v) {
   entries.value.forEach(e => { e.collapsed = v; });
+  refunds.value.forEach(e => { e.collapsed = v; });
 }
 
 function gotoCard(e) {
@@ -454,12 +593,26 @@ function entryIssueCount(e) {
   const ratioBad = (claimed + toNum(e.ratioPct) > 100.0001) || !(toNum(e.ratioPct) > 0);
   return missing + r.errors.length + (ratioBad ? 1 : 0);
 }
-const totalIssues = computed(() => entries.value.reduce((s, e) => s + entryIssueCount(e), 0));
+const totalIssues = computed(() =>
+  entries.value.reduce((s, e) => s + entryIssueCount(e), 0) + refunds.value.reduce((s, e) => s + refundIssueCount(e), 0)
+);
 
 const summary = computed(() => {
-  let grandAfter = 0, claimSum = 0, keepSum = 0, thisClaimSum = 0, handoverSum = 0;
+  let grandAfter = 0, claimSum = 0, keepSum = 0, thisClaimSum = 0, handoverSum = 0, refundSum = 0;
   const byPerson = {};
   const order = [];
+  const addPerson = p => {
+    if (!byPerson[p.personKey]) {
+      byPerson[p.personKey] = {
+        personKey: p.personKey, name: p.name,
+        sourceProjectId: p.sourceProjectId, sourceProjectName: p.sourceProjectName,
+        subtotal: 0, keep: 0, tax: 0, nhi: 0, net: 0,
+      };
+      order.push(p.personKey);
+    }
+    const b = byPerson[p.personKey];
+    b.subtotal += p.subtotal; b.keep += p.keep; b.tax += p.tax; b.nhi += p.nhi; b.net += p.net;
+  };
   entries.value.forEach(e => {
     const r = entryResult(e);
     grandAfter += r.claim.dealAfter * 10000;
@@ -467,25 +620,25 @@ const summary = computed(() => {
     keepSum += r.claim.claimKeep;
     thisClaimSum += r.claim.thisClaim;
     handoverSum += toNum(r.handoverTotal);
-    r.people.forEach(p => {
-      if (!byPerson[p.personKey]) {
-        byPerson[p.personKey] = {
-          personKey: p.personKey, name: p.name,
-          sourceProjectId: p.sourceProjectId, sourceProjectName: p.sourceProjectName,
-          subtotal: 0, keep: 0, tax: 0, nhi: 0, net: 0,
-        };
-        order.push(p.personKey);
-      }
-      const b = byPerson[p.personKey];
-      b.subtotal += p.subtotal; b.keep += p.keep; b.tax += p.tax; b.nhi += p.nhi; b.net += p.net;
-    });
+    r.people.forEach(addPerson);
+  });
+  // 退佣：金額為負值，直接併入合計
+  refunds.value.forEach(e => {
+    const pl = refundPlan(e);
+    grandAfter += pl.calc.dealAfter * 10000;
+    claimSum += pl.calc.realClaim;
+    keepSum += pl.calc.claimKeep;
+    thisClaimSum += pl.calc.thisClaim;
+    refundSum += pl.calc.thisClaim;
+    handoverSum += toNum(pl.handover.total);
+    pl.people.forEach(addPerson);
   });
   const people = order.map(k => byPerson[k]);
   const totals = people.reduce((t, p) => ({
     subtotal: t.subtotal + p.subtotal, keep: t.keep + p.keep,
     tax: t.tax + p.tax, nhi: t.nhi + p.nhi, net: t.net + p.net,
   }), { subtotal: 0, keep: 0, tax: 0, nhi: 0, net: 0 });
-  return { grandAfter, claimSum, keepSum, thisClaimSum, handoverSum, people, totals };
+  return { grandAfter, claimSum, keepSum, thisClaimSum, handoverSum, refundSum, people, totals };
 });
 
 // ---------- 送出 ----------
@@ -527,11 +680,22 @@ function collectIssues() {
     }
   });
 
-  return { blocking, warnings, feeMiss };
+  const refundNotes = [];
+  refunds.value.forEach(e => {
+    if (!e.selectedIds.length) blocking.push(`退佣 ${e.unitId}：未勾選要退回的原請佣紀錄`);
+    if (!(toNum(e.period) > 0)) blocking.push(`退佣 ${e.unitId}：期別須為正整數`);
+    const pl = refundPlan(e);
+    const status = e.unit?.salesStatus_backend || '';
+    const released = classifySalesStatus(status) === 'released';
+    const bonusText = e.refundBonus ? `追回獎金 ${money(pl.people.reduce((s, p) => s + p.net, 0))} 元` : '不追回獎金';
+    refundNotes.push(`${e.unitId}（${status || '狀態不明'}）：退回 ${money(pl.calc.thisClaim)} 元、${bonusText}${released ? '' : '；⚠ 銷控狀態非解約／退戶'}`);
+  });
+
+  return { blocking, warnings, feeMiss, refundNotes };
 }
 
 async function submitAll() {
-  const { blocking, warnings, feeMiss } = collectIssues();
+  const { blocking, warnings, feeMiss, refundNotes } = collectIssues();
   if (blocking.length) {
     confirmData.value = {
       title: '無法送出，請先修正',
@@ -541,8 +705,9 @@ async function submitAll() {
     confirmOpen.value = true;
     return;
   }
-  if (warnings.length || feeMiss.length) {
+  if (warnings.length || feeMiss.length || refundNotes.length) {
     const sections = [];
+    if (refundNotes.length) sections.push({ title: '↩ 退佣戶別', subtitle: '送出後原紀錄標記「已退佣」、已請比例回溯，可於歷期總覽作廢退佣紀錄還原：', items: refundNotes });
     if (warnings.length) sections.push({ title: '⚠ 有項目尚未勾選人員', subtitle: '確認是否刻意留空：', items: warnings });
     if (feeMiss.length) sections.push({ title: '🎁 可能有介紹費/贈品尚未填寫', subtitle: '備註提到介紹/贈品但金額為 0：', items: feeMiss });
     confirmData.value = { title: '送出前確認', blocking: false, sections };
@@ -576,14 +741,29 @@ async function doSubmit() {
       };
     });
 
+    const payloadRefunds = refunds.value.map(e => ({
+      unitId: e.unitId,
+      period: Number(e.period) || 0,
+      requestDate: e.requestDate,
+      reason: String(e.reason || ''),
+      includeKeep: !!e.includeKeep,
+      refundBonus: e.refundBonus !== false,
+      sourceRecordIds: [...e.selectedIds],
+      people: e.people ? JSON.parse(JSON.stringify(e.people)) : null,
+    }));
+
     const res = await submitCommissionEntriesAPI({
       projectId: props.projectId,
       createdBy: userStore.user?.name || userStore.user?.phone || '',
       entries: payloadEntries,
+      refunds: payloadRefunds,
     });
     if (res?.ok) {
-      toast.success(`已寫入 ${res.results.length} 戶請佣紀錄`);
+      const nRefund = res.results.filter(r => r.refund).length;
+      const nClaim = res.results.length - nRefund;
+      toast.success(`已寫入 ${nClaim} 戶請佣紀錄${nRefund ? `、${nRefund} 戶退佣紀錄` : ''}`);
       entries.value = [];
+      refunds.value = [];
       emit('submitted');
     } else {
       toast.error('寫入失敗，請重試');
@@ -622,6 +802,8 @@ async function doSubmit() {
 .sum-item.highlight div { color: #087f23; }
 .sum-item.handover { background: #fff7ed; }
 .sum-item.handover div { color: #c2410c; }
+.sum-item.refund { background: #fdecea; }
+.sum-item.refund div { color: #c62828; }
 .table-scroll { overflow-x: auto; }
 /* 每人彙總表：人員／來源欄固定合理寬度，其餘金額欄平均分配 */
 .people-table th, .people-table td { white-space: nowrap; }

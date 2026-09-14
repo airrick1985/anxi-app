@@ -139,7 +139,6 @@ cd functions && npm install && cd ..
 > 備註
 > - `xlsx` 套件是從 `https://cdn.sheetjs.com/...` 的 tgz 直接安裝，需要網路可連到 sheetjs。
 > - `sass-embedded`、`puppeteer-core` 會下載平台對應的二進位，第一次安裝較久屬正常。
-> - `.devcontainer/` 是舊的 Node 18 容器設定，**不要用它**，本機直接跑即可。
 
 ---
 

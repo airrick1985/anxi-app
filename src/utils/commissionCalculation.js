@@ -484,3 +484,172 @@ export function fillPattern(pattern, ctx) {
 export function money(n) {
   return Math.round(Number(n) || 0).toLocaleString('en-US');
 }
+
+// ---------- 退佣（買方解約）試算 ----------
+const REFUND_SNAPSHOT_NUM_KEYS = ['dealTotal', 'totalFloor', 'spread', 'houseDeal', 'parkDeal', 'houseFloor', 'parkFloor'];
+const REFUND_CALC_NUM_KEYS = ['feeWan', 'realSpread', 'baseWan', 'base', 'dealAfter'];
+
+/**
+ * 退佣試算（前後端同構；後端以 DB 現值重算，不信任前端數值）。
+ * 以「原請佣紀錄原數反向」為原則：金額取負值，讓歷期／統計／匯出的加總自然相減。
+ *
+ * @param {object} opts
+ *   sources        原請佣紀錄（active、非退佣、未被退佣），需含 id
+ *   sourceBonuses  原紀錄關聯的 active 獎金明細
+ *   includeKeep    true＝退「實際請領」（含保留款）；false＝退「本次請佣」（保留款自動抵銷）
+ *   refundBonus    是否連動追回獎金
+ *   people         逐人調整（null＝原數）：[{ personKey, amounts: { [catKey]: 正數 }, remark }]，
+ *                  未列出的人員視為不追回；金額鉗制於 0～原數
+ * @returns {{ refundRatioPct, sources, snapshot, commPct, keepPct, calc, handover, people, errors }}
+ */
+export function buildRefundPlan(opts) {
+  const sources = (opts.sources || []).slice();
+  const sourceBonuses = opts.sourceBonuses || [];
+  const includeKeep = !!opts.includeKeep;
+  const refundBonus = opts.refundBonus !== false;
+  const overrides = Array.isArray(opts.people) ? opts.people : null;
+  const errors = [];
+  if (!sources.length) errors.push('未選擇任何原請佣紀錄');
+
+  const byPeriod = (a, b) => (toNum(a.period) - toNum(b.period)) || String(a.id || '').localeCompare(String(b.id || ''));
+  sources.sort(byPeriod);
+  const latest = sources[sources.length - 1] || {};
+
+  // 來源摘要
+  const sourceList = sources.map(s => ({
+    id: s.id || '',
+    period: toNum(s.period),
+    ratioPct: toNum(s.ratioPct),
+    requestDate: s.requestDate || '',
+    realClaim: toNum(s.calc && s.calc.realClaim),
+    claimKeep: toNum(s.calc && s.calc.claimKeep),
+    thisClaim: toNum(s.calc && s.calc.thisClaim),
+  }));
+  const refundRatioPct = Math.round(sourceList.reduce((s, x) => s + x.ratioPct, 0) * 1000) / 1000;
+  const sumR = sourceList.reduce((s, x) => s + x.realClaim, 0);
+  const sumK = sourceList.reduce((s, x) => s + x.claimKeep, 0);
+  const sumT = sourceList.reduce((s, x) => s + x.thisClaim, 0);
+
+  // 戶別快照：文字取最新一筆、數值取負向加總
+  const ls = latest.snapshot || {};
+  const snapshot = {
+    buyerName: ls.buyerName || '',
+    salesperson: Array.isArray(ls.salesperson) ? ls.salesperson.slice() : [],
+    parkingSpots: ls.parkingSpots || '',
+    isPreferredPayment: !!ls.isPreferredPayment,
+    contractDate: ls.contractDate || '',
+    depositDate: ls.depositDate || '',
+    salesStatus: ls.salesStatus || '',
+    remarks: ls.remarks || '',
+  };
+  REFUND_SNAPSHOT_NUM_KEYS.forEach(k => {
+    snapshot[k] = -sources.reduce((s, x) => s + toNum(x.snapshot && x.snapshot[k]), 0);
+  });
+
+  const calc = {};
+  REFUND_CALC_NUM_KEYS.forEach(k => {
+    calc[k] = -sources.reduce((s, x) => s + toNum(x.calc && x.calc[k]), 0);
+  });
+  calc.discount = toNum(latest.calc && latest.calc.discount);
+  calc.realClaim = -sumR;
+  calc.claimKeep = -sumK;
+  calc.thisClaim = includeKeep ? -sumR : -sumT;
+  calc.refundAmount = includeKeep ? sumR : sumT;
+
+  // 交屋團獎暫留：反向沖回（僅在追回獎金時）
+  const byCat = {};
+  let hTotal = 0, hTotalFull = 0;
+  if (refundBonus) {
+    sources.forEach(s => {
+      const h = (s.handover && s.handover.byCat) || {};
+      Object.keys(h).forEach(k => {
+        if (!byCat[k]) byCat[k] = { sourceCatKey: h[k].sourceCatKey || '', ratePct: toNum(h[k].ratePct), sourcePool: 0, sourcePoolFull: 0, amount: 0, amountFull: 0 };
+        byCat[k].sourcePool -= toNum(h[k].sourcePool);
+        byCat[k].sourcePoolFull -= toNum(h[k].sourcePoolFull);
+        byCat[k].amount -= toNum(h[k].amount);
+        byCat[k].amountFull -= toNum(h[k].amountFull);
+      });
+      hTotal -= toNum(s.handover && s.handover.total);
+      hTotalFull -= toNum(s.handover && s.handover.totalFull);
+    });
+  }
+  const handover = { total: hTotal, totalFull: hTotalFull, byCat };
+
+  // 獎金：每人原數（正數）彙總
+  const orig = {};
+  const order = [];
+  sourceBonuses.forEach(b => {
+    const key = b.personKey || b.name;
+    if (!key) return;
+    if (!orig[key]) {
+      orig[key] = {
+        personKey: key, name: b.name || '', role: b.role || '',
+        sourceProjectId: b.sourceProjectId || '', sourceProjectName: b.sourceProjectName || '',
+        isExternal: !!b.isExternal, remark: b.remark || '',
+        amounts: {}, subtotal: 0, keep: 0, tax: 0, nhi: 0,
+        keepPct: toNum(b.keepPct), taxPct: toNum(b.taxPct), nhiPct: toNum(b.nhiPct),
+      };
+      order.push(key);
+    }
+    const o = orig[key];
+    Object.keys(b.amounts || {}).forEach(k => { o.amounts[k] = (o.amounts[k] || 0) + toNum(b.amounts[k]); });
+    o.subtotal += toNum(b.subtotal); o.keep += toNum(b.keep); o.tax += toNum(b.tax); o.nhi += toNum(b.nhi);
+  });
+  // 有效扣款比例：以原明細加總回推（多筆比例不同時取加權結果）
+  order.forEach(key => {
+    const o = orig[key];
+    if (o.subtotal) {
+      o.keepPct = round2(o.keep / o.subtotal * 100);
+      o.taxPct = round2(o.tax / o.subtotal * 100);
+      o.nhiPct = round2(o.nhi / o.subtotal * 100);
+    }
+  });
+
+  const people = [];
+  if (refundBonus) {
+    const keys = overrides ? overrides.map(p => p.personKey).filter(k => orig[k]) : order;
+    keys.forEach(key => {
+      const o = orig[key];
+      const ov = overrides ? overrides.find(p => p.personKey === key) : null;
+      const amounts = {};
+      const amountsPos = {};
+      let subtotal = 0;
+      let adjusted = false;
+      Object.keys(o.amounts).forEach(k => {
+        const max = Math.round(toNum(o.amounts[k]));
+        let v = ov && ov.amounts && ov.amounts[k] !== undefined ? Math.round(toNum(ov.amounts[k])) : max;
+        if (v < 0) v = 0;
+        if (v > max) v = max;
+        if (v !== max) adjusted = true;
+        amountsPos[k] = v;
+        amounts[k] = -v;
+        subtotal += v;
+      });
+      // 未調整＝原數反向（扣款直接取原值，確保完全對沖）；有調整＝依原比例重算
+      const keep = adjusted ? Math.round(subtotal * o.keepPct / 100) : Math.round(o.keep);
+      const tax = adjusted ? Math.round(subtotal * o.taxPct / 100) : Math.round(o.tax);
+      const nhi = adjusted ? Math.round(subtotal * o.nhiPct / 100) : Math.round(o.nhi);
+      people.push({
+        personKey: key, name: o.name, role: o.role,
+        sourceProjectId: o.sourceProjectId, sourceProjectName: o.sourceProjectName, isExternal: o.isExternal,
+        amounts, amountsFull: Object.assign({}, amounts),
+        original: amountsPos, originalAmounts: o.amounts, adjusted,
+        subtotal: -subtotal,
+        keepPct: o.keepPct, taxPct: o.taxPct, nhiPct: o.nhiPct,
+        keep: -keep, tax: -tax, nhi: -nhi,
+        net: -(subtotal - keep - tax - nhi),
+        remark: ov && ov.remark !== undefined ? String(ov.remark || '') : (o.remark || ''),
+      });
+    });
+  }
+
+  return {
+    refundRatioPct,
+    sources: sourceList,
+    snapshot,
+    commPct: toNum(latest.commPct),
+    keepPct: toNum(latest.keepPct),
+    calc, handover, people, errors,
+    originalPeople: order.map(k => orig[k]),
+  };
+}

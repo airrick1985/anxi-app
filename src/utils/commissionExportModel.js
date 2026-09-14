@@ -41,12 +41,18 @@ export const CLAIM_COLUMNS = [
   { key: 'realSpread', title: '實際溢差價(萬)',  width: 70, numFmt: '0.0',   sum: true, get: r => toNum(r.calc?.realSpread) },
   { key: 'commPct',    title: '佣金比例(%)',     width: 120, align: 'center', get: r => `${toNum(r.commPct).toFixed(1)}%` },
   { key: 'realClaim',  title: '實際請領金額(元)', width: 100, numFmt: '#,##0', sum: true, get: r => toNum(r.calc?.realClaim) },
-  { key: 'keep',       title: '保留款',          width: 100, numFmt: '#,##0', sum: true, get: (r, i, ctx) => Math.round(toNum(r.calc?.realClaim) * ctx.keepPct / 100), headerSub: ctx => `${ctx.keepPct}%` },
-  { key: 'thisClaim',  title: '本次請佣(元)',    width: 100, numFmt: '#,##0', sum: true, get: (r, i, ctx) => toNum(r.calc?.realClaim) - Math.round(toNum(r.calc?.realClaim) * ctx.keepPct / 100) },
+  // 退佣紀錄（type: 'refund'）：保留款／本次請佣以紀錄存值為準（保留款抵銷、退回金額依「含／不含保留款」決定），不依版型保留款％重算
+  { key: 'keep',       title: '保留款',          width: 100, numFmt: '#,##0', sum: true, get: (r, i, ctx) => (isRefundRecord(r) ? toNum(r.calc?.claimKeep) : Math.round(toNum(r.calc?.realClaim) * ctx.keepPct / 100)), headerSub: ctx => `${ctx.keepPct}%` },
+  { key: 'thisClaim',  title: '本次請佣(元)',    width: 100, numFmt: '#,##0', sum: true, get: (r, i, ctx) => (isRefundRecord(r) ? toNum(r.calc?.thisClaim) : toNum(r.calc?.realClaim) - Math.round(toNum(r.calc?.realClaim) * ctx.keepPct / 100)) },
   { key: 'baseWan',    title: '備註(萬)',        width: 66, numFmt: '#,##0', sum: true, get: r => toNum(r.calc?.baseWan) },
   { key: 'wanLabel',   title: '',                width: 56, align: 'center', get: () => '萬請款' },
-  { key: 'youfuTag',   title: '',                width: 70, align: 'center', red: true, get: (r, i, ctx) => (r.snapshot?.isPreferredPayment ? ctx.youfuTag : '') },
+  { key: 'youfuTag',   title: '',                width: 70, align: 'center', red: true, get: (r, i, ctx) => (isRefundRecord(r) ? '退佣' : (r.snapshot?.isPreferredPayment ? ctx.youfuTag : '')) },
 ];
+
+/** 退佣紀錄（買方解約；金額為負值，匯出以負數列呈現、合計相減） */
+export function isRefundRecord(r) {
+  return !!r && r.type === 'refund';
+}
 
 /** 預設請佣總表版型 config */
 export function defaultClaimConfig(settings) {
@@ -122,7 +128,7 @@ export function buildClaimModel(records, opts) {
   const rows = sorted.map((r, i) => {
     const cells = {};
     CLAIM_COLUMNS.forEach(col => { cells[col.key] = col.get(r, i, ctx); });
-    return { cells, youfu: !!r.snapshot?.isPreferredPayment };
+    return { cells, youfu: !!r.snapshot?.isPreferredPayment, refund: isRefundRecord(r) };
   });
 
   const totals = {};
@@ -223,17 +229,17 @@ export function buildBonusModel(opts) {
   const minguoYM = firstMinguoYM(records);
   const saleYM = minguoYM;
 
-  // 分組
+  // 分組（退佣紀錄 ratioPct 為負：依退回比例合計歸組，金額以實際負值呈現）
   const groups = {};
   records.forEach(r => {
-    const key = ratioKey(r.ratioPct);
+    const key = ratioKey(Math.abs(toNum(r.ratioPct)));
     if (!groups[key]) groups[key] = { records: [], bonusRows: [] };
     groups[key].records.push(r);
   });
   bonusRecords.forEach(b => {
     const rec = records.find(r => r.id === b.commissionRecordId);
     if (!rec) return;
-    groups[ratioKey(rec.ratioPct)].bonusRows.push(b);
+    groups[ratioKey(Math.abs(toNum(rec.ratioPct)))].bonusRows.push(b);
   });
 
   const sumCats = (obj, keys) => keys.reduce((s, k) => s + toNum(obj?.[k]), 0);
@@ -316,13 +322,15 @@ export function buildBonusModel(opts) {
           const allocs = r.categories?.[k]?.allocations || [];
           teamCount = Math.max(teamCount, allocs.length);
         });
+        const refund = isRefundRecord(r);
         return {
           no: i + 1,
+          refund,
           sodate: toMinguo(r.snapshot?.depositDate),
           sign: toMinguo(r.snapshot?.contractDate),
           unit: `${r.unitId}`,
           park: r.snapshot?.parkingSpots || '',
-          name: r.snapshot?.buyerName || '',
+          name: refund ? `${r.snapshot?.buyerName || ''}(退佣)` : (r.snapshot?.buyerName || ''),
           house: toNum(r.snapshot?.houseDeal),
           parkP: toNum(r.snapshot?.parkDeal),
           total: toNum(r.snapshot?.dealTotal),
@@ -497,8 +505,10 @@ export function buildPersonModel(opts) {
     const amounts = {};
     categories.forEach(c => { amounts[c.key] = Math.round(toNum(b.amounts?.[c.key])); });
     const isOwnSale = normSales(snap.salesperson).some(n => personNames.has(n));
+    const refund = isRefundRecord(rec) || b.type === 'refund';
     return {
       isOwnSale,
+      refund,
       period: toNum(b.period),
       requestDate: toMinguo(b.requestDate || rec.requestDate),
       unit: `${b.unitId || rec.unitId || ''}`,
@@ -512,7 +522,7 @@ export function buildPersonModel(opts) {
       taxPct: toNum(b.taxPct), tax: toNum(b.tax),
       nhiPct: toNum(b.nhiPct), nhi: toNum(b.nhi),
       net: toNum(b.net),
-      remark: b.remark || '',
+      remark: refund ? ['退佣', b.remark || ''].filter(Boolean).join('：') : (b.remark || ''),
     };
   });
 

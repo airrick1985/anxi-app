@@ -37,7 +37,9 @@
             <td class="font-weight-medium">{{ p.name }}</td>
             <td class="text-right">{{ money(p.keep) }}</td>
             <td class="text-right">{{ money(p.paid) }}</td>
-            <td class="text-right" :class="p.keep - p.paid > 0 ? 'text-orange-darken-3 font-weight-bold' : 'text-success'">{{ money(p.keep - p.paid) }}</td>
+            <td class="text-right" :class="p.keep - p.paid > 0 ? 'text-orange-darken-3 font-weight-bold' : (p.keep - p.paid < 0 ? 'text-error font-weight-bold' : 'text-success')">
+              {{ money(p.keep - p.paid) }}<span v-if="p.keep - p.paid < 0" class="text-caption ml-1">待追回</span>
+            </td>
           </tr>
           <tr v-if="!personKeepRows.length"><td colspan="4" class="text-center text-medium-emphasis">尚無資料</td></tr>
         </tbody>
@@ -143,7 +145,7 @@ const personKeepRows = computed(() => {
     if (map[p.personKey]) map[p.personKey].paid += toNum(p.amount);
   });
   return Object.values(map)
-    .filter(p => p.keep > 0 || p.paid > 0)
+    .filter(p => p.keep !== 0 || p.paid > 0)
     .sort((a, b) => (b.keep - b.paid) - (a.keep - a.paid));
 });
 

@@ -1,6 +1,6 @@
 # 請佣獎金系統 SPEC
 
-> 版本：v1.1（已依 v1.0 完成全部三階段實作；本版同步實作時的架構調整，見 §11）
+> 版本：v1.2（v1.1 完成三階段實作與架構調整見 §11；v1.2 新增「退佣（買方解約）」見 §12）
 > 參考來源：`docs/local/富宇學森-請佣獎金系統.gs`、`富宇學森-請佣獎金系統(DIALOG).html`、`富宇學森-請佣獎金系統.xlsx`
 > 目標：將 GAS + Google Sheet 版「佣金/獎金表製作」重建為銷控系統內建功能，並通用化到所有建案/公司。
 
@@ -581,3 +581,84 @@ docId 自動；由後端寫入，前端唯讀（歷期總覽「操作紀錄」�
 3. 部署 Cloud Functions：
    `firebase deploy --only functions:submitCommissionEntries,functions:voidCommissionRecord,functions:importCommissionHistory,functions:generateCommissionPdf`
 4. 以富宇學森實際資料與舊 GAS 匯出檔逐欄核對（計算與版面）。
+
+---
+
+## 12. 退佣（買方解約）— v1.2
+
+### 12.1 需求決策（與業主問答結論）
+
+| 項目 | 決定 |
+|---|---|
+| 退佣範圍 | 逐筆勾選該戶要退回的原請佣紀錄（可跨期），同一戶合併成一筆退佣紀錄 |
+| 保留款 | 每戶退佣時手動選「含保留款」（退實際請領金額）或「不含」（退本次請佣）；兩者該戶業主保留款皆自動抵銷、不再發還 |
+| 獎金追回 | 預設連動追回（原獎金明細原數反向），可逐戶關閉；可逐人調整各類金額或移除某人，扣款依原比例重算 |
+| 人員保留款 | 負向保留款直接計入未發還餘額；餘額為負時以紅字「待追回」顯示 |
+| 交屋團獎暫留 | 追回獎金時一併反向沖回，累積扣除 |
+| 期別 | 與正常請佣戶共用期別（同期可混合），用負數列呈現；只放退佣戶即為獨立一期 |
+| 帳本 | 已請比例回溯（全退則歸零，可再售後重新請佣）；原紀錄標記「已退佣」並連結退佣紀錄，不可再被選退、不可直接作廢 |
+| 作廢 | 退佣紀錄可作廢：原紀錄移除「已退佣」標記、帳本加回、負向獎金明細一併作廢；若該戶已重新請佣致加回後超過 100% 則擋下 |
+| 匯出 | 請佣總表與獎金表皆同表負數列（紅字）、合計相減；獎金表依「退回比例合計」歸組；個人獎金明細亦列負數列（備註「退佣」） |
+| 觸發 | 工作台「新增戶別」對話框「退佣」頁籤手動加入（列出有有效請佣紀錄的戶別，銷控狀態已釋出者排前並標紅） |
+| 權限 | 與一般請佣送出相同 |
+| 原因 | 選填，預帶「買方解約」 |
+
+### 12.2 資料模型
+
+**退佣紀錄** 仍存於 `commissionRecords`（docId `${projectId}_${unitId}_${period}_R${stamp}`），金額一律為**負值**，讓歷期總覽／統計／匯出的加總自然相減：
+
+```js
+{
+  ...同一般紀錄欄位（projectId, unitId, period, status, requestDate, createdAt, createdBy…）,
+  type: 'refund',
+  reason: '買方解約',
+  includeKeep: false,                 // 含保留款
+  refundBonus: true,                  // 是否追回獎金
+  ratioPct: -100,                     // 負值＝退回比例合計（ledger 以此回溯／作廢時加回）
+  refundRatioPct: 100,
+  sourceRecordIds: ['...'],           // 來源原紀錄
+  sources: [{ id, period, ratioPct, requestDate, realClaim, claimKeep, thisClaim }],
+  snapshot: { 文字欄位取最新來源；數值欄位（dealTotal/totalFloor/…）為來源負向加總 },
+  calc: {
+    feeWan/realSpread/baseWan/base/dealAfter: 來源負向加總, discount: 最新來源,
+    realClaim: −Σ實際請領, claimKeep: −Σ保留款（抵銷）,
+    thisClaim: includeKeep ? −Σ實際請領 : −Σ本次請佣,   // 退給業主的金額
+    refundAmount: 正數
+  },
+  categories: {},
+  handover: { total, totalFull, byCat }   // 反向（refundBonus=false 時為 0）
+}
+```
+
+**原紀錄**新增標記：`refundedBy`（退佣紀錄 id）、`refundedAt`、`refundPeriod`；作廢退佣時以 `FieldValue.delete()` 移除。
+
+**負向獎金明細** 存於 `bonusRecords`，`type: 'refund'`，`commissionRecordId` 指向退佣紀錄；`amounts/amountsFull/subtotal/keep/tax/nhi/net` 皆為負值；`adjusted: true` 表示經逐人調整（扣款依原比例重算）；未調整者扣款直接取原明細負值，確保完全對沖。
+
+### 12.3 計算（`buildRefundPlan`，前後端同構）
+
+`src/utils/commissionCalculation.js` 與 `functions/utils/commissionCalculation.js` 各有一份 `buildRefundPlan({ sources, sourceBonuses, includeKeep, refundBonus, people })`：
+- 每人原數＝來源明細依 personKey 彙總；有效扣款比例以 Σkeep/Σsubtotal 回推。
+- `people` 為 null 時全員原數反向；提供時僅列出的人員追回、金額鉗制於 0～原數。
+- 後端 `submitCommissionEntries` 於 transaction 外讀來源紀錄與明細重算，transaction 內再確認來源仍 active 且未被退佣（防並發）。
+
+### 12.4 後端變更（`functions/commissionClaims.js`）
+
+| Function | 變更 |
+|---|---|
+| `submitCommissionEntries` | 新增 `refunds[]`（可與 `entries` 同批）：驗證來源 → 試算 → 寫退佣紀錄＋負向獎金明細 → 標記原紀錄 → ledger 扣回（先扣退佣再驗證新增 ≤100%） |
+| `voidCommissionRecord` | 原紀錄 `refundedBy` 存在時擋下；退佣紀錄作廢：加回比例（超過 100% 擋下）、移除來源標記、負向明細連動作廢 |
+| `voidCommissionPeriod` | 期內原紀錄被「其他期」退佣者擋下；期內退佣紀錄作廢時移除來源標記（同期來源同時作廢＋移除標記）；加回後超過 100% 擋下 |
+| `undoCommissionImport` | 批次內有效紀錄已退佣者擋下 |
+
+部署：`firebase deploy --only functions:submitCommissionEntries,functions:voidCommissionRecord,functions:voidCommissionPeriod,functions:undoCommissionImport`
+
+### 12.5 前端變更
+
+- `CommissionWorkbench.vue`：新增戶別對話框加「退佣」頁籤；`refunds[]` 卡片、快速定位（紅色）、彙總含退佣（另顯示「退佣合計」）、送出前確認列出退佣摘要（銷控狀態非解約時警示）、payload `refunds`。
+- `CommissionRefundCard.vue`（新）：①退佣來源（期別／日期／原因／含保留款、來源紀錄勾選、試算條）②獎金追回（開關、逐人各類金額輸入、移除、恢復原數）。
+- `refundEntry.js`（新）：`refundableRecordsByUnit` / `buildRefundEntryPlan`。
+- `CommissionPeriodList.vue`：期別卡片「退佣 N 戶」chip；退佣列紅字＋「退佣」chip（title 顯示原因／來源／選項）；原紀錄「已退佣」chip、作廢鈕停用；作廢退佣對話框說明還原內容；整期作廢影響清單標示「＋X%（退佣還原）」。
+- `commissionExportModel.js`：`isRefundRecord`；請佣總表保留款／本次請佣欄對退佣列取存值、末欄顯示「退佣」；獎金表依 |ratioPct| 歸組、退佣列買方加註「(退佣)」；個人明細備註「退佣」。
+- `commissionExcelService.js`：請佣總表／獎金表退佣列整列紅字（預覽／Excel／PDF 共用 grid）。
+- `RetentionTracker.vue`：人員保留款餘額為負時紅字「待追回」。
+- 累計統計、保留款追蹤、交屋團獎累積：因金額為負值，既有加總邏輯自動扣除，無需改動。

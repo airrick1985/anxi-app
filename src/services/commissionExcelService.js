@@ -125,7 +125,7 @@ export function buildClaimGrid(model) {
         align: c.align || 'right',
         fmt: c.numFmt,
         border: true,
-        color: c.red ? '#C00000' : undefined,
+        color: (c.red || row.refund) ? '#C00000' : undefined,
         sz: (c.key === 'signDate' || c.key === 'unit') ? Math.max(10, (st.dataFontSize || 14) - 2) : undefined,
       });
     });
@@ -267,26 +267,27 @@ export function buildBonusGroupGrid(group, model) {
   // 上方資料
   group.unitRows.forEach((d, i) => {
     const r = rData0 + i;
-    g.set(r, 0, d.no, { align: 'center', border: true });
-    g.set(r, 1, d.sodate, { align: 'center', border: true });
-    g.set(r, 2, d.sign, { align: 'center', border: true });
-    g.set(r, 3, d.unit, { align: 'center', border: true });
-    g.set(r, 4, d.park, { align: 'center', border: true });
-    g.set(r, 5, d.name, { align: 'center', border: true });
-    g.set(r, 6, d.house || '', { fmt: '#,##0', border: true });
-    g.set(r, 7, d.parkP || '', { fmt: '#,##0', border: true });
-    g.set(r, 8, d.total || '', { fmt: '#,##0', border: true });
-    g.set(r, 9, d.referral || '', { fmt: '#,##0', border: true });
-    g.set(r, 10, d.disc || '', { fmt: '0.00', border: true });
-    g.set(r, 11, d.after || '', { fmt: '#,##0', border: true });
-    g.set(r, 12, d.sales, { align: 'center', border: true });
-    g.set(r, 13, d.team || '', { align: 'center', border: true });
-    if (HAS_H) g.set(r, HCOL, d.handover || '', { fmt: '#,##0', border: true });
+    const rc = d.refund ? '#C00000' : undefined;   // 退佣列紅字
+    g.set(r, 0, d.no, { align: 'center', border: true, color: rc });
+    g.set(r, 1, d.sodate, { align: 'center', border: true, color: rc });
+    g.set(r, 2, d.sign, { align: 'center', border: true, color: rc });
+    g.set(r, 3, d.unit, { align: 'center', border: true, color: rc });
+    g.set(r, 4, d.park, { align: 'center', border: true, color: rc });
+    g.set(r, 5, d.name, { align: 'center', border: true, color: rc });
+    g.set(r, 6, d.house || '', { fmt: '#,##0', border: true, color: rc });
+    g.set(r, 7, d.parkP || '', { fmt: '#,##0', border: true, color: rc });
+    g.set(r, 8, d.total || '', { fmt: '#,##0', border: true, color: rc });
+    g.set(r, 9, d.referral || '', { fmt: '#,##0', border: true, color: rc });
+    g.set(r, 10, d.disc || '', { fmt: '0.00', border: true, color: rc });
+    g.set(r, 11, d.after || '', { fmt: '#,##0', border: true, color: rc });
+    g.set(r, 12, d.sales, { align: 'center', border: true, color: rc });
+    g.set(r, 13, d.team || '', { align: 'center', border: true, color: rc });
+    if (HAS_H) g.set(r, HCOL, d.handover || '', { fmt: '#,##0', border: true, color: rc });
     group.topPersons.forEach((p, j) => {
       const col = FIX + 2 * j;
       const v = d.pp[p.personKey] || { indiv: 0, team: 0 };
-      g.set(r, col, v.indiv || '', { fmt: '#,##0', border: true });
-      g.set(r, col + 1, v.team || '', { fmt: '#,##0', border: true });
+      g.set(r, col, v.indiv || '', { fmt: '#,##0', border: true, color: rc });
+      g.set(r, col + 1, v.team || '', { fmt: '#,##0', border: true, color: rc });
     });
   });
   if (n > 0) g.region(rData0, 0, rDataEnd, NC - 1, { border: true });
