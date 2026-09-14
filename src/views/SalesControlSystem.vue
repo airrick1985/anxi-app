@@ -4692,6 +4692,9 @@ async function popupQuickUpdatePaymentRecord({ recordId, date, amount, note, fil
   if (res.renameWarning) {
     toast.warning('憑證 Drive 檔名同步失敗，紀錄內容仍已更新', { position: POSITION.BOTTOM_CENTER });
   }
+  if (res.trashWarning) {
+    toast.warning('憑證已移除，但 Drive 檔案移至垃圾桶失敗', { position: POSITION.BOTTOM_CENTER });
+  }
   toast.success('繳款紀錄已更新', { position: POSITION.BOTTOM_CENTER });
 }
 
@@ -4706,7 +4709,10 @@ async function popupQuickDeletePaymentRecord({ recordId }) {
   });
   if (res.status !== 'success') throw new Error(res.message || '請稍後再試');
   applyPaymentRecordsLocally(unit.unitId, list => list.filter(r => r.id !== recordId));
-  toast.success('繳款紀錄已刪除（Drive 憑證圖檔保留）', { position: POSITION.BOTTOM_CENTER });
+  if (res.trashWarning) {
+    toast.warning('紀錄已刪除，但 Drive 憑證檔案移至垃圾桶失敗', { position: POSITION.BOTTOM_CENTER });
+  }
+  toast.success('繳款紀錄已刪除', { position: POSITION.BOTTOM_CENTER });
 }
 
 // 5. 處理列表行點擊

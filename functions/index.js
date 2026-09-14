@@ -6413,6 +6413,22 @@ function buildPaymentProofFileName(date, unitId, amount, note, ext) {
   return `${parts.join('-')}.${ext}`;
 }
 
+/**
+ * [輔助] 將繳款憑證 Drive 檔案移至垃圾桶（與戶別文件相同做法，可於 Drive 復原）。
+ * 失敗不丟錯，回傳 false 供呼叫端回報 trashWarning。
+ */
+async function trashPaymentProofFile(drive, fileId, functionName) {
+  if (!fileId) return true;
+  try {
+    await drive.files.update({ fileId, requestBody: { trashed: true }, supportsAllDrives: true });
+    console.log(`[${functionName}] 已將憑證檔案移至垃圾桶 (fileId: ${fileId})`);
+    return true;
+  } catch (trashError) {
+    console.warn(`[${functionName}] ⚠️ 憑證檔案移至垃圾桶失敗 (fileId: ${fileId}):`, trashError.message);
+    return false;
+  }
+}
+
 exports.paymentProofApi = onCall({
   region: "asia-east1",
   memory: "512MiB",
@@ -6425,19 +6441,29 @@ exports.paymentProofApi = onCall({
   if (!projectId || !unitId) {
     throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, unitId)。');
   }
-  // deleteRecord 只需 recordId，不驗證日期/金額
-  if (action !== 'deleteRecord') {
+  // deleteRecord 只需 recordId、trashFile 只需 fileId，不驗證日期/金額
+  const skipContentValidation = action === 'deleteRecord' || action === 'trashFile';
+  if (!skipContentValidation) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
       throw new HttpsError('invalid-argument', '繳款日期格式必須為 YYYY-MM-DD。');
     }
   }
   const amountNum = Number(amount);
-  if (action !== 'deleteRecord' && (!Number.isInteger(amountNum) || amountNum <= 0)) {
+  if (!skipContentValidation && (!Number.isInteger(amountNum) || amountNum <= 0)) {
     throw new HttpsError('invalid-argument', '繳款金額必須為大於 0 的整數（元）。');
   }
 
   try {
     const drive = getAuthenticatedDriveClient();
+
+    // --- action: trashFile（修改銷控儲存成功後，補將已刪除紀錄的憑證移至垃圾桶）---
+    if (action === 'trashFile') {
+      if (!fileId) {
+        throw new HttpsError('invalid-argument', '缺少必要參數 (fileId)。');
+      }
+      const trashed = await trashPaymentProofFile(drive, fileId, functionName);
+      return { status: 'success', fileId, trashWarning: !trashed };
+    }
 
     // --- action: rename（同步 Drive 檔名） ---
     if (action === 'rename') {
@@ -6462,24 +6488,30 @@ exports.paymentProofApi = onCall({
     const docId = `${projectId}_${unitId}`;
     const docRef = db.collection('salesHouseholds').doc(docId);
 
-    // --- action: deleteRecord（檢視模式直接刪除；Drive 憑證圖檔保留不刪） ---
+    // --- action: deleteRecord（檢視模式直接刪除；紀錄刪除成功後將 Drive 憑證移至垃圾桶） ---
     if (action === 'deleteRecord') {
       if (!recordId) {
         throw new HttpsError('invalid-argument', '缺少必要參數 (recordId)。');
       }
+      let removedRecord = null;
       await db.runTransaction(async (tx) => {
         const snap = await tx.get(docRef);
         if (!snap.exists) {
           throw new HttpsError('not-found', `在 'salesHouseholds' 集合中找不到戶別 "${unitId}" 的資料。`);
         }
         const existing = Array.isArray(snap.data().paymentRecords) ? snap.data().paymentRecords : [];
-        if (!existing.some(r => r && r.id === recordId)) {
+        removedRecord = existing.find(r => r && r.id === recordId) || null;
+        if (!removedRecord) {
           throw new HttpsError('not-found', '找不到指定的繳款紀錄，可能已被其他人刪除，請重新整理。');
         }
         tx.update(docRef, { paymentRecords: existing.filter(r => !(r && r.id === recordId)) });
       });
-      console.log(`[${functionName}] 已刪除繳款紀錄 ${recordId} (${unitId})，Drive 憑證保留`);
-      return { status: 'success', removedId: recordId };
+      let trashWarning = false;
+      if (removedRecord && removedRecord.file && removedRecord.file.fileId) {
+        trashWarning = !(await trashPaymentProofFile(drive, removedRecord.file.fileId, functionName));
+      }
+      console.log(`[${functionName}] 已刪除繳款紀錄 ${recordId} (${unitId})`);
+      return { status: 'success', removedId: recordId, trashWarning };
     }
 
     // --- action: upload / addRecord / updateRecord ---
@@ -6588,11 +6620,13 @@ exports.paymentProofApi = onCall({
 
     let nextFile = preRecord.file || null;
     let renameWarning = false;
+    let fileIdToTrash = null; // 移除憑證：紀錄寫回成功後再將舊檔移至垃圾桶
     if (uploadedFileInfo) {
-      // 換新圖：舊圖依規格保留於 Drive，僅替換 file 欄位
+      // 換新檔：舊檔依規格保留於 Drive，僅替換 file 欄位
       nextFile = uploadedFileInfo;
     } else if (removeFile) {
       nextFile = null;
+      fileIdToTrash = (preRecord.file && preRecord.file.fileId) || null;
     } else if (preRecord.file && preRecord.file.fileId) {
       // 無新圖且未移除 → 日期/金額/備註有異動時同步 Drive 檔名（失敗不中斷，僅回報警告）
       const changed = String(preRecord.date || '') !== String(date)
@@ -6646,8 +6680,12 @@ exports.paymentProofApi = onCall({
       next[idx] = updatedRecord;
       tx.update(docRef, { paymentRecords: next });
     });
+    let trashWarning = false;
+    if (fileIdToTrash) {
+      trashWarning = !(await trashPaymentProofFile(drive, fileIdToTrash, functionName));
+    }
     console.log(`[${functionName}] 已更新繳款紀錄 ${recordId} (${unitId}, ${amountNum} 元)`);
-    return { status: 'success', record: updatedRecord, renameWarning };
+    return { status: 'success', record: updatedRecord, renameWarning, trashWarning };
 
   } catch (error) {
     console.error(`[${functionName}] 🔴 執行時發生錯誤:`, error);

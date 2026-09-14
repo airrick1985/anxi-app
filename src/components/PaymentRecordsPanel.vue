@@ -304,7 +304,7 @@
               </div>
               <!-- 既有憑證已標記移除 -->
               <div v-else-if="quickAdd.existingFile && quickAdd.removeFile" class="d-flex align-center flex-wrap" style="gap: 8px;">
-                <v-chip size="x-small" color="error" variant="tonal" label>儲存後將移除憑證（Drive 檔案保留）</v-chip>
+                <v-chip size="x-small" color="error" variant="tonal" label>儲存後將移除憑證（Drive 檔案移至垃圾桶）</v-chip>
                 <v-btn size="x-small" variant="tonal" prepend-icon="mdi-undo" @click="quickAdd.removeFile = false">復原</v-btn>
                 <v-btn size="x-small" variant="outlined" prepend-icon="mdi-file-plus" @click="triggerQuickAddFileSelect">選擇新檔案</v-btn>
               </div>
@@ -542,7 +542,8 @@ function openExistingFileLightbox() {
 }
 async function confirmQuickDelete(r, idx) {
   if (typeof props.quickDeleteHandler !== 'function') return;
-  if (!window.confirm(`確定要刪除繳款 #${idx + 1}（${formatMoney(r.amount)} 元）嗎？已上傳的 Drive 憑證檔案會保留。`)) return;
+  const hasFile = !!(r.file && r.file.fileId);
+  if (!window.confirm(`確定要刪除繳款 #${idx + 1}（${formatMoney(r.amount)} 元）嗎？${hasFile ? 'Drive 憑證檔案會一併移至垃圾桶。' : ''}`)) return;
   deletingId.value = r.id;
   try {
     await props.quickDeleteHandler({ recordId: r.id });
@@ -758,8 +759,9 @@ function addRecord() {
   ]);
 }
 function confirmRemove(idx) {
-  if (!window.confirm(`確定要刪除繳款 #${idx + 1} 嗎？（已上傳的 Drive 檔案會保留）`)) return;
   const target = records.value[idx];
+  const hasFile = !!(target && target.file && target.file.fileId);
+  if (!window.confirm(`確定要刪除繳款 #${idx + 1} 嗎？${hasFile ? '儲存後 Drive 憑證檔案會一併移至垃圾桶。' : ''}`)) return;
   if (target && target._pendingPreviewUrl) URL.revokeObjectURL(target._pendingPreviewUrl);
   commit(records.value.filter((_, i) => i !== idx));
 }

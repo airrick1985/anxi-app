@@ -231,3 +231,16 @@ exports.paymentProofApi = onCall({
   - PDF：改為 `<iframe>` 內嵌預覽，隱藏圖片工具列。已上傳者載入 `https://drive.google.com/file/d/{fileId}/preview`（Drive 自帶翻頁、縮放、下載），仍提供「在 Drive 開啟」；待上傳者載入本地 ObjectURL，提供「新分頁開啟」。
 - **文案**：「選擇繳款憑證圖檔」→「選擇繳款憑證」、「更換圖檔」→「更換檔案」、格式提示加入 PDF。
 - **戶別 Modal「繳款紀錄」分頁預設展開**：`UnitDetailModal.vue` 該分頁掛載 `PaymentRecordsPanel` 時傳入 `:default-expanded="true"`，進入分頁即可直接看到列表，免再點開摺疊。
+
+## 12. 刪除憑證時一併移除 Drive 檔案（2026-09-14 追加）
+
+取代原本「刪除紀錄／移除憑證後 Drive 檔案保留」的行為；統一與戶別文件相同做法：`drive.files.update({ trashed: true })` **移至垃圾桶**（可於 Drive 復原），不做永久刪除。皆在 Firestore 寫入成功後才動 Drive，失敗不中斷流程、僅回 `trashWarning` 由前端 toast 警告。
+
+| 情境 | 處理 |
+|---|---|
+| 檢視模式刪除紀錄（`deleteRecord`） | transaction 移除紀錄後，若該筆有 `file.fileId` → 移至垃圾桶；回 `{ status, removedId, trashWarning }` |
+| 檢視模式編輯「移除憑證」（`updateRecord` + `removeFile`） | 寫回 `file: null` 後將舊檔移至垃圾桶；回應多帶 `trashWarning` |
+| 修改銷控內刪除紀錄後儲存 | 前端進入編輯時快照 `fileId`；`updateSalesData` 成功後比對快照與儲存結果，已消失且原有憑證的紀錄逐一呼叫新 action **`trashFile`**（`{ projectId, unitId, fileId }`，不驗證日期／金額） |
+| 更換憑證（新檔取代舊檔） | **維持不變**：舊檔保留於 Drive |
+
+前端文案同步調整：刪除確認訊息在該筆有憑證時提示「Drive 憑證檔案會一併移至垃圾桶」，「儲存後將移除憑證」chip 改註明移至垃圾桶。

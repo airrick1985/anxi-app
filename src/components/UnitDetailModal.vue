@@ -2903,7 +2903,7 @@ function prepareEditingData() {
   paymentRecordsSnapshot = new Map(
     editingData.value.paymentRecords
       .filter(r => r && r.id)
-      .map(r => [r.id, { date: r.date, amount: r.amount, note: r.note }])
+      .map(r => [r.id, { date: r.date, amount: r.amount, note: r.note, fileId: (r.file && r.file.fileId) || null }])
   );
 
   // ✅ START: 新增 - 將 Timestamp 欄位轉換為 JavaScript Date 物件
@@ -3296,11 +3296,14 @@ async function handleQuickUpdatePaymentRecord({ recordId, date, amount, note, fi
   if (res.renameWarning) {
     toast.warning('憑證 Drive 檔名同步失敗，紀錄內容仍已更新');
   }
+  if (res.trashWarning) {
+    toast.warning('憑證已移除，但 Drive 檔案移至垃圾桶失敗');
+  }
   toast.success('繳款紀錄已更新');
   emit('data-updated');
 }
 
-/** [戶別繳款紀錄] 快速刪除（檢視模式）：Drive 憑證圖檔依規格保留不刪。 */
+/** [戶別繳款紀錄] 快速刪除（檢視模式）：紀錄刪除後 Drive 憑證一併移至垃圾桶。 */
 async function handleQuickDeletePaymentRecord({ recordId }) {
   const res = await paymentProofApi({
     action: 'deleteRecord',
@@ -3312,8 +3315,36 @@ async function handleQuickDeletePaymentRecord({ recordId }) {
     throw new Error(res.message || '請稍後再試');
   }
   viewPaymentRecords.value = viewPaymentRecords.value.filter(r => r.id !== recordId);
-  toast.success('繳款紀錄已刪除（Drive 憑證圖檔保留）');
+  if (res.trashWarning) {
+    toast.warning('紀錄已刪除，但 Drive 憑證檔案移至垃圾桶失敗');
+  }
+  toast.success('繳款紀錄已刪除');
   emit('data-updated');
+}
+
+/**
+ * [戶別繳款紀錄] 修改銷控儲存成功後：進入編輯時有憑證、儲存時已不存在的紀錄 → 憑證移至垃圾桶（失敗僅警告）。
+ */
+async function trashRemovedPaymentProofs(savedRecords) {
+  const remainingIds = new Set((savedRecords || []).map(r => r && r.id).filter(Boolean));
+  const toTrash = [...paymentRecordsSnapshot.entries()]
+    .filter(([id, snap]) => snap.fileId && !remainingIds.has(id))
+    .map(([, snap]) => snap.fileId);
+  if (toTrash.length === 0) return;
+  savingText.value = '正在清理已刪除的繳款憑證';
+  let failed = 0;
+  for (const fileId of toTrash) {
+    const res = await paymentProofApi({
+      action: 'trashFile',
+      projectId: props.projectId,
+      unitId: props.unitData.unitId,
+      fileId
+    });
+    if (res.status !== 'success' || res.trashWarning) failed += 1;
+  }
+  if (failed > 0) {
+    toast.warning(`有 ${failed} 個已刪除紀錄的 Drive 憑證未能移至垃圾桶`);
+  }
 }
 
 function clearPaymentRecordsPendingState() {
@@ -3494,8 +3525,9 @@ async function executeSaveChanges() {
     const result = await updateSalesData(payload);
     if (result.status !== 'success') throw new Error(result.message);
 
-    // ✅ [戶別繳款紀錄] 儲存成功後同步檢視模式本地列表
+    // ✅ [戶別繳款紀錄] 儲存成功後同步檢視模式本地列表，並將已刪除紀錄的 Drive 憑證移至垃圾桶
     viewPaymentRecords.value = JSON.parse(JSON.stringify(data.paymentRecords || []));
+    await trashRemovedPaymentProofs(data.paymentRecords);
 
     // ✅ [新增] Firestore 寫入成功後，才從 Storage 真正刪除已標記的舊備註圖片
     if (priceRemarkPendingDeletions.value.length > 0) {
