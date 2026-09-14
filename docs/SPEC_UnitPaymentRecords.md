@@ -51,10 +51,11 @@
       date: '2026-08-16',            // 繳款日期 YYYY-MM-DD（台北時間）
       amount: 1500000,               // 金額，單位「元」，正整數
       note: '簽約款',                 // 備註，可空
-      file: {                        // 憑證圖檔，無圖為 null
+      file: {                        // 憑證檔案（圖檔或 PDF），無檔為 null
         fileId: '1AbC...',           // Drive fileId
         fileName: '20260816-A1-1500000-簽約款.jpg',
         webViewLink: 'https://drive.google.com/file/d/.../view',
+        mimeType: 'image/jpeg',      // 2026-09-14 起寫入；舊資料無此欄位，前端退回副檔名判斷
         uploadedAt: '2026-08-16T10:00:00.000Z'
       },
       createdAt: '2026-08-16T10:00:00.000Z',
@@ -70,7 +71,7 @@
 | `date` | string | ✅ | `YYYY-MM-DD`，選擇日期 |
 | `amount` | number | ✅ | 單位「元」，> 0 的整數 |
 | `note` | string | — | 備註 |
-| `file` | object \| null | — | Drive 圖檔資訊，一筆紀錄最多 1 張圖 |
+| `file` | object \| null | — | Drive 檔案資訊（圖檔或 PDF），一筆紀錄最多 1 個 |
 | `createdAt` / `updatedAt` | string(ISO) | ✅ | 前端寫入 |
 
 ### 3.3 繳款比例（不落庫，即時計算）
@@ -219,3 +220,14 @@ exports.paymentProofApi = onCall({
   - 戶別 Modal：本地 `viewPaymentRecords` 即時更新並 emit `data-updated`；`SalesControlSystem` 已接 `@data-updated="handleRefreshData"` 背景刷新列表。
   - 列表浮動視窗：CRUD 後同步更新 store 原始戶別的 `paymentRecords`（`applyPaymentRecordsLocally`），列表「繳款比例」chip 與資料透視即時重算，免重新載入。
 - **權限**：與快速新增相同，限銷控模式（`viewMode === 'sales'`）；報價模式浮動視窗維持唯讀。
+
+## 11. PDF 憑證與預設展開（2026-09-14 追加）
+
+- **接受格式擴充**：憑證除 JPG／PNG／WEBP 外，新增 **PDF**（單檔仍 ≤ 10MB，每筆 1 個）。前端 `accept` 加入 `application/pdf,.pdf`，並在 `file.type` 為空時以副檔名補判；後端 `paymentProofApi` 以 magic number `%PDF` 嗅探，`mimeType: 'application/pdf'`、副檔名 `pdf`，Drive 檔名規則不變（`{YYYYMMDD}-{戶別}-{金額}-{備註}.pdf`）。
+- **`file.mimeType`**：上傳成功後一併寫入；前端判斷 PDF 以 `mimeType === 'application/pdf'` 為主，舊資料退回 `fileName` 副檔名 `.pdf`。
+- **縮圖**：已上傳 PDF 沿用 Drive 縮圖（首頁）並疊「PDF」紅色角標，縮圖載入失敗時 fallback 為 `mdi-file-pdf-box`；待上傳的本地 PDF 不產生縮圖，顯示 PDF 圖示方塊。
+- **預覽**：燈箱依檔案型別切換
+  - 圖檔：維持原本 `<img>` 縮放／旋轉／拖曳工具列。
+  - PDF：改為 `<iframe>` 內嵌預覽，隱藏圖片工具列。已上傳者載入 `https://drive.google.com/file/d/{fileId}/preview`（Drive 自帶翻頁、縮放、下載），仍提供「在 Drive 開啟」；待上傳者載入本地 ObjectURL，提供「新分頁開啟」。
+- **文案**：「選擇繳款憑證圖檔」→「選擇繳款憑證」、「更換圖檔」→「更換檔案」、格式提示加入 PDF。
+- **戶別 Modal「繳款紀錄」分頁預設展開**：`UnitDetailModal.vue` 該分頁掛載 `PaymentRecordsPanel` 時傳入 `:default-expanded="true"`，進入分頁即可直接看到列表，免再點開摺疊。

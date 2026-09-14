@@ -1123,6 +1123,7 @@
               <PaymentRecordsPanel
                 :model-value="viewPaymentRecords"
                 :editable="false"
+                :default-expanded="true"
                 :allow-quick-add="true"
                 :quick-add-handler="handleQuickAddPaymentRecord"
                 :quick-update-handler="handleQuickUpdatePaymentRecord"

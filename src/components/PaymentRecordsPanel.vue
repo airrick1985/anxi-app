@@ -56,9 +56,11 @@
                   class="pr-thumb rounded"
                   @click.stop="openLightbox(r)"
                 >
+                  <span v-if="isPdfRecord(r)" class="pr-pdf-badge">PDF</span>
                   <template v-slot:error>
                     <div class="pr-thumb-fallback" @click.stop="openLightbox(r)">
-                      <v-icon size="28" color="grey">mdi-file-image</v-icon>
+                      <v-icon v-if="isPdfRecord(r)" size="28" color="red-darken-1">mdi-file-pdf-box</v-icon>
+                      <v-icon v-else size="28" color="grey">mdi-file-image</v-icon>
                     </div>
                   </template>
                 </v-img>
@@ -160,7 +162,11 @@
                 <template v-else>
                   <!-- 已有圖（待上傳或已上傳） -->
                   <div v-if="r._pendingFile || r.file" class="d-flex align-center" style="gap: 12px;">
+                    <div v-if="r._pendingFile && isPdfRecord(r)" class="pr-pdf-tile pr-thumb rounded" style="width: 64px; height: 64px;" @click.stop="openLightbox(r)">
+                      <v-icon size="32" color="red-darken-1">mdi-file-pdf-box</v-icon>
+                    </div>
                     <v-img
+                      v-else
                       :src="editThumbSrc(r)"
                       width="64"
                       height="64"
@@ -168,9 +174,11 @@
                       class="pr-thumb rounded"
                       @click.stop="openLightbox(r)"
                     >
+                      <span v-if="isPdfRecord(r)" class="pr-pdf-badge">PDF</span>
                       <template v-slot:error>
                         <div class="pr-thumb-fallback" @click.stop="openLightbox(r)">
-                          <v-icon size="32" color="grey">mdi-file-image</v-icon>
+                          <v-icon v-if="isPdfRecord(r)" size="32" color="red-darken-1">mdi-file-pdf-box</v-icon>
+                          <v-icon v-else size="32" color="grey">mdi-file-image</v-icon>
                         </div>
                       </template>
                     </v-img>
@@ -182,8 +190,8 @@
                         </span>
                       </div>
                       <div class="d-flex" style="gap: 6px;">
-                        <v-btn size="x-small" variant="tonal" prepend-icon="mdi-image-sync" @click="triggerFileSelect(idx)">
-                          更換圖檔
+                        <v-btn size="x-small" variant="tonal" prepend-icon="mdi-file-sync" @click="triggerFileSelect(idx)">
+                          更換檔案
                         </v-btn>
                         <v-btn
                           v-if="r._pendingFile"
@@ -199,10 +207,10 @@
                     </div>
                   </div>
                   <!-- 尚無圖 -->
-                  <v-btn v-else size="small" variant="outlined" prepend-icon="mdi-image-plus" @click="triggerFileSelect(idx)">
-                    選擇繳款憑證圖檔
+                  <v-btn v-else size="small" variant="outlined" prepend-icon="mdi-file-plus" @click="triggerFileSelect(idx)">
+                    選擇繳款憑證
                   </v-btn>
-                  <div class="text-caption text-grey mt-1">JPG / PNG / WEBP，10MB 以內，每筆 1 張；按「儲存」後才會上傳至戶別資料夾</div>
+                  <div class="text-caption text-grey mt-1">JPG / PNG / WEBP / PDF，10MB 以內，每筆 1 個；按「儲存」後才會上傳至戶別資料夾</div>
                 </template>
               </v-col>
             </v-row>
@@ -211,7 +219,7 @@
           <input
             ref="fileInputRef"
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/jpeg,image/png,image/webp,application/pdf,.pdf"
             class="d-none"
             @change="onFileSelected"
           />
@@ -249,7 +257,11 @@
             <template v-else>
               <!-- 新選擇的本地圖檔（新增或編輯換圖） -->
               <div v-if="quickAdd.file" class="d-flex align-center" style="gap: 12px;">
-                <v-img :src="quickAdd.previewUrl" width="64" height="64" cover class="pr-thumb rounded"
+                <div v-if="isPdfLocalFile(quickAdd.file)" class="pr-pdf-tile pr-thumb rounded" style="width: 64px; height: 64px;"
+                  @click.stop="openRawLightbox(quickAdd.previewUrl, quickAdd.file.name, true)">
+                  <v-icon size="32" color="red-darken-1">mdi-file-pdf-box</v-icon>
+                </div>
+                <v-img v-else :src="quickAdd.previewUrl" width="64" height="64" cover class="pr-thumb rounded"
                   @click.stop="openRawLightbox(quickAdd.previewUrl, quickAdd.file.name)" />
                 <div class="d-flex flex-column" style="gap: 4px; min-width: 0;">
                   <div class="d-flex align-center" style="gap: 6px;">
@@ -257,8 +269,8 @@
                     <span class="text-caption text-truncate">{{ quickAdd.file.name }}</span>
                   </div>
                   <div class="d-flex" style="gap: 6px;">
-                    <v-btn size="x-small" variant="tonal" prepend-icon="mdi-image-sync" @click="triggerQuickAddFileSelect">
-                      更換圖檔
+                    <v-btn size="x-small" variant="tonal" prepend-icon="mdi-file-sync" @click="triggerQuickAddFileSelect">
+                      更換檔案
                     </v-btn>
                     <v-btn size="x-small" variant="tonal" color="error" prepend-icon="mdi-close" @click="removeQuickAddFile">
                       移除
@@ -270,19 +282,21 @@
               <div v-else-if="quickAdd.existingFile && !quickAdd.removeFile" class="d-flex align-center" style="gap: 12px;">
                 <v-img :src="driveThumb(quickAdd.existingFile.fileId, 'w200')" width="64" height="64" cover
                   class="pr-thumb rounded" @click.stop="openExistingFileLightbox">
+                  <span v-if="isPdfFile(quickAdd.existingFile)" class="pr-pdf-badge">PDF</span>
                   <template v-slot:error>
                     <div class="pr-thumb-fallback" @click.stop="openExistingFileLightbox">
-                      <v-icon size="32" color="grey">mdi-file-image</v-icon>
+                      <v-icon v-if="isPdfFile(quickAdd.existingFile)" size="32" color="red-darken-1">mdi-file-pdf-box</v-icon>
+                      <v-icon v-else size="32" color="grey">mdi-file-image</v-icon>
                     </div>
                   </template>
                 </v-img>
                 <div class="d-flex flex-column" style="gap: 4px; min-width: 0;">
                   <span class="text-caption text-truncate">{{ quickAdd.existingFile.fileName }}</span>
                   <div class="d-flex" style="gap: 6px;">
-                    <v-btn size="x-small" variant="tonal" prepend-icon="mdi-image-sync" @click="triggerQuickAddFileSelect">
-                      更換圖檔
+                    <v-btn size="x-small" variant="tonal" prepend-icon="mdi-file-sync" @click="triggerQuickAddFileSelect">
+                      更換檔案
                     </v-btn>
-                    <v-btn size="x-small" variant="tonal" color="error" prepend-icon="mdi-image-remove" @click="quickAdd.removeFile = true">
+                    <v-btn size="x-small" variant="tonal" color="error" prepend-icon="mdi-file-remove" @click="quickAdd.removeFile = true">
                       移除憑證
                     </v-btn>
                   </div>
@@ -290,16 +304,16 @@
               </div>
               <!-- 既有憑證已標記移除 -->
               <div v-else-if="quickAdd.existingFile && quickAdd.removeFile" class="d-flex align-center flex-wrap" style="gap: 8px;">
-                <v-chip size="x-small" color="error" variant="tonal" label>儲存後將移除憑證（Drive 圖檔保留）</v-chip>
+                <v-chip size="x-small" color="error" variant="tonal" label>儲存後將移除憑證（Drive 檔案保留）</v-chip>
                 <v-btn size="x-small" variant="tonal" prepend-icon="mdi-undo" @click="quickAdd.removeFile = false">復原</v-btn>
-                <v-btn size="x-small" variant="outlined" prepend-icon="mdi-image-plus" @click="triggerQuickAddFileSelect">選擇新圖檔</v-btn>
+                <v-btn size="x-small" variant="outlined" prepend-icon="mdi-file-plus" @click="triggerQuickAddFileSelect">選擇新檔案</v-btn>
               </div>
-              <v-btn v-else size="small" variant="outlined" prepend-icon="mdi-image-plus" @click="triggerQuickAddFileSelect">
-                選擇繳款憑證圖檔
+              <v-btn v-else size="small" variant="outlined" prepend-icon="mdi-file-plus" @click="triggerQuickAddFileSelect">
+                選擇繳款憑證
               </v-btn>
-              <div class="text-caption text-grey mt-1">JPG / PNG / WEBP，10MB 以內；點縮圖可放大確認</div>
+              <div class="text-caption text-grey mt-1">JPG / PNG / WEBP / PDF，10MB 以內；點縮圖可放大確認</div>
             </template>
-            <input ref="quickAddFileInputRef" type="file" accept="image/jpeg,image/png,image/webp"
+            <input ref="quickAddFileInputRef" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf"
               class="d-none" @change="onQuickAddFileSelected" />
           </v-col>
         </v-row>
@@ -318,7 +332,20 @@
       <v-btn icon size="small" variant="flat" class="pr-lightbox-close" @click.stop="lightbox.open = false">
         <v-icon>mdi-close</v-icon>
       </v-btn>
+      <div v-if="lightbox.isPdf" class="pr-lightbox-pdf">
+        <iframe
+          :src="lightbox.src"
+          class="pr-lightbox-pdf-frame"
+          title="繳款憑證 PDF 預覽"
+          allow="fullscreen"
+          @load="lbView.loading = false"
+        ></iframe>
+        <div v-if="lbView.loading" class="pr-lightbox-loading">
+          <v-progress-circular indeterminate color="grey"></v-progress-circular>
+        </div>
+      </div>
       <div
+        v-else
         ref="lightboxStageRef"
         class="pr-lightbox-stage"
         :class="{ 'pr-lightbox-dragging': lbView.dragging }"
@@ -347,7 +374,7 @@
           <v-progress-circular indeterminate color="grey"></v-progress-circular>
         </div>
       </div>
-      <div class="pr-lightbox-toolbar" @click.stop>
+      <div v-if="!lightbox.isPdf" class="pr-lightbox-toolbar" @click.stop>
         <v-btn icon size="small" variant="text" color="grey-lighten-1" title="縮小" @click="zoomLightboxAt(1 / 1.25)">
           <v-icon>mdi-magnify-minus-outline</v-icon>
         </v-btn>
@@ -378,6 +405,17 @@
           target="_blank"
         >
           在 Drive 開啟
+        </v-btn>
+        <v-btn
+          v-else-if="lightbox.isPdf"
+          size="small"
+          variant="tonal"
+          color="primary"
+          prepend-icon="mdi-open-in-new"
+          :href="lightbox.src"
+          target="_blank"
+        >
+          新分頁開啟
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -429,6 +467,30 @@ function editThumbSrc(r) {
   if (r._pendingPreviewUrl) return r._pendingPreviewUrl;
   return thumbSrc(r);
 }
+// Drive 內嵌預覽（PDF 用；Drive 自帶翻頁／縮放／下載）
+function drivePreviewUrl(fileId) {
+  return `https://drive.google.com/file/d/${fileId}/preview`;
+}
+
+// ── 檔案型別判斷（PDF vs 圖檔）──
+const PDF_TYPE = 'application/pdf';
+// 部分瀏覽器選 PDF 時 file.type 可能為空字串，改以副檔名補判
+function resolveLocalFileType(file) {
+  if (file && file.type) return file.type;
+  return /\.pdf$/i.test((file && file.name) || '') ? PDF_TYPE : '';
+}
+function isPdfLocalFile(file) {
+  return !!file && resolveLocalFileType(file) === PDF_TYPE;
+}
+// 已上傳檔案：優先看 mimeType，舊資料退回副檔名
+function isPdfFile(f) {
+  if (!f) return false;
+  return f.mimeType === PDF_TYPE || /\.pdf$/i.test(f.fileName || '');
+}
+function isPdfRecord(r) {
+  if (r._pendingFile) return isPdfLocalFile(r._pendingFile);
+  return isPdfFile(r.file);
+}
 
 // ── 快速新增／編輯／刪除（檢視模式，即時儲存；上傳與寫入由父層 handler 執行）──
 const quickAddFileInputRef = ref(null);
@@ -470,8 +532,9 @@ function openQuickEdit(r) {
 function openExistingFileLightbox() {
   const f = quickAdd.existingFile;
   if (!f) return;
-  const src = driveThumb(f.fileId, 'w1600');
-  prepareLightbox(src);
+  const isPdf = isPdfFile(f);
+  const src = isPdf ? drivePreviewUrl(f.fileId) : driveThumb(f.fileId, 'w1600');
+  prepareLightbox(src, isPdf);
   lightbox.src = src;
   lightbox.name = f.fileName || '';
   lightbox.webViewLink = f.webViewLink || '';
@@ -479,7 +542,7 @@ function openExistingFileLightbox() {
 }
 async function confirmQuickDelete(r, idx) {
   if (typeof props.quickDeleteHandler !== 'function') return;
-  if (!window.confirm(`確定要刪除繳款 #${idx + 1}（${formatMoney(r.amount)} 元）嗎？已上傳的 Drive 憑證圖檔會保留。`)) return;
+  if (!window.confirm(`確定要刪除繳款 #${idx + 1}（${formatMoney(r.amount)} 元）嗎？已上傳的 Drive 憑證檔案會保留。`)) return;
   deletingId.value = r.id;
   try {
     await props.quickDeleteHandler({ recordId: r.id });
@@ -503,12 +566,12 @@ function triggerQuickAddFileSelect() {
 function onQuickAddFileSelected(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
-  if (!ACCEPT_TYPES.includes(file.type)) {
-    window.alert('僅接受 JPG、PNG、WEBP 圖檔。');
+  if (!ACCEPT_TYPES.includes(resolveLocalFileType(file))) {
+    window.alert('僅接受 JPG、PNG、WEBP 圖檔或 PDF。');
     return;
   }
   if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-    window.alert(`圖檔大小不可超過 ${MAX_SIZE_MB}MB。`);
+    window.alert(`檔案大小不可超過 ${MAX_SIZE_MB}MB。`);
     return;
   }
   if (quickAdd.previewUrl) URL.revokeObjectURL(quickAdd.previewUrl);
@@ -554,7 +617,7 @@ async function submitQuickAdd() {
 }
 
 // ── 燈箱 ──
-const lightbox = reactive({ open: false, src: '', name: '', webViewLink: '' });
+const lightbox = reactive({ open: false, src: '', name: '', webViewLink: '', isPdf: false });
 const lbView = reactive({ zoom: 1, rotate: 0, panX: 0, panY: 0, loading: true, error: false, dragging: false });
 const lightboxStageRef = ref(null);
 const lightboxImgStyle = computed(() => ({
@@ -632,17 +695,18 @@ function onLightboxPointerUp(e) {
     lbPanStart = { x: p.x, y: p.y, panX: lbView.panX, panY: lbView.panY };
   }
 }
-function prepareLightbox(newSrc) {
+function prepareLightbox(newSrc, isPdf = false) {
   resetLightboxView();
-  // 同一張圖重開時 <img> 不會再觸發 load 事件，只有換圖才顯示 loading
+  // 同一來源重開時 <img>／<iframe> 不會再觸發 load 事件（v-dialog 內容關閉後仍保留），只有換來源才顯示 loading
   lbView.loading = newSrc !== lightbox.src;
   lbView.error = false;
+  lightbox.isPdf = isPdf;
   lbPointers.clear();
   lbPanStart = null;
   lbPinchStart = null;
 }
-function openRawLightbox(src, name) {
-  prepareLightbox(src);
+function openRawLightbox(src, name, isPdf = false) {
+  prepareLightbox(src, isPdf);
   lightbox.src = src;
   lightbox.name = name || '';
   lightbox.webViewLink = '';
@@ -652,12 +716,13 @@ function openLightbox(r) {
   let src;
   if (r._pendingPreviewUrl) {
     src = r._pendingPreviewUrl;
-    prepareLightbox(src);
+    prepareLightbox(src, isPdfLocalFile(r._pendingFile));
     lightbox.name = r._pendingFile ? r._pendingFile.name : '';
     lightbox.webViewLink = '';
   } else if (r.file) {
-    src = driveThumb(r.file.fileId, 'w1600');
-    prepareLightbox(src);
+    const isPdf = isPdfFile(r.file);
+    src = isPdf ? drivePreviewUrl(r.file.fileId) : driveThumb(r.file.fileId, 'w1600');
+    prepareLightbox(src, isPdf);
     lightbox.name = r.file.fileName || '';
     lightbox.webViewLink = r.file.webViewLink || '';
   } else {
@@ -693,14 +758,14 @@ function addRecord() {
   ]);
 }
 function confirmRemove(idx) {
-  if (!window.confirm(`確定要刪除繳款 #${idx + 1} 嗎？（已上傳的 Drive 圖檔會保留）`)) return;
+  if (!window.confirm(`確定要刪除繳款 #${idx + 1} 嗎？（已上傳的 Drive 檔案會保留）`)) return;
   const target = records.value[idx];
   if (target && target._pendingPreviewUrl) URL.revokeObjectURL(target._pendingPreviewUrl);
   commit(records.value.filter((_, i) => i !== idx));
 }
 
-// ── 圖檔選擇（延遲提交：僅存本地 File，儲存時由父層上傳）──
-const ACCEPT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+// ── 檔案選擇（延遲提交：僅存本地 File，儲存時由父層上傳）──
+const ACCEPT_TYPES = ['image/jpeg', 'image/png', 'image/webp', PDF_TYPE];
 const MAX_SIZE_MB = 10;
 
 function triggerFileSelect(idx) {
@@ -716,12 +781,12 @@ function onFileSelected(event) {
   pendingSelectIdx.value = -1;
   if (!file || idx < 0) return;
 
-  if (!ACCEPT_TYPES.includes(file.type)) {
-    window.alert('僅接受 JPG、PNG、WEBP 圖檔。');
+  if (!ACCEPT_TYPES.includes(resolveLocalFileType(file))) {
+    window.alert('僅接受 JPG、PNG、WEBP 圖檔或 PDF。');
     return;
   }
   if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-    window.alert(`圖檔大小不可超過 ${MAX_SIZE_MB}MB。`);
+    window.alert(`檔案大小不可超過 ${MAX_SIZE_MB}MB。`);
     return;
   }
 
@@ -837,6 +902,7 @@ function formatMoney(v) {
 
 /* ── 縮圖 ── */
 .pr-thumb {
+  position: relative;
   cursor: pointer;
   border: 1px solid #ddd;
   flex: 0 0 auto;
@@ -849,6 +915,27 @@ function formatMoney(v) {
   justify-content: center;
   cursor: pointer;
   background: #f5f5f5;
+}
+/* PDF：本地待上傳無縮圖時的圖示方塊 */
+.pr-pdf-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff5f5;
+}
+/* PDF：Drive 縮圖右下角標記 */
+.pr-pdf-badge {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #d32f2f;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  pointer-events: none;
 }
 
 /* ── 編輯模式卡片 ── */
@@ -901,6 +988,20 @@ function formatMoney(v) {
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
+}
+/* PDF 內嵌預覽 */
+.pr-lightbox-pdf {
+  position: relative;
+  height: 80vh;
+  background: #333;
+}
+.pr-lightbox-pdf-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
 }
 .pr-lightbox-toolbar {
   display: flex;

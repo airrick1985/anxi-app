@@ -6397,7 +6397,7 @@ exports.uploadAuthLetter = onCall({
 });
 //  END: 新增 uploadAuthLetter 雲端函式
 
-// ✓ START: 戶別繳款紀錄 - 繳款憑證圖檔 Drive 上傳/改名 (SPEC_UnitPaymentRecords.md)
+// ✓ START: 戶別繳款紀錄 - 繳款憑證（圖檔／PDF）Drive 上傳/改名 (SPEC_UnitPaymentRecords.md)
 /**
  * [輔助] 組繳款憑證檔名：{YYYYMMDD}-{戶別}-{金額}-{備註}
  * 備註會移除檔名不合法字元與換行、截斷 30 字；備註為空時省略末段。
@@ -6511,11 +6511,11 @@ exports.paymentProofApi = onCall({
       }
       const targetFolderId = folderIdMatch[0];
 
-      // 2. Base64 轉 Buffer，以魔術數字嗅探真實格式（僅允許 JPG/PNG/WEBP）
+      // 2. Base64 轉 Buffer，以魔術數字嗅探真實格式（僅允許 JPG/PNG/WEBP/PDF）
       const buffer = Buffer.from(base64, 'base64');
       const MAX_SIZE = 10 * 1024 * 1024;
       if (buffer.length > MAX_SIZE) {
-        throw new HttpsError('invalid-argument', '圖檔大小超過 10MB 上限。');
+        throw new HttpsError('invalid-argument', '檔案大小超過 10MB 上限。');
       }
       let mimeType = null;
       let ext = null;
@@ -6523,9 +6523,10 @@ exports.paymentProofApi = onCall({
         if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) { mimeType = 'image/jpeg'; ext = 'jpg'; }
         else if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) { mimeType = 'image/png'; ext = 'png'; }
         else if (buffer.length >= 12 && buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 12).toString('ascii') === 'WEBP') { mimeType = 'image/webp'; ext = 'webp'; }
+        else if (buffer.slice(0, 4).toString('ascii') === '%PDF') { mimeType = 'application/pdf'; ext = 'pdf'; }
       }
       if (!mimeType) {
-        throw new HttpsError('invalid-argument', '僅接受 JPG、PNG、WEBP 圖檔，請確認檔案內容。');
+        throw new HttpsError('invalid-argument', '僅接受 JPG、PNG、WEBP 圖檔或 PDF，請確認檔案內容。');
       }
 
       // 3. 上傳至戶別資料夾
@@ -6540,6 +6541,7 @@ exports.paymentProofApi = onCall({
         fileId: uploadedFile.data.id,
         fileName: uploadedFile.data.name,
         webViewLink: uploadedFile.data.webViewLink,
+        mimeType,
         uploadedAt: new Date().toISOString()
       };
     }
