@@ -1029,26 +1029,19 @@
                             <div class="d-flex align-center flex-wrap mb-1">
                               <v-icon start color="deep-purple">mdi-test-tube</v-icon>
                               <span class="text-subtitle-1 font-weight-bold">授權流程測試</span>
-                              <v-chip size="x-small" color="deep-purple" variant="tonal" class="ml-2">信件主旨加【系統測試】</v-chip>
-                            </div>
-                            <div class="text-caption text-grey-darken-1 mb-3">
-                              以「目前編輯中的範本」（含尚未儲存的修改）套入範例資料，實際產生授權書圖檔並寄給下方收件人。
-                              收件人可從此建案具「驗屋預約管理-修改」權限的人員名單中多選，所有測試信件只會寄給這些信箱，不會寄給客戶或副本收件人，也不會寫入戶別正式資料。
                             </div>
 
                             <v-row dense>
                               <v-col cols="12" md="6">
                                 <v-combobox v-model="authTest.emails" :items="authTestRecipientItems"
                                   item-title="title" item-value="value" :return-object="false"
-                                  label="測試收件人（可多選，僅寄給這些信箱）"
+                                  label="測試收件人"
                                   variant="outlined" density="compact" prepend-inner-icon="mdi-email-lock"
                                   multiple chips closable-chips clearable
                                   :loading="authTest.loadingCandidates" :disabled="isAuthTestBusy" hide-details="auto"
-                                  :error-messages="authTestInvalidEmails.length ? [`Email 格式不正確：${authTestInvalidEmails.join('、')}`] : []"
-                                  hint="名單為此建案具「驗屋預約管理-修改」權限且已設定 Email 的人員；也可直接輸入其他 Email 後按 Enter 加入"
-                                  persistent-hint>
+                                  :error-messages="authTestInvalidEmails.length ? [`Email 格式不正確：${authTestInvalidEmails.join('、')}`] : []">
                                   <template v-slot:item="{ props: itemProps, item }">
-                                    <v-list-item v-bind="itemProps" :title="item.raw.name" :subtitle="item.raw.email || '（未設定 Email，無法寄送）'"
+                                    <v-list-item v-bind="itemProps" :title="item.raw.name" :subtitle="item.raw.email || '未設定 Email'"
                                       :disabled="!item.raw.hasEmail">
                                       <template v-slot:prepend>
                                         <v-icon size="small" :color="item.raw.hasEmail ? 'primary' : 'grey'">
@@ -1060,16 +1053,14 @@
                                   <template v-slot:append-inner>
                                     <v-btn size="x-small" variant="text" color="primary" class="mr-1"
                                       :disabled="isAuthTestBusy || !authTestRecipientItems.some(i => i.hasEmail)"
-                                      @mousedown.prevent @click.stop="selectAllAuthTestRecipients">全選名單</v-btn>
+                                      @mousedown.prevent @click.stop="selectAllAuthTestRecipients">全選</v-btn>
                                   </template>
                                 </v-combobox>
                               </v-col>
                               <v-col cols="12" md="6">
-                                <v-autocomplete v-model="authTest.unitId" :items="authTest.units" label="測試戶別（完整流程上傳圖檔用，可不選）"
+                                <v-autocomplete v-model="authTest.unitId" :items="authTest.units" label="測試戶別"
                                   variant="outlined" density="compact" prepend-inner-icon="mdi-home-search-outline" clearable
-                                  :loading="authTest.loadingUnits" :disabled="isAuthTestBusy" hide-details="auto"
-                                  hint="未選擇時以 A1-1 作為範例戶別；完整流程需選擇已設定文件資料夾的戶別，測試圖檔才會上傳至 Drive"
-                                  persistent-hint></v-autocomplete>
+                                  :loading="authTest.loadingUnits" :disabled="isAuthTestBusy" hide-details="auto"></v-autocomplete>
                               </v-col>
                             </v-row>
 
@@ -1078,10 +1069,8 @@
                               <v-expansion-panel elevation="0">
                                 <v-expansion-panel-title class="text-caption">
                                   <v-icon size="small" color="primary" class="mr-2">mdi-account-edit-outline</v-icon>
-                                  <span class="font-weight-medium">範例資料（委託人／受託人，可自訂）</span>
-                                  <span class="text-grey-darken-1 ml-2">
-                                    {{ authTest.sample.委託人姓名 || '（未填）' }} → {{ authTest.sample.受託人姓名 || '（未填）' }}（{{ authTest.sample.受託人關係 || '未填' }}）
-                                  </span>
+                                  <span class="font-weight-medium">範例資料</span>
+                                  <span class="text-grey-darken-1 ml-2">{{ authTest.sample.委託人姓名 }} → {{ authTest.sample.受託人姓名 }}</span>
                                 </v-expansion-panel-title>
                                 <v-expansion-panel-text>
                                   <v-row dense>
@@ -1102,7 +1091,7 @@
                                     </v-col>
                                   </v-row>
                                   <div class="d-flex justify-end mt-2">
-                                    <v-btn size="x-small" variant="text" color="grey-darken-1" prepend-icon="mdi-restore" :disabled="isAuthTestBusy" @click="resetAuthTestSample">還原預設範例</v-btn>
+                                    <v-btn size="x-small" variant="text" color="grey-darken-1" prepend-icon="mdi-restore" :disabled="isAuthTestBusy" @click="resetAuthTestSample">還原預設</v-btn>
                                   </div>
                                 </v-expansion-panel-text>
                               </v-expansion-panel>
@@ -1110,12 +1099,9 @@
 
                             <v-checkbox v-model="authTest.autoComplete" density="compact" hide-details class="mb-2" :disabled="isAuthTestBusy">
                               <template v-slot:label>
-                                <span class="text-body-2">完整流程由系統自動模擬受託人完成簽署並寄出完成信</span>
+                                <span class="text-body-2">自動模擬受託人簽署</span>
                               </template>
                             </v-checkbox>
-                            <div class="text-caption text-grey-darken-1 mb-3 ml-1">
-                              取消勾選則只寄出邀請信，您可親自從信中連結以受託人身分完成簽署（48 小時內有效）；此情況下簽署頁會使用「已儲存」的範本，請先按下方「儲存設定」。
-                            </div>
 
                             <div class="d-flex flex-wrap align-center ga-2 mb-3">
                               <v-btn color="deep-purple" prepend-icon="mdi-email-fast-outline"
@@ -1126,7 +1112,7 @@
                               <v-btn color="primary" variant="tonal" prepend-icon="mdi-play-circle-outline"
                                 :loading="authTest.runningFlow" :disabled="!canRunAuthTest || authTest.sending || authTest.cleaning"
                                 @click="runAuthFlowTest">
-                                執行完整授權流程測試
+                                完整流程測試
                               </v-btn>
                               <v-btn variant="text" color="grey-darken-1" prepend-icon="mdi-broom"
                                 :loading="authTest.cleaning" :disabled="isAuthTestBusy"
@@ -1135,12 +1121,7 @@
                               </v-btn>
                               <v-spacer></v-spacer>
                               <v-btn v-if="authTest.lastImage" size="small" variant="text" color="primary" prepend-icon="mdi-download"
-                                @click="downloadAuthTestImage">下載最近產生的圖檔</v-btn>
-                            </div>
-                            <div class="text-caption text-grey-darken-1 mb-3">
-                              <strong>寄出測試授權書</strong>：立即以目前範本產生圖檔，直接以附件寄到測試信箱（最快確認版面）。
-                              <strong>完整授權流程測試</strong>：實際走一次「委託人發起 → 【系統測試】邀請信 → 受託人簽署頁讀取 → 產生圖檔並上傳戶別文件資料夾 → 【系統測試】完成信」，
-                              測試資料與圖檔會保留供您從信中查看，確認後請按「清除測試資料」。
+                                @click="downloadAuthTestImage">下載圖檔</v-btn>
                             </div>
 
                             <!-- 執行步驟結果 -->
@@ -1159,7 +1140,7 @@
                             <div v-if="authTest.lastImage">
                               <div class="text-caption text-grey mb-1">
                                 <v-icon size="small" class="mr-1">mdi-image-check-outline</v-icon>
-                                最近一次產生的測試授權書圖檔（即實際寄出／上傳的內容，{{ authTest.lastFileName }}）：
+                                {{ authTest.lastFileName }}
                               </div>
                               <div class="auth-preview-stage">
                                 <img :src="authTest.lastImage" alt="測試授權書" class="auth-test-result-img">
@@ -5146,7 +5127,7 @@ const sendTestAuthLetterNow = async () => {
     });
     if (res?.status !== 'success') throw new Error(res?.message || '寄送失敗。');
     st.status = 'pass';
-    st.message = '已寄出，請至信箱查收（主旨含【系統測試】，圖檔同時內嵌於信件並附加為附件）。';
+    st.message = '已寄出';
     showSnackbar(`測試授權書已寄至 ${authTestEmailTo.value}`, 'success');
   } catch (e) {
     st.status = 'fail';
@@ -5193,13 +5174,13 @@ const runAuthFlowTest = async () => {
     if (initRes?.status !== 'success' || !initRes.token) throw new Error(initRes?.message || '未取得測試簽署 Token。');
     const token = initRes.token;
     st.status = 'pass';
-    st.message = `邀請信已寄至 ${authTestEmailTo.value}（簽署連結 48 小時內有效）`;
+    st.message = `已寄至 ${authTestEmailTo.value}`;
 
     // 未勾選自動完成：保留 pending 狀態，讓使用者親自從信中連結完成受託人簽署
     if (!authTest.autoComplete) {
       st = pushAuthTestStep('等待受託人簽署');
       st.status = 'info';
-      st.message = '未自動完成。請至信箱點擊邀請信中的「前往簽署授權書」，以受託人身分完成簽署後，完成信會寄給同一批收件人；簽署頁使用「已儲存」的範本。全部確認後請按「清除測試資料」。';
+      st.message = '請至信箱點擊邀請信連結完成受託人簽署';
       showSnackbar('測試邀請信已寄出，請至信箱完成受託人簽署。', 'info');
       return;
     }
@@ -5209,7 +5190,7 @@ const runAuthFlowTest = async () => {
     const sessionRes = await getAuthSigningSession({ token });
     if (sessionRes?.status !== 'success') throw new Error(sessionRes?.message || '讀取簽署資料失敗。');
     st.status = 'pass';
-    st.message = `受託人可正常開啟簽署頁（建案：${sessionRes.data?.projectName || projectName.value}）`;
+    st.message = '正常';
 
     // 3. 以目前範本渲染最終授權書（沿用發起時的委託人簽名，受託人以範例簽名模擬）
     st = pushAuthTestStep('模擬受託人簽署並以目前範本產生授權書圖檔');
@@ -5222,17 +5203,17 @@ const runAuthFlowTest = async () => {
     st = pushAuthTestStep('上傳測試授權書圖檔至戶別文件資料夾');
     if (!authTest.unitId) {
       st.status = 'skip';
-      st.message = '未選擇測試戶別，略過上傳；改以附件方式另寄一封測試授權書。';
+      st.message = '未選戶別，改以附件寄出';
     } else {
       const uploadRes = await uploadAuthLetter(r.dataUrl, r.fileName, pid, unitId);
       if (uploadRes?.status === 'success' && uploadRes.url) {
         finalUrl = uploadRes.url;
         if (uploadRes.id) authTest.driveFileIds.push(uploadRes.id);
         st.status = 'pass';
-        st.message = `已上傳至 ${unitId} 的文件資料夾（檔名含「系統測試」，可由「清除測試資料」刪除）`;
+        st.message = `已上傳至 ${unitId} 文件資料夾`;
       } else {
         st.status = 'skip';
-        st.message = `上傳未執行（${uploadRes?.message || '戶別未設定文件資料夾'}），改以附件方式另寄一封測試授權書。`;
+        st.message = `${uploadRes?.message || '戶別未設定文件資料夾'}，改以附件寄出`;
       }
     }
     if (finalUrl === AUTH_TEST_FALLBACK_URL) {
@@ -5242,7 +5223,7 @@ const runAuthFlowTest = async () => {
       });
       if (sendRes?.status !== 'success') throw new Error(sendRes?.message || '附件寄送失敗。');
       st2.status = 'pass';
-      st2.message = '已寄出（完成信中的「查看已簽署的授權書」將指向替代連結）。';
+      st2.message = '已寄出';
     }
 
     // 5. 完成簽署（isTest：不寫入 households、完成信僅寄測試信箱、不 CC）
@@ -5250,11 +5231,8 @@ const runAuthFlowTest = async () => {
     const completeRes = await markAuthSessionComplete({ token, finalUrl });
     if (completeRes?.status !== 'success') throw new Error(completeRes?.message || '完成簽署失敗。');
     st.status = 'pass';
-    st.message = `完成信已寄至 ${authTestEmailTo.value}；測試模式未寫入戶別正式資料。`;
+    st.message = `已寄至 ${authTestEmailTo.value}`;
 
-    st = pushAuthTestStep('完成');
-    st.status = 'info';
-    st.message = '測試簽署紀錄與上傳的測試圖檔已保留，方便您從信中連結查看；確認無誤後請按「清除測試資料」。';
     showSnackbar(`完整授權流程測試通過，信件已寄至 ${authTestEmailTo.value}`, 'success');
   } catch (e) {
     if (st && st.status === 'running') {
