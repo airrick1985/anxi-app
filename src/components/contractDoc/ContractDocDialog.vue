@@ -640,32 +640,32 @@
           歷史檔案<template v-if="historyFiles.length">（{{ historyFiles.length }}）</template>
         </v-btn>
         <v-spacer />
-        <v-btn v-if="config" variant="text" prepend-icon="mdi-file-export-outline" :disabled="!canDownload"
-          @click="openPageExportDialog">選頁匯出</v-btn>
         <v-btn color="error" variant="flat" prepend-icon="mdi-file-pdf-box" :loading="downloading.pdf"
-          :disabled="!canDownload" @click="download('pdf')">下載 PDF</v-btn>
+          :disabled="!canDownload" @click="openPageExportDialog('pdf')">下載 PDF</v-btn>
         <v-btn color="success" variant="flat" prepend-icon="mdi-file-excel" :loading="downloading.excel"
-          :disabled="!canDownload" @click="download('excel')">下載 EXCEL</v-btn>
+          :disabled="!canDownload" @click="openPageExportDialog('excel')">下載 EXCEL</v-btn>
         <v-btn variant="text" @click="$emit('update:show', false)">關閉</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
 
-  <!-- 選頁匯出：勾選需要的頁面後合併匯出 -->
+  <!-- 下載 PDF / EXCEL：先勾選需要的頁面（預設全選）再合併下載 -->
   <v-dialog v-model="pageExportDialog" max-width="440px" scrollable>
     <v-card>
       <v-card-title class="pa-3 d-flex align-center">
-        <v-icon start size="small">mdi-file-export-outline</v-icon>
-        <span class="text-subtitle-1 font-weight-bold">選頁匯出</span>
+        <v-icon start size="small" :color="pageExportFormat === 'pdf' ? 'error' : 'success'">
+          {{ pageExportFormat === 'pdf' ? 'mdi-file-pdf-box' : 'mdi-file-excel' }}
+        </v-icon>
+        <span class="text-subtitle-1 font-weight-bold">下載 {{ pageExportFormat === 'pdf' ? 'PDF' : 'EXCEL' }}</span>
         <v-spacer />
         <v-btn size="small" variant="text" color="primary" @click="toggleAllExportPages">
-          {{ pageExportSelection.length === exportablePages.length ? '清除全部' : '全選' }}
+          {{ pageExportSelection.length === pageExportCandidates.length ? '清除全部' : '全選' }}
         </v-btn>
       </v-card-title>
       <v-divider />
       <v-card-text class="pa-1" style="max-height: 55vh;">
         <v-list density="compact">
-          <v-list-item v-for="p in exportablePages" :key="p.id" class="px-2"
+          <v-list-item v-for="p in pageExportCandidates" :key="p.id" class="px-2"
             @click="togglePageExport(p.id)">
             <template #prepend>
               <v-checkbox-btn :model-value="pageExportSelection.includes(p.id)" density="compact"
@@ -676,16 +676,15 @@
         </v-list>
       </v-card-text>
       <v-divider />
-      <v-card-text class="pa-3 pb-0 text-caption text-grey">
-        勾選的頁面會依頁面順序合併為一份檔案；EXCEL 不含合約附圖頁。
-      </v-card-text>
-      <v-card-actions class="pa-3 flex-wrap">
+      <v-card-actions class="pa-3">
         <v-btn variant="text" @click="pageExportDialog = false">取消</v-btn>
         <v-spacer />
-        <v-btn color="error" variant="flat" prepend-icon="mdi-file-pdf-box" :loading="downloading.pdf"
-          :disabled="!pageExportSelection.length" @click="exportSelectedPages('pdf')">匯出 PDF</v-btn>
-        <v-btn color="success" variant="flat" prepend-icon="mdi-file-excel" :loading="downloading.excel"
-          :disabled="!pageExportExcelable" @click="exportSelectedPages('excel')">匯出 EXCEL</v-btn>
+        <v-btn :color="pageExportFormat === 'pdf' ? 'error' : 'success'" variant="flat"
+          :prepend-icon="pageExportFormat === 'pdf' ? 'mdi-file-pdf-box' : 'mdi-file-excel'"
+          :loading="downloading[pageExportFormat]" :disabled="!pageExportSelection.length"
+          @click="exportSelectedPages">
+          下載{{ pageExportSelection.length < pageExportCandidates.length ? `（${pageExportSelection.length} 頁）` : '' }}
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -1919,17 +1918,25 @@ async function saveDocData(silent = false) {
 /* ---------- 下載 ---------- */
 const downloading = reactive({ pdf: false, excel: false });
 
-/* ---------- 選頁匯出：勾選需要的頁面後合併匯出 ---------- */
+/* ---------- 下載前選頁：PDF / EXCEL 皆先勾選頁面（預設全選）再合併下載 ---------- */
 const pageExportDialog = ref(false);
+const pageExportFormat = ref('pdf');
 const pageExportSelection = ref([]);
 
-// EXCEL 不含合約附圖頁：勾選中至少要有一頁非附圖頁才可匯出 EXCEL
-const pageExportExcelable = computed(() =>
-  exportablePages.value.some(p =>
-    pageExportSelection.value.includes(p.id) && p.type !== 'contractAttachments'));
+// 該格式可下載的頁面（EXCEL 不含合約附圖頁，直接不列出）
+const pageExportCandidates = computed(() => formatPages(pageExportFormat.value));
 
-function openPageExportDialog() {
-  pageExportSelection.value = [];
+function formatPages(format) {
+  return exportablePages.value.filter(p => !(format === 'excel' && p.type === 'contractAttachments'));
+}
+
+function openPageExportDialog(format) {
+  pageExportFormat.value = format;
+  pageExportSelection.value = formatPages(format).map(p => p.id);
+  if (!pageExportSelection.value.length) {
+    toast.warning(format === 'excel' ? '沒有可下載的頁面（EXCEL 不含合約附圖頁）' : '沒有可下載的頁面');
+    return;
+  }
   pageExportDialog.value = true;
 }
 
@@ -1941,16 +1948,17 @@ function togglePageExport(id, val) {
 }
 
 function toggleAllExportPages() {
-  pageExportSelection.value = pageExportSelection.value.length === exportablePages.value.length
+  pageExportSelection.value = pageExportSelection.value.length === pageExportCandidates.value.length
     ? []
-    : exportablePages.value.map(p => p.id);
+    : pageExportCandidates.value.map(p => p.id);
 }
 
-async function exportSelectedPages(format) {
-  const ids = exportablePages.value.map(p => p.id).filter(id => pageExportSelection.value.includes(id));
+async function exportSelectedPages() {
+  const format = pageExportFormat.value;
+  const ids = pageExportCandidates.value.map(p => p.id).filter(id => pageExportSelection.value.includes(id));
   if (!ids.length) return;
-  await download(format, ids);
   pageExportDialog.value = false;
+  await download(format, ids);
 }
 
 function base64ToBlob(base64, mimeType) {
@@ -1987,9 +1995,9 @@ async function download(format, onlyPageIds = null) {
       qrDataUrl = await QRCode.toDataURL(state.qrUrl, { width: 300, margin: 1, errorCorrectionLevel: 'M' });
     }
 
-    const pagesPayload = exportablePages.value
+    const candidatePages = formatPages(format);
+    const pagesPayload = candidatePages
       .filter(p => !onlyPageIds || onlyPageIds.includes(p.id))
-      .filter(p => !(format === 'excel' && p.type === 'contractAttachments'))
       .map(p => ({
         id: p.id,
         type: p.type,
@@ -2008,9 +2016,9 @@ async function download(format, onlyPageIds = null) {
       return;
     }
 
-    // 選頁匯出檔名：單頁附頁名、多頁串接頁名（過長改「自選N頁」）；勾滿全部頁視同完整匯出不附頁名
+    // 選頁檔名：單頁附頁名、多頁串接頁名（過長改「自選N頁」）；勾滿該格式全部頁視同完整匯出不附頁名
     let pageTitle = null;
-    if (onlyPageIds && onlyPageIds.length < exportablePages.value.length) {
+    if (onlyPageIds && pagesPayload.length < candidatePages.length) {
       const titles = pagesPayload.map(p => p.title).filter(Boolean);
       const joined = titles.join('+');
       pageTitle = titles.length <= 1 ? (titles[0] || null)

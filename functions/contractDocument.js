@@ -1181,19 +1181,78 @@ function setupSheet(wb, page, index, copyIndex = 0) {
   return ws;
 }
 
-/* ---------- 拆款表（動態欄格線：付款明細葉欄決定欄數） ---------- */
+/* ---------- 比例格線：依版面實際用到的邊界建立「合適欄寬」的真實欄位 ---------- */
+
+/**
+ * 以「頁寬比例 0~1」描述各區塊的欄位邊界，蒐集後建成真實 Excel 欄位：
+ *   exact  → 必須精確保留的邊界（如期款葉欄，需等寬）
+ *   fixed  → 其他區塊邊界；與既有邊界距離 < tol 時併入既有邊界（避免產生過窄欄）
+ * 每欄寬度 = 比例區間 × totalWidth（字元寬），使用者在 Excel 中看到的是正常寬度的欄位。
+ */
+function buildFracGrid(ws, { exact = [], fixed = [], totalWidth = 96, tol = 0.02 } = {}) {
+  const clamp = f => Math.min(1, Math.max(0, Number(f) || 0));
+  const bounds = [0, 1, ...exact.map(clamp)]
+    .filter((f, i, arr) => arr.findIndex(x => Math.abs(x - f) < 1e-6) === i)
+    .sort((a, b) => a - b);
+  for (const raw of [...fixed].map(clamp).sort((a, b) => a - b)) {
+    if (bounds.some(b => Math.abs(b - raw) < tol)) continue;
+    bounds.push(raw);
+    bounds.sort((a, b) => a - b);
+  }
+  const ncols = bounds.length - 1;
+  ws.columns = bounds.slice(0, -1).map((f, i) => ({
+    width: Math.max(1.2, Math.round((bounds[i + 1] - f) * totalWidth * 100) / 100),
+  }));
+  // 比例 → 最接近邊界的欄號（1-based；f=1 回傳 ncols+1，作為區段的「開區間」右界）
+  // seg(f0,f1) → [起欄, 迄欄]（迄欄含），右界 1 對應最後一欄
+  const colAt = f => {
+    const v = clamp(f);
+    let best = 0;
+    for (let i = 1; i < bounds.length; i++) if (Math.abs(bounds[i] - v) < Math.abs(bounds[best] - v)) best = i;
+    return best + 1;
+  };
+  const seg = (f0, f1) => {
+    const c1 = Math.min(ncols, colAt(f0));
+    return [c1, Math.max(c1, Math.min(ncols, colAt(f1) - 1))];
+  };
+  return { ncols, colAt, seg };
+}
+
+/* ---------- 拆款表（比例格線：欄數依版面邊界與期款數決定，欄寬為正常可讀寬度） ---------- */
+
+const BD_IF = [0, 0.13, 0.32, 0.435, 0.605, 0.74, 1];                         // 基本資訊
+const BD_PK = { text: 0.13, price: 0.62, label: 0.74, value: 0.855, unit: 0.96 }; // 車位區
+const BD_AF = { l1: 0.13, v1: 0.235, u1: 0.275, m1: 0.39, s1: 0.475, v2: 0.58, u2: 0.62, r1: 0.77, v3: 0.96 }; // 面積區
+const BD_PR = [0.22, 0.52, 0.76];                                                // 價款區
+const BD_PAY = { VF: 0.038, LF: 0.13, TF: 0.912 };                               // 付款明細
+const BD_FREE_START = 0.45;                                                      // 自由欄位起點
 
 function excelBreakdown(ws, d) {
   const columns = (d.installment && d.installment.columns) || [];
   const leaves = columns.reduce((s, c) => s + (c.type === "group" ? c.children.length : 1), 0);
-  // 固定 160 欄細格線：所有區塊以「比例」對應欄位範圍，
-  // 邊界間距遠大於取整誤差，不會出現合併範圍碰撞（欄數與期款數無關）。
-  const ncols = 160;
-  ws.columns = Array.from({ length: ncols }, () => ({ width: 0.62 }));
+  const priceFields = d.priceFields || [];
+  const byKey = Object.fromEntries(priceFields.map(f => [f.key, f]));
+  const KNOWN = ["houseAmount", "mainAmount", "ancillaryAmount", "exclusiveAmount", "commonAmount"];
+  const hasKnownPrice = KNOWN.every(k => byKey[k]);
+  const priceRows = hasKnownPrice ? priceFields.filter(f => !KNOWN.includes(f.key)) : priceFields;
+  const freeFields = d.freeFields || [];
+  const signFields = d.signFields || [];
+  const a = d.areas || {};
 
-  const colAt = f => Math.min(ncols, Math.max(1, 1 + Math.round(f * ncols)));
-  // frac 區段 [f0,f1) → [colAt(f0), colAt(f1)-1]
-  const seg = (f0, f1) => [colAt(f0), Math.max(colAt(f0), colAt(f1) - 1)];
+  // 蒐集本頁所有區塊的欄位邊界 → 建立真實欄位
+  const splits = n => Array.from({ length: n + 1 }, (_, i) => i / n);
+  const fixed = [
+    ...BD_IF, ...Object.values(BD_PK), ...Object.values(BD_AF),
+    ...(hasKnownPrice ? BD_PR : []),
+    ...(priceRows.length >= 3 ? splits(3) : []),
+    ...(priceRows.length % 3 ? splits(priceRows.length % 3) : []),
+    BD_PAY.VF, BD_PAY.LF, BD_PAY.TF,
+    ...(freeFields.length ? splits(freeFields.length).map(f => BD_FREE_START + (1 - BD_FREE_START) * f) : []),
+    ...(signFields.length ? splits(signFields.length) : []),
+  ];
+  const leafF = (BD_PAY.TF - BD_PAY.LF) / Math.max(leaves, 1);
+  const exact = columns.length ? Array.from({ length: leaves + 1 }, (_, i) => BD_PAY.LF + leafF * i) : [];
+  const { ncols, colAt, seg } = buildFracGrid(ws, { exact, fixed });
 
   let r = 1;
   // 標題
@@ -1202,11 +1261,11 @@ function excelBreakdown(ws, d) {
   r += 1;
 
   // 基本資訊
-  const IF = [0, 0.13, 0.32, 0.435, 0.605, 0.74, 1];
+  const IF = BD_IF;
   const infoRow = (items, h = 24) => {
     ws.getRow(r).height = h;
     items.forEach(([i0, i1, text, o]) => {
-      const [c1, c2] = [colAt(IF[i0]), Math.max(colAt(IF[i0]), colAt(IF[i1]) - 1)];
+      const [c1, c2] = seg(IF[i0], IF[i1]);
       setMerged(ws, r, c1, r, c2, text, o || {});
     });
     r += 1;
@@ -1237,25 +1296,24 @@ function excelBreakdown(ws, d) {
   for (let i = 0; i < parkRows; i++) {
     ws.getRow(r).height = 20;
     const p = spots[i];
-    const [t1, t2] = seg(0.13, 0.63);
+    const [t1, t2] = seg(BD_PK.text, BD_PK.price);
     setMerged(ws, r, t1, r, t2, p ? (p.label || "") : "", { size: 10 });
-    const [p1, p2] = seg(0.63, 0.735);
+    const [p1, p2] = seg(BD_PK.price, BD_PK.label);
     setMerged(ws, r, p1, r, p2, p && p.price !== null && p.price !== undefined ? `價款 ${fmtWan(p.price)} 萬` : "", { size: 9 });
     const rp = rightPairs[i];
-    const [l1, l2] = seg(0.735, 0.855);
+    const [l1, l2] = seg(BD_PK.label, BD_PK.value);
     setMerged(ws, r, l1, r, l2, rp ? rp[0] : "", { bold: true, size: 9 });
-    const [v1, v2] = seg(0.855, 0.955);
+    const [v1, v2] = seg(BD_PK.value, BD_PK.unit);
     setMerged(ws, r, v1, r, v2, rp ? fmtWan(rp[1]) : "", { size: 11 });
-    const [u1, u2] = seg(0.955, 1);
+    const [u1, u2] = seg(BD_PK.unit, 1);
     setMerged(ws, r, u1, r, u2, rp ? "萬" : "", { size: 9 });
     r += 1;
   }
-  const [pk1, pk2] = seg(0, 0.13);
+  const [pk1, pk2] = seg(0, BD_PK.text);
   setMerged(ws, parkTop, pk1, r - 1, pk2, "車位編號", { bold: true });
 
   // 面積區（6 列）
-  const a = d.areas || {};
-  const AF = { l1: 0.13, v1: 0.235, u1: 0.275, m1: 0.39, s1: 0.475, v2: 0.58, u2: 0.62, r1: 0.77, v3: 0.96 };
+  const AF = BD_AF;
   const areaTop = r;
   for (let i = 0; i < 6; i++) ws.getRow(r + i).height = 20;
 
@@ -1298,61 +1356,45 @@ function excelBreakdown(ws, d) {
 
   if (Number(a.terracePing) > 0) {
     ws.getRow(r).height = 18;
-    const [t1, t2] = seg(0, 0.275);
+    const [t1, t2] = seg(0, AF.u1);
     setMerged(ws, r, t1, r, t2, "露臺(不計坪)", { bold: true, size: 9.5 });
-    const [t3, t4] = seg(0.275, 0.58);
+    const [t3, t4] = seg(AF.u1, AF.v2);
     setMerged(ws, r, t3, r, t4, `${fmtArea(a.terracePing)} 坪`, { size: 10 });
-    const [t5, t6] = seg(0.58, 1);
+    const [t5, t6] = seg(AF.v2, 1);
     setMerged(ws, r, t5, r, t6, "");
     r += 1;
   }
 
   // 價款區
-  const priceFields = d.priceFields || [];
-  const byKey = Object.fromEntries(priceFields.map(f => [f.key, f]));
   const fValX = f => (f ? (f.error ? "公式錯誤" : `${f.label}：  ${fmtWan1(f.value)}萬`) : "");
-  const KNOWN = ["houseAmount", "mainAmount", "ancillaryAmount", "exclusiveAmount", "commonAmount"];
-  if (KNOWN.every(k => byKey[k])) {
+  if (hasKnownPrice) {
     ws.getRow(r).height = 20;
     ws.getRow(r + 1).height = 20;
-    const [h1, h2] = seg(0, 0.22);
+    const [h1, h2] = seg(0, BD_PR[0]);
     setMerged(ws, r, h1, r + 1, h2, fValX(byKey.houseAmount), { size: 10, align: "left" });
-    const [m1, m2] = seg(0.22, 0.52);
+    const [m1, m2] = seg(BD_PR[0], BD_PR[1]);
     setMerged(ws, r, m1, r, m2, fValX(byKey.mainAmount), { size: 9.5, align: "left" });
     setMerged(ws, r + 1, m1, r + 1, m2, fValX(byKey.ancillaryAmount), { size: 9, align: "left" });
-    const [e1, e2] = seg(0.52, 0.76);
+    const [e1, e2] = seg(BD_PR[1], BD_PR[2]);
     setMerged(ws, r, e1, r + 1, e2, fValX(byKey.exclusiveAmount), { size: 9.5, align: "left" });
-    const [c1, c2] = seg(0.76, 1);
+    const [c1, c2] = seg(BD_PR[2], 1);
     setMerged(ws, r, c1, r + 1, c2, fValX(byKey.commonAmount), { size: 9.5, align: "left" });
     r += 2;
-    const extras = priceFields.filter(f => !KNOWN.includes(f.key));
-    for (let i = 0; i < extras.length; i += 3) {
-      const rowF = extras.slice(i, i + 3);
-      ws.getRow(r).height = 18;
-      rowF.forEach((f, j) => {
-        const [x1, x2] = seg(j / rowF.length, (j + 1) / rowF.length);
-        setMerged(ws, r, x1, r, x2, fValX(f), { size: 9.5, align: "left" });
-      });
-      r += 1;
-    }
-  } else if (priceFields.length) {
-    for (let i = 0; i < priceFields.length; i += 3) {
-      const rowF = priceFields.slice(i, i + 3);
-      ws.getRow(r).height = 18;
-      rowF.forEach((f, j) => {
-        const [x1, x2] = seg(j / rowF.length, (j + 1) / rowF.length);
-        setMerged(ws, r, x1, r, x2, fValX(f), { size: 9.5, align: "left" });
-      });
-      r += 1;
-    }
+  }
+  // 其餘價款欄位（每列最多 3 欄等分）
+  for (let i = 0; i < priceRows.length; i += 3) {
+    const rowF = priceRows.slice(i, i + 3);
+    ws.getRow(r).height = 18;
+    rowF.forEach((f, j) => {
+      const [x1, x2] = seg(j / rowF.length, (j + 1) / rowF.length);
+      setMerged(ws, r, x1, r, x2, fValX(f), { size: 9.5, align: "left" });
+    });
+    r += 1;
   }
 
   // 付款明細（橫式；比例式欄位範圍，與期款數無關）
   if (columns.length) {
-    const VF = 0.038;                 // 直排「付款明細」
-    const LF = 0.126;                 // 「單位:萬」/ 列標籤 右界
-    const TF = 0.912;                 // 「總價」左界
-    const leafF = (TF - LF) / Math.max(leaves, 1);
+    const { VF, LF, TF } = BD_PAY;    // 直排「付款明細」右界 / 列標籤右界 / 「總價」左界
     const leafSeg = i => seg(LF + leafF * i, LF + leafF * (i + 1));
 
     ws.getRow(r).height = 16;
@@ -1440,9 +1482,9 @@ function excelBreakdown(ws, d) {
   // 備註
   // 備註：標題列（右格留空）+ 下一列整寬合併格放文字
   ws.getRow(r).height = 18;
-  const [b1, b2] = seg(0, 0.13);
+  const [b1, b2] = seg(0, BD_IF[1]);
   setMerged(ws, r, b1, r, b2, "備註", { bold: true });
-  const [b3, b4] = seg(0.13, 1);
+  const [b3, b4] = seg(BD_IF[1], 1);
   setMerged(ws, r, b3, r, b4, "", {});
   r += 1;
   const remarkText = String(d.remark || "");
@@ -1463,11 +1505,10 @@ function excelBreakdown(ws, d) {
   }
 
   // 自由欄位（右半）
-  const freeFields = d.freeFields || [];
   if (freeFields.length) {
     ws.getRow(r).height = 15;
     ws.getRow(r + 1).height = 17;
-    const startF = 0.45;
+    const startF = BD_FREE_START;
     freeFields.forEach((f, i) => {
       const f0 = startF + (1 - startF) * (i / freeFields.length);
       const f1 = startF + (1 - startF) * ((i + 1) / freeFields.length);
@@ -1480,7 +1521,6 @@ function excelBreakdown(ws, d) {
   }
 
   // 簽核欄
-  const signFields = d.signFields || [];
   if (signFields.length) {
     ws.getRow(r).height = 17;
     ws.getRow(r + 1).height = 28;
