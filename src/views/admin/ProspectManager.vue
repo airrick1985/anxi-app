@@ -364,11 +364,10 @@
           <v-switch v-model="settingsForm.trackingEnabled" label="預設嵌入開信追蹤像素" color="primary" density="compact" hide-details />
           <v-divider class="my-3" />
           <div class="d-flex align-center mb-2">
-            <span class="text-subtitle-2">網路蒐集：Google 搜尋</span>
+            <span class="text-subtitle-2">網路蒐集：Brave 搜尋 API</span>
             <v-chip size="x-small" class="ml-2" :color="hasSearchKey ? 'success' : 'grey'" variant="tonal">{{ hasSearchKey ? '已設定' : '未設定' }}</v-chip>
           </div>
-          <v-text-field v-model="searchKeyForm.key" label="API 金鑰" type="password" variant="outlined" density="comfortable" class="mb-2" autocomplete="off" />
-          <v-text-field v-model="searchKeyForm.cx" label="搜尋引擎 ID" variant="outlined" density="comfortable" hide-details autocomplete="off" />
+          <v-text-field v-model="searchKeyForm.key" label="API 金鑰" type="password" variant="outlined" density="comfortable" hide-details autocomplete="off" />
         </v-card-text>
         <v-divider />
         <v-card-actions>
@@ -1006,17 +1005,17 @@ async function confirmDeleteTemplate() {
 const settingsOpen = ref(false);
 const settingsForm = ref({ ...DEFAULT_PROSPECT_SETTINGS });
 const savingSettings = ref(false);
-const searchKeyForm = ref({ key: '', cx: '' });
+const searchKeyForm = ref({ key: '' });
 async function loadSettings() {
   try { settings.value = await fetchProspectSettings(); } catch (e) { console.error(e); }
 }
-function openSettings() { settingsForm.value = { ...settings.value }; searchKeyForm.value = { key: '', cx: '' }; settingsOpen.value = true; }
+function openSettings() { settingsForm.value = { ...settings.value }; searchKeyForm.value = { key: '' }; settingsOpen.value = true; }
 async function saveSettings() {
   savingSettings.value = true;
   try {
     await saveProspectSettings(settingsForm.value, operator.value.name);
-    if (searchKeyForm.value.key.trim() && searchKeyForm.value.cx.trim()) {
-      await prospectHarvestAPI({ action: 'setSearchKey', operatorKey: operator.value.key, key: searchKeyForm.value.key.trim(), cx: searchKeyForm.value.cx.trim() });
+    if (searchKeyForm.value.key.trim()) {
+      await prospectHarvestAPI({ action: 'setSearchKey', operatorKey: operator.value.key, key: searchKeyForm.value.key.trim() });
       hasSearchKey.value = true;
     }
     await loadSettings();

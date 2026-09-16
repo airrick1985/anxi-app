@@ -30,7 +30,7 @@
           <v-col cols="12" sm="6">
             <v-text-field v-model="form.since" type="date" label="建案備查起日" variant="outlined" density="comfortable" hide-details class="mb-3" />
             <v-switch v-model="form.enrich" color="primary" density="compact" hide-details label="連帶補 Email（官網）" />
-            <div v-if="form.enrich && !hasSearchKey" class="text-caption text-warning mt-1">未設定 Google 搜尋金鑰，只查已知官網</div>
+            <div v-if="form.enrich && !hasSearchKey" class="text-caption text-warning mt-1">未設定搜尋金鑰，只查已知官網</div>
           </v-col>
         </v-row>
 

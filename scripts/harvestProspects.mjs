@@ -10,7 +10,7 @@
  *
  * 選項：--cities 臺北市,新北市（預設六都）--since 2024-01-01 --categories project,builder,agency
  *       --no-search（不用搜尋引擎）--limit N（enrich 每次處理筆數）--dry-run
- * 找官網需環境變數 GOOGLE_CSE_KEY / GOOGLE_CSE_CX（Google Programmable Search）；沒有就只對已知官網抓信箱。
+ * 找官網需環境變數 BRAVE_SEARCH_KEY（Brave Search API）或 GOOGLE_CSE_KEY / GOOGLE_CSE_CX；沒有就只對已知官網抓信箱。
  *
  * 快取目錄：docs/local/客戶開發/harvest/（已 gitignore）
  */
@@ -38,7 +38,8 @@ const CATEGORIES = opt('categories', 'project,builder,agency').split(',').map((s
 const LIMIT = Number(opt('limit', '0')) || 0;
 const DRY = flag('dry-run');
 const NO_SEARCH = flag('no-search');
-const SEARCH = process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX ? { key: process.env.GOOGLE_CSE_KEY, cx: process.env.GOOGLE_CSE_CX } : null;
+const SEARCH = process.env.BRAVE_SEARCH_KEY ? { provider: 'brave', key: process.env.BRAVE_SEARCH_KEY }
+  : (process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX ? { provider: 'google', key: process.env.GOOGLE_CSE_KEY, cx: process.env.GOOGLE_CSE_CX } : null);
 
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -72,7 +73,7 @@ async function stageEnrich() {
   const enrich = readJson('enrich.json', {});
   const useSearch = !NO_SEARCH && !!SEARCH;
   const todo = companies.filter((c) => !c.email && isCompanyName(c.name) && !(enrich[`${c.category}|${nameKey(c.name)}`] || {}).done && (useSearch || c.website));
-  log(`待處理 ${todo.length} / ${companies.length} 家${LIMIT ? `（本次 ${LIMIT}）` : ''}${useSearch ? '（Google 搜尋找官網）' : '（僅已知官網，不搜尋）'}`);
+  log(`待處理 ${todo.length} / ${companies.length} 家${LIMIT ? `（本次 ${LIMIT}）` : ''}${useSearch ? `（${SEARCH.provider} 搜尋找官網）` : '（僅已知官網，不搜尋）'}`);
   let n = 0; let hits = 0; let lastSearchAt = 0;
   for (const c of todo) {
     if (LIMIT && n >= LIMIT) break;
@@ -82,7 +83,7 @@ async function stageEnrich() {
       if (!rec.website && useSearch) {
         const wait = lastSearchAt + 700 - Date.now(); if (wait > 0) await sleep(wait);
         lastSearchAt = Date.now();
-        const links = await core.googleSearch(c.name, SEARCH);
+        const links = await core.webSearch(c.name, SEARCH);
         rec.searchLinks = links.slice(0, 6);
         rec.website = core.pickOfficialSite(links);
       }

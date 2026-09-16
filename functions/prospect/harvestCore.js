@@ -4,7 +4,7 @@
  * 來源：
  *   1. 內政部「預售屋備查建案」全國 CSV（建案＋起造人＝建商）
  *   2. 各縣市不動產開發／代銷公會公開會員名錄（建商／代銷）
- *   3. 公司官網（Google Programmable Search 找官網 → 抓首頁／聯絡頁公開信箱）
+ *   3. 公司官網（Brave Search API 找官網 → 抓首頁／聯絡頁公開信箱）
  *
  * 規格：docs/SPEC_CustomerProspecting.md §2（prospects 資料模型）；寫入規則同 Excel 匯入（同名只補空欄）。
  */
@@ -328,6 +328,21 @@ async function googleSearch(q, { key, cx }) {
   return (body.items || []).map((it) => it.link).filter(Boolean);
 }
 
+/** Brave Search API（https://api.search.brave.com；X-Subscription-Token） */
+async function braveApiSearch(q, { key }) {
+  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=8&country=TW&search_lang=zh-hant`;
+  const r = await fetchRaw(url, { timeout: 20000, headers: { Accept: 'application/json', 'X-Subscription-Token': key } });
+  const body = JSON.parse(r.buf.toString('utf8') || '{}');
+  if (r.status === 429) { const e = new Error('搜尋額度用盡或被限流（429）'); e.code = 429; throw e; }
+  if (r.status !== 200) throw new Error(`Brave 搜尋 http ${r.status}：${body.error?.detail || body.message || ''}`.slice(0, 160));
+  return (body.web?.results || []).map((it) => it.url).filter(Boolean);
+}
+/** 依設定的供應商搜尋：{ provider: 'brave'|'google', key, cx? } */
+function webSearch(q, cfg) {
+  if (!cfg || !cfg.key) throw new Error('未設定搜尋金鑰');
+  return cfg.provider === 'google' ? googleSearch(q, cfg) : braveApiSearch(q, cfg);
+}
+
 function pickOfficialSite(links) {
   for (const u of links) {
     try { const { hostname, protocol } = new URL(u); if (BLOCK_HOSTS.test(hostname) || BLOCK_HOSTS.test(u)) continue; return `${protocol}//${hostname}/`; } catch { /* ignore */ }
@@ -563,7 +578,7 @@ async function runEnrichBatch(db, params, hooks) {
         if (wait > 0) await sleep(wait);
         lastSearchAt = Date.now();
         try {
-          const links = await googleSearch(p.name, params.search);
+          const links = await webSearch(p.name, params.search);
           harvest.website = pickOfficialSite(links);
         } catch (e) { if (e.code === 429) { quotaExceeded = true; harvest.error = e.message; } else harvest.error = e.message; }
       }
@@ -597,7 +612,7 @@ module.exports = {
   CITY_NAMES, CITY_CODES, SIX_CITIES,
   nameKey, isCompanyName, parseBuilders, parseCsv, isoToRoc, rocDateText,
   downloadBuildcaseZip, readBuildcaseCsvs, extractProjects, scrapeAssociations, mergeCompanies,
-  googleSearch, pickOfficialSite, harvestSite, extractEmails,
+  googleSearch, braveApiSearch, webSearch, pickOfficialSite, harvestSite, extractEmails,
   createWriter, companyFields, projectFields, autoTags,
   runSources, runEnrichBatch,
 };

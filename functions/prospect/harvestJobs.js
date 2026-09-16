@@ -4,8 +4,8 @@
  *   prospectHarvest（onCall，僅超級管理員）
  *     action: 'start'        → 建立 prospectHarvestJobs/{id}（status queued）
  *             'cancel'       → 標記 cancelRequested
- *             'config'       → 回傳 Google 搜尋金鑰是否已設定
- *             'setSearchKey' → 寫入 Secret Manager（PROSPECT_GOOGLE_CSE_KEY / _CX）
+ *             'config'       → 回傳搜尋金鑰是否已設定（Brave Search API）
+ *             'setSearchKey' → 寫入 Secret Manager（PROSPECT_BRAVE_SEARCH_KEY）
  *   runProspectHarvest（Firestore 觸發 prospectHarvestJobs/{id}）
  *     status 為 queued 時認領執行；stage sources → enrich（分批，每批以時間預算為限，未完自動重新排隊）
  *
@@ -22,7 +22,8 @@ const secrets = require('../salesAi/secrets');
 const core = require('./harvestCore');
 
 const JOBS = 'prospectHarvestJobs';
-const SECRET_KEY = 'PROSPECT_GOOGLE_CSE_KEY';
+const SECRET_BRAVE = 'PROSPECT_BRAVE_SEARCH_KEY';   // Brave Search API（主要）
+const SECRET_KEY = 'PROSPECT_GOOGLE_CSE_KEY';      // Google Programmable Search（舊；新建引擎已不能搜整個網路）
 const SECRET_CX = 'PROSPECT_GOOGLE_CSE_CX';
 const ENRICH_BUDGET_MS = 420000; // 每批 7 分鐘（函式上限 9 分鐘）
 const SEARCH_INTERVAL_MS = 700;
@@ -31,8 +32,9 @@ let _db = null;
 const getDb = () => { if (!_db) _db = new Firestore({ databaseId: 'anxi-app' }); return _db; };
 
 async function getSearchConfig() {
-  const [key, cx] = await Promise.all([secrets.getSecret(SECRET_KEY), secrets.getSecret(SECRET_CX)]);
-  return key && cx ? { key, cx } : null;
+  const [brave, key, cx] = await Promise.all([secrets.getSecret(SECRET_BRAVE), secrets.getSecret(SECRET_KEY), secrets.getSecret(SECRET_CX)]);
+  if (brave) return { provider: 'brave', key: brave };
+  return key && cx ? { provider: 'google', key, cx } : null;
 }
 
 function normalizeParams(raw = {}) {
@@ -56,14 +58,13 @@ exports.prospectHarvest = onCall({ region: 'asia-east1', memory: '256MiB', timeo
   switch (data.action) {
     case 'config': {
       const cfg = await getSearchConfig();
-      return { status: 'success', hasSearchKey: !!cfg };
+      return { status: 'success', hasSearchKey: !!cfg, provider: cfg?.provider || '' };
     }
     case 'setSearchKey': {
-      const key = String(data.key || '').trim(); const cx = String(data.cx || '').trim();
-      if (!key || !cx) throw new HttpsError('invalid-argument', '請輸入 API 金鑰與搜尋引擎 ID');
+      const key = String(data.key || '').trim();
+      if (!key) throw new HttpsError('invalid-argument', '請輸入 API 金鑰');
       try {
-        await secrets.setSecret(SECRET_KEY, key);
-        await secrets.setSecret(SECRET_CX, cx);
+        await secrets.setSecret(SECRET_BRAVE, key);
       } catch (e) {
         throw new HttpsError('internal', `寫入 Secret Manager 失敗：${e.message}`);
       }
@@ -158,7 +159,7 @@ exports.runProspectHarvest = onDocumentWritten({
       if (remaining > 0 && !r.quotaExceeded) {
         await ref.update({ status: 'queued', result, updatedAt: FieldValue.serverTimestamp() });
       } else {
-        await finish('done', { result, error: r.quotaExceeded ? 'Google 搜尋額度用盡，其餘公司未搜尋官網' : '' });
+        await finish('done', { result, error: r.quotaExceeded ? '搜尋額度用盡，其餘公司未搜尋官網' : '' });
       }
       return;
     }
