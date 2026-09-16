@@ -1,26 +1,27 @@
 <template>
-  <v-container fluid class="prospect-manager">
-    <!-- 標題列 -->
-    <div class="d-flex align-center flex-wrap ga-2 mb-2">
-      <v-icon size="large" color="primary">mdi-account-tie</v-icon>
-      <div>
-        <h1 class="text-h5 mb-0">客戶開發</h1>
-        <div class="text-caption text-grey">建案／建商名單、開發 Email、追蹤管理</div>
-      </div>
-      <v-spacer />
-      <v-chip
-        :color="dueCount ? 'error' : 'grey'"
-        variant="flat"
-        prepend-icon="mdi-calendar-alert"
-        :class="{ 'cursor-pointer': true }"
-        @click="toggleDueFilter"
-      >今日待追蹤 {{ dueCount }}</v-chip>
-      <v-btn size="small" variant="outlined" prepend-icon="mdi-web" :loading="harvestActive" @click="harvestOpen = true">網路蒐集</v-btn>
-      <v-btn size="small" variant="outlined" prepend-icon="mdi-file-excel" @click="importOpen = true">匯入 Excel</v-btn>
-      <v-btn size="small" variant="outlined" prepend-icon="mdi-download" :disabled="!filtered.length" @click="exportExcel">匯出</v-btn>
-      <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-plus" @click="startCreate">新增</v-btn>
-      <v-btn size="small" variant="text" icon="mdi-cog" title="設定" @click="openSettings" />
-    </div>
+  <v-container fluid class="prospect-manager pm">
+    <!-- 標題列：左側留白避開全站浮動漢堡鈕（fixed 10px + 40px） -->
+    <header class="pm-head">
+      <h1 class="pm-title">客戶開發</h1>
+      <button type="button" class="pm-due" :class="{ 'is-on': f.dueToday, 'has-due': dueCount > 0 }" title="只看今日待追蹤" @click="toggleDueFilter">
+        <v-icon size="15">mdi-calendar-alert</v-icon>今日待追蹤<b>{{ dueCount }}</b>
+      </button>
+      <div class="pm-spacer" />
+      <button type="button" class="mac-btn" @click="harvestOpen = true">
+        <v-progress-circular v-if="harvestActive" indeterminate size="14" width="2" color="primary" />
+        <v-icon v-else size="16">mdi-web</v-icon>網路蒐集
+      </button>
+      <button type="button" class="mac-btn" @click="importOpen = true"><v-icon size="16">mdi-file-excel</v-icon>匯入</button>
+      <button type="button" class="mac-btn" :disabled="!filtered.length" @click="exportExcel"><v-icon size="16">mdi-download</v-icon>匯出</button>
+      <v-menu>
+        <template #activator="{ props: p }"><button type="button" class="mac-btn mac-btn--icon" v-bind="p" title="更多"><v-icon size="18">mdi-dots-horizontal</v-icon></button></template>
+        <v-list density="compact" class="pm-menu">
+          <v-list-item prepend-icon="mdi-tag-multiple" title="標籤管理" @click="tagManagerOpen = true" />
+          <v-list-item prepend-icon="mdi-cog" title="設定" @click="openSettings" />
+        </v-list>
+      </v-menu>
+      <button type="button" class="mac-btn mac-btn--primary" @click="startCreate"><v-icon size="16">mdi-plus</v-icon>新增</button>
+    </header>
 
     <!-- 網路蒐集狀態列 -->
     <v-alert
@@ -42,175 +43,201 @@
       </div>
     </v-alert>
 
-    <v-tabs v-model="tab" color="primary" class="mb-3">
-      <v-tab value="list" prepend-icon="mdi-format-list-bulleted">名單</v-tab>
-      <v-tab value="campaigns" prepend-icon="mdi-email-multiple">寄信紀錄</v-tab>
-      <v-tab value="templates" prepend-icon="mdi-file-document-multiple">Email 範本</v-tab>
-    </v-tabs>
+    <!-- 分頁：macOS 分段控制 -->
+    <div class="mac-seg mb-3" role="tablist">
+      <button v-for="t in tabItems" :key="t.value" type="button" class="mac-seg__btn" :class="{ 'is-active': tab === t.value }" role="tab" :aria-selected="tab === t.value" @click="tab = t.value">{{ t.title }}</button>
+    </div>
 
     <v-window v-model="tab">
       <!-- ============================================================ 名單 -->
       <v-window-item value="list">
-        <v-row>
-          <v-col cols="12" :md="mdAndUp ? 5 : 12">
-            <v-card>
-              <v-card-text class="pb-2">
-                <v-text-field v-model="search" label="搜尋 名稱／建商／代銷／地址／聯絡人／Email" prepend-inner-icon="mdi-magnify" density="compact" variant="outlined" clearable hide-details class="mb-2" />
-                <v-row dense>
-                  <v-col cols="6" sm="3"><v-select v-model="f.categories" :items="categoryOptions" item-title="title" item-value="value" label="類別" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
-                  <v-col cols="6" sm="3"><v-select v-model="f.cities" :items="cityItems" label="縣市" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
-                  <v-col v-if="f.cities.length" cols="6" sm="3"><v-select v-model="f.districts" :items="districtItems" item-title="title" item-value="value" label="區" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
-                  <v-col cols="6" sm="3"><v-select v-model="f.statuses" :items="statusOptions" item-title="title" item-value="value" label="狀態" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
-                  <v-col cols="6" sm="3"><v-select v-model="f.tags" :items="tagDefs" item-title="name" item-value="name" label="標籤" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
-                  <v-col cols="6" sm="3"><v-select v-model="f.owner" :items="ownerFilterItems" label="負責人" density="compact" variant="outlined" hide-details clearable /></v-col>
-                  <v-col cols="6" sm="3"><v-select v-model="f.notEmailedDays" :items="notEmailedItems" label="未寄信" density="compact" variant="outlined" hide-details clearable /></v-col>
-                  <v-col cols="6" sm="3"><v-select v-model="sortBy" :items="sortOptions" label="排序" density="compact" variant="outlined" hide-details /></v-col>
-                  <v-col cols="12" sm="3" class="d-flex align-center flex-wrap">
-                    <v-checkbox v-model="f.hasEmail" label="有 Email" density="compact" hide-details class="mr-2" />
-                    <v-checkbox v-model="f.hasFb" label="有 FB" density="compact" hide-details />
-                  </v-col>
-                  <v-col cols="12" class="d-flex align-center flex-wrap ga-2">
-                    <v-chip size="small" :variant="f.dueToday ? 'flat' : 'outlined'" color="error" @click="f.dueToday = !f.dueToday">今日待追蹤</v-chip>
-                    <v-chip size="small" :variant="f.openedNoReply ? 'flat' : 'outlined'" color="cyan" @click="f.openedNoReply = !f.openedNoReply">已開信未回覆</v-chip>
-                    <v-chip size="small" :variant="f.clicked ? 'flat' : 'outlined'" color="deep-purple" @click="f.clicked = !f.clicked">已點擊</v-chip>
-                    <v-chip size="small" :variant="f.hasLine ? 'flat' : 'outlined'" color="green" @click="f.hasLine = !f.hasLine">有 LINE</v-chip>
-                    <v-btn size="x-small" variant="text" @click="resetFilters">清除篩選</v-btn>
-                  </v-col>
-                </v-row>
-                <div class="d-flex align-center flex-wrap ga-2 mt-2">
-                  <span class="text-caption text-grey">共 {{ filtered.length }} 筆（全部 {{ prospects.length }}）</span>
-                  <v-spacer />
-                  <v-btn size="small" variant="text" prepend-icon="mdi-tag-multiple" @click="tagManagerOpen = true">標籤管理</v-btn>
-                  <v-btn size="small" variant="text" prepend-icon="mdi-refresh" :loading="store.loading" @click="reload">重新整理</v-btn>
-                  <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-email-multiple" :disabled="!filtered.length" @click="openComposerFor(filtered)">群發 Email</v-btn>
-                </div>
+        <div class="pm-split" :class="{ 'has-inspector': inspectorOpen }">
+          <!-- 左：列表（沒選取時滿版） -->
+          <section class="pm-list">
+            <!-- 單行工具列 -->
+            <div class="pm-toolbar">
+              <label class="pm-search">
+                <v-icon size="16">mdi-magnify</v-icon>
+                <input v-model="search" type="search" placeholder="搜尋名稱、建商、地址、聯絡人、Email" />
+                <button v-if="search" type="button" class="pm-search__clear" title="清除" @click="search = ''"><v-icon size="15">mdi-close-circle</v-icon></button>
+              </label>
 
-                <!-- 批次列 -->
-                <v-sheet v-if="selectedIds.length" color="blue-lighten-5" rounded class="d-flex align-center flex-wrap ga-2 pa-2 mt-2">
-                  <span class="text-body-2">已選 {{ selectedIds.length }} 筆</span>
-                  <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-email" @click="openComposerFor(selectedList)">寄信</v-btn>
-                  <v-menu>
-                    <template #activator="{ props: p }"><v-btn v-bind="p" size="small" variant="tonal" prepend-icon="mdi-flag" :loading="bulkLoading">狀態</v-btn></template>
-                    <v-list density="compact"><v-list-item v-for="s in statusOptions" :key="s.value" :title="s.title" @click="bulkStatus(s.value)" /></v-list>
-                  </v-menu>
-                  <v-menu>
-                    <template #activator="{ props: p }"><v-btn v-bind="p" size="small" variant="tonal" prepend-icon="mdi-tag-plus" :loading="bulkLoading">加標籤</v-btn></template>
-                    <v-list density="compact">
-                      <v-list-item v-for="t in tagDefs" :key="t.id" @click="bulkTag('add', t.name)">
-                        <template #prepend><v-chip :color="t.color" size="x-small" variant="flat" class="mr-2">&nbsp;</v-chip></template>
-                        <v-list-item-title>{{ t.name }}</v-list-item-title>
-                      </v-list-item>
-                    </v-list>
-                  </v-menu>
-                  <v-menu>
-                    <template #activator="{ props: p }"><v-btn v-bind="p" size="small" variant="tonal" prepend-icon="mdi-tag-minus" :loading="bulkLoading">移除標籤</v-btn></template>
-                    <v-list density="compact">
-                      <v-list-item v-for="t in tagDefs" :key="t.id" @click="bulkTag('remove', t.name)">
-                        <template #prepend><v-chip :color="t.color" size="x-small" variant="flat" class="mr-2">&nbsp;</v-chip></template>
-                        <v-list-item-title>{{ t.name }}</v-list-item-title>
-                      </v-list-item>
-                    </v-list>
-                  </v-menu>
-                  <v-menu>
-                    <template #activator="{ props: p }"><v-btn v-bind="p" size="small" variant="tonal" prepend-icon="mdi-calendar-clock" :loading="bulkLoading">追蹤日</v-btn></template>
-                    <v-list density="compact">
-                      <v-list-item v-for="d in [1, 3, 7, 14, 30]" :key="d" :title="`+${d} 天`" @click="bulkFollowUp(d)" />
-                      <v-list-item title="清除" @click="bulkFollowUp(null)" />
-                    </v-list>
-                  </v-menu>
-                  <v-menu>
-                    <template #activator="{ props: p }"><v-btn v-bind="p" size="small" variant="tonal" prepend-icon="mdi-account-check" :loading="bulkLoading">負責人</v-btn></template>
-                    <v-list density="compact">
-                      <v-list-item v-for="a in admins" :key="a.key" :title="a.name" @click="bulkOwner(a)" />
-                      <v-list-item title="清除" @click="bulkOwner(null)" />
-                    </v-list>
-                  </v-menu>
-                  <v-btn size="small" color="error" variant="text" prepend-icon="mdi-delete" @click="bulkDeleteDialog = true">刪除</v-btn>
-                  <v-btn size="small" variant="text" @click="selectedIds = []">清除選取</v-btn>
-                </v-sheet>
-              </v-card-text>
-
-              <v-data-table
-                v-model="selectedIds"
-                v-model:sort-by="tableSort"
-                :headers="headers"
-                :items="filtered"
-                :custom-key-sort="keySort"
-                item-value="id"
-                show-select
-                density="compact"
-                :loading="store.loading"
-                :items-per-page="50"
-                :items-per-page-options="[25, 50, 100, -1]"
-                hover
-                fixed-header
-                height="calc(100vh - 420px)"
-                class="prospect-table"
-                :row-props="rowProps"
-                @click:row="onRowClick"
-              >
-                <template #item.name="{ item }">
-                  <div class="d-flex align-center ga-1">
-                    <v-icon size="x-small" :color="catMeta(item.category).color" :title="catMeta(item.category).title">{{ catMeta(item.category).icon }}</v-icon>
-                    <span class="font-weight-medium">{{ item.name }}</span>
-                    <v-icon v-if="(item.priority || 0) >= 1" size="x-small" color="amber">mdi-star</v-icon>
-                    <v-icon v-if="(item.priority || 0) >= 2" size="x-small" color="amber">mdi-star</v-icon>
+              <v-menu v-model="filterMenu" :close-on-content-click="false" location="bottom start" :offset="6">
+                <template #activator="{ props: p }">
+                  <button type="button" class="mac-btn" :class="{ 'is-open': filterMenu, 'pm-btn--active': activeFilterCount }" v-bind="p">
+                    <v-icon size="16">mdi-tune-variant</v-icon>篩選<span v-if="activeFilterCount" class="pm-badge">{{ activeFilterCount }}</span>
+                  </button>
+                </template>
+                <div class="pm-popover">
+                  <v-row dense>
+                    <v-col cols="6"><v-select v-model="f.categories" :items="categoryOptions" item-title="title" item-value="value" label="類別" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
+                    <v-col cols="6"><v-select v-model="f.statuses" :items="statusOptions" item-title="title" item-value="value" label="狀態" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
+                    <v-col cols="6"><v-select v-model="f.cities" :items="cityItems" label="縣市" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
+                    <v-col cols="6"><v-select v-model="f.districts" :items="districtItems" item-title="title" item-value="value" label="區" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable :disabled="!f.cities.length" /></v-col>
+                    <v-col cols="6"><v-select v-model="f.tags" :items="tagDefs" item-title="name" item-value="name" label="標籤" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
+                    <v-col cols="6"><v-select v-model="f.owner" :items="ownerFilterItems" label="負責人" density="compact" variant="outlined" hide-details clearable /></v-col>
+                    <v-col cols="6"><v-select v-model="f.notEmailedDays" :items="notEmailedItems" label="未寄信" density="compact" variant="outlined" hide-details clearable /></v-col>
+                    <v-col cols="6" class="d-flex align-center">
+                      <v-checkbox v-model="f.hasEmail" label="有 Email" density="compact" hide-details class="mr-2" />
+                      <v-checkbox v-model="f.hasFb" label="有 FB" density="compact" hide-details />
+                    </v-col>
+                  </v-row>
+                  <div class="pm-popover__foot">
+                    <button type="button" class="mac-btn" :disabled="!activeFilterCount" @click="resetFilters">清除</button>
+                    <div class="pm-spacer" />
+                    <button type="button" class="mac-btn mac-btn--primary" @click="filterMenu = false">完成</button>
                   </div>
-                  <div v-if="item.category === 'project' && (item.companyName || item.builder)" class="text-caption text-grey">{{ item.companyName || item.builder }}</div>
-                </template>
-                <template #item._city="{ item }"><span class="text-no-wrap">{{ item._city || '—' }}</span></template>
-                <template #item._district="{ item }"><span class="text-no-wrap">{{ item._district || '—' }}</span></template>
-                <template #item.status="{ item }">
-                  <v-chip size="x-small" :color="statusMeta(item.status).color" variant="flat">{{ statusMeta(item.status).title }}</v-chip>
-                </template>
-                <template #item.tags="{ item }">
-                  <v-chip v-for="t in (item.tags || [])" :key="t" size="x-small" :color="tagColor(t)" variant="flat" class="mr-1">{{ t }}</v-chip>
-                </template>
-                <template #item._contactCount="{ item }">
-                  <span :class="item._emailCount ? 'text-success' : 'text-grey'">
-                    <v-icon size="x-small">{{ item._emailCount ? 'mdi-email-check' : 'mdi-email-off' }}</v-icon>
-                    {{ item._contactCount }}
-                  </span>
-                  <v-chip v-if="item._emailDup" size="x-small" color="orange" variant="tonal" class="ml-1" :title="`此 Email 也在其他 ${item._emailDup} 筆名單`">同 +{{ item._emailDup }}</v-chip>
-                </template>
-                <template #item.lastEmailAt="{ item }">
-                  <span class="text-no-wrap">{{ fmt(item.lastEmailAt, 'MM/dd') }}</span>
-                  <v-icon v-if="item.lastOpenedAt" size="x-small" color="cyan" class="ml-1" :title="`開信 ${fmt(item.lastOpenedAt)}`">mdi-email-open</v-icon>
-                  <v-icon v-if="item.lastClickedAt" size="x-small" color="deep-purple" class="ml-1" :title="`點擊 ${fmt(item.lastClickedAt)}`">mdi-cursor-default-click</v-icon>
-                </template>
-                <template #item.followUpAt="{ item }">
-                  <span :class="isDueForFollowUp(item) ? 'text-error font-weight-bold' : ''" class="text-no-wrap">{{ fmt(item.followUpAt, 'MM/dd') }}</span>
-                </template>
-                <template #item.ownerName="{ item }">{{ item.ownerName || '—' }}</template>
-                <template #no-data><div class="text-grey py-6">沒有符合條件的資料</div></template>
-              </v-data-table>
-            </v-card>
-          </v-col>
-
-          <v-col v-if="mdAndUp" cols="12" md="7">
-            <v-card class="detail-sticky">
-              <v-card-text>
-                <ProspectDetailPanel
-                  v-if="selected"
-                  :prospect="selected"
-                  :tag-defs="tagDefs"
-                  :admins="admins"
-                  :all-prospects="prospects"
-                  @updated="onPatched"
-                  @deleted="onDeleted"
-                  @send-email="onSendFromDetail"
-                  @open-tag-manager="tagManagerOpen = true"
-                  @navigate="selectById"
-                  @open-campaign="openCampaign"
-                />
-                <div v-else class="text-center text-grey py-12">
-                  <v-icon size="48" class="mb-2">mdi-account-search</v-icon>
-                  <div>點選左側列表查看詳情</div>
                 </div>
-              </v-card-text>
-            </v-card>
-          </v-col>
-        </v-row>
+              </v-menu>
+
+              <v-menu location="bottom start" :offset="6">
+                <template #activator="{ props: p }">
+                  <button type="button" class="mac-btn" v-bind="p"><v-icon size="16">mdi-swap-vertical</v-icon>{{ sortLabel }}<v-icon size="14" class="mac-btn-chevron">mdi-chevron-down</v-icon></button>
+                </template>
+                <v-list density="compact" class="pm-menu">
+                  <v-list-item v-for="s in sortOptions" :key="s.value" :title="s.title" :active="sortBy === s.value" @click="sortBy = s.value" />
+                </v-list>
+              </v-menu>
+
+              <div class="pm-quick">
+                <button v-for="q in quickFilters" :key="q.key" type="button" class="pm-chip" :class="[`pm-chip--${q.tone}`, { 'is-on': f[q.key] }]" @click="f[q.key] = !f[q.key]">{{ q.label }}</button>
+              </div>
+
+              <div class="pm-spacer" />
+              <span class="pm-count" :title="`全部 ${prospects.length} 筆`">{{ filtered.length }}<span v-if="filtered.length !== prospects.length" class="pm-count__total"> / {{ prospects.length }}</span></span>
+              <button type="button" class="mac-btn mac-btn--icon" title="重新整理" :disabled="store.loading" @click="reload"><v-icon size="16" :class="{ 'pm-spin': store.loading }">mdi-refresh</v-icon></button>
+              <button type="button" class="mac-btn mac-btn--primary" :disabled="!filtered.length" @click="openComposerFor(filtered)"><v-icon size="16">mdi-email-multiple</v-icon>群發</button>
+            </div>
+
+            <!-- 已套用的篩選 -->
+            <div v-if="activeFilterChips.length" class="pm-active">
+              <v-chip v-for="c in activeFilterChips" :key="c.key" size="small" variant="tonal" closable class="pm-active__chip" @click:close="c.clear()">{{ c.label }}</v-chip>
+              <button type="button" class="pm-link" @click="resetFilters">全部清除</button>
+            </div>
+
+            <!-- 批次列 -->
+            <div v-if="selectedIds.length" class="pm-bulk">
+              <span class="pm-bulk__count">已選 {{ selectedIds.length }} 筆</span>
+              <button type="button" class="mac-btn mac-btn--primary" @click="openComposerFor(selectedList)"><v-icon size="16">mdi-email</v-icon>寄信</button>
+              <v-menu>
+                <template #activator="{ props: p }"><button type="button" class="mac-btn" v-bind="p" :disabled="bulkLoading"><v-icon size="16">mdi-flag</v-icon>狀態<v-icon size="14" class="mac-btn-chevron">mdi-chevron-down</v-icon></button></template>
+                <v-list density="compact" class="pm-menu"><v-list-item v-for="s in statusOptions" :key="s.value" :title="s.title" @click="bulkStatus(s.value)" /></v-list>
+              </v-menu>
+              <v-menu>
+                <template #activator="{ props: p }"><button type="button" class="mac-btn" v-bind="p" :disabled="bulkLoading"><v-icon size="16">mdi-tag</v-icon>標籤<v-icon size="14" class="mac-btn-chevron">mdi-chevron-down</v-icon></button></template>
+                <v-list density="compact" class="pm-menu">
+                  <v-list-subheader>加上</v-list-subheader>
+                  <v-list-item v-for="t in tagDefs" :key="`add_${t.id}`" @click="bulkTag('add', t.name)">
+                    <template #prepend><v-chip :color="t.color" size="x-small" variant="flat" class="mr-2">&nbsp;</v-chip></template>
+                    <v-list-item-title>{{ t.name }}</v-list-item-title>
+                  </v-list-item>
+                  <v-divider />
+                  <v-list-subheader>移除</v-list-subheader>
+                  <v-list-item v-for="t in tagDefs" :key="`rm_${t.id}`" @click="bulkTag('remove', t.name)">
+                    <template #prepend><v-icon size="small" class="mr-2">mdi-tag-minus</v-icon></template>
+                    <v-list-item-title>{{ t.name }}</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+              <v-menu>
+                <template #activator="{ props: p }"><button type="button" class="mac-btn" v-bind="p" :disabled="bulkLoading"><v-icon size="16">mdi-calendar-clock</v-icon>追蹤日<v-icon size="14" class="mac-btn-chevron">mdi-chevron-down</v-icon></button></template>
+                <v-list density="compact" class="pm-menu">
+                  <v-list-item v-for="d in [1, 3, 7, 14, 30]" :key="d" :title="`+${d} 天`" @click="bulkFollowUp(d)" />
+                  <v-divider />
+                  <v-list-item title="清除" @click="bulkFollowUp(null)" />
+                </v-list>
+              </v-menu>
+              <v-menu>
+                <template #activator="{ props: p }"><button type="button" class="mac-btn" v-bind="p" :disabled="bulkLoading"><v-icon size="16">mdi-account-check</v-icon>負責人<v-icon size="14" class="mac-btn-chevron">mdi-chevron-down</v-icon></button></template>
+                <v-list density="compact" class="pm-menu">
+                  <v-list-item v-for="a in admins" :key="a.key" :title="a.name" @click="bulkOwner(a)" />
+                  <v-divider />
+                  <v-list-item title="清除" @click="bulkOwner(null)" />
+                </v-list>
+              </v-menu>
+              <button type="button" class="mac-btn mac-btn--danger" @click="bulkDeleteDialog = true"><v-icon size="16">mdi-delete</v-icon>刪除</button>
+              <div class="pm-spacer" />
+              <button type="button" class="pm-link" @click="selectedIds = []">取消選取</button>
+            </div>
+
+            <v-data-table
+              v-model="selectedIds"
+              v-model:sort-by="tableSort"
+              :headers="headers"
+              :items="filtered"
+              :custom-key-sort="keySort"
+              item-value="id"
+              show-select
+              density="compact"
+              :loading="store.loading"
+              :items-per-page="50"
+              :items-per-page-options="[25, 50, 100, -1]"
+              hover
+              fixed-header
+              class="pm-table"
+              :row-props="rowProps"
+              @click:row="onRowClick"
+            >
+              <template #item.name="{ item }">
+                <div class="d-flex align-center ga-1">
+                  <v-icon size="x-small" :color="catMeta(item.category).color" :title="catMeta(item.category).title">{{ catMeta(item.category).icon }}</v-icon>
+                  <span class="font-weight-medium">{{ item.name }}</span>
+                  <v-icon v-if="(item.priority || 0) >= 1" size="x-small" color="amber">mdi-star</v-icon>
+                  <v-icon v-if="(item.priority || 0) >= 2" size="x-small" color="amber">mdi-star</v-icon>
+                </div>
+                <div v-if="item.category === 'project' && (item.companyName || item.builder)" class="text-caption text-grey">{{ item.companyName || item.builder }}</div>
+              </template>
+              <template #item._city="{ item }"><span class="text-no-wrap">{{ item._city || '—' }}</span></template>
+              <template #item._district="{ item }"><span class="text-no-wrap">{{ item._district || '—' }}</span></template>
+              <template #item.status="{ item }">
+                <v-chip size="x-small" :color="statusMeta(item.status).color" variant="flat">{{ statusMeta(item.status).title }}</v-chip>
+              </template>
+              <template #item.tags="{ item }">
+                <v-chip v-for="t in (item.tags || [])" :key="t" size="x-small" :color="tagColor(t)" variant="flat" class="mr-1">{{ t }}</v-chip>
+              </template>
+              <template #item._contactCount="{ item }">
+                <span :class="item._emailCount ? 'text-success' : 'text-grey'">
+                  <v-icon size="x-small">{{ item._emailCount ? 'mdi-email-check' : 'mdi-email-off' }}</v-icon>
+                  {{ item._contactCount }}
+                </span>
+                <v-chip v-if="item._emailDup" size="x-small" color="orange" variant="tonal" class="ml-1" :title="`此 Email 也在其他 ${item._emailDup} 筆名單`">同 +{{ item._emailDup }}</v-chip>
+              </template>
+              <template #item.lastEmailAt="{ item }">
+                <span class="text-no-wrap">{{ fmt(item.lastEmailAt, 'MM/dd') }}</span>
+                <v-icon v-if="item.lastOpenedAt" size="x-small" color="cyan" class="ml-1" :title="`開信 ${fmt(item.lastOpenedAt)}`">mdi-email-open</v-icon>
+                <v-icon v-if="item.lastClickedAt" size="x-small" color="deep-purple" class="ml-1" :title="`點擊 ${fmt(item.lastClickedAt)}`">mdi-cursor-default-click</v-icon>
+              </template>
+              <template #item.followUpAt="{ item }">
+                <span :class="isDueForFollowUp(item) ? 'text-error font-weight-bold' : ''" class="text-no-wrap">{{ fmt(item.followUpAt, 'MM/dd') }}</span>
+              </template>
+              <template #item.ownerName="{ item }">{{ item.ownerName || '—' }}</template>
+              <template #no-data><div class="text-grey py-6">沒有符合條件的資料</div></template>
+            </v-data-table>
+          </section>
+
+          <!-- 右：檢視器（點列後滑出；↑↓ 切換、Esc 關閉） -->
+          <transition name="pm-inspector">
+            <aside v-if="inspectorOpen" class="pm-inspector">
+              <ProspectDetailPanel
+                :prospect="selected"
+                :tag-defs="tagDefs"
+                :admins="admins"
+                :all-prospects="prospects"
+                :nav="inspectorNav"
+                show-close
+                @updated="onPatched"
+                @deleted="onDeleted"
+                @send-email="onSendFromDetail"
+                @open-tag-manager="tagManagerOpen = true"
+                @navigate="selectById"
+                @open-campaign="openCampaign"
+                @prev="stepSelection(-1)"
+                @next="stepSelection(1)"
+                @close="selectById(null)"
+              />
+            </aside>
+          </transition>
+        </div>
       </v-window-item>
 
       <!-- ============================================================ 寄信紀錄 -->
@@ -314,25 +341,26 @@
     </v-window>
 
     <!-- 手機詳情 -->
-    <v-dialog v-model="mobileDetailOpen" fullscreen transition="dialog-bottom-transition" scrollable>
-      <v-card>
-        <v-card-text class="pa-3">
-          <ProspectDetailPanel
-            v-if="selected"
-            :prospect="selected"
-            :tag-defs="tagDefs"
-            :admins="admins"
-            :all-prospects="prospects"
-            show-close
-            @updated="onPatched"
-            @deleted="onDeleted"
-            @send-email="onSendFromDetail"
-            @open-tag-manager="tagManagerOpen = true"
-            @navigate="selectById"
-            @open-campaign="openCampaign"
-            @close="mobileDetailOpen = false"
-          />
-        </v-card-text>
+    <v-dialog v-model="mobileDetailOpen" fullscreen transition="dialog-bottom-transition">
+      <v-card class="pm-mobile-sheet">
+        <ProspectDetailPanel
+          v-if="selected"
+          :prospect="selected"
+          :tag-defs="tagDefs"
+          :admins="admins"
+          :all-prospects="prospects"
+          :nav="inspectorNav"
+          show-close
+          @updated="onPatched"
+          @deleted="onDeleted"
+          @send-email="onSendFromDetail"
+          @open-tag-manager="tagManagerOpen = true"
+          @navigate="selectById"
+          @open-campaign="openCampaign"
+          @prev="stepSelection(-1)"
+          @next="stepSelection(1)"
+          @close="mobileDetailOpen = false"
+        />
       </v-card>
     </v-dialog>
 
@@ -529,6 +557,11 @@ const uiStore = useUiStore();
 const store = useProspectStore();
 
 const tab = ref('list');
+const tabItems = [
+  { value: 'list', title: '名單' },
+  { value: 'campaigns', title: '寄信紀錄' },
+  { value: 'templates', title: 'Email 範本' },
+];
 const categoryOptions = PROSPECT_CATEGORY_OPTIONS;
 const statusOptions = PROSPECT_STATUS_OPTIONS;
 const catMeta = categoryMeta;
@@ -598,6 +631,7 @@ function onTagsChanged({ tags, renamed, removed }) {
 // 篩選
 // ---------------------------------------------------------------
 const search = ref('');
+const filterMenu = ref(false);
 const f = reactive({
   categories: [], cities: [], districts: [], statuses: [], tags: [], owner: null, notEmailedDays: null,
   hasEmail: false, hasFb: false, hasLine: false, dueToday: false, openedNoReply: false, clicked: false,
@@ -607,6 +641,33 @@ function resetFilters() {
   search.value = '';
 }
 function toggleDueFilter() { f.dueToday = !f.dueToday; tab.value = 'list'; }
+/** 工具列上的快捷切換（一鍵開關） */
+const quickFilters = [
+  { key: 'dueToday', label: '今日待追蹤', tone: 'red' },
+  { key: 'openedNoReply', label: '已開信未回覆', tone: 'cyan' },
+  { key: 'clicked', label: '已點擊', tone: 'purple' },
+  { key: 'hasLine', label: '有 LINE', tone: 'green' },
+];
+/** 篩選彈出視窗內已套用的條件數（不含快捷切換與搜尋） */
+const activeFilterCount = computed(() => [
+  f.categories.length, f.cities.length, f.districts.length, f.statuses.length, f.tags.length,
+  f.owner != null, f.notEmailedDays != null, f.hasEmail, f.hasFb,
+].filter(Boolean).length);
+/** 已套用篩選：以可關閉 chip 顯示在工具列下方 */
+const activeFilterChips = computed(() => {
+  const chips = [];
+  const titleOf = (opts, v) => opts.find((o) => o.value === v)?.title || v;
+  f.categories.forEach((v) => chips.push({ key: `cat_${v}`, label: titleOf(categoryOptions, v), clear: () => { f.categories = f.categories.filter((x) => x !== v); } }));
+  f.statuses.forEach((v) => chips.push({ key: `st_${v}`, label: titleOf(statusOptions, v), clear: () => { f.statuses = f.statuses.filter((x) => x !== v); } }));
+  f.cities.forEach((v) => chips.push({ key: `city_${v}`, label: v, clear: () => { f.cities = f.cities.filter((x) => x !== v); } }));
+  f.districts.forEach((v) => chips.push({ key: `dist_${v}`, label: v.replace('/', ' '), clear: () => { f.districts = f.districts.filter((x) => x !== v); } }));
+  f.tags.forEach((v) => chips.push({ key: `tag_${v}`, label: `#${v}`, clear: () => { f.tags = f.tags.filter((x) => x !== v); } }));
+  if (f.owner != null) chips.push({ key: 'owner', label: `負責人：${titleOf(ownerFilterItems.value, f.owner)}`, clear: () => { f.owner = null; } });
+  if (f.notEmailedDays != null) chips.push({ key: 'notEmailed', label: titleOf(notEmailedItems, f.notEmailedDays), clear: () => { f.notEmailedDays = null; } });
+  if (f.hasEmail) chips.push({ key: 'hasEmail', label: '有 Email', clear: () => { f.hasEmail = false; } });
+  if (f.hasFb) chips.push({ key: 'hasFb', label: '有 FB', clear: () => { f.hasFb = false; } });
+  return chips;
+});
 /** 縣市變動時，移除不屬於已選縣市的區 */
 watch(() => f.cities, (cities) => { f.districts = f.districts.filter((v) => cities.includes(v.split('/')[0])); });
 
@@ -649,6 +710,14 @@ const sameSort = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const sortBy = computed({
   get: () => Object.keys(SORT_PRESETS).find((k) => sameSort(SORT_PRESETS[k], tableSort.value)) || null,
   set: (k) => { tableSort.value = SORT_PRESETS[k] ? [...SORT_PRESETS[k]] : []; },
+});
+/** 工具列「排序」按鈕文字：預設顯示「排序」，表頭自訂排序時顯示欄名 */
+const sortLabel = computed(() => {
+  const preset = sortOptions.find((o) => o.value === sortBy.value);
+  if (preset) return preset.value === 'followup' ? '排序' : preset.title;
+  const first = tableSort.value[0];
+  const h = first ? headers.value.find((x) => x.key === first.key) : null;
+  return h ? `${h.title} ${first.order === 'desc' ? '↓' : '↑'}` : '排序';
 });
 const ts = (v) => toDate(v)?.getTime() || 0;
 const zh = (a, b) => String(a || '').localeCompare(String(b || ''), 'zh-Hant');
@@ -699,26 +768,63 @@ const filtered = computed(() => {
   return [...list].sort((a, b) => (ts(a.followUpAt) || Infinity) - (ts(b.followUpAt) || Infinity) || ts(b.updatedAt) - ts(a.updatedAt));
 });
 
-const headers = [
+const ALL_HEADERS = [
   { title: '名稱', key: 'name' },
   { title: '縣市', key: '_city' },
   { title: '區', key: '_district' },
   { title: '狀態', key: 'status' },
-  { title: '標籤', key: 'tags', sortable: false },
+  { title: '標籤', key: 'tags', sortable: false, wide: true },
   { title: '聯絡人', key: '_contactCount', align: 'center' },
   { title: '最後寄信', key: 'lastEmailAt' },
   { title: '追蹤', key: 'followUpAt' },
-  { title: '負責人', key: 'ownerName' },
+  { title: '負責人', key: 'ownerName', wide: true },
 ];
 
 // ---------------------------------------------------------------
-// 選取 / 詳情
+// 選取 / 檢視器
 // ---------------------------------------------------------------
 const selectedIds = ref([]);
 const selectedId = ref(null);
 const mobileDetailOpen = ref(false);
 const selected = computed(() => (selectedId.value ? byId.value[selectedId.value] || null : null));
 const selectedList = computed(() => selectedIds.value.map((id) => byId.value[id]).filter(Boolean));
+const inspectorOpen = computed(() => mdAndUp.value && !!selected.value);
+/** 檢視器開啟時表格變窄：隱藏檢視器內已可見的欄（標籤／負責人） */
+const headers = computed(() => (inspectorOpen.value ? ALL_HEADERS.filter((h) => !h.wide) : ALL_HEADERS));
+
+/** 表格實際顯示順序（套用表頭排序），供 ↑↓／上一筆下一筆使用 */
+const displayed = computed(() => {
+  const sorts = tableSort.value;
+  if (!sorts.length) return filtered.value;
+  return [...filtered.value].sort((a, b) => {
+    for (const { key, order } of sorts) {
+      const cmp = (keySort[key] || zh)(a[key], b[key]);
+      if (cmp) return order === 'desc' ? -cmp : cmp;
+    }
+    return 0;
+  });
+});
+const inspectorNav = computed(() => {
+  const idx = selectedId.value ? displayed.value.findIndex((p) => p.id === selectedId.value) : -1;
+  return { index: idx, total: displayed.value.length, hasPrev: idx > 0, hasNext: idx >= 0 && idx < displayed.value.length - 1 };
+});
+function stepSelection(delta) {
+  const { index } = inspectorNav.value;
+  const next = displayed.value[index + delta];
+  if (next) selectById(next.id);
+}
+/** 檢視器開啟時：↑↓ 切換上一筆／下一筆、Esc 關閉；輸入中或有浮層時不攔截 */
+function onKeydown(e) {
+  if (!inspectorOpen.value) return;
+  const t = e.target;
+  if (t && (t.closest?.('input, textarea, select, [contenteditable="true"]'))) return;
+  if (document.querySelector('.v-overlay--active')) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); stepSelection(1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); stepSelection(-1); }
+  else if (e.key === 'Escape') selectById(null);
+}
+onMounted(() => window.addEventListener('keydown', onKeydown));
+onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 
 function rowProps({ item }) { return { class: item.id === selectedId.value ? 'row-selected' : '' }; }
 function onRowClick(_e, { item }) { selectById(item.id); }
@@ -1151,14 +1257,251 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.detail-sticky {
-  position: sticky;
-  top: 80px;
-  max-height: calc(100vh - 100px);
-  overflow-y: auto;
+/* ============================================================
+   macOS 風格版面：系統字體、#1d1d1f 文字、#f5f5f7 底、細邊框、藍色 accent
+   ============================================================ */
+.pm {
+  --pm-text: #1d1d1f;
+  --pm-secondary: #6e6e73;
+  --pm-accent: #0071e3;
+  --pm-line: rgba(0, 0, 0, 0.08);
+  --pm-ground: #f5f5f7;
+  --pm-head-h: 44px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+  color: var(--pm-text);
 }
-.prospect-table :deep(tbody tr) { cursor: pointer; }
-.prospect-table :deep(tr.row-selected) { background: rgba(25, 118, 210, 0.08); }
+.pm-spacer { flex: 1 1 auto; }
+.pm-link {
+  border: 0;
+  background: transparent;
+  padding: 0 6px;
+  height: 30px;
+  font-size: 13px;
+  color: var(--pm-accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pm-link:hover { text-decoration: underline; }
+
+/* 標題列：padding-left 讓出全站浮動漢堡鈕（fixed left:10px + 40px 寬） */
+.pm-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: var(--pm-head-h);
+  padding-left: 44px;
+  margin-bottom: 10px;
+}
+.pm-title { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 0 6px 0 0; line-height: 1; }
+.pm-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--pm-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+.pm-due b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.pm-due.has-due { background: rgba(214, 45, 32, 0.1); color: #c4271b; }
+.pm-due.is-on { background: #d62d20; color: #fff; }
+.pm-due:hover { filter: brightness(0.96); }
+
+/* 分段控制（分頁） */
+.mac-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+}
+.mac-seg__btn {
+  height: 26px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pm-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s, box-shadow 0.15s;
+}
+.mac-seg__btn.is-active {
+  background: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+}
+
+/* 左列表＋右檢視器 */
+.pm-split {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  height: calc(100vh - 140px);
+  min-height: 420px;
+}
+.pm-list {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--pm-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.pm-inspector {
+  flex: 0 0 clamp(440px, 46%, 620px);
+  min-width: 0;
+  background: var(--pm-ground);
+  border: 1px solid var(--pm-line);
+  border-radius: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.pm-inspector-enter-active, .pm-inspector-leave-active { transition: flex-basis 0.2s ease, opacity 0.2s ease, transform 0.2s ease; }
+.pm-inspector-enter-from, .pm-inspector-leave-to { flex-basis: 0; opacity: 0; transform: translateX(12px); }
+
+/* 工具列 */
+.pm-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--pm-line);
+}
+.pm-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 220px;
+  max-width: 360px;
+  min-width: 160px;
+  height: 30px;
+  padding: 0 8px 0 9px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--pm-secondary);
+  transition: box-shadow 0.12s, background-color 0.12s;
+}
+.pm-search:focus-within { background: #fff; box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.12); }
+.pm-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--pm-text);
+}
+.pm-search input::placeholder { color: #a1a1a6; }
+.pm-search input::-webkit-search-cancel-button { display: none; }
+.pm-search__clear { display: inline-flex; border: 0; background: transparent; padding: 0; color: #a1a1a6; cursor: pointer; }
+.pm-search__clear:hover { color: var(--pm-secondary); }
+.pm-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  margin-left: 2px;
+  border-radius: 9px;
+  background: var(--pm-accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.pm-btn--active { color: var(--pm-accent); }
+.pm-btn--active .v-icon { color: var(--pm-accent); }
+.pm-quick { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pm-chip {
+  --tone: var(--pm-secondary);
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 13px;
+  background: #fff;
+  color: var(--pm-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+}
+.pm-chip:hover { background: rgba(0, 0, 0, 0.04); }
+.pm-chip.is-on { background: var(--tone); border-color: var(--tone); color: #fff; }
+.pm-chip--red { --tone: #d62d20; }
+.pm-chip--cyan { --tone: #0891b2; }
+.pm-chip--purple { --tone: #5b3fd9; }
+.pm-chip--green { --tone: #1f9d55; }
+.pm-count { font-size: 12.5px; color: var(--pm-secondary); font-variant-numeric: tabular-nums; padding: 0 4px; white-space: nowrap; }
+.pm-count__total { color: #a1a1a6; }
+.pm-spin { animation: pm-spin 0.9s linear infinite; }
+@keyframes pm-spin { to { transform: rotate(360deg); } }
+
+/* 篩選彈出視窗 */
+.pm-popover {
+  width: min(520px, calc(100vw - 32px));
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+}
+.pm-popover__foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--pm-line); }
+.pm-menu { border-radius: 10px !important; }
+
+/* 已套用篩選 / 批次列 */
+.pm-active {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--pm-line);
+  background: #fafafa;
+}
+.pm-bulk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(0, 113, 227, 0.2);
+  background: rgba(0, 113, 227, 0.07);
+}
+.pm-bulk__count { font-size: 13px; font-weight: 600; margin-right: 4px; white-space: nowrap; }
+
+/* 表格：填滿剩餘高度、內層 wrapper 自行捲動 */
+.pm-table { flex: 1 1 auto; min-height: 0; font-family: inherit; }
+.pm-table :deep(.v-table__wrapper) { min-height: 0; }
+.pm-table :deep(thead th) { font-size: 12px !important; color: var(--pm-secondary) !important; font-weight: 600 !important; }
+.pm-table :deep(tbody tr) { cursor: pointer; }
+.pm-table :deep(tbody td) { font-size: 13px !important; }
+.pm-table :deep(tr.row-selected td) { background: rgba(0, 113, 227, 0.1); }
+.pm-table :deep(tr.row-selected td:first-child) { box-shadow: inset 3px 0 0 var(--pm-accent); }
+.pm-table :deep(.v-data-table-footer) { border-top: 1px solid var(--pm-line); font-size: 12px; }
+
+/* 手機全螢幕詳情：卡片自己捲動；頂列左側讓出全站浮動漢堡鈕 */
+.pm-mobile-sheet { height: 100%; overflow-y: auto; background: var(--pm-ground); }
+.pm-mobile-sheet :deep(.pd-head) { padding-left: 52px; }
+
+@media (max-width: 959px) {
+  .pm-split { height: auto; min-height: 0; }
+  .pm-list { min-height: 60vh; }
+  .pm-table { max-height: calc(100vh - 220px); }
+}
+
 .template-preview {
   display: -webkit-box;
   -webkit-line-clamp: 3;

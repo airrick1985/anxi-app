@@ -1,11 +1,11 @@
 <template>
   <div>
-    <div class="d-flex align-center mb-1">
-      <span class="text-subtitle-2">聯絡人（{{ contacts.length }}）</span>
-      <v-spacer />
-      <v-btn size="small" variant="tonal" prepend-icon="mdi-account-plus" @click="openEditor(null)">新增聯絡人</v-btn>
+    <div class="ce-head">
+      <v-icon size="15">mdi-account-multiple</v-icon>聯絡人<span v-if="contacts.length" class="ce-hint">{{ contacts.length }}</span>
+      <div class="ce-spacer" />
+      <button type="button" class="mac-btn" @click="openEditor(null)"><v-icon size="15">mdi-account-plus</v-icon>新增</button>
     </div>
-    <div v-if="!contacts.length" class="text-caption text-grey py-2">尚無聯絡人，請新增至少一位有 Email 的聯絡人才能寄信。</div>
+    <div v-if="!contacts.length" class="ce-empty">尚無聯絡人</div>
     <v-table v-else density="compact" class="contacts-table">
       <thead>
         <tr>
@@ -36,7 +36,7 @@
           </td>
           <td>{{ c.line || '—' }}</td>
           <td class="text-right text-no-wrap">
-            <v-btn icon="mdi-email-send" size="x-small" variant="text" color="primary" :disabled="!c.email" title="寄信給此聯絡人" @click="emit('send-email', c)" />
+            <v-btn icon="mdi-email-fast" size="x-small" variant="text" color="primary" :disabled="!c.email" title="寄信給此聯絡人" @click="emit('send-email', c)" />
             <v-btn icon="mdi-pencil" size="x-small" variant="text" @click="openEditor(c)" />
             <v-btn icon="mdi-delete" size="x-small" variant="text" color="error" @click="askRemove(c)" />
           </td>
@@ -161,7 +161,21 @@ function confirmRemove() {
 </script>
 
 <style scoped>
-.contacts-table :deep(td) {
-  vertical-align: middle;
+.ce-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #6e6e73;
 }
+.ce-head .v-icon { color: #6e6e73; }
+.ce-spacer { flex: 1 1 auto; }
+.ce-hint { font-size: 12px; color: #8e8e93; font-weight: 400; }
+.ce-empty { font-size: 12.5px; color: #a1a1a6; padding: 2px 0 4px; }
+.contacts-table { font-size: 12.5px; }
+.contacts-table :deep(th) { font-size: 11.5px !important; color: #6e6e73 !important; }
+.contacts-table :deep(td) { vertical-align: middle; overflow-wrap: anywhere; }
 </style>
