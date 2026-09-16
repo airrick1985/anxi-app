@@ -89,6 +89,7 @@ export const DEFAULT_PROSPECT_SETTINGS = {
   followUpDaysAfterEmail: 7,
   defaultReplyTo: '',
   trackingEnabled: true,
+  emailCooldownDays: 30, // 同一 Email（不分建案）N 天內寄過就自動排除；0＝關閉
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -418,9 +419,34 @@ export async function saveProspectSettings(settings, updatedBy = '') {
     followUpDaysAfterEmail: Math.min(60, Math.max(1, Number(settings.followUpDaysAfterEmail) || 7)),
     defaultReplyTo: String(settings.defaultReplyTo || '').trim(),
     trackingEnabled: settings.trackingEnabled !== false,
+    emailCooldownDays: Math.min(365, Math.max(0, Number(settings.emailCooldownDays) || 0)),
     updatedAt: serverTimestamp(),
     updatedBy,
   }, { merge: true });
+}
+
+// ---------------------------------------------------------------
+// 跨名單 Email 索引（同一 Email 可能掛在多個建案／建商）
+// ---------------------------------------------------------------
+
+/**
+ * @returns {Map<string, { count:number, prospectIds:string[], lastSentAt:number }>}
+ *   key＝小寫 Email；count＝擁有此 Email 的名單筆數；lastSentAt＝任何名單最後成功寄到此 Email 的時間（ms，0＝沒寄過）
+ */
+export function buildEmailIndex(prospects) {
+  const map = new Map();
+  const get = (email) => { const k = email.toLowerCase(); if (!map.has(k)) map.set(k, { count: 0, prospectIds: [], lastSentAt: 0 }); return map.get(k); };
+  (prospects || []).forEach((p) => {
+    const own = new Set();
+    emailContacts(p).forEach((c) => { const k = String(c.email).trim().toLowerCase(); if (!own.has(k)) { own.add(k); const e = get(k); e.count += 1; e.prospectIds.push(p.id); } });
+    (Array.isArray(p.emailLogs) ? p.emailLogs : []).forEach((l) => {
+      if (l.status !== 'sent' || !l.to) return;
+      const t = toDate(l.sentAt)?.getTime() || 0;
+      const e = get(String(l.to).trim());
+      if (t > e.lastSentAt) e.lastSentAt = t;
+    });
+  });
+  return map;
 }
 
 // ---------------------------------------------------------------

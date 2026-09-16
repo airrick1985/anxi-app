@@ -85,10 +85,14 @@
               </template>
               <div v-else class="text-grey text-caption pa-2">尚無收件人</div>
             </div>
+            <div v-if="dupCount || cooldownCount" class="d-flex flex-wrap ga-1 mb-2">
+              <v-chip v-if="dupCount" size="x-small" color="orange" variant="tonal" prepend-icon="mdi-content-duplicate">已合併重複 Email {{ dupCount }}</v-chip>
+              <v-chip v-if="cooldownCount" size="x-small" color="orange" variant="tonal" prepend-icon="mdi-timer-sand">{{ cooldownDays }} 天內寄過 {{ cooldownCount }}</v-chip>
+            </div>
             <v-expansion-panels v-if="excludedRecipients.length" variant="accordion" class="mb-3">
               <v-expansion-panel>
                 <v-expansion-panel-title class="text-caption">
-                  已排除 {{ excludedRecipients.length }} 位（不聯絡／無 Email／已手動移除），展開可勾回
+                  已排除 {{ excludedRecipients.length }} 位（不聯絡／無 Email／重複／冷卻期／手動移除），展開可勾回
                 </v-expansion-panel-title>
                 <v-expansion-panel-text>
                   <div v-for="r in excludedRecipients" :key="(r.leadId || '') + '|' + (r.email || r.name)" class="d-flex align-center">
@@ -331,6 +335,8 @@ const props = defineProps({
   replyTo: { type: String, default: '' },
   /** 是否嵌入開信追蹤像素（僅 prospects） */
   tracking: { type: Boolean, default: true },
+  /** 同 Email 冷卻期（天）：recipient.lastSentAt 在此天數內者自動排除；0＝關閉 */
+  cooldownDays: { type: Number, default: 0 },
 });
 const emit = defineEmits(['update:modelValue', 'sent', 'template-saved']);
 
@@ -354,12 +360,20 @@ const trackingEnabled = ref(true);
 const DO_NOT_CONTACT_TAG = '不聯絡';
 const allRecipients = ref([]); // 正規化後的收件人（含 excluded 旗標）
 
-function normalizeRecipient(r) {
+const DUP_REASON = '重複 Email（已合併）';
+const cooldownReason = computed(() => `${props.cooldownDays} 天內已寄過`);
+function normalizeRecipient(r, seenEmails) {
   const tags = Array.isArray(r.tags) ? r.tags : [];
   const email = String(r.email || '').trim();
+  const emailKey = email.toLowerCase();
   let reason = '';
   let reasonColor = 'grey';
-  if (!email) { reason = '無 Email'; reasonColor = 'grey'; } else if (r.excludedReason) { reason = r.excludedReason; reasonColor = 'red'; } else if (tags.includes(DO_NOT_CONTACT_TAG)) { reason = '不聯絡'; reasonColor = 'red'; }
+  if (!email) { reason = '無 Email'; reasonColor = 'grey'; }
+  else if (r.excludedReason) { reason = r.excludedReason; reasonColor = 'red'; }
+  else if (tags.includes(DO_NOT_CONTACT_TAG)) { reason = '不聯絡'; reasonColor = 'red'; }
+  else if (seenEmails && seenEmails.has(emailKey)) { reason = DUP_REASON; reasonColor = 'orange'; }
+  else if (props.cooldownDays > 0 && r.lastSentAt && Date.now() - r.lastSentAt < props.cooldownDays * 86400000) { reason = cooldownReason.value; reasonColor = 'orange'; }
+  if (seenEmails && emailKey && !reason) seenEmails.add(emailKey);
   return {
     leadId: r.leadId || r.id || '',
     contactId: r.contactId || '',
@@ -376,6 +390,8 @@ function normalizeRecipient(r) {
 
 const activeRecipients = computed(() => allRecipients.value.filter((r) => !r.excluded));
 const excludedRecipients = computed(() => allRecipients.value.filter((r) => r.excluded));
+const dupCount = computed(() => excludedRecipients.value.filter((r) => r.reason === DUP_REASON).length);
+const cooldownCount = computed(() => excludedRecipients.value.filter((r) => r.reason === cooldownReason.value).length);
 const previewRecipient = computed(() => activeRecipients.value[0] || allRecipients.value[0] || { name: '', email: '', company: '' });
 
 function removeRecipient(r) {
@@ -699,7 +715,8 @@ async function sendTest() {
 // 開關 / 初始化
 // ---------------------------------------------------------------
 function resetState() {
-  allRecipients.value = (props.recipients || []).map(normalizeRecipient);
+  const seenEmails = new Set();
+  allRecipients.value = (props.recipients || []).map((r) => normalizeRecipient(r, seenEmails));
   replyToInput.value = props.replyTo || currentUserEmail.value || '';
   trackingEnabled.value = props.tracking !== false;
   subject.value = props.preset?.subject || '';

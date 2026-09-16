@@ -171,6 +171,7 @@
                     <v-icon size="x-small">{{ item._emailCount ? 'mdi-email-check' : 'mdi-email-off' }}</v-icon>
                     {{ item._contactCount }}
                   </span>
+                  <v-chip v-if="item._emailDup" size="x-small" color="orange" variant="tonal" class="ml-1" :title="`此 Email 也在其他 ${item._emailDup} 筆名單`">同 +{{ item._emailDup }}</v-chip>
                 </template>
                 <template #item.lastEmailAt="{ item }">
                   <span class="text-no-wrap">{{ fmt(item.lastEmailAt, 'MM/dd') }}</span>
@@ -376,7 +377,8 @@
         <v-card-text>
           <v-text-field v-model.number="settingsForm.followUpDaysAfterEmail" type="number" min="1" max="60" label="寄信後自動排追蹤日（天）" variant="outlined" density="comfortable" class="mb-2" />
           <v-text-field v-model="settingsForm.defaultReplyTo" label="預設 Reply-To（空＝操作者 Email）" variant="outlined" density="comfortable" class="mb-2" />
-          <v-switch v-model="settingsForm.trackingEnabled" label="預設嵌入開信追蹤像素" color="primary" density="compact" hide-details />
+          <v-switch v-model="settingsForm.trackingEnabled" label="預設嵌入開信追蹤像素" color="primary" density="compact" hide-details class="mb-2" />
+          <v-text-field v-model.number="settingsForm.emailCooldownDays" type="number" min="0" max="365" label="同 Email 冷卻期（天，0＝關閉）" variant="outlined" density="comfortable" hide-details />
           <v-divider class="my-3" />
           <div class="d-flex align-center mb-2">
             <span class="text-subtitle-2">網路蒐集：Brave 搜尋 API</span>
@@ -450,6 +452,7 @@
       :preset="composerPreset"
       :reply-to="settings.defaultReplyTo"
       :tracking="settings.trackingEnabled"
+      :cooldown-days="settings.emailCooldownDays"
       @sent="onComposerSent"
       @template-saved="loadTemplates"
     />
@@ -509,6 +512,7 @@ import {
   genId,
   makeEvent,
   toDate,
+  buildEmailIndex,
   subscribeHarvestJobs,
   isHarvestActive,
   harvestProgressText,
@@ -549,9 +553,17 @@ const operator = computed(() => ({ key: userStore.user?.key || '', name: userSto
 // ---------------------------------------------------------------
 const prospects = computed(() => store.prospects);
 /** 附加前端推導欄位（縣市／區／聯絡人數），供表格顯示與表頭排序 */
+const emailIndex = computed(() => buildEmailIndex(prospects.value));
 const enriched = computed(() => prospects.value.map((p) => {
   const { city, district } = parseProspectLocation(p);
-  return { ...p, _city: city, _district: district, _contactCount: (p.contacts || []).length, _emailCount: emailContacts(p).length };
+  let dup = 0; let lastSentByEmail = 0;
+  emailContacts(p).forEach((c) => {
+    const e = emailIndex.value.get(String(c.email).trim().toLowerCase());
+    if (!e) return;
+    dup = Math.max(dup, e.count - 1);
+    lastSentByEmail = Math.max(lastSentByEmail, e.lastSentAt);
+  });
+  return { ...p, _city: city, _district: district, _contactCount: (p.contacts || []).length, _emailCount: emailContacts(p).length, _emailDup: dup, _lastSentByEmail: lastSentByEmail };
 }));
 const byId = computed(() => store.byId);
 const dueCount = computed(() => store.dueTodayCount);
@@ -672,7 +684,8 @@ const filtered = computed(() => {
     if (f.openedNoReply && !(p.lastOpenedAt && !p.repliedAt)) return false;
     if (f.clicked && !p.lastClickedAt) return false;
     if (f.notEmailedDays != null) {
-      const last = toDate(p.lastEmailAt)?.getTime();
+      // 以 Email 地址計算：同一 Email 在其他名單寄過也算寄過
+      const last = Math.max(toDate(p.lastEmailAt)?.getTime() || 0, p._lastSentByEmail || 0) || null;
       if (f.notEmailedDays === 0) { if (last) return false; } else if (last && now - last < f.notEmailedDays * 86400000) return false;
     }
     if (q) {
@@ -833,7 +846,10 @@ function toRecipients(p, contacts = null) {
   const excludedReason = EXCLUDED_STATUSES.includes(p.status) ? '不聯絡' : '';
   const list = contacts || emailContacts(p);
   if (!list.length) return [{ leadId: p.id, contactId: '', name: '', email: '', company: p.name, tags: p.tags || [], vars: buildVars(p, null) }];
-  return list.map((c) => ({ leadId: p.id, contactId: c.id, name: c.name || '', email: c.email, company: p.name, tags: p.tags || [], vars: buildVars(p, c), excludedReason }));
+  return list.map((c) => ({
+    leadId: p.id, contactId: c.id, name: c.name || '', email: c.email, company: p.name, tags: p.tags || [], vars: buildVars(p, c), excludedReason,
+    lastSentAt: emailIndex.value.get(String(c.email).trim().toLowerCase())?.lastSentAt || 0,
+  }));
 }
 function openComposerFor(list, template = null) {
   composerRecipients.value = (list || []).flatMap((p) => toRecipients(p));

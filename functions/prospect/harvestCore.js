@@ -301,8 +301,10 @@ function mergeCompanies(builders, assocRows) {
 // ---------------------------------------------------------------
 // 來源 3：官網／Email
 // ---------------------------------------------------------------
-const BLOCK_HOSTS = /(twincn|alltwcompany|twypage|mygov\.tw|technews|zhupiter|1111\.com|104\.com|518\.com|yes123|aibee|findcompany|opengov|gcis|g0v|591\.com|housefun|rakuya|leju|yungching|sinyi|hbhousing|facebook|instagram|youtube|linkedin|wikipedia|wikiwand|google|apple\.com|yahoo|pchome|ruten|shopee|momo|twitter|threads|tiktok|pixnet|blogspot|wordpress\.com|medium\.com|ltn\.com|udn\.com|chinatimes|ettoday|cna\.com|setn|tvbs|businessweekly|cw\.com|bnext|moneydj|cnyes|twse|mops|ctee|storm\.mg|thenewslens|mirrormedia|upmedia|nownews|amazon|ebay|\.gov\.tw|\.edu\.tw|\.org\.tw|iyp\.com|web66|tnn\.tw|bizpo|compbase|vocus|dcard|ptt\.cc|mobile01|cmoney|wantgoo|goodinfo|histock|agoda|booking\.com|tripadvisor|foodpanda|alibaba|baike|zi\.media|taxid|vat\.tw|companyinfo|twcompany|bizinfo|jobs|hiring|line\.me|zipko|ezprice|kingnet|ihouse|cbay|twyp|yellowpage|taiwanbuying|law\.moj|judicial|tw\.bid|stock\.|blog\.|forum|ipeen|newtalk|rti\.org|pts\.org|ftvnews|ctitv|ebc\.net|nextapple|epochtimes|peoplenews|books\.com|kkday|klook|zhihu|baidu|sohu|163\.com|qq\.com|weibo|xuite|accupass|kktix|gamer)/i;
-const BAD_EMAIL = /(example|sentry|wixpress|wix\.com|\.png|\.jpg|\.jpeg|\.gif|\.svg|\.webp|\.js$|\.css$|noreply|no-reply|@localhost|domain\.com|email\.com|yourmail|test@|@\d|\.min\.|webpack|w3\.org|schema|godaddy|cloudflare|googleapis|gstatic|jquery|bootstrap|fontawesome|@2x|@3x|@media|@import|@font|@keyframes|@page|@charset)/i;
+// 名錄／入口網站（不是公司官網；曾被誤判為官網並抓到平台信箱）
+const DIRECTORY_HOSTS = /(arch-world|archi\.net\.tw|asianmaterials|housetube|costring|zhupiter|lawplayer|interview\.tw|prince\.tw|chickpt|datagovtw|opendatany|business\.com\.tw|twincn|alltwcompany|twypage|mygov\.tw|technews|591\.com|findcompany|iyp\.com|web66|tnn\.tw|yellowpage|arch-world\.tw)/i;
+const BLOCK_HOSTS = /(arch-world|archi\.net\.tw|asianmaterials|costring|lawplayer|interview\.tw|prince\.tw|chickpt|datagovtw|opendatany|business\.com\.tw|twincn|alltwcompany|twypage|mygov\.tw|technews|zhupiter|1111\.com|104\.com|518\.com|yes123|aibee|findcompany|opengov|gcis|g0v|591\.com|housefun|rakuya|leju|yungching|sinyi|hbhousing|facebook|instagram|youtube|linkedin|wikipedia|wikiwand|google|apple\.com|yahoo|pchome|ruten|shopee|momo|twitter|threads|tiktok|pixnet|blogspot|wordpress\.com|medium\.com|ltn\.com|udn\.com|chinatimes|ettoday|cna\.com|setn|tvbs|businessweekly|cw\.com|bnext|moneydj|cnyes|twse|mops|ctee|storm\.mg|thenewslens|mirrormedia|upmedia|nownews|amazon|ebay|\.gov\.tw|\.edu\.tw|\.org\.tw|iyp\.com|web66|tnn\.tw|bizpo|compbase|vocus|dcard|ptt\.cc|mobile01|cmoney|wantgoo|goodinfo|histock|agoda|booking\.com|tripadvisor|foodpanda|alibaba|baike|zi\.media|taxid|vat\.tw|companyinfo|twcompany|bizinfo|jobs|hiring|line\.me|zipko|ezprice|kingnet|ihouse|cbay|twyp|yellowpage|taiwanbuying|law\.moj|judicial|tw\.bid|stock\.|blog\.|forum|ipeen|newtalk|rti\.org|pts\.org|ftvnews|ctitv|ebc\.net|nextapple|epochtimes|peoplenews|books\.com|kkday|klook|zhihu|baidu|sohu|163\.com|qq\.com|weibo|xuite|accupass|kktix|gamer)/i;
+const BAD_EMAIL = /(hsikoking|arch-world|archi\.net\.tw|housetube|zhupiter|lawplayer|suodata@|interview\.tw|prince\.tw|chickpt|opendatany|datagovtw|business\.com\.tw|example|sentry|wixpress|wix\.com|\.png|\.jpg|\.jpeg|\.gif|\.svg|\.webp|\.js$|\.css$|noreply|no-reply|@localhost|domain\.com|email\.com|yourmail|test@|@\d|\.min\.|webpack|w3\.org|schema|godaddy|cloudflare|googleapis|gstatic|jquery|bootstrap|fontawesome|@2x|@3x|@media|@import|@font|@keyframes|@page|@charset)/i;
 
 function extractEmails(html, hostHint = '') {
   const text = `${html}\n${stripTags(html)}`.replace(/\s*\[at\]\s*|\s*\(at\)\s*/gi, '@').replace(/&#64;|%40/g, '@');
@@ -343,6 +345,8 @@ function webSearch(q, cfg) {
   return cfg.provider === 'google' ? googleSearch(q, cfg) : braveApiSearch(q, cfg);
 }
 
+function isDirectorySite(url) { try { return DIRECTORY_HOSTS.test(new URL(/^https?:/.test(url) ? url : `http://${String(url || '').replace(/^\/\//, '')}`).hostname); } catch { return false; } }
+
 function pickOfficialSite(links) {
   for (const u of links) {
     try { const { hostname, protocol } = new URL(u); if (BLOCK_HOSTS.test(hostname) || BLOCK_HOSTS.test(u)) continue; return `${protocol}//${hostname}/`; } catch { /* ignore */ }
@@ -356,6 +360,7 @@ async function harvestSite(website) {
   const out = { emails: [], phone: '', pages: 0, error: '' };
   let base;
   try { base = new URL(/^https?:/.test(website) ? website : `http://${website.replace(/^\/\//, '')}`); } catch { out.error = 'bad url'; return out; }
+  if (DIRECTORY_HOSTS.test(base.hostname)) { out.error = 'directory-site'; return out; }
   const seen = new Set(); const queue = [base.href];
   while (queue.length && out.pages < 4) {
     const u = queue.shift(); if (seen.has(u)) continue; seen.add(u);
@@ -572,7 +577,7 @@ async function runEnrichBatch(db, params, hooks) {
   for (const p of targets) {
     if (Date.now() - started > params.budgetMs) break;
     if (done % 10 === 0 && await hooks.shouldStop()) { stopped = true; break; }
-    const harvest = { checkedAt: new Date(), website: p.website || '', emails: [], phone: '', error: '' };
+    const harvest = { checkedAt: new Date(), website: isDirectorySite(p.website) ? '' : (p.website || ''), emails: [], phone: '', error: '' };
     try {
       if (!harvest.website && params.search && !quotaExceeded) {
         const wait = lastSearchAt + params.searchIntervalMs - Date.now();
@@ -614,7 +619,7 @@ module.exports = {
   CITY_NAMES, CITY_CODES, SIX_CITIES,
   nameKey, isCompanyName, parseBuilders, parseCsv, isoToRoc, rocDateText,
   downloadBuildcaseZip, readBuildcaseCsvs, extractProjects, scrapeAssociations, mergeCompanies,
-  googleSearch, braveApiSearch, webSearch, pickOfficialSite, harvestSite, extractEmails,
+  googleSearch, braveApiSearch, webSearch, pickOfficialSite, harvestSite, extractEmails, isDirectorySite, DIRECTORY_HOSTS, BAD_EMAIL,
   createWriter, companyFields, projectFields, autoTags,
   runSources, runEnrichBatch,
 };
