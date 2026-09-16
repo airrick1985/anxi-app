@@ -18,8 +18,10 @@ import {
   arrayRemove,
   query,
   where,
+  onSnapshot,
 } from 'firebase/firestore';
 import { toDate } from '@/services/trialLeadsService';
+import TwCities from '@/assets/TwCities.json';
 
 export { toDate };
 
@@ -57,6 +59,7 @@ export const PROSPECT_PRIORITY_OPTIONS = [
 /** 活動事件 type → 中文／圖示 */
 export const PROSPECT_EVENT_LABELS = {
   imported: { label: '匯入 Excel', icon: 'mdi-file-excel', color: 'grey' },
+  harvested: { label: '網路蒐集', icon: 'mdi-web', color: 'grey' },
   created: { label: '手動建立', icon: 'mdi-plus', color: 'grey' },
   email_sent: { label: '寄出 Email', icon: 'mdi-email-send', color: 'blue' },
   email_failed: { label: 'Email 寄送失敗', icon: 'mdi-email-alert', color: 'error' },
@@ -92,6 +95,60 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // ---------------------------------------------------------------
 // 工具
 // ---------------------------------------------------------------
+
+// ---------------------------------------------------------------
+// 縣市／區 解析（region 只有單一字串，前端由 region／地址推導）
+// ---------------------------------------------------------------
+
+const normTW = (s) => String(s || '').replace(/台/g, '臺').trim();
+
+/** 縣市名稱（TwCities 順序） */
+export const PROSPECT_CITY_NAMES = TwCities.map((c) => c.name);
+const CITY_INDEX = Object.fromEntries(PROSPECT_CITY_NAMES.map((n, i) => [n, i]));
+
+/** 區名（唯一者）→ 縣市；重複的區名（東區、中正區…）不在此表 */
+const UNIQUE_DISTRICT_CITY = (() => {
+  const count = {};
+  TwCities.forEach((c) => c.districts.forEach((d) => { count[d.name] = (count[d.name] || 0) + 1; }));
+  const map = {};
+  TwCities.forEach((c) => c.districts.forEach((d) => { if (count[d.name] === 1) map[d.name] = c.name; }));
+  return map;
+})();
+
+export function districtsOfCity(city) {
+  return (TwCities.find((c) => c.name === city)?.districts || []).map((d) => d.name);
+}
+
+/** 縣市排序比較（北→南，未知排最後） */
+export function compareCity(a, b) {
+  const ia = a in CITY_INDEX ? CITY_INDEX[a] : 999;
+  const ib = b in CITY_INDEX ? CITY_INDEX[b] : 999;
+  return ia - ib || String(a || '').localeCompare(String(b || ''), 'zh-Hant');
+}
+
+function parseLocationText(text) {
+  const s = normTW(text);
+  if (!s) return null;
+  for (const c of TwCities) {
+    if (!s.startsWith(c.name)) continue;
+    const rest = s.slice(c.name.length);
+    const d = c.districts.find((x) => rest.startsWith(x.name));
+    return { city: c.name, district: d ? d.name : '' };
+  }
+  const bare = s.replace(/[（(].*$/, '');
+  const d = Object.keys(UNIQUE_DISTRICT_CITY).find((name) => bare.startsWith(name));
+  return d ? { city: UNIQUE_DISTRICT_CITY[d], district: d } : null;
+}
+
+/** 由 region → 基地地址 → 接待中心地址 推導 { city, district } */
+export function parseProspectLocation(p) {
+  for (const text of [p?.region, p?.siteAddress, p?.receptionAddress]) {
+    const r = parseLocationText(text);
+    if (r) return r;
+  }
+  return { city: '', district: '' };
+}
+
 
 export function genId(prefix = '') {
   return `${prefix}${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -693,3 +750,64 @@ export function prospectToExportRow(p, { fmt, statusLabel, ownerName }) {
 }
 
 export const EXPORT_SHEET_NAMES = { project: '建案清單', builder: '建商清單', agency: '代銷公司', resource: '公會_平台_社群' };
+
+// ---------------------------------------------------------------
+// 網路蒐集工作（prospectHarvestJobs；後端 functions/prospect/harvestJobs.js）
+// ---------------------------------------------------------------
+
+export const HARVEST_CATEGORY_OPTIONS = PROSPECT_CATEGORY_OPTIONS.filter((o) => o.value !== 'resource');
+export const HARVEST_DEFAULT_CITIES = ['臺北市', '新北市', '桃園市', '臺中市', '臺南市', '高雄市'];
+export const HARVEST_STATUS_LABELS = {
+  queued: { label: '排隊中', color: 'grey' },
+  running: { label: '執行中', color: 'primary' },
+  done: { label: '完成', color: 'success' },
+  failed: { label: '失敗', color: 'error' },
+  cancelled: { label: '已取消', color: 'warning' },
+};
+export const isHarvestActive = (job) => !!job && ['queued', 'running'].includes(job.status);
+
+function sortJobsDesc(list) {
+  return list.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
+}
+
+/** 訂閱所有工作（數量少，排序在前端）；cb(jobsDesc) */
+export function subscribeHarvestJobs(cb) {
+  return onSnapshot(collection(db, 'prospectHarvestJobs'), (snap) => {
+    cb(sortJobsDesc(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+  }, (e) => console.error('[subscribeHarvestJobs]', e));
+}
+
+/** 進度摘要文字（狀態列用） */
+export function harvestProgressText(job) {
+  if (!job) return '';
+  const p = job.progress || {};
+  if (job.stage === 'sources') {
+    const c = p.counts;
+    const counts = c ? `建案 ${c.projects}／建商 ${c.builders}／代銷 ${c.agencies}` : '';
+    return ['蒐集來源', p.step || '', counts].filter(Boolean).join('　');
+  }
+  if (job.stage === 'enrich') {
+    const prev = job.result?.enrich || {};
+    const done = (prev.done || 0) + (p.done || 0);
+    const total = (prev.done || 0) + (p.total || 0);
+    const found = (prev.found || 0) + (p.found || 0);
+    return `補 Email　${done}／${total}　找到 ${found} 家${p.searchEnabled === false ? '（未設定搜尋金鑰，只查已知官網）' : ''}`;
+  }
+  return '';
+}
+
+/** 完成結果摘要 */
+export function harvestResultText(job) {
+  if (!job) return '';
+  const s = job.result?.sources?.summary;
+  const parts = [];
+  if (s) {
+    const created = (s.builder?.created || 0) + (s.agency?.created || 0) + (s.project?.created || 0);
+    const updated = (s.builder?.updated || 0) + (s.agency?.updated || 0) + (s.project?.updated || 0);
+    parts.push(`新增 ${created}、更新 ${updated}`);
+  }
+  const e = job.result?.enrich;
+  if (e) parts.push(`補 Email ${e.found || 0}／${e.done || 0} 家`);
+  if (job.error) parts.push(job.error);
+  return parts.join('；');
+}

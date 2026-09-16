@@ -31125,6 +31125,11 @@ exports.sendMarketingEmail = marketingEmail.sendMarketingEmail;
 const emailTracking = require("./trial/emailTracking");
 exports.trackEmailOpen = emailTracking.trackEmailOpen;
 
+// ✅ 客戶開發：網路蒐集（內政部備查建案／公會名錄／官網 Email）— 前端觸發、背景分批執行
+const prospectHarvest = require("./prospect/harvestJobs");
+exports.prospectHarvest = prospectHarvest.prospectHarvest;
+exports.runProspectHarvest = prospectHarvest.runProspectHarvest;
+
 const trialSandbox = require("./trial/sandbox");
 exports.snapshotTrialSandbox = trialSandbox.snapshotTrialSandbox;
 exports.resetTrialSandbox = trialSandbox.resetTrialSandbox;

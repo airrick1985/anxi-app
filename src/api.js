@@ -9605,6 +9605,13 @@ export const sendMarketingEmailAPI = async (payload) => {
   return result.data;
 };
 
+/** 客戶開發：網路蒐集工作（action: start / cancel / config / setSearchKey） */
+export const prospectHarvestAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'prospectHarvest', { timeout: 60000 });
+  const result = await fn(payload);
+  return result.data;
+};
+
 /** 沙盒範本快照（dryRun=true 只回傳筆數預覽） */
 export const snapshotTrialSandboxAPI = async (payload) => {
   const fn = httpsCallable(functions, 'snapshotTrialSandbox', { timeout: 540000 });

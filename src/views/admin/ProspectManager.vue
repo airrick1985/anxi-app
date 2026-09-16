@@ -15,11 +15,32 @@
         :class="{ 'cursor-pointer': true }"
         @click="toggleDueFilter"
       >今日待追蹤 {{ dueCount }}</v-chip>
+      <v-btn size="small" variant="outlined" prepend-icon="mdi-web" :loading="harvestActive" @click="harvestOpen = true">網路蒐集</v-btn>
       <v-btn size="small" variant="outlined" prepend-icon="mdi-file-excel" @click="importOpen = true">匯入 Excel</v-btn>
       <v-btn size="small" variant="outlined" prepend-icon="mdi-download" :disabled="!filtered.length" @click="exportExcel">匯出</v-btn>
       <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-plus" @click="startCreate">新增</v-btn>
       <v-btn size="small" variant="text" icon="mdi-cog" title="設定" @click="openSettings" />
     </div>
+
+    <!-- 網路蒐集狀態列 -->
+    <v-alert
+      v-if="harvestBanner"
+      :type="harvestBanner.type"
+      variant="tonal"
+      density="compact"
+      class="mb-3"
+      :closable="!harvestActive"
+      @click:close="harvestDismissedId = harvestBanner.job.id"
+    >
+      <div class="d-flex align-center flex-wrap ga-2">
+        <v-progress-circular v-if="harvestActive" indeterminate size="18" width="2" />
+        <span>{{ harvestBanner.text }}</span>
+        <v-spacer />
+        <v-btn v-if="harvestActive" size="x-small" variant="text" :disabled="harvestBanner.job.cancelRequested" @click="cancelHarvest(harvestBanner.job)">
+          {{ harvestBanner.job.cancelRequested ? '取消中…' : '取消' }}
+        </v-btn>
+      </div>
+    </v-alert>
 
     <v-tabs v-model="tab" color="primary" class="mb-3">
       <v-tab value="list" prepend-icon="mdi-format-list-bulleted">名單</v-tab>
@@ -37,7 +58,8 @@
                 <v-text-field v-model="search" label="搜尋 名稱／建商／代銷／地址／聯絡人／Email" prepend-inner-icon="mdi-magnify" density="compact" variant="outlined" clearable hide-details class="mb-2" />
                 <v-row dense>
                   <v-col cols="6" sm="3"><v-select v-model="f.categories" :items="categoryOptions" item-title="title" item-value="value" label="類別" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
-                  <v-col cols="6" sm="3"><v-select v-model="f.regions" :items="regionItems" label="區域" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
+                  <v-col cols="6" sm="3"><v-select v-model="f.cities" :items="cityItems" label="縣市" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
+                  <v-col v-if="f.cities.length" cols="6" sm="3"><v-select v-model="f.districts" :items="districtItems" item-title="title" item-value="value" label="區" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
                   <v-col cols="6" sm="3"><v-select v-model="f.statuses" :items="statusOptions" item-title="title" item-value="value" label="狀態" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
                   <v-col cols="6" sm="3"><v-select v-model="f.tags" :items="tagDefs" item-title="name" item-value="name" label="標籤" density="compact" variant="outlined" hide-details multiple chips closable-chips clearable /></v-col>
                   <v-col cols="6" sm="3"><v-select v-model="f.owner" :items="ownerFilterItems" label="負責人" density="compact" variant="outlined" hide-details clearable /></v-col>
@@ -109,8 +131,10 @@
 
               <v-data-table
                 v-model="selectedIds"
+                v-model:sort-by="tableSort"
                 :headers="headers"
                 :items="filtered"
+                :custom-key-sort="keySort"
                 item-value="id"
                 show-select
                 density="compact"
@@ -131,18 +155,20 @@
                     <v-icon v-if="(item.priority || 0) >= 1" size="x-small" color="amber">mdi-star</v-icon>
                     <v-icon v-if="(item.priority || 0) >= 2" size="x-small" color="amber">mdi-star</v-icon>
                   </div>
-                  <div class="text-caption text-grey">{{ item.region || '' }}<span v-if="item.category === 'project' && (item.companyName || item.builder)">｜{{ item.companyName || item.builder }}</span></div>
+                  <div v-if="item.category === 'project' && (item.companyName || item.builder)" class="text-caption text-grey">{{ item.companyName || item.builder }}</div>
                 </template>
+                <template #item._city="{ item }"><span class="text-no-wrap">{{ item._city || '—' }}</span></template>
+                <template #item._district="{ item }"><span class="text-no-wrap">{{ item._district || '—' }}</span></template>
                 <template #item.status="{ item }">
                   <v-chip size="x-small" :color="statusMeta(item.status).color" variant="flat">{{ statusMeta(item.status).title }}</v-chip>
                 </template>
                 <template #item.tags="{ item }">
                   <v-chip v-for="t in (item.tags || [])" :key="t" size="x-small" :color="tagColor(t)" variant="flat" class="mr-1">{{ t }}</v-chip>
                 </template>
-                <template #item._contacts="{ item }">
-                  <span :class="emailContacts(item).length ? 'text-success' : 'text-grey'">
-                    <v-icon size="x-small">{{ emailContacts(item).length ? 'mdi-email-check' : 'mdi-email-off' }}</v-icon>
-                    {{ (item.contacts || []).length }}
+                <template #item._contactCount="{ item }">
+                  <span :class="item._emailCount ? 'text-success' : 'text-grey'">
+                    <v-icon size="x-small">{{ item._emailCount ? 'mdi-email-check' : 'mdi-email-off' }}</v-icon>
+                    {{ item._contactCount }}
                   </span>
                 </template>
                 <template #item.lastEmailAt="{ item }">
@@ -336,6 +362,13 @@
           <v-text-field v-model.number="settingsForm.followUpDaysAfterEmail" type="number" min="1" max="60" label="寄信後自動排追蹤日（天）" variant="outlined" density="comfortable" class="mb-2" />
           <v-text-field v-model="settingsForm.defaultReplyTo" label="預設 Reply-To（空＝操作者 Email）" variant="outlined" density="comfortable" class="mb-2" />
           <v-switch v-model="settingsForm.trackingEnabled" label="預設嵌入開信追蹤像素" color="primary" density="compact" hide-details />
+          <v-divider class="my-3" />
+          <div class="d-flex align-center mb-2">
+            <span class="text-subtitle-2">網路蒐集：Google 搜尋</span>
+            <v-chip size="x-small" class="ml-2" :color="hasSearchKey ? 'success' : 'grey'" variant="tonal">{{ hasSearchKey ? '已設定' : '未設定' }}</v-chip>
+          </div>
+          <v-text-field v-model="searchKeyForm.key" label="API 金鑰" type="password" variant="outlined" density="comfortable" class="mb-2" autocomplete="off" />
+          <v-text-field v-model="searchKeyForm.cx" label="搜尋引擎 ID" variant="outlined" density="comfortable" hide-details autocomplete="off" />
         </v-card-text>
         <v-divider />
         <v-card-actions>
@@ -409,6 +442,7 @@
 
     <TrialLeadTagManager v-model="tagManagerOpen" :tags="tagDefs" :adapter="prospectTagAdapter" @changed="onTagsChanged" />
     <ProspectImportDialog v-model="importOpen" :existing="prospects" @imported="onImported" />
+    <ProspectHarvestDialog v-model="harvestOpen" :jobs="harvestJobs" :has-search-key="hasSearchKey" />
   </v-container>
 </template>
 
@@ -421,12 +455,13 @@ import * as XLSX from 'xlsx';
 import { useUserStore } from '@/store/user';
 import { useUiStore } from '@/store/uiStore';
 import { useProspectStore } from '@/store/prospectStore';
-import { uploadMarketingAttachment } from '@/api';
+import { uploadMarketingAttachment, prospectHarvestAPI } from '@/api';
 import TiptapEditor from '@/components/TiptapEditor.vue';
 import MarketingEmailComposer from '@/components/marketing/MarketingEmailComposer.vue';
 import TrialLeadTagManager from '@/components/marketing/TrialLeadTagManager.vue';
 import ProspectDetailPanel from '@/components/prospecting/ProspectDetailPanel.vue';
 import ProspectImportDialog from '@/components/prospecting/ProspectImportDialog.vue';
+import ProspectHarvestDialog from '@/components/prospecting/ProspectHarvestDialog.vue';
 import { fetchEmailTemplates, saveEmailTemplate, deleteEmailTemplate } from '@/services/trialLeadsService';
 import {
   PROSPECT_CATEGORY_OPTIONS,
@@ -453,11 +488,20 @@ import {
   daysFromNowTaipei,
   categoryMeta,
   statusMeta,
+  parseProspectLocation,
+  compareCity,
+  districtsOfCity,
   nameKey,
   genId,
   makeEvent,
   toDate,
+  subscribeHarvestJobs,
+  isHarvestActive,
+  harvestProgressText,
+  harvestResultText,
+  HARVEST_STATUS_LABELS,
 } from '@/services/prospectService';
+import { onUnmounted } from 'vue';
 import { arrayUnion } from 'firebase/firestore';
 
 const route = useRoute();
@@ -490,6 +534,11 @@ const operator = computed(() => ({ key: userStore.user?.key || '', name: userSto
 // 資料
 // ---------------------------------------------------------------
 const prospects = computed(() => store.prospects);
+/** 附加前端推導欄位（縣市／區／聯絡人數），供表格顯示與表頭排序 */
+const enriched = computed(() => prospects.value.map((p) => {
+  const { city, district } = parseProspectLocation(p);
+  return { ...p, _city: city, _district: district, _contactCount: (p.contacts || []).length, _emailCount: emailContacts(p).length };
+}));
 const byId = computed(() => store.byId);
 const dueCount = computed(() => store.dueTodayCount);
 const admins = ref([]);
@@ -523,43 +572,81 @@ function onTagsChanged({ tags, renamed, removed }) {
 // 篩選
 // ---------------------------------------------------------------
 const search = ref('');
-const sortBy = ref('followup');
 const f = reactive({
-  categories: [], regions: [], statuses: [], tags: [], owner: null, notEmailedDays: null,
+  categories: [], cities: [], districts: [], statuses: [], tags: [], owner: null, notEmailedDays: null,
   hasEmail: false, hasFb: false, hasLine: false, dueToday: false, openedNoReply: false,
 });
 function resetFilters() {
-  Object.assign(f, { categories: [], regions: [], statuses: [], tags: [], owner: null, notEmailedDays: null, hasEmail: false, hasFb: false, hasLine: false, dueToday: false, openedNoReply: false });
+  Object.assign(f, { categories: [], cities: [], districts: [], statuses: [], tags: [], owner: null, notEmailedDays: null, hasEmail: false, hasFb: false, hasLine: false, dueToday: false, openedNoReply: false });
   search.value = '';
 }
 function toggleDueFilter() { f.dueToday = !f.dueToday; tab.value = 'list'; }
+/** 縣市變動時，移除不屬於已選縣市的區 */
+watch(() => f.cities, (cities) => { f.districts = f.districts.filter((v) => cities.includes(v.split('/')[0])); });
 
-const regionItems = computed(() => Array.from(new Set(prospects.value.map((p) => regionGroup(p.region)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-Hant')));
-function regionGroup(r) {
-  const s = String(r || '').trim();
-  if (!s) return '';
-  const m = s.match(/^(新竹市東區|新竹市北區|新竹市香山區|新竹市|竹北市|竹東鎮|湖口鄉|新豐鄉|芎林鄉|新埔鎮|北埔鄉|寶山鄉|關西鎮|峨眉鄉|橫山鄉|尖石鄉|五峰鄉)/);
-  return m ? m[1] : s.replace(/[（(].*$/, '');
-}
+/** 縣市選項：只列名單中出現的縣市（北→南） */
+const cityItems = computed(() => Array.from(new Set(enriched.value.map((p) => p._city).filter(Boolean))).sort(compareCity));
+/** 區選項：已選縣市下、名單中出現的區（value = 縣市/區；多縣市時標題附縣市以區分同名區） */
+const districtItems = computed(() => {
+  const cities = [...f.cities].sort(compareCity);
+  const present = new Set(enriched.value.filter((p) => cities.includes(p._city) && p._district).map((p) => `${p._city}/${p._district}`));
+  return cities.flatMap((city) => districtsOfCity(city)
+    .map((d) => `${city}/${d}`)
+    .filter((v) => present.has(v))
+    .map((v) => ({ value: v, title: cities.length > 1 ? v.replace('/', ' ') : v.split('/')[1] })));
+});
 const ownerFilterItems = computed(() => [{ title: '未指派', value: '__none__' }, ...admins.value.map((a) => ({ title: a.name, value: a.key }))]);
 const notEmailedItems = [
   { title: '7 天內未寄', value: 7 }, { title: '14 天內未寄', value: 14 }, { title: '30 天內未寄', value: 30 }, { title: '從未寄過', value: 0 },
 ];
+// ---------------------------------------------------------------
+// 排序：表頭點按與「排序」下拉共用 tableSort；空陣列 = 預設（追蹤日到期優先）
+// ---------------------------------------------------------------
+const SORT_PRESETS = {
+  followup: [],
+  updated: [{ key: 'updatedAt', order: 'desc' }],
+  email: [{ key: 'lastEmailAt', order: 'desc' }],
+  name: [{ key: 'name', order: 'asc' }],
+  city: [{ key: '_city', order: 'asc' }, { key: '_district', order: 'asc' }],
+  priority: [{ key: 'priority', order: 'desc' }],
+};
 const sortOptions = [
   { title: '追蹤日（到期優先）', value: 'followup' },
   { title: '最近更新', value: 'updated' },
   { title: '最後寄信', value: 'email' },
   { title: '名稱', value: 'name' },
-  { title: '區域', value: 'region' },
+  { title: '縣市／區', value: 'city' },
   { title: '優先度', value: 'priority' },
 ];
+const tableSort = ref([]);
+const sameSort = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const sortBy = computed({
+  get: () => Object.keys(SORT_PRESETS).find((k) => sameSort(SORT_PRESETS[k], tableSort.value)) || null,
+  set: (k) => { tableSort.value = SORT_PRESETS[k] ? [...SORT_PRESETS[k]] : []; },
+});
+const ts = (v) => toDate(v)?.getTime() || 0;
+const zh = (a, b) => String(a || '').localeCompare(String(b || ''), 'zh-Hant');
+/** 表頭排序比較函式（key → (a, b)）；日期以時間戳比較，追蹤日空值排最後 */
+const keySort = {
+  name: zh,
+  _city: compareCity,
+  _district: zh,
+  ownerName: zh,
+  status: (a, b) => (statusMeta(a || 'new').order ?? 0) - (statusMeta(b || 'new').order ?? 0),
+  lastEmailAt: (a, b) => ts(a) - ts(b),
+  followUpAt: (a, b) => (ts(a) || Infinity) - (ts(b) || Infinity),
+  updatedAt: (a, b) => ts(a) - ts(b),
+  priority: (a, b) => (a || 0) - (b || 0),
+  _contactCount: (a, b) => (a || 0) - (b || 0),
+};
 
 const filtered = computed(() => {
   const q = String(search.value || '').trim().toLowerCase();
   const now = Date.now();
-  let list = prospects.value.filter((p) => {
+  let list = enriched.value.filter((p) => {
     if (f.categories.length && !f.categories.includes(p.category)) return false;
-    if (f.regions.length && !f.regions.includes(regionGroup(p.region))) return false;
+    if (f.cities.length && !f.cities.includes(p._city)) return false;
+    if (f.districts.length && !f.districts.includes(`${p._city}/${p._district}`)) return false;
     if (f.statuses.length && !f.statuses.includes(p.status || 'new')) return false;
     if (f.tags.length) { const tags = Array.isArray(p.tags) ? p.tags : []; if (!f.tags.some((t) => tags.includes(t))) return false; }
     if (f.owner === '__none__' && p.owner) return false;
@@ -580,26 +667,20 @@ const filtered = computed(() => {
     }
     return true;
   });
-  const t = (v) => toDate(v)?.getTime() || 0;
-  const s = sortBy.value;
-  list = [...list];
-  if (s === 'followup') list.sort((a, b) => (t(a.followUpAt) || Infinity) - (t(b.followUpAt) || Infinity) || t(b.updatedAt) - t(a.updatedAt));
-  else if (s === 'updated') list.sort((a, b) => t(b.updatedAt) - t(a.updatedAt));
-  else if (s === 'email') list.sort((a, b) => t(b.lastEmailAt) - t(a.lastEmailAt));
-  else if (s === 'name') list.sort((a, b) => String(a.name).localeCompare(String(b.name), 'zh-Hant'));
-  else if (s === 'region') list.sort((a, b) => String(a.region || '').localeCompare(String(b.region || ''), 'zh-Hant') || String(a.name).localeCompare(String(b.name), 'zh-Hant'));
-  else if (s === 'priority') list.sort((a, b) => (b.priority || 0) - (a.priority || 0) || t(b.updatedAt) - t(a.updatedAt));
-  return list;
+  // 基礎順序：追蹤日到期優先 → 最近更新；表頭排序在此順序上進行（穩定排序，同值維持此順序）
+  return [...list].sort((a, b) => (ts(a.followUpAt) || Infinity) - (ts(b.followUpAt) || Infinity) || ts(b.updatedAt) - ts(a.updatedAt));
 });
 
 const headers = [
-  { title: '名稱', key: 'name', sortable: false },
-  { title: '狀態', key: 'status', sortable: false },
+  { title: '名稱', key: 'name' },
+  { title: '縣市', key: '_city' },
+  { title: '區', key: '_district' },
+  { title: '狀態', key: 'status' },
   { title: '標籤', key: 'tags', sortable: false },
-  { title: '聯絡人', key: '_contacts', sortable: false, align: 'center' },
-  { title: '最後寄信', key: 'lastEmailAt', sortable: false },
-  { title: '追蹤', key: 'followUpAt', sortable: false },
-  { title: '負責人', key: 'ownerName', sortable: false },
+  { title: '聯絡人', key: '_contactCount', align: 'center' },
+  { title: '最後寄信', key: 'lastEmailAt' },
+  { title: '追蹤', key: 'followUpAt' },
+  { title: '負責人', key: 'ownerName' },
 ];
 
 // ---------------------------------------------------------------
@@ -925,14 +1006,19 @@ async function confirmDeleteTemplate() {
 const settingsOpen = ref(false);
 const settingsForm = ref({ ...DEFAULT_PROSPECT_SETTINGS });
 const savingSettings = ref(false);
+const searchKeyForm = ref({ key: '', cx: '' });
 async function loadSettings() {
   try { settings.value = await fetchProspectSettings(); } catch (e) { console.error(e); }
 }
-function openSettings() { settingsForm.value = { ...settings.value }; settingsOpen.value = true; }
+function openSettings() { settingsForm.value = { ...settings.value }; searchKeyForm.value = { key: '', cx: '' }; settingsOpen.value = true; }
 async function saveSettings() {
   savingSettings.value = true;
   try {
     await saveProspectSettings(settingsForm.value, operator.value.name);
+    if (searchKeyForm.value.key.trim() && searchKeyForm.value.cx.trim()) {
+      await prospectHarvestAPI({ action: 'setSearchKey', operatorKey: operator.value.key, key: searchKeyForm.value.key.trim(), cx: searchKeyForm.value.cx.trim() });
+      hasSearchKey.value = true;
+    }
     await loadSettings();
     settingsOpen.value = false;
     uiStore.showSnackbar('設定已儲存', 'success');
@@ -949,6 +1035,54 @@ async function saveSettings() {
 // ---------------------------------------------------------------
 const importOpen = ref(false);
 async function onImported() { await reload(); }
+
+// ---------------------------------------------------------------
+// 網路蒐集（後端背景工作，訂閱 prospectHarvestJobs）
+// ---------------------------------------------------------------
+const harvestOpen = ref(false);
+const harvestJobs = ref([]);
+const harvestDismissedId = ref('');
+const hasSearchKey = ref(false);
+const latestHarvest = computed(() => harvestJobs.value[0] || null);
+const harvestActive = computed(() => isHarvestActive(latestHarvest.value));
+const harvestBanner = computed(() => {
+  const job = latestHarvest.value;
+  if (!job || job.id === harvestDismissedId.value) return null;
+  if (isHarvestActive(job)) return { job, type: 'info', text: `網路蒐集${job.status === 'queued' ? '排隊中' : ''}　${harvestProgressText(job)}` };
+  const finishedAt = toDate(job.finishedAt);
+  if (!finishedAt || Date.now() - finishedAt.getTime() > 24 * 3600e3) return null;
+  const meta = HARVEST_STATUS_LABELS[job.status] || {};
+  return { job, type: job.status === 'done' ? 'success' : job.status === 'failed' ? 'error' : 'warning', text: `網路蒐集${meta.label || ''}　${harvestResultText(job)}` };
+});
+let prevHarvestStatus = null;
+const unsubscribeHarvest = subscribeHarvestJobs((jobs) => {
+  const prevId = latestHarvest.value?.id;
+  harvestJobs.value = jobs;
+  const job = jobs[0];
+  if (!job) return;
+  const key = `${job.id}|${job.status}`;
+  if (prevHarvestStatus && prevHarvestStatus !== key && job.id === prevId && !isHarvestActive(job)) {
+    reload();
+    uiStore.showSnackbar(`網路蒐集${HARVEST_STATUS_LABELS[job.status]?.label || ''}：${harvestResultText(job)}`, job.status === 'done' ? 'success' : 'warning', 6000);
+  }
+  prevHarvestStatus = key;
+});
+onUnmounted(() => unsubscribeHarvest());
+async function cancelHarvest(job) {
+  try {
+    await prospectHarvestAPI({ action: 'cancel', operatorKey: operator.value.key, jobId: job.id });
+    uiStore.showSnackbar('已送出取消，目前這批處理完會停止', 'info');
+  } catch (e) {
+    console.error(e);
+    uiStore.showSnackbar(e.message || '取消失敗', 'error');
+  }
+}
+async function loadHarvestConfig() {
+  try {
+    const r = await prospectHarvestAPI({ action: 'config', operatorKey: operator.value.key });
+    hasSearchKey.value = !!r.hasSearchKey;
+  } catch (e) { console.warn('讀取蒐集設定失敗', e); }
+}
 
 function exportExcel() {
   const ownerName = (key) => admins.value.find((a) => a.key === key)?.name || '';
@@ -977,7 +1111,7 @@ watch(tab, (t) => {
 });
 
 onMounted(async () => {
-  await Promise.all([reload(), loadTags(), loadSettings()]);
+  await Promise.all([reload(), loadTags(), loadSettings(), loadHarvestConfig()]);
   try { admins.value = await fetchSuperAdmins(); } catch (e) { console.warn('讀取超管清單失敗', e); }
   const id = route.query.id;
   if (id && byId.value[id]) selectById(id);
