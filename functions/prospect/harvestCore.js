@@ -323,7 +323,7 @@ async function googleSearch(q, { key, cx }) {
   const url = `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(key)}&cx=${encodeURIComponent(cx)}&q=${encodeURIComponent(q)}&num=8&gl=tw&hl=zh-TW`;
   const r = await fetchRaw(url, { timeout: 20000, headers: { Accept: 'application/json' } });
   const body = JSON.parse(r.buf.toString('utf8') || '{}');
-  if (r.status === 429 || body.error?.code === 429) { const e = new Error('搜尋額度用盡或被限流（429）'); e.code = 429; throw e; }
+  if ([429, 402].includes(r.status) || [429, 402].includes(body.error?.code)) { const e = new Error('搜尋額度用盡或被限流（429）'); e.code = 429; throw e; }
   if (r.status !== 200) throw new Error(`Google 搜尋 http ${r.status}：${body.error?.message || ''}`.slice(0, 160));
   return (body.items || []).map((it) => it.link).filter(Boolean);
 }
@@ -333,7 +333,7 @@ async function braveApiSearch(q, { key }) {
   const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=8&country=TW&search_lang=zh-hant`;
   const r = await fetchRaw(url, { timeout: 20000, headers: { Accept: 'application/json', 'X-Subscription-Token': key } });
   const body = JSON.parse(r.buf.toString('utf8') || '{}');
-  if (r.status === 429) { const e = new Error('搜尋額度用盡或被限流（429）'); e.code = 429; throw e; }
+  if (r.status === 429 || r.status === 402) { const e = new Error(r.status === 402 ? 'Brave 搜尋餘額不足，請到 Brave 後台儲值（402）' : '搜尋額度用盡或被限流（429）'); e.code = 429; throw e; }
   if (r.status !== 200) throw new Error(`Brave 搜尋 http ${r.status}：${body.error?.detail || body.message || ''}`.slice(0, 160));
   return (body.web?.results || []).map((it) => it.url).filter(Boolean);
 }
@@ -562,9 +562,10 @@ async function runEnrichBatch(db, params, hooks) {
   const started = Date.now();
   const snap = await db.collection('prospects').where('source', '==', 'web').get();
   const targets = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    .filter((p) => cats.includes(p.category) && cities.includes(normCity(p.region)) && !emailContacts(p).length && !p.harvest?.checkedAt);
+    .filter((p) => cats.includes(p.category) && cities.includes(normCity(p.region)) && !emailContacts(p).length
+      && (!p.harvest?.checkedAt || /402|429|額度|餘額/.test(p.harvest?.error || '')));
   const total = targets.length;
-  let done = 0; let found = 0; let lastSearchAt = 0; let stopped = false; let quotaExceeded = false;
+  let done = 0; let found = 0; let lastSearchAt = 0; let stopped = false; let quotaExceeded = false; let quotaError = '';
   const report = async () => hooks.report({ progress: { stage: 'enrich', total, done, found, searchEnabled: !!params.search, quotaExceeded } });
   await report();
 
@@ -580,7 +581,10 @@ async function runEnrichBatch(db, params, hooks) {
         try {
           const links = await webSearch(p.name, params.search);
           harvest.website = pickOfficialSite(links);
-        } catch (e) { if (e.code === 429) { quotaExceeded = true; harvest.error = e.message; } else harvest.error = e.message; }
+        } catch (e) {
+          if (e.code === 429) { quotaExceeded = true; quotaError = e.message; break; }
+          harvest.error = e.message;
+        }
       }
       if (harvest.website) {
         const r = await harvestSite(harvest.website);
@@ -601,11 +605,9 @@ async function runEnrichBatch(db, params, hooks) {
     await db.collection('prospects').doc(p.id).update(patch);
     done += 1;
     if (done % 10 === 0) await report();
-    if (quotaExceeded && !harvest.website) { /* 沒搜尋就沒官網，之後的都跳過搜尋但仍標記已檢查 */ }
   }
   await report();
-  const remaining = total - done;
-  return { total, done, found, remaining: stopped ? remaining : (Date.now() - started > params.budgetMs ? remaining : 0), stopped, quotaExceeded };
+  return { total, done, found, remaining: total - done, stopped, quotaExceeded, quotaError };
 }
 
 module.exports = {

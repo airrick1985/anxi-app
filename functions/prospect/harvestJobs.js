@@ -159,7 +159,7 @@ exports.runProspectHarvest = onDocumentWritten({
       if (remaining > 0 && !r.quotaExceeded) {
         await ref.update({ status: 'queued', result, updatedAt: FieldValue.serverTimestamp() });
       } else {
-        await finish('done', { result, error: r.quotaExceeded ? '搜尋額度用盡，其餘公司未搜尋官網' : '' });
+        await finish('done', { result, error: r.quotaExceeded ? `${r.quotaError || '搜尋額度用盡'}；其餘 ${remaining} 家未處理，儲值後再跑一次即可接續` : '' });
       }
       return;
     }
