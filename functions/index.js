@@ -31124,6 +31124,7 @@ exports.sendMarketingEmail = marketingEmail.sendMarketingEmail;
 // ✅ 客戶開發：開信追蹤像素（docs/SPEC_CustomerProspecting.md §6.4）
 const emailTracking = require("./trial/emailTracking");
 exports.trackEmailOpen = emailTracking.trackEmailOpen;
+exports.trackEmailClick = emailTracking.trackEmailClick;
 
 // ✅ 客戶開發：網路蒐集（內政部備查建案／公會名錄／官網 Email）— 前端觸發、背景分批執行
 const prospectHarvest = require("./prospect/harvestJobs");

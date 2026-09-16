@@ -72,6 +72,7 @@
                   <v-col cols="12" class="d-flex align-center flex-wrap ga-2">
                     <v-chip size="small" :variant="f.dueToday ? 'flat' : 'outlined'" color="error" @click="f.dueToday = !f.dueToday">今日待追蹤</v-chip>
                     <v-chip size="small" :variant="f.openedNoReply ? 'flat' : 'outlined'" color="cyan" @click="f.openedNoReply = !f.openedNoReply">已開信未回覆</v-chip>
+                    <v-chip size="small" :variant="f.clicked ? 'flat' : 'outlined'" color="deep-purple" @click="f.clicked = !f.clicked">已點擊</v-chip>
                     <v-chip size="small" :variant="f.hasLine ? 'flat' : 'outlined'" color="green" @click="f.hasLine = !f.hasLine">有 LINE</v-chip>
                     <v-btn size="x-small" variant="text" @click="resetFilters">清除篩選</v-btn>
                   </v-col>
@@ -174,6 +175,7 @@
                 <template #item.lastEmailAt="{ item }">
                   <span class="text-no-wrap">{{ fmt(item.lastEmailAt, 'MM/dd') }}</span>
                   <v-icon v-if="item.lastOpenedAt" size="x-small" color="cyan" class="ml-1" :title="`開信 ${fmt(item.lastOpenedAt)}`">mdi-email-open</v-icon>
+                  <v-icon v-if="item.lastClickedAt" size="x-small" color="deep-purple" class="ml-1" :title="`點擊 ${fmt(item.lastClickedAt)}`">mdi-cursor-default-click</v-icon>
                 </template>
                 <template #item.followUpAt="{ item }">
                   <span :class="isDueForFollowUp(item) ? 'text-error font-weight-bold' : ''" class="text-no-wrap">{{ fmt(item.followUpAt, 'MM/dd') }}</span>
@@ -228,7 +230,7 @@
                     <span class="font-weight-medium">{{ c.subject }}</span>
                     <v-spacer />
                     <span class="text-caption text-grey">
-                      收件 {{ c.total || (c.recipients || []).length }}｜成功 {{ c.sent || 0 }}｜失敗 {{ c.failed || 0 }}｜開信 {{ c.opened || 0 }}
+                      收件 {{ c.total || (c.recipients || []).length }}｜成功 {{ c.sent || 0 }}｜失敗 {{ c.failed || 0 }}｜開信 {{ c.opened || 0 }}｜點擊 {{ c.clicked || 0 }}
                       ｜{{ fmt(c.createdAt) }}｜{{ c.createdByName || c.createdBy || '—' }}
                     </span>
                   </div>
@@ -239,8 +241,17 @@
                     <v-spacer />
                     <v-btn size="small" color="warning" variant="tonal" prepend-icon="mdi-email-sync" :disabled="!(c.recipients || []).some((r) => r.status === 'failed')" @click="resendFailed(c)">重寄失敗者</v-btn>
                   </div>
+                  <v-table v-if="(c.links || []).length" density="compact" class="mb-3">
+                    <thead><tr><th>連結</th><th class="text-right">點擊次數</th></tr></thead>
+                    <tbody>
+                      <tr v-for="(l, li) in c.links" :key="li">
+                        <td><a :href="l.url" target="_blank" rel="noopener" class="text-primary">{{ l.label || l.url }}</a><span class="text-caption text-grey ml-2">{{ l.label ? l.url : '' }}</span></td>
+                        <td class="text-right">{{ (c.linkClicks || {})[String(li)] || 0 }}</td>
+                      </tr>
+                    </tbody>
+                  </v-table>
                   <v-table density="compact">
-                    <thead><tr><th>對象</th><th>聯絡人</th><th>Email</th><th>狀態</th><th>時間</th><th>開信</th><th>錯誤</th></tr></thead>
+                    <thead><tr><th>對象</th><th>聯絡人</th><th>Email</th><th>狀態</th><th>時間</th><th>開信</th><th>點擊</th><th>錯誤</th></tr></thead>
                     <tbody>
                       <tr v-for="(r, i) in (c.recipients || [])" :key="i">
                         <td><a v-if="r.leadId && byId[r.leadId]" href="#" class="text-primary" @click.prevent="jumpTo(r.leadId)">{{ r.company || byId[r.leadId].name }}</a><span v-else>{{ r.company || '—' }}</span></td>
@@ -250,6 +261,10 @@
                         <td class="text-no-wrap">{{ fmt(r.sentAt) }}</td>
                         <td class="text-caption text-no-wrap">
                           <template v-if="r.openedAt"><v-icon size="x-small" color="cyan">mdi-email-open</v-icon> {{ fmt(r.openedAt) }}（{{ r.openCount || 1 }}）</template>
+                          <span v-else class="text-grey">—</span>
+                        </td>
+                        <td class="text-caption text-no-wrap">
+                          <template v-if="r.clickedAt"><v-icon size="x-small" color="deep-purple">mdi-cursor-default-click</v-icon> {{ fmt(r.clickedAt) }}（{{ r.clickCount || 1 }}）</template>
                           <span v-else class="text-grey">—</span>
                         </td>
                         <td class="text-error text-caption">{{ r.error || '' }}</td>
@@ -573,10 +588,10 @@ function onTagsChanged({ tags, renamed, removed }) {
 const search = ref('');
 const f = reactive({
   categories: [], cities: [], districts: [], statuses: [], tags: [], owner: null, notEmailedDays: null,
-  hasEmail: false, hasFb: false, hasLine: false, dueToday: false, openedNoReply: false,
+  hasEmail: false, hasFb: false, hasLine: false, dueToday: false, openedNoReply: false, clicked: false,
 });
 function resetFilters() {
-  Object.assign(f, { categories: [], cities: [], districts: [], statuses: [], tags: [], owner: null, notEmailedDays: null, hasEmail: false, hasFb: false, hasLine: false, dueToday: false, openedNoReply: false });
+  Object.assign(f, { categories: [], cities: [], districts: [], statuses: [], tags: [], owner: null, notEmailedDays: null, hasEmail: false, hasFb: false, hasLine: false, dueToday: false, openedNoReply: false, clicked: false });
   search.value = '';
 }
 function toggleDueFilter() { f.dueToday = !f.dueToday; tab.value = 'list'; }
@@ -655,6 +670,7 @@ const filtered = computed(() => {
     if (f.hasLine && !p.line && !(p.contacts || []).some((c) => c.line)) return false;
     if (f.dueToday && !isDueForFollowUp(p)) return false;
     if (f.openedNoReply && !(p.lastOpenedAt && !p.repliedAt)) return false;
+    if (f.clicked && !p.lastClickedAt) return false;
     if (f.notEmailedDays != null) {
       const last = toDate(p.lastEmailAt)?.getTime();
       if (f.notEmailedDays === 0) { if (last) return false; } else if (last && now - last < f.notEmailedDays * 86400000) return false;

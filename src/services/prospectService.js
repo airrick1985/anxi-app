@@ -64,6 +64,7 @@ export const PROSPECT_EVENT_LABELS = {
   email_sent: { label: '寄出 Email', icon: 'mdi-email-send', color: 'blue' },
   email_failed: { label: 'Email 寄送失敗', icon: 'mdi-email-alert', color: 'error' },
   email_opened: { label: '已開信', icon: 'mdi-email-open', color: 'cyan' },
+  email_clicked: { label: '點擊連結', icon: 'mdi-cursor-default-click', color: 'deep-purple' },
   call: { label: '電話聯絡', icon: 'mdi-phone', color: 'teal' },
   line: { label: 'LINE 聯絡', icon: 'mdi-chat', color: 'green' },
   meeting: { label: '會面', icon: 'mdi-handshake', color: 'purple' },

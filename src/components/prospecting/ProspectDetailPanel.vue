@@ -27,6 +27,7 @@
         <div class="text-caption text-grey mt-1">
           建立 {{ fmt(prospect.createdAt) }}　最後寄信 {{ fmt(prospect.lastEmailAt) }}（{{ prospect.emailCount || 0 }} 次）
           <span v-if="prospect.lastOpenedAt">　最後開信 {{ fmt(prospect.lastOpenedAt) }}</span>
+          <span v-if="prospect.lastClickedAt">　最後點擊 {{ fmt(prospect.lastClickedAt) }}</span>
           <span v-if="prospect.repliedAt">　回覆 {{ fmt(prospect.repliedAt) }}</span>
         </div>
       </div>
@@ -227,7 +228,7 @@
         <div v-if="!emailLogs.length" class="text-caption text-grey">尚未寄過信</div>
         <v-table v-else density="compact">
           <thead>
-            <tr><th>時間</th><th>主旨</th><th>收件</th><th>狀態</th><th>開信</th></tr>
+            <tr><th>時間</th><th>主旨</th><th>收件</th><th>狀態</th><th>開信</th><th>點擊</th></tr>
           </thead>
           <tbody>
             <tr v-for="(l, i) in emailLogs" :key="i">
@@ -237,6 +238,10 @@
               <td><v-chip size="x-small" variant="flat" :color="l.status === 'sent' ? 'success' : 'error'">{{ l.status === 'sent' ? '成功' : '失敗' }}</v-chip></td>
               <td class="text-caption">
                 <template v-if="l.openedAt"><v-icon size="x-small" color="cyan">mdi-email-open</v-icon> {{ fmt(l.openedAt) }}（{{ l.openCount || 1 }}）</template>
+                <span v-else class="text-grey">—</span>
+              </td>
+              <td class="text-caption">
+                <template v-if="l.clickedAt"><v-icon size="x-small" color="deep-purple">mdi-cursor-default-click</v-icon> {{ fmt(l.clickedAt) }}（{{ l.clickCount || 1 }}）</template>
                 <span v-else class="text-grey">—</span>
               </td>
             </tr>
@@ -493,6 +498,7 @@ const timeline = computed(() => {
       let detail = e.text || '';
       if (e.type === 'email_sent' || e.type === 'email_failed') detail = `${e.meta?.subject || e.text || ''}${e.meta?.to ? ` → ${e.meta.to}` : ''}${e.meta?.error ? `（${e.meta.error}）` : ''}`;
       if (e.type === 'email_opened') detail = e.meta?.subject || '';
+      if (e.type === 'email_clicked') detail = [e.meta?.label || e.text, e.meta?.subject].filter(Boolean).join('｜');
       return { id: e.id || `${e.type}_${i}`, label: meta.label, icon: meta.icon, color: meta.color, detail, at: toDate(e.at), byName: e.byName || '' };
     })
     .sort((a, b) => (b.at?.getTime() || 0) - (a.at?.getTime() || 0));

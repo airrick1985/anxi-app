@@ -337,6 +337,16 @@
 - 前端在 `sent` 回呼後：對每個「成功」的 prospect，若 `followUpAt` 為空或早於今天，設 `followUpAt = 今天 + followUpDaysAfterEmail`，並追加 `events: followup_set`（`meta.auto=true`）。
 - 放前端做（而非 function）是為了讓使用者可在同一畫面立即看到並調整；量級 < 500 筆用 `writeBatch`。
 
+### 6.5 連結點擊追蹤 `trackEmailClick`（`onRequest`；2026-09-16 新增）
+
+- 寄信時（`tracking` 開）`sendMarketingEmail` 以 `extractLinks(html)` 取出信內所有 http(s) 連結 → `emailCampaigns/{id}.links = [{ url, label }]`，每位收件人的 `href` 改寫為
+  `trackEmailClick?c={campaignId}&r={index}&t={token}&l={linkIndex}`（token 同開信像素）。
+- 點擊時：驗證 token → 302 轉址到 `links[l].url` → 更新 `recipients[r].clickedAt/lastClickedAt/clickCount/clicks{l}`、`campaign.clicked`（不重複人數）、`campaign.linkClicks{l}`。
+- `target==='prospects'`：`lastClickedAt`、`clickCount`、`emailLogs[].clickedAt/clickCount`、事件 `email_clicked`（同 campaign＋連結每小時 1 筆）、
+  自動加標籤「高優先」、`followUpAt` 提前到台灣時間隔天 09:00（未設或晚於隔天時；`won`／`do_not_contact` 不動）。
+- 前端：名單列「點擊」圖示與「已點擊」篩選、詳情面板「最後點擊」與寄信紀錄點擊欄、寄信紀錄頁「點擊 N」與各連結點擊次數表。
+- 準確度：點擊為真人操作（少數郵件安全閘道會預先點擊，可由同秒內全部連結被點識別），可靠度高於開信像素。
+
 ### 6.4 開信追蹤 `trackEmailOpen`（新增，`onRequest`）
 ```js
 exports.trackEmailOpen = onRequest({ region: 'asia-east1', memory: '512MiB', secrets: ['TRACKING_SALT'] }, async (req, res) => {

@@ -13,6 +13,7 @@
  * - target: 'trialLeads' | 'prospects'（寫回集合）
  * - replyTo: 回信地址（預設操作者 Email）
  * - tracking: 嵌入開信追蹤像素（僅 prospects）
+ * - tracking 時信內 http(s) 連結改寫為 trackEmailClick 轉址（campaign.links 存原始網址與文字）
  */
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
@@ -24,6 +25,7 @@ const { makeTrackingToken } = require("./emailTracking");
 
 const gmailSecrets = ["SENDER_EMAIL", "GMAIL_APP_PASSWORD", "TRACKING_SALT"];
 const TRACKING_BASE_URL = "https://asia-east1-apps-script-api-443402.cloudfunctions.net/trackEmailOpen";
+const CLICK_BASE_URL = "https://asia-east1-apps-script-api-443402.cloudfunctions.net/trackEmailClick";
 const ALLOWED_TARGETS = ["trialLeads", "prospects"];
 
 // 每封信之間的間隔（毫秒），避免 Gmail 限流
@@ -57,6 +59,36 @@ function applyVariables(text, recipient) {
     "email": recipient.email || "",
   };
   return text.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (whole, key) => (Object.prototype.hasOwnProperty.call(map, key) ? String(map[key] ?? "") : whole));
+}
+
+/**
+ * 從 HTML 擷取可追蹤連結（http/https，去重、依出現順序）→ [{ url, label }]
+ */
+function extractLinks(html) {
+  const links = []; const seen = new Set();
+  const re = /<a\b[^>]*?href\s*=\s*(["'])(https?:\/\/[^"']+)\1[^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(String(html || ""))) !== null) {
+    const url = m[2].replace(/&amp;/g, "&").trim();
+    if (!url || seen.has(url) || url.includes("cloudfunctions.net/trackEmail")) continue;
+    seen.add(url);
+    const label = m[3].replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+    links.push({ url, label: label || url.replace(/^https?:\/\//, "").slice(0, 60) });
+  }
+  return links.slice(0, 50);
+}
+
+/** 把 href 換成點擊追蹤網址（同一 URL 全部替換） */
+function rewriteLinks(html, links, { campaignId, index, token }) {
+  let out = String(html || "");
+  links.forEach((link, l) => {
+    const tracked = `${CLICK_BASE_URL}?c=${encodeURIComponent(campaignId)}&amp;r=${index}&amp;t=${token}&amp;l=${l}`;
+    const variants = new Set([link.url, link.url.replace(/&/g, "&amp;")]);
+    for (const v of variants) {
+      out = out.split(`href="${v}"`).join(`href="${tracked}"`).split(`href='${v}'`).join(`href="${tracked}"`);
+    }
+  });
+  return out;
 }
 
 function sanitizeVars(vars) {
@@ -119,6 +151,8 @@ function normalizeRecipients(list) {
       sentAt: null,
       openedAt: null,
       openCount: 0,
+      clickedAt: null,
+      clickCount: 0,
     });
   }
   return out.slice(0, MAX_RECIPIENTS);
@@ -160,6 +194,9 @@ async function writeBackProspect(db, r, { campaignId, subject, sentAt, operatorK
   }
 }
 
+exports.extractLinks = extractLinks;
+exports.rewriteLinks = rewriteLinks;
+
 exports.sendMarketingEmail = onCall({
   region: "asia-east1",
   memory: "512MiB",
@@ -200,6 +237,7 @@ exports.sendMarketingEmail = onCall({
   const campaignRef = db.collection("emailCampaigns").doc();
   const campaignId = campaignRef.id;
   const createdAt = Timestamp.now();
+  const links = tracking ? extractLinks(html) : [];
   await campaignRef.set({
     subject: subject.trim(),
     html,
@@ -213,6 +251,9 @@ exports.sendMarketingEmail = onCall({
     replyTo,
     tracking,
     opened: 0,
+    clicked: 0,
+    links,
+    linkClicks: {},
     createdBy: operatorKey,
     createdByName: operator.name || "",
     createdAt,
@@ -249,6 +290,7 @@ exports.sendMarketingEmail = onCall({
         let personalHtml = applyVariables(html, r);
         if (tracking) {
           const token = makeTrackingToken(campaignId, i, process.env.TRACKING_SALT);
+          if (links.length) personalHtml = rewriteLinks(personalHtml, links, { campaignId, index: i, token });
           personalHtml += `<img src="${TRACKING_BASE_URL}?c=${encodeURIComponent(campaignId)}&r=${i}&t=${token}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;">`;
         }
         personalHtml += FOOTER_HTML;
