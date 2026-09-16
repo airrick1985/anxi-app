@@ -187,22 +187,32 @@ net  = subtotal − keep − tax − nhi
   // 既有：projectId, name, phone, email, positions[], order, updatedAt
   positions: ['銷售'],              // 選項擴充：銷售/專案/副專/助理/業主/主委/副總/輔導專案/專案團獎（仍可自由輸入）
   bonusConfig: {                    // 新增（無此物件視同 0/不參與，向下相容）
-    keepPct: 20,                    // 個人保留款 %
-    taxPct: 10,                     // 稅金 %
-    nhiPct: 2.11,                   // 二代健保 %
-    teamGroupKeys: ['g1'],          // 所屬團獎分組（對應 commissionSettings.teamGroups.key）
-    inDate: '2025/03/01',           // 進場時間（團獎資格判斷：簽約日 ≥ inDate）
+    // 頂層欄位＝「目前生效段」鏡射（在案中優先，否則進場最晚一段），供未改版讀取端與跨案引入使用
+    keepPct: 15,                    // 個人保留款 %
+    taxPct: 5,                      // 稅金 %
+    nhiPct: 0,                      // 二代健保 %
+    teamGroupKeys: ['g2'],          // 所屬團獎分組（對應 commissionSettings.teamGroups.key）
+    inDate: '2027/06/01',           // 進場時間（團獎資格判斷：簽約日 ≥ inDate）
     outDate: '',                    // 結案時間（空＝在案中；簽約日 ≤ outDate）
-    remark: ''                      // 預設備註（帶入獎金明細）
+    remark: '',                     // 預設備註（帶入獎金明細）
+    segments: [                     // 多段進退場（離場後再進場，費率／分組可不同）；依 inDate 排序、不得重疊；舊資料無此欄視為一段
+      { inDate: '2026/01/01', outDate: '2026/12/31', keepPct: 20, taxPct: 10, nhiPct: 2.11, teamGroupKeys: ['g1'], remark: '' },
+      { inDate: '2027/06/01', outDate: '', keepPct: 15, taxPct: 5, nhiPct: 0, teamGroupKeys: ['g2'], remark: '' }
+    ]
   }
 }
 ```
+
+- 工具：`src/utils/bonusSegments.js`（`bonusSegments()` 讀取相容、`segmentForDate(segs, 簽約日)` 找適用段、`buildBonusConfig()` 產生含鏡射的寫入物件、`validateSegments()`）。
+- 請佣工作台：以**戶別簽約日**決定該戶適用哪一段（資格、費率、團獎分組）。簽約日不在任何段內 → 資格不符（可手動加入，費率取簽約日前最近一段）。
+- 工作台人員費率 profile 依「人＋段」分開（鍵 `phone@inDate`，單段沿用 `phone`）；送出 payload 每戶各自解析為 `personProfiles[personKey]`，後端不變。
 
 - 人員管理 UI：`SalesSettings.vue` 的 `personnel` 分頁擴充（`SalesPersonnelForm.vue` 加「請佣獎金設定」區塊，僅具「請佣獎金」權限者可見可編輯）。
 - **跨案人員識別鍵 `personKey` = phone**（沿用 `salespersonUserKey` 慣例）。
 
 - **Excel 匯出／匯入**（銷控設定 → 銷售人員管理）：`src/utils/salesPersonnelExcel.js` ＋ `src/components/SalesPersonnelImportDialog.vue`。
-  - 匯出：工作表「銷售人員」（排序／姓名／電話／Email／職位／保留款%／稅金%／二代健保%／團獎分組（名稱）／進場時間／結案時間／預設備註／人員ID）＋「填寫說明」。
+  - 匯出：工作表「銷售人員」（排序／姓名／電話／Email／職位／保留款%／稅金%／二代健保%／團獎分組（名稱）／進場時間／結案時間／預設備註／人員ID）＋「填寫說明」。多段進退場者一人多列、每段一列。
+  - 匯入：段落以進場時間比對更新或新增，檔案沒列到的段落保留；單列對單段直接取代。
   - 匯入：以人員ID＞電話比對；相符者更新（僅寫入有差異之列）、不相符者新增（order＝檔案排序或最大值+10）；檔案中沒有的人員不刪除。寫入前顯示新增／更新／無變更／錯誤預覽，錯誤列（缺姓名電話、Email／日期格式、分組名稱不存在、電話重複）略過。bonusConfig 僅在原本已有或檔案有填任一值時寫入。
 
 ### 4.3 `commissionRecords` — 請佣紀錄（每戶每期一筆）

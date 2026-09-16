@@ -244,7 +244,10 @@
                     <td :colspan="payCategories.length + 8" class="text-center text-medium-emphasis">尚未選擇任何人員，請於步驟 2 點選</td>
                   </tr>
                   <tr v-for="p in result.people" :key="p.personKey">
-                    <td class="font-weight-medium">{{ p.name }}</td>
+                    <td class="font-weight-medium">
+                      {{ p.name }}
+                      <span v-if="profileOf(p.personKey).segmentLabel" class="text-caption text-medium-emphasis ml-1">{{ profileOf(p.personKey).segmentLabel }}</span>
+                    </td>
                     <td>
                       {{ p.role || '—' }}
                       <v-chip v-if="p.sourceProjectId && p.sourceProjectId !== projectId" size="x-small" color="orange" variant="tonal">{{ p.sourceProjectName || p.sourceProjectId }}</v-chip>
@@ -295,14 +298,16 @@ import { useToast } from 'vue-toastification';
 import AllocationEditor from './AllocationEditor.vue';
 import CrossProjectPersonPicker from './CrossProjectPersonPicker.vue';
 import {
-  calcUnitBonus, money, toNum, round2, formatDateTW, evenShares, toDateValue, paymentRatioPct,
+  calcUnitBonus, money, toNum, round2, formatDateTW, evenShares, paymentRatioPct,
   matchesRolePositions, isHandoverCategory,
 } from '@/utils/commissionCalculation';
+import { bonusSegments, segmentForDate, segmentLabel } from '@/utils/bonusSegments';
 
 const props = defineProps({
   entry: { type: Object, required: true },
   settings: { type: Object, required: true },
-  profiles: { type: Object, required: true },        // personKey -> profile（reactive，跨卡共用）
+  profiles: { type: Object, required: true },        // profileKey -> profile（reactive，跨卡共用）
+  resolveProfileKey: { type: Function, default: k => k },   // personKey -> profileKey（一人多段進退場時依本戶簽約日區分）
   projectId: { type: String, required: true },
   projectName: { type: String, default: '' },
   localPersonnel: { type: Array, default: () => [] },
@@ -349,6 +354,16 @@ const advancedSummary = computed(() => {
 });
 
 /** 即時計算（分配/比例/介紹費任一變動即重算） */
+const pk = personKey => props.resolveProfileKey(personKey);
+/** 本戶參與人員的 profile（personKey → 依簽約日解析的段落費率） */
+const entryProfiles = computed(() => {
+  const map = {};
+  Object.values(props.entry.categories).forEach(c => c.allocations.forEach(a => {
+    const prof = props.profiles[pk(a.personKey)] || props.profiles[a.personKey];
+    if (prof) map[a.personKey] = prof;
+  }));
+  return map;
+});
 const result = computed(() => calcUnitBonus(props.entry.finance, {
   ratioPct: toNum(props.entry.ratioPct),
   commPct: toNum(props.entry.commPct),
@@ -356,7 +371,7 @@ const result = computed(() => calcUnitBonus(props.entry.finance, {
   partyAFee: toNum(props.entry.partyAFee),
   partyBFee: toNum(props.entry.partyBFee),
   categories: props.entry.categories,
-}, props.profiles));
+}, entryProfiles.value));
 
 /** 尚未選人的發放類別（比例 > 0 者） */
 const missingCats = computed(() => payCategories.value.filter(cat => {
@@ -411,15 +426,12 @@ function onRatioInput(v) {
 // ---------- 候選人員 ----------
 function personKeyOf(p) { return p.phone || `ext:${p.name}`; }
 
+/** 依簽約日找此人適用的進退場段落（無設定 → 一律合格） */
+function segmentOf(p, contractDate) {
+  return segmentForDate(bonusSegments(p?.bonusConfig), contractDate);
+}
 function qualified(p, contractDate) {
-  const sign = toDateValue(contractDate);
-  if (!sign) return true;
-  const bc = p.bonusConfig || {};
-  const inD = toDateValue(bc.inDate);
-  const outD = toDateValue(bc.outDate);
-  if (inD && sign < inD) return false;
-  if (outD && sign > outD) return false;
-  return true;
+  return segmentOf(p, contractDate).matched;
 }
 
 const poolOptionsByCat = computed(() => {
@@ -435,11 +447,10 @@ const poolOptionsByCat = computed(() => {
       list = props.localPersonnel
         .filter(p => (p.positions || []).some(pos => ['專案', '副專', '銷售'].some(r => String(pos).includes(r))))
         .map(p => {
-          const ok = qualified(p, contractDate);
-          const bc = p.bonusConfig || {};
+          const { segment: seg, matched: ok } = segmentOf(p, contractDate);
           return {
             personKey: personKeyOf(p), name: p.name,
-            hint: `${bc.inDate || '?'}~${bc.outDate || '在案中'}${ok ? '' : '・資格不符'}`,
+            hint: `${seg?.inDate || '?'}~${seg?.outDate || '在案中'}${ok ? '' : '・資格不符'}`,
             disabled: !ok,
           };
         });
@@ -474,24 +485,27 @@ function normalizeNames(v) {
 }
 
 function ensureLocalProfile(personKey, name) {
-  if (props.profiles[personKey]) return;
+  const key = pk(personKey);
+  if (props.profiles[key]) return;
   const p = props.localPersonnel.find(x => personKeyOf(x) === personKey || x.name === name);
-  const bc = p?.bonusConfig || {};
-  props.profiles[personKey] = {
+  const segs = bonusSegments(p?.bonusConfig);
+  const seg = segmentForDate(segs, props.entry.unit.payment_contract_date).segment || {};
+  props.profiles[key] = {
     name: p?.name || name,
     role: (p?.positions || []).join('、'),
-    keepPct: toNum(bc.keepPct),
-    taxPct: toNum(bc.taxPct),
-    nhiPct: toNum(bc.nhiPct),
-    remark: bc.remark || '',
+    keepPct: toNum(seg.keepPct),
+    taxPct: toNum(seg.taxPct),
+    nhiPct: toNum(seg.nhiPct),
+    remark: seg.remark || '',
+    segmentLabel: segs.length > 1 ? segmentLabel(seg) : '',
     sourceProjectId: props.projectId,
     sourceProjectName: props.projectName,
   };
 }
 
 function profileOf(personKey) {
-  if (!props.profiles[personKey]) ensureLocalProfile(personKey, personKey);
-  return props.profiles[personKey];
+  if (!props.profiles[pk(personKey)]) ensureLocalProfile(personKey, personKey);
+  return props.profiles[pk(personKey)];
 }
 
 function setProfile(personKey, field, value) {
@@ -514,10 +528,11 @@ function applyTeamDefaults() {
   enabledCategories.value.filter(c => c.mode === 'team').forEach(cat => {
     const sel = [];
     props.localPersonnel.forEach(p => {
-      const bc = p.bonusConfig || {};
-      const groups = Array.isArray(bc.teamGroupKeys) ? bc.teamGroupKeys : [];
+      // 依簽約日取適用段落的團獎分組；不在任何段內者不自動帶入（可手動加入）
+      const { segment: seg, matched } = segmentOf(p, contractDate);
+      const groups = Array.isArray(seg?.teamGroupKeys) ? seg.teamGroupKeys : [];
       const inSite = groups.some(g => props.entry.teamSiteKeys.includes(g));
-      if (inSite && qualified(p, contractDate)) sel.push(p);
+      if (inSite && matched) sel.push(p);
     });
     const allocations = sel.map(p => {
       ensureLocalProfile(personKeyOf(p), p.name);
@@ -547,8 +562,8 @@ function onPickPerson(person) {
     return;
   }
   // 註冊 profile（帶入原案扣款設定，可覆寫）
-  if (!props.profiles[person.personKey]) {
-    props.profiles[person.personKey] = {
+  if (!props.profiles[pk(person.personKey)]) {
+    props.profiles[pk(person.personKey)] = {
       name: person.name,
       role: person.role || '',
       keepPct: toNum(person.profile?.keepPct),

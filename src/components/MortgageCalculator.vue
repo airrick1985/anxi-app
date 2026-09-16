@@ -14,7 +14,7 @@
     <!-- 顯示屏 -->
     <div class="mc-display">
       <div class="mc-display-meta">
-        <span class="mc-mono">{{ displayAmount }} 萬 · {{ displayRate }}% · {{ displayTerm }} 年<template v-if="graceNum > 0"> · 寬限 {{ graceNum }} 年</template></span>
+        <span class="mc-mono">{{ displayAmount }} 萬 · {{ displayRate }}% · {{ displayTerm }} 年 · {{ displayPeriods }} 期<template v-if="graceNum > 0"> · 寬限 {{ graceNum }} 年</template></span>
         <span class="mc-display-tag">{{ repaymentMethod === 'equalInstallment' ? '本息平均' : '本金平均' }}</span>
       </div>
 
@@ -50,7 +50,7 @@
       </template>
 
       <div v-else class="mc-display-main">
-        <div class="mc-display-label">每月應付</div>
+        <div class="mc-display-label">每{{ periodWord }}應付</div>
         <div class="mc-display-value mc-display-value--idle mc-mono">
           <span class="mc-display-currency">NT$</span>0
         </div>
@@ -71,7 +71,7 @@
               autocomplete="off"
               :value="loanAmount"
               placeholder="0"
-              @input="loanAmount = sanitizeDecimal($event.target.value)"
+              @input="onAmountInput"
             />
             <span class="mc-input-suffix">萬元</span>
           </div>
@@ -89,7 +89,7 @@
               autocomplete="off"
               :value="interestRate"
               placeholder="0.00"
-              @input="interestRate = sanitizeDecimal($event.target.value)"
+              @input="onRateInput"
             />
             <span class="mc-input-suffix">%</span>
           </div>
@@ -100,14 +100,14 @@
           <label class="mc-label">貸款年限</label>
           <div class="mc-keys" :class="{ 'is-error': errors.loanTerm }">
             <button
-              v-for="y in termOptions"
+              v-for="y in TERM_OPTIONS"
               :key="`term-${y}`"
               type="button"
               class="mc-key mc-mono"
               :class="{ 'is-active': termNum === y }"
               @click="loanTerm = String(y)"
             >{{ y }}</button>
-            <div class="mc-key-input" :class="{ 'is-active': loanTerm !== '' && !termOptions.includes(termNum) }">
+            <div class="mc-key-input" :class="{ 'is-active': loanTerm !== '' && !TERM_OPTIONS.includes(termNum) }">
               <input
                 class="mc-mono"
                 type="text"
@@ -116,7 +116,7 @@
                 maxlength="2"
                 placeholder="自訂"
                 :value="loanTerm"
-                @input="loanTerm = sanitizeInt($event.target.value, 2)"
+                @input="onTermInput"
               />
               <span>年</span>
             </div>
@@ -125,17 +125,46 @@
         </div>
 
         <div class="mc-field mc-field--full">
+          <label class="mc-label">還款期數</label>
+          <div class="mc-keys" :class="{ 'is-error': errors.loanPeriods }">
+            <button
+              v-for="opt in periodOptions"
+              :key="`periods-${opt.perYear}`"
+              type="button"
+              class="mc-key mc-key--stack mc-mono"
+              :class="{ 'is-active': opt.total !== null && periodsNum === opt.total }"
+              :disabled="opt.total === null"
+              @click="loanPeriods = String(opt.total)"
+            ><span>{{ opt.total ?? '–' }}</span><small>{{ opt.label }}</small></button>
+            <div class="mc-key-input" :class="{ 'is-active': loanPeriods !== '' && !periodOptions.some((o) => o.total === periodsNum) }">
+              <input
+                class="mc-mono"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                maxlength="3"
+                placeholder="自訂"
+                :value="loanPeriods"
+                @input="onPeriodsInput"
+              />
+              <span>期</span>
+            </div>
+          </div>
+          <div v-if="errors.loanPeriods" class="mc-error">{{ errors.loanPeriods }}</div>
+        </div>
+
+        <div class="mc-field mc-field--full">
           <label class="mc-label">寬限期</label>
           <div class="mc-keys" :class="{ 'is-error': errors.gracePeriod }">
             <button
-              v-for="g in graceOptions"
+              v-for="g in GRACE_OPTIONS"
               :key="`grace-${g}`"
               type="button"
               class="mc-key mc-mono"
               :class="{ 'is-active': graceNum === g }"
               @click="gracePeriod = String(g)"
             >{{ g === 0 ? '無' : g }}</button>
-            <div class="mc-key-input" :class="{ 'is-active': gracePeriod !== '' && !graceOptions.includes(graceNum) }">
+            <div class="mc-key-input" :class="{ 'is-active': gracePeriod !== '' && !GRACE_OPTIONS.includes(graceNum) }">
               <input
                 class="mc-mono"
                 type="text"
@@ -144,7 +173,7 @@
                 maxlength="2"
                 placeholder="自訂"
                 :value="gracePeriod"
-                @input="gracePeriod = sanitizeInt($event.target.value, 2)"
+                @input="onGraceInput"
               />
               <span>年</span>
             </div>
@@ -218,14 +247,23 @@ import { ref, computed, reactive, watch } from 'vue';
 
 const emit = defineEmits(['close']);
 
-const termOptions = [10, 15, 20, 25, 30, 40];
-const graceOptions = [0, 1, 2, 3, 4, 5];
+// 年限以年計；期數為總還款次數，在年限內平均拆分（5 年 20 期 → 每 3 個月一期）
+const TERM_OPTIONS = [10, 15, 20, 25, 30, 40];
+const GRACE_OPTIONS = [0, 1, 2, 3, 4, 5];
 const MAX_TERM = 50;
+const MAX_PERIODS = 600;
+const PERIOD_PRESETS = [
+  { perYear: 12, label: '每月' },
+  { perYear: 4, label: '每季' },
+  { perYear: 2, label: '每半年' },
+  { perYear: 1, label: '每年' },
+];
 
 // 輸入值一律以字串保存，方便限制輸入內容；計算時再轉數字
 const loanAmount = ref('');
 const interestRate = ref('');
 const loanTerm = ref('');
+const loanPeriods = ref('');
 const gracePeriod = ref('0');
 const repaymentMethod = ref('equalInstallment');
 
@@ -233,6 +271,7 @@ const errors = reactive({
   loanAmount: '',
   interestRate: '',
   loanTerm: '',
+  loanPeriods: '',
   gracePeriod: '',
 });
 
@@ -257,11 +296,40 @@ const scheduleHeaders = [
 ];
 
 const termNum = computed(() => (loanTerm.value === '' ? NaN : Number(loanTerm.value)));
+const periodsNum = computed(() => (loanPeriods.value === '' ? NaN : Number(loanPeriods.value)));
 const graceNum = computed(() => (gracePeriod.value === '' ? 0 : Number(gracePeriod.value)));
+const isTermValid = computed(() => Number.isInteger(termNum.value) && termNum.value >= 1 && termNum.value <= MAX_TERM);
+
+// 期數快捷鍵：依目前年限換算總期數
+const periodOptions = computed(() => PERIOD_PRESETS.map((o) => ({
+  ...o,
+  total: isTermValid.value ? termNum.value * o.perYear : null,
+})));
+
+// 每年期數；剛好每月一期時文案用「月」，其餘用「期」
+const periodsPerYear = computed(() => (isTermValid.value && periodsNum.value > 0 ? periodsNum.value / termNum.value : 12));
+const periodWord = computed(() => (periodsPerYear.value === 12 ? '月' : '期'));
 
 const displayAmount = computed(() => (loanAmount.value === '' ? '0' : loanAmount.value));
 const displayRate = computed(() => (interestRate.value === '' ? '0' : interestRate.value));
 const displayTerm = computed(() => (loanTerm.value === '' ? '0' : loanTerm.value));
+const displayPeriods = computed(() => (loanPeriods.value === '' ? '0' : loanPeriods.value));
+
+// 年限變更：期數若為空或原本對應某個快捷鍵，依同一頻率重新帶入；自訂值則保留
+let lastValidTerm = NaN;
+watch(termNum, (next) => {
+  if (!isTermValid.value) return;
+  const cur = periodsNum.value;
+  const preset = Number.isInteger(lastValidTerm)
+    ? PERIOD_PRESETS.find((o) => cur === lastValidTerm * o.perYear)
+    : null;
+  lastValidTerm = next;
+  if (loanPeriods.value === '' || !Number.isFinite(cur)) {
+    loanPeriods.value = String(next * 12);
+  } else if (preset) {
+    loanPeriods.value = String(next * preset.perYear);
+  }
+});
 
 // 只允許數字與一個小數點
 const sanitizeDecimal = (raw) => {
@@ -275,8 +343,20 @@ const sanitizeDecimal = (raw) => {
 
 // 只允許整數數字
 const sanitizeInt = (raw, maxLen = 2) => {
-  return String(raw ?? '').replace(/\D/g, '').slice(0, maxLen);
+  const digits = String(raw ?? '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  return digits.slice(0, maxLen);
 };
+
+// 受控輸入：過濾後同步寫回 DOM，避免狀態值未變時畫面殘留被過濾的字元
+const syncInput = (event, value) => {
+  if (event?.target && event.target.value !== value) event.target.value = value;
+  return value;
+};
+const onAmountInput = (e) => { loanAmount.value = syncInput(e, sanitizeDecimal(e.target.value)); };
+const onRateInput = (e) => { interestRate.value = syncInput(e, sanitizeDecimal(e.target.value)); };
+const onTermInput = (e) => { loanTerm.value = syncInput(e, sanitizeInt(e.target.value, 2)); };
+const onPeriodsInput = (e) => { loanPeriods.value = syncInput(e, sanitizeInt(e.target.value, 3)); };
+const onGraceInput = (e) => { gracePeriod.value = syncInput(e, sanitizeInt(e.target.value, 2)); };
 
 const formatCurrency = (value) => {
   if (value === null || value === undefined || Number.isNaN(value)) return '0';
@@ -301,11 +381,12 @@ const clearErrors = () => {
   errors.loanAmount = '';
   errors.interestRate = '';
   errors.loanTerm = '';
+  errors.loanPeriods = '';
   errors.gracePeriod = '';
 };
 
 // 任一輸入變更時，顯示屏回到待計算狀態
-watch([loanAmount, interestRate, loanTerm, gracePeriod, repaymentMethod], () => {
+watch([loanAmount, interestRate, loanTerm, loanPeriods, gracePeriod, repaymentMethod], () => {
   if (hasResult.value) resetResult();
   clearErrors();
 });
@@ -314,6 +395,8 @@ const clearForm = () => {
   loanAmount.value = '';
   interestRate.value = '';
   loanTerm.value = '';
+  loanPeriods.value = '';
+  lastValidTerm = NaN;
   gracePeriod.value = '0';
   repaymentMethod.value = 'equalInstallment';
   clearErrors();
@@ -337,8 +420,14 @@ const validate = () => {
   }
 
   const term = termNum.value;
-  if (!Number.isInteger(term) || term < 1 || term > MAX_TERM) {
+  if (!isTermValid.value) {
     errors.loanTerm = `請輸入 1–${MAX_TERM} 年`;
+    ok = false;
+  }
+
+  const periods = periodsNum.value;
+  if (!Number.isInteger(periods) || periods < 1 || periods > MAX_PERIODS) {
+    errors.loanPeriods = `請輸入 1–${MAX_PERIODS} 期`;
     ok = false;
   }
 
@@ -349,6 +438,9 @@ const validate = () => {
   } else if (Number.isInteger(term) && grace >= term) {
     errors.gracePeriod = '寬限期須小於貸款年限';
     ok = false;
+  } else if (ok && Math.round(grace * periodsPerYear.value) >= periods) {
+    errors.gracePeriod = '寬限期換算後須小於還款期數';
+    ok = false;
   }
 
   return ok;
@@ -358,9 +450,9 @@ const calculate = () => {
   if (!validate()) return;
 
   const principal = Number(loanAmount.value) * 10000;
-  const monthlyRate = Number(interestRate.value) / 100 / 12;
-  const totalMonths = termNum.value * 12;
-  const graceMonths = graceNum.value * 12;
+  const totalMonths = periodsNum.value;
+  const monthlyRate = Number(interestRate.value) / 100 / periodsPerYear.value; // 每期利率
+  const graceMonths = Math.round(graceNum.value * periodsPerYear.value); // 寬限期換算成期數
 
   const schedule = [];
   let totalInterestPaid = 0;
@@ -423,20 +515,21 @@ const calculate = () => {
   // 設定結果顯示
   let firstPhasePayment = 0;
   let secondPhasePayment = 0;
-  let firstPhaseLabel = '每月應付本息';
+  const w = periodWord.value;
+  let firstPhaseLabel = `每${w}應付本息`;
   let secondPhaseLabel = '';
 
   if (graceMonths > 0) {
     firstPhasePayment = schedule[0]?.monthlyPayment || 0;
-    firstPhaseLabel = '寬限期內月付';
+    firstPhaseLabel = `寬限期內${w}付`;
     if (repaymentMonths > 0) {
       secondPhasePayment = schedule[graceMonths]?.monthlyPayment || 0;
-      secondPhaseLabel = repaymentMethod.value === 'equalInstallment' ? '寬限期後月付' : '寬限期後首月月付';
+      secondPhaseLabel = repaymentMethod.value === 'equalInstallment' ? `寬限期後${w}付` : `寬限期後首${w}付`;
     }
   } else if (schedule.length > 0) {
     firstPhasePayment = schedule[0].monthlyPayment;
     if (repaymentMethod.value === 'equalPrincipal') {
-      firstPhaseLabel = '首月應付本息 (逐月遞減)';
+      firstPhaseLabel = `首${w}應付本息 (逐${w}遞減)`;
     }
   }
 
@@ -696,6 +789,17 @@ const calculate = () => {
   background: var(--mc-key-active);
   color: #fff;
 }
+.mc-key:disabled { opacity: 0.45; cursor: default; }
+.mc-key--stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1;
+}
+.mc-key--stack span { font-size: 16px; }
+.mc-key--stack small { font-size: 10px; font-weight: 500; opacity: 0.65; }
 .mc-key-input {
   flex: 1.6 1 96px;
   min-width: 96px;

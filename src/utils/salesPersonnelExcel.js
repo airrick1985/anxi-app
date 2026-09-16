@@ -6,9 +6,11 @@
  * - diffPersonnelRows()：列物件 × 現有人員 → 匯入計畫（新增／更新／無變更／錯誤）
  *
  * 比對鍵：人員ID（匯出檔內含）＞ 電話。檔案中沒有的人員不會被刪除。
+ * 多段進退場：一人多列、每段一列（姓名／電話／Email／職位以第一列為準）；段落以進場時間比對更新或新增，檔案沒列到的段落保留。
  */
 
 import * as XLSX from 'xlsx-js-style';
+import { bonusSegments, buildBonusConfig, validateSegments, segmentHasValue } from './bonusSegments';
 
 export const PERSONNEL_HEADERS = [
   '排序', '姓名', '電話', 'Email', '職位',
@@ -64,23 +66,24 @@ function pctNum(v) {
 // ================= 匯出 =================
 export function personnelToRows(personnel, teamGroups = []) {
   const labelOf = key => (teamGroups.find(g => g.key === key)?.label) || key;
-  return personnel.map(p => {
-    const bc = p.bonusConfig || {};
-    return [
+  return personnel.flatMap(p => {
+    const segs = bonusSegments(p.bonusConfig);
+    const rowsOf = seg => [
       p.order ?? '',
       p.name || '',
       p.phone || '',
       p.email || '',
       (p.positions || []).join('、'),
-      bc.keepPct ?? '',
-      bc.taxPct ?? '',
-      bc.nhiPct ?? '',
-      (bc.teamGroupKeys || []).map(labelOf).join('、'),
-      bc.inDate || '',
-      bc.outDate || '',
-      bc.remark || '',
+      seg ? seg.keepPct : '',
+      seg ? seg.taxPct : '',
+      seg ? seg.nhiPct : '',
+      seg ? seg.teamGroupKeys.map(labelOf).join('、') : '',
+      seg ? seg.inDate : '',
+      seg ? seg.outDate : '',
+      seg ? seg.remark : '',
       p.id || '',
     ];
+    return segs.length ? segs.map(rowsOf) : [rowsOf(null)];
   });
 }
 
@@ -103,10 +106,11 @@ export function buildPersonnelWorkbook(personnel, teamGroups = [], projectName =
     ['保留款% / 稅金% / 二代健保%', '請佣獎金扣款比例，填數字（20 代表 20%）。'],
     ['團獎分組', `以分組名稱填寫，可多個以「、」分隔。本案分組：${(teamGroups.map(g => g.label).join('、')) || '（尚未建立）'}`],
     ['進場時間 / 結案時間', '西元 yyyy/mm/dd；結案時間留空＝在案中。'],
+    ['多段進退場', '同一人離場後再進場，請在下一列重複姓名與電話，各列填各段的進場／結案／費率／分組（每列都要有進場時間）。'],
     ['人員ID(系統用勿改)', '匯出時自動帶入，用於比對更新；新增人員請留空。無 ID 時以「電話」比對。'],
     ['', ''],
     ['匯入規則', '1. 有人員ID或電話相符 → 更新該人員；否則 → 新增。'],
-    ['', '2. Excel 內沒有的人員不會被刪除。'],
+    ['', '2. Excel 內沒有的人員不會被刪除；段落以進場時間比對，檔案沒列到的段落也保留。'],
     ['', '3. 匯入前會先顯示新增／更新／無變更／錯誤的預覽，確認後才寫入。'],
   ];
   const hws = XLSX.utils.aoa_to_sheet(help);
@@ -172,38 +176,67 @@ export function diffPersonnelRows(rows, existing, teamGroups = [], projectId = '
     return g ? g.key : null;
   };
   const groupLabels = keys => (keys || []).map(k => teamGroups.find(g => g.key === k)?.label || k).join('、') || '（空）';
-  const seenPhones = new Set();
+  const segName = seg => (seg.inDate ? `${seg.inDate} 起` : '（無進場日）');
   let maxOrder = existing.reduce((m, p) => Math.max(m, Number(p.order) || 0), 0);
 
-  const items = rows.map(row => {
+  // 一人多列：以人員ID＞電話分組，第一列為基本資料，每列一段進退場
+  const groups = [];
+  const groupIndex = {};
+  rows.forEach(row => {
+    const key = row.id ? `id:${row.id}` : (row.phone ? `ph:${row.phone}` : `ln:${row.line}`);
+    if (groupIndex[key] === undefined) { groupIndex[key] = groups.length; groups.push({ base: row, rows: [] }); }
+    groups[groupIndex[key]].rows.push(row);
+  });
+
+  const items = groups.map(({ base: row, rows: lines }) => {
     const errors = [];
     if (!row.name) errors.push('缺姓名');
     if (!row.phone) errors.push('缺電話');
-    if (row.phone && seenPhones.has(row.phone)) errors.push('電話在檔案中重複');
-    seenPhones.add(row.phone);
     if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errors.push('Email 格式不正確');
-    if (!isValidDate(row.inDate)) errors.push('進場時間格式須為 yyyy/mm/dd');
-    if (!isValidDate(row.outDate)) errors.push('結案時間格式須為 yyyy/mm/dd');
-    const pcts = { keepPct: pctNum(row.keepPct), taxPct: pctNum(row.taxPct), nhiPct: pctNum(row.nhiPct) };
-    Object.entries(pcts).forEach(([k, v]) => { if (Number.isNaN(v)) errors.push(`${k === 'keepPct' ? '保留款' : k === 'taxPct' ? '稅金' : '二代健保'}% 非數字`); });
-    const teamGroupKeys = [];
-    row.teamGroupLabels.forEach(l => { const k = groupKeyOf(l); if (k) teamGroupKeys.push(k); else errors.push(`團獎分組「${l}」不存在`); });
     const orderNum = row.order === '' || row.order === null || row.order === undefined ? null : Number(row.order);
     if (orderNum !== null && !Number.isFinite(orderNum)) errors.push('排序非數字');
 
+    // 每列 → 一段（該列無任何獎金設定值則不產生段落）
+    const fileSegments = [];
+    lines.forEach(ln => {
+      const tag = lines.length > 1 ? `第 ${ln.line} 列：` : '';
+      if (!isValidDate(ln.inDate)) errors.push(`${tag}進場時間格式須為 yyyy/mm/dd`);
+      if (!isValidDate(ln.outDate)) errors.push(`${tag}結案時間格式須為 yyyy/mm/dd`);
+      const pcts = { keepPct: pctNum(ln.keepPct), taxPct: pctNum(ln.taxPct), nhiPct: pctNum(ln.nhiPct) };
+      Object.entries(pcts).forEach(([k, v]) => { if (Number.isNaN(v)) errors.push(`${tag}${k === 'keepPct' ? '保留款' : k === 'taxPct' ? '稅金' : '二代健保'}% 非數字`); });
+      const teamGroupKeys = [];
+      ln.teamGroupLabels.forEach(l => { const k = groupKeyOf(l); if (k) teamGroupKeys.push(k); else errors.push(`${tag}團獎分組「${l}」不存在`); });
+      const seg = {
+        keepPct: pcts.keepPct === '' ? 0 : pcts.keepPct,
+        taxPct: pcts.taxPct === '' ? 0 : pcts.taxPct,
+        nhiPct: pcts.nhiPct === '' ? 0 : pcts.nhiPct,
+        teamGroupKeys, inDate: ln.inDate, outDate: ln.outDate, remark: ln.remark,
+      };
+      if (segmentHasValue(seg) || lines.length > 1) fileSegments.push(seg);
+      if (lines.length > 1 && !ln.inDate) errors.push(`${tag}多段進退場時每列須填進場時間`);
+    });
+
     const existingP = (row.id && byId[row.id]) || byPhone[row.phone] || null;
     if (row.id && !byId[row.id] && !byPhone[row.phone]) errors.push('人員ID 不存在於本案（將視為新增，請清空 ID 後重試）');
+
+    // 段落合併：單列對單段 → 直接取代；否則以進場時間比對更新或新增，檔案沒列到的段落保留
+    const existingSegs = bonusSegments(existingP?.bonusConfig);
+    let merged;
+    if (fileSegments.length <= 1 && existingSegs.length <= 1) {
+      merged = fileSegments.length ? fileSegments : existingSegs;
+    } else {
+      merged = existingSegs.map(s => ({ ...s }));
+      fileSegments.forEach(fs => {
+        const idx = merged.findIndex(s => s.inDate === fs.inDate);
+        if (idx >= 0) merged[idx] = fs; else merged.push(fs);
+      });
+    }
+    if (!errors.length) { const segErr = validateSegments(merged); if (segErr) errors.push(`進退場段落：${segErr}`); }
     if (errors.length) return { status: 'error', row, existing: existingP, errors, changes: [], payload: null, docId: null };
 
     const positions = row.positions.length ? row.positions : (existingP?.positions || ['銷售']);
-    const hasBonus = existingP?.bonusConfig || [pcts.keepPct, pcts.taxPct, pcts.nhiPct].some(v => v !== '' && v > 0)
-      || teamGroupKeys.length || row.inDate || row.outDate || row.remark;
-    const bonusConfig = hasBonus ? {
-      keepPct: pcts.keepPct === '' ? 0 : pcts.keepPct,
-      taxPct: pcts.taxPct === '' ? 0 : pcts.taxPct,
-      nhiPct: pcts.nhiPct === '' ? 0 : pcts.nhiPct,
-      teamGroupKeys, inDate: row.inDate, outDate: row.outDate, remark: row.remark,
-    } : null;
+    const hasBonus = !!existingP?.bonusConfig || merged.some(segmentHasValue);
+    const bonusConfig = hasBonus ? buildBonusConfig(merged) : null;
 
     const payload = { projectId, name: row.name, phone: row.phone, email: row.email, positions };
     if (bonusConfig) payload.bonusConfig = bonusConfig;
@@ -220,14 +253,19 @@ export function diffPersonnelRows(rows, existing, teamGroups = [], projectId = '
     if ((existingP.email || '') !== row.email) changes.push(`Email：${existingP.email || '（空）'}→${row.email || '（空）'}`);
     if (!sameArr(existingP.positions, positions)) changes.push(`職位：${(existingP.positions || []).join('、')}→${positions.join('、')}`);
     if (orderNum !== null && Number(existingP.order) !== orderNum) { payload.order = orderNum; changes.push(`排序：${existingP.order ?? '（空）'}→${orderNum}`); }
-    const eb = existingP.bonusConfig || null;
     if (bonusConfig) {
       const cmp = [['keepPct', '保留款%'], ['taxPct', '稅金%'], ['nhiPct', '二代健保%'], ['inDate', '進場時間'], ['outDate', '結案時間'], ['remark', '預設備註']];
-      cmp.forEach(([k, lab]) => {
-        const ov = eb ? (eb[k] ?? (typeof bonusConfig[k] === 'number' ? 0 : '')) : (typeof bonusConfig[k] === 'number' ? 0 : '');
-        if (String(ov) !== String(bonusConfig[k])) changes.push(`${lab}：${ov === '' ? '（空）' : ov}→${bonusConfig[k] === '' ? '（空）' : bonusConfig[k]}`);
+      const multi = bonusConfig.segments.length > 1 || existingSegs.length > 1;
+      bonusConfig.segments.forEach(seg => {
+        const prefix = multi ? `${segName(seg)}：` : '';
+        const old = existingSegs.find(s => (multi ? s.inDate === seg.inDate : true));
+        if (!old) { changes.push(`新增段落 ${segName(seg)}（保留款 ${seg.keepPct}%／稅金 ${seg.taxPct}%／二代健保 ${seg.nhiPct}%）`); return; }
+        cmp.forEach(([k, lab]) => {
+          if (String(old[k]) !== String(seg[k])) changes.push(`${prefix}${lab}：${old[k] === '' ? '（空）' : old[k]}→${seg[k] === '' ? '（空）' : seg[k]}`);
+        });
+        if (!sameArr(old.teamGroupKeys, seg.teamGroupKeys)) changes.push(`${prefix}團獎分組：${groupLabels(old.teamGroupKeys)}→${groupLabels(seg.teamGroupKeys)}`);
       });
-      if (!sameArr(eb?.teamGroupKeys, teamGroupKeys)) changes.push(`團獎分組：${groupLabels(eb?.teamGroupKeys)}→${groupLabels(teamGroupKeys)}`);
+      if (!existingP.bonusConfig && !changes.some(c => c.startsWith('新增段落'))) changes.push('新增請佣獎金設定');
     }
     return {
       status: changes.length ? 'update' : 'same',

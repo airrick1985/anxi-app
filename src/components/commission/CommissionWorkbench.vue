@@ -66,6 +66,7 @@
         :entry="e"
         :settings="settings"
         :profiles="personProfiles"
+        :resolve-profile-key="k => profileKeyFor(k, e.unit?.payment_contract_date)"
         :project-id="projectId"
         :project-name="projectName"
         :local-personnel="personnel"
@@ -267,6 +268,7 @@ import {
   money, toNum, evenShares, paymentRatioPct, matchesRolePositions, isHandoverCategory, resolveSplitMode,
 } from '@/utils/commissionCalculation';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
+import { bonusSegments, segmentForDate, segmentId, segmentLabel } from '@/utils/bonusSegments';
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -449,20 +451,42 @@ function refundIssueCount(e) {
 // ---------- 建立戶別卡片 ----------
 function personKeyOf(p) { return p.phone || `ext:${p.name}`; }
 
-function ensureProfile(personKey, name) {
-  if (personProfiles[personKey]) return;
+/** profile 鍵：一人多段進退場時以「電話@進場日」區分，同段的戶共用一組費率；單段沿用電話 */
+function profileKeyFor(personKey, contractDate) {
+  const p = props.personnel.find(x => personKeyOf(x) === personKey);
+  const segs = bonusSegments(p?.bonusConfig);
+  if (segs.length <= 1) return personKey;
+  return `${personKey}@${segmentId(segmentForDate(segs, contractDate).segment)}`;
+}
+
+function ensureProfile(personKey, name, contractDate) {
+  const key = profileKeyFor(personKey, contractDate);
+  if (personProfiles[key]) return;
   const p = props.personnel.find(x => personKeyOf(x) === personKey || x.name === name);
-  const bc = p?.bonusConfig || {};
-  personProfiles[personKey] = {
+  const segs = bonusSegments(p?.bonusConfig);
+  const seg = segmentForDate(segs, contractDate).segment || {};
+  personProfiles[key] = {
     name: p?.name || name,
     role: (p?.positions || []).join('、'),
-    keepPct: toNum(bc.keepPct),
-    taxPct: toNum(bc.taxPct),
-    nhiPct: toNum(bc.nhiPct),
-    remark: bc.remark || '',
+    keepPct: toNum(seg.keepPct),
+    taxPct: toNum(seg.taxPct),
+    nhiPct: toNum(seg.nhiPct),
+    remark: seg.remark || '',
+    segmentLabel: segs.length > 1 ? segmentLabel(seg) : '',
     sourceProjectId: props.projectId,
     sourceProjectName: props.projectName,
   };
+}
+
+/** 本戶參與人員的 profile（personKey → 依簽約日解析的段落費率） */
+function entryProfiles(e) {
+  const map = {};
+  const contractDate = e.unit?.payment_contract_date;
+  Object.values(e.categories).forEach(c => c.allocations.forEach(a => {
+    const prof = personProfiles[profileKeyFor(a.personKey, contractDate)] || personProfiles[a.personKey];
+    if (prof) map[a.personKey] = prof;
+  }));
+  return map;
 }
 
 function normalizeNames(v) {
@@ -501,7 +525,7 @@ function addUnit(unitId) {
       const persons = names.map(nm => {
         const p = props.personnel.find(x => x.name === nm);
         const personKey = p ? personKeyOf(p) : `ext:${nm}`;
-        ensureProfile(personKey, nm);
+        ensureProfile(personKey, nm, unit.payment_contract_date);
         return { personKey, name: nm, isExternal: !p };
       });
       allocations = evenAlloc(persons);
@@ -509,7 +533,7 @@ function addUnit(unitId) {
       const pool = props.personnel.filter(p => matchesRolePositions(p.positions, cat.rolePositions));
       if (pool.length === 1) {
         const personKey = personKeyOf(pool[0]);
-        ensureProfile(personKey, pool[0].name);
+        ensureProfile(personKey, pool[0].name, unit.payment_contract_date);
         allocations = evenAlloc([{ personKey, name: pool[0].name }]);
       }
     }
@@ -578,7 +602,7 @@ function entryInput(e) {
 }
 
 function entryResult(e) {
-  return calcUnitBonus(e.finance, entryInput(e), personProfiles);
+  return calcUnitBonus(e.finance, entryInput(e), entryProfiles(e));
 }
 
 /** 該戶待處理項目數（與卡片標頭一致）：未選人類別 + 分配錯誤 + 比例問題 */
@@ -721,11 +745,12 @@ async function doSubmit() {
   submitting.value = true;
   try {
     const payloadEntries = entries.value.map(e => {
-      // 只帶本戶有參與的人員 profile
-      const involved = new Set();
-      Object.values(e.categories).forEach(c => c.allocations.forEach(a => involved.add(a.personKey)));
+      // 只帶本戶有參與的人員 profile（依本戶簽約日解析段落費率；鍵仍為 personKey）
       const profiles = {};
-      involved.forEach(k => { if (personProfiles[k]) profiles[k] = { ...personProfiles[k] }; });
+      Object.entries(entryProfiles(e)).forEach(([k, v]) => {
+        const { segmentLabel: _label, ...rest } = v;
+        profiles[k] = { ...rest };
+      });
       return {
         unitId: e.unitId,
         period: Number(e.period) || 0,

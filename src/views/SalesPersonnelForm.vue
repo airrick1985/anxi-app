@@ -56,49 +56,72 @@
               <v-icon start size="small">mdi-cash-multiple</v-icon>請佣獎金設定（選填）
             </v-expansion-panel-title>
             <v-expansion-panel-text>
-              <v-row dense>
-                <v-col cols="4">
-                  <v-text-field v-model="localBonus.keepPct" label="保留款%" type="number" step="0.01"
-                    variant="outlined" density="compact" hide-details></v-text-field>
-                </v-col>
-                <v-col cols="4">
-                  <v-text-field v-model="localBonus.taxPct" label="稅金%" type="number" step="0.01"
-                    variant="outlined" density="compact" hide-details></v-text-field>
-                </v-col>
-                <v-col cols="4">
-                  <v-text-field v-model="localBonus.nhiPct" label="二代健保%" type="number" step="0.01"
-                    variant="outlined" density="compact" hide-details></v-text-field>
-                </v-col>
-              </v-row>
-              <v-select
-                v-if="teamGroupOptions.length"
-                v-model="localBonus.teamGroupKeys"
-                :items="teamGroupOptions"
-                item-title="label"
-                item-value="key"
-                label="所屬團獎分組"
-                multiple chips closable-chips
-                variant="outlined" density="compact" class="mt-3"
-              ></v-select>
               <v-alert
-                v-else-if="(localBonus.teamGroupKeys || []).length"
-                type="warning" variant="tonal" density="compact" class="mt-3"
+                v-if="!teamGroupOptions.length && legacyTeamGroupKeys.length"
+                type="warning" variant="tonal" density="compact" class="mb-3"
               >
-                此人員已設定團獎分組（{{ (localBonus.teamGroupKeys || []).join('、') }}），
+                此人員已設定團獎分組（{{ legacyTeamGroupKeys.join('、') }}），
                 但目前無法載入本案分組選項（尚未於「請佣獎金 → 設定」建立分組，或載入失敗）。既有設定將維持不變。
               </v-alert>
-              <v-row dense class="mt-1">
-                <v-col cols="6">
-                  <v-text-field v-model="localBonus.inDate" label="進場時間 (yyyy/mm/dd)" placeholder="2025/03/01"
-                    :rules="[dateRule]" variant="outlined" density="compact" hint="團獎資格：簽約日 ≥ 進場時間" persistent-hint></v-text-field>
-                </v-col>
-                <v-col cols="6">
-                  <v-text-field v-model="localBonus.outDate" label="結案時間 (yyyy/mm/dd)" placeholder="空白＝在案中"
-                    :rules="[dateRule]" variant="outlined" density="compact" hint="團獎資格：簽約日 ≤ 結案時間" persistent-hint></v-text-field>
-                </v-col>
-              </v-row>
-              <v-text-field v-model="localBonus.remark" label="預設備註（帶入獎金明細）"
-                variant="outlined" density="compact" class="mt-1"></v-text-field>
+
+              <v-card
+                v-for="(seg, i) in localSegments"
+                :key="seg._id"
+                variant="outlined"
+                class="mb-3 segment-card"
+              >
+                <div class="d-flex align-center px-3 pt-2">
+                  <span class="text-subtitle-2">第 {{ i + 1 }} 段</span>
+                  <v-chip size="x-small" class="ml-2" :color="seg.outDate ? undefined : 'success'" variant="tonal">
+                    {{ seg.outDate ? '已結案' : '在案中' }}
+                  </v-chip>
+                  <v-spacer></v-spacer>
+                  <v-btn icon="mdi-delete-outline" size="small" variant="text" :aria-label="`刪除第 ${i + 1} 段`" @click="removeSegment(i)"></v-btn>
+                </div>
+                <v-card-text class="pt-2">
+                  <v-row dense>
+                    <v-col cols="6">
+                      <v-text-field v-model="seg.inDate" label="進場時間 (yyyy/mm/dd)" placeholder="2025/03/01"
+                        :rules="[dateRule]" variant="outlined" density="compact"></v-text-field>
+                    </v-col>
+                    <v-col cols="6">
+                      <v-text-field v-model="seg.outDate" label="結案時間 (yyyy/mm/dd)" placeholder="空白＝在案中"
+                        :rules="[dateRule]" variant="outlined" density="compact"></v-text-field>
+                    </v-col>
+                  </v-row>
+                  <v-row dense>
+                    <v-col cols="4">
+                      <v-text-field v-model="seg.keepPct" label="保留款%" type="number" step="0.01"
+                        variant="outlined" density="compact" hide-details></v-text-field>
+                    </v-col>
+                    <v-col cols="4">
+                      <v-text-field v-model="seg.taxPct" label="稅金%" type="number" step="0.01"
+                        variant="outlined" density="compact" hide-details></v-text-field>
+                    </v-col>
+                    <v-col cols="4">
+                      <v-text-field v-model="seg.nhiPct" label="二代健保%" type="number" step="0.01"
+                        variant="outlined" density="compact" hide-details></v-text-field>
+                    </v-col>
+                  </v-row>
+                  <v-select
+                    v-if="teamGroupOptions.length"
+                    v-model="seg.teamGroupKeys"
+                    :items="teamGroupOptions"
+                    item-title="label"
+                    item-value="key"
+                    label="所屬團獎分組"
+                    multiple chips closable-chips
+                    variant="outlined" density="compact" class="mt-3" hide-details
+                  ></v-select>
+                  <v-text-field v-model="seg.remark" label="預設備註（帶入獎金明細）"
+                    variant="outlined" density="compact" class="mt-3" hide-details></v-text-field>
+                </v-card-text>
+              </v-card>
+
+              <div v-if="segmentError" class="text-error text-caption mb-2">{{ segmentError }}</div>
+              <v-btn variant="tonal" color="primary" size="small" prepend-icon="mdi-plus" @click="addSegment">
+                {{ localSegments.length ? '新增一段（再次進場）' : '新增進退場設定' }}
+              </v-btn>
             </v-expansion-panel-text>
           </v-expansion-panel>
         </v-expansion-panels>
@@ -118,6 +141,7 @@
 <script setup>
 import { ref, computed, watch, defineProps, defineEmits, onMounted } from 'vue';
 import { fetchCommissionSettings } from '@/api';
+import { bonusSegments, normalizeSegment, emptySegment, buildBonusConfig, validateSegments, segmentHasValue } from '@/utils/bonusSegments';
 
 const props = defineProps({
   modelValue: {
@@ -151,22 +175,28 @@ const form = ref(null);
 // ✅ [新增] 職位選項擴充請佣獎金職務（主委/副總/輔導專案/專案團獎）
 const positionOptions = ref(['銷售', '專案', '副專', '助理', '業主', '主委', '副總', '輔導專案', '專案團獎']);
 
-// ✅ [新增] 請佣獎金設定：使用本地副本編輯，儲存時才合併進 payload
+// ✅ 請佣獎金設定：多段進退場（docs/請佣獎金系統-spec.md §4.2）。使用本地副本編輯，儲存時才合併進 payload
 // （避免 computed 副作用寫入 props，也避免「未設定」的人被寫回全零 bonusConfig）
-const EMPTY_BONUS = { keepPct: '', taxPct: '', nhiPct: '', teamGroupKeys: [], inDate: '', outDate: '', remark: '' };
-const localBonus = ref({ ...EMPTY_BONUS });
+let segSeq = 0;
+const toLocalSegment = (seg) => ({ _id: `s${segSeq++}`, ...normalizeSegment(seg) });
+const localSegments = ref([]);
+const segmentError = ref('');
+const legacyTeamGroupKeys = computed(() => [...new Set(localSegments.value.flatMap(s => s.teamGroupKeys || []))]);
 watch(() => props.modelValue, (mv) => {
-  const bc = mv?.bonusConfig || {};
-  localBonus.value = {
-    keepPct: bc.keepPct ?? '',
-    taxPct: bc.taxPct ?? '',
-    nhiPct: bc.nhiPct ?? '',
-    teamGroupKeys: Array.isArray(bc.teamGroupKeys) ? [...bc.teamGroupKeys] : [],
-    inDate: bc.inDate || '',
-    outDate: bc.outDate || '',
-    remark: bc.remark || ''
-  };
+  localSegments.value = bonusSegments(mv?.bonusConfig).map(toLocalSegment);
+  segmentError.value = '';
 }, { immediate: true });
+
+/** 新增一段：預設帶前一段的費率與分組，日期留空 */
+function addSegment() {
+  const last = localSegments.value[localSegments.value.length - 1] || null;
+  localSegments.value.push(toLocalSegment(emptySegment(last)));
+  segmentError.value = '';
+}
+function removeSegment(i) {
+  localSegments.value.splice(i, 1);
+  segmentError.value = '';
+}
 
 // 日期格式驗證：空白或 yyyy/mm/dd（西元），格式錯誤會使團獎資格判斷失效
 const dateRule = v => !v || /^\d{4}[\/-]\d{1,2}[\/-]\d{1,2}$/.test(String(v).trim()) || '格式須為西元 yyyy/mm/dd';
@@ -174,25 +204,7 @@ const dateRule = v => !v || /^\d{4}[\/-]\d{1,2}[\/-]\d{1,2}$/.test(String(v).tri
 /** 是否有需要儲存的請佣獎金設定（原本就有、或本次有填任何值） */
 function hasMeaningfulBonusConfig() {
   if (props.modelValue?.bonusConfig) return true;
-  const b = localBonus.value;
-  return Number(b.keepPct) > 0 || Number(b.taxPct) > 0 || Number(b.nhiPct) > 0
-    || (b.teamGroupKeys || []).length > 0
-    || String(b.inDate).trim() !== '' || String(b.outDate).trim() !== ''
-    || String(b.remark).trim() !== '';
-}
-
-/** 數值欄位 sanitize：空字串/非數字一律存 0 */
-function sanitizedBonusConfig() {
-  const b = localBonus.value;
-  return {
-    keepPct: Number(b.keepPct) || 0,
-    taxPct: Number(b.taxPct) || 0,
-    nhiPct: Number(b.nhiPct) || 0,
-    teamGroupKeys: [...(b.teamGroupKeys || [])],
-    inDate: String(b.inDate || '').trim(),
-    outDate: String(b.outDate || '').trim(),
-    remark: String(b.remark || '').trim()
-  };
+  return localSegments.value.some(segmentHasValue);
 }
 
 const fetchedTeamGroups = ref([]);
@@ -219,11 +231,17 @@ const editableData = computed({
 const handleSave = async () => {
   const { valid } = await form.value.validate();
   if (!valid) return;
+  segmentError.value = validateSegments(localSegments.value);
+  if (segmentError.value) return;
   const payload = { ...editableData.value };
   // 只在原本就有設定、或本次有填值時，才寫入 bonusConfig（避免全零覆蓋「未設定」狀態）
   if (hasMeaningfulBonusConfig()) {
-    payload.bonusConfig = sanitizedBonusConfig();
+    payload.bonusConfig = buildBonusConfig(localSegments.value.map(({ _id, ...seg }) => seg));
   }
   emit('save', payload);
 };
 </script>
+
+<style scoped>
+.segment-card { border-color: rgba(0, 0, 0, 0.12); }
+</style>
