@@ -10,15 +10,11 @@
         </button>
       </div>
 
-      <!-- ✅ 固定區：說明、銷售顧問資訊、全選（不隨戶別清單捲動） -->
+      <!-- ✅ 固定區：銷售顧問資訊、全選（不隨戶別清單捲動） -->
       <div class="px-4 pt-3 pb-1">
-        <div class="text-body-2 text-grey-darken-1">
-          請勾選要列印的戶別，每一戶將產生一頁 A4 直式報價單：
-        </div>
-
         <!-- 銷售顧問資訊；未選擇時警示 -->
         <div
-          class="d-flex align-center mt-2 text-body-2"
+          class="d-flex align-center text-body-2"
           :class="personnelName ? 'text-grey-darken-2' : 'text-orange-darken-3'"
         >
           <v-icon size="small" class="mr-1">{{ personnelName ? 'mdi-account-tie' : 'mdi-alert' }}</v-icon>

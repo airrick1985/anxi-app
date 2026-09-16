@@ -257,8 +257,9 @@
 
 <!-- ✅ [優化] 付款方式展開列：整列可點擊、狀態一目了然；選擇方案與已套用方案 chips 集中於此，不再塞在表格欄位內 -->
 <div
+  ref="paymentToggleBarRef"
   class="payment-toggle-bar"
-  :class="{ 'is-open': isPaymentDetailsVisible, 'is-mobile': isMobile }"
+  :class="{ 'is-open': isPaymentDetailsVisible, 'is-mobile': isMobile, 'is-flash': isPaymentBarFlashing }"
   role="button"
   tabindex="0"
   :aria-expanded="isPaymentDetailsVisible"
@@ -267,8 +268,9 @@
   @keydown.space.prevent="togglePaymentDetails"
 >
   <div class="payment-toggle-main">
-    <span class="payment-toggle-chevron" :class="{ 'is-open': isPaymentDetailsVisible }">
-      <v-icon size="22">mdi-chevron-down</v-icon>
+    <span class="payment-toggle-state" :class="{ 'is-open': isPaymentDetailsVisible }">
+      <v-icon size="18" class="payment-toggle-state-icon">mdi-chevron-down</v-icon>
+      <span class="payment-toggle-state-text">{{ isPaymentDetailsVisible ? '收合' : '展開' }}</span>
     </span>
     <v-icon size="18" class="payment-toggle-icon">mdi-cash-multiple</v-icon>
     <span class="payment-toggle-label">付款方式</span>
@@ -317,21 +319,13 @@
             <v-card-title class="bg-blue-lighten-5 text-blue-darken-2 py-2 text-subtitle-1 d-flex align-center">
               <v-icon start>mdi-calculator-variant</v-icon>
               總價期款
-              <v-chip
-                size="x-small"
-                :color="isManualTemplateActive ? 'orange-darken-2' : 'green-darken-1'"
-                variant="flat"
-                class="ml-2"
-              >
-                {{ isManualTemplateActive ? '手動指定' : '自動判斷' }}
-              </v-chip>
               <!-- ✅ [新增] 手動指定的範本不符目前條件：保留選擇、顯示警示（滑入看原因） -->
               <v-chip
                 v-if="manualTemplateMismatchReasons.length"
                 size="x-small"
                 color="deep-orange"
                 variant="flat"
-                class="ml-1"
+                class="ml-2"
                 prepend-icon="mdi-alert"
                 :title="manualTemplateMismatchReasons.join('、')"
               >
@@ -436,21 +430,13 @@
             <v-card-title class="bg-green-lighten-5 text-green-darken-2 py-2 text-subtitle-1 d-flex align-center">
               <v-icon start>mdi-package-variant</v-icon>
               配套期款
-              <v-chip
-                size="x-small"
-                :color="isManualPackageTemplateActive ? 'orange-darken-2' : 'green-darken-1'"
-                variant="flat"
-                class="ml-2"
-              >
-                {{ isManualPackageTemplateActive ? '手動指定' : '自動判斷' }}
-              </v-chip>
               <!-- ✅ [新增] 手動指定的範本不符目前條件：保留選擇、顯示警示（滑入看原因） -->
               <v-chip
                 v-if="manualPackageTemplateMismatchReasons.length"
                 size="x-small"
                 color="deep-orange"
                 variant="flat"
-                class="ml-1"
+                class="ml-2"
                 prepend-icon="mdi-alert"
                 :title="manualPackageTemplateMismatchReasons.join('、')"
               >
@@ -688,6 +674,12 @@
         </div>
       </div>
     </div>
+
+    <!-- ✅ [優化] 展開區底部收合鍵：看完期款後不必捲回上方即可收合 -->
+    <button v-if="!isLoading" type="button" class="payment-collapse-footer" @click="collapsePaymentDetails">
+      <v-icon size="18">mdi-chevron-up</v-icon>
+      收合付款方式
+    </button>
 
   </div>
 </v-expand-transition>
@@ -987,7 +979,7 @@
 
 <script setup>
 import { getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
-import { ref, computed, defineProps, defineEmits, onMounted, watch } from 'vue'; // ★★★ 1. 引入 watch ★★★
+import { ref, computed, defineProps, defineEmits, onMounted, watch, nextTick } from 'vue'; // ★★★ 1. 引入 watch ★★★
 import { useQuoteStore, applyNegotiation, deriveNegotiationMode } from '@/store/quoteStore';
 import { useToast } from 'vue-toastification';
 import { useDisplay } from 'vuetify';
@@ -1031,8 +1023,30 @@ const projectStore = useProjectStore();
 const { mobile } = useDisplay();
 const isMobile = computed(() => mobile.value);
 const isPaymentDetailsVisible = ref(false);
+const paymentToggleBarRef = ref(null);
+const isPaymentBarFlashing = ref(false);
+let paymentBarFlashTimer = null;
 function togglePaymentDetails() {
     isPaymentDetailsVisible.value = !isPaymentDetailsVisible.value;
+}
+function scrollPaymentBarIntoView() {
+    const el = paymentToggleBarRef.value;
+    if (!el || typeof el.scrollIntoView !== 'function') return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+// ✅ [優化] 套用方案後自動展開付款方式，並捲到展開列、短暫高亮提示位置
+function expandPaymentDetails() {
+    isPaymentDetailsVisible.value = true;
+    nextTick(() => {
+        scrollPaymentBarIntoView();
+        isPaymentBarFlashing.value = true;
+        clearTimeout(paymentBarFlashTimer);
+        paymentBarFlashTimer = setTimeout(() => { isPaymentBarFlashing.value = false; }, 1400);
+    });
+}
+function collapsePaymentDetails() {
+    isPaymentDetailsVisible.value = false;
+    nextTick(scrollPaymentBarIntoView);
 }
 // ✅ [優化] 付款方式展開列摘要：顯示目前實際採用的總價／配套範本名稱，收合時也能一眼看出
 const paymentSummaryText = computed(() => {
@@ -2250,6 +2264,9 @@ function applyPlans(selections) {
     };
   });
   quoteStore.updateItemAppliedPlans(internalId, snapshots);
+
+  // 5) 套用完成 → 自動展開該戶付款方式，讓使用者立即看到套用結果
+  expandPaymentDetails();
 }
 
 // 移除單一方案 chip：還原該方案帶入的效果
@@ -2341,18 +2358,51 @@ function isPlanModified(appliedPlan) {
   min-width: 0;
   flex: 1 1 auto;
 }
-.payment-toggle-chevron {
+/* 展開／收合狀態膠囊：文字明示可收合，箭頭隨狀態旋轉 */
+.payment-toggle-state {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  gap: 2px;
+  height: 26px;
+  padding: 0 8px 0 4px;
+  border-radius: 999px;
+  border: 1px solid #d9d9de;
+  background: #fff;
   color: #6e6e73;
-  transition: transform 0.2s ease, color 0.15s;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
   flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.payment-toggle-chevron.is-open { transform: rotate(180deg); color: #0071e3; }
+.payment-toggle-state-icon { transition: transform 0.2s ease; }
+.payment-toggle-state.is-open { border-color: #0071e3; background: #0071e3; color: #fff; }
+.payment-toggle-state.is-open .payment-toggle-state-icon { transform: rotate(180deg); }
+.payment-toggle-bar:hover .payment-toggle-state:not(.is-open) { border-color: #0071e3; color: #0071e3; }
+.payment-toggle-bar.is-flash { animation: payment-bar-flash 1.4s ease-out; }
+@keyframes payment-bar-flash {
+  0% { background: #dbe9ff; box-shadow: inset 0 0 0 2px rgba(0, 113, 227, 0.55); }
+  100% { background: #f2f6fc; box-shadow: none; }
+}
+/* 展開區底部收合鍵 */
+.payment-collapse-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 38px;
+  border: 0;
+  border-top: 1px solid #e3e9f2;
+  background: #f2f6fc;
+  color: #0071e3;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.payment-collapse-footer:hover { background: #e4eefc; }
 .payment-toggle-icon { color: #8e8e93; flex-shrink: 0; }
 .payment-toggle-label { font-weight: 600; font-size: 0.9rem; color: #1d1d1f; white-space: nowrap; }
 .payment-toggle-summary {
