@@ -370,7 +370,7 @@
             <v-card-title class="bg-red-darken-2">
                 <span class="text-h5">上傳 Excel 更新車位資料</span>
             </v-card-title>
-            <v-card-text class="pt-4">
+            <v-card-text class="pt-4" v-file-drop>
 
                 <v-alert
                   type="warning"
@@ -393,7 +393,7 @@
 
                 <v-file-input
                     v-model="uploadedFile"
-                    label="選擇 Excel 檔案"
+                    label="選擇或拖曳 Excel 檔案"
                     accept=".xlsx, .xls"
                     variant="outlined"
                     density="compact"

@@ -166,7 +166,7 @@
             </div>
 
             <label class="anm-label">圖片 <span class="anm-hint">JPG／PNG／WebP，單檔 8MB 內，不限張數</span></label>
-            <div class="anm-images">
+            <div class="anm-images" v-file-drop="busy ? false : fileInput">
               <div v-for="img in form.images" :key="img.path || img.url" class="anm-thumb">
                 <img :src="img.url" :alt="img.name" @click="preview(img.url)" />
                 <button class="anm-thumb-x" title="移除" @click="removeExistingImage(img)"><v-icon size="12">mdi-close</v-icon></button>

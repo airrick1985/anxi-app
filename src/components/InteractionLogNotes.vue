@@ -149,7 +149,7 @@
           針對 {{ log.date }} 由 <strong>{{ log.recorderName || '—' }}</strong> 記錄的洽談紀錄
         </v-card-subtitle>
 
-        <v-card-text class="pt-4">
+        <v-card-text class="pt-4" v-file-drop="!busy && editorAttachmentCount < MAX_ATTACHMENTS">
           <v-textarea v-model="editor.content" label="備註內容" variant="outlined" rows="4" auto-grow
             placeholder="輸入給這筆洽談紀錄的櫃台備註…" hide-details="auto"></v-textarea>
 
@@ -195,7 +195,7 @@
           </div>
 
           <div v-if="editorAttachmentCount === 0" class="iln-empty">
-            <v-icon size="small" class="mr-1">mdi-file-hidden</v-icon>尚未加入附件（圖片、PDF、Office 文件等）
+            <v-icon size="small" class="mr-1">mdi-file-hidden</v-icon>尚未加入附件，可拖曳檔案至此（圖片、PDF、Office 文件等）
           </div>
           <div v-else class="iln-editor-files">
             <div v-for="att in editor.existing" :key="att.path || att.url" class="iln-editor-file">

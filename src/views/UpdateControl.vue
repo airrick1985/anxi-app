@@ -48,7 +48,7 @@
 
         <v-row>
           <v-col cols="12">
-            <div class="section-container">
+            <div class="section-container" v-file-drop>
               <h2 class="section-title">2. 上傳已修改的 Excel 檔案</h2>
               <p class="section-subtitle">
                 選擇您已編輯完成的 Excel 檔案。系統將會根據檔案中的分頁名稱與欄位標題，覆蓋線上對應的資料。
@@ -58,7 +58,7 @@
     <v-col cols="12" md="4" class="pa-0">
       <v-file-input
         v-model="fileToUpload"
-        label="點擊此處選擇檔案"
+        label="點擊或拖曳檔案至此"
         accept=".xlsx, .xls"
         variant="outlined"
         density="compact"

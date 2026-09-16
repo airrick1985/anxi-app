@@ -254,7 +254,7 @@
           <v-btn @click="closeFloorPlanDialog" icon="mdi-close" variant="text" size="small"></v-btn>
         </v-card-title>
         
-        <v-card-text>
+        <v-card-text v-file-drop>
           <v-form @submit.prevent="submitFloorPlan">
             <v-text-field
               v-model="floorPlanForm.name"
@@ -293,7 +293,7 @@
             <v-file-input
               v-model="floorPlanForm.backgroundImageFile"
               :label="editingFloorPlan ? '更換平面圖底圖' : '平面圖底圖 *'"
-              placeholder="請選擇圖片或 SVG 檔案"
+              placeholder="選擇或拖曳圖片／SVG 檔案"
               accept="image/png, image/jpeg, image/webp, image/svg+xml"
               :required="!editingFloorPlan"
               variant="outlined"

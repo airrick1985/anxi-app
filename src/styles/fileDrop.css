@@ -1,0 +1,11 @@
+/* 拖曳檔案上傳放置區（v-file-drop 共用樣式） */
+[data-file-drop] {
+  transition: background-color 0.15s ease, outline-color 0.15s ease;
+}
+
+.file-drop--over {
+  outline: 2px dashed rgb(var(--v-theme-primary)) !important;
+  outline-offset: -2px;
+  background-color: rgba(var(--v-theme-primary), 0.06) !important;
+  border-radius: 8px;
+}

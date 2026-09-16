@@ -309,14 +309,14 @@
           <v-icon start>mdi-cloud-upload</v-icon>
           上傳活動訊息檔案
         </v-card-title>
-        <v-card-text class="pt-4">
+        <v-card-text class="pt-4" v-file-drop>
           <v-alert type="info" variant="tonal" density="compact" class="mb-4">
             支援 JPG / PNG / WEBP（單檔最大 2MB）與 PDF（單檔最大 7MB）。
           </v-alert>
 
           <v-file-input
             v-model="filePickerModel"
-            label="點擊選擇圖檔／PDF (可多選)"
+            label="選擇或拖曳圖檔／PDF (可多選)"
             variant="outlined"
             multiple
             accept="image/jpeg, image/png, image/webp, application/pdf, .pdf"

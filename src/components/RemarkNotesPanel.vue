@@ -29,7 +29,7 @@
     </div>
 
     <!-- 新增留言輸入區 -->
-    <div class="rn-input-card mb-3">
+    <div class="rn-input-card mb-3" v-file-drop="storagePathPrefix && !busy ? files => addImages(files, 'new') : false">
       <v-textarea
         v-model="newContent"
         :rows="dense ? 1 : 2"
@@ -101,6 +101,7 @@
     <div v-else class="rn-list" :style="dense ? 'max-height: 320px; overflow-y: auto;' : ''">
       <div
         v-for="note in filteredNotes"
+        v-file-drop="storagePathPrefix && !busy && editingNoteId === note.noteId ? files => addImages(files, 'edit') : false"
         :key="note.noteId"
         class="rn-note"
         :class="{ 'rn-note--pinned': note.pinned, 'rn-note--system': note.type === 'system' }"
@@ -415,9 +416,14 @@ function filesToPendingItems(files) {
 }
 
 function handleFileSelect(event) {
-  const files = Array.from(event.target.files || []);
+  addImages(Array.from(event.target.files || []), filePickerTarget.value);
+}
+
+// 點選或拖曳取得的圖片，依目標（new：新增留言／edit：編輯中留言）加入待上傳清單
+function addImages(files, target = 'new') {
   const items = filesToPendingItems(files);
-  if (filePickerTarget.value === 'edit') {
+  if (items.length === 0) return;
+  if (target === 'edit') {
     editPendingImages.value.push(...items);
   } else {
     pendingImages.value.push(...items);

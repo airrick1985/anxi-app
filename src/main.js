@@ -11,6 +11,8 @@ import 'vue-draggable-resizable/style.css'
 import './styles/unitEffects.css' // 銷控網格「邊框特效」全域樣式（網格／列表／範本預覽共用）
 import './styles/macosUi.css' // ✅ macOS 風格共用按鈕／視窗樣式（報價單設定、列印視窗、提醒視窗共用）
 import { vReveal } from './directives/vReveal' // 首頁捲動「模糊→清晰」特效指令
+import { vFileDrop } from './directives/vFileDrop' // 拖曳檔案上傳放置區指令（銷控系統各上傳功能共用）
+import './styles/fileDrop.css'
 
 // AG Grid 模組註冊已移至 HouseholdGrid.vue（唯一消費者），首頁不再被迫載入 ag-grid 整包
 
@@ -69,6 +71,7 @@ app
   .component('font-awesome-icon', FontAwesomeIcon) // 全局註冊組件
   .component('vue-draggable-resizable', VueDraggableResizable)
   .directive('reveal', vReveal)
+  .directive('file-drop', vFileDrop)
   .use(router)
   .use(vuetify)
   .use(VueAxios, axios)

@@ -275,7 +275,7 @@
                       hint="輔助說明價格資訊（例如：含家具、特殊條件等）" persistent-hint></v-textarea>
 
                     <!-- 備註圖片：上傳區（僅編輯狀態顯示）+ 縮圖列 -->
-                    <div class="mt-2">
+                    <div class="mt-2" v-file-drop="isPriceEditable">
                       <input ref="priceRemarkFileInputRef" type="file" multiple
                         accept="image/jpeg,image/png,image/webp" style="display:none"
                         @change="handlePriceRemarkFileSelect" />

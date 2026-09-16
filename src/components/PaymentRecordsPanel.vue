@@ -108,7 +108,7 @@
             尚無繳款紀錄，請點擊上方「新增繳款紀錄」
           </div>
 
-          <div v-for="(r, idx) in records" :key="r.id || idx" class="pr-edit-card mb-3">
+          <div v-for="(r, idx) in records" :key="r.id || idx" class="pr-edit-card mb-3" v-file-drop="driveFolderUrl ? { accept: ACCEPT_ATTR, multiple: false, onFiles: files => applyFileToRecord(idx, files[0]) } : false">
             <div class="d-flex align-center mb-2">
               <div class="text-subtitle-2 font-weight-medium">繳款 #{{ idx + 1 }}</div>
               <v-spacer></v-spacer>
@@ -235,7 +235,7 @@
         <v-icon color="teal" size="small" class="mr-1">{{ quickAdd.mode === 'edit' ? 'mdi-cash-edit' : 'mdi-cash-plus' }}</v-icon>
         {{ quickAdd.mode === 'edit' ? '編輯繳款紀錄' : '新增繳款紀錄' }}{{ unitId ? `（${unitId}）` : '' }}
       </v-card-title>
-      <v-card-text class="pt-2">
+      <v-card-text class="pt-2" v-file-drop="!!driveFolderUrl && !quickAdd.saving">
         <v-row dense>
           <v-col cols="6">
             <v-text-field v-model="quickAdd.date" label="繳款日期 *" type="date" variant="outlined"
@@ -768,6 +768,7 @@ function confirmRemove(idx) {
 
 // ── 檔案選擇（延遲提交：僅存本地 File，儲存時由父層上傳）──
 const ACCEPT_TYPES = ['image/jpeg', 'image/png', 'image/webp', PDF_TYPE];
+const ACCEPT_ATTR = 'image/jpeg,image/png,image/webp,application/pdf,.pdf';
 const MAX_SIZE_MB = 10;
 
 function triggerFileSelect(idx) {
@@ -782,6 +783,11 @@ function onFileSelected(event) {
   const idx = pendingSelectIdx.value;
   pendingSelectIdx.value = -1;
   if (!file || idx < 0) return;
+  applyFileToRecord(idx, file);
+}
+// 將本地檔案掛到第 idx 筆紀錄（點選或拖曳皆走此處）
+function applyFileToRecord(idx, file) {
+  if (!file || idx < 0 || idx >= records.value.length) return;
 
   if (!ACCEPT_TYPES.includes(resolveLocalFileType(file))) {
     window.alert('僅接受 JPG、PNG、WEBP 圖檔或 PDF。');

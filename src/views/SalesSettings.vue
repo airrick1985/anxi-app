@@ -124,7 +124,7 @@
               </p>
 
               <!-- 建案 logo 上傳 -->
-              <div class="d-flex align-center mb-4 flex-wrap ga-4">
+              <div class="d-flex align-center mb-4 flex-wrap ga-4" v-file-drop="!isUploadingPaymentLogo">
                 <div class="payment-logo-preview">
                   <v-img
                     v-if="project.paymentDocSettings?.logoUrl"
@@ -400,10 +400,10 @@
           <v-divider class="my-4"></v-divider>
 
           <v-row>
-            <v-col cols="12" md="5">
+            <v-col cols="12" md="5" v-file-drop>
               <v-file-input
                 v-model="stagedFilesModel"
-                label="點擊選擇圖片 (可多選)"
+                label="選擇或拖曳圖片 (可多選)"
                 variant="outlined"
                 multiple
                 accept="image/png, image/jpeg, image/webp"
@@ -513,6 +513,7 @@
                 class="mb-2"
                 elevation="1"
                 border
+                v-file-drop="{ accept: 'image/png,image/jpeg,image/webp', multiple: false, onFiles: files => reuploadByDrop(image, files) }"
               >
                 <template v-slot:prepend>
                 <v-avatar
@@ -587,10 +588,10 @@
           <v-divider class="my-4"></v-divider>
           
           <v-row>
-            <v-col cols="12" md="5">
+            <v-col cols="12" md="5" v-file-drop>
               <v-file-input
                 v-model="stagedSvgFilesModel"
-                label="點擊選擇 SVG 檔案 (可多選)"
+                label="選擇或拖曳 SVG 檔案 (可多選)"
                 variant="outlined"
                 multiple
                 accept="image/svg+xml"
@@ -2492,6 +2493,17 @@ const triggerReupload = (image) => {
 // ✅ START: 修改 handleReuploadFile 以符合新的代理上傳模式
 const handleReuploadFile = async (event) => {
   const file = event.target.files[0];
+  await reuploadImageFile(file);
+};
+
+// 拖曳圖片到列表項目上：直接以該圖為目標重新上傳
+const reuploadByDrop = (image, files) => {
+  if (isReuploading.value) return;
+  reuploadTarget.value = image;
+  return reuploadImageFile(files[0]);
+};
+
+const reuploadImageFile = async (file) => {
   if (!file || !reuploadTarget.value) return;
 
   isReuploading.value = true;
@@ -2501,7 +2513,8 @@ const handleReuploadFile = async (event) => {
   if (!valid) {
     toast.error(`驗證失敗: ${error}`);
     isReuploading.value = false;
-    reuploadInput.value.value = '';
+    if (reuploadInput.value) reuploadInput.value.value = '';
+    reuploadTarget.value = null;
     return;
   }
 
@@ -2531,7 +2544,7 @@ const handleReuploadFile = async (event) => {
     toast.error(`重新上傳失敗: ${err.message}`);
   } finally {
     isReuploading.value = false;
-    reuploadInput.value.value = '';
+    if (reuploadInput.value) reuploadInput.value.value = '';
     reuploadTarget.value = null;
   }
 };

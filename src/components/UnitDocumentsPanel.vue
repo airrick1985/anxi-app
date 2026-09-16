@@ -125,7 +125,7 @@
         </v-card-title>
         <v-divider></v-divider>
 
-        <v-card-text class="pt-4">
+        <v-card-text class="pt-4" v-file-drop="!upload.running && !upload.done && upload.items.length < UNIT_DOCUMENT_MAX_BATCH">
           <div v-if="upload.running" class="text-caption text-orange-darken-2 mb-3 d-flex align-center">
             <v-progress-circular indeterminate size="14" width="2" class="mr-2"></v-progress-circular>
             上傳中，請勿關閉視窗
@@ -176,7 +176,7 @@
           </div>
 
           <div v-if="upload.items.length === 0" class="text-caption text-grey text-center py-4 ud-dropzone">
-            尚未選擇檔案
+            尚未選擇檔案，可直接拖曳檔案至此
           </div>
 
           <!-- 3. 每檔一列 -->
