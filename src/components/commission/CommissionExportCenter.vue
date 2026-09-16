@@ -90,7 +90,7 @@
             <v-col cols="12" sm="auto" class="d-flex ga-2">
               <v-btn color="success" variant="flat" prepend-icon="mdi-microsoft-excel" :disabled="!grids.length" @click="downloadExcel">Excel</v-btn>
               <v-btn color="error" variant="flat" prepend-icon="mdi-file-pdf-box" :loading="pdfLoading" :disabled="!grids.length" @click="downloadPdf">PDF</v-btn>
-              <v-btn v-if="isPerson" color="primary" variant="flat" prepend-icon="mdi-email-send-outline" :disabled="!grids.length" @click="openEmail">寄送 Email</v-btn>
+              <v-btn v-if="isPerson" color="primary" variant="flat" prepend-icon="mdi-email-fast-outline" :disabled="!grids.length" @click="openEmail">寄送 Email</v-btn>
             </v-col>
           </v-row>
 
@@ -175,7 +175,7 @@
     <v-dialog v-model="emailOpen" max-width="760" :persistent="emailSending">
       <v-card>
         <v-card-title class="text-subtitle-1 d-flex align-center">
-          <v-icon start>mdi-email-send-outline</v-icon>寄送個人獎金明細（第 {{ periodsText }} 期）
+          <v-icon start>mdi-email-fast-outline</v-icon>寄送個人獎金明細（第 {{ periodsText }} 期）
           <v-spacer></v-spacer>
           <v-chip size="small" variant="tonal" :color="encryptMode === 'none' ? 'default' : 'warning'" prepend-icon="mdi-lock-outline">
             {{ encryptLabel }}
@@ -521,7 +521,7 @@ async function downloadExcel() {
     if (isPerson.value) {
       const models = personModels.value;
       if (models.length === 1) {
-        exportGridsToExcel(buildPersonExcelGrids(models[0]), models[0].fileName || fileName.value || 'export');
+        await exportGridsToExcel(buildPersonExcelGrids(models[0]), models[0].fileName || fileName.value || 'export');
       } else {
         const zip = new JSZip();
         models.forEach(m => zip.file(`${m.fileName}.xlsx`, gridsToExcelBlob(buildPersonExcelGrids(m))));
@@ -530,7 +530,7 @@ async function downloadExcel() {
       toast.success(models.length > 1 ? `已下載 ZIP（${models.length} 份 Excel）` : 'Excel 已下載');
       return;
     }
-    exportGridsToExcel(grids.value, fileName.value || 'export');
+    await exportGridsToExcel(grids.value, fileName.value || 'export');
     toast.success('Excel 已下載');
   } catch (e) {
     console.error('[CommissionExportCenter] Excel 匯出失敗:', e);

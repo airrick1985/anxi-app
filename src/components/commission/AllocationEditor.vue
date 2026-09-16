@@ -59,7 +59,6 @@
         <span class="chip-amt">{{ money(result.amounts[a.personKey] || 0) }}</span>
       </v-chip>
       <v-btn size="x-small" variant="text" color="primary" prepend-icon="mdi-account-search" @click="$emit('add-person')">他案人員</v-btn>
-      <span v-if="!poolOptions.length && !externalAllocations.length" class="text-caption text-medium-emphasis">本案無符合此類別的人員，可加入他案人員。</span>
     </div>
 
     <!-- 分配方式 -->

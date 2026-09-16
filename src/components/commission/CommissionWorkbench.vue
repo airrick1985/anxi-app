@@ -18,7 +18,6 @@
       <span class="fs-step"><b>2</b> 每戶填「本次請佣比例」、點選獎金人員</span>
       <v-icon size="small" class="fs-arrow">mdi-chevron-right</v-icon>
       <span class="fs-step"><b>3</b> 核對底部「本次合計」後送出</span>
-      <span class="text-caption text-medium-emphasis ml-auto">卡片標頭顯示「待處理」表示該戶仍有類別未選人或分配有誤</span>
     </div>
 
     <!-- 快速定位列（置頂跟隨捲動；可跳至各戶別卡片或底部「本次合計」） -->
@@ -160,6 +159,20 @@
         <v-card-text class="pt-0">
           <v-text-field v-model="pickerSearch" placeholder="搜尋戶別 / 買方…" density="compact" variant="outlined"
             prepend-inner-icon="mdi-magnify" hide-details clearable class="mb-2"></v-text-field>
+          <div v-if="pickerTab === 'claim'" class="d-flex align-center flex-wrap ga-1 mb-2">
+            <span class="text-caption text-medium-emphasis mr-1">排序</span>
+            <v-chip
+              v-for="s in PICKER_SORTS"
+              :key="s.key"
+              size="small"
+              :variant="pickerSort.key === s.key ? 'flat' : 'outlined'"
+              :color="pickerSort.key === s.key ? 'primary' : undefined"
+              @click="setPickerSort(s.key)"
+            >
+              {{ s.label }}
+              <v-icon v-if="pickerSort.key === s.key" end size="x-small">{{ pickerSort.dir === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down' }}</v-icon>
+            </v-chip>
+          </div>
           <div v-if="pickerTab === 'refund'" class="picker-list">
             <v-list density="compact">
               <v-list-item
@@ -340,12 +353,43 @@ const pickerUnits = computed(() => {
   });
 });
 
+const PICKER_SORTS = [
+  { key: 'unitId', label: '戶別' },
+  { key: 'paymentRatio', label: '繳款比例' },
+  { key: 'claimedPct', label: '已請比例' },
+];
+const pickerSort = ref({ key: 'unitId', dir: 'asc' });
+function setPickerSort(key) {
+  if (pickerSort.value.key === key) {
+    pickerSort.value = { key, dir: pickerSort.value.dir === 'asc' ? 'desc' : 'asc' };
+  } else {
+    pickerSort.value = { key, dir: key === 'unitId' ? 'asc' : 'desc' };
+  }
+}
+function compareUnitId(a, b) {
+  return String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true });
+}
+function comparePickerUnits(a, b) {
+  const { key, dir } = pickerSort.value;
+  const sign = dir === 'asc' ? 1 : -1;
+  if (key === 'unitId') return sign * compareUnitId(a, b);
+  const av = a[key], bv = b[key];
+  // 無法計算（null）者一律排在最後
+  if (av === null && bv === null) return compareUnitId(a, b);
+  if (av === null) return 1;
+  if (bv === null) return -1;
+  if (av !== bv) return sign * (av - bv);
+  return compareUnitId(a, b);
+}
+
 const filteredPickerUnits = computed(() => {
   const f = String(pickerSearch.value || '').trim().toLowerCase();
-  if (!f) return pickerUnits.value;
-  return pickerUnits.value.filter(u =>
-    String(u.unitId).toLowerCase().includes(f) || String(u._raw.buyerName || '').toLowerCase().includes(f)
-  );
+  const list = f
+    ? pickerUnits.value.filter(u =>
+        String(u.unitId).toLowerCase().includes(f) || String(u._raw.buyerName || '').toLowerCase().includes(f)
+      )
+    : pickerUnits.value.slice();
+  return list.sort(comparePickerUnits);
 });
 
 // ---------- 退佣戶別（有有效請佣紀錄者；解約／退戶排前） ----------

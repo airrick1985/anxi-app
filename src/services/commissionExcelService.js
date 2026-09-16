@@ -10,6 +10,7 @@
 
 import * as XLSX from 'xlsx-js-style';
 import { toNum, money } from '@/utils/commissionCalculation';
+import { applyPrintSetup, NARROW_MARGINS } from './xlsxPrintSetup';
 
 // ================= Grid 基礎 =================
 class Grid {
@@ -733,7 +734,25 @@ export function gridToWorksheet(grid) {
   ws['!cols'] = grid.cols.map(w => ({ wpx: w }));
   ws['!rows'] = grid.rowHeights.map(h => ({ hpx: h }));
   ws['!merges'] = grid.merges.map(m => ({ s: { r: m.r1, c: m.c1 }, e: { r: m.r2, c: m.c2 } }));
+  ws['!margins'] = { ...NARROW_MARGINS };
   return ws;
+}
+
+/** 列印範圍 = 工作表實際使用範圍（!ref），寫成 _xlnm.Print_Area 定義名稱 */
+function addPrintAreas(wb) {
+  wb.Workbook = wb.Workbook || {};
+  wb.Workbook.Names = wb.Workbook.Names || [];
+  wb.SheetNames.forEach((name, i) => {
+    const ws = wb.Sheets[name];
+    if (!ws || !ws['!ref']) return;
+    const r = XLSX.utils.decode_range(ws['!ref']);
+    const abs = c => `$${XLSX.utils.encode_col(c.c)}$${c.r + 1}`;
+    wb.Workbook.Names.push({
+      Name: '_xlnm.Print_Area',
+      Sheet: i,
+      Ref: `'${name.replace(/'/g, "''")}'!${abs(r.s)}:${abs(r.e)}`,
+    });
+  });
 }
 
 function gridsToWorkbook(grids) {
@@ -746,17 +765,26 @@ function gridsToWorkbook(grids) {
     used.add(safe);
     XLSX.utils.book_append_sheet(wb, gridToWorksheet(grid), safe);
   });
+  addPrintAreas(wb);
   return wb;
 }
 
-export function exportGridsToExcel(grids, fileName) {
-  XLSX.writeFile(gridsToWorkbook(grids), `${fileName}.xlsx`);
+/** 產生 xlsx Blob：A4 橫式、列印範圍＝使用範圍、寬高各 1 頁、窄邊界、水平置中 */
+export async function gridsToExcelBlob(grids) {
+  const out = XLSX.write(gridsToWorkbook(grids), { bookType: 'xlsx', type: 'array' });
+  return applyPrintSetup(out);
 }
 
-/** 產生 xlsx 二進位（供 ZIP 批次打包） */
-export function gridsToExcelBlob(grids) {
-  const out = XLSX.write(gridsToWorkbook(grids), { bookType: 'xlsx', type: 'array' });
-  return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+export async function exportGridsToExcel(grids, fileName) {
+  const blob = await gridsToExcelBlob(grids);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${fileName}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ================= Grid → HTML（預覽） =================

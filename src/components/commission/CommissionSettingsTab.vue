@@ -167,8 +167,7 @@
         <v-card-title class="text-subtitle-1"><v-icon start size="small">mdi-account-cash-outline</v-icon>個人明細匯出</v-card-title>
         <v-card-text>
           <div class="text-caption text-medium-emphasis mb-2">
-            個人明細的「每戶獎金明細」預設只列出本人為銷售人員的戶別，其餘戶別彙整為一列不揭露戶別與買方。
-            職務含下列關鍵字的人員（比對送出請佣時的職務），改為顯示全部戶別。
+            個人明細預設只列本人銷售的戶別，職務含以下關鍵字者顯示全部戶別。
           </div>
           <v-combobox v-model="local.personDetailShowAllRoles" :items="positionSuggestionItems" multiple chips closable-chips
             variant="outlined" density="compact" label="顯示全部戶別的職務關鍵字" placeholder="輸入後按 Enter，例：專案、主委"

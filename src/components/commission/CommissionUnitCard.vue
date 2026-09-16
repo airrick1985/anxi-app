@@ -5,7 +5,9 @@
       <v-icon size="small" :class="{ 'rotate-collapsed': entry.collapsed }">mdi-chevron-down</v-icon>
       <span class="text-subtitle-1 font-weight-bold text-primary">{{ entry.unitId }}</span>
       <span class="text-body-2">{{ entry.unit.buyerName || '—' }}</span>
-      <v-chip size="x-small" variant="tonal">{{ entry.unit.salesStatus_backend || '—' }}</v-chip>
+      <v-chip size="x-small" variant="tonal">
+        {{ entry.unit.salesStatus_backend || '—' }}<span v-if="contractDateText" class="ml-1 text-medium-emphasis">{{ contractDateText }}</span>
+      </v-chip>
       <v-chip v-if="entry.unit.isPreferredPayment" size="x-small" color="deep-purple" variant="tonal">優付</v-chip>
       <v-chip v-if="feeHint" size="x-small" color="error" variant="tonal">⚠ 介紹費/贈品</v-chip>
       <v-chip v-else-if="hasNote" size="x-small" color="warning" variant="tonal">含備註</v-chip>
@@ -27,7 +29,6 @@
           <div class="step-h">
             <span class="step-no">1</span>
             <span class="step-title">請佣條件</span>
-            <span class="text-caption text-medium-emphasis">填本次請佣比例即可，其餘已帶預設值</span>
           </div>
           <div class="step-body">
             <v-row dense align="start">
@@ -85,8 +86,19 @@
               </v-row>
             </v-expand-transition>
 
-            <v-alert v-if="hasNote" :type="feeHint ? 'error' : 'info'" variant="tonal" density="compact" class="mt-2 mb-0">
-              <b>{{ feeHint ? '🎁 銷控備註提到介紹費/贈品，請確認是否要填進階欄位：' : '📝 銷控備註：' }}</b>{{ noteText }}
+            <v-alert v-if="hasNote" :type="feeHint ? 'error' : 'info'" variant="tonal" density="compact" class="mt-2 mb-0 note-alert">
+              <div class="font-weight-bold mb-1">{{ feeHint ? '🎁 銷控備註提到介紹費/贈品，請確認是否要填進階欄位' : '📝 銷控備註' }}</div>
+              <div class="note-list">
+                <div v-for="n in displayNotes" :key="n.noteId" class="note-item">
+                  <div v-if="n.pinned || n.time || n.name || n.catLabel" class="note-meta">
+                    <span v-if="n.pinned">📌</span>
+                    <span v-if="n.time">{{ n.time }}</span>
+                    <span v-if="n.name" class="font-weight-medium">{{ n.name }}</span>
+                    <v-chip v-if="n.catLabel" size="x-small" variant="tonal" :color="n.catColor">{{ n.catLabel }}</v-chip>
+                  </div>
+                  <div class="note-content">{{ n.content }}</div>
+                </div>
+              </div>
             </v-alert>
 
             <!-- 試算結果（精簡） -->
@@ -148,7 +160,6 @@
           <div class="step-h mt-4">
             <span class="step-no">2</span>
             <span class="step-title">獎金人員與分配</span>
-            <span class="text-caption text-medium-emphasis">點選人員即加入、預設均分；橘框的類別尚未選人</span>
             <v-spacer></v-spacer>
             <v-chip v-if="missingCats.length" size="x-small" color="warning" variant="tonal">尚未選人：{{ missingCats.map(c => c.label).join('、') }}</v-chip>
           </div>
@@ -167,7 +178,6 @@
                 >
                   <v-icon start size="x-small">{{ entry.teamSiteKeys.includes(g.key) ? 'mdi-check-circle' : 'mdi-plus-circle-outline' }}</v-icon>{{ g.label }}
                 </v-chip>
-                <span class="text-caption text-medium-emphasis">勾選後自動帶入該案場符合進退場資格的團獎人員</span>
               </div>
             </div>
 
@@ -302,6 +312,7 @@ import {
   matchesRolePositions, isHandoverCategory,
 } from '@/utils/commissionCalculation';
 import { bonusSegments, segmentForDate, segmentLabel } from '@/utils/bonusSegments';
+import { resolveDisplayNotes, formatNoteTime, categoryMeta } from '@/utils/remarkNotes';
 
 const props = defineProps({
   entry: { type: Object, required: true },
@@ -334,6 +345,27 @@ const handoverLabel = computed(() => handoverCategories.value.map(c => c.label).
 const noteText = computed(() => String(props.entry.unit.remarks || ''));
 const hasNote = computed(() => noteText.value.trim() !== '');
 const feeHint = computed(() => hasNote.value && /介紹|贈品/.test(noteText.value));
+/** 備註分段：優先用留言式 remarkNotes，沒有則以舊字串備註呈現（換行保留） */
+const displayNotes = computed(() => {
+  const u = props.entry.unit || {};
+  return resolveDisplayNotes(u.remarkNotes, u.remarks)
+    .map(n => {
+      let name = n.authorName || '';
+      if (n.type === 'legacy') name = '舊備註';
+      else if (n.type === 'system') name = n.authorName ? `系統·${n.authorName}` : '系統';
+      const showCat = n.type === 'user' && n.category && n.category !== 'general';
+      return {
+        noteId: n.noteId,
+        pinned: !!n.pinned,
+        time: formatNoteTime(n.createdAt),
+        name,
+        catLabel: showCat ? categoryMeta(n.category).label : '',
+        catColor: categoryMeta(n.category).color,
+        content: String(n.content || '').trim(),
+      };
+    })
+    .filter(n => n.content);
+});
 const contractDateText = computed(() => formatDateTW(props.entry.unit.payment_contract_date));
 const depositDateText = computed(() => formatDateTW(props.entry.unit.payment_deposit_date));
 const paymentRatio = computed(() => paymentRatioPct(props.entry.unit, props.entry.finance.dealTotal));
@@ -634,4 +666,10 @@ function onPickPerson(person) {
 .matrix-table .col-remark { width: 100%; min-width: 160px; }
 .pct-input { width: 58px; border: 1px solid #cdd8ec; border-radius: 4px; padding: 1px 4px; text-align: right; font-size: 12px; }
 .rmk-input { width: 100%; min-width: 130px; border: 1px solid #cdd8ec; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+/* 銷控備註：一則一段 */
+.note-alert :deep(.v-alert__content) { min-width: 0; }
+.note-list { display: flex; flex-direction: column; gap: 6px; }
+.note-item { background: rgba(255, 255, 255, .7); border-radius: 6px; padding: 5px 10px; }
+.note-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; opacity: .8; margin-bottom: 2px; }
+.note-content { font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 </style>

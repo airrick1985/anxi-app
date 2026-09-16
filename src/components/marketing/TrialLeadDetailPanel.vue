@@ -20,7 +20,7 @@
         </div>
       </div>
       <div class="d-flex ga-2 flex-wrap">
-        <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-email-send" :disabled="!lead.email" @click="emit('send-email', lead)">寄送 Email</v-btn>
+        <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-email-fast" :disabled="!lead.email" @click="emit('send-email', lead)">寄送 Email</v-btn>
         <v-btn
           size="small"
           :color="lead.status === 'archived' ? 'secondary' : 'grey'"

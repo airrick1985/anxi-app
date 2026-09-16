@@ -61,7 +61,7 @@ export const PROSPECT_EVENT_LABELS = {
   imported: { label: '匯入 Excel', icon: 'mdi-file-excel', color: 'grey' },
   harvested: { label: '網路蒐集', icon: 'mdi-web', color: 'grey' },
   created: { label: '手動建立', icon: 'mdi-plus', color: 'grey' },
-  email_sent: { label: '寄出 Email', icon: 'mdi-email-send', color: 'blue' },
+  email_sent: { label: '寄出 Email', icon: 'mdi-email-fast', color: 'blue' },
   email_failed: { label: 'Email 寄送失敗', icon: 'mdi-email-alert', color: 'error' },
   email_opened: { label: '已開信', icon: 'mdi-email-open', color: 'cyan' },
   email_clicked: { label: '點擊連結', icon: 'mdi-cursor-default-click', color: 'deep-purple' },

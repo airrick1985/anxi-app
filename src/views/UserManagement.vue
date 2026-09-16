@@ -1057,7 +1057,7 @@
     <v-dialog v-model="emailDialogVisible" max-width="800px" persistent>
       <v-card>
         <v-card-title class="bg-indigo text-white d-flex align-center">
-          <v-icon start>mdi-email-send</v-icon>
+          <v-icon start>mdi-email-fast</v-icon>
           傳送系統通知郵件
           <v-spacer></v-spacer>
           <v-btn icon="mdi-close" variant="text" @click="emailDialogVisible = false"></v-btn>
