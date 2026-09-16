@@ -50,36 +50,35 @@
                 <span class="text-caption text-grey-darken-2">{{ formatPlanPeriodText(plan) }}</span>
               </div>
 
-              <div v-if="hasPayment(plan)" class="mb-2 ml-8">
-                <span class="text-caption text-grey-darken-1 mr-2">付款方式：</span>
-                <!-- 多個付款方式且已勾選 → 需二次擇一 -->
-                <template v-if="isSelected(plan.id) && plan.paymentTemplateIds.length > 1">
-                  <v-radio-group
-                    :model-value="selectedTemplateByPlan[plan.id] || null"
-                    density="compact"
-                    hide-details
-                    class="mt-1"
-                    @update:model-value="(v) => setPlanTemplate(plan.id, v)"
-                  >
-                    <v-radio
-                      v-for="tid in plan.paymentTemplateIds"
-                      :key="tid"
-                      :value="tid"
-                      :label="templateTitle(tid)"
-                      @click.stop
-                    ></v-radio>
-                  </v-radio-group>
-                </template>
-                <template v-else>
-                  <v-chip
+              <div v-if="hasPayment(plan)" class="mb-2 ml-8 plan-pay">
+                <div class="plan-pay-title">
+                  <span class="text-caption text-grey-darken-1">付款方式</span>
+                  <span
+                    v-if="plan.paymentTemplateIds.length > 1"
+                    class="plan-pay-hint"
+                    :class="{ 'is-pending': isSelected(plan.id) && !selectedTemplateByPlan[plan.id] }"
+                  >擇一</span>
+                </div>
+                <div class="plan-pay-list">
+                  <button
                     v-for="tid in plan.paymentTemplateIds"
                     :key="tid"
-                    size="small"
-                    color="blue-darken-1"
-                    variant="outlined"
-                    class="mr-1 mb-1"
-                  >{{ templateTitle(tid) }}</v-chip>
-                </template>
+                    type="button"
+                    class="plan-pay-option"
+                    :class="{
+                      'is-checked': isTemplateChecked(plan, tid),
+                      'is-missing': !templateExists(tid)
+                    }"
+                    :disabled="!templateExists(tid) || (isPlanDisabled(plan) && !isSelected(plan.id))"
+                    @click.stop="pickTemplate(plan, tid)"
+                  >
+                    <span class="plan-pay-radio">
+                      <v-icon v-if="isTemplateChecked(plan, tid)" size="14">mdi-check-bold</v-icon>
+                    </span>
+                    <span v-if="templateExists(tid)" class="plan-pay-cat">{{ templateCategory(tid) }}</span>
+                    <span class="plan-pay-name">{{ templateName(tid) }}</span>
+                  </button>
+                </div>
               </div>
 
               <div v-if="hasNegotiation(plan)" class="mb-2 ml-8">
@@ -162,11 +161,20 @@ function hasPayment(plan) {
   return Array.isArray(plan.paymentTemplateIds) && plan.paymentTemplateIds.length > 0;
 }
 
+const templateMap = computed(() =>
+  new Map((props.paymentTemplates || []).map(t => [t.id, t]))
+);
 const templateTitleMap = computed(() =>
   new Map((props.paymentTemplates || []).map(t => [t.id, `【${t.paymentCategory || '未分類'}】${t.templateName}`]))
 );
-function templateTitle(id) {
-  return templateTitleMap.value.get(id) || '（範本已刪除）';
+function templateExists(id) {
+  return templateMap.value.has(id);
+}
+function templateCategory(id) {
+  return templateMap.value.get(id)?.paymentCategory || '未分類';
+}
+function templateName(id) {
+  return templateMap.value.get(id)?.templateName || '（範本已刪除）';
 }
 
 function adjustmentText(plan) {
@@ -226,8 +234,18 @@ function togglePlan(plan) {
   }
 }
 
-function setPlanTemplate(planId, templateId) {
-  selectedTemplateByPlan[planId] = templateId;
+function isTemplateChecked(plan, templateId) {
+  return isSelected(plan.id) && selectedTemplateByPlan[plan.id] === templateId;
+}
+
+// 點選付款方式：未勾選的方案會一併勾選，再選定該範本
+function pickTemplate(plan, templateId) {
+  if (!templateExists(templateId)) return;
+  if (!isSelected(plan.id)) {
+    if (isPlanDisabled(plan)) return;
+    selectedIds.value = [...selectedIds.value, plan.id];
+  }
+  selectedTemplateByPlan[plan.id] = templateId;
 }
 
 // 套用條件：至少選一個方案，且每個含付款方式的已選方案都已擇定範本（範本需仍存在）
@@ -299,6 +317,101 @@ function handleClear() {
 .plan-pick-disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+/* 付款方式選項列：單欄整齊排列，點選即勾選 */
+.plan-pay-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.plan-pay-hint {
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eeeeee;
+  color: #757575;
+}
+.plan-pay-hint.is-pending {
+  background: #fdecea;
+  color: #c62828;
+}
+.plan-pay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-pay-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 12px 6px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fff;
+  color: #212121;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.plan-pay-option:hover:not(:disabled) {
+  border-color: #b39ddb;
+  background: #faf8fd;
+}
+.plan-pay-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.plan-pay-option.is-checked {
+  border-color: #5e35b1;
+  background: #ede7f6;
+  box-shadow: inset 0 0 0 1px #5e35b1;
+}
+.plan-pay-radio {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #bdbdbd;
+  background: #fff;
+  color: #fff;
+  transition: border-color 0.12s, background 0.12s;
+}
+.plan-pay-option.is-checked .plan-pay-radio {
+  border-color: #5e35b1;
+  background: #5e35b1;
+}
+.plan-pay-cat {
+  flex: none;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: #e3f2fd;
+  color: #1565c0;
+  white-space: nowrap;
+}
+.plan-pay-option.is-checked .plan-pay-cat {
+  background: #5e35b1;
+  color: #fff;
+}
+.plan-pay-name {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.plan-pay-option.is-missing .plan-pay-name {
+  color: #9e9e9e;
+  text-decoration: line-through;
 }
 .plan-pick-note {
   white-space: pre-wrap;
