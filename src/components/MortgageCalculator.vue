@@ -31,10 +31,22 @@
             <span class="mc-display-currency">NT$</span>{{ formatCurrency(result.secondPhasePayment) }}
           </div>
         </div>
-        <button type="button" class="mc-display-link" @click="showSchedule = !showSchedule">
-          <v-icon size="16">{{ showSchedule ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
-          {{ showSchedule ? '隱藏還款計畫' : '查看還款計畫' }}
-        </button>
+        <div class="mc-display-footer">
+          <button type="button" class="mc-display-link" @click="showSchedule = !showSchedule">
+            <v-icon size="16">{{ showSchedule ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+            {{ showSchedule ? '隱藏還款計畫' : '查看還款計畫' }}
+          </button>
+          <div class="mc-display-stats">
+            <div class="mc-display-stat">
+              <span class="mc-display-stat-label">合計利息</span>
+              <span class="mc-display-stat-value mc-mono">{{ formatCurrency(result.totalInterest) }}</span>
+            </div>
+            <div class="mc-display-stat">
+              <span class="mc-display-stat-label">總還款</span>
+              <span class="mc-display-stat-value mc-mono">{{ formatCurrency(result.totalPayment) }}</span>
+            </div>
+          </div>
+        </div>
       </template>
 
       <div v-else class="mc-display-main">
@@ -560,8 +572,37 @@ const calculate = () => {
   padding-top: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
+.mc-display-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.mc-display-stats {
+  display: flex;
+  gap: 18px;
+  margin-left: auto;
+}
+.mc-display-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.mc-display-stat-label {
+  font-size: 11px;
+  color: rgba(245, 245, 247, 0.55);
+}
+.mc-display-stat-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(245, 245, 247, 0.9);
+}
 .mc-display-link {
-  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -574,6 +615,7 @@ const calculate = () => {
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+  margin-left: -4px;
 }
 .mc-display-link:hover { background: rgba(255, 159, 10, 0.12); }
 
