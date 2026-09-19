@@ -1,0 +1,1 @@
+import{x as u,a9 as n}from"./framework-DEOhSgA8.js";const c=u("pageContext",()=>{const e=n(null),t=n("");function a(o,s){t.value=o,e.value=JSON.parse(JSON.stringify(s)),console.log(`[Page Context] 已設定情境: ${o}`,e.value)}function l(){t.value="",e.value=null,console.log("[Page Context] 情境已清除")}return{contextData:e,contextName:t,setContext:a,clearContext:l}});export{c as u};

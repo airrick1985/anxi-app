@@ -26,7 +26,7 @@
     <!-- 首頁字體 -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
     <link rel="manifest" href="/manifest.json" />
 
     <!-- iOS Safari 支援「加入主畫面」後以 standalone 模式開啟 -->
@@ -36,17 +36,59 @@
     <meta name="apple-mobile-web-app-title" content="ANXI" />
 
     <title>ANXI 建案管理系統｜銷控報價・客資・預約・驗屋修繕一站整合</title>
-    <script type="module" crossorigin src="/assets/index-DTJ-gKsG.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/date-fns-C9-oYE70.js">
-    <link rel="modulepreload" crossorigin href="/assets/xlsx-CntmwAkj.js">
-    <link rel="modulepreload" crossorigin href="/assets/vendor-BHwbuT7N.js">
-    <link rel="modulepreload" crossorigin href="/assets/firebase-CASOJKqB.js">
-    <link rel="modulepreload" crossorigin href="/assets/vuetify-BEe9gSod.js">
-    <link rel="stylesheet" crossorigin href="/assets/vendor-D1rd0pOQ.css">
-    <link rel="stylesheet" crossorigin href="/assets/vuetify-Dsg7G6Op.css">
-    <link rel="stylesheet" crossorigin href="/assets/index-DjeowzwP.css">
+    <style>
+      #startup-screen { position: fixed; inset: 0; z-index: 99999; display: grid; place-content: center; gap: 16px; padding: 24px; background: #f7f9fc; color: #243047; text-align: center; font: 16px/1.6 system-ui, sans-serif; }
+      #startup-screen strong { font-size: 28px; letter-spacing: 3px; }
+      #startup-screen p { margin: 0; }
+      #startup-screen button { margin: auto; padding: 10px 22px; border: 0; border-radius: 8px; color: white; background: #2f6bff; font: inherit; cursor: pointer; }
+      #startup-screen [hidden] { display: none; }
+      #startup-screen .startup-spinner { width: 28px; height: 28px; margin: auto; border: 3px solid #dbe4f5; border-top-color: #2f6bff; border-radius: 50%; animation: startup-spin 1s linear infinite; }
+      @keyframes startup-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { #startup-screen .startup-spinner { animation: none; } }
+    </style>
+    <script type="module" crossorigin src="/assets/index-BYA8jzm_.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/framework-DEOhSgA8.js">
+    <link rel="modulepreload" crossorigin href="/assets/firebase-BfTUsE1L.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-C8XpUQbK.css">
   </head>
   <body>
+    <div id="startup-screen" role="status" aria-live="polite">
+      <strong>ANXI</strong>
+      <div class="startup-spinner" aria-hidden="true"></div>
+      <p id="startup-message">正在載入，請稍候…</p>
+      <button id="startup-retry" type="button" hidden>重新載入</button>
+      <noscript>請開啟瀏覽器的 JavaScript，才能使用此網站。</noscript>
+    </div>
+    <script>
+      (() => {
+        const screen = document.getElementById('startup-screen');
+        const message = document.getElementById('startup-message');
+        const retry = document.getElementById('startup-retry');
+        const fail = () => {
+          message.textContent = '載入時間較長，請確認網路連線，或重新載入。';
+          retry.hidden = false;
+        };
+        const timer = setTimeout(fail, 15000);
+        const onError = (event) => {
+          if (event.target?.tagName === 'SCRIPT' || event instanceof ErrorEvent) fail();
+        };
+        window.addEventListener('error', onError, true);
+        retry.addEventListener('click', () => {
+          const url = new URL(location.href);
+          url.searchParams.set('_v', String(Date.now()));
+          location.replace(url.href);
+        });
+        window.__anxiStartup = {
+          fail,
+          finish() {
+            clearTimeout(timer);
+            window.removeEventListener('error', onError, true);
+            screen.remove();
+            delete window.__anxiStartup;
+          }
+        };
+      })();
+    </script>
     <div id="app"></div>
   </body>
 </html>
