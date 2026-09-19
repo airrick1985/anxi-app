@@ -18,7 +18,7 @@
         </v-card-title>
         <v-card-text>
           <v-alert v-if="scope === 'cross' && !crossLoaded && !crossLoading" type="info" variant="tonal" density="compact" class="mb-3">
-            跨建案彙總以「電話」識別同一人，僅涵蓋您具「請佣獎金」權限的建案（{{ permittedProjects.length }} 個）。
+            跨建案彙總限相同方案識別的紀錄，並以「電話」識別同一人，僅涵蓋您具「請佣獎金」權限的建案（{{ permittedProjects.length }} 個）。
             <template #append><v-btn size="small" color="primary" variant="flat" @click="loadCross">載入</v-btn></template>
           </v-alert>
           <div class="table-scroll">
@@ -173,6 +173,8 @@
 </template>
 
 <script setup>
+import { useCommissionPlan } from '@/composables/useCommissionPlan';
+const { belongsToPlan } = useCommissionPlan();
 import { ref, computed } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
@@ -219,7 +221,7 @@ async function loadCross() {
     const results = await Promise.all(others.map(async p => {
       try {
         const rows = await fetchBonusRecords(p.projectId);
-        return rows.map(r => ({ ...r, _projectName: p.projectName }));
+        return rows.filter(belongsToPlan).map(r => ({ ...r, _projectName: p.projectName }));
       } catch {
         return [];
       }

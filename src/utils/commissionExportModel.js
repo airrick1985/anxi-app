@@ -47,7 +47,17 @@ export const CLAIM_COLUMNS = [
   { key: 'baseWan',    title: '備註(萬)',        width: 66, numFmt: '#,##0', sum: true, get: r => toNum(r.calc?.baseWan) },
   { key: 'wanLabel',   title: '',                width: 56, align: 'center', get: () => '萬請款' },
   { key: 'youfuTag',   title: '',                width: 70, align: 'center', red: true, get: (r, i, ctx) => (isRefundRecord(r) ? '退佣' : (r.snapshot?.isPreferredPayment ? ctx.youfuTag : '')) },
+  // 請佣備註：工作台／匯入填寫（非銷控備註）
+  { key: 'note',       title: '備註',            width: 110, align: 'left', get: r => String(r.note || '') },
 ];
+
+/** 既有版型缺少的登錄欄位補到最後（預設顯示），讓新欄位不需重建版型即可使用。 */
+export function withRegistryColumns(columns) {
+  const list = Array.isArray(columns) ? columns.slice() : [];
+  const has = new Set(list.map(c => c?.key));
+  CLAIM_COLUMNS.forEach(c => { if (!has.has(c.key)) list.push({ key: c.key, label: c.title, visible: true, width: c.width }); });
+  return list;
+}
 
 /** 退佣紀錄（買方解約；金額為負值，匯出以負數列呈現、合計相減） */
 export function isRefundRecord(r) {
@@ -57,7 +67,12 @@ export function isRefundRecord(r) {
 /** 預設請佣總表版型 config */
 export function defaultClaimConfig(settings) {
   return {
-    columns: CLAIM_COLUMNS.map(c => ({ key: c.key, label: c.title, visible: true, width: c.width })),
+    columns: CLAIM_COLUMNS.map(c => ({
+      key: c.key,
+      label: settings?.priceBasis === 'package' ? ({ houseFloor: '配套底價', houseDeal: '配套價格', totalFloor: '配套底價(萬)', totalDeal: '配套價格(萬)' }[c.key] || c.title) : c.title,
+      visible: settings?.priceBasis !== 'package' || !['parking', 'parkFloor', 'parkDeal'].includes(c.key),
+      width: c.width,
+    })),
     style: {
       fontFamily: 'DFKai-SB',
       titleFontSize: 22, headerFontSize: 14, dataFontSize: 14,
@@ -107,7 +122,7 @@ export function buildClaimModel(records, opts) {
   CLAIM_COLUMNS.forEach(c => { regByKey[c.key] = c; });
 
   // 解析版型欄位（順序＋顯示名＋寬度）
-  const columns = (cfg.columns || [])
+  const columns = withRegistryColumns(cfg.columns)
     .filter(c => c.visible !== false && regByKey[c.key])
     .map(c => {
       const reg = regByKey[c.key];
@@ -333,6 +348,7 @@ export function buildBonusModel(opts) {
           name: refund ? `${r.snapshot?.buyerName || ''}(退佣)` : (r.snapshot?.buyerName || ''),
           house: toNum(r.snapshot?.houseDeal),
           parkP: toNum(r.snapshot?.parkDeal),
+          packageFloor: toNum(r.snapshot?.houseFloor),
           total: toNum(r.snapshot?.dealTotal),
           referral: toNum(r.partyAFee),
           disc: toNum(r.calc?.discount),
@@ -400,6 +416,7 @@ export function buildBonusModel(opts) {
 
   return {
     docType: 'bonus',
+    priceBasis: settings.priceBasis || 'house',
     period, fileName, projectId,
     style: cfg.style,
     partyALabel: settings.partyALabel || '一研九鼎負擔介紹費',

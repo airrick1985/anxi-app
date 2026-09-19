@@ -78,7 +78,7 @@
                       {{ r.unitId }}
                       <v-icon v-if="r.type === 'refund'" size="x-small" color="error" :title="r.reason || '退佣'">mdi-cash-refund</v-icon>
                     </td>
-                    <td>{{ r.snapshot?.buyerName || '—' }}</td>
+                    <td>{{ r.snapshot?.buyerName || '—' }}<div v-if="r.note" class="text-caption text-medium-emphasis">{{ r.note }}</div></td>
                     <td>{{ r.requestDate || '—' }}</td>
                     <td class="text-right">{{ r.ratioPct }}%</td>
                     <td class="text-right">{{ (Number(r.commPct) || 0).toFixed(2) }}%</td>
@@ -323,6 +323,8 @@
 </template>
 
 <script setup>
+import { useCommissionPlan } from '@/composables/useCommissionPlan';
+const { planId, belongsToPlan } = useCommissionPlan();
 import { ref, computed } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
@@ -500,6 +502,7 @@ async function doVoid() {
   try {
     const res = await voidCommissionRecordAPI({
       projectId: props.projectId,
+      planId: planId.value,
       recordId: voidTarget.value.id,
       voidReason: voidReason.value,
       voidedBy: operatorName.value,
@@ -526,7 +529,7 @@ async function openVoidPeriod(pd) {
   periodVoidOpen.value = true;
   payoutsLoading.value = true;
   try {
-    const all = await fetchRetentionPayouts(props.projectId);
+    const all = (await fetchRetentionPayouts(props.projectId)).filter(belongsToPlan);
     relatedPayouts.value = all.filter(x => (x.periods || []).some(v => toNum(v) === pd.period));
   } catch (e) {
     console.warn('[CommissionPeriodList] 讀取保留款發還失敗:', e);
@@ -541,6 +544,7 @@ async function doVoidPeriod() {
   try {
     const res = await voidCommissionPeriodAPI({
       projectId: props.projectId,
+      planId: planId.value,
       period: periodTarget.value.period,
       voidReason: periodReason.value.trim(),
       voidedBy: operatorName.value,
@@ -572,6 +576,7 @@ async function doPurge() {
   try {
     const res = await purgeVoidedCommissionPeriodAPI({
       projectId: props.projectId,
+      planId: planId.value,
       period: periodTarget.value.period,
       purgedBy: operatorName.value,
       operatorKey: operatorKey.value,
@@ -607,6 +612,7 @@ async function doUndo() {
   try {
     const res = await undoCommissionImportAPI({
       projectId: props.projectId,
+      planId: planId.value,
       importBatchId: undoTarget.value.batchId,
       undoneBy: operatorName.value,
       operatorKey: operatorKey.value,
@@ -633,7 +639,7 @@ function openAudit() {
 async function loadAudit() {
   auditLoading.value = true;
   try {
-    const logs = await fetchCommissionAuditLogs(props.projectId);
+    const logs = (await fetchCommissionAuditLogs(props.projectId)).filter(belongsToPlan);
     auditLogs.value = logs.sort((a, b) => tsMs(b.createdAt) - tsMs(a.createdAt));
   } catch (e) {
     console.error('[CommissionPeriodList] 讀取操作紀錄失敗:', e);

@@ -1,3 +1,4 @@
+import { planDocumentId } from '@/utils/commissionPlans';
 // /workspaces/anxi-app/src/api.js
 
 
@@ -9408,15 +9409,16 @@ export async function salesAiAdminApi(payload) {
 // =================================================================
 
 /** 讀取建案請佣設定（單一文件，不存在回 null） */
-export const fetchCommissionSettings = async (projectId) => {
-  const snap = await getDoc(doc(db, 'commissionSettings', projectId));
+export const fetchCommissionSettings = async (projectId, planId = 'general') => {
+  const snap = await getDoc(doc(db, 'commissionSettings', planDocumentId(projectId, planId)));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 };
 
 /** 儲存建案請佣設定 */
-export const setCommissionSettings = (projectId, data) => {
-  return setDoc(doc(db, 'commissionSettings', projectId), {
+export const setCommissionSettings = (projectId, data, planId = 'general') => {
+  return setDoc(doc(db, 'commissionSettings', planDocumentId(projectId, planId)), {
     ...data,
+    planId,
     projectId,
     updatedAt: serverTimestamp(),
   }, { merge: true });
@@ -9794,3 +9796,30 @@ export async function deleteSalesDrawingFile(storagePath) {
   if (!storagePath) return;
   try { await deleteObject(ref(storage, storagePath)); } catch (e) { console.warn('[api.js] 刪除舊底圖失敗（略過）:', storagePath, e?.code || e); }
 }
+
+/** 每個方案有獨立設定；一般方案沿用既有文件 ID。 */
+export const fetchCommissionPlans = async (projectId) => {
+  const snap = await getDocs(query(collection(db, 'commissionPlans'), where('projectId', '==', projectId)));
+  return snap.docs.map(d => ({ ...d.data(), id: d.data().planId }));
+};
+export const createCommissionPlan = async (projectId, plan) => {
+  await setDoc(doc(db, 'commissionPlans', planDocumentId(projectId, plan.id)), {
+    projectId, planId: plan.id, name: plan.name, priceBasis: plan.priceBasis, createdAt: serverTimestamp(),
+  });
+};
+/** 內建方案改名時會建立同 ID 的覆寫文件；價格來源以定義文件為準。 */
+export const updateCommissionPlan = async (projectId, plan) => {
+  await setDoc(doc(db, 'commissionPlans', planDocumentId(projectId, plan.id)), {
+    projectId, planId: plan.id, name: plan.name, priceBasis: plan.priceBasis, updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+/** 刪除自訂方案定義、其設定與匯出版型；請佣／獎金紀錄由呼叫端先確認為空。 */
+export const deleteCommissionPlan = async (projectId, planId) => {
+  const docId = planDocumentId(projectId, planId);
+  const configs = await getDocs(query(collection(db, 'commissionExportConfigs'), where('projectId', '==', projectId)));
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'commissionPlans', docId));
+  batch.delete(doc(db, 'commissionSettings', docId));
+  configs.docs.filter(d => d.data().planId === planId).forEach(d => batch.delete(d.ref));
+  await batch.commit();
+};

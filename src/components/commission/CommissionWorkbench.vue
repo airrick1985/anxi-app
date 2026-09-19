@@ -184,8 +184,9 @@
                 <template #prepend>
                   <v-checkbox-btn :model-value="!!pickSel[u.unitId]" :disabled="u.disabled" density="compact" color="error"></v-checkbox-btn>
                 </template>
-                <v-list-item-title>
+                <v-list-item-title class="d-flex align-center flex-wrap ga-1">
                   {{ u.unitId }}
+                  <v-chip size="x-small" variant="tonal" :color="contractTypeColor(u.contractType)">{{ u.contractType }}</v-chip>
                   <v-chip v-if="u.released" size="x-small" color="error" variant="tonal" class="ml-1">{{ u.statusText }}</v-chip>
                   <span v-else class="text-caption ml-1 text-medium-emphasis">{{ u.statusText }}</span>
                 </v-list-item-title>
@@ -211,8 +212,9 @@
                 <template #prepend>
                   <v-checkbox-btn :model-value="!!pickSel[u.unitId]" :disabled="u.disabled" density="compact"></v-checkbox-btn>
                 </template>
-                <v-list-item-title>
+                <v-list-item-title class="d-flex align-center flex-wrap ga-1">
                   {{ u.unitId }}
+                  <v-chip size="x-small" variant="tonal" :color="contractTypeColor(u.contractType)">{{ u.contractType }}</v-chip>
                   <span v-if="u.claimedPct > 0" class="text-caption ml-1" :class="u.claimedPct >= 100 ? 'text-error' : 'text-orange-darken-3'">
                     （已請佣 {{ u.claimedPct }}%）
                   </span>
@@ -269,6 +271,9 @@
 </template>
 
 <script setup>
+import { computePlanFinance, defaultPriceSource, defaultManualFloor, isNonGeneralContract } from '@/utils/commissionPlans';
+import { useCommissionPlan } from '@/composables/useCommissionPlan';
+const { plan, planId } = useCommissionPlan();
 import { ref, reactive, computed, watch } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
@@ -328,10 +333,28 @@ function claimedPctOf(unitId) {
   return Math.round(toNum(props.ledgers[unitId]) * 10) / 10;
 }
 
+// 固定常用合約配色；自訂名稱依名稱取色，請佣／退佣及方案切換皆一致。
+const CONTRACT_TYPE_COLORS = new Map([
+  ['一般合約', 'blue-darken-2'],
+  ['毛胚合約', 'orange-darken-3'],
+  ['配套合約', 'teal-darken-2'],
+  ['裝修合約', 'purple-darken-2'],
+  ['其他合約', 'brown-darken-1'],
+  ['未設定合約方式', 'grey-darken-1'],
+]);
+const CUSTOM_CONTRACT_COLORS = ['indigo', 'pink-darken-2', 'cyan-darken-3', 'green-darken-2', 'deep-orange-darken-2', 'deep-purple'];
+function contractTypeColor(contractType) {
+  const name = String(contractType || '').trim() || '未設定合約方式';
+  if (CONTRACT_TYPE_COLORS.has(name)) return CONTRACT_TYPE_COLORS.get(name);
+  const hash = Array.from(name).reduce((value, char) => (value * 31 + char.codePointAt(0)) >>> 0, 0);
+  return CUSTOM_CONTRACT_COLORS[hash % CUSTOM_CONTRACT_COLORS.length];
+}
+
 // ---------- 戶別選擇 ----------
 const eligibleUnits = computed(() =>
   props.households.filter(u =>
     classifySalesStatus(u.salesStatus_backend) === 'deal' && u.payment_contract_date
+    && (plan.value.priceBasis !== 'package' || (isNonGeneralContract(u) && Number(u.price_package_deal) > 0 && computeUnitFinance(u, props.parkings).dealTotal > Number(u.price_package_deal)))
   )
 );
 
@@ -343,6 +366,7 @@ const pickerUnits = computed(() => {
     const isAdded = added.has(u.unitId);
     return {
       unitId: u.unitId,
+      contractType: String(u.contractType || '').trim() || '未設定合約方式',
       buyerName: u.buyerName || '',
       claimedPct: claimed,
       paymentRatio: paymentRatioPct(u, computeUnitFinance(u, props.parkings).dealTotal),
@@ -405,6 +429,7 @@ const refundUnits = computed(() => {
     const isAdded = added.has(unitId);
     return {
       unitId,
+      contractType: String(unit?.contractType || recs[recs.length - 1]?.snapshot?.contractType || '').trim() || '未設定合約方式',
       buyerName: unit?.buyerName || recs[recs.length - 1]?.snapshot?.buyerName || '',
       statusText: statusText || '—',
       released,
@@ -558,7 +583,11 @@ function evenAlloc(persons) {
 function addUnit(unitId) {
   const unit = props.households.find(u => u.unitId === unitId);
   if (!unit) return;
-  const finance = computeUnitFinance(unit, props.parkings);
+  const previous = props.records.filter(r => r.unitId === unitId && r.status === 'active' && r.type !== 'refund' && !r.refundedBy)
+    .slice().sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0) || Number(b.period) - Number(a.period))
+    .find(r => r.snapshot?.priceSource);
+  const priceSource = previous?.snapshot?.priceSource || defaultPriceSource(unit, plan.value);
+  const manualFloor = previous?.snapshot?.manualFloor ?? defaultManualFloor(unit, computeUnitFinance(unit, props.parkings).parkFloor, priceSource);
   const claimed = claimedPctOf(unitId);
 
   const categories = {};
@@ -597,7 +626,10 @@ function addUnit(unitId) {
     id: `e${seq++}`,
     unitId,
     unit,
-    finance,
+    priceSource,
+    manualFloor,
+    note: isNonGeneralContract(unit) ? String(unit.contractType).trim() : '',   // 請佣備註：非一般合約先帶合約方式
+    get finance() { return computePlanFinance(unit, props.parkings, plan.value, this); },
     period: props.nextPeriod,
     requestDate: formatDateTW(new Date()),
     ratioPct: Math.max(0, Math.round((100 - claimed) * 10) / 10),
@@ -607,7 +639,7 @@ function addUnit(unitId) {
     partyBFee: 0,
     teamSiteKeys: [],
     categories,
-    collapsed: true,
+    collapsed: priceSource === 'transaction',
   });
 }
 
@@ -659,7 +691,7 @@ function entryIssueCount(e) {
     return c && toNum(c.ratePct) > 0 && c.allocations.length === 0;
   }).length;
   const ratioBad = (claimed + toNum(e.ratioPct) > 100.0001) || !(toNum(e.ratioPct) > 0);
-  return missing + r.errors.length + (ratioBad ? 1 : 0);
+  return missing + r.errors.length + e.finance.errors.length + (ratioBad ? 1 : 0);
 }
 const totalIssues = computed(() =>
   entries.value.reduce((s, e) => s + entryIssueCount(e), 0) + refunds.value.reduce((s, e) => s + refundIssueCount(e), 0)
@@ -716,6 +748,7 @@ function collectIssues() {
   const feeMiss = [];
 
   entries.value.forEach(e => {
+    e.finance.errors.forEach(message => blocking.push(`${e.unitId}：${message}`));
     const claimed = claimedPctOf(e.unitId);
     if (claimed + toNum(e.ratioPct) > 100.0001) {
       blocking.push(`${e.unitId}：已請 ${claimed}% ＋ 本次 ${e.ratioPct}% 超過 100%`);
@@ -797,6 +830,9 @@ async function doSubmit() {
       });
       return {
         unitId: e.unitId,
+        priceSource: e.priceSource,
+        manualFloor: e.finance.manualFloorRequired ? e.manualFloor : null,
+        note: String(e.note || '').trim(),
         period: Number(e.period) || 0,
         requestDate: e.requestDate,
         ratioPct: toNum(e.ratioPct),
@@ -823,6 +859,7 @@ async function doSubmit() {
 
     const res = await submitCommissionEntriesAPI({
       projectId: props.projectId,
+      planId: planId.value,
       createdBy: userStore.user?.name || userStore.user?.phone || '',
       entries: payloadEntries,
       refunds: payloadRefunds,
@@ -844,6 +881,7 @@ async function doSubmit() {
     submitting.value = false;
   }
 }
+defineExpose({ hasDraft: computed(() => entries.value.length > 0 || refunds.value.length > 0) });
 </script>
 
 <style scoped>

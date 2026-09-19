@@ -1,5 +1,6 @@
 <template>
   <div>
+    <v-alert type="info" variant="tonal" density="compact" class="mb-4">正在設定「{{ plan.name }}」的佣金與獎金比例，儲存後僅套用至此方案的新請佣。</v-alert>
     <v-form ref="form">
       <!-- 基本比例 -->
       <v-card variant="outlined" class="mb-4">
@@ -209,6 +210,8 @@
 </template>
 
 <script setup>
+import { useCommissionPlan } from '@/composables/useCommissionPlan';
+const { plan, planId } = useCommissionPlan();
 import { ref, computed, watch } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
@@ -361,7 +364,7 @@ async function save() {
     data.personDetailShowAllRoles = (data.personDetailShowAllRoles || []).map(r => String(r || '').trim()).filter(Boolean);
     delete data.id;
     data.updatedBy = userStore.user?.name || '';
-    await setCommissionSettings(props.projectId, data);
+    await setCommissionSettings(props.projectId, data, planId.value);
     toast.success('請佣獎金設定已儲存');
     emit('saved');
   } catch (e) {
@@ -371,6 +374,7 @@ async function save() {
     saving.value = false;
   }
 }
+defineExpose({ hasDraft: computed(() => JSON.stringify(local.value) !== JSON.stringify(props.settings)) });
 </script>
 
 <style scoped>

@@ -8,6 +8,9 @@
       <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" class="ml-2" @click="openCreate('bonus')">新增獎金表範本</v-btn>
     </div>
 
+    <v-btn-toggle v-model="priceBasis" mandatory divided color="primary" class="mb-4">
+      <v-btn value="house">房屋版型</v-btn><v-btn value="package">配套版型</v-btn>
+    </v-btn-toggle>
     <v-alert type="info" variant="tonal" density="compact" class="mb-4">
       全域範本供所有建案「套用即複製」為建案版型；修改範本不影響已套用的建案。各建案也可在匯出中心「另存為全域範本」上傳。
     </v-alert>
@@ -48,7 +51,7 @@
       v-model="editorOpen"
       :doc-type="editorDocType"
       :editing="editorTarget"
-      :settings="{}"
+      :settings="{ priceBasis }"
       @save="save"
     />
   </v-container>
@@ -56,6 +59,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import CommissionTemplateEditor from '@/components/commission/CommissionTemplateEditor.vue';
@@ -64,6 +68,8 @@ import {
 } from '@/api';
 
 const toast = useToast();
+const route = useRoute();
+const priceBasis = ref(route.query.priceBasis === 'package' ? 'package' : 'house');
 const userStore = useUserStore();
 
 const loadingList = ref(true);
@@ -74,7 +80,7 @@ const editorTarget = ref(null);
 
 function byType(type) {
   return templates.value
-    .filter(t => t.docType === type)
+    .filter(t => t.docType === type && (t.priceBasis || 'house') === priceBasis.value)
     .sort((a, b) => String(a.name).localeCompare(String(b.name), 'zh-Hant'));
 }
 
@@ -107,6 +113,7 @@ async function save(data) {
     const docId = data.id || `${editorDocType.value}_${Date.now()}`;
     await setCommissionExportTemplate(docId, {
       docType: editorDocType.value,
+      priceBasis: priceBasis.value,
       name: data.name,
       config: data.config,
       createdBy: userStore.user?.name || '',

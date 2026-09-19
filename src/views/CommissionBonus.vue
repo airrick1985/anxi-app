@@ -13,6 +13,29 @@
       >重新載入</v-btn>
     </div>
 
+    <div class="d-flex align-center flex-wrap ga-3 mb-4">
+      <v-select :model-value="selectedPlanId" :items="plans" item-title="name" item-value="id"
+        label="請佣方案" variant="outlined" density="comfortable" hide-details
+        style="max-width: 320px" :disabled="isLoading || switchingPlan" @update:model-value="switchPlan" />
+      <v-btn variant="text" prepend-icon="mdi-plus" :disabled="isLoading || switchingPlan" @click="openPlanDialog()">新增方案</v-btn>
+      <v-btn variant="text" prepend-icon="mdi-pencil-outline" :disabled="isLoading || switchingPlan" @click="openPlanDialog(activePlan)">編輯方案</v-btn>
+      <span class="text-body-2 text-medium-emphasis">{{ activePlan.priceBasis === 'package' ? '配套價格，不計車位' : '房屋價格，含車位' }}｜請佣與獎金獨立計算，額度 100%</span>
+    </div>
+    <v-dialog v-model="planDialog" max-width="480" :persistent="savingPlan">
+      <v-card :title="planForm.id ? '編輯請佣方案' : '新增請佣方案'">
+        <v-card-text>
+          <v-text-field v-model="planForm.name" label="方案名稱" placeholder="例如：裝修請佣" maxlength="30" variant="outlined" />
+          <v-select v-model="planForm.priceBasis" label="採用價格" :items="[{ title: '配套價格（不含車位）', value: 'package' }, { title: '房屋價格（含車位）', value: 'house' }]" variant="outlined" :disabled="planLocked" />
+        </v-card-text>
+        <v-card-actions>
+          <v-btn v-if="planForm.id && !isBuiltInPlan(planForm.id)" color="error" variant="text" :disabled="savingPlan || planHasData(planForm.id)" :loading="deletingPlan" @click="removePlan">刪除方案</v-btn>
+          <v-spacer />
+          <v-btn :disabled="savingPlan" @click="planDialog = false">取消</v-btn>
+          <v-btn color="primary" :loading="savingPlan" :disabled="!planForm.name.trim()" @click="savePlan">{{ planForm.id ? '儲存方案' : '建立方案' }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-tabs v-model="tab" color="primary" density="comfortable" show-arrows>
       <v-tab value="workbench" prepend-icon="mdi-briefcase-edit-outline">請佣工作台</v-tab>
       <v-tab value="periods" prepend-icon="mdi-history">歷期總覽</v-tab>
@@ -28,9 +51,10 @@
       <div class="text-body-2 text-medium-emphasis mt-4">載入建案與請佣資料中…</div>
     </div>
 
-    <v-window v-else v-model="tab" :touch="false">
+    <v-window v-else :key="selectedPlanId + activePlan.priceBasis" v-model="tab" :touch="false">
       <v-window-item value="workbench">
         <CommissionWorkbench
+          ref="workbenchRef"
           :project-id="projectId"
           :project-name="projectName"
           :settings="settings"
@@ -84,6 +108,7 @@
 
       <v-window-item value="settings">
         <CommissionSettingsTab
+          ref="settingsRef"
           :project-id="projectId"
           :settings="settings"
           :personnel="personnel"
@@ -110,16 +135,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
+import { ref, computed, onMounted, defineAsyncComponent, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'vue-toastification';
 import { useSalesDataStore } from '@/store/salesDataStore';
 import {
-  fetchCommissionSettings,
+  fetchCommissionSettings, fetchCommissionPlans, createCommissionPlan, updateCommissionPlan, deleteCommissionPlan,
   fetchCommissionRecords,
   fetchBonusRecords,
   fetchCommissionLedgers,
 } from '@/api';
+import { DEFAULT_PLANS, planIdOf, isBuiltInPlan, mergePlans } from '@/utils/commissionPlans';
 import { mergeSettings, toNum } from '@/utils/commissionCalculation';
 
 const CommissionWorkbench = defineAsyncComponent(() => import('@/components/commission/CommissionWorkbench.vue'));
@@ -142,8 +168,103 @@ const exportCenterRef = ref(null);
 const importRef = ref(null);
 
 const settings = ref(mergeSettings(null));
-const records = ref([]);
-const bonusRecords = ref([]);
+const allRecords = ref([]);
+const allBonusRecords = ref([]);
+const savedPlans = ref([]);
+const selectedPlanId = ref('general');
+const switchingPlan = ref(false);
+const plans = computed(() => mergePlans(savedPlans.value));
+const activePlan = computed(() => plans.value.find(p => p.id === selectedPlanId.value) || DEFAULT_PLANS[0]);
+provide('commissionPlan', activePlan);
+const records = computed(() => allRecords.value.filter(r => planIdOf(r) === selectedPlanId.value));
+const bonusRecords = computed(() => allBonusRecords.value.filter(r => planIdOf(r) === selectedPlanId.value));
+const workbenchRef = ref(null);
+const settingsRef = ref(null);
+const planDialog = ref(false);
+const savingPlan = ref(false);
+const deletingPlan = ref(false);
+const planForm = ref({ id: '', name: '', priceBasis: 'package' });
+const planLocked = computed(() => !!planForm.value.id && (isBuiltInPlan(planForm.value.id) || planHasData(planForm.value.id)));
+
+function hasDraft() {
+  return !!(workbenchRef.value?.hasDraft || settingsRef.value?.hasDraft || importRef.value?.hasDraft || exportCenterRef.value?.hasDraft);
+}
+// 有請佣、獎金紀錄或已請額度的方案不可刪除或變更價格來源。
+function planHasData(id) {
+  return allRecords.value.some(r => planIdOf(r) === id)
+    || allBonusRecords.value.some(r => planIdOf(r) === id)
+    || ledgers.value.some(l => planIdOf(l) === id && toNum(l.claimedRatioPct) > 0);
+}
+function openPlanDialog(plan = null) {
+  planForm.value = plan ? { id: plan.id, name: plan.name, priceBasis: plan.priceBasis } : { id: '', name: '', priceBasis: 'package' };
+  planDialog.value = true;
+}
+async function switchPlan(id) {
+  if (switchingPlan.value) return false;
+  if (id === selectedPlanId.value) return true;
+  if (hasDraft() && !window.confirm('切換方案將捨棄尚未儲存的變更，確定切換？')) return false;
+  try {
+    switchingPlan.value = true;
+    const saved = await fetchCommissionSettings(projectId.value, id);
+    selectedPlanId.value = id;
+    settings.value = mergeSettings(saved);
+    return true;
+  } catch (e) { toast.error(`切換方案失敗：${e.message}`); return false; }
+  finally { switchingPlan.value = false; }
+}
+function upsertSavedPlan(plan) {
+  const i = savedPlans.value.findIndex(p => p.id === plan.id);
+  if (i >= 0) savedPlans.value[i] = { ...savedPlans.value[i], ...plan };
+  else savedPlans.value.push(plan);
+}
+async function savePlan() {
+  const { id, priceBasis } = planForm.value;
+  const name = planForm.value.name.trim();
+  if (!name || plans.value.some(p => p.name === name && p.id !== id)) { toast.warning('請使用不同的方案名稱'); return; }
+  savingPlan.value = true;
+  try {
+    if (id) {
+      const current = plans.value.find(p => p.id === id);
+      const basis = planLocked.value ? current.priceBasis : priceBasis;
+      if (basis !== current.priceBasis && hasDraft() && !window.confirm('變更價格來源將捨棄尚未儲存的變更，確定變更？')) return;
+      const plan = { id, name, priceBasis: basis };
+      await updateCommissionPlan(projectId.value, plan);
+      upsertSavedPlan(plan);
+      planDialog.value = false;
+      toast.success(`已更新「${name}」`);
+    } else {
+      const plan = { id: `plan_${crypto.randomUUID()}`, name, priceBasis };
+      await createCommissionPlan(projectId.value, plan);
+      upsertSavedPlan(plan);
+      planDialog.value = false;
+      if (await switchPlan(plan.id)) tab.value = 'settings';
+      toast.success(`已新增「${name}」`);
+    }
+  } catch (e) { toast.error(`${id ? '更新' : '新增'}方案失敗：${e.message}`); }
+  finally { savingPlan.value = false; }
+}
+async function removePlan() {
+  const { id, name } = planForm.value;
+  if (!id || isBuiltInPlan(id)) return;
+  if (!window.confirm(`確定刪除「${name}」？此方案的設定與匯出版型將一併移除。`)) return;
+  deletingPlan.value = true;
+  savingPlan.value = true;
+  try {
+    await Promise.all([loadLedgers(), loadRecords()]);
+    if (planHasData(id)) { toast.warning('此方案已有請佣紀錄，無法刪除'); return; }
+    await deleteCommissionPlan(projectId.value, id);
+    savedPlans.value = savedPlans.value.filter(p => p.id !== id);
+    planDialog.value = false;
+    if (selectedPlanId.value === id) {
+      selectedPlanId.value = 'general';
+      await loadSettings();
+    }
+    toast.success(`已刪除「${name}」`);
+  } catch (e) { toast.error(`刪除方案失敗：${e.message}`); }
+  finally { deletingPlan.value = false; savingPlan.value = false; }
+}
+async function loadPlans() { savedPlans.value = await fetchCommissionPlans(projectId.value); }
+
 const ledgers = ref([]);
 
 const projectData = computed(() => salesDataStore.getProjectData(projectId.value));
@@ -154,11 +275,11 @@ const personnel = computed(() => projectData.value?.personnel || []);
 
 const ledgerMap = computed(() => {
   const map = {};
-  ledgers.value.forEach(l => { map[l.unitId] = toNum(l.claimedRatioPct); });
+  ledgers.value.filter(l => planIdOf(l) === selectedPlanId.value).forEach(l => { map[l.unitId] = toNum(l.claimedRatioPct); });
   return map;
 });
 
-// 下一期別：全建案（含作廢與匯入）最大期別 + 1
+// 下一期別：目前方案（含作廢與匯入）最大期別 + 1
 const nextPeriod = computed(() => {
   let max = 0;
   records.value.forEach(r => {
@@ -169,7 +290,7 @@ const nextPeriod = computed(() => {
 });
 
 async function loadSettings() {
-  const saved = await fetchCommissionSettings(projectId.value);
+  const saved = await fetchCommissionSettings(projectId.value, selectedPlanId.value);
   settings.value = mergeSettings(saved);
 }
 
@@ -184,8 +305,8 @@ async function loadRecords() {
       fetchCommissionRecords(projectId.value),
       fetchBonusRecords(projectId.value),
     ]);
-    records.value = recs;
-    bonusRecords.value = bonuses;
+    allRecords.value = recs;
+    allBonusRecords.value = bonuses;
   } catch (e) {
     console.error('[CommissionBonus] 載入請佣紀錄失敗:', e);
     toast.error(`載入請佣紀錄失敗：${e.message}`);
@@ -198,7 +319,7 @@ async function reloadAll() {
   isLoading.value = true;
   try {
     await salesDataStore.loadProjectData(projectId.value, true);
-    await Promise.all([loadSettings(), loadLedgers(), loadRecords()]);
+    await Promise.all([loadPlans(), loadSettings(), loadLedgers(), loadRecords()]);
   } catch (e) {
     console.error('[CommissionBonus] 載入失敗:', e);
     toast.error(`載入失敗：${e.message}`);
@@ -236,7 +357,7 @@ onMounted(async () => {
   isLoading.value = true;
   try {
     await salesDataStore.loadProjectData(projectId.value);
-    await Promise.all([loadSettings(), loadLedgers(), loadRecords()]);
+    await Promise.all([loadPlans(), loadSettings(), loadLedgers(), loadRecords()]);
   } catch (e) {
     console.error('[CommissionBonus] 初始化失敗:', e);
     toast.error(`初始化失敗：${e.message}`);

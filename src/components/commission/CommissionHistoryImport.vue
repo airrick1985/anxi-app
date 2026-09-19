@@ -199,6 +199,9 @@
 </template>
 
 <script setup>
+import { computePlanFinance } from '@/utils/commissionPlans';
+import { useCommissionPlan } from '@/composables/useCommissionPlan';
+const { plan, planId } = useCommissionPlan();
 import { ref, computed, watch } from 'vue';
 import * as XLSX from 'xlsx-js-style';
 import { useToast } from 'vue-toastification';
@@ -274,7 +277,7 @@ function presetPeriod(period) {
   presetPeriodValue.value = Number(period) || null;
   replaceExisting.value = true;
 }
-defineExpose({ presetPeriod });
+defineExpose({ presetPeriod, hasDraft: computed(() => parsed.value) });
 
 // 切換覆蓋 → 以新的比例基準重新驗證
 watch(replaceExisting, () => { if (parsed.value) reparse(); });
@@ -316,7 +319,7 @@ const CLAIM_HEADERS = computed(() => ([
   '期別', '戶別', '請佣日期', '請佣比例', '佣金比例',
   mergedSettings.value.partyALabel, mergedSettings.value.partyBLabel, '保留款(%)',
   '成交總價(含車)', '總底價', '溢差價', '房屋成交價', '車位成交總價', '房屋總底價', '車位底價',
-  '買方姓名', '簽約日期', '小訂日期', '持有車位', '銷售人員',
+  '買方姓名', '簽約日期', '小訂日期', '持有車位', '銷售人員', '備註',
 ]));
 
 const BONUS_FIXED_HEADERS = ['期別', '戶別', '請佣日期', '人員姓名', '人員電話', '職務'];
@@ -451,7 +454,9 @@ function parseClaims(rows) {
     // 財務數字：表格值優先，未填以現值計算
     let finance = null;
     if (unit) {
-      finance = computeUnitFinance(unit, props.parkings);
+      finance = planId.value === 'general' ? computeUnitFinance(unit, props.parkings)
+        : computePlanFinance(unit, props.parkings, plan.value, { manualFloor: row['房屋總底價'] });
+      if (finance.errors?.length) { messages.push(...finance.errors); status = 'error'; }
       const ovr = (key, header) => {
         const v = row[header];
         if (v !== '' && v !== null && v !== undefined && !Number.isNaN(Number(v))) finance[key] = Number(v);
@@ -463,6 +468,12 @@ function parseClaims(rows) {
       ovr('parkDeal', '車位成交總價');
       ovr('houseFloor', '房屋總底價');
       ovr('parkFloor', '車位底價');
+      if (plan.value.priceBasis === 'package') {
+        if (finance.parkDeal !== 0 || finance.parkFloor !== 0) { messages.push('配套請佣不可包含車位成交價或底價'); status = 'error'; }
+        finance.parkingSpots = '';
+        finance.houseDeal = finance.dealTotal;
+        finance.houseFloor = finance.totalFloor;
+      }
       if (row['溢差價'] === '' || row['溢差價'] === undefined) finance.spread = finance.dealTotal - finance.totalFloor;
     }
 
@@ -492,11 +503,13 @@ function parseClaims(rows) {
     }
 
     const snapshot = unit ? {
+      planName: plan.value.name, priceBasis: plan.value.priceBasis,
+      ...(finance?.priceSource ? { priceSource: finance.priceSource, manualFloor: finance.manualFloorRequired ? finance.houseFloor : null } : {}),
       buyerName: String(row['買方姓名'] ?? '').trim() || unit.buyerName || '',
       salesperson: String(row['銷售人員'] ?? '').trim()
         ? String(row['銷售人員']).split(/[、,，\/\s]+/).filter(Boolean)
         : (Array.isArray(unit.salesperson) ? unit.salesperson : []),
-      parkingSpots: String(row['持有車位'] ?? '').trim() || finance?.parkingSpots || '',
+      parkingSpots: plan.value.priceBasis === 'package' ? '' : (String(row['持有車位'] ?? '').trim() || finance?.parkingSpots || ''),
       isPreferredPayment: isPreferred,
       contractDate: cellDate(row['簽約日期']) || formatDateTW(unit.payment_contract_date),
       depositDate: cellDate(row['小訂日期']) || formatDateTW(unit.payment_deposit_date),
@@ -511,6 +524,7 @@ function parseClaims(rows) {
       status, messages,
       unitId, period, requestDate: cellDate(row['請佣日期']),
       ratioPct, commPct, keepPct, partyAFee, partyBFee,
+      note: String(row['備註'] ?? '').trim(),
       snapshot, calc: calcResult || {},
     };
   });
@@ -602,6 +616,7 @@ async function doImport() {
     const target = Array.isArray(file.value) ? file.value[0] : file.value;
     const res = await importCommissionHistoryAPI({
       projectId: props.projectId,
+      planId: planId.value,
       createdBy: userStore.user?.name || '',
       operatorKey: userStore.user?.key || userStore.user?.phone || '',
       replaceExisting: replaceExisting.value && conflictPeriods.value.length > 0,

@@ -121,7 +121,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { CLAIM_COLUMNS, defaultClaimConfig, defaultBonusConfig } from '@/utils/commissionExportModel';
+import { CLAIM_COLUMNS, withRegistryColumns, defaultClaimConfig, defaultBonusConfig } from '@/utils/commissionExportModel';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -137,7 +137,7 @@ const isNew = computed(() => !props.editing?.id);
 function buildLocal() {
   const base = props.docType === 'claim' ? defaultClaimConfig(props.settings) : defaultBonusConfig(props.settings);
   const cfg = props.editing?.config ? JSON.parse(JSON.stringify({ ...base, ...props.editing.config })) : JSON.parse(JSON.stringify(base));
-  if (props.docType === 'claim' && (!cfg.columns || !cfg.columns.length)) cfg.columns = base.columns;
+  if (props.docType === 'claim') cfg.columns = withRegistryColumns(cfg.columns?.length ? cfg.columns : base.columns);
   cfg.style = { ...base.style, ...(cfg.style || {}) };
   return {
     id: props.editing?.id || null,

@@ -249,12 +249,17 @@ export function buildBonusGroupGrid(group, model) {
   g.rowHeights[rKilo] = 18;
 
   // 上方表頭
-  const H1 = ['編號', '小訂日期', '簽約日期', '戶別', '停車位', '姓名', '成交價(萬)', '', '總成交價(萬)', model.partyALabel, '折數', '折數後總價(萬)', '銷售人員', '團獎人數'];
+  const isPackage = model.priceBasis === 'package';
+  const H1 = ['編號', '小訂日期', '簽約日期', '戶別', isPackage ? '配套底價(萬)' : '停車位', '姓名', isPackage ? '配套價格(萬)' : '成交價(萬)', '', isPackage ? '配套總價(萬)' : '總成交價(萬)', model.partyALabel, '折數', '折數後總價(萬)', '銷售人員', '團獎人數'];
   if (HAS_H) H1.push(`${group.handoverLabel || model.handoverLabel || '交屋團獎'}\n(暫留不發放)`);
   const hStyle = { sz: st.headerFontSize || 12, bold: true, align: 'center', wrap: true, bg: headerBg, border: true };
   H1.forEach((h, c) => { if (h) g.set(rH1, c, h, hStyle); });
-  g.set(rH2, 6, '房價', hStyle); g.set(rH2, 7, '車價', hStyle);
-  g.merge(rH1, 6, rH1, 7);
+  if (isPackage) {
+    g.merge(rH1, 6, rH2, 7);
+  } else {
+    g.set(rH2, 6, '房價', hStyle); g.set(rH2, 7, '車價', hStyle);
+    g.merge(rH1, 6, rH1, 7);
+  }
   [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13].concat(HAS_H ? [HCOL] : []).forEach(c => g.merge(rH1, c, rH2, c));
   group.topPersons.forEach((p, i) => {
     const col = FIX + 2 * i;
@@ -273,10 +278,11 @@ export function buildBonusGroupGrid(group, model) {
     g.set(r, 1, d.sodate, { align: 'center', border: true, color: rc });
     g.set(r, 2, d.sign, { align: 'center', border: true, color: rc });
     g.set(r, 3, d.unit, { align: 'center', border: true, color: rc });
-    g.set(r, 4, d.park, { align: 'center', border: true, color: rc });
+    g.set(r, 4, isPackage ? d.packageFloor : d.park, { align: 'center', border: true, color: rc });
     g.set(r, 5, d.name, { align: 'center', border: true, color: rc });
     g.set(r, 6, d.house || '', { fmt: '#,##0', border: true, color: rc });
-    g.set(r, 7, d.parkP || '', { fmt: '#,##0', border: true, color: rc });
+    if (isPackage) g.merge(r, 6, r, 7);
+    else g.set(r, 7, d.parkP || '', { fmt: '#,##0', border: true, color: rc });
     g.set(r, 8, d.total || '', { fmt: '#,##0', border: true, color: rc });
     g.set(r, 9, d.referral || '', { fmt: '#,##0', border: true, color: rc });
     g.set(r, 10, d.disc || '', { fmt: '0.00', border: true, color: rc });

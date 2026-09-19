@@ -31,6 +31,26 @@
             <span class="step-title">請佣條件</span>
           </div>
           <div class="step-body">
+            <v-row dense align="start" class="mb-2">
+              <v-col cols="12" sm="6" v-if="plan.priceBasis === 'house' && isNonGeneralContract(entry.unit)">
+                <v-select :model-value="entry.priceSource" label="本次採用價格" @update:model-value="setPriceSource"
+                  :items="[{ title: '配套房屋總價（含車位）', value: 'splitHouse' }, { title: '原成交總價（含車位）', value: 'transaction' }]"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="12" sm="6" v-if="entry.finance.manualFloorRequired">
+                <v-text-field v-model.number="entry.manualFloor" :label="entry.priceSource === 'package' ? '配套底價（萬）＊' : '房屋底價（萬，不含車位）＊'"
+                  type="number" min="0" step="0.0001" variant="outlined" density="compact" />
+              </v-col>
+              <v-col cols="12">
+                <v-text-field v-model="entry.note" label="請佣備註" maxlength="200" variant="outlined" density="compact" hide-details clearable />
+              </v-col>
+            </v-row>
+            <div class="text-body-2 mb-3" v-if="entry.finance.manualFloorRequired">
+              {{ entry.priceSource === 'package' ? '配套價格' : '配套房屋總價（含車位）' }}：<strong>{{ fmtWan(entry.finance.dealTotal) }} 萬</strong>
+              <span v-if="entry.priceSource === 'package'">・不計車位</span>
+              <span v-else>・車位底價 {{ fmtWan(entry.finance.parkFloor) }} 萬（沿用銷控資料）</span>
+            </div>
+            <v-alert v-for="message in entry.finance.errors" :key="message" type="warning" variant="tonal" density="compact" class="mb-2">{{ message }}</v-alert>
             <v-row dense align="start">
               <v-col cols="6" sm="3" md="2">
                 <v-text-field v-model.number="entry.period" label="期別" type="number" variant="outlined" density="compact" hide-details></v-text-field>
@@ -103,7 +123,7 @@
 
             <!-- 試算結果（精簡） -->
             <div class="result-strip mt-3">
-              <div class="rs-item"><label>成交總價(含車)</label><div>{{ money(entry.finance.dealTotal * 10000) }}</div></div>
+              <div class="rs-item"><label>{{ entry.priceSource === 'package' ? '配套價格' : '成交總價(含車)' }}</label><div>{{ money(entry.finance.dealTotal * 10000) }}</div></div>
               <div class="rs-item"><label>獎金折數</label><div>{{ result.claim.discount.toFixed(2) }}</div></div>
               <div class="rs-item"><label>折數後總價</label><div>{{ money(result.claim.dealAfter * 10000) }}</div></div>
               <div class="rs-item"><label>實際請領</label><div class="text-primary">{{ money(result.claim.realClaim) }}</div></div>
@@ -303,6 +323,9 @@
 </template>
 
 <script setup>
+import { useCommissionPlan } from '@/composables/useCommissionPlan';
+import { isNonGeneralContract, defaultManualFloor } from '@/utils/commissionPlans';
+const { plan } = useCommissionPlan();
 import { ref, computed } from 'vue';
 import { useToast } from 'vue-toastification';
 import AllocationEditor from './AllocationEditor.vue';
@@ -327,6 +350,14 @@ const props = defineProps({
 
 const emit = defineEmits(['remove']);
 const toast = useToast();
+
+// 切換為拆價且尚未填底價時，預設配套房屋總價減車位底價。
+function setPriceSource(value) {
+  props.entry.priceSource = value;
+  if (props.entry.manualFloor === null || props.entry.manualFloor === undefined || props.entry.manualFloor === '') {
+    props.entry.manualFloor = defaultManualFloor(props.entry.unit, props.entry.finance.parkFloor, value);
+  }
+}
 
 const pickerOpen = ref(false);
 const pickerTargetCat = ref('');
@@ -368,7 +399,7 @@ const displayNotes = computed(() => {
 });
 const contractDateText = computed(() => formatDateTW(props.entry.unit.payment_contract_date));
 const depositDateText = computed(() => formatDateTW(props.entry.unit.payment_deposit_date));
-const paymentRatio = computed(() => paymentRatioPct(props.entry.unit, props.entry.finance.dealTotal));
+const paymentRatio = computed(() => paymentRatioPct(props.entry.unit, props.entry.finance.transactionTotal));
 
 const totalPct = computed(() => props.claimedPct + toNum(props.entry.ratioPct));
 const ratioOver = computed(() => totalPct.value > 100.0001);
@@ -412,7 +443,7 @@ const missingCats = computed(() => payCategories.value.filter(cat => {
 }));
 /** 待處理項目數：未選人類別 + 分配錯誤 + 比例問題 */
 const issueCount = computed(() =>
-  missingCats.value.length + result.value.errors.length + (ratioOver.value || !(toNum(props.entry.ratioPct) > 0) ? 1 : 0)
+  missingCats.value.length + result.value.errors.length + props.entry.finance.errors.length + (ratioOver.value || !(toNum(props.entry.ratioPct) > 0) ? 1 : 0)
 );
 
 defineExpose({ result, issueCount });

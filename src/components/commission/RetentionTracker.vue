@@ -103,6 +103,8 @@
 </template>
 
 <script setup>
+import { useCommissionPlan } from '@/composables/useCommissionPlan';
+const { planId, belongsToPlan } = useCommissionPlan();
 import { ref, computed, onMounted } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
@@ -168,7 +170,7 @@ const sortedPayouts = computed(() =>
 
 async function load() {
   try {
-    payouts.value = await fetchRetentionPayouts(props.projectId);
+    payouts.value = (await fetchRetentionPayouts(props.projectId)).filter(belongsToPlan);
   } catch (e) {
     console.error('[RetentionTracker] 載入失敗:', e);
   }
@@ -187,6 +189,7 @@ async function savePayout() {
     const person = personKeepRows.value.find(p => p.personKey === f.personKey);
     await addRetentionPayout({
       projectId: props.projectId,
+      planId: planId.value,
       type: f.type,
       personKey: f.type === 'person' ? f.personKey : '',
       name: f.type === 'person' ? (person?.name || '') : '',

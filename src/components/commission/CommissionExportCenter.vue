@@ -1,13 +1,11 @@
 <template>
   <div>
+    <v-alert type="info" variant="tonal" density="compact" class="mb-3">「{{ plan.name }}」的請佣總表、獎金表與個人明細獨立匯出，版型僅套用至本方案。</v-alert>
     <div v-if="loading" class="text-center py-10">
       <v-progress-circular indeterminate color="primary"></v-progress-circular>
     </div>
-    <v-alert v-else-if="!availablePeriods.length" type="info" variant="tonal">
-      尚無可匯出的請佣紀錄。請先於「請佣工作台」送出或用「歷史匯入」銜接舊資料。
-    </v-alert>
 
-    <template v-else>
+    <template v-if="!loading">
       <!-- 設定列 -->
       <v-card variant="outlined" class="mb-3">
         <v-card-text class="pb-2">
@@ -116,9 +114,9 @@
         </v-card-text>
       </v-card>
 
-      <v-alert v-if="!activeRecords.length" type="warning" variant="tonal" class="mb-3">
+      <v-alert v-if="!activeRecords.length" type="info" variant="tonal" class="mb-3">
         <template v-if="isPerson">所選期別沒有有效（未作廢）的請佣紀錄。</template>
-        <template v-else>第 {{ period }} 期沒有有效（未作廢）的請佣紀錄。</template>
+        <template v-else>目前沒有可預覽的請佣紀錄；可先設定本方案的版型。</template>
       </v-alert>
       <v-alert v-else-if="isPerson && !selectedPersonKeys.length" type="info" variant="tonal" class="mb-3">
         請選擇要產出明細的人員（可多選；選多人時 Excel／PDF 會打包成 ZIP，每人一檔）。
@@ -147,7 +145,7 @@
       v-model="editorOpen"
       :doc-type="docType"
       :editing="editorTarget"
-      :settings="settings"
+      :settings="exportSettings"
       @save="saveConfig"
     />
 
@@ -227,6 +225,8 @@
 </template>
 
 <script setup>
+import { useCommissionPlan } from '@/composables/useCommissionPlan';
+const { plan, planId, belongsToPlan } = useCommissionPlan();
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'vue-toastification';
@@ -261,10 +261,12 @@ const props = defineProps({
 
 const router = useRouter();
 const toast = useToast();
+const exportSettings = computed(() => ({ ...props.settings, priceBasis: plan.value.priceBasis }));
+const exportProjectName = computed(() => planId.value === 'general' ? props.projectName : `${props.projectName}・${plan.value.name}`);
 const userStore = useUserStore();
 
 function goTemplateManager() {
-  router.push({ name: 'CommissionTemplateManager' });
+  router.push({ name: 'CommissionTemplateManager', query: { priceBasis: plan.value.priceBasis } });
 }
 
 const docType = ref('claim');
@@ -325,13 +327,13 @@ const activeBonusRows = computed(() =>
 // ---------- 版型 ----------
 const typeConfigs = computed(() => configs.value.filter(c => c.docType === docType.value));
 const configOptions = computed(() => ([
-  { id: '__default', name: '系統預設版型（重現舊表格式）' },
+  { id: '__default', name: '系統預設版型' },
   ...typeConfigs.value.map(c => ({ id: c.id, name: c.isDefault ? `★ ${c.name}` : c.name })),
 ]));
 
 function defaultConfigOf(type) {
-  if (type === 'claim') return defaultClaimConfig(props.settings);
-  if (type === 'bonus') return defaultBonusConfig(props.settings);
+  if (type === 'claim') return defaultClaimConfig(exportSettings.value);
+  if (type === 'bonus') return defaultBonusConfig(exportSettings.value);
   return defaultPersonConfig(props.settings);
 }
 
@@ -351,7 +353,7 @@ watch(docType, (t) => {
 
 async function loadConfigs() {
   try {
-    configs.value = await fetchCommissionExportConfigs(props.projectId);
+    configs.value = (await fetchCommissionExportConfigs(props.projectId)).filter(belongsToPlan);
     const def = typeConfigs.value.find(c => c.isDefault);
     if (def) selectedConfigId.value = def.id;
   } catch (e) {
@@ -360,7 +362,7 @@ async function loadConfigs() {
 }
 async function loadPayouts() {
   try {
-    payouts.value = await fetchRetentionPayouts(props.projectId);
+    payouts.value = (await fetchRetentionPayouts(props.projectId)).filter(belongsToPlan);
   } catch (e) {
     console.error('[CommissionExportCenter] 載入保留款發還失敗:', e);
   }
@@ -374,13 +376,13 @@ const claimModel = computed(() => {
   if (isPerson.value || !activeRecords.value.length) return null;
   const cfg = docType.value === 'claim' ? currentConfig.value : projectDefaultClaimConfig();
   return buildClaimModel(activeRecords.value, {
-    settings: props.settings, config: cfg, period: period.value, projectName: props.projectName,
+    settings: exportSettings.value, config: cfg, period: period.value, projectName: exportProjectName.value,
   });
 });
 
 function projectDefaultClaimConfig() {
   const def = configs.value.find(c => c.docType === 'claim' && c.isDefault);
-  return def?.config || defaultClaimConfig(props.settings);
+  return def?.config || defaultClaimConfig(exportSettings.value);
 }
 
 const bonusModel = computed(() => {
@@ -388,10 +390,10 @@ const bonusModel = computed(() => {
   return buildBonusModel({
     records: activeRecords.value,
     bonusRecords: activeBonusRows.value,
-    settings: props.settings,
+    settings: exportSettings.value,
     config: currentConfig.value,
     period: period.value,
-    projectName: props.projectName,
+    projectName: exportProjectName.value,
     projectId: props.projectId,
     personnelOrder: personnelOrder.value,
   });
@@ -428,11 +430,11 @@ const personModels = computed(() => {
       bonusRecords: props.bonusRecords,
       payouts: payouts.value,
       personnel: props.personnel,
-      settings: props.settings,
+      settings: exportSettings.value,
       config: currentConfig.value,
       periods: periods.value,
       personKey,
-      projectName: props.projectName,
+      projectName: exportProjectName.value,
       projectId: props.projectId,
     }));
 });
@@ -471,8 +473,8 @@ watch([docType, period, periods, claimModel, bonusModel, personModels], () => {
     else {
       const pattern = String(currentConfig.value.fileNamePattern || '').replace(/[-_－ ]?\{姓名\}/g, '');
       fileName.value = withProjectName(fillPattern(pattern, {
-        projectName: props.projectName, shortName: props.settings.projectShortName || '', period: periodsLabel(periods.value, true),
-      }) || '獎金明細', props.projectName);
+        projectName: exportProjectName.value, shortName: props.settings.projectShortName || '', period: periodsLabel(periods.value, true),
+      }) || '獎金明細', exportProjectName.value);
     }
     return;
   }
@@ -557,7 +559,7 @@ async function downloadPdf() {
       const models = personModels.value;
       const results = [];
       for (const m of models) {
-        const res = await generateCommissionPdfAPI({ projectId: props.projectId, docType: 'person', payload: await personPdfPayload(m) });
+        const res = await generateCommissionPdfAPI({ projectId: props.projectId, planId: planId.value, docType: 'person', payload: await personPdfPayload(m) });
         if (!res?.ok) throw new Error(`${m.person.name} PDF 產製失敗`);
         results.push({ name: res.fileName || `${m.fileName}.pdf`, blob: base64ToBlob(res.base64, res.mimeType) });
       }
@@ -574,6 +576,7 @@ async function downloadPdf() {
     const model = docType.value === 'claim' ? claimModel.value : bonusModel.value;
     const res = await generateCommissionPdfAPI({
       projectId: props.projectId,
+      planId: planId.value,
       docType: docType.value,
       payload: {
         fileName: fileName.value || 'export',
@@ -643,7 +646,8 @@ async function sendEmails() {
       try {
         await sendCommissionPersonEmailAPI({
           projectId: props.projectId,
-          projectName: props.projectName,
+      planId: planId.value,
+          projectName: exportProjectName.value,
           to: r.email.trim(),
           personName: r.name,
           subject: emailSubject.value,
@@ -677,7 +681,7 @@ function editTemplate() {
 
 async function saveConfig(data) {
   try {
-    const docId = data.id || `${props.projectId}_${docType.value}_${Date.now()}`;
+    const docId = data.id || `${props.projectId}_${planId.value}_${docType.value}_${Date.now()}`;
     // 同 docType 只能有一個預設
     if (data.isDefault) {
       for (const c of typeConfigs.value) {
@@ -688,6 +692,7 @@ async function saveConfig(data) {
     }
     await setCommissionExportConfig(docId, {
       projectId: props.projectId,
+      planId: planId.value,
       docType: docType.value,
       name: data.name,
       isDefault: !!data.isDefault,
@@ -723,7 +728,7 @@ async function deleteConfig() {
 }
 
 // ---------- 全域範本 ----------
-const globalTemplatesOfType = computed(() => globalTemplates.value.filter(t => t.docType === docType.value));
+const globalTemplatesOfType = computed(() => globalTemplates.value.filter(t => t.docType === docType.value && (t.priceBasis || 'house') === plan.value.priceBasis));
 
 async function openGlobalPicker() {
   globalPickerOpen.value = true;
@@ -757,7 +762,8 @@ async function saveAsGlobal() {
     await setCommissionExportTemplate(`${docType.value}_${Date.now()}`, {
       docType: docType.value,
       name,
-      description: `由「${props.projectName}」上傳`,
+      priceBasis: plan.value.priceBasis,
+      description: `由「${props.projectName}／${plan.value.name}」上傳`,
       config: JSON.parse(JSON.stringify(target.config)),
       createdBy: userStore.user?.name || '',
     });
@@ -773,7 +779,7 @@ function selectPeriod(p) {
   period.value = toNum(p);
   periods.value = [toNum(p)];
 }
-defineExpose({ selectPeriod });
+defineExpose({ selectPeriod, hasDraft: computed(() => editorOpen.value) });
 </script>
 
 <style scoped>
