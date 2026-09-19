@@ -15,8 +15,9 @@ const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 每 5 分鐘檢查一次
  * Hash router：query 放在 # 之前，reload 後仍停留在原頁面路徑。
  */
 export function forceReloadToLatest() {
-  const { origin, pathname, hash } = window.location;
-  window.location.replace(`${origin}${pathname}?_v=${Date.now()}${hash}`);
+  const url = new URL(window.location.href);
+  url.searchParams.set('_v', String(Date.now()));
+  window.location.replace(url.href);
 }
 
 /** 抓取線上 manifest.json 的版本號；失敗回傳 null（視為無新版本） */

@@ -1,10 +1,13 @@
 <template>
-  <component :is="layoutComponent">
-    <router-view />
-  </component>
+  <Suspense @resolve="finishStartup">
+    <component :is="layoutComponent">
+      <router-view />
+    </component>
+    <template #fallback><div role="status" class="pa-6 text-center">正在載入頁面…</div></template>
+  </Suspense>
 
   <!-- ✅ [新增] 版本強制更新對話框：useVersionCheck 偵測到新版本（前景）時開啟 -->
-  <UpdateDialog :model-value="needUpdate" :latest-version="latestVersion" />
+  <UpdateDialog v-if="needUpdate" :model-value="needUpdate" :latest-version="latestVersion" />
 
   <v-dialog
     v-model="sessionErrorDialog"
@@ -53,9 +56,9 @@ import { useUserStore } from '@/store/user';
 import { db } from '@/firebase'; 
 import { doc, onSnapshot } from 'firebase/firestore'; 
 import { useToast } from 'vue-toastification'; 
-import DefaultLayout from './layouts/DefaultLayout.vue';
-import SystemBugReport from '@/components/SystemBugReport.vue';
-import UpdateDialog from '@/components/UpdateDialog.vue';
+import { DefaultLayout } from './layouts';
+const SystemBugReport = defineAsyncComponent(() => import('@/components/SystemBugReport.vue'));
+const UpdateDialog = defineAsyncComponent(() => import('@/components/UpdateDialog.vue'));
 import { useVersionCheck } from '@/composables/useVersionCheck';
 
 // ✓ 步驟二：建立 router 實例
@@ -87,21 +90,10 @@ const reloadPage = () => {
 };
 
 // 系統問題回報浮動按鈕：不顯示於 Landing Page（首頁）
-const showBugReport = computed(() => route.name !== 'LandingPage');
+const showBugReport = computed(() => !!route.name && route.name !== 'LandingPage');
 
-const layoutComponent = computed(() => {
-  const layout = route.meta.layout;
-  if (layout) {
-    // 如果 layout 是一個函式 (代表它是 () => import(...) 的動態引入)，就用 defineAsyncComponent
-    if (typeof layout === 'function') {
-      return defineAsyncComponent(layout);
-    }
-    // 如果 layout 不是函式 (代表它是一個 import ... from ... 的靜態引入元件)，就直接使用它
-    return layout;
-  }
-  // 如果路由沒有指定 layout，使用預設的 DefaultLayout (靜態引入)
-  return DefaultLayout;
-});
+const layoutComponent = computed(() => route.meta.layout || DefaultLayout);
+const finishStartup = () => window.__anxiStartup?.finish();
 
 // PWA 已停用：原本的 useRegisterSW / needRefresh 邏輯（stub no-op、永不觸發）已移除，
 // 版本更新改由上方 useVersionCheck 負責。
@@ -119,9 +111,14 @@ onMounted(() => {
   }
   // --- 新增的 LIFF 重新導向處理邏輯 END ---
 
-  // 保留您原本的邏輯
-  projectStore.fetchProjects();
 });
+
+// 靜態公開頁與登入頁不需要全建案列表；切到需要資料的頁面後再載入。
+watch(() => route.name, (name) => {
+  if (name && !['LandingPage', 'Login', 'PrivacyPolicy', 'TermsOfService'].includes(name)) {
+    projectStore.fetchProjects();
+  }
+}, { immediate: true });
 
 let unsubscribe = null; 
 

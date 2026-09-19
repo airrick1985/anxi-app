@@ -7,10 +7,7 @@ import { forceReloadToLatest } from '@/composables/useVersionCheck';
 
 
 
-// DefaultLayout 在 App.vue 已靜態 import 作為預設 layout，router 這裡也用靜態 import
-// 避免 Vite 警告 "dynamic import will not move module into another chunk"
-import DefaultLayout from '@/layouts/DefaultLayout.vue';
-const PublicLayout = () => import('@/layouts/PublicLayout.vue');
+import { DefaultLayout, PublicLayout } from '@/layouts';
 
 // --- 保持您原有的延遲載入 View 元件 ---
 const InspectionManagement = () => import('@/views/InspectionManagement.vue');

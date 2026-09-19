@@ -115,7 +115,7 @@
       </v-container>
     </v-footer>
     
-    <EditProfileDialog v-model:dialog="dialog" @start-loading="loading = true" @stop-loading="loading = false" @notify="showSnackbar" />
+    <EditProfileDialog v-if="dialog" v-model:dialog="dialog" @start-loading="loading = true" @stop-loading="loading = false" @notify="showSnackbar" />
 
         <v-dialog v-model="logoutDialog" persistent max-width="300">
         <v-card>
@@ -219,7 +219,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, defineAsyncComponent } from 'vue';
 import { useFullscreen } from '../composables/useFullscreen';
 import { storeToRefs } from 'pinia';
 import { useUserStore } from '../store/user';
@@ -227,14 +227,14 @@ import { useUiStore } from '../store/uiStore';
 import { useRouter, useRoute } from 'vue-router';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
 import { getLatestRelease, fetchUnreadMessageCount } from '@/api';
-import EditProfileDialog from '../components/EditProfileDialog.vue';
-import MortgageCalculator from '../components/MortgageCalculator.vue';
+const EditProfileDialog = defineAsyncComponent(() => import('../components/EditProfileDialog.vue'));
+const MortgageCalculator = defineAsyncComponent(() => import('../components/MortgageCalculator.vue'));
 import { appVersion as versionString } from '@/version';
 import { useAutoLogout } from '../composables/useAutoLogout';
 import { useHomeFeatures } from '@/composables/useHomeFeatures';
 
 // 引入我們的新元件
-import AiAssistant from '../components/AiAssistant.vue';
+const AiAssistant = defineAsyncComponent(() => import('../components/AiAssistant.vue'));
 
 // 只要這行程式碼執行，就會開始監聽並計時
 const { showIdleWarning, remainingSeconds, keepAlive, performLogout } = useAutoLogout();

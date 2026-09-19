@@ -105,7 +105,7 @@
   // 對話框開啟時抓取更新內容（未登入不抓，避免內部更新內容出現在客戶端的網路請求中）
   watch(() => props.modelValue, (isOpen) => {
     if (isOpen && canSeeReleaseNotes.value) fetchReleaseNotes();
-  });
+  }, { immediate: true });
   </script>
   
   <style scoped>

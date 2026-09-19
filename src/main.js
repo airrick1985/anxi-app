@@ -85,4 +85,10 @@ app
     // 如果 registerSW 執行時 Toast 還未完全初始化，直接使用 confirm 可能更可靠
     // 或者將 Toast 實例傳遞給 registerSW
   })
-  .mount('#app')
+
+
+// 等待目前路由解析完成；HTML 啟動畫面持續顯示到 layout 完成掛載。
+router.isReady().then(() => app.mount('#app')).catch((error) => {
+  console.error('[Startup] 頁面載入失敗:', error);
+  window.__anxiStartup?.fail();
+});

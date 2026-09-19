@@ -1,12 +1,12 @@
 {
   "name": "anxi-app",
-  "version": "1.0.753",
+  "version": "1.0.754",
   "private": true,
   "scripts": {
     "dev": "vite",
     "build": "npm run update:manifest-version && npm run generate:release-notes && vue-tsc --noEmit && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
-    "deploy": "npm run build && gh-pages -d dist",
-    "build-and-deploy": "npm run build && npm run deploy",
+    "deploy": "npm run build && node scripts/deploy.js",
+    "build-and-deploy": "npm run deploy",
     "build-and-push": "npm run build && git add . && git commit -m \"更新 $(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S')\" && git push",
     "bump-version": "node scripts/bumpVersion.js",
     "build:land-sections": "node scripts/fetch-land-sections.mjs",
@@ -15,7 +15,8 @@
     "generate:release-notes": "node scripts/generateReleaseNotes.js",
     "release:github-pages": "npm run bump-version && npm run update:manifest-version && npm run generate:release-notes && node scripts/releaseCommit.js --date && git push && npm run deploy",
     "release:publish": "npm run bump-version && npm run update:manifest-version && npm run generate:release-notes && node scripts/releaseCommit.js && git push && npm run deploy",
-    "release:safe": "git pull --rebase origin main && npm run release:publish"
+    "release:safe": "git pull --rebase origin main && npm run release:publish",
+    "verify:startup": "node --test scripts/tests/deploy.test.js && node scripts/verify-startup.mjs"
   },
   "dependencies": {
     "@andy922200/vue-tw-zip-code-selector": "^1.0.1",
@@ -105,6 +106,7 @@
     "sass-embedded": "^1.93.2",
     "vite": "^6.3.1",
     "vite-plugin-pwa": "^1.0.0",
+    "vite-plugin-vuetify": "^2.1.3",
     "vue-tsc": "^2.0.21"
   },
   "homepage": "https://airrick1985.github.io/anxi-app/",
