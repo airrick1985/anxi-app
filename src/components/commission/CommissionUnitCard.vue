@@ -31,9 +31,16 @@
           <span class="metric-note">{{ hasValidFloor && entry.finance.spread < 0 ? '低於底價' : '成交總價－總底價' }}</span>
         </div>
         <div class="finance-metric">
-          <dt>佣金比例<span class="metric-unit">%</span></dt>
-          <dd>{{ fmtWan(entry.commPct, 4) }}</dd>
-          <span class="metric-note">折數計算用</span>
+          <dt>本筆可單獨調整</dt>
+          <dd class="commission-rate-input">
+            <v-text-field v-model.number="entry.commPct" label="佣金比例(%)" :aria-label="`${entry.unitId} 佣金比例(%)`"
+              type="number" step="0.01" variant="outlined" density="compact" hide-details />
+          </dd>
+          <div class="d-flex align-center flex-wrap ga-1">
+            <span class="metric-note">{{ customCommPct ? '本筆自訂' : '方案預設' }} · 預設 {{ fmtWan(defaultCommPct, 4) }}%</span>
+            <v-btn v-if="customCommPct" size="x-small" variant="text" color="primary"
+              :aria-label="`${entry.unitId} 佣金比例還原預設`" @click="entry.commPct = defaultCommPct">還原預設</v-btn>
+          </div>
         </div>
         <div class="finance-metric">
           <dt>本次請佣比例<span class="metric-unit">%</span></dt>
@@ -111,11 +118,6 @@
 
             <v-expand-transition>
               <v-row v-if="showAdvanced" dense class="mt-1 adv-row">
-              <v-col cols="6" sm="4" md="3" lg="2">
-                <v-text-field v-model.number="entry.commPct" label="佣金比例(%)" type="number" step="0.01" variant="outlined" density="compact"
-                  :hint="entry.unit.isPreferredPayment ? '優付戶預設減半' : '折數計算用'" persistent-hint></v-text-field>
-              </v-col>
-
                 <v-col cols="12" sm="6" md="4">
                   <v-text-field v-model.number="entry.partyAFee" :label="`${settings.partyALabel}(元)`" type="number" variant="outlined" density="compact"
                     hint="計入獎金折數，會降低所有獎金" persistent-hint></v-text-field>
@@ -436,6 +438,8 @@ const hasValidFloor = computed(() => {
   const value = props.entry.manualFloor;
   return value !== null && value !== undefined && String(value).trim() !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
 });
+const defaultCommPct = computed(() => resolveCommPct(props.settings, !!props.entry.unit.isPreferredPayment));
+const customCommPct = computed(() => toNum(props.entry.commPct) !== defaultCommPct.value);
 const totalPct = computed(() => props.claimedPct + toNum(props.entry.ratioPct));
 const ratioOver = computed(() => totalPct.value > 100.0001);
 const unitSalesText = computed(() => normalizeNames(props.entry.unit.salesperson).join('、'));
@@ -447,7 +451,6 @@ const editingPeople = ref(false);
 const showNote = ref(false);
 const advancedSummary = computed(() => {
   const parts = [];
-  if (toNum(props.entry.commPct) !== resolveCommPct(props.settings, !!props.entry.unit.isPreferredPayment)) parts.push(`佣金 ${props.entry.commPct}%`);
   if (toNum(props.entry.partyAFee)) parts.push(`${props.settings.partyALabel} ${money(props.entry.partyAFee)}`);
   if (toNum(props.entry.partyBFee)) parts.push(`${props.settings.partyBLabel} ${money(props.entry.partyBFee)}`);
   if (toNum(props.entry.keepPct) !== toNum(props.settings.defaultKeepPct)) parts.push(`保留款 ${props.entry.keepPct}%`);
@@ -534,6 +537,11 @@ function segmentOf(p, contractDate) {
 function qualified(p, contractDate) {
   return segmentOf(p, contractDate).matched;
 }
+/** 團隊類別職務條件：有設定對應職務者採精確比對；未設定則沿用預設關鍵字（專案／副專／銷售） */
+function teamRoleOk(p, cat) {
+  if ((cat?.rolePositions || []).length) return matchesRolePositions(p.positions, cat.rolePositions);
+  return (p.positions || []).some(pos => ['專案', '副專', '銷售'].some(r => String(pos).includes(r)));
+}
 
 const poolOptionsByCat = computed(() => {
   const map = {};
@@ -546,7 +554,7 @@ const poolOptionsByCat = computed(() => {
         .map(p => ({ personKey: personKeyOf(p), name: p.name, hint: '', disabled: false }));
     } else if (cat.mode === 'team') {
       list = props.localPersonnel
-        .filter(p => (p.positions || []).some(pos => ['專案', '副專', '銷售'].some(r => String(pos).includes(r))))
+        .filter(p => teamRoleOk(p, cat))
         .map(p => {
           const { segment: seg, matched: ok } = segmentOf(p, contractDate);
           return {
@@ -633,7 +641,9 @@ function applyTeamDefaults() {
       const { segment: seg, matched } = segmentOf(p, contractDate);
       const groups = Array.isArray(seg?.teamGroupKeys) ? seg.teamGroupKeys : [];
       const inSite = groups.some(g => props.entry.teamSiteKeys.includes(g));
-      if (inSite && matched) sel.push(p);
+      // 團獎分組 且 職務符合（類別未設對應職務時不限職務）
+      const roleOk = (cat.rolePositions || []).length ? matchesRolePositions(p.positions, cat.rolePositions) : true;
+      if (inSite && matched && roleOk) sel.push(p);
     });
     const allocations = sel.map(p => {
       ensureLocalProfile(personKeyOf(p), p.name);
@@ -753,6 +763,7 @@ function onPickPerson(person) {
 }
 .finance-summary { flex-basis: 100%; width: 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 4px; }
 .finance-metric { min-width: 0; }
+.finance-metric dd.commission-rate-input { margin-top: 10px; margin-bottom: 4px; }
 .finance-metric dt { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: #555; }
 .metric-unit { font-size: 11px; color: #666; }
 .finance-metric dd { margin: 2px 0; font-size: 22px; line-height: 1.25; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

@@ -281,3 +281,24 @@ test('一般及配套可重複改名：隔離建案、保留全部歷史帳務�
     await assert.rejects(h.submit(planId, { period: 3, ratioPct: 1 }), /100/);
   }
 });
+
+test('同批請佣各戶採用個別佣金比例，未指定者沿用方案預設，且不改寫設定', async () => {
+  const h = harness();
+  const settingsPath = `commissionSettings/${planDocumentId(projectId, 'package')}`;
+  const before = JSON.stringify(h.rows.get(settingsPath));
+  for (const id of ['A-1', 'A-2', 'A-3']) {
+    h.rows.set(`salesHouseholds/${projectId}_${id}`, { ...unit, unitId: id });
+    h.rows.set(`salesParkings/${id}`, { ...parking, buyerUnitId: id });
+  }
+  const response = await h.call('submitCommissionEntries', {
+    planId: 'package',
+    entries: ['A-1', 'A-2', 'A-3'].map((unitId, index) => ({
+      unitId, period: 1, ratioPct: 100, manualFloor: 80, categories: {},
+      ...(index < 2 ? { commPct: [1.25, 4.5][index] } : {}),
+    })),
+  });
+  const records = response.results.map(r => h.rows.get(`commissionRecords/${r.recordId}`));
+  assert.deepEqual(records.map(r => r.commPct), [1.25, 4.5, 3]);
+  assert.deepEqual(records.map(r => r.calc.realClaim), [10000, 36000, 24000]);
+  assert.equal(JSON.stringify(h.rows.get(settingsPath)), before);
+});

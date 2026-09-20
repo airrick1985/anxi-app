@@ -75,7 +75,7 @@
         </v-card-title>
         <v-card-text>
           <ul class="text-caption text-medium-emphasis mb-3 cat-hints">
-            <li><b>發放方式</b>：依職務＝發給符合職務的人；個人＝發給該戶銷售；團隊＝依團獎分組發放。</li>
+            <li><b>發放方式</b>：依職務＝發給符合職務的人；個人＝發給該戶銷售；團隊＝依團獎分組發放；若另設對應職務，需分組與職務同時符合。</li>
             <li><b>自個獎提撥</b>（交屋團獎）：自「來源類別」（預設銷售個獎）的獎金池提撥「比例(%)」，本期不發放、不分配給人員，暫留供日後另行製作交屋獎金；來源類別以提撥後的餘額分配。</li>
             <li><b>對應職務</b>：可多選，選項是本建案人員的職務；沒有的職務可直接打字新增。</li>
             <li>不用的類別請「停用」，不要刪除，歷史資料才會保留。</li>
@@ -113,7 +113,7 @@
                       item-title="title" item-value="value" variant="outlined" density="compact" hide-details
                       placeholder="來源類別（預設：個人類別）" clearable></v-select>
                     <v-combobox v-else v-model="cat.rolePositions" :items="projectPositions" multiple chips closable-chips
-                      variant="outlined" density="compact" hide-details :disabled="cat.mode !== 'role'"
+                      variant="outlined" density="compact" hide-details :disabled="cat.mode !== 'role' && cat.mode !== 'team'"
                       placeholder="選擇或輸入" no-data-text="本建案尚未設定人員職務，可直接輸入新增"
                       :delimiters="[',', '，', '、']">
                       <template #chip="{ item, props: chipProps }">
