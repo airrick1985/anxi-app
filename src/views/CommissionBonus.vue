@@ -18,21 +18,23 @@
         label="請佣方案" variant="outlined" density="comfortable" hide-details
         style="max-width: 320px" :disabled="isLoading || switchingPlan" @update:model-value="switchPlan" />
       <v-btn variant="text" prepend-icon="mdi-plus" :disabled="isLoading || switchingPlan" @click="openPlanDialog()">新增方案</v-btn>
-      <v-btn variant="text" prepend-icon="mdi-pencil-outline" :disabled="isLoading || switchingPlan" @click="openPlanDialog(activePlan)">編輯方案</v-btn>
+      <v-btn variant="text" prepend-icon="mdi-pencil-outline" :disabled="isLoading || switchingPlan" @click="openPlanDialog(activePlan, true)">修改名稱</v-btn>
+      <v-btn v-if="!isBuiltInPlan(selectedPlanId)" variant="text" :disabled="isLoading || switchingPlan" @click="openPlanDialog(activePlan)">管理方案</v-btn>
       <span class="text-body-2 text-medium-emphasis">{{ activePlan.priceBasis === 'package' ? '配套價格，不計車位' : '房屋價格，含車位' }}｜請佣與獎金獨立計算，額度 100%</span>
     </div>
     <v-dialog v-model="planDialog" max-width="480" :persistent="savingPlan">
-      <v-card :title="planForm.id ? '編輯請佣方案' : '新增請佣方案'">
+      <v-card :title="renameOnly ? '修改方案名稱' : (planForm.id ? '編輯請佣方案' : '新增請佣方案')">
         <v-card-text>
-          <v-text-field v-model="planForm.name" label="方案名稱" placeholder="例如：裝修請佣" maxlength="30" variant="outlined" />
-          <v-select v-model="planForm.priceBasis" label="採用價格" :items="[{ title: '配套價格（不含車位）', value: 'package' }, { title: '房屋價格（含車位）', value: 'house' }]" variant="outlined" :disabled="planLocked" />
-          <p v-if="planLocked" class="text-caption text-medium-emphasis">內建或已使用的方案只能修改名稱，保留價格來源與歷史帳務。</p>
+          <v-text-field v-model="planForm.name" label="方案名稱" placeholder="例如：裝修請佣" maxlength="30" counter="30" variant="outlined" :disabled="savingPlan" />
+          <v-alert v-if="planForm.id" type="info" variant="tonal" density="compact" class="mb-4">名稱只儲存於「{{ projectName }}」，可隨時再修改。既有請佣、獎金、保留款與額度紀錄保持不變；畫面及重新匯出的報表使用新名稱，歷史紀錄保留建立時的名稱。</v-alert>
+          <v-select v-if="!renameOnly" v-model="planForm.priceBasis" label="採用價格" :items="[{ title: '配套價格（不含車位）', value: 'package' }, { title: '房屋價格（含車位）', value: 'house' }]" variant="outlined" :disabled="planLocked" />
+          <p v-if="planLocked && !renameOnly" class="text-caption text-medium-emphasis">內建或已使用的方案只能修改名稱，保留價格來源與歷史帳務。</p>
         </v-card-text>
         <v-card-actions>
-          <v-btn v-if="planForm.id && !isBuiltInPlan(planForm.id)" color="error" variant="text" :disabled="savingPlan || planHasData(planForm.id)" :loading="deletingPlan" @click="removePlan">刪除方案</v-btn>
+          <v-btn v-if="!renameOnly && planForm.id && !isBuiltInPlan(planForm.id)" color="error" variant="text" :disabled="savingPlan || planHasData(planForm.id)" :loading="deletingPlan" @click="removePlan">刪除方案</v-btn>
           <v-spacer />
           <v-btn :disabled="savingPlan" @click="planDialog = false">取消</v-btn>
-          <v-btn color="primary" :loading="savingPlan" :disabled="!planForm.name.trim()" @click="savePlan">{{ planForm.id ? '儲存方案' : '建立方案' }}</v-btn>
+          <v-btn color="primary" :loading="savingPlan" :disabled="!planForm.name.trim()" @click="savePlan">{{ renameOnly ? '儲存名稱' : (planForm.id ? '儲存方案' : '建立方案') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -97,6 +99,9 @@
       <v-window-item value="export">
         <CommissionExportCenter
           ref="exportCenterRef"
+          :all-records="allRecords"
+          :all-bonus-records="allBonusRecords"
+          :plans="plans"
           :project-id="projectId"
           :project-name="projectName"
           :settings="settings"
@@ -187,6 +192,7 @@ const bonusRecords = computed(() => allBonusRecords.value.filter(r => planIdOf(r
 const workbenchRef = ref(null);
 const settingsRef = ref(null);
 const planDialog = ref(false);
+const renameOnly = ref(false);
 const savingPlan = ref(false);
 const deletingPlan = ref(false);
 const planForm = ref({ id: '', name: '', priceBasis: 'package' });
@@ -201,7 +207,8 @@ function planHasData(id) {
     || allBonusRecords.value.some(r => planIdOf(r) === id)
     || ledgers.value.some(l => planIdOf(l) === id && toNum(l.claimedRatioPct) > 0);
 }
-function openPlanDialog(plan = null) {
+function openPlanDialog(plan = null, nameOnly = false) {
+  renameOnly.value = !!plan && nameOnly;
   planForm.value = plan ? { id: plan.id, name: plan.name, priceBasis: plan.priceBasis } : { id: '', name: '', priceBasis: 'package' };
   planDialog.value = true;
 }
@@ -231,7 +238,7 @@ async function savePlan() {
   try {
     if (id) {
       const current = plans.value.find(p => p.id === id);
-      const basis = planLocked.value ? current.priceBasis : priceBasis;
+      const basis = renameOnly.value || planLocked.value ? current.priceBasis : priceBasis;
       if (basis !== current.priceBasis && hasDraft() && !window.confirm('變更價格來源將捨棄尚未儲存的變更，確定變更？')) return;
       const plan = { id, name, priceBasis: basis };
       await updateCommissionPlan(projectId.value, plan, planOperator());

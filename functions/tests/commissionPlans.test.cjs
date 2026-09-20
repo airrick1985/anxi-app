@@ -257,3 +257,27 @@ test('方案管理檢查名稱、權限，並保護未標記 used 的歷史紀�
   h.rows.set('bonusRecords/old', { projectId, planId: 'legacy', status: 'voided' });
   await assert.rejects(h.call('manageCommissionPlan', { operation: 'delete', planId: 'legacy' }), /已有請佣/);
 });
+
+test('一般及配套可重複改名：隔離建案、保留全部歷史帳務並繼續原方案請佣', async () => {
+  const h = harness();
+  for (const planId of ['general', 'package']) {
+    await h.submit(planId, { ratioPct: 40 });
+    const otherProjectRef = `commissionPlans/${planDocumentId('other-project', planId)}`;
+    h.rows.set(otherProjectRef, { projectId: 'other-project', planId, name: '其他建案名稱', priceBasis: planId === 'general' ? 'house' : 'package' });
+    const protectedRows = [...h.rows].filter(([key]) => /^(commissionRecords|bonusRecords|commissionUnitLedgers|commissionSettings|commissionExportConfigs|retentionPayouts)\//.test(key));
+    const before = JSON.stringify(protectedRows);
+    for (const name of ['首次改名', '再次改名']) {
+      await h.call('manageCommissionPlan', { operation: 'update', planId, name: `${planId}-${name}`, priceBasis: planId === 'general' ? 'house' : 'package' });
+      assert.equal(h.rows.get(`commissionPlans/${planDocumentId(projectId, planId)}`).name, `${planId}-${name}`);
+      assert.equal(h.rows.get(otherProjectRef).name, '其他建案名稱');
+      assert.equal(JSON.stringify(protectedRows.map(([key]) => [key, h.rows.get(key)])), before);
+      assert.equal(h.ledger(planId), 40);
+    }
+    const next = await h.submit(planId, { period: 2, ratioPct: 60 });
+    const record = h.rows.get(`commissionRecords/${next.results[0].recordId}`);
+    assert.equal(record.planId, planId);
+    assert.equal(record.planName, `${planId}-再次改名`);
+    assert.equal(h.ledger(planId), 100);
+    await assert.rejects(h.submit(planId, { period: 3, ratioPct: 1 }), /100/);
+  }
+});

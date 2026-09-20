@@ -20,8 +20,10 @@
       width="272"
       class="app-drawer"
     >
-      <!-- 上方留空給浮動關閉鈕（固定於視窗左上角） -->
-      <div class="drawer-top-spacer"></div>
+      <!-- 第一列：ANXI logo；左側留空給浮動關閉鈕（fixed 於視窗左上角 10px+40px），logo 與按鈕同高置中 -->
+      <div class="drawer-brand">
+        <img :src="anxiLogo" alt="ANXI 安熙智慧" class="drawer-brand__logo" @click="onMenuClick(goHome)" />
+      </div>
       <v-divider />
       <v-list density="compact" nav>
         <v-list-item v-if="user" prepend-icon="mdi-home" title="首頁" @click="onMenuClick(goHome)" />
@@ -230,6 +232,7 @@ import { getLatestRelease, fetchUnreadMessageCount } from '@/api';
 const EditProfileDialog = defineAsyncComponent(() => import('../components/EditProfileDialog.vue'));
 const MortgageCalculator = defineAsyncComponent(() => import('../components/MortgageCalculator.vue'));
 import { appVersion as versionString } from '@/version';
+import anxiLogo from '@/assets/images/anxi-logo-full.webp';
 import { useAutoLogout } from '../composables/useAutoLogout';
 import { useHomeFeatures } from '@/composables/useHomeFeatures';
 
@@ -408,9 +411,20 @@ watch(user, (newUser, oldUser) => {
   .bug-report-beacon { animation: none; }
 }
 
-/* 抽屜上緣留空，避免被浮動關閉鈕（fixed 於視窗左上）壓到第一個項目 */
-.drawer-top-spacer {
-  height: 52px;
+/* 抽屜第一列 logo：左側 58px 避開浮動關閉鈕（top:10/left:10、約 40px 寬），高度與按鈕對齊 */
+.drawer-brand {
+  height: 60px;
+  padding: 10px 16px 0 58px;
+  display: flex;
+  align-items: center;
+}
+.drawer-brand__logo {
+  display: block;
+  height: 26px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  cursor: pointer;
 }
 
 .drawer-feature-entry {

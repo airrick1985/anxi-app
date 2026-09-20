@@ -1,6 +1,6 @@
 <template>
   <div>
-    <v-alert type="info" variant="tonal" density="compact" class="mb-3">「{{ plan.name }}」的請佣總表、獎金表與個人明細獨立匯出，版型僅套用至本方案。</v-alert>
+    <v-alert type="info" variant="tonal" density="compact" class="mb-3">請佣、獎金可各自選擇方案分檔或合併。合併放在同一個 Sheet，依方案分區保留各筆資料與小計；目前方案使用下方所選版型，其他方案沿用自己的設定與預設版型。個人明細仍依目前方案匯出。</v-alert>
     <div v-if="loading" class="text-center py-10">
       <v-progress-circular indeterminate color="primary"></v-progress-circular>
     </div>
@@ -16,6 +16,18 @@
                 <v-btn value="bonus" size="small">獎金表</v-btn>
                 <v-btn value="person" size="small" prepend-icon="mdi-account-cash-outline">個人明細</v-btn>
               </v-btn-toggle>
+            </v-col>
+
+            <v-col v-if="!isPerson" cols="12" sm="4">
+              <v-select v-model="groupingMode" :items="groupingOptions" :label="docType === 'claim' ? '請佣匯出方式' : '獎金匯出方式'"
+                variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col v-if="!isPerson && groupingMode !== 'current'" cols="12">
+              <v-select v-model="selectedPlanIds" :items="plans" item-title="name" item-value="id" label="包含方案（以相同期別合併）"
+                multiple chips variant="outlined" density="compact" hide-details />
+              <div class="text-caption mt-1">此瀏覽器會分別記住本建案的請佣與獎金匯出方式。未選方案或本期無資料的方案不會匯出。</div>
+              <v-progress-linear v-if="groupingLoading" indeterminate color="primary" class="mt-2" />
+              <v-alert v-if="groupingError" type="error" density="compact" class="mt-2">{{ groupingError }}</v-alert>
             </v-col>
 
             <!-- 期別：總表/獎金表單期；個人明細可多期 -->
@@ -211,6 +223,9 @@
 </template>
 
 <script setup>
+import { combineCommissionGrids } from '@/utils/commissionExportGrouping';
+import { planIdOf } from '@/utils/commissionPlans';
+import { mergeSettings } from '@/utils/commissionCalculation';
 import { useCommissionPlan } from '@/composables/useCommissionPlan';
 const { plan, planId, belongsToPlan } = useCommissionPlan();
 import { ref, computed, watch, onMounted } from 'vue';
@@ -221,7 +236,7 @@ import { useUserStore } from '@/store/user';
 import CommissionTemplateEditor from './CommissionTemplateEditor.vue';
 import CommissionGridPreview from './CommissionGridPreview.vue';
 import {
-  fetchCommissionExportConfigs, setCommissionExportConfig, deleteCommissionExportConfig,
+  fetchCommissionSettings, fetchCommissionExportConfigs, setCommissionExportConfig, deleteCommissionExportConfig,
   fetchCommissionExportTemplates, setCommissionExportTemplate, fetchRetentionPayouts,
   generateCommissionPdfAPI, sendCommissionPersonEmailAPI,
 } from '@/api';
@@ -244,6 +259,9 @@ const props = defineProps({
   bonusRecords: { type: Array, default: () => [] },
   personnel: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
+  allRecords: { type: Array, default: () => [] },
+  allBonusRecords: { type: Array, default: () => [] },
+  plans: { type: Array, default: () => [] },
   presetPeriod: { type: Number, default: null },   // 由父層指定要帶入的期別（送出後跳轉）
 });
 
@@ -258,6 +276,46 @@ function goTemplateManager() {
 }
 
 const docType = ref('claim');
+const groupingOptions = [
+  { title: '目前方案（單獨一份）', value: 'current' },
+  { title: '所選方案分開檔案（ZIP）', value: 'separate' },
+  { title: '所選方案合併同一 Sheet', value: 'combined' },
+];
+const preferenceKey = computed(() => `commission-export-grouping:${userStore.user?.key || userStore.user?.phone || 'local'}:${props.projectId}`);
+function readGrouping() {
+  try { return JSON.parse(localStorage.getItem(preferenceKey.value) || '{}') || {}; } catch { return {}; }
+}
+const savedGrouping = readGrouping();
+const groupingModes = ref({ claim: savedGrouping.claim || 'current', bonus: savedGrouping.bonus || 'current' });
+const selectedPlanIds = ref(props.plans.map(p => p.id));
+const groupingMode = computed({
+  get: () => groupingModes.value[docType.value] || 'current',
+  set: value => { groupingModes.value[docType.value] = value; },
+});
+watch(groupingModes, value => {
+  try { localStorage.setItem(preferenceKey.value, JSON.stringify(value)); } catch { /* private browsing */ }
+}, { deep: true });
+const groupingSettings = ref({});
+const allExportConfigs = ref([]);
+const groupingError = ref('');
+const groupingLoading = ref(false);
+let groupingLoadId = 0;
+watch(() => props.plans, async plans => {
+  const loadId = ++groupingLoadId;
+  groupingLoading.value = true;
+  groupingError.value = '';
+  try {
+    const [settingsRows, templates] = await Promise.all([
+      Promise.all(plans.map(async p => [p.id, mergeSettings(await fetchCommissionSettings(props.projectId, p.id))])),
+      fetchCommissionExportConfigs(props.projectId),
+    ]);
+    if (loadId !== groupingLoadId) return;
+    groupingSettings.value = Object.fromEntries(settingsRows);
+    allExportConfigs.value = templates;
+  } catch (e) {
+    if (loadId === groupingLoadId) groupingError.value = `方案設定載入失敗：${e.message}，請重新開啟匯出中心。`;
+  } finally { if (loadId === groupingLoadId) groupingLoading.value = false; }
+}, { immediate: true });
 const period = ref(null);          // claim / bonus：單期
 const periods = ref([]);           // person：多期
 const fileName = ref('');
@@ -292,12 +350,12 @@ const isAdmin = computed(() => {
 
 const availablePeriods = computed(() => {
   const set = new Set();
-  props.records.forEach(r => { if (r.status !== 'voided') set.add(toNum(r.period)); });
+  (isPerson.value || groupingMode.value === 'current' ? props.records : props.allRecords.filter(r => selectedPlanIds.value.includes(planIdOf(r)))).forEach(r => { if (r.status !== 'voided') set.add(toNum(r.period)); });
   return [...set].sort((a, b) => b - a);
 });
 
 watch(availablePeriods, (list) => {
-  if (!list.length) return;
+  if (!list.length) { period.value = null; periods.value = []; return; }
   if (period.value === null || !list.includes(period.value)) period.value = list[0];
   periods.value = periods.value.filter(p => list.includes(p));
   if (!periods.value.length) periods.value = [list[0]];
@@ -305,7 +363,7 @@ watch(availablePeriods, (list) => {
 
 const activePeriodSet = computed(() => new Set(isPerson.value ? periods.value.map(toNum) : [toNum(period.value)]));
 const activeRecords = computed(() =>
-  props.records.filter(r => r.status !== 'voided' && activePeriodSet.value.has(toNum(r.period)))
+  (isPerson.value || groupingMode.value === 'current' ? props.records : props.allRecords.filter(r => selectedPlanIds.value.includes(planIdOf(r)))).filter(r => r.status !== 'voided' && activePeriodSet.value.has(toNum(r.period)))
 );
 const activeBonusRows = computed(() =>
   props.bonusRecords.filter(b => b.status !== 'voided' && activePeriodSet.value.has(toNum(b.period)))
@@ -361,7 +419,7 @@ const personnelOrder = computed(() => props.personnel.map(p => p.name));
 const claimModel = computed(() => {
   if (isPerson.value || !activeRecords.value.length) return null;
   const cfg = docType.value === 'claim' ? currentConfig.value : projectDefaultClaimConfig();
-  return buildClaimModel(activeRecords.value, {
+  return buildClaimModel(activeRecords.value.filter(belongsToPlan), {
     settings: exportSettings.value, config: cfg, period: period.value, projectName: exportProjectName.value,
   });
 });
@@ -374,7 +432,7 @@ function projectDefaultClaimConfig() {
 const bonusModel = computed(() => {
   if (docType.value !== 'bonus' || !activeRecords.value.length) return null;
   return buildBonusModel({
-    records: activeRecords.value,
+    records: activeRecords.value.filter(belongsToPlan),
     bonusRecords: activeBonusRows.value,
     settings: exportSettings.value,
     config: currentConfig.value,
@@ -427,10 +485,42 @@ const personModels = computed(() => {
 
 const periodsText = computed(() => periodsLabel(periods.value));
 
+const groupedDocuments = computed(() => {
+  if (isPerson.value || groupingMode.value === 'current' || groupingLoading.value || groupingError.value) return [];
+  return props.plans.filter(p => selectedPlanIds.value.includes(p.id)).flatMap(p => {
+    const records = activeRecords.value.filter(r => planIdOf(r) === p.id);
+    if (!records.length) return [];
+    const settings = { ...(p.id === planId.value ? props.settings : groupingSettings.value[p.id]), priceBasis: p.priceBasis };
+    const configOf = type => {
+      if (p.id === planId.value && type === docType.value) return currentConfig.value;
+      const configsForPlan = p.id === planId.value ? configs.value : allExportConfigs.value;
+      return configsForPlan.find(c => planIdOf(c) === p.id && c.docType === type && c.isDefault)?.config
+        || (type === 'claim' ? defaultClaimConfig(settings) : defaultBonusConfig(settings));
+    };
+    const projectName = `${props.projectName}・${p.name}`;
+    const claim = buildClaimModel(records, { settings, config: configOf('claim'), period: period.value, projectName });
+    if (docType.value === 'claim') return [{ plan: p, model: claim, grids: [buildClaimGrid(claim)] }];
+    const bonus = buildBonusModel({ records,
+      bonusRecords: props.allBonusRecords.filter(b => b.status !== 'voided' && planIdOf(b) === p.id && toNum(b.period) === toNum(period.value)),
+      settings, config: configOf('bonus'), period: period.value, projectName, projectId: props.projectId,
+      personnelOrder: personnelOrder.value,
+    });
+    return [{ plan: p, model: bonus, grids: [...(bonus.includeClaimSheet ? [buildClaimGrid(claim)] : []), ...buildBonusGrids(bonus)] }];
+  });
+});
+
 const grids = computed(() => {
   try {
     if (!activeRecords.value.length) return [];
     if (isPerson.value) return personModels.value.map(m => buildPersonGrid(m));
+    if (groupingMode.value !== 'current') {
+      const documents = groupedDocuments.value;
+      if (groupingMode.value === 'combined') {
+        const combined = combineCommissionGrids(documents.flatMap(d => d.grids), docType.value === 'claim' ? '合併請佣總表' : '合併獎金表');
+        return combined ? [combined] : [];
+      }
+      return documents.flatMap(d => d.grids.map(g => ({ ...g, name: `${d.plan.name}・${g.name}` })));
+    }
     if (docType.value === 'claim') {
       return claimModel.value ? [buildClaimGrid(claimModel.value)] : [];
     }
@@ -446,7 +536,11 @@ const grids = computed(() => {
 });
 
 // 檔名：依文件/期別/版型自動帶入，可改
-watch([docType, period, periods, claimModel, bonusModel, personModels], () => {
+watch([docType, period, periods, claimModel, bonusModel, personModels, groupingMode, groupedDocuments], () => {
+  if (!isPerson.value && groupingMode.value !== 'current') {
+    fileName.value = withProjectName(`第${period.value || ""}期_${docType.value === "claim" ? "請佣" : "獎金"}_${groupingMode.value === "combined" ? "合併" : "分檔"}`, props.projectName);
+    return;
+  }
   if (isPerson.value) {
     if (personModels.value.length === 1) fileName.value = personModels.value[0].fileName || '';
     else {
@@ -511,6 +605,13 @@ async function downloadExcel() {
       toast.success(models.length > 1 ? `已下載 ZIP（${models.length} 份 Excel）` : 'Excel 已下載');
       return;
     }
+    if (groupingMode.value === 'separate') {
+      const zip = new JSZip();
+      groupedDocuments.value.forEach(d => zip.file(`${withProjectName(fileName.value || 'export', `${d.plan.name}_${d.plan.id}`)}.xlsx`, gridsToExcelBlob(d.grids)));
+      saveBlob(await zip.generateAsync({ type: 'blob' }), `${fileName.value || 'export'}.zip`);
+      toast.success(`已下載 ZIP（${groupedDocuments.value.length} 份 Excel）`);
+      return;
+    }
     await exportGridsToExcel(grids.value, fileName.value || 'export');
     toast.success('Excel 已下載');
   } catch (e) {
@@ -550,6 +651,19 @@ async function downloadPdf() {
         saveBlob(await zip.generateAsync({ type: 'blob' }), `${fileName.value || 'export'}.zip`);
       }
       toast.success(results.length > 1 ? `已下載 ZIP（${results.length} 份 PDF）` : 'PDF 已下載');
+      return;
+    }
+    if (groupingMode.value === 'separate') {
+      const zip = new JSZip();
+      for (const d of groupedDocuments.value) {
+        const name = withProjectName(fileName.value || 'export', `${d.plan.name}_${d.plan.id}`);
+        const res = await generateCommissionPdfAPI({ projectId: props.projectId, planId: d.plan.id, docType: docType.value,
+          payload: { fileName: name, paper: d.model.paper || 'A4', orientation: d.model.orientation || 'landscape', grids: d.grids } });
+        if (!res?.ok) throw new Error(`${d.plan.name} PDF 產製失敗`);
+        zip.file(`${name}.pdf`, base64ToBlob(res.base64, res.mimeType));
+      }
+      saveBlob(await zip.generateAsync({ type: 'blob' }), `${fileName.value || 'export'}.zip`);
+      toast.success('PDF 分檔 ZIP 已下載');
       return;
     }
     const model = docType.value === 'claim' ? claimModel.value : bonusModel.value;

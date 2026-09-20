@@ -22,9 +22,10 @@ export function withProjectName(fileName, projectName) {
   return name ? `${pn}_${name}` : pn;
 }
 
-/** 匯出／預覽用建案名：一般方案用建案名；其他方案加上方案名 */
+/** 匯出／預覽用建案名：未改名的一般方案沿用舊檔名；自訂顯示名稱一併呈現。 */
 export function exportProjectNameOf(projectName, plan) {
-  return !plan || plan.id === 'general' ? String(projectName || '') : `${projectName}・${plan.name}`;
+  return !plan || (plan.id === 'general' && (!plan.name || plan.name === '一般請佣'))
+    ? String(projectName || '') : `${projectName}・${plan.name}`;
 }
 
 // ================= 請佣總表 欄位登錄表 =================
@@ -320,20 +321,20 @@ export function buildBonusModel(opts) {
       const topPersons = right.map(a => ({ personKey: a.personKey, name: a.name, sourceProjectName: a.sourceProjectName, sourceProjectId: a.sourceProjectId }));
 
       // ---- 每戶列 + 每戶每人 個獎/團獎（100%） ----
-      const perUnitPerson = {};   // unitId -> personKey -> {indiv, team}
+      const perUnitPerson = {};   // commissionRecordId -> personKey -> {indiv, team}
       g.bonusRows.forEach(b => {
         const full = b.amountsFull || b.amounts || {};
-        if (!perUnitPerson[b.unitId]) perUnitPerson[b.unitId] = {};
-        if (!perUnitPerson[b.unitId][b.personKey]) perUnitPerson[b.unitId][b.personKey] = { indiv: 0, team: 0 };
-        perUnitPerson[b.unitId][b.personKey].indiv += sumCats(full, indivKeys);
-        perUnitPerson[b.unitId][b.personKey].team += sumCats(full, teamKeys);
+        if (!perUnitPerson[b.commissionRecordId]) perUnitPerson[b.commissionRecordId] = {};
+        if (!perUnitPerson[b.commissionRecordId][b.personKey]) perUnitPerson[b.commissionRecordId][b.personKey] = { indiv: 0, team: 0 };
+        perUnitPerson[b.commissionRecordId][b.personKey].indiv += sumCats(full, indivKeys);
+        perUnitPerson[b.commissionRecordId][b.personKey].team += sumCats(full, teamKeys);
       });
 
       const sortedRecords = g.records.slice().sort((a, b) => String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true }));
       const unitRows = sortedRecords.map((r, i) => {
         const pp = {};
         topPersons.forEach(p => {
-          const v = perUnitPerson[r.unitId]?.[p.personKey] || { indiv: 0, team: 0 };
+          const v = perUnitPerson[r.id]?.[p.personKey] || { indiv: 0, team: 0 };
           pp[p.personKey] = { indiv: Math.round(v.indiv), team: Math.round(v.team) };
         });
         // 團獎人數：team 類別分配人數

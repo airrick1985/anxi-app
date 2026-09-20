@@ -1442,23 +1442,36 @@
       @view-pending="showReportReminderDialog = true"
     />
 
-    <!-- 實價登錄申報 — 角落常駐跑馬燈：不遮擋操作區、不自動消失；點擊開清單 -->
-    <button
-      v-if="currentViewMode === 'sales' && pendingReportUnits.length > 0"
-      type="button"
+    <!-- 實價登錄申報 — 角落常駐跑馬燈：不遮擋操作區、不自動消失；點擊開清單；可關閉（下次載入銷控時重新顯示） -->
+    <div
+      v-if="currentViewMode === 'sales' && pendingReportUnits.length > 0 && !isReportTickerDismissed"
       class="report-ticker"
       :class="{ 'report-ticker--overdue': overdueReportCount > 0 }"
-      :title="reportTickerText"
       aria-live="polite"
-      @click="showReportReminderDialog = true"
     >
-      <v-icon size="16" class="report-ticker__icon">mdi-file-document-alert-outline</v-icon>
-      <span class="report-ticker__viewport">
-        <span class="report-ticker__track" :style="{ animationDuration: reportTickerDuration }">
-          {{ reportTickerText }}
+      <button
+        type="button"
+        class="report-ticker__body"
+        :title="reportTickerText"
+        @click="showReportReminderDialog = true"
+      >
+        <v-icon size="16" class="report-ticker__icon">mdi-file-document-alert-outline</v-icon>
+        <span class="report-ticker__viewport">
+          <span class="report-ticker__track" :style="{ animationDuration: reportTickerDuration }">
+            {{ reportTickerText }}
+          </span>
         </span>
-      </span>
-    </button>
+      </button>
+      <button
+        type="button"
+        class="report-ticker__close"
+        title="關閉提醒"
+        aria-label="關閉提醒"
+        @click.stop="isReportTickerDismissed = true"
+      >
+        <v-icon size="14">mdi-close</v-icon>
+      </button>
+    </div>
 
     <!-- 實價登錄申報提醒清單 -->
     <v-dialog v-model="showReportReminderDialog" max-width="960" scrollable>
@@ -4627,6 +4640,8 @@ const reportTickerText = computed(() => {
   return `${text}，點此查看詳情`;
 });
 const reportTickerDuration = computed(() => `${Math.max(12, reportTickerText.value.length * 0.45)}s`);
+// 跑馬燈關閉狀態：僅存於元件內，離開銷控再進入（重新掛載）即重新顯示
+const isReportTickerDismissed = ref(false);
 
 const isRefreshing = ref(false);
 const isDevelopment = computed(() => import.meta.env.DEV);
@@ -4839,15 +4854,26 @@ const buildingHeaders = computed(() => {
   return Array.from(buildings).sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
 });
 
+// 樓層統一轉整數；無法解析（空白、B1、店面…）回傳 null，不進網格也不進 PDF payload（避免 NaN 造成 callable 編碼失敗）
+const parseFloorKey = (floor) => {
+  const n = parseInt(floor, 10);
+  return Number.isFinite(n) ? n : null;
+};
+
 const floorHeaders = computed(() => {
-  const floors = new Set(filteredHouseholds.value.map(item => parseInt(item.floor, 10)));
+  const floors = new Set();
+  for (const item of filteredHouseholds.value) {
+    const f = parseFloorKey(item.floor);
+    if (f !== null) floors.add(f);
+  }
   return Array.from(floors).sort((a, b) => b - a);
 });
 
 const gridData = computed(() => {
   const dataMap = {};
   for (const household of filteredHouseholds.value) {
-    const floor = household.floor;
+    const floor = parseFloorKey(household.floor); // 與 floorHeaders 同一 key（原本用原始字串當 key，"3F"、" 3" 會查不到）
+    if (floor === null) continue;
     const building = household.building;
     if (!dataMap[floor]) dataMap[floor] = {};
     dataMap[floor][building] = household;
@@ -6927,7 +6953,7 @@ const uploadData = async () => {
   gap: 6px;
   width: min(380px, calc(100vw - 96px));
   height: 32px;
-  padding: 0 12px 0 10px;
+  padding: 0 4px 0 10px;
   border: 1px solid rgba(251, 140, 0, 0.55);
   border-radius: 999px;
   background: rgba(255, 248, 225, 0.96);
@@ -6935,7 +6961,6 @@ const uploadData = async () => {
   font-size: 12px;
   line-height: 1;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
-  cursor: pointer;
   overflow: hidden;
   backdrop-filter: blur(4px);
   transition: box-shadow 0.15s ease;
@@ -6947,6 +6972,41 @@ const uploadData = async () => {
   border-color: rgba(211, 47, 47, 0.6);
   background: rgba(255, 235, 238, 0.96);
   color: #b71c1c;
+}
+.report-ticker__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+}
+.report-ticker__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.report-ticker__close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.08);
 }
 .report-ticker__icon {
   flex-shrink: 0;
