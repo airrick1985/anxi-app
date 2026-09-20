@@ -1434,6 +1434,14 @@
       @data-updated="handleRefreshData"
     />
 
+    <DeadlineEntryWarning
+      v-model="showReportEntryWarning"
+      :project-name="projectName"
+      :count="urgentReportCount"
+      :overdue-count="overdueReportCount"
+      @view-pending="showReportReminderDialog = true"
+    />
+
     <!-- 實價登錄申報 — 角落常駐跑馬燈：不遮擋操作區、不自動消失；點擊開清單 -->
     <button
       v-if="currentViewMode === 'sales' && pendingReportUnits.length > 0"
@@ -2307,6 +2315,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { getEffectiveQuoteFields, hasQuoteOverrides, getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
 import { toQuoteUnitData } from '@/utils/quoteUnitData';
 import QuoteFieldVisibilityDialog from '@/components/QuoteFieldVisibilityDialog.vue';
+import DeadlineEntryWarning from '@/components/RealPriceReport/DeadlineEntryWarning.vue';
 // ✅ [效能] xlsx-js-style 約 1.3MB，只有匯出 / 上傳 Excel 時才需要 → 改為動態載入，不再隨銷控頁進入時下載
 const loadXLSX = () => import('xlsx-js-style');
 import {
@@ -4606,6 +4615,9 @@ const pendingReportUnits = computed(() => {
 });
 const overdueReportCount = computed(() => pendingReportUnits.value.filter(u => u.overdue).length);
 const showReportReminderDialog = ref(false);
+const showReportEntryWarning = ref(false);
+const urgentReportCount = computed(() => pendingReportUnits.value.filter(u => u.remaining <= 7).length);
+let reportEntryChecked = false;
 // 角落跑馬燈文字：常駐顯示（sales 模式且有待申報戶別時），捲動時長依字數調整
 const reportTickerText = computed(() => {
   const total = pendingReportUnits.value.length;
@@ -4773,6 +4785,16 @@ function goToQuoteSettingsDirect() {
 const projectStore = useProjectStore();
 const projectId = computed(() => route.params.projectName);
 const currentViewMode = computed(() => route.meta.viewMode || 'sales');
+// 每次進入建案或由報價切回銷控重新檢查；即時更新與關閉清單不重播。
+watch([projectId, currentViewMode], () => {
+  reportEntryChecked = false;
+  showReportEntryWarning.value = false;
+}, { flush: 'sync' });
+watch([loading, error, urgentReportCount, projectId, currentViewMode], () => {
+  if (loading.value || error.value || currentViewMode.value !== 'sales' || reportEntryChecked) return;
+  reportEntryChecked = true;
+  showReportEntryWarning.value = urgentReportCount.value > 0;
+}, { flush: 'post' });
 
 const pageTitle = computed(() => (currentViewMode.value === 'quote' ? '報價系統' : '銷控系統'));
 const itemCount = computed(() => quoteStore.itemCount);
