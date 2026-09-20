@@ -45,7 +45,7 @@ const mocks = {
   '@/store/projectStore': `export const useProjectStore = () => ({ projectsList: [{}], idToNameMap: { fuyu1750: '富宇測試' } });`,
   '@/store/salesDataStore': `export const useSalesDataStore = () => ({ loadProjectData: async () => {}, getProjectData: () => ({
     project: { name: '富宇測試' }, personnel: [],
-    households: [{ unitId: 'C-15', contractType: '毛胚合約', buyerName: '測試買方', salesStatus_backend: '簽約', payment_contract_date: '2026/09/01', price_transaction_house: 3649, price_floor_house_total: 3400, price_package_deal: 3750 }],
+    households: [{ unitId: 'C-15', contractType: '毛胚合約', buyerName: '測試買方', salesStatus_backend: '簽約', payment_contract_date: '2026/09/01', price_transaction_house: 3649, price_floor_house_total: 3400, price_package_deal: 3750 }, { unitId: 'C-16', contractType: '一般合約', buyerName: '第二戶', salesStatus_backend: '簽約', payment_contract_date: '2026/09/01', price_transaction_house: 2000, price_floor_house_total: 1800 }],
     parkings: [{ buyerUnitId: 'C-15', spotId: 'P1', status_backend: '簽約', price_transaction: 200, price_floor: 180 }]
   }) });`,
 };
@@ -59,6 +59,8 @@ import '@mdi/font/css/materialdesignicons.css';
 import Toast from 'vue-toastification';
 import 'vue-toastification/dist/index.css';
 import Page from '/src/views/CommissionBonus.vue';
+import * as XLSX from 'xlsx-js-style';
+window.testXLSX = XLSX;
 const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:projectId', component: Page }] });
 await router.push('/fuyu1750');
 createApp({ render: () => h(components.VApp, null, { default: () => h(Page) }) }).use(router).use(createVuetify({ components, directives })).use(Toast).mount('#app');`;
@@ -101,10 +103,10 @@ try {
     const field = [...document.querySelectorAll('.v-input')].find(e => e.textContent.includes(label));
     const el = field.querySelector('input'); el.value = value; el.dispatchEvent(new Event('input', { bubbles: true }));
   }, { label, value });
-  const addUnit = async () => {
+  const addUnit = async (unitId = 'C-15') => {
     await click('新增戶別');
     await page.waitForSelector('.v-overlay--active .v-list-item');
-    await page.evaluate(() => [...document.querySelectorAll('.v-overlay--active .v-list-item')].find(e => e.innerText.includes('C-15')).click());
+    await page.evaluate(id => [...document.querySelectorAll('.v-overlay--active .v-list-item')].find(e => e.innerText.includes(id)).click(), unitId);
     await click('加入（1）');
   };
   await waitText('新增戶別'); console.log('loaded');
@@ -112,6 +114,7 @@ try {
   await waitText('配套價格，不計車位'); console.log('package selected');
   await addUnit();
   await waitText('配套價格：99 萬'); console.log('package added');
+  assert.match(await page.$eval('.finance-summary', e => e.innerText), /待填有效底價/);
   await input('配套底價（萬）', '80');
   await page.waitForFunction(() => !document.body.innerText.includes('請填寫有效的配套底價'));
   assert.match(await page.$eval('.unit-card', e => e.innerText), /15,840/);
@@ -125,12 +128,78 @@ try {
   const houseFloor = () => page.evaluate(() => [...document.querySelectorAll('.v-input')].find(e => e.textContent.includes('房屋底價（萬')).querySelector('input').value);
   assert.equal(await houseFloor(), '3570');
   await select('本次採用價格', '原成交總價（含車位）');
+  await click('計算明細');
   await page.waitForFunction(() => document.body.innerText.includes('成交總價(含車)'));
+  await click('收合明細');
   await select('本次採用價格', '配套房屋總價（含車位）');
   await waitText('配套房屋總價（含車位）：3,750 萬');
   assert.equal(await houseFloor(), '3570');
+  assert.equal(await page.$('#comm-summary'), null);
+  assert(await page.$('.submit-bar'));
+  await click('查看獎金與金額彙總');
+  await page.waitForSelector('#comm-summary');
+  await click('收合彙總');
+  await click('全部收合');
+  assert.equal(await page.$eval('.unit-toggle', e => e.getAttribute('aria-expanded')), 'false');
+  await page.$eval('.unit-toggle', e => e.click());
+  await click('其他設定');
+  assert(await page.evaluate(() => [...document.querySelectorAll('.v-input')].some(e => e.innerText.includes('佣金比例(%)'))));
+  await click('其他設定');
   await input('房屋底價（萬', '3300');
   await page.waitForFunction(() => document.body.innerText.includes('689,040'));
+  assert.deepEqual(await page.$$eval('.finance-summary dd', els => els.map(e => e.textContent.trim())), ['3,750', '3,480', '270', '2.2', '100']);
+  await input('房屋底價（萬', '3600');
+  await page.waitForFunction(() => document.querySelector('.finance-summary .text-error')?.textContent === '-30');
+  await input('房屋底價（萬', '3300');
+  await page.waitForFunction(() => !document.querySelector('.adv-row') && !document.querySelector('.claim-table') && document.querySelector('.unit-toggle').getAttribute('aria-expanded') === 'true');
+  await new Promise(resolve => setTimeout(resolve, 350));
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+  await page.screenshot({ path: '/tmp/anxi-commission-workbench-desktop.png', fullPage: false });
+  const checkStickyHeader = async () => {
+    await page.evaluate(() => {
+      const card = document.querySelector('.unit-card');
+      window.scrollTo({ top: card.getBoundingClientRect().top + window.scrollY + 250, behavior: 'instant' });
+    });
+    await page.waitForFunction(() => {
+      const header = document.querySelector('.unit-card > .card-head');
+      return Math.abs(header.getBoundingClientRect().top - parseFloat(getComputedStyle(header).top)) < 2;
+    });
+    assert(await page.$eval('.unit-card > .card-head', e => e.innerText.includes('銷售人員')));
+  };
+  await checkStickyHeader();
+
+  await page.setViewport({ width: 390, height: 844 });
+  await new Promise(resolve => setTimeout(resolve, 350));
+  await page.screenshot({ path: '/tmp/anxi-commission-workbench-mobile.png', fullPage: false });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Mobile layout must not overflow');
+  await checkStickyHeader();
+  await page.screenshot({ path: '/tmp/anxi-commission-sticky-mobile.png', fullPage: false });
+  await page.$eval('.unit-toggle', e => e.click());
+  assert.equal(await page.$eval('.unit-card > .card-head', e => getComputedStyle(e).position), 'static', 'Collapsed headers must not stick');
+  await page.$eval('.unit-toggle', e => e.click());
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+
+  await page.setViewport({ width: 1280, height: 1000 });
+  await addUnit('C-16');
+  await page.waitForFunction(() => document.querySelectorAll('.unit-toggle').length === 2);
+  assert.deepEqual(await page.$$eval('.unit-toggle', els => els.map(e => e.getAttribute('aria-expanded'))), ['false', 'true']);
+  await page.evaluate(() => {
+    const card = document.querySelectorAll('.unit-card')[1];
+    for (const input of card.querySelectorAll('.rate-input input')) { input.value = '0'; input.dispatchEvent(new Event('input', { bubbles: true })); }
+  });
+  await page.waitForFunction(() => [...document.querySelectorAll('.unit-card')[1].querySelectorAll('.allocation-editor')].every(e => !e.getClientRects().length));
+  await page.evaluate(() => [...document.querySelectorAll('.unit-card')[1].querySelectorAll('button')].find(e => e.textContent.includes('編輯人員與分配')).click());
+  await page.waitForFunction(() => document.querySelectorAll('.unit-card')[1].querySelector('.allocation-editor').getClientRects().length > 0);
+  await page.evaluate(() => {
+    const card = document.querySelectorAll('.unit-card')[1];
+    const input = card.querySelector('.rate-input input'); input.value = '1'; input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.evaluate(() => [...document.querySelectorAll('.unit-card')[1].querySelectorAll('button')].find(e => e.textContent.includes('完成設定')).click());
+  await page.waitForFunction(() => document.querySelectorAll('.unit-card')[1].querySelector('.allocation-editor').getClientRects().length > 0);
+  await page.$eval('.unit-toggle', e => e.click());
+  assert.deepEqual(await page.$$eval('.unit-toggle', els => els.map(e => e.getAttribute('aria-expanded'))), ['true', 'false']);
+  assert.equal(await houseFloor(), '3300', 'Switching cards preserves the manual floor');
+  await page.evaluate(() => [...document.querySelectorAll('.unit-card')][1].querySelector('button[title="移除此戶"]').click());
   await click('移除此戶').catch(async () => page.click('button[title="移除此戶"]'));
   await select('請佣方案', '配套請佣');
   await click('匯出中心');
@@ -215,8 +284,31 @@ try {
   await click('刪除方案');
   await waitText('「一般請佣（房屋）」的請佣總表');
   assert.deepEqual(await page.evaluate(() => window.fixture.plans.map(p => p.id)), ['general']);
+  // Real Excel upload and preview for the new package and split-house headers.
+  await select('請佣方案', '配套請佣');
+  await click('歷史匯入');
+  await waitText('配套價格、配套底價');
+  const uploadRow = row => page.evaluate(row => {
+    const XLSX = window.testXLSX;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([row]), '請佣紀錄');
+    const bytes = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], 'commission-import.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const el = document.querySelector('input[type=file]');
+    el.files = transfer.files;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }, row);
+  await uploadRow({ 期別: 1, 戶別: 'C-15', 請佣比例: 100, 合約方式: '毛胚合約', 配套價格: 99, 配套底價: 80 });
+  await waitText('實際請領(元)');
+  await page.waitForFunction(() => [...document.querySelectorAll('.history-import tbody tr')].some(r => r.innerText.includes('C-15') && r.innerText.includes('17,600')));
+  assert.ok(await page.evaluate(() => [...document.querySelectorAll('.history-import tbody tr')].some(r => r.innerText.includes('配套價格') && r.innerText.includes('99') && r.innerText.includes('80'))));
+  await select('請佣方案', '一般請佣（房屋）');
+  await waitText('非一般合約可選');
+  await uploadRow({ 期別: 1, 戶別: 'C-15', 請佣比例: 100, 合約方式: '毛胚合約', 價格來源: '配套房屋總價', '請佣總價(含車)': 3750, 房屋底價: 3300 });
+  await page.waitForFunction(() => [...document.querySelectorAll('.history-import tbody tr')].some(r => r.innerText.includes('C-15') && r.innerText.includes('3,750') && r.innerText.includes('3,480')));
   assert.deepEqual(errors, []);
-  console.log('PASS: scheme switching/CRUD, live floors, 3750/99 price bases, independent settings and claim/bonus templates, package bonus grid and filename');
+  console.log('PASS: scheme switching/CRUD, live floors, 3750/99 price bases, independent settings and claim/bonus templates, package bonus grid and filename, new Excel import headers/previews');
 } finally {
   await browser?.close();
   await server.close();

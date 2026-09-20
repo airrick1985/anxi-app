@@ -11,7 +11,7 @@ function isBuiltInPlan(planId) { return DEFAULT_PLANS.some(p => p.id === planId)
 function mergePlans(saved = []) {
   const byId = new Map((saved || []).filter(p => p?.id).map(p => [p.id, p]));
   const builtIn = DEFAULT_PLANS.map(p => ({ ...p, name: String(byId.get(p.id)?.name || '').trim() || p.name }));
-  const custom = (saved || []).filter(p => p?.id && !isBuiltInPlan(p.id) && ['house', 'package'].includes(p.priceBasis));
+  const custom = (saved || []).filter(p => p?.id && !p.deletedAt && !isBuiltInPlan(p.id) && ['house', 'package'].includes(p.priceBasis));
   return [...builtIn, ...custom];
 }
 function planDocumentId(projectId, planId = 'general') {

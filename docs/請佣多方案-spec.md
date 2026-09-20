@@ -7,7 +7,7 @@
 方案可新增、編輯、刪除：
 
 - 內建方案只能改名，價格來源固定，不可刪除。
-- 自訂方案可改名；尚無請佣、獎金紀錄且未請領額度時，可變更價格來源或刪除。刪除會一併移除該方案的設定與匯出版型。
+- 自訂方案可改名；尚無請佣、獎金紀錄且未請領額度時，可變更價格來源或刪除。刪除以標記方式移出方案清單，設定與版型不連帶清除；後端驗證無歷史資料後才允許刪除。
 - 名稱不可與其他方案重複。
 
 價格來源：
@@ -21,6 +21,14 @@
 
 以 C-15 的成交總價 3849 萬、配套房屋總價 3750 萬為例：房屋方案請佣總價 3750 萬，房屋成交價為 3750 減車位成交價；配套方案請佣總價 99 萬。手填房屋底價不含車位。
 
+## 歷史匯入
+
+- 房屋新範本新增「合約方式、價格來源、請佣總價(含車)、房屋底價」。價格來源可填「原成交總價」或「配套房屋總價」，空白時依戶別合約判定。C-15 拆價請佣總價填 3750，房屋底價不含車位。
+- 配套新範本使用「配套價格、配套底價」，移除車位欄位；C-15 配套價格填 99。
+- 檔案歷史數字優先於銷控現值；拆價房屋底價與配套底價須填歷史值。預覽列顯示合約方式、價格來源、請佣價格與總底價供核對。
+- 舊房屋格式未帶價格來源時維持原成交價邏輯；舊配套格式仍接受房屋成交價／成交總價及房屋總底價／總底價作為別名，車位金額須為 0。
+- 請佣、獎金都匯入目前方案，匯入範本檔名包含方案名稱。
+
 ## 資料與相容性
 
 - 未帶 `planId` 的歷史資料皆視為 `general`，不批次改寫舊紀錄。
@@ -28,12 +36,12 @@
 - 設定：一般方案仍使用 `commissionSettings/{projectId}`；其他方案使用 `{projectId}__plan__{planId}`。
 - Ledger：一般沿用 `{projectId}_{unitId}`；其他方案使用 `{projectId}__plan__{planId}_{unitId}`。
 - 請佣、獎金、退佣、匯入、版型、保留款及稽核紀錄帶 `planId`。退佣來源不可跨方案；整期作廢、清除、覆蓋及撤銷匯入只處理該方案。
-- 前後端需一併發布；一般及配套均使用更新後的 `submitCommissionEntries`。相關作廢、匯入及清除函式亦須更新。
+- 前後端需一併發布；一般及配套均使用更新後的 `submitCommissionEntries`。相關作廢、匯入及清除函式亦須更新，並新增發布 `manageCommissionPlan` 供方案 CRUD 使用。
 
 ## 驗證
 
 ```sh
-node --test functions/tests/commissionPlans.test.cjs
+node --test functions/tests/commissionPlans.test.cjs scripts/tests/commissionImportFinance.test.mjs
 node scripts/tests/commission-browser.mjs
 npx vue-tsc --noEmit
 npx vite build --outDir /tmp/anxi-commission-build

@@ -1,15 +1,16 @@
 <template>
-  <v-card class="mb-3 refund-card" :id="`comm-card-${entry.id}`" variant="outlined" :class="{ 'has-issue': issueCount > 0 }">
+  <v-card class="mb-3 refund-card" :id="`comm-card-${entry.id}`" variant="outlined" :class="{ 'has-issue': issueCount > 0, 'is-expanded': !entry.collapsed }">
     <!-- 標頭 -->
-    <div class="card-head d-flex align-center flex-wrap ga-2 px-4 py-2" @click="entry.collapsed = !entry.collapsed">
+    <div class="card-head d-flex align-center flex-wrap ga-2 px-4 py-2" role="button" tabindex="0" :aria-expanded="!entry.collapsed" @keydown.enter.self="$emit('toggle')" @keydown.space.prevent.self="$emit('toggle')" @click="$emit('toggle')">
       <v-icon size="small" :class="{ 'rotate-collapsed': entry.collapsed }">mdi-chevron-down</v-icon>
       <v-chip size="x-small" color="error" variant="flat">退佣</v-chip>
       <span class="text-subtitle-1 font-weight-bold text-error">{{ entry.unitId }}</span>
       <span class="text-body-2">{{ buyerName || '—' }}</span>
       <v-chip size="x-small" :color="isReleased ? 'error' : 'default'" variant="tonal">{{ statusText || '—' }}</v-chip>
+      <v-chip size="x-small" variant="tonal" :color="contractTypeColor(entry.unit?.contractType)">{{ entry.unit?.contractType || '未設定合約方式' }}</v-chip>
       <v-spacer></v-spacer>
-      <v-chip size="x-small" variant="tonal" color="error">退回 {{ money(plan.calc.thisClaim) }} 元</v-chip>
-      <v-chip v-if="entry.refundBonus" size="x-small" variant="tonal" color="deep-orange">追回獎金 {{ money(peopleTotals.net) }} 元</v-chip>
+      <strong class="text-body-1">退回 {{ money(plan.calc.thisClaim) }} 元</strong>
+      <v-chip v-if="entry.refundBonus" size="x-small" variant="tonal" color="default">追回獎金 {{ money(peopleTotals.net) }} 元</v-chip>
       <v-chip v-if="issueCount" size="x-small" color="warning" variant="flat">
         <v-icon start size="x-small">mdi-alert</v-icon>{{ issueCount }} 項待處理
       </v-chip>
@@ -84,7 +85,7 @@
           <div class="step-h mt-4">
             <span class="step-no">2</span>
             <span class="step-title">獎金追回</span>
-            <v-switch v-model="entry.refundBonus" color="deep-orange" density="compact" hide-details class="ml-2"
+            <v-switch v-model="entry.refundBonus" color="default" density="compact" hide-details class="ml-2"
               :label="entry.refundBonus ? '追回已發獎金' : '不追回獎金'"></v-switch>
             <v-spacer></v-spacer>
             <v-btn v-if="entry.refundBonus && entry.people" size="small" variant="text" prepend-icon="mdi-restore" @click="entry.people = null">恢復原數</v-btn>
@@ -156,6 +157,7 @@
 </template>
 
 <script setup>
+import { contractTypeColor } from '@/utils/contractTypeColor';
 import { computed, watch } from 'vue';
 import { money, toNum, isHandoverCategory } from '@/utils/commissionCalculation';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
@@ -167,7 +169,7 @@ const props = defineProps({
   projectId: { type: String, required: true },
   bonusRecords: { type: Array, default: () => [] },
 });
-defineEmits(['remove']);
+defineEmits(['remove', 'toggle']);
 
 const buyerName = computed(() => props.entry.unit?.buyerName || props.entry.candidates[0]?.snapshot?.buyerName || '');
 const statusText = computed(() => props.entry.unit?.salesStatus_backend || '');
@@ -259,12 +261,12 @@ function removePerson(personKey) {
 </script>
 
 <style scoped>
-.refund-card { border-radius: 12px; overflow: hidden; border-color: #e57373; }
+.refund-card { border-radius: 12px; overflow: visible; border-color: #ddd; }
 .refund-card.has-issue { border-color: #fb8c00; }
-.card-head { cursor: pointer; background: linear-gradient(180deg, #fff5f5, #fff); }
+.card-head { cursor: pointer; background: #fff; border-radius: 12px 12px 0 0; }
 .step-h { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .step-no {
-  width: 22px; height: 22px; border-radius: 50%; background: #c62828; color: #fff;
+  width: 22px; height: 22px; border-radius: 50%; background: #eee; color: #555;
   font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
 }
 .step-title { font-size: 14px; font-weight: 700; color: #334; }
@@ -273,8 +275,8 @@ function removePerson(personKey) {
 .result-strip { display: flex; flex-wrap: wrap; gap: 6px; }
 .rs-item { background: #f4f6fb; border-radius: 6px; padding: 4px 10px; min-width: 120px; }
 .rs-item label { display: block; font-size: 11px; color: #789; }
-.rs-item div { font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; color: #c62828; }
-.rs-item.hl { background: #fdecea; }
+.rs-item div { font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; color: #263238; }
+.rs-item.hl { background: #f5f5f5; }
 .rotate-collapsed { transform: rotate(-90deg); }
 .table-scroll { overflow-x: auto; }
 .src-table tbody tr { cursor: pointer; }
@@ -285,4 +287,11 @@ function removePerson(personKey) {
 .adjusted-row td { background: #fffaf3; }
 .amt-input { width: 84px; border: 1px solid #cdd8ec; border-radius: 4px; padding: 1px 4px; text-align: right; font-size: 12px; }
 .rmk-input { width: 100%; min-width: 130px; border: 1px solid #cdd8ec; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+/* 留出浮動選單按鈕的空間；標頭只在本戶卡片範圍內固定。 */
+.refund-card.is-expanded > .card-head {
+  position: sticky;
+  top: calc(var(--v-layout-top, 0px) + 56px);
+  z-index: 5;
+  box-shadow: 0 1px 0 #ddd, 0 3px 8px #0000000a;
+}
 </style>

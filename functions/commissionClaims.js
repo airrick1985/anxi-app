@@ -38,18 +38,27 @@ async function planRows_(query, planId) {
   const docs = snap.docs.filter(d => planIdOf(d.data()) === planId);
   return { docs, size: docs.length, empty: docs.length === 0 };
 }
-async function loadPlan_(db, projectId, planId) {
+function planFromSnapshot_(snap, projectId, planId) {
+  const saved = snap.exists ? snap.data() : null;
   const builtIn = DEFAULT_PLANS.find(p => p.id === planId);
+  if (saved?.deletedAt || (!saved && !builtIn) || (saved && saved.projectId !== projectId)) {
+    throw new HttpsError('failed-precondition', '找不到此建案的請佣方案，可能已刪除，請重新載入。');
+  }
+  const plan = { ...builtIn, ...saved, ...(builtIn ? { priceBasis: builtIn.priceBasis } : {}), id: planId };
+  if (!['house', 'package'].includes(plan.priceBasis)) throw new HttpsError('invalid-argument', '請佣方案價格來源不正確。');
+  return plan;
+}
+async function loadPlan_(db, projectId, planId) {
   const snap = await db.collection('commissionPlans').doc(planDocumentId(projectId, planId)).get();
-  if (builtIn) {
-    // 內建方案僅允許覆寫名稱，價格來源固定。
-    const name = snap.exists && snap.data().projectId === projectId ? String(snap.data().name || '').trim() : '';
-    return { ...builtIn, name: name || builtIn.name };
-  }
-  if (!snap.exists || snap.data().projectId !== projectId || !['house', 'package'].includes(snap.data().priceBasis)) {
-    throw new HttpsError('invalid-argument', '找不到此建案的請佣方案，請重新載入。');
-  }
-  return { ...snap.data(), id: planId };
+  return planFromSnapshot_(snap, projectId, planId);
+}
+async function markPlanUsed_(db, projectId, planId, expected) {
+  const ref = db.collection('commissionPlans').doc(planDocumentId(projectId, planId));
+  await db.runTransaction(async tx => {
+    const live = planFromSnapshot_(await tx.get(ref), projectId, planId);
+    if (live.priceBasis !== expected.priceBasis) throw new HttpsError('failed-precondition', '方案價格來源已變更，請重新載入後重試。');
+    tx.set(ref, { projectId, planId, name: live.name, priceBasis: live.priceBasis, used: true }, { merge: true });
+  });
 }
 
 const REGION = "asia-east1";
@@ -75,7 +84,7 @@ function ledgerId_(projectId, unitId, planId) {
  * 破壞性操作的權限檢查（本系統未使用 Firebase Auth，operatorKey 由前端帶入使用者 key）。
  * 通過條件：users.roles 含「超級管理員/系統管理員」，或 userPermissions[projectId].systems 含「銷控系統」。
  */
-async function ensureManagePermission_(db, operatorKey, projectId) {
+async function ensureManagePermission_(db, operatorKey, projectId, allowedSystems = ['銷控系統']) {
   if (!operatorKey) throw new HttpsError("unauthenticated", "缺少操作者識別（operatorKey）。");
   const userSnap = await db.collection("users").doc(String(operatorKey)).get();
   if (!userSnap.exists) throw new HttpsError("permission-denied", "找不到對應使用者資料。");
@@ -84,10 +93,56 @@ async function ensureManagePermission_(db, operatorKey, projectId) {
   const permSnap = await db.collection("userPermissions").doc(String(operatorKey)).get();
   const permissions = permSnap.exists ? (permSnap.data().permissions || {}) : {};
   const systems = permissions[projectId]?.systems || [];
-  if (!systems.includes("銷控系統")) {
-    throw new HttpsError("permission-denied", "您沒有此建案的「銷控系統」管理權限，無法執行此操作。");
+  if (!allowedSystems.some(system => systems.includes(system))) {
+    throw new HttpsError("permission-denied", "您沒有此建案的管理權限，無法執行此操作。");
   }
 }
+
+/** 方案 CRUD：名稱可修改；已有歷史資料時保留價格來源與方案，避免帳務失去歸屬。 */
+exports.manageCommissionPlan = onCall({ region: REGION, timeoutSeconds: 60, memory: '256MiB' }, async request => {
+  const planId = requestPlanId_(request);
+  const { projectId, operation, name, priceBasis, operatorKey, operatorName } = request.data || {};
+  if (!projectId || !['create', 'update', 'delete'].includes(operation)) throw new HttpsError('invalid-argument', '缺少建案或方案操作。');
+  const cleanName = String(name || '').trim();
+  if (operation !== 'delete' && (!cleanName || cleanName.length > 30 || !['house', 'package'].includes(priceBasis))) {
+    throw new HttpsError('invalid-argument', '請填寫 1～30 字的方案名稱及有效價格來源。');
+  }
+  const db = db_();
+  await ensureManagePermission_(db, operatorKey, projectId, ['請佣獎金', '銷控系統']);
+  const ref = db.collection('commissionPlans').doc(planDocumentId(projectId, planId));
+  const builtIn = DEFAULT_PLANS.find(p => p.id === planId);
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (operation === 'create' && (snap.exists || builtIn)) throw new HttpsError('already-exists', '此方案已存在，請重新載入。');
+    const current = operation === 'create' ? null : planFromSnapshot_(snap, projectId, planId);
+    if (builtIn && (operation === 'delete' || priceBasis !== builtIn.priceBasis)) {
+      throw new HttpsError('failed-precondition', '內建方案可修改名稱，但不能刪除或更換價格來源。');
+    }
+    const definitionSnap = await tx.get(db.collection('commissionPlans').where('projectId', '==', projectId));
+    const definitions = new Map(DEFAULT_PLANS.map(p => [p.id, p]));
+    definitionSnap.docs.forEach(d => definitions.set(d.data().planId, { ...d.data(), id: d.data().planId }));
+    if (operation !== 'delete' && [...definitions.values()].some(p => p.id !== planId && !p.deletedAt && p.name === cleanName)) {
+      throw new HttpsError('already-exists', '已有同名請佣方案，請使用不同名稱。');
+    }
+    if (current && (operation === 'delete' || priceBasis !== current.priceBasis)) {
+      // 連已作廢／匯入的歷史紀錄都保護；讀取與定義寫入同一 transaction。
+      const related = await Promise.all(['commissionRecords', 'bonusRecords', 'commissionUnitLedgers', 'retentionPayouts'].map(async collection => {
+        const rows = await tx.get(db.collection(collection).where('projectId', '==', projectId));
+        return rows.docs.some(d => planIdOf(d.data()) === planId);
+      }));
+      if (current.used || related.some(Boolean)) throw new HttpsError('failed-precondition', '此方案已有請佣、獎金或保留款紀錄，可修改名稱，但不能刪除或更換價格來源。');
+    }
+    const changed = { projectId, planId, updatedAt: FieldValue.serverTimestamp(), updatedBy: String(operatorName || '') };
+    if (operation === 'delete') {
+      // 保留刪除標記，拒絕仍使用舊方案 ID 的請佣；相關版型／設定不連帶清除。
+      tx.set(ref, { ...changed, name: current.name, priceBasis: current.priceBasis, deletedAt: FieldValue.serverTimestamp() }, { merge: true });
+    } else {
+      tx.set(ref, { ...changed, name: cleanName, priceBasis, ...(operation === 'create' ? { createdAt: FieldValue.serverTimestamp() } : {}) }, { merge: true });
+    }
+  });
+  await writeAudit_(db, { projectId, planId, action: `plan:${operation}`, operator: String(operatorName || ''), operatorKey: String(operatorKey) });
+  return { ok: true, planId };
+});
 
 /** 寫入稽核紀錄 commissionAuditLogs */
 async function writeAudit_(db, entry) {
@@ -393,6 +448,11 @@ exports.submitCommissionEntries = onCall({
   const results = [];
 
   await db.runTransaction(async (tx) => {
+    const planRef = db.collection('commissionPlans').doc(planDocumentId(projectId, planId));
+    const currentPlan = planFromSnapshot_(await tx.get(planRef), projectId, planId);
+    if (currentPlan.priceBasis !== commissionPlan.priceBasis || currentPlan.name !== commissionPlan.name) {
+      throw new HttpsError('failed-precondition', '請佣方案已變更，請重新載入後再送出。');
+    }
     results.length = 0;   // transaction 可能重試，避免結果重複累加
     // 1) 讀取所有戶別 ledger 並驗證比例（退佣為負向：先扣退佣再驗證新增）
     const ratioAdd = {};   // unitId -> 本次合計新增比例
@@ -427,6 +487,8 @@ exports.submitCommissionEntries = onCall({
         if (d.refundedBy) throw new HttpsError("failed-precondition", `退佣 ${r.rf.unitId}：原紀錄 ${sn.id} 已被退佣，未寫入任何資料。`);
       });
     }
+
+    tx.set(planRef, { projectId, planId, name: currentPlan.name, priceBasis: currentPlan.priceBasis, used: true }, { merge: true });
 
     // 2) 寫入
     prepared.forEach(p => {
@@ -739,7 +801,7 @@ exports.importCommissionHistory = onCall({
 
   const db = db_();
   await ensureManagePermission_(db, operatorKey, projectId);
-  await loadPlan_(db, projectId, planId);
+  const importPlan = await loadPlan_(db, projectId, planId);
 
   const ratioAdd = {};
   const filePeriods = new Set();
@@ -790,6 +852,7 @@ exports.importCommissionHistory = onCall({
   }
 
   const stamp = nowStamp_();
+  await markPlanUsed_(db, projectId, planId, importPlan);
   const importBatchId = `imp_${stamp}${rand3_()}`;
   const claimIds = [];
   const bt = batcher_(db);

@@ -1,5 +1,11 @@
 <template>
   <div class="history-import">
+    <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+      匯入至「{{ plan.name }}」。
+      <span v-if="plan.priceBasis === 'package'">填寫「配套價格、配套底價」，不計車位。</span>
+      <span v-else>非一般合約可選「配套房屋總價」來源；請佣總價含車位，房屋底價不含車位。</span>
+      檔案中的歷史金額優先採用，底價請填當時數值。
+    </v-alert>
     <v-alert v-if="presetPeriodValue" type="info" variant="tonal" density="compact" class="mb-3" closable @click:close="presetPeriodValue = null">
       正在<b>重新匯入第 {{ presetPeriodValue }} 期</b>：請上傳修正後的檔案，匯入時會先將第 {{ presetPeriodValue }} 期既有有效紀錄整期作廢再寫入（已自動勾選覆蓋）。
     </v-alert>
@@ -17,7 +23,7 @@
             <ul class="step-list text-body-2 text-medium-emphasis mb-3">
               <li>範本含「請佣紀錄」「獎金紀錄」「填寫說明」三個分頁</li>
               <li>可直接貼上舊系統資料：比例欄自動判斷小數（0.5）或百分比（50）格式</li>
-              <li>民國日期（115/5/23）自動轉西元；金額未填時以本案銷控現值計算</li>
+              <li>民國日期（115/5/23）自動轉西元；拆價房屋／配套底價須填寫歷史數值</li>
             </ul>
             <v-btn color="primary" variant="flat" prepend-icon="mdi-file-download-outline" @click="downloadTemplate">下載範本</v-btn>
           </v-card-text>
@@ -121,7 +127,7 @@
               <div class="table-scroll">
                 <v-table density="compact">
                   <thead>
-                    <tr><th>#</th><th>狀態</th><th>期別</th><th>戶別</th><th>請佣日期</th>
+                    <tr><th>#</th><th>狀態</th><th>期別</th><th>戶別</th><th>合約方式</th><th>價格來源</th><th class="text-right">請佣價格(萬)</th><th class="text-right">總底價(萬)</th><th>請佣日期</th>
                       <th class="text-right">請佣比例</th><th class="text-right">佣金比例</th>
                       <th class="text-right">實際請領(元)</th><th class="text-right">本次請佣(元)</th><th>訊息</th></tr>
                   </thead>
@@ -129,14 +135,19 @@
                     <tr v-for="r in shownClaimRows" :key="r._idx" :class="rowClass(r)">
                       <td>{{ r._idx + 1 }}</td>
                       <td><v-chip size="x-small" :color="statusColor(r.status)" variant="tonal">{{ statusText(r.status) }}</v-chip></td>
-                      <td>{{ r.period }}</td><td>{{ r.unitId }}</td><td>{{ r.requestDate || '—' }}</td>
+                      <td>{{ r.period }}</td><td>{{ r.unitId }}</td>
+                      <td>{{ r.snapshot?.contractType || '未設定' }}</td>
+                      <td>{{ priceSourceLabels[r.snapshot?.priceSource] || '原成交總價' }}</td>
+                      <td class="text-right">{{ toNum(r.snapshot?.dealTotal).toLocaleString('en-US', { maximumFractionDigits: 4 }) }}</td>
+                      <td class="text-right">{{ toNum(r.snapshot?.totalFloor).toLocaleString('en-US', { maximumFractionDigits: 4 }) }}</td>
+                      <td>{{ r.requestDate || '—' }}</td>
                       <td class="text-right">{{ r.ratioPct }}%</td>
                       <td class="text-right">{{ r.commPct }}%</td>
                       <td class="text-right">{{ money(r.calc?.realClaim || 0) }}</td>
                       <td class="text-right">{{ money(r.calc?.thisClaim || 0) }}</td>
                       <td class="text-caption msg-cell" :class="r.status === 'error' ? 'text-error' : 'text-orange-darken-3'">{{ r.messages.join('；') }}</td>
                     </tr>
-                    <tr v-if="!shownClaimRows.length"><td colspan="10" class="text-center text-medium-emphasis py-4">{{ showOnlyIssues ? '沒有錯誤或警告列' : '無資料' }}</td></tr>
+                    <tr v-if="!shownClaimRows.length"><td colspan="14" class="text-center text-medium-emphasis py-4">{{ showOnlyIssues ? '沒有錯誤或警告列' : '無資料' }}</td></tr>
                   </tbody>
                 </v-table>
               </div>
@@ -199,7 +210,7 @@
 </template>
 
 <script setup>
-import { computePlanFinance } from '@/utils/commissionPlans';
+import { parseImportFinance } from '@/utils/commissionImportFinance';
 import { useCommissionPlan } from '@/composables/useCommissionPlan';
 const { plan, planId } = useCommissionPlan();
 import { ref, computed, watch } from 'vue';
@@ -208,7 +219,7 @@ import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import { importCommissionHistoryAPI } from '@/api';
 import {
-  toNum, money, computeUnitFinance, calcClaim, formatDateTW, mergeSettings, round2,
+  toNum, money, calcClaim, formatDateTW, mergeSettings, round2,
 } from '@/utils/commissionCalculation';
 
 const props = defineProps({
@@ -314,12 +325,15 @@ const ratioSummary = computed(() => {
   });
 });
 
+const priceSourceLabels = { transaction: '原成交總價', splitHouse: '配套房屋總價', package: '配套價格' };
+
 // ---------- 範本 ----------
 const CLAIM_HEADERS = computed(() => ([
   '期別', '戶別', '請佣日期', '請佣比例', '佣金比例',
   mergedSettings.value.partyALabel, mergedSettings.value.partyBLabel, '保留款(%)',
-  '成交總價(含車)', '總底價', '溢差價', '房屋成交價', '車位成交總價', '房屋總底價', '車位底價',
-  '買方姓名', '簽約日期', '小訂日期', '持有車位', '銷售人員', '備註',
+  '合約方式',
+  ...(plan.value.priceBasis === 'package' ? ['配套價格', '配套底價'] : ['價格來源', '請佣總價(含車)', '房屋成交價', '車位成交總價', '房屋底價', '車位底價', '總底價', '溢差價']),
+  '買方姓名', '簽約日期', '小訂日期', ...(plan.value.priceBasis === 'package' ? [] : ['持有車位']), '銷售人員', '備註',
 ]));
 
 const BONUS_FIXED_HEADERS = ['期別', '戶別', '請佣日期', '人員姓名', '人員電話', '職務'];
@@ -336,7 +350,10 @@ function downloadTemplate() {
     ['【請佣紀錄】'],
     ['・必填：期別（數字）、戶別（需存在於本案銷控資料）、請佣比例'],
     ['・請佣比例／佣金比例：可填小數（0.5、0.022，沿用舊表）或百分比（50、2.2），系統自動判斷（≤1 視為小數）'],
-    ['・金額欄位（成交總價等）單位為「萬」，介紹費為「元」；未填時以本案銷控現值計算'],
+    ['・金額欄位單位為「萬」，介紹費為「元」。檔案金額優先，缺少成交價才取銷控現值；拆價底價須填歷史數字。'],
+    [plan.value.priceBasis === 'package' ? '・配套方案：填配套價格、配套底價，不計車位。例 C-15 配套價格填 99。' : '・房屋方案：價格來源填「原成交總價」或「配套房屋總價」。來源未填則依合約自動判定。請佣總價含車位；房屋底價不含車位，未填車位底價沿用銷控。'],
+    [plan.value.priceBasis === 'package' ? '・舊格式仍可讀取：成交總價／房屋成交價視為配套價格，總底價／房屋總底價視為配套底價；車位金額須為 0。' : '・C-15 若採配套房屋總價，請佣總價填 3750；底價請填當時房屋底價。舊格式未提供價格來源時沿用原成交價邏輯。'],
+    [`・請佣及獎金均匯入「${plan.value.name}」，不會與其他方案合併。`],
     ['・日期格式 yyyy/mm/dd；未填保留款(%) 預設 10'],
     [''],
     ['【獎金紀錄】'],
@@ -350,7 +367,7 @@ function downloadTemplate() {
   XLSX.utils.book_append_sheet(wb, claimWs, '請佣紀錄');
   XLSX.utils.book_append_sheet(wb, bonusWs, '獎金紀錄');
   XLSX.utils.book_append_sheet(wb, helpWs, '填寫說明');
-  XLSX.writeFile(wb, `${props.projectName || props.projectId}_請佣獎金歷史匯入範本.xlsx`);
+  XLSX.writeFile(wb, `${props.projectName || props.projectId}_${plan.value.name}_請佣獎金歷史匯入範本.xlsx`);
 }
 
 // ---------- 解析 ----------
@@ -451,31 +468,8 @@ function parseClaims(rows) {
     const unit = unitMap[unitId];
     if (unitId && !unit) { messages.push('戶別不存在於本案銷控資料'); status = 'error'; }
 
-    // 財務數字：表格值優先，未填以現值計算
-    let finance = null;
-    if (unit) {
-      finance = planId.value === 'general' ? computeUnitFinance(unit, props.parkings)
-        : computePlanFinance(unit, props.parkings, plan.value, { manualFloor: row['房屋總底價'] });
-      if (finance.errors?.length) { messages.push(...finance.errors); status = 'error'; }
-      const ovr = (key, header) => {
-        const v = row[header];
-        if (v !== '' && v !== null && v !== undefined && !Number.isNaN(Number(v))) finance[key] = Number(v);
-      };
-      ovr('dealTotal', '成交總價(含車)');
-      ovr('totalFloor', '總底價');
-      ovr('spread', '溢差價');
-      ovr('houseDeal', '房屋成交價');
-      ovr('parkDeal', '車位成交總價');
-      ovr('houseFloor', '房屋總底價');
-      ovr('parkFloor', '車位底價');
-      if (plan.value.priceBasis === 'package') {
-        if (finance.parkDeal !== 0 || finance.parkFloor !== 0) { messages.push('配套請佣不可包含車位成交價或底價'); status = 'error'; }
-        finance.parkingSpots = '';
-        finance.houseDeal = finance.dealTotal;
-        finance.houseFloor = finance.totalFloor;
-      }
-      if (row['溢差價'] === '' || row['溢差價'] === undefined) finance.spread = finance.dealTotal - finance.totalFloor;
-    }
+    const finance = unit ? parseImportFinance(row, unit, props.parkings, plan.value) : null;
+    if (finance?.errors.length) { messages.push(...finance.errors); status = 'error'; }
 
     const isPreferred = !!unit?.isPreferredPayment;
     const defaultComm = isPreferred
@@ -503,7 +497,7 @@ function parseClaims(rows) {
     }
 
     const snapshot = unit ? {
-      planName: plan.value.name, priceBasis: plan.value.priceBasis,
+      planName: plan.value.name, priceBasis: plan.value.priceBasis, contractType: finance?.contractType || '',
       ...(finance?.priceSource ? { priceSource: finance.priceSource, manualFloor: finance.manualFloorRequired ? finance.houseFloor : null } : {}),
       buyerName: String(row['買方姓名'] ?? '').trim() || unit.buyerName || '',
       salesperson: String(row['銷售人員'] ?? '').trim()

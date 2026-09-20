@@ -13,7 +13,7 @@
             @update:model-value="v => { category.ratePct = Number(v) || 0; }"
           ></v-text-field>
         </span>
-        <v-chip size="x-small" color="indigo" variant="tonal">獎金池 {{ money(pool) }} 元</v-chip>
+        <v-chip size="x-small" color="default" variant="tonal">獎金池 {{ money(pool) }} 元</v-chip>
       </div>
       <div class="ae-status">
         <v-chip v-if="!category.allocations.length" size="x-small" :color="needsPeople ? 'warning' : undefined" variant="tonal">
@@ -23,7 +23,7 @@
         <v-chip v-else-if="!result.valid" size="x-small" color="error" variant="tonal">
           <v-icon start size="x-small">mdi-alert-circle</v-icon>{{ result.error }}
         </v-chip>
-        <v-chip v-else size="x-small" color="success" variant="tonal">
+        <v-chip v-else size="x-small" color="default" variant="tonal">
           <v-icon start size="x-small">mdi-check</v-icon>{{ category.allocations.length }} 人・{{ isEven ? '均分' : '自訂分配' }}
         </v-chip>
       </div>
@@ -50,7 +50,7 @@
       <v-chip
         v-for="a in externalAllocations"
         :key="a.personKey"
-        size="small" color="orange-darken-2" variant="flat" closable
+        size="small" color="primary" variant="flat" closable
         @click:close="removePerson(a.personKey)"
       >
         <v-icon start size="x-small">mdi-check-circle</v-icon>
@@ -85,7 +85,7 @@
             <tr v-for="a in category.allocations" :key="a.personKey">
               <td>
                 {{ a.name }}
-                <v-chip v-if="a.sourceProjectId && a.sourceProjectId !== projectId" size="x-small" color="orange" variant="tonal" class="ml-1">
+                <v-chip v-if="a.sourceProjectId && a.sourceProjectId !== projectId" size="x-small" color="default" variant="tonal" class="ml-1">
                   {{ a.sourceProjectName || a.sourceProjectId }}
                 </v-chip>
                 <v-chip v-else-if="a.isExternal" size="x-small" color="grey" variant="tonal" class="ml-1">臨時</v-chip>
@@ -110,7 +110,7 @@
           </tbody>
         </v-table>
         <div class="d-flex align-center flex-wrap ga-2 mt-1">
-          <v-chip v-if="result.valid" size="small" color="success" variant="tonal">
+          <v-chip v-if="result.valid" size="small" color="default" variant="tonal">
             <v-icon start size="small">mdi-check</v-icon>分配合計 {{ money(result.total) }} 元 ＝ 獎金池
           </v-chip>
           <v-chip v-else size="small" color="error" variant="tonal">
@@ -241,13 +241,13 @@ defineExpose({ togglePerson, reEvenPct });
 <style scoped>
 .allocation-editor {
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-left: 4px solid #c5cae9;
+  border-left: 2px solid #ddd;
   border-radius: 8px;
   padding: 10px 12px;
   margin-bottom: 10px;
-  background: #fafbfe;
+  background: #fafafa;
 }
-.allocation-editor.is-empty { border-left-color: #fb8c00; background: #fffaf3; }
+.allocation-editor.is-empty { border-left-color: #fb8c00; background: #fafafa; }
 .allocation-editor.is-error { border-left-color: #e53935; }
 .ae-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
 .ae-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

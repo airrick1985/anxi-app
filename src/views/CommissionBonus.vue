@@ -26,6 +26,7 @@
         <v-card-text>
           <v-text-field v-model="planForm.name" label="方案名稱" placeholder="例如：裝修請佣" maxlength="30" variant="outlined" />
           <v-select v-model="planForm.priceBasis" label="採用價格" :items="[{ title: '配套價格（不含車位）', value: 'package' }, { title: '房屋價格（含車位）', value: 'house' }]" variant="outlined" :disabled="planLocked" />
+          <p v-if="planLocked" class="text-caption text-medium-emphasis">內建或已使用的方案只能修改名稱，保留價格來源與歷史帳務。</p>
         </v-card-text>
         <v-card-actions>
           <v-btn v-if="planForm.id && !isBuiltInPlan(planForm.id)" color="error" variant="text" :disabled="savingPlan || planHasData(planForm.id)" :loading="deletingPlan" @click="removePlan">刪除方案</v-btn>
@@ -51,7 +52,7 @@
       <div class="text-body-2 text-medium-emphasis mt-4">載入建案與請佣資料中…</div>
     </div>
 
-    <v-window v-else :key="selectedPlanId + activePlan.priceBasis" v-model="tab" :touch="false">
+    <v-window :class="{ 'workbench-window': tab === 'workbench' }" v-else :key="selectedPlanId + activePlan.priceBasis" v-model="tab" :touch="false">
       <v-window-item value="workbench">
         <CommissionWorkbench
           ref="workbenchRef"
@@ -103,6 +104,7 @@
           :bonus-records="bonusRecords"
           :personnel="personnel"
           :loading="recordsLoading"
+          :preset-period="exportPeriod"
         />
       </v-window-item>
 
@@ -138,6 +140,7 @@
 import { ref, computed, onMounted, defineAsyncComponent, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'vue-toastification';
+import { useUserStore } from '@/store/user';
 import { useSalesDataStore } from '@/store/salesDataStore';
 import {
   fetchCommissionSettings, fetchCommissionPlans, createCommissionPlan, updateCommissionPlan, deleteCommissionPlan,
@@ -159,6 +162,8 @@ const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const salesDataStore = useSalesDataStore();
+const userStore = useUserStore();
+const planOperator = () => ({ operatorKey: userStore.user?.key || userStore.user?.phone || '', operatorName: userStore.user?.name || '' });
 
 const projectId = computed(() => route.params.projectId);
 const tab = ref('workbench');
@@ -166,6 +171,7 @@ const isLoading = ref(true);
 const recordsLoading = ref(false);
 const exportCenterRef = ref(null);
 const importRef = ref(null);
+const exportPeriod = ref(null);   // 匯出中心要帶入的期別（歷期總覽「匯出此期」／工作台送出後）
 
 const settings = ref(mergeSettings(null));
 const allRecords = ref([]);
@@ -191,7 +197,7 @@ function hasDraft() {
 }
 // 有請佣、獎金紀錄或已請額度的方案不可刪除或變更價格來源。
 function planHasData(id) {
-  return allRecords.value.some(r => planIdOf(r) === id)
+  return savedPlans.value.some(p => p.id === id && p.used) || allRecords.value.some(r => planIdOf(r) === id)
     || allBonusRecords.value.some(r => planIdOf(r) === id)
     || ledgers.value.some(l => planIdOf(l) === id && toNum(l.claimedRatioPct) > 0);
 }
@@ -228,13 +234,13 @@ async function savePlan() {
       const basis = planLocked.value ? current.priceBasis : priceBasis;
       if (basis !== current.priceBasis && hasDraft() && !window.confirm('變更價格來源將捨棄尚未儲存的變更，確定變更？')) return;
       const plan = { id, name, priceBasis: basis };
-      await updateCommissionPlan(projectId.value, plan);
+      await updateCommissionPlan(projectId.value, plan, planOperator());
       upsertSavedPlan(plan);
       planDialog.value = false;
       toast.success(`已更新「${name}」`);
     } else {
       const plan = { id: `plan_${crypto.randomUUID()}`, name, priceBasis };
-      await createCommissionPlan(projectId.value, plan);
+      await createCommissionPlan(projectId.value, plan, planOperator());
       upsertSavedPlan(plan);
       planDialog.value = false;
       if (await switchPlan(plan.id)) tab.value = 'settings';
@@ -246,13 +252,14 @@ async function savePlan() {
 async function removePlan() {
   const { id, name } = planForm.value;
   if (!id || isBuiltInPlan(id)) return;
-  if (!window.confirm(`確定刪除「${name}」？此方案的設定與匯出版型將一併移除。`)) return;
+  if (hasDraft() && !window.confirm('刪除方案將捨棄尚未儲存的內容，確定繼續？')) return;
+  if (!window.confirm(`確定刪除「${name}」？方案將從清單移除，設定與匯出版型不連帶刪除。`)) return;
   deletingPlan.value = true;
   savingPlan.value = true;
   try {
     await Promise.all([loadLedgers(), loadRecords()]);
     if (planHasData(id)) { toast.warning('此方案已有請佣紀錄，無法刪除'); return; }
-    await deleteCommissionPlan(projectId.value, id);
+    await deleteCommissionPlan(projectId.value, id, planOperator());
     savedPlans.value = savedPlans.value.filter(p => p.id !== id);
     planDialog.value = false;
     if (selectedPlanId.value === id) {
@@ -328,9 +335,10 @@ async function reloadAll() {
   }
 }
 
-/** 送出/匯入完成後：刷新 ledger 與紀錄 */
-async function handleSubmitted() {
+/** 送出/匯入完成後：刷新 ledger 與紀錄；工作台送出帶期別時直接跳到匯出中心該期 */
+async function handleSubmitted(payload = null) {
   await Promise.all([loadLedgers(), loadRecords()]);
+  if (payload?.period) goExportPeriod(payload.period);
 }
 
 /** 歷期總覽「重新匯入此期」：切到歷史匯入並預帶期別（自動勾選覆蓋） */
@@ -342,11 +350,10 @@ function goReimportPeriod(period) {
 }
 
 function goExportPeriod(period) {
+  exportPeriod.value = toNum(period);
   tab.value = 'export';
-  // 讓匯出中心帶入指定期別
-  requestAnimationFrame(() => {
-    exportCenterRef.value?.selectPeriod?.(period);
-  });
+  // 匯出中心已掛載時直接選取（同一期別再次點選也能生效）；尚未掛載則由 preset-period 帶入
+  exportCenterRef.value?.selectPeriod?.(toNum(period));
 }
 
 function goBack() {
@@ -372,4 +379,8 @@ onMounted(async () => {
   max-width: 1600px;
   margin: 0 auto;
 }
+</style>
+
+<style scoped>
+.workbench-window { overflow: visible; }
 </style>

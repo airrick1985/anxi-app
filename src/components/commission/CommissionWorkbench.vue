@@ -1,57 +1,16 @@
 <template>
-  <div>
+  <div class="commission-workbench">
     <!-- 工具列 -->
     <div class="d-flex align-center flex-wrap ga-2 mb-3">
       <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="openPicker">新增戶別</v-btn>
       <span class="text-body-2 text-medium-emphasis">下一期別 {{ nextPeriod }}｜已選 {{ entries.length }} 戶<template v-if="refunds.length">｜退佣 {{ refunds.length }} 戶</template></span>
       <v-spacer></v-spacer>
       <template v-if="entries.length || refunds.length">
-        <v-btn size="small" variant="text" @click="setAllCollapsed(false)">全部展開</v-btn>
         <v-btn size="small" variant="text" @click="setAllCollapsed(true)">全部收合</v-btn>
       </template>
     </div>
 
-    <!-- 流程說明 -->
-    <div class="flow-strip mb-3">
-      <span class="fs-step"><b>1</b> 新增戶別</span>
-      <v-icon size="small" class="fs-arrow">mdi-chevron-right</v-icon>
-      <span class="fs-step"><b>2</b> 每戶填「本次請佣比例」、點選獎金人員</span>
-      <v-icon size="small" class="fs-arrow">mdi-chevron-right</v-icon>
-      <span class="fs-step"><b>3</b> 核對底部「本次合計」後送出</span>
-    </div>
-
-    <!-- 快速定位列（置頂跟隨捲動；可跳至各戶別卡片或底部「本次合計」） -->
-    <div v-if="entries.length || refunds.length" class="quick-nav d-flex flex-wrap align-center ga-1 mb-3">
-      <v-chip
-        v-for="e in entries"
-        :key="e.id"
-        size="small"
-        :variant="entryIssueCount(e) ? 'tonal' : 'outlined'"
-        :color="entryIssueCount(e) ? 'warning' : 'primary'"
-        @click="gotoCard(e)"
-      >
-        <v-icon v-if="entryIssueCount(e)" start size="x-small">mdi-alert</v-icon>
-        {{ e.unitId }}
-        <span class="text-caption ml-1 text-medium-emphasis">{{ money(entryResult(e).claim.thisClaim) }}</span>
-      </v-chip>
-      <v-chip
-        v-for="e in refunds"
-        :key="e.id"
-        size="small"
-        :variant="refundIssueCount(e) ? 'tonal' : 'outlined'"
-        :color="refundIssueCount(e) ? 'warning' : 'error'"
-        @click="gotoCard(e)"
-      >
-        <v-icon start size="x-small">{{ refundIssueCount(e) ? 'mdi-alert' : 'mdi-cash-refund' }}</v-icon>
-        {{ e.unitId }}
-        <span class="text-caption ml-1 text-medium-emphasis">{{ money(refundPlan(e).calc.thisClaim) }}</span>
-      </v-chip>
-      <v-spacer></v-spacer>
-      <v-chip v-if="totalIssues" size="small" variant="tonal" color="warning">{{ totalIssues }} 項待處理</v-chip>
-      <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-arrow-down-bold" @click="gotoSummary">
-        本次合計 {{ money(summary.thisClaimSum) }} 元
-      </v-chip>
-    </div>
+    <p class="text-body-2 text-medium-emphasis mb-4">選擇戶別後，填寫請佣比例與獎金人員，再預覽送出。</p>
 
     <v-alert v-if="!entries.length && !refunds.length" type="info" variant="tonal" class="mb-4">
       尚未選擇戶別，請點「新增戶別」（僅列出已成交且有簽約日期的戶別；已請畢 100% 者不可再選）。買方解約需退回佣金時，切到「退佣」頁籤。
@@ -70,6 +29,7 @@
         :project-name="projectName"
         :local-personnel="personnel"
         :claimed-pct="claimedPctOf(e.unitId)"
+        @toggle="toggleCard(e)"
         @remove="removeEntry(e)"
       />
       <CommissionRefundCard
@@ -79,13 +39,14 @@
         :settings="settings"
         :project-id="projectId"
         :bonus-records="bonusRecords"
+        @toggle="toggleCard(e)"
         @remove="removeRefund(e)"
       />
     </div>
 
     <!-- 彙總 -->
-    <v-card v-if="entries.length || refunds.length" id="comm-summary" variant="outlined" class="mb-4 summary-card">
-      <v-card-title class="text-subtitle-1 bg-green-lighten-5">
+    <v-card v-if="(entries.length || refunds.length) && showSummary" id="comm-summary" variant="outlined" class="mb-4 summary-card">
+      <v-card-title class="text-subtitle-1 bg-grey-lighten-4">
         本次合計（{{ entries.length }} 戶<template v-if="refunds.length">、退佣 {{ refunds.length }} 戶</template>）
       </v-card-title>
       <v-card-text>
@@ -116,34 +77,41 @@
               <tr v-for="p in summary.people" :key="p.personKey">
                 <td class="font-weight-medium">{{ p.name }}</td>
                 <td>
-                  <v-chip v-if="p.sourceProjectId && p.sourceProjectId !== projectId" size="x-small" color="orange" variant="tonal">{{ p.sourceProjectName || p.sourceProjectId }}</v-chip>
+                  <v-chip v-if="p.sourceProjectId && p.sourceProjectId !== projectId" size="x-small" color="default" variant="tonal">{{ p.sourceProjectName || p.sourceProjectId }}</v-chip>
                   <span v-else class="text-caption text-medium-emphasis">本案</span>
                 </td>
                 <td class="text-right">{{ money(p.subtotal) }}</td>
                 <td class="text-right">{{ money(p.keep) }}</td>
                 <td class="text-right">{{ money(p.tax) }}</td>
                 <td class="text-right">{{ money(p.nhi) }}</td>
-                <td class="text-right text-success font-weight-bold">{{ money(p.net) }}</td>
+                <td class="text-right text-high-emphasis font-weight-bold">{{ money(p.net) }}</td>
               </tr>
-              <tr class="font-weight-bold bg-green-lighten-5">
+              <tr class="font-weight-bold bg-grey-lighten-4">
                 <td>合計</td><td></td>
                 <td class="text-right">{{ money(summary.totals.subtotal) }}</td>
                 <td class="text-right">{{ money(summary.totals.keep) }}</td>
                 <td class="text-right">{{ money(summary.totals.tax) }}</td>
                 <td class="text-right">{{ money(summary.totals.nhi) }}</td>
-                <td class="text-right text-success">{{ money(summary.totals.net) }}</td>
+                <td class="text-right text-high-emphasis">{{ money(summary.totals.net) }}</td>
               </tr>
             </tbody>
           </v-table>
         </div>
       </v-card-text>
       <v-divider></v-divider>
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn color="primary" size="large" variant="flat" prepend-icon="mdi-check-bold"
-          :loading="submitting" :disabled="!entries.length && !refunds.length" @click="submitAll">確認送出</v-btn>
-      </v-card-actions>
     </v-card>
+
+    <div v-if="entries.length || refunds.length" class="submit-bar" aria-label="本次請佣摘要">
+      <div>
+        <div class="text-caption text-medium-emphasis">請佣 {{ entries.length }} 戶<template v-if="refunds.length">・退佣 {{ refunds.length }} 戶</template></div>
+        <span class="text-body-2">本次請佣合計 </span><strong class="submit-total">{{ money(summary.thisClaimSum) }} 元</strong>
+      </div>
+      <v-btn v-if="totalIssues" variant="text" color="warning" size="small" @click="gotoFirstIssue">{{ totalIssues }} 項待完成</v-btn>
+      <span v-else class="text-caption text-medium-emphasis">資料已填妥</span>
+      <v-spacer />
+      <v-btn variant="text" @click="toggleSummary">{{ showSummary ? '收合彙總' : '查看獎金與金額彙總' }}</v-btn>
+      <v-btn color="primary" variant="flat" :loading="submitting" @click="openPreview">預覽並送出</v-btn>
+    </div>
 
     <!-- 戶別選擇 dialog -->
     <v-dialog v-model="pickerOpen" max-width="520">
@@ -215,13 +183,13 @@
                 <v-list-item-title class="d-flex align-center flex-wrap ga-1">
                   {{ u.unitId }}
                   <v-chip size="x-small" variant="tonal" :color="contractTypeColor(u.contractType)">{{ u.contractType }}</v-chip>
-                  <span v-if="u.claimedPct > 0" class="text-caption ml-1" :class="u.claimedPct >= 100 ? 'text-error' : 'text-orange-darken-3'">
+                  <span v-if="u.claimedPct > 0" class="text-caption ml-1" :class="u.claimedPct >= 100 ? 'text-disabled' : 'text-medium-emphasis'">
                     （已請佣 {{ u.claimedPct }}%）
                   </span>
                 </v-list-item-title>
                 <v-list-item-subtitle class="text-caption">
                   <span v-if="u.buyerName" class="mr-2">{{ u.buyerName }}</span>
-                  <span v-if="u.paymentRatio !== null" class="text-teal font-weight-bold">繳款 {{ u.paymentRatio }}%</span>
+                  <span v-if="u.paymentRatio !== null" class="text-medium-emphasis">繳款 {{ u.paymentRatio }}%</span>
                   <span v-else class="text-medium-emphasis">繳款 —</span>
                 </v-list-item-subtitle>
                 <template #append>
@@ -243,27 +211,55 @@
       </v-card>
     </v-dialog>
 
-    <!-- 送出前確認 dialog -->
-    <v-dialog v-model="confirmOpen" max-width="560" persistent>
+    <!-- 無法送出：阻擋性錯誤 -->
+    <v-dialog v-model="blockingOpen" max-width="560" persistent>
       <v-card>
-        <v-card-title class="text-subtitle-1" :class="confirmData.blocking ? 'text-error' : 'text-warning'">
-          <v-icon start>{{ confirmData.blocking ? 'mdi-close-octagon' : 'mdi-alert' }}</v-icon>
-          {{ confirmData.title }}
+        <v-card-title class="text-subtitle-1 text-error">
+          <v-icon start>mdi-close-octagon</v-icon>無法送出，請先修正
         </v-card-title>
         <v-card-text style="max-height: 60vh; overflow: auto">
-          <div v-for="(sec, i) in confirmData.sections" :key="i" class="mb-3">
-            <div class="font-weight-bold mb-1">{{ sec.title }}</div>
-            <div class="text-caption text-medium-emphasis mb-1" v-if="sec.subtitle">{{ sec.subtitle }}</div>
-            <v-alert v-for="(item, j) in sec.items" :key="j" density="compact" variant="tonal"
-              :type="confirmData.blocking ? 'error' : 'warning'" class="mb-1">{{ item }}</v-alert>
-          </div>
-          <div v-if="!confirmData.blocking" class="text-caption text-medium-emphasis">確認無誤可繼續送出，或返回修改。</div>
+          <v-alert v-for="(item, j) in blockingItems" :key="j" density="compact" variant="tonal" type="error" class="mb-1">{{ item }}</v-alert>
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn variant="text" @click="confirmOpen = false">返回修改</v-btn>
-          <v-btn v-if="!confirmData.blocking" color="primary" variant="flat" @click="confirmOpen = false; doSubmit()">繼續送出</v-btn>
+          <v-btn variant="text" @click="blockingOpen = false">返回修改</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 送出前預覽（與匯出中心同一版面模型） -->
+    <v-dialog v-model="previewOpen" fullscreen transition="dialog-bottom-transition" :persistent="submitting">
+      <v-card class="preview-dialog">
+        <v-toolbar color="primary" density="comfortable">
+          <v-btn icon="mdi-close" :disabled="submitting" @click="previewOpen = false"></v-btn>
+          <v-toolbar-title class="text-subtitle-1">送出前預覽｜第 {{ previewPeriodsText }} 期</v-toolbar-title>
+          <v-spacer></v-spacer>
+          <span class="text-body-2 mr-4 d-none d-sm-inline">{{ entries.length }} 戶<template v-if="refunds.length">、退佣 {{ refunds.length }} 戶</template>｜本次請佣 {{ money(summary.thisClaimSum) }} 元</span>
+        </v-toolbar>
+        <v-card-text class="preview-body">
+          <div class="d-flex align-center flex-wrap ga-2 mb-3">
+            <v-btn-toggle v-model="previewDocType" mandatory color="primary" variant="outlined" divided density="comfortable">
+              <v-btn value="claim" size="small">請佣總表</v-btn>
+              <v-btn value="bonus" size="small">獎金表</v-btn>
+            </v-btn-toggle>
+            <v-select v-model="previewConfigId" :items="previewConfigOptions" item-title="name" item-value="id"
+              label="欄位版型" variant="outlined" density="compact" hide-details :loading="previewConfigsLoading" style="max-width: 280px"></v-select>
+          </div>
+
+          <div v-for="(sec, i) in previewWarnings" :key="i" class="mb-3">
+            <div class="font-weight-bold mb-1">{{ sec.title }}</div>
+            <div v-if="sec.subtitle" class="text-caption text-medium-emphasis mb-1">{{ sec.subtitle }}</div>
+            <v-alert v-for="(item, j) in sec.items" :key="j" density="compact" variant="tonal" type="warning" class="mb-1">{{ item }}</v-alert>
+          </div>
+
+          <CommissionGridPreview :grids="previewGrids" title="送出後匯出的版面" max-height="none" />
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="preview-actions">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" :disabled="submitting" @click="previewOpen = false">返回修改</v-btn>
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-check-bold" :loading="submitting" @click="doSubmit">確認送出</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -271,16 +267,21 @@
 </template>
 
 <script setup>
+import { contractTypeColor } from '@/utils/contractTypeColor';
 import { computePlanFinance, defaultPriceSource, defaultManualFloor, isNonGeneralContract } from '@/utils/commissionPlans';
 import { useCommissionPlan } from '@/composables/useCommissionPlan';
-const { plan, planId } = useCommissionPlan();
-import { ref, reactive, computed, watch } from 'vue';
+const { plan, planId, belongsToPlan } = useCommissionPlan();
+import { ref, reactive, computed, watch, nextTick } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import CommissionUnitCard from './CommissionUnitCard.vue';
 import CommissionRefundCard from './CommissionRefundCard.vue';
+import CommissionGridPreview from './CommissionGridPreview.vue';
 import { refundableRecordsByUnit, buildRefundEntryPlan } from './refundEntry';
-import { submitCommissionEntriesAPI } from '@/api';
+import { submitCommissionEntriesAPI, fetchCommissionExportConfigs } from '@/api';
+import { buildClaimModel, buildBonusModel, defaultClaimConfig, defaultBonusConfig, exportProjectNameOf } from '@/utils/commissionExportModel';
+import { buildClaimGrid, buildBonusGrids } from '@/services/commissionExcelService';
+import { draftClaimRecord, draftRefundRecord, normalizeSalesNames } from '@/utils/commissionDraftRecords';
 import {
   calcUnitBonus, computeUnitFinance, resolveCommPct, formatDateTW,
   money, toNum, evenShares, paymentRatioPct, matchesRolePositions, isHandoverCategory, resolveSplitMode,
@@ -301,6 +302,7 @@ const props = defineProps({
   bonusRecords: { type: Array, default: () => [] },   // 全建案獎金明細（退佣追回原數）
 });
 
+const showSummary = ref(false);
 const emit = defineEmits(['submitted']);
 const toast = useToast();
 const userStore = useUserStore();
@@ -315,8 +317,17 @@ const pickerTab = ref('claim');
 const pickerSearch = ref('');
 const pickSel = reactive({});
 const submitting = ref(false);
-const confirmOpen = ref(false);
-const confirmData = ref({ title: '', blocking: false, sections: [] });
+const blockingOpen = ref(false);
+const blockingItems = ref([]);
+
+// 送出前預覽
+const previewOpen = ref(false);
+const previewDocType = ref('claim');
+const previewWarnings = ref([]);
+const previewConfigs = ref([]);
+const previewConfigsLoaded = ref(false);
+const previewConfigsLoading = ref(false);
+const previewConfigId = ref('__default');
 
 const enabledCategories = computed(() =>
   (props.settings.bonusCategories || [])
@@ -331,23 +342,6 @@ const handoverLabel = computed(() => handoverCategories.value.map(c => c.label).
 // ---------- 已請比例（ledger + 本場已送出即時更新由父層 refresh） ----------
 function claimedPctOf(unitId) {
   return Math.round(toNum(props.ledgers[unitId]) * 10) / 10;
-}
-
-// 固定常用合約配色；自訂名稱依名稱取色，請佣／退佣及方案切換皆一致。
-const CONTRACT_TYPE_COLORS = new Map([
-  ['一般合約', 'blue-darken-2'],
-  ['毛胚合約', 'orange-darken-3'],
-  ['配套合約', 'teal-darken-2'],
-  ['裝修合約', 'purple-darken-2'],
-  ['其他合約', 'brown-darken-1'],
-  ['未設定合約方式', 'grey-darken-1'],
-]);
-const CUSTOM_CONTRACT_COLORS = ['indigo', 'pink-darken-2', 'cyan-darken-3', 'green-darken-2', 'deep-orange-darken-2', 'deep-purple'];
-function contractTypeColor(contractType) {
-  const name = String(contractType || '').trim() || '未設定合約方式';
-  if (CONTRACT_TYPE_COLORS.has(name)) return CONTRACT_TYPE_COLORS.get(name);
-  const hash = Array.from(name).reduce((value, char) => (value * 31 + char.codePointAt(0)) >>> 0, 0);
-  return CUSTOM_CONTRACT_COLORS[hash % CUSTOM_CONTRACT_COLORS.length];
 }
 
 // ---------- 戶別選擇 ----------
@@ -471,14 +465,14 @@ function confirmPick() {
     Object.keys(pickSel).forEach(unitId => {
       if (pickSel[unitId] && !refunds.value.some(e => e.unitId === unitId)) addRefund(unitId);
     });
-    if (refunds.value.length - before === 1) refunds.value[refunds.value.length - 1].collapsed = false;
+    if (refunds.value.length > before) { setAllCollapsed(true); refunds.value[before].collapsed = false; }
   } else {
     const before = entries.value.length;
     Object.keys(pickSel).forEach(unitId => {
       if (pickSel[unitId] && !entries.value.some(e => e.unitId === unitId)) addUnit(unitId);
     });
     // 只加入一戶時直接展開
-    if (entries.value.length - before === 1) entries.value[entries.value.length - 1].collapsed = false;
+    if (entries.value.length > before) { setAllCollapsed(true); entries.value[before].collapsed = false; }
   }
   Object.keys(pickSel).forEach(k => delete pickSel[k]);
   pickerOpen.value = false;
@@ -558,12 +552,6 @@ function entryProfiles(e) {
   return map;
 }
 
-function normalizeNames(v) {
-  if (Array.isArray(v)) return v.map(s => String(s).trim()).filter(Boolean);
-  if (typeof v === 'string') return v.split(/[、,，\/\s]+/).map(s => s.trim()).filter(Boolean);
-  return [];
-}
-
 function evenAlloc(persons) {
   const allocations = persons.map(p => ({
     personKey: p.personKey,
@@ -594,7 +582,7 @@ function addUnit(unitId) {
   enabledCategories.value.forEach(cat => {
     let allocations = [];
     if (cat.mode === 'individual') {
-      const names = normalizeNames(unit.salesperson);
+      const names = normalizeSalesNames(unit.salesperson);
       const persons = names.map(nm => {
         const p = props.personnel.find(x => x.name === nm);
         const personKey = p ? personKeyOf(p) : `ext:${nm}`;
@@ -639,7 +627,7 @@ function addUnit(unitId) {
     partyBFee: 0,
     teamSiteKeys: [],
     categories,
-    collapsed: priceSource === 'transaction',
+    collapsed: true,
   });
 }
 
@@ -652,17 +640,29 @@ function setAllCollapsed(v) {
   refunds.value.forEach(e => { e.collapsed = v; });
 }
 
+async function toggleSummary() {
+  showSummary.value = !showSummary.value;
+  if (showSummary.value) {
+    await nextTick();
+    document.getElementById('comm-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+function toggleCard(e) {
+  const open = e.collapsed;
+  setAllCollapsed(true);
+  e.collapsed = !open;
+}
+function gotoFirstIssue() {
+  const entry = entries.value.find(e => entryIssueCount(e)) || refunds.value.find(e => refundIssueCount(e));
+  if (entry) gotoCard(entry);
+}
 function gotoCard(e) {
+  setAllCollapsed(true);
   e.collapsed = false;
   requestAnimationFrame(() => {
     const el = document.getElementById(`comm-card-${e.id}`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
-}
-
-function gotoSummary() {
-  const el = document.getElementById('comm-summary');
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ---------- 計算 ----------
@@ -795,27 +795,115 @@ function collectIssues() {
   return { blocking, warnings, feeMiss, refundNotes };
 }
 
-async function submitAll() {
+// ---------- 送出前預覽 ----------
+const exportSettings = computed(() => ({ ...props.settings, priceBasis: plan.value.priceBasis }));
+const exportProjectName = computed(() => exportProjectNameOf(props.projectName, plan.value));
+
+/** 草稿組成與後端寫入相同形狀的暫存紀錄，供匯出 model 使用 */
+const draftData = computed(() => {
+  const common = { projectId: props.projectId, planId: planId.value, plan: plan.value, createdBy: userStore.user?.name || '' };
+  const records = [];
+  const bonusRecords = [];
+  entries.value.forEach(entry => {
+    const d = draftClaimRecord({ entry, result: entryResult(entry), ...common });
+    records.push(d.record);
+    bonusRecords.push(...d.bonusRecords);
+  });
+  refunds.value.forEach(entry => {
+    const d = draftRefundRecord({ entry, refundPlan: refundPlan(entry), ...common });
+    records.push(d.record);
+    bonusRecords.push(...d.bonusRecords);
+  });
+  return { records, bonusRecords };
+});
+
+const draftPeriods = computed(() => [...new Set(draftData.value.records.map(r => toNum(r.period)))].sort((a, b) => a - b));
+const previewPeriodsText = computed(() => draftPeriods.value.join('、'));
+
+const previewTypeConfigs = computed(() => previewConfigs.value.filter(c => c.docType === previewDocType.value));
+const previewConfigOptions = computed(() => ([
+  { id: '__default', name: '系統預設版型' },
+  ...previewTypeConfigs.value.map(c => ({ id: c.id, name: c.isDefault ? `★ ${c.name}` : c.name })),
+]));
+function pickDefaultPreviewConfig() {
+  const def = previewTypeConfigs.value.find(c => c.isDefault);
+  previewConfigId.value = def ? def.id : '__default';
+}
+watch(previewDocType, pickDefaultPreviewConfig);
+
+function previewConfigOf(type) {
+  const fallback = type === 'claim' ? defaultClaimConfig(exportSettings.value) : defaultBonusConfig(exportSettings.value);
+  if (previewDocType.value !== type) {
+    const def = previewConfigs.value.find(c => c.docType === type && c.isDefault);
+    return def?.config || fallback;
+  }
+  if (previewConfigId.value === '__default') return fallback;
+  return previewConfigs.value.find(c => c.id === previewConfigId.value)?.config || fallback;
+}
+
+const previewGrids = computed(() => {
+  if (!previewOpen.value) return [];
+  try {
+    const { records, bonusRecords } = draftData.value;
+    const multi = draftPeriods.value.length > 1;
+    const list = [];
+    draftPeriods.value.forEach(period => {
+      const recs = records.filter(r => toNum(r.period) === period);
+      if (!recs.length) return;
+      const ids = new Set(recs.map(r => r.id));
+      const base = { settings: exportSettings.value, period, projectName: exportProjectName.value };
+      let grids;
+      if (previewDocType.value === 'claim') {
+        grids = [buildClaimGrid(buildClaimModel(recs, { ...base, config: previewConfigOf('claim') }))];
+      } else {
+        grids = buildBonusGrids(buildBonusModel({
+          ...base,
+          records: recs,
+          bonusRecords: bonusRecords.filter(b => ids.has(b.commissionRecordId)),
+          config: previewConfigOf('bonus'),
+          projectId: props.projectId,
+          personnelOrder: props.personnel.map(p => p.name),
+        }));
+      }
+      if (multi) grids.forEach(g => { g.name = `第${period}期 ${g.name}`; });
+      list.push(...grids);
+    });
+    return list;
+  } catch (e) {
+    console.error('[CommissionWorkbench] 預覽版面產生失敗:', e);
+    return [];
+  }
+});
+
+async function loadPreviewConfigs() {
+  if (previewConfigsLoaded.value) return;
+  previewConfigsLoading.value = true;
+  try {
+    previewConfigs.value = (await fetchCommissionExportConfigs(props.projectId)).filter(belongsToPlan);
+    previewConfigsLoaded.value = true;
+  } catch (e) {
+    console.error('[CommissionWorkbench] 載入版型失敗:', e);
+  } finally {
+    previewConfigsLoading.value = false;
+    pickDefaultPreviewConfig();
+  }
+}
+
+function openPreview() {
   const { blocking, warnings, feeMiss, refundNotes } = collectIssues();
   if (blocking.length) {
-    confirmData.value = {
-      title: '無法送出，請先修正',
-      blocking: true,
-      sections: [{ title: '以下問題需修正：', items: blocking }],
-    };
-    confirmOpen.value = true;
+    blockingItems.value = blocking;
+    blockingOpen.value = true;
     return;
   }
-  if (warnings.length || feeMiss.length || refundNotes.length) {
-    const sections = [];
-    if (refundNotes.length) sections.push({ title: '↩ 退佣戶別', subtitle: '送出後原紀錄標記「已退佣」、已請比例回溯，可於歷期總覽作廢退佣紀錄還原：', items: refundNotes });
-    if (warnings.length) sections.push({ title: '⚠ 有項目尚未勾選人員', subtitle: '確認是否刻意留空：', items: warnings });
-    if (feeMiss.length) sections.push({ title: '🎁 可能有介紹費/贈品尚未填寫', subtitle: '備註提到介紹/贈品但金額為 0：', items: feeMiss });
-    confirmData.value = { title: '送出前確認', blocking: false, sections };
-    confirmOpen.value = true;
-    return;
-  }
-  doSubmit();
+  const sections = [];
+  if (refundNotes.length) sections.push({ title: '↩ 退佣戶別', subtitle: '送出後原紀錄標記「已退佣」、已請比例回溯，可於歷期總覽作廢退佣紀錄還原：', items: refundNotes });
+  if (warnings.length) sections.push({ title: '⚠ 有項目尚未勾選人員', subtitle: '確認是否刻意留空：', items: warnings });
+  if (feeMiss.length) sections.push({ title: '🎁 可能有介紹費/贈品尚未填寫', subtitle: '備註提到介紹/贈品但金額為 0：', items: feeMiss });
+  previewWarnings.value = sections;
+  previewDocType.value = 'claim';
+  previewOpen.value = true;
+  loadPreviewConfigs();
 }
 
 async function doSubmit() {
@@ -868,9 +956,11 @@ async function doSubmit() {
       const nRefund = res.results.filter(r => r.refund).length;
       const nClaim = res.results.length - nRefund;
       toast.success(`已寫入 ${nClaim} 戶請佣紀錄${nRefund ? `、${nRefund} 戶退佣紀錄` : ''}`);
+      const period = res.results.reduce((m, r) => Math.max(m, toNum(r.period)), 0);
       entries.value = [];
       refunds.value = [];
-      emit('submitted');
+      previewOpen.value = false;
+      emit('submitted', { period: period || null });
     } else {
       toast.error('寫入失敗，請重試');
     }
@@ -885,35 +975,27 @@ defineExpose({ hasDraft: computed(() => entries.value.length > 0 || refunds.valu
 </script>
 
 <style scoped>
-.flow-strip {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
-  background: #f4f6fb; border-radius: 8px; padding: 6px 12px; font-size: 13px;
-}
-.fs-step b {
-  display: inline-flex; width: 18px; height: 18px; border-radius: 50%; align-items: center; justify-content: center;
-  background: rgb(var(--v-theme-primary)); color: #fff; font-size: 11px; margin-right: 4px;
-}
-.fs-arrow { color: #9aa; }
-.quick-nav {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(4px);
-  padding: 6px 0;
-}
 .picker-list { max-height: 50vh; overflow-y: auto; border: 1px solid rgba(0,0,0,.08); border-radius: 8px; }
-.sum-item { background: #f4f8f6; border-radius: 8px; padding: 8px 12px; }
+.sum-item { background: #f5f5f5; border-radius: 8px; padding: 8px 12px; }
 .sum-item label { font-size: 11px; color: #789; display: block; }
-.sum-item div { font-size: 17px; font-weight: 700; color: #1a4; }
-.sum-item.highlight div { color: #087f23; }
-.sum-item.handover { background: #fff7ed; }
-.sum-item.handover div { color: #c2410c; }
-.sum-item.refund { background: #fdecea; }
+.sum-item div { font-size: 17px; font-weight: 700; color: #263238; }
+.sum-item.highlight div { color: #263238; }
+.sum-item.handover { background: #f5f5f5; }
+.sum-item.handover div { color: #263238; }
+.sum-item.refund { background: #f5f5f5; }
 .sum-item.refund div { color: #c62828; }
+.summary-card { scroll-margin-top: 80px; }
 .table-scroll { overflow-x: auto; }
+/* 送出前預覽：全螢幕，預覽區佔滿剩餘高度 */
+.preview-dialog { display: flex; flex-direction: column; height: 100%; }
+.preview-body { flex: 1; overflow: auto; background: #fafafa; }
+.preview-actions { background: #fff; }
 /* 每人彙總表：人員／來源欄固定合理寬度，其餘金額欄平均分配 */
 .people-table th, .people-table td { white-space: nowrap; }
 .people-table .col-name { min-width: 110px; }
 .people-table .col-source { min-width: 90px; }
+.submit-bar { position: sticky; bottom: 12px; z-index: 6; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 2px 12px #00000012; }
+.submit-total { font-size: 20px; font-variant-numeric: tabular-nums; }
+.commission-workbench { padding-bottom: 16px; }
+@media (max-width: 600px) { .submit-bar { bottom: 0; gap: 8px; padding: 12px; } .submit-total { font-size: 18px; } }
 </style>

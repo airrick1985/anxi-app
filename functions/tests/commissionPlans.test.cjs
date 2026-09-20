@@ -217,3 +217,43 @@ test('歷史匯入同一期別不跨方案衝突；撤銷只刪本方案批次',
   assert.equal(h.ledger('package'), 0);
   assert.equal(h.ledger('general'), 100);
 });
+
+test('方案 CRUD：新增、更新、刪除與已刪方案阻擋，保留設定及版型', async () => {
+  const h = harness();
+  const planId = 'renovation';
+  await h.call('manageCommissionPlan', { operation: 'create', planId, name: '裝修', priceBasis: 'package' });
+  await h.call('manageCommissionPlan', { operation: 'update', planId, name: '裝修改名', priceBasis: 'house' });
+  const ref = `commissionPlans/${planDocumentId(projectId, planId)}`;
+  assert.equal(h.rows.get(ref).name, '裝修改名');
+  assert.equal(h.rows.get(ref).priceBasis, 'house');
+  const settingsRef = `commissionSettings/${planDocumentId(projectId, planId)}`;
+  h.rows.set(settingsRef, { defaultCommissionPct: 3 });
+  await h.call('manageCommissionPlan', { operation: 'delete', planId });
+  assert.ok(h.rows.get(ref).deletedAt);
+  assert.equal(h.rows.get(settingsRef).defaultCommissionPct, 3);
+  await assert.rejects(h.submit(planId), /已刪除/);
+  await assert.rejects(h.call('manageCommissionPlan', { operation: 'update', planId, name: '復活', priceBasis: 'house' }), /已刪除/);
+});
+
+test('內建方案僅可改名；使用過的自訂方案禁止改價格來源或刪除', async () => {
+  const h = harness();
+  await h.call('manageCommissionPlan', { operation: 'update', planId: 'general', name: '房屋請佣', priceBasis: 'house' });
+  await assert.rejects(h.call('manageCommissionPlan', { operation: 'delete', planId: 'general' }), /內建/);
+  await assert.rejects(h.call('manageCommissionPlan', { operation: 'update', planId: 'package', name: '配套請佣', priceBasis: 'house' }), /內建/);
+  await h.call('manageCommissionPlan', { operation: 'create', planId: 'renovation', name: '裝修', priceBasis: 'package' });
+  const result = await h.submit('renovation');
+  await h.call('manageCommissionPlan', { operation: 'update', planId: 'renovation', name: '裝修改名', priceBasis: 'package' });
+  assert.equal(h.rows.get(`commissionRecords/${result.results[0].recordId}`).planName, '裝修');
+  await assert.rejects(h.call('manageCommissionPlan', { operation: 'delete', planId: 'renovation' }), /已有請佣/);
+  await assert.rejects(h.call('manageCommissionPlan', { operation: 'update', planId: 'renovation', name: '裝修改名', priceBasis: 'house' }), /已有請佣/);
+});
+
+test('方案管理檢查名稱、權限，並保護未標記 used 的歷史紀錄', async () => {
+  const h = harness();
+  await assert.rejects(h.call('manageCommissionPlan', { operation: 'create', planId: 'bad', name: '', priceBasis: 'house' }), /方案名稱/);
+  await assert.rejects(h.call('manageCommissionPlan', { operation: 'create', planId: 'bad', name: '一般請佣', priceBasis: 'house' }), /同名/);
+  await assert.rejects(h.call('manageCommissionPlan', { operation: 'create', planId: 'bad', name: '新方案', priceBasis: 'house', operatorKey: '' }), /操作者/);
+  h.rows.set(`commissionPlans/${planDocumentId(projectId, 'legacy')}`, { projectId, planId: 'legacy', name: '舊裝修', priceBasis: 'package' });
+  h.rows.set('bonusRecords/old', { projectId, planId: 'legacy', status: 'voided' });
+  await assert.rejects(h.call('manageCommissionPlan', { operation: 'delete', planId: 'legacy' }), /已有請佣/);
+});

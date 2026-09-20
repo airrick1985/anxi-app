@@ -22,6 +22,11 @@ export function withProjectName(fileName, projectName) {
   return name ? `${pn}_${name}` : pn;
 }
 
+/** 匯出／預覽用建案名：一般方案用建案名；其他方案加上方案名 */
+export function exportProjectNameOf(projectName, plan) {
+  return !plan || plan.id === 'general' ? String(projectName || '') : `${projectName}・${plan.name}`;
+}
+
 // ================= 請佣總表 欄位登錄表 =================
 // 欄位擴充點：在此新增一筆（含 get），所有版型即可勾用。
 export const CLAIM_COLUMNS = [

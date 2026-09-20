@@ -9802,24 +9802,16 @@ export const fetchCommissionPlans = async (projectId) => {
   const snap = await getDocs(query(collection(db, 'commissionPlans'), where('projectId', '==', projectId)));
   return snap.docs.map(d => ({ ...d.data(), id: d.data().planId }));
 };
-export const createCommissionPlan = async (projectId, plan) => {
-  await setDoc(doc(db, 'commissionPlans', planDocumentId(projectId, plan.id)), {
-    projectId, planId: plan.id, name: plan.name, priceBasis: plan.priceBasis, createdAt: serverTimestamp(),
-  });
-};
-/** 內建方案改名時會建立同 ID 的覆寫文件；價格來源以定義文件為準。 */
-export const updateCommissionPlan = async (projectId, plan) => {
-  await setDoc(doc(db, 'commissionPlans', planDocumentId(projectId, plan.id)), {
-    projectId, planId: plan.id, name: plan.name, priceBasis: plan.priceBasis, updatedAt: serverTimestamp(),
-  }, { merge: true });
-};
-/** 刪除自訂方案定義、其設定與匯出版型；請佣／獎金紀錄由呼叫端先確認為空。 */
-export const deleteCommissionPlan = async (projectId, planId) => {
-  const docId = planDocumentId(projectId, planId);
-  const configs = await getDocs(query(collection(db, 'commissionExportConfigs'), where('projectId', '==', projectId)));
-  const batch = writeBatch(db);
-  batch.delete(doc(db, 'commissionPlans', docId));
-  batch.delete(doc(db, 'commissionSettings', docId));
-  configs.docs.filter(d => d.data().planId === planId).forEach(d => batch.delete(d.ref));
-  await batch.commit();
-};
+async function manageCommissionPlan(payload) {
+  const result = await httpsCallable(functions, 'manageCommissionPlan')(payload);
+  return result.data;
+}
+export const createCommissionPlan = (projectId, plan, operator = {}) => manageCommissionPlan({
+  projectId, planId: plan.id, name: plan.name, priceBasis: plan.priceBasis, operation: 'create', ...operator,
+});
+export const updateCommissionPlan = (projectId, plan, operator = {}) => manageCommissionPlan({
+  projectId, planId: plan.id, name: plan.name, priceBasis: plan.priceBasis, operation: 'update', ...operator,
+});
+export const deleteCommissionPlan = (projectId, planId, operator = {}) => manageCommissionPlan({
+  projectId, planId, operation: 'delete', ...operator,
+});

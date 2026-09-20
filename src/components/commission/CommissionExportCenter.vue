@@ -123,21 +123,7 @@
       </v-alert>
 
       <!-- 預覽 -->
-      <v-card v-else variant="outlined">
-        <v-card-title class="text-subtitle-2 d-flex align-center">
-          <v-icon start size="small">mdi-eye-outline</v-icon>即時預覽
-          <span class="text-caption text-medium-emphasis ml-2">（與下載之 Excel / PDF 同一版面模型）</span>
-          <v-spacer></v-spacer>
-          <v-chip size="x-small" variant="tonal">{{ grids.length }} {{ isPerson ? '人' : '張分頁' }}</v-chip>
-        </v-card-title>
-        <v-tabs v-model="previewTab" density="compact" color="primary" show-arrows v-if="grids.length > 1">
-          <v-tab v-for="(gr, i) in grids" :key="i" :value="i">{{ gr.name }}</v-tab>
-        </v-tabs>
-        <v-divider></v-divider>
-        <v-card-text class="preview-wrap">
-          <div v-if="grids[previewTab]" v-html="previewHtml"></div>
-        </v-card-text>
-      </v-card>
+      <CommissionGridPreview v-else :grids="grids" caption="與下載之 Excel / PDF 同一版面模型" :unit-label="isPerson ? '人' : '張分頁'" />
     </template>
 
     <!-- 版型編輯 -->
@@ -233,6 +219,7 @@ import { useToast } from 'vue-toastification';
 import JSZip from 'jszip';
 import { useUserStore } from '@/store/user';
 import CommissionTemplateEditor from './CommissionTemplateEditor.vue';
+import CommissionGridPreview from './CommissionGridPreview.vue';
 import {
   fetchCommissionExportConfigs, setCommissionExportConfig, deleteCommissionExportConfig,
   fetchCommissionExportTemplates, setCommissionExportTemplate, fetchRetentionPayouts,
@@ -241,11 +228,11 @@ import {
 import {
   buildClaimModel, buildBonusModel, buildPersonModel,
   defaultClaimConfig, defaultBonusConfig, defaultPersonConfig,
-  periodsLabel, listPersonsInPeriods, withProjectName,
+  periodsLabel, listPersonsInPeriods, withProjectName, exportProjectNameOf,
 } from '@/utils/commissionExportModel';
 import {
   buildClaimGrid, buildBonusGrids, buildPersonGrid, buildPersonExcelGrids,
-  exportGridsToExcel, gridsToExcelBlob, gridToHtml,
+  exportGridsToExcel, gridsToExcelBlob,
 } from '@/services/commissionExcelService';
 import { toNum, fillPattern } from '@/utils/commissionCalculation';
 
@@ -257,12 +244,13 @@ const props = defineProps({
   bonusRecords: { type: Array, default: () => [] },
   personnel: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
+  presetPeriod: { type: Number, default: null },   // 由父層指定要帶入的期別（送出後跳轉）
 });
 
 const router = useRouter();
 const toast = useToast();
 const exportSettings = computed(() => ({ ...props.settings, priceBasis: plan.value.priceBasis }));
-const exportProjectName = computed(() => planId.value === 'general' ? props.projectName : `${props.projectName}・${plan.value.name}`);
+const exportProjectName = computed(() => exportProjectNameOf(props.projectName, plan.value));
 const userStore = useUserStore();
 
 function goTemplateManager() {
@@ -272,7 +260,6 @@ function goTemplateManager() {
 const docType = ref('claim');
 const period = ref(null);          // claim / bonus：單期
 const periods = ref([]);           // person：多期
-const previewTab = ref(0);
 const fileName = ref('');
 const pdfLoading = ref(false);
 
@@ -347,7 +334,6 @@ const currentConfig = computed(() => {
 watch(docType, (t) => {
   const def = typeConfigs.value.find(c => c.isDefault);
   selectedConfigId.value = def ? def.id : '__default';
-  previewTab.value = 0;
   if (t === 'person' && !payouts.value.length) loadPayouts();
 });
 
@@ -457,13 +443,6 @@ const grids = computed(() => {
     console.error('[CommissionExportCenter] 版面產生失敗:', e);
     return [];
   }
-});
-
-watch(grids, (g) => { if (previewTab.value >= g.length) previewTab.value = 0; });
-
-const previewHtml = computed(() => {
-  const grid = grids.value[previewTab.value];
-  return grid ? gridToHtml(grid) : '';
 });
 
 // 檔名：依文件/期別/版型自動帶入，可改
@@ -779,21 +758,11 @@ function selectPeriod(p) {
   period.value = toNum(p);
   periods.value = [toNum(p)];
 }
+watch([() => props.presetPeriod, availablePeriods], ([p]) => { if (p !== null && p !== undefined) selectPeriod(p); }, { immediate: true });
 defineExpose({ selectPeriod, hasDraft: computed(() => editorOpen.value) });
 </script>
 
 <style scoped>
-.preview-wrap {
-  overflow: auto;
-  max-height: 70vh;
-  background: #eceff4;
-  padding: 16px;
-}
-.preview-wrap :deep(table.comm-grid) {
-  background: #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  margin: 0 auto;
-}
 .recipient-table :deep(td) {
   vertical-align: middle;
 }
