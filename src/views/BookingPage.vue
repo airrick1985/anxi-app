@@ -1659,7 +1659,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'; // <--- 在這裡加入 onUnmounted
+import { ref, onMounted, computed, nextTick, watch, onUnmounted, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
 import {
@@ -1682,7 +1682,8 @@ import {
 import { useDate, useDisplay } from 'vuetify';
 import html2canvas from 'html2canvas';
 import { VueSignaturePad } from 'vue-signature-pad';
-import VuePdfEmbed from 'vue-pdf-embed';
+// PDF 檢視器（含 pdf.js 約 2.6MB）改為需要預覽時才載入，避免拖慢客戶預約頁首次開啟
+const VuePdfEmbed = defineAsyncComponent(() => import('vue-pdf-embed'));
 
 // 錯誤訊息分兩層：第一行給一般用戶看的白話說明，下方「技術資訊」保留原始錯誤碼／訊息／details 供工程人員判讀
 const rawErrorMessage = (error) => String(error && typeof error === 'object' ? (error.message || '') : (error || '')).trim();

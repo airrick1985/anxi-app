@@ -865,6 +865,7 @@ const routes = [
     meta: {
       requiresAuth: true,
       requiredRoles: ['超級管理員', '系統管理員'],
+      requiredRolesOrSystem: '銷控系統', // 具任一建案「銷控系統」權限者亦可新增／移除全域範本
       layout: DefaultLayout,
       title: '合約製作範本管理'
     }
@@ -1083,8 +1084,11 @@ router.beforeEach(async (to, from, next) => {
   if (requiredRoles && Array.isArray(requiredRoles)) {
     const userRoles = userStore.currentUserRoles;
     const hasRequiredRole = requiredRoles.some(role => userRoles.includes(role));
-    if (!hasRequiredRole) {
-      alert(`權限不足：您需要具備 [${requiredRoles.join(', ')}] 角色才能訪問此頁面。`);
+    // 若路由另外指定 requiredRolesOrSystem，具任一建案該系統權限者亦可通過
+    const orSystem = to.meta.requiredRolesOrSystem;
+    const hasOrSystem = !!orSystem && userStore.hasPermission(orSystem);
+    if (!hasRequiredRole && !hasOrSystem) {
+      alert(`權限不足：您需要具備 [${requiredRoles.join(', ')}] 角色${orSystem ? `或「${orSystem}」權限` : ''}才能訪問此頁面。`);
       return next({ name: 'Home' });
     }
   }

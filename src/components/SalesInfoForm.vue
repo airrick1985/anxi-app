@@ -28,20 +28,33 @@
               </v-col>
             </v-row>
             
-            <v-select
-              label="銷售人員"
-              :items="personnelOptions"
-              v-model="salespersonList"
-              class="mb-4"
-              item-title="name"
-              item-value="name"
-              multiple
-              chips
-              closable-chips
-              clearable
-              hint="可複選多位銷售人員"
-              persistent-hint
-            ></v-select>
+            <v-row dense class="mb-4">
+              <v-col cols="12" sm="8">
+                <v-select
+                  label="銷售人員"
+                  :items="personnelOptions"
+                  v-model="salespersonList"
+                  item-title="name"
+                  item-value="name"
+                  multiple
+                  chips
+                  closable-chips
+                  clearable
+                  hint="可複選多位銷售人員"
+                  persistent-hint
+                ></v-select>
+              </v-col>
+              <v-col cols="12" sm="4" class="d-flex align-center">
+                <!-- 不可請佣：勾選後此戶在「請佣獎金 → 新增戶別」不可被選取（預設不勾） -->
+                <v-checkbox
+                  v-model="noCommissionFlag"
+                  label="不可請佣"
+                  color="error"
+                  hide-details
+                  density="compact"
+                ></v-checkbox>
+              </v-col>
+            </v-row>
 
             <label class="v-label text-caption">小訂日期</label>
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_deposit_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" teleport="body" auto-position class="mb-4 anxi-datepicker"></VueDatePicker>
@@ -871,6 +884,12 @@ const buyerPhonesList = computed({
   set: (val) => {
     editableData.value.buyerPhone = Array.isArray(val) ? val.join(',') : val;
   }
+});
+
+// ✅ 不可請佣：布林，未設定視為 false；寫回 editableData.noCommission
+const noCommissionFlag = computed({
+  get: () => editableData.value?.noCommission === true,
+  set: (val) => { if (editableData.value) editableData.value.noCommission = !!val; }
 });
 
 // ✅ 銷售人員複選：相容舊單人字串與新陣列，綁定 v-select(multiple)

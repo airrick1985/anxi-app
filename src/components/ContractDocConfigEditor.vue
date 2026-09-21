@@ -35,7 +35,7 @@
     </div>
 
     <v-alert v-if="!canEdit" type="info" variant="tonal" density="compact" class="mb-3">
-      唯讀模式：僅超級管理員 / 系統管理員可編輯合約製作範本。
+      唯讀模式：需具備本建案「銷控系統」權限才可編輯合約製作範本。
     </v-alert>
 
     <!-- 載入中 -->
@@ -49,7 +49,7 @@
       <div class="text-body-1 mt-3 mb-4">本建案尚未設定合約製作範本。</div>
       <v-btn v-if="canEdit" color="primary" variant="flat" prepend-icon="mdi-plus"
         @click="initDefaultConfig">建立預設範本設定</v-btn>
-      <div v-else class="text-caption text-grey">請聯繫超級管理員 / 系統管理員建立。</div>
+      <div v-else class="text-caption text-grey">請聯繫具本建案「銷控系統」權限的人員建立。</div>
     </v-card>
 
     <template v-else>
@@ -699,9 +699,15 @@ const cfgSections = computed(() => [
   { key: 'banks', icon: 'mdi-bank-outline', title: '繳款銀行組', count: `${config.value?.bankSets?.length || 0} 組` },
 ]);
 
-const canEdit = computed(() => {
+// 管理員或具備該建案「銷控系統」權限者皆可編輯本建案的合約製作範本
+const isAdmin = computed(() => {
   const roles = userStore.currentUserRoles || [];
   return roles.includes('超級管理員') || roles.includes('系統管理員');
+});
+const canEdit = computed(() => {
+  if (isAdmin.value) return true;
+  const perm = userStore.user?.permissions?.[projectId.value];
+  return Array.isArray(perm?.systems) && perm.systems.includes('銷控系統');
 });
 
 onMounted(async () => {

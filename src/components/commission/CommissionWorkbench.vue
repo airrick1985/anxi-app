@@ -13,7 +13,7 @@
     <p class="text-body-2 text-medium-emphasis mb-4">選擇戶別後，填寫請佣比例與獎金人員，再預覽送出。</p>
 
     <v-alert v-if="!entries.length && !refunds.length" type="info" variant="tonal" class="mb-4">
-      尚未選擇戶別，請點「新增戶別」（僅列出已成交且有簽約日期的戶別；已請畢 100% 者不可再選）。買方解約需退回佣金時，切到「退佣」頁籤。
+      尚未選擇戶別，請點「新增戶別」（僅列出已成交且有簽約日期的戶別；已請畢 100% 或標記「不可請佣」者不可選）。買方解約需退回佣金時，切到「退佣」頁籤。
     </v-alert>
 
     <!-- 上下配置：上＝戶別卡片編輯區（全寬）、下＝本次合計（全寬） -->
@@ -183,6 +183,7 @@
                 <v-list-item-title class="d-flex align-center flex-wrap ga-1">
                   {{ u.unitId }}
                   <v-chip size="x-small" variant="tonal" :color="contractTypeColor(u.contractType)">{{ u.contractType }}</v-chip>
+                  <v-chip v-if="u.noCommission" size="x-small" color="error" variant="tonal">不可請佣</v-chip>
                   <span v-if="u.claimedPct > 0" class="text-caption ml-1" :class="u.claimedPct >= 100 ? 'text-disabled' : 'text-medium-emphasis'">
                     （已請佣 {{ u.claimedPct }}%）
                   </span>
@@ -358,14 +359,16 @@ const pickerUnits = computed(() => {
     const claimed = claimedPctOf(u.unitId);
     const full = claimed >= 100;
     const isAdded = added.has(u.unitId);
+    const noCommission = u.noCommission === true; // 銷控「銷售資訊」勾選「不可請佣」
     return {
       unitId: u.unitId,
       contractType: String(u.contractType || '').trim() || '未設定合約方式',
       buyerName: u.buyerName || '',
       claimedPct: claimed,
+      noCommission,
       paymentRatio: paymentRatioPct(u, computeUnitFinance(u, props.parkings).dealTotal),
-      disabled: full || isAdded,
-      statusText: isAdded ? '已加入' : (full ? '已請畢' : (claimed > 0 ? `尚餘 ${Math.round((100 - claimed) * 10) / 10}%` : '')),
+      disabled: full || isAdded || noCommission,
+      statusText: isAdded ? '已加入' : (noCommission ? '不可請佣' : (full ? '已請畢' : (claimed > 0 ? `尚餘 ${Math.round((100 - claimed) * 10) / 10}%` : ''))),
       _raw: u,
     };
   });
@@ -571,6 +574,7 @@ function evenAlloc(persons) {
 function addUnit(unitId) {
   const unit = props.households.find(u => u.unitId === unitId);
   if (!unit) return;
+  if (unit.noCommission === true) return; // 銷控標記「不可請佣」者不可加入
   const previous = props.records.filter(r => r.unitId === unitId && r.status === 'active' && r.type !== 'refund' && !r.refundedBy)
     .slice().sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0) || Number(b.period) - Number(a.period))
     .find(r => r.snapshot?.priceSource);

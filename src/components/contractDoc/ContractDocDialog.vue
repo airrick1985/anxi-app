@@ -30,7 +30,7 @@
           <v-progress-circular indeterminate color="primary" />
         </div>
         <v-alert v-else-if="!config" type="info" variant="tonal" class="ma-4">
-          本建案尚未設定「合約製作範本」。請由超級管理員 / 系統管理員至「銷控設定 → 合約製作範本」建立後再使用。
+          本建案尚未設定「合約製作範本」。請由具本建案「銷控系統」權限的人員至「銷控設定 → 合約製作範本」建立後再使用。
         </v-alert>
 
         <v-row v-else :no-gutters="isMobile">
@@ -105,7 +105,7 @@
                   </v-alert>
                   <v-alert v-if="packageMissingDecorationPages" type="warning" variant="tonal" density="compact" class="mb-3">
                     本戶為配套合約，但建案合約範本尚未加入「裝修工程會辦單」（配套價格的拆款表）／「裝修付款明細表」頁面，
-                    本次僅會產出配套房屋總價的簽約會辦單。請超級管理員至「銷控設定 → 合約製作範本 → 頁面組合 → 新增頁面」加入。
+                    本次僅會產出配套房屋總價的簽約會辦單。請至「銷控設定 → 合約製作範本 → 頁面組合 → 新增頁面」加入。
                   </v-alert>
                   <v-row dense>
                     <v-col cols="12" sm="5">

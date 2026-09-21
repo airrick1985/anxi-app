@@ -986,10 +986,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive, watch } from 'vue';
+import { ref, onMounted, computed, reactive, watch, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import liff from '@line/liff';
-import VuePdfEmbed from 'vue-pdf-embed';
+// PDF 檢視器（含 pdf.js 約 2.6MB）改為開啟預覽時才載入
+const VuePdfEmbed = defineAsyncComponent(() => import('vue-pdf-embed'));
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import {

@@ -874,6 +874,7 @@
                                 </span>
                               </template>
                               <span v-else class="info-dl-empty">—</span>
+                              <v-chip v-if="unitData?.noCommission === true" size="x-small" color="error" variant="tonal" class="ml-1">不可請佣</v-chip>
                             </div>
                           </div>
                           <div class="info-dl-row">
