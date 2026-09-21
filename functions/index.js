@@ -741,8 +741,10 @@ exports.getAvailableSlots = onCall(async (request) => {
   const functionName = `getAvailableSlots (Project: ${projectId}, Unit: ${unitId})`; // ✓ Log 名稱
 
   if (!projectId || !unitId || !bookingType || !bookingMethod) {
-    console.error(`[${functionName}] ERROR: Missing parameters.`); // ✓ Log 錯誤
-    throw new HttpsError("invalid-argument", "缺少必要參數 (projectId, unitId, bookingType, or bookingMethod)。");
+    const missing = Object.entries({ projectId, unitId, bookingType, bookingMethod }).filter(([, v]) => !v).map(([k]) => k);
+    console.error(`[${functionName}] ERROR: Missing parameters: ${missing.join(', ')}.`);
+    // message 給一般用戶看；details 保留技術資訊給前端「技術資訊」列顯示
+    throw new HttpsError("invalid-argument", "預約資料不完整，請重新整理頁面後再試一次。", { missing });
   }
 
   try {
@@ -15392,8 +15394,10 @@ async function _handleGetAvailableSlots(data) {
   // ... 只是確保所有 error 都被 HttpsError 捕捉或拋出 ...
 
   if (!projectId || !unitId || !bookingType || !bookingMethod) {
-    console.error(`[${functionName}] ERROR: Missing parameters.`);
-    throw new HttpsError("invalid-argument", "缺少必要參數 (projectId, unitId, bookingType, or bookingMethod)。");
+    const missing = Object.entries({ projectId, unitId, bookingType, bookingMethod }).filter(([, v]) => !v).map(([k]) => k);
+    console.error(`[${functionName}] ERROR: Missing parameters: ${missing.join(', ')}.`);
+    // message 給一般用戶看；details 保留技術資訊給前端「技術資訊」列顯示
+    throw new HttpsError("invalid-argument", "預約資料不完整，請重新整理頁面後再試一次。", { missing });
   }
   try {
     const db = new Firestore({ databaseId: "anxi-app" });

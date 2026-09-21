@@ -858,6 +858,7 @@
 
                               <!-- 委託人 / 受託人 雙欄表格 -->
                               <table class="auth-doc-table">
+                                <tbody>
                                 <tr>
                                   <!-- 委託人 (立書人) -->
                                   <td>
@@ -933,6 +934,7 @@
                                     </div>
                                   </td>
                                 </tr>
+                                </tbody>
                               </table>
 
                               <!-- 結語 -->
@@ -2298,7 +2300,7 @@
                                 </v-chip>
                               </div>
                             </v-expansion-panel-title>
-                            <v-expansion-panel-content>
+                            <v-expansion-panel-text>
                               <v-table dense>
                                 <thead>
                                   <tr>
@@ -2325,7 +2327,7 @@
                                   </tr>
                                 </tbody>
                               </v-table>
-                            </v-expansion-panel-content>
+                            </v-expansion-panel-text>
                           </v-expansion-panel>
                         </v-expansion-panels>
                       </div>

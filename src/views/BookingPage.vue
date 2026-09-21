@@ -1684,6 +1684,48 @@ import html2canvas from 'html2canvas';
 import { VueSignaturePad } from 'vue-signature-pad';
 import VuePdfEmbed from 'vue-pdf-embed';
 
+// 錯誤訊息分兩層：第一行給一般用戶看的白話說明，下方「技術資訊」保留原始錯誤碼／訊息／details 供工程人員判讀
+const rawErrorMessage = (error) => String(error && typeof error === 'object' ? (error.message || '') : (error || '')).trim();
+const friendlyErrorMessage = (error, fallback = '發生未預期的錯誤，請稍後再試。') => {
+  const raw = rawErrorMessage(error);
+  if (!raw) return fallback;
+  const code = String(error?.code || '');
+  if (/缺少必要參數|missing parameter|invalid-argument/i.test(raw) || /invalid-argument/.test(code)) {
+    return '預約資料不完整，請重新整理頁面後再試一次。';
+  }
+  if (/unauthenticated|permission-denied/i.test(raw + code)) return '驗證狀態已過期，請重新整理頁面後再試。';
+  if (/deadline-exceeded|unavailable|network|failed to fetch|timeout/i.test(raw + code)) return '網路連線不穩定，請稍後再試。';
+  if (/^internal$|functions\/internal|internal error/i.test(raw) || /internal/.test(code)) return '系統忙碌中，請稍後再試。';
+  return raw
+    .replace(/^(FirebaseError|Error|前端錯誤|後端錯誤)\s*[:：]\s*/i, '')
+    .replace(/\s*\((?:[A-Za-z0-9_]+(?:\s*,\s*|\s+or\s+)?)+\)/g, '') // 去掉 (projectId, unitId, or xxx) 這類參數清單
+    .trim() || fallback;
+};
+const technicalErrorInfo = (error, friendly = '') => {
+  const parts = [];
+  if (error?.code) parts.push(String(error.code));
+  const raw = rawErrorMessage(error);
+  if (raw && raw !== friendly) parts.push(raw); // 原始訊息與白話相同時不重複列出
+  if (error?.details !== undefined && error?.details !== null) {
+    try { parts.push(typeof error.details === 'string' ? error.details : JSON.stringify(error.details)); } catch { /* ignore */ }
+  }
+  return parts.join(' | ');
+};
+// 把 api.js 回傳的 { status:'error', message, code, details } 轉成 Error，保留技術欄位給 formatUserError 顯示
+const apiError = (res, fallback) => {
+  const err = new Error(res?.message || fallback);
+  if (res?.code) err.code = res.code;
+  if (res?.details !== undefined) err.details = res.details;
+  return err;
+};
+// 組成 alert 文字：白話一行 + 技術資訊一行（兩者相同時不重複）
+const formatUserError = (prefix, error) => {
+  const friendly = friendlyErrorMessage(error);
+  const tech = technicalErrorInfo(error, friendly);
+  console.error(`[BookingPage] ${prefix}:`, error);
+  return tech ? `${prefix}：${friendly}\n\n技術資訊：${tech}` : `${prefix}：${friendly}`;
+};
+
 // --- Customer Message Imports ---
 import { functions, storage } from '@/firebase';
 import { httpsCallable } from 'firebase/functions';
@@ -1846,7 +1888,7 @@ const handleUploadStep1Submit = async () => {
       isConfirmationDialogVisible.value = true; // 跳出確認對話框
     }
   } catch (error) {
-    alert(`驗證失敗：${error.message}`);
+    alert(formatUserError('驗證失敗', error));
   } finally {
     isLoading.value = false;
   }
@@ -2960,7 +3002,7 @@ const handleInitiateSigning = async () => {
     }
   } catch (error) {
     console.error('發起簽署邀請失敗:', error);
-    alert(`發起邀請失敗：${error.message}`);
+    alert(formatUserError('發起邀請失敗', error));
   } finally {
     isLoading.value = false;
   }
@@ -3249,11 +3291,11 @@ const proceedToNextBooking = async () => {
       applyDefaultBookingDate();
       step.value = 2;
     } else {
-      throw new Error(res.message || '無法獲取可預約時段');
+      throw apiError(res, '無法獲取可預約時段');
     }
   } catch (error) {
     console.error("獲取時段失敗:", error);
-    alert(`操作失敗：${error.message}`);
+    alert(formatUserError('操作失敗', error));
   } finally {
     isLoading.value = false;
   }
@@ -3281,7 +3323,7 @@ const handleStep1Submit = async () => {
         projectId.value // 傳入 projectId
       );
       if (validationRes.status !== 'success') {
-        throw new Error(validationRes.message || '身分驗證失敗');
+        throw apiError(validationRes, '身分驗證失敗');
       }
     }
 
@@ -3321,11 +3363,11 @@ const handleStep1Submit = async () => {
       applyDefaultBookingDate();
       step.value = 2;
     } else {
-      throw new Error(res.message || '無法獲取可預約時段');
+      throw apiError(res, '無法獲取可預約時段');
     }
   } catch (error) { //  確保 catch 區塊存在
     console.error("步驟一處理失敗:", error);
-    alert(`操作失敗：${error.message}`);
+    alert(formatUserError('操作失敗', error));
   } finally { //  確保 finally 區塊存在
     isLoading.value = false;
   }
@@ -3369,11 +3411,11 @@ const handleStep2Submit = async () => {
       step.value = 3;
     } else {
       // 獲取 Token 失敗，顯示錯誤
-      throw new Error(tokenRes.message || '無法初始化確認步驟，請稍後再試。');
+      throw apiError(tokenRes, '無法初始化確認步驟，請稍後再試。');
     }
   } catch (error) {
     console.error("初始化確認步驟失敗:", error);
-    alert(`操作失敗：${error.message}`);
+    alert(formatUserError('操作失敗', error));
   } finally {
     isLoading.value = false;
   }
@@ -3401,11 +3443,11 @@ const handleGoBackAndRefresh = async () => {
       applyDefaultBookingDate();
       step.value = 2;
     } else {
-      throw new Error(res.message || '無法刷新預約時段');
+      throw apiError(res, '無法刷新預約時段');
     }
   } catch (error) {
     console.error("返回刷新失敗:", error);
-    alert(`操作失敗：${error.message}`);
+    alert(formatUserError('操作失敗', error));
   } finally {
     isLoading.value = false;
   }
@@ -3441,7 +3483,7 @@ const submitBooking = async () => {
 
       // 檢查上傳結果
       if (uploadRes.status !== 'success') {
-        throw new Error(uploadRes.message || '授權書上傳失敗');
+        throw apiError(uploadRes, '授權書上傳失敗');
       }
 
       authLetterFinalUrl = uploadRes.url;
@@ -3524,7 +3566,7 @@ const submitBooking = async () => {
       } else {
         // 如果不是特定錯誤，則拋出通用錯誤，讓外層 catch 處理
         // (或者您可以直接在此處 alert(res.message))
-        throw new Error(res.message || '預約失敗，未提供原因');
+        throw apiError(res, '預約失敗，未提供原因');
       }
       // --- END: 修改點 3 ---
     }
@@ -3532,16 +3574,16 @@ const submitBooking = async () => {
     console.error("儲存預約失敗:", error);
     // 檢查後端回傳的特定錯誤訊息
     if (error.message.includes("已有有效預約")) {
-      alert(`預約失敗：${error.message}`);
+      alert(formatUserError('預約失敗', error));
       // 引導使用者返回第一步重新選擇
       resetBookingFlow();
     } else if (error.message.includes("名額剛好額滿")) {
-      alert(`預約失敗：${error.message}`);
+      alert(formatUserError('預約失敗', error));
       // 引導使用者返回第二步重新選擇時段
       handleGoBackAndRefresh();
     } else {
       // 其他一般錯誤
-      alert(`預約失敗：${error.message}`);
+      alert(formatUserError('預約失敗', error));
     }
   } finally { //  END: 修改 catch 區塊
     isLoading.value = false;
@@ -3572,11 +3614,11 @@ const handleCancelBooking = async () => {
       formStep1.value = { building: null, unit: null, bookingType: null, bookingMethod: null, companyName: '', address: '', idNumber: '' };
 
     } else {
-      throw new Error(res.message || '取消失敗');
+      throw apiError(res, '取消失敗');
     }
   } catch (error) {
     console.error("取消預約失敗:", error);
-    alert(`取消失敗：${error.message}`);
+    alert(formatUserError('取消失敗', error));
   } finally {
     isCanceling.value = false;
   }
@@ -3733,7 +3775,7 @@ const handleUploadSubmit = async () => {
     }
   } catch (error) {
     console.error('上傳報告失敗:', error);
-    uploadErrorDialogMessage.value = `上傳失敗：${error.message}`;
+    uploadErrorDialogMessage.value = formatUserError('上傳失敗', error);
     isUploadErrorDialogVisible.value = true;
   } finally {
     isLoading.value = false;
@@ -3856,7 +3898,7 @@ const submitCustomerMessage = async () => {
 
   } catch (error) {
     console.error('Submit Message Error:', error);
-    alert(`提交失敗: ${error.message}`);
+    alert(formatUserError('提交失敗', error));
   } finally {
     isSubmittingCustomerMessage.value = false;
   }

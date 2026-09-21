@@ -13,6 +13,9 @@ import './styles/macosUi.css' // ✅ macOS 風格共用按鈕／視窗樣式（�
 import { vReveal } from './directives/vReveal' // 首頁捲動「模糊→清晰」特效指令
 import { vFileDrop } from './directives/vFileDrop' // 拖曳檔案上傳放置區指令（銷控系統各上傳功能共用）
 import './styles/fileDrop.css'
+// vuetify 改為 vite-plugin-vuetify 自動匯入後不再全域註冊元件；
+// vuedraggable 的 tag 是字串並在其自身 render 內 resolveComponent，只查全域註冊，故這兩個需手動全域註冊。
+import { VExpansionPanels, VList } from 'vuetify/components'
 
 // AG Grid 模組註冊已移至 HouseholdGrid.vue（唯一消費者），首頁不再被迫載入 ag-grid 整包
 
@@ -70,6 +73,8 @@ const app = createApp(App) // 先創建 app 實例
 app
   .component('font-awesome-icon', FontAwesomeIcon) // 全局註冊組件
   .component('vue-draggable-resizable', VueDraggableResizable)
+  .component('VExpansionPanels', VExpansionPanels) // 供 BookingRuleManager 的 draggable tag="v-expansion-panels"
+  .component('VList', VList) // 供 BookingRuleManager 的 draggable tag="v-list"
   .directive('reveal', vReveal)
   .directive('file-drop', vFileDrop)
   .use(router)

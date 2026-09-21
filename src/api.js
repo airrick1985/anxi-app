@@ -2784,7 +2784,7 @@ export const cancelBooking = async (payload) => {
     return result.data;
   } catch (error) {
     console.error("API cancelBooking 錯誤:", error);
-    return { status: 'error', message: error.message };
+    return { status: 'error', message: error.message, code: error.code, details: error.details };
   }
 };
 
@@ -2901,7 +2901,7 @@ export async function checkExistingBooking(projectId, unitId, bookingType) {
     return result.data;
   } catch (error) {
     console.error("API checkExistingBooking 錯誤:", error);
-    return { status: 'error', message: error.message };
+    return { status: 'error', message: error.message, code: error.code, details: error.details };
   }
 }
 
@@ -2924,9 +2924,7 @@ export const getBookingSlots = async (projectName, unitId, bookingType, bookingM
   } catch (error) {
     console.error("API getBookingSlots 錯誤:", error);
     return {
-      status: 'error',
-      message: error.message || '獲取可預約時段時發生錯誤'
-    };
+      status: 'error', message: error.message || '獲取可預約時段時發生錯誤', code: error.code, details: error.details };
   }
 };
 
@@ -2985,7 +2983,7 @@ export const saveBooking = async (payload) => {
     return { status: 'success', ...result.data };
   } catch (error) {
     console.error("API saveBooking 錯誤:", error);
-    return { status: 'error', message: error.message };
+    return { status: 'error', message: error.message, code: error.code, details: error.details };
   }
 };
 
@@ -3077,7 +3075,7 @@ export const initiateBookingConfirmation = async (payload) => {
   } catch (error) {
     console.error(`API Error in ${functionName}:`, error);
     const message = (error.code) ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error.message || error}`;
-    return { status: "error", message: message };
+    return { status: "error", message: message, code: error.code, details: error.details };
   }
 };
 
@@ -3097,7 +3095,7 @@ export const fetchAllUnitsForBooking = async (projectName, projectId) => {
     return { status: 'success', data: result.data };
   } catch (error) {
     console.error("API fetchAllUnitsForBooking 錯誤:", error);
-    return { status: 'error', message: error.message, data: {} };
+    return { status: 'error', message: error.message, data: {}, code: error.code, details: error.details };
   }
 };
 
@@ -3116,7 +3114,7 @@ export const validateId = async (projectName, unitId, idNumber, projectId) => {
     return { status: 'success' };
   } catch (error) {
     console.error("API validateId 錯誤:", error);
-    return { status: 'error', message: error.message };
+    return { status: 'error', message: error.message, code: error.code, details: error.details };
   }
 };
 
@@ -3146,7 +3144,7 @@ export const uploadAuthLetter = async (base64Data, fileName, projectId, unitId) 
     return result.data;
   } catch (error) {
     console.error("呼叫 uploadAuthLetter 雲端函式時發生錯誤:", error);
-    return { status: 'error', message: error.message };
+    return { status: 'error', message: error.message, code: error.code, details: error.details };
   }
 };
 
