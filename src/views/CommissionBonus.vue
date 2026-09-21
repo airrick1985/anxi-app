@@ -68,6 +68,7 @@
           :next-period="nextPeriod"
           :records="records"
           :bonus-records="bonusRecords"
+          :person-order="personOrder"
           @submitted="handleSubmitted"
         />
       </v-window-item>
@@ -110,6 +111,11 @@
           :personnel="personnel"
           :loading="recordsLoading"
           :preset-period="exportPeriod"
+          :person-order="personOrder"
+          @update:person-order="v => { personOrder = v; }"
+          :unit-orders="unitOrders"
+          @update:unit-orders="v => { unitOrders = v; }"
+          @settings-saved="loadSettings"
         />
       </v-window-item>
 
@@ -152,6 +158,8 @@ import {
   fetchCommissionRecords,
   fetchBonusRecords,
   fetchCommissionLedgers,
+  fetchCommissionPersonOrder,
+  fetchCommissionUnitOrders,
 } from '@/api';
 import { DEFAULT_PLANS, planIdOf, isBuiltInPlan, mergePlans } from '@/utils/commissionPlans';
 import { mergeSettings, toNum } from '@/utils/commissionCalculation';
@@ -179,6 +187,8 @@ const importRef = ref(null);
 const exportPeriod = ref(null);   // 匯出中心要帶入的期別（歷期總覽「匯出此期」／工作台送出後）
 
 const settings = ref(mergeSettings(null));
+const personOrder = ref([]);   // 建案層級：獎金表人員欄排序（personKey 清單；即時預覽拖曳儲存）
+const unitOrders = ref({});    // 戶別列順序 { [planId]: { [period]: [unitId] } }（即時預覽拖曳儲存）
 const allRecords = ref([]);
 const allBonusRecords = ref([]);
 const savedPlans = ref([]);
@@ -308,6 +318,18 @@ async function loadSettings() {
   settings.value = mergeSettings(saved);
 }
 
+async function loadPersonOrder() {
+  try {
+    const [po, uo] = await Promise.all([fetchCommissionPersonOrder(projectId.value), fetchCommissionUnitOrders(projectId.value)]);
+    personOrder.value = po;
+    unitOrders.value = uo;
+  } catch (e) {
+    console.warn('[CommissionBonus] 載入人員欄／戶別排序失敗:', e);
+    personOrder.value = [];
+    unitOrders.value = {};
+  }
+}
+
 async function loadLedgers() {
   ledgers.value = await fetchCommissionLedgers(projectId.value);
 }
@@ -333,7 +355,7 @@ async function reloadAll() {
   isLoading.value = true;
   try {
     await salesDataStore.loadProjectData(projectId.value, true);
-    await Promise.all([loadPlans(), loadSettings(), loadLedgers(), loadRecords()]);
+    await Promise.all([loadPlans(), loadSettings(), loadLedgers(), loadRecords(), loadPersonOrder()]);
   } catch (e) {
     console.error('[CommissionBonus] 載入失敗:', e);
     toast.error(`載入失敗：${e.message}`);
@@ -371,7 +393,7 @@ onMounted(async () => {
   isLoading.value = true;
   try {
     await salesDataStore.loadProjectData(projectId.value);
-    await Promise.all([loadPlans(), loadSettings(), loadLedgers(), loadRecords()]);
+    await Promise.all([loadPlans(), loadSettings(), loadLedgers(), loadRecords(), loadPersonOrder()]);
   } catch (e) {
     console.error('[CommissionBonus] 初始化失敗:', e);
     toast.error(`初始化失敗：${e.message}`);

@@ -135,7 +135,17 @@
       </v-alert>
 
       <!-- 預覽 -->
-      <CommissionGridPreview v-else :grids="grids" caption="與下載之 Excel / PDF 同一版面模型" :unit-label="isPerson ? '人' : '張分頁'" />
+      <CommissionGridPreview v-else :grids="grids" caption="與下載之 Excel / PDF 同一版面模型" :unit-label="isPerson ? '人' : '張分頁'"
+        :sortable="docType === 'bonus'" @reorder="onReorderPersons"
+        :unit-sortable="!isPerson" @reorder-units="onReorderUnits"
+        :editable="!isPerson" :edit-values="editValues" @edit="onTextEdit">
+        <template #actions>
+          <template v-if="hasTextEdits">
+            <v-btn size="x-small" variant="text" class="ml-2" @click="revertTextEdits">還原</v-btn>
+            <v-btn size="x-small" variant="flat" color="primary" :loading="savingText" @click="saveTextEdits">儲存文字</v-btn>
+          </template>
+        </template>
+      </CommissionGridPreview>
     </template>
 
     <!-- 版型編輯 -->
@@ -238,7 +248,7 @@ import CommissionGridPreview from './CommissionGridPreview.vue';
 import {
   fetchCommissionSettings, fetchCommissionExportConfigs, setCommissionExportConfig, deleteCommissionExportConfig,
   fetchCommissionExportTemplates, setCommissionExportTemplate, fetchRetentionPayouts,
-  generateCommissionPdfAPI, sendCommissionPersonEmailAPI,
+  generateCommissionPdfAPI, sendCommissionPersonEmailAPI, setCommissionPersonOrder, setCommissionSettings, setCommissionUnitOrder,
 } from '@/api';
 import {
   buildClaimModel, buildBonusModel, buildPersonModel,
@@ -263,11 +273,64 @@ const props = defineProps({
   allBonusRecords: { type: Array, default: () => [] },
   plans: { type: Array, default: () => [] },
   presetPeriod: { type: Number, default: null },   // 由父層指定要帶入的期別（送出後跳轉）
+  personOrder: { type: Array, default: () => [] },   // 建案層級：獎金表人員欄排序（personKey 清單）
+  unitOrders: { type: Object, default: () => ({}) },   // 戶別列順序 { [planId]: { [period]: [unitId] } }
 });
+const emit = defineEmits(['update:personOrder', 'update:unitOrders', 'settings-saved']);
 
 const router = useRouter();
 const toast = useToast();
-const exportSettings = computed(() => ({ ...props.settings, priceBasis: plan.value.priceBasis }));
+// ---------- 文字自訂就地編輯（即時預覽點格子修改；按「儲存文字」才寫入） ----------
+const TEXT_EDIT_KEYS = ['claimTitlePattern', 'note1', 'note2', 'kiloLabel', 'youfuLabelPattern', 'partyALabel'];
+const TEXT_KEY_TO_CONFIG = { claimTitlePattern: 'titlePattern', kiloLabel: 'kiloLabel', youfuLabelPattern: 'youfuLabelPattern' };
+const textOverrides = ref({});
+const savingText = ref(false);
+const hasTextEdits = computed(() => Object.keys(textOverrides.value).length > 0);
+const exportSettings = computed(() => ({ ...props.settings, ...textOverrides.value, priceBasis: plan.value.priceBasis }));
+
+/** 已存版型有自己的標題／條文／千4／優付文字時，預覽期間以就地修改的值覆蓋（儲存時一併寫回該版型） */
+function applyTextOverrides(cfg) {
+  const o = textOverrides.value;
+  if (!cfg || !Object.keys(o).length) return cfg;
+  const c = JSON.parse(JSON.stringify(cfg));
+  Object.entries(TEXT_KEY_TO_CONFIG).forEach(([sk, ck]) => { if (o[sk] !== undefined && c[ck] !== undefined) c[ck] = o[sk]; });
+  if ((o.note1 !== undefined || o.note2 !== undefined) && Array.isArray(c.notes)) {
+    c.notes = [o.note1 ?? c.notes[0] ?? '', o.note2 ?? c.notes[1] ?? ''];
+  }
+  return c;
+}
+function onTextEdit({ key, value }) {
+  if (!TEXT_EDIT_KEYS.includes(key)) return;
+  textOverrides.value = { ...textOverrides.value, [key]: value };
+}
+function revertTextEdits() { textOverrides.value = {}; }
+async function saveTextEdits() {
+  const o = textOverrides.value;
+  const patch = {};
+  TEXT_EDIT_KEYS.forEach(k => { if (o[k] !== undefined) patch[k] = o[k]; });
+  if (!Object.keys(patch).length) return;
+  savingText.value = true;
+  try {
+    await setCommissionSettings(props.projectId, { ...patch, updatedBy: userStore.user?.name || '' }, planId.value);
+    // 目前選用的已存版型若有同名文字欄位，一併寫回，讓匯出與預覽一致
+    if (selectedConfigId.value !== '__default') {
+      const found = configs.value.find(c => c.id === selectedConfigId.value);
+      if (found?.config) {
+        const cfg = applyTextOverrides(found.config);
+        await setCommissionExportConfig(found.id, { config: cfg });
+        found.config = cfg;
+      }
+    }
+    textOverrides.value = {};
+    emit('settings-saved');
+    toast.success('文字自訂已儲存');
+  } catch (e) {
+    console.error('[CommissionExportCenter] 儲存文字自訂失敗:', e);
+    toast.error(`儲存失敗：${e.message}`);
+  } finally {
+    savingText.value = false;
+  }
+}
 const exportProjectName = computed(() => exportProjectNameOf(props.projectName, plan.value));
 const userStore = useUserStore();
 
@@ -385,7 +448,21 @@ function defaultConfigOf(type) {
 const currentConfig = computed(() => {
   if (selectedConfigId.value === '__default') return defaultConfigOf(docType.value);
   const found = configs.value.find(c => c.id === selectedConfigId.value);
-  return found?.config || defaultConfigOf(docType.value);
+  return found?.config ? applyTextOverrides(found.config) : defaultConfigOf(docType.value);
+});
+
+/** 即時預覽就地編輯用：各文字自訂目前的原始值（已存版型有自訂者以版型為準） */
+const editValues = computed(() => {
+  const cfg = currentConfig.value || {};
+  const s = exportSettings.value;
+  return {
+    claimTitlePattern: cfg.titlePattern ?? s.claimTitlePattern ?? '',
+    note1: Array.isArray(cfg.notes) ? (cfg.notes[0] ?? '') : (s.note1 ?? ''),
+    note2: Array.isArray(cfg.notes) ? (cfg.notes[1] ?? '') : (s.note2 ?? ''),
+    kiloLabel: cfg.kiloLabel ?? s.kiloLabel ?? '',
+    youfuLabelPattern: cfg.youfuLabelPattern ?? s.youfuLabelPattern ?? '',
+    partyALabel: s.partyALabel ?? '',
+  };
 });
 
 // 切換文件類型時：優先選該類型的預設版型
@@ -416,11 +493,63 @@ onMounted(loadConfigs);
 // ---------- model / grids ----------
 const personnelOrder = computed(() => props.personnel.map(p => p.name));
 
+/** 某方案某期別已儲存的戶別列順序 */
+function unitOrderOf(pid, per) {
+  const list = props.unitOrders?.[pid]?.[String(per)];
+  return Array.isArray(list) ? list : [];
+}
+const currentUnitOrder = computed(() => unitOrderOf(planId.value, period.value));
+
+/** 即時預覽拖曳戶別列後：儲存目前方案＋期別的戶別順序（請佣總表與獎金表共用） */
+async function onReorderUnits({ unitIds }) {
+  const ids = (unitIds || []).map(String).filter(Boolean);
+  if (!ids.length || !period.value) return;
+  const pid = planId.value;
+  const per = String(period.value);
+  const prev = props.unitOrders || {};
+  const next = { ...prev, [pid]: { ...(prev[pid] || {}), [per]: ids } };
+  emit('update:unitOrders', next);   // 先更新預覽，再寫入
+  try {
+    await setCommissionUnitOrder(props.projectId, pid, per, ids, userStore.user?.name || '');
+    toast.success('戶別順序已儲存');
+  } catch (e) {
+    console.error('[CommissionExportCenter] 儲存戶別順序失敗:', e);
+    toast.error(`儲存戶別順序失敗：${e.message}`);
+    emit('update:unitOrders', prev);
+  }
+}
+
+/**
+ * 即時預覽拖曳人員欄後：把該區人員的新順序併入建案層級排序並立即儲存。
+ * 併入方式：先移除清單中該區所有人員，再於原本第一位出現的位置整段插回，其餘人員相對順序不變。
+ */
+async function onReorderPersons({ personKeys }) {
+  const subset = (personKeys || []).map(String).filter(Boolean);
+  if (!subset.length) return;
+  const saved = (props.personOrder || []).map(String);
+  const set = new Set(subset);
+  const firstIdx = saved.findIndex(k => set.has(k));
+  const rest = saved.filter(k => !set.has(k));
+  const pos = firstIdx < 0 ? rest.length : saved.slice(0, firstIdx).filter(k => !set.has(k)).length;
+  const next = [...rest.slice(0, pos), ...subset, ...rest.slice(pos)];
+  const prev = saved;
+  emit('update:personOrder', next);   // 先更新預覽，再寫入
+  try {
+    await setCommissionPersonOrder(props.projectId, next, userStore.user?.name || '');
+    toast.success('人員欄排序已儲存');
+  } catch (e) {
+    console.error('[CommissionExportCenter] 儲存人員欄排序失敗:', e);
+    toast.error(`儲存人員欄排序失敗：${e.message}`);
+    emit('update:personOrder', prev);
+  }
+}
+
 const claimModel = computed(() => {
   if (isPerson.value || !activeRecords.value.length) return null;
   const cfg = docType.value === 'claim' ? currentConfig.value : projectDefaultClaimConfig();
   return buildClaimModel(activeRecords.value.filter(belongsToPlan), {
     settings: exportSettings.value, config: cfg, period: period.value, projectName: exportProjectName.value,
+    unitOrder: currentUnitOrder.value,
   });
 });
 
@@ -440,12 +569,14 @@ const bonusModel = computed(() => {
     projectName: exportProjectName.value,
     projectId: props.projectId,
     personnelOrder: personnelOrder.value,
+    personOrder: props.personOrder,
+    unitOrder: currentUnitOrder.value,
   });
 });
 
 // ---- 個人明細 ----
 const personOptions = computed(() =>
-  listPersonsInPeriods(props.bonusRecords, periods.value, personnelOrder.value).map(p => ({
+  listPersonsInPeriods(props.bonusRecords, periods.value, personnelOrder.value, props.personOrder).map(p => ({
     value: p.personKey,
     name: p.name,
     title: p.sourceProjectName && p.sourceProjectId !== props.projectId ? `${p.name}（${p.sourceProjectName}）` : p.name,
@@ -498,12 +629,15 @@ const groupedDocuments = computed(() => {
         || (type === 'claim' ? defaultClaimConfig(settings) : defaultBonusConfig(settings));
     };
     const projectName = `${props.projectName}・${p.name}`;
-    const claim = buildClaimModel(records, { settings, config: configOf('claim'), period: period.value, projectName });
+    const unitOrder = unitOrderOf(p.id, period.value);
+    const claim = buildClaimModel(records, { settings, config: configOf('claim'), period: period.value, projectName, unitOrder });
     if (docType.value === 'claim') return [{ plan: p, model: claim, grids: [buildClaimGrid(claim)] }];
     const bonus = buildBonusModel({ records,
       bonusRecords: props.allBonusRecords.filter(b => b.status !== 'voided' && planIdOf(b) === p.id && toNum(b.period) === toNum(period.value)),
       settings, config: configOf('bonus'), period: period.value, projectName, projectId: props.projectId,
       personnelOrder: personnelOrder.value,
+      personOrder: props.personOrder,
+      unitOrder,
     });
     return [{ plan: p, model: bonus, grids: [...(bonus.includeClaimSheet ? [buildClaimGrid(claim)] : []), ...buildBonusGrids(bonus)] }];
   });
@@ -873,7 +1007,7 @@ function selectPeriod(p) {
   periods.value = [toNum(p)];
 }
 watch([() => props.presetPeriod, availablePeriods], ([p]) => { if (p !== null && p !== undefined) selectPeriod(p); }, { immediate: true });
-defineExpose({ selectPeriod, hasDraft: computed(() => editorOpen.value) });
+defineExpose({ selectPeriod, hasDraft: computed(() => editorOpen.value || hasTextEdits.value) });
 </script>
 
 <style scoped>

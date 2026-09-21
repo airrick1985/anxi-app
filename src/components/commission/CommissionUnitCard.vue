@@ -7,6 +7,10 @@
         <strong>{{ entry.unitId }}</strong>
         <span class="text-body-2">{{ entry.unit.buyerName || '—' }}</span>
         <span class="text-body-2 text-medium-emphasis">銷售人員：{{ unitSalesText || '未設定' }}</span>
+        <span class="head-dates text-caption text-medium-emphasis">
+          <span>小訂 <b>{{ depositDateText || '—' }}</b></span>
+          <span>簽約 <b>{{ contractDateText || '—' }}</b></span>
+        </span>
         <v-chip size="x-small" variant="tonal" :color="contractTypeColor(entry.unit.contractType)">{{ entry.unit.contractType || '未設定合約方式' }}</v-chip>
         <span v-if="entry.unit.isPreferredPayment" class="text-caption text-medium-emphasis">優付戶</span>
       </button>
@@ -212,35 +216,35 @@
             <strong>獎金合計 {{ money(result.people.reduce((sum, p) => sum + p.subtotal, 0)) }} 元</strong>
             <v-btn size="small" variant="text" @click="editingPeople = !editingPeople">{{ editingPeople ? '完成設定' : '編輯人員與分配' }}</v-btn>
           </div>
-          <div v-show="editingPeople || missingCats.length || result.errors.length">
+          <div v-show="editingPeople">
           <div class="step-body">
-            <!-- 團獎案場 -->
-            <div v-if="settings.teamGroups.length" class="team-site mb-3">
-              <div class="d-flex align-center flex-wrap ga-2">
-                <span class="text-body-2 font-weight-medium">團獎案場</span>
-                <v-chip
-                  v-for="g in settings.teamGroups"
-                  :key="g.key"
-                  size="small"
-                  :color="entry.teamSiteKeys.includes(g.key) ? 'primary' : undefined"
-                  :variant="entry.teamSiteKeys.includes(g.key) ? 'flat' : 'outlined'"
-                  @click="toggleTeamSite(g.key)"
-                >
-                  <v-icon start size="x-small">{{ entry.teamSiteKeys.includes(g.key) ? 'mdi-check-circle' : 'mdi-plus-circle-outline' }}</v-icon>{{ g.label }}
-                </v-chip>
+            <template v-for="cat in payCategories" :key="cat.key">
+              <!-- 團獎案場：顯示在每個團隊類別上方；所有團隊類別共用同一組勾選，任一處切換全部連動 -->
+              <div v-if="cat.mode === 'team' && settings.teamGroups.length" class="team-site" :class="{ 'is-empty': !entry.teamSiteKeys.length }">
+                <div class="d-flex align-center flex-wrap ga-2">
+                  <span class="text-body-2 font-weight-medium">{{ cat.label }}・團獎案場</span>
+                  <v-chip
+                    v-for="g in settings.teamGroups"
+                    :key="g.key"
+                    size="small"
+                    :color="entry.teamSiteKeys.includes(g.key) ? 'primary' : undefined"
+                    :variant="entry.teamSiteKeys.includes(g.key) ? 'flat' : 'outlined'"
+                    @click="toggleTeamSite(g.key)"
+                  >
+                    <v-icon start size="x-small">{{ entry.teamSiteKeys.includes(g.key) ? 'mdi-check-circle' : 'mdi-plus-circle-outline' }}</v-icon>{{ g.label }}
+                  </v-chip>
+                  <span v-if="!entry.teamSiteKeys.length" class="text-caption text-warning">尚未勾選案場</span>
+                </div>
               </div>
-            </div>
-
-            <AllocationEditor
-              v-for="cat in payCategories"
-              :key="cat.key"
-              :category="entry.categories[cat.key]"
-              :pool="result.pools[cat.key] || 0"
-              :result="result.categoryResults[cat.key] || { amounts: {}, valid: true, error: '', total: 0 }"
-              :pool-options="poolOptionsByCat[cat.key] || []"
-              :project-id="projectId"
-              @add-person="openPicker(cat.key)"
-            />
+              <AllocationEditor
+                :category="entry.categories[cat.key]"
+                :pool="result.pools[cat.key] || 0"
+                :result="result.categoryResults[cat.key] || { amounts: {}, valid: true, error: '', total: 0 }"
+                :pool-options="poolOptionsByCat[cat.key] || []"
+                :project-id="projectId"
+                @add-person="openPicker(cat.key)"
+              />
+            </template>
 
             <!-- 提撥類別（交屋團獎）：本戶可關閉 -->
             <template v-for="cat in handoverCategories" :key="cat.key">
@@ -358,13 +362,13 @@ import { contractTypeColor } from '@/utils/contractTypeColor';
 import { useCommissionPlan } from '@/composables/useCommissionPlan';
 import { isNonGeneralContract, defaultManualFloor } from '@/utils/commissionPlans';
 const { plan } = useCommissionPlan();
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useToast } from 'vue-toastification';
 import AllocationEditor from './AllocationEditor.vue';
 import CrossProjectPersonPicker from './CrossProjectPersonPicker.vue';
 import {
   calcUnitBonus, money, toNum, round2, formatDateTW, evenShares, paymentRatioPct,
-  matchesRolePositions, isHandoverCategory, resolveCommPct,
+  matchesRolePositions, isHandoverCategory, resolveCommPct, categoryDefaultPersons,
 } from '@/utils/commissionCalculation';
 import { bonusSegments, segmentForDate, segmentLabel } from '@/utils/bonusSegments';
 import { resolveDisplayNotes, formatNoteTime, categoryMeta } from '@/utils/remarkNotes';
@@ -482,6 +486,8 @@ const missingCats = computed(() => payCategories.value.filter(cat => {
   const c = props.entry.categories[cat.key];
   return c && toNum(c.ratePct) > 0 && c.allocations.length === 0;
 }));
+/** 有類別尚未選人或分配有誤時自動展開；選完不自動收合，由使用者按「完成設定」收起 */
+watch(() => missingCats.value.length + result.value.errors.length, n => { if (n > 0) editingPeople.value = true; }, { immediate: true });
 /** 待處理項目數：未選人類別 + 分配錯誤 + 比例問題 */
 const issueCount = computed(() =>
   missingCats.value.length + result.value.errors.length + props.entry.finance.errors.length + (ratioOver.value || !(toNum(props.entry.ratioPct) > 0) ? 1 : 0)
@@ -548,7 +554,11 @@ const poolOptionsByCat = computed(() => {
   const contractDate = props.entry.unit.payment_contract_date;
   payCategories.value.forEach(cat => {
     let list = [];
-    if (cat.mode === 'role') {
+    const defaultPersons = categoryDefaultPersons(cat, props.localPersonnel);
+    if (defaultPersons.length) {
+      // 設定頁指定「預設人員」：候選只列這些人（其他人可用「加入他案／臨時人員」加入）
+      list = defaultPersons.map(dp => ({ personKey: dp.personKey, name: dp.name, hint: dp.isExternal ? '預設人員（未在人員名單）' : '預設人員', disabled: false }));
+    } else if (cat.mode === 'role') {
       list = props.localPersonnel
         .filter(p => matchesRolePositions(p.positions, cat.rolePositions))
         .map(p => ({ personKey: personKeyOf(p), name: p.name, hint: '', disabled: false }));
@@ -635,6 +645,22 @@ function toggleTeamSite(key) {
 function applyTeamDefaults() {
   const contractDate = props.entry.unit.payment_contract_date;
   enabledCategories.value.filter(c => c.mode === 'team').forEach(cat => {
+    const defaultPersons = categoryDefaultPersons(cat, props.localPersonnel);
+    if (defaultPersons.length) {
+      // 有預設人員的團隊類別：不依分組重設，固定帶入預設人員（均分）
+      const allocations = defaultPersons.map(dp => {
+        ensureLocalProfile(dp.personKey, dp.name);
+        return {
+          personKey: dp.personKey, name: dp.name,
+          sourceProjectId: props.projectId, sourceProjectName: props.projectName,
+          isExternal: dp.isExternal, mode: 'pct', sharePct: 0, lockedAmount: null,
+        };
+      });
+      const shares = evenShares(allocations.length);
+      allocations.forEach((a, i) => { a.sharePct = shares[i]; });
+      props.entry.categories[cat.key].allocations = allocations;
+      return;
+    }
     const sel = [];
     props.localPersonnel.forEach(p => {
       // 依簽約日取適用段落的團獎分組；不在任何段內者不自動帶入（可手動加入）
@@ -726,7 +752,9 @@ function onPickPerson(person) {
 .rs-item div { font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
 .rs-item.hl { background: #fff; }
 .rs-item.hl div { color: #263238; }
-.team-site { background: #f5f5f5; border-radius: 8px; padding: 8px 10px; }
+.team-site { background: #f5f5f5; border-radius: 8px 8px 0 0; padding: 8px 10px; margin-top: 10px; }
+.team-site.is-empty { background: #fff7e6; }
+.team-site + .allocation-editor { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .handover-box {
   border: 1px solid #ddd; border-radius: 8px; padding: 6px 12px 8px; margin-bottom: 10px; background: #fafafa;
 }
@@ -751,6 +779,8 @@ function onPickPerson(person) {
 .note-content { font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .unit-toggle { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 1; text-align: left; min-width: 180px; padding: 4px 0; }
 .unit-toggle:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 4px; }
+.head-dates { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; font-variant-numeric: tabular-nums; }
+.head-dates b { font-weight: 600; color: #334155; }
 .head-amount { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .head-amount small { font-size: 12px; font-weight: 400; }
 .people-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 0; }

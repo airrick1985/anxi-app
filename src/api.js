@@ -9422,6 +9422,45 @@ export const setCommissionSettings = (projectId, data, planId = 'general') => {
   }, { merge: true });
 };
 
+/** 獎金表人員欄排序（建案層級、所有方案共用）：personKey 清單；不存在回空陣列 */
+export const fetchCommissionPersonOrder = async (projectId) => {
+  const snap = await getDoc(doc(db, 'commissionSettings', `${projectId}__personOrder`));
+  const list = snap.exists() ? snap.data().personOrder : [];
+  return Array.isArray(list) ? list.map(k => String(k)).filter(Boolean) : [];
+};
+
+/** 儲存獎金表人員欄排序（建案層級） */
+export const setCommissionPersonOrder = (projectId, personOrder, updatedBy = '') => {
+  return setDoc(doc(db, 'commissionSettings', `${projectId}__personOrder`), {
+    projectId,
+    kind: 'personOrder',
+    personOrder: (personOrder || []).map(k => String(k)).filter(Boolean),
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
+/**
+ * 請佣總表／獎金表戶別列順序（建案單一文件；依方案＋期別）：
+ * { orders: { [planId]: { [period]: [unitId, ...] } } }
+ */
+export const fetchCommissionUnitOrders = async (projectId) => {
+  const snap = await getDoc(doc(db, 'commissionSettings', `${projectId}__unitOrder`));
+  const orders = snap.exists() ? snap.data().orders : null;
+  return orders && typeof orders === 'object' ? orders : {};
+};
+
+/** 儲存某方案某期別的戶別列順序（只更新該期） */
+export const setCommissionUnitOrder = (projectId, planId, period, unitIds, updatedBy = '') => {
+  return setDoc(doc(db, 'commissionSettings', `${projectId}__unitOrder`), {
+    projectId,
+    kind: 'unitOrder',
+    orders: { [planId]: { [String(period)]: (unitIds || []).map(u => String(u)).filter(Boolean) } },
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
 /** 讀取建案全部請佣紀錄（排序由前端處理） */
 export const fetchCommissionRecords = async (projectId) => {
   const q = query(collection(db, 'commissionRecords'), where('projectId', '==', projectId));

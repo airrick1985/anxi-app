@@ -285,7 +285,7 @@ import { buildClaimGrid, buildBonusGrids } from '@/services/commissionExcelServi
 import { draftClaimRecord, draftRefundRecord, normalizeSalesNames } from '@/utils/commissionDraftRecords';
 import {
   calcUnitBonus, computeUnitFinance, resolveCommPct, formatDateTW,
-  money, toNum, evenShares, paymentRatioPct, matchesRolePositions, isHandoverCategory, resolveSplitMode,
+  money, toNum, evenShares, paymentRatioPct, matchesRolePositions, isHandoverCategory, resolveSplitMode, categoryDefaultPersons,
 } from '@/utils/commissionCalculation';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
 import { bonusSegments, segmentForDate, segmentId, segmentLabel } from '@/utils/bonusSegments';
@@ -297,6 +297,7 @@ const props = defineProps({
   households: { type: Array, default: () => [] },
   parkings: { type: Array, default: () => [] },
   personnel: { type: Array, default: () => [] },
+  personOrder: { type: Array, default: () => [] },   // 建案層級：獎金表人員欄排序（personKey 清單）
   ledgers: { type: Object, default: () => ({}) },   // unitId -> claimedRatioPct
   nextPeriod: { type: Number, default: 1 },
   records: { type: Array, default: () => [] },        // 全建案請佣紀錄（退佣來源）
@@ -585,7 +586,12 @@ function addUnit(unitId) {
   const categories = {};
   enabledCategories.value.forEach(cat => {
     let allocations = [];
-    if (cat.mode === 'individual') {
+    const defaultPersons = categoryDefaultPersons(cat, props.personnel);
+    if (defaultPersons.length) {
+      // 設定頁指定「預設人員」：不看對應職務／團獎分組，直接帶入這些人並均分
+      defaultPersons.forEach(dp => ensureProfile(dp.personKey, dp.name, unit.payment_contract_date));
+      allocations = evenAlloc(defaultPersons);
+    } else if (cat.mode === 'individual') {
       const names = normalizeSalesNames(unit.salesperson);
       const persons = names.map(nm => {
         const p = props.personnel.find(x => x.name === nm);
@@ -867,6 +873,7 @@ const previewGrids = computed(() => {
           config: previewConfigOf('bonus'),
           projectId: props.projectId,
           personnelOrder: props.personnel.map(p => p.name),
+          personOrder: props.personOrder,
         }));
       }
       if (multi) grids.forEach(g => { g.name = `第${period}期 ${g.name}`; });

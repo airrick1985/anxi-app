@@ -78,19 +78,20 @@
             <li><b>發放方式</b>：依職務＝發給符合職務的人；個人＝發給該戶銷售；團隊＝依團獎分組發放；若另設對應職務，需分組與職務同時符合。</li>
             <li><b>自個獎提撥</b>（交屋團獎）：自「來源類別」（預設銷售個獎）的獎金池提撥「比例(%)」，本期不發放、不分配給人員，暫留供日後另行製作交屋獎金；來源類別以提撥後的餘額分配。</li>
             <li><b>對應職務</b>：可多選，選項是本建案人員的職務；沒有的職務可直接打字新增。</li>
+            <li><b>預設人員</b>：可填多位；填入後該類別不再依對應職務找人，請佣工作台直接帶入這些人並均分。</li>
             <li>不用的類別請「停用」，不要刪除，歷史資料才會保留。</li>
           </ul>
           <div class="table-scroll">
             <v-table density="compact" class="cat-table">
               <colgroup>
                 <col style="width:72px"><col style="width:168px"><col style="width:144px"><col style="width:198px">
-                <col style="width:360px"><col style="width:64px"><col style="width:44px">
+                <col style="width:360px"><col style="width:240px"><col style="width:64px"><col style="width:44px">
               </colgroup>
               <thead>
                 <tr>
                   <th>順序</th><th>名稱</th><th>比例(%)</th>
                   <th>發放方式</th><th>對應職務 / 來源類別</th>
-                  <th>啟用</th><th></th>
+                  <th>預設人員</th><th>啟用</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -113,13 +114,28 @@
                       item-title="title" item-value="value" variant="outlined" density="compact" hide-details
                       placeholder="來源類別（預設：個人類別）" clearable></v-select>
                     <v-combobox v-else v-model="cat.rolePositions" :items="projectPositions" multiple chips closable-chips
-                      variant="outlined" density="compact" hide-details :disabled="cat.mode !== 'role' && cat.mode !== 'team'"
-                      placeholder="選擇或輸入" no-data-text="本建案尚未設定人員職務，可直接輸入新增"
-                      :delimiters="[',', '，', '、']">
+                      variant="outlined" density="compact" hide-details
+                      :disabled="(cat.mode !== 'role' && cat.mode !== 'team') || hasDefaultPerson(cat)"
+                      :placeholder="hasDefaultPerson(cat) ? '以預設人員為主' : '選擇或輸入'"
+                      no-data-text="本建案尚未設定人員職務，可直接輸入新增">
                       <template #chip="{ item, props: chipProps }">
                         <v-chip v-bind="chipProps" size="x-small" label
                           :color="projectPositions.includes(String(item.value).trim()) ? 'primary' : 'warning'"
                           :title="projectPositions.includes(String(item.value).trim()) ? '' : '本建案目前無人員設定此職務'">
+                          {{ item.title }}
+                        </v-chip>
+                      </template>
+                    </v-combobox>
+                  </td>
+                  <td>
+                    <v-combobox v-model="cat.defaultPersonNames" :items="personnelNames" multiple chips closable-chips
+                      variant="outlined" density="compact" hide-details
+                      :disabled="cat.mode !== 'role' && cat.mode !== 'team'"
+                      placeholder="選擇或輸入姓名，Enter 加入" no-data-text="輸入姓名後按 Enter">
+                      <template #chip="{ item, props: chipProps }">
+                        <v-chip v-bind="chipProps" size="x-small" label
+                          :color="personnelNames.includes(String(item.value).trim()) ? 'primary' : 'warning'"
+                          :title="personnelNames.includes(String(item.value).trim()) ? '' : '不在本建案人員名單，將以臨時人員帶入'">
                           {{ item.title }}
                         </v-chip>
                       </template>
@@ -217,7 +233,7 @@ import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { setCommissionSettings } from '@/api';
-import { mergeSettings, SPLIT_MODES, allocateAmounts, evenShares, money } from '@/utils/commissionCalculation';
+import { mergeSettings, SPLIT_MODES, allocateAmounts, evenShares, money, categoryDefaultPersonNames } from '@/utils/commissionCalculation';
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -280,6 +296,14 @@ const projectPositions = computed(() => {
   return list;
 });
 
+/** 本建案人員姓名（預設人員下拉選項） */
+const personnelNames = computed(() =>
+  Array.from(new Set((props.personnel || []).map(p => String(p?.name || '').trim()).filter(Boolean)))
+);
+function hasDefaultPerson(cat) {
+  return categoryDefaultPersonNames(cat).length > 0;
+}
+
 /** 個人明細「顯示全部戶別」關鍵字建議：本建案職務優先，再補常用職務 */
 const positionSuggestionItems = computed(() => {
   const s = new Set(projectPositions.value);
@@ -314,7 +338,13 @@ function sourceOptions(cat) {
 watch(() => props.settings, (v) => { local.value = clone(v); syncTeamSiteIdsFromLocal(); });
 
 function clone(v) {
-  return JSON.parse(JSON.stringify(mergeSettings(v)));
+  const s = JSON.parse(JSON.stringify(mergeSettings(v)));
+  // 舊版單一「預設人員姓名」轉為多人陣列，讓表單一律以陣列操作
+  (s.bonusCategories || []).forEach(c => {
+    c.defaultPersonNames = categoryDefaultPersonNames(c);
+    delete c.defaultPersonName;
+  });
+  return s;
 }
 
 function moveCat(i, dir) {
@@ -347,6 +377,8 @@ async function save() {
     data.bonusCategories.forEach((c, idx) => {
       c.order = idx + 1;
       c.rolePositions = Array.from(new Set((c.rolePositions || []).map(r => String(r || '').trim()).filter(Boolean)));
+      c.defaultPersonNames = (c.mode === 'role' || c.mode === 'team') ? categoryDefaultPersonNames(c) : [];
+      delete c.defaultPersonName;   // 舊版單一姓名欄位已併入 defaultPersonNames
       if (c.mode === 'handover') {
         c.rolePositions = [];
         const valid = data.bonusCategories.some(o => o !== c && o.mode !== 'handover' && o.key === c.sourceCatKey);
@@ -374,7 +406,7 @@ async function save() {
     saving.value = false;
   }
 }
-defineExpose({ hasDraft: computed(() => JSON.stringify(local.value) !== JSON.stringify(props.settings)) });
+defineExpose({ hasDraft: computed(() => JSON.stringify(local.value) !== JSON.stringify(clone(props.settings))) });
 </script>
 
 <style scoped>
@@ -382,8 +414,8 @@ defineExpose({ hasDraft: computed(() => JSON.stringify(local.value) !== JSON.str
 .cat-hints { padding-left: 18px; line-height: 1.7; }
 .split-radios :deep(.v-selection-control) { align-items: flex-start; margin-bottom: 6px; }
 .split-radios :deep(.v-label) { opacity: 1; }
-/* 獎金類別表：所有欄位固定寬度、表格不撐滿（總寬 1050px），寬螢幕靠左緊湊、窄螢幕橫向捲動 */
-.cat-table :deep(table) { table-layout: fixed; width: 1050px; }
+/* 獎金類別表：所有欄位固定寬度、表格不撐滿（總寬 1290px），寬螢幕靠左緊湊、窄螢幕橫向捲動 */
+.cat-table :deep(table) { table-layout: fixed; width: 1290px; }
 .cat-table :deep(th) { white-space: nowrap; }
 .cat-table :deep(td) { padding-block: 4px; vertical-align: middle; }
 .cat-table :deep(.v-field__input) { min-height: 36px; }

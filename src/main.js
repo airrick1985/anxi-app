@@ -12,6 +12,7 @@ import './styles/unitEffects.css' // 銷控網格「邊框特效」全域樣式�
 import './styles/macosUi.css' // ✅ macOS 風格共用按鈕／視窗樣式（報價單設定、列印視窗、提醒視窗共用）
 import { vReveal } from './directives/vReveal' // 首頁捲動「模糊→清晰」特效指令
 import { vFileDrop } from './directives/vFileDrop' // 拖曳檔案上傳放置區指令（銷控系統各上傳功能共用）
+import { installImeKeyGuard } from './utils/imeKeyGuard' // 中文輸入法組字中的上下鍵／Enter 不被下拉選單攔截（全站）
 import './styles/fileDrop.css'
 // vuetify 改為 vite-plugin-vuetify 自動匯入後不再全域註冊元件；
 // vuedraggable 的 tag 是字串並在其自身 render 內 resolveComponent，只查全域註冊，故這兩個需手動全域註冊。
@@ -62,6 +63,7 @@ import { faHouse, faChartLine, faUsers, faExchangeAlt } from '@fortawesome/free-
 const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate) // <--- 2. 使用插件
 
+installImeKeyGuard() // 中文輸入法組字中的方向鍵／Enter 交給輸入法處理，不觸發 Vuetify 下拉選單
 const app = createApp(App) // 先創建 app 實例
 
 

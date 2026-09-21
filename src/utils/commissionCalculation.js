@@ -96,6 +96,30 @@ export function matchesRolePositions(personPositions, rolePositions) {
   return (personPositions || []).some(pos => roles.includes(String(pos || '').trim()));
 }
 
+/** 獎金類別設定的預設人員姓名清單（新版 defaultPersonNames 陣列；相容舊版 defaultPersonName 單一字串） */
+export function categoryDefaultPersonNames(cat) {
+  const raw = Array.isArray(cat?.defaultPersonNames) ? cat.defaultPersonNames
+    : (cat?.defaultPersonName ? [cat.defaultPersonName] : []);
+  return Array.from(new Set(raw.map(n => String(n || '').trim()).filter(Boolean)));
+}
+
+/**
+ * 獎金類別的「預設人員」：設定頁若填了預設人員姓名，則不看對應職務，直接以這些人為該類別的預設請佣人員（均分）。
+ * 僅 role／team 類別適用。以姓名比對本建案人員；不在名單者視為臨時人員（key 為 ext:姓名）。
+ * @returns {Array<{ personKey:string, name:string, isExternal:boolean }>} 無設定時為空陣列
+ */
+export function categoryDefaultPersons(cat, personnel) {
+  if (cat?.mode !== 'role' && cat?.mode !== 'team') return [];
+  return categoryDefaultPersonNames(cat).map(name => {
+    const p = (personnel || []).find(x => String(x?.name || '').trim() === name);
+    return {
+      personKey: p ? (p.phone || `ext:${p.name}`) : `ext:${name}`,
+      name: p?.name || name,
+      isExternal: !p,
+    };
+  });
+}
+
 /**
  * 類別是否為「自個獎提撥」（交屋團獎）：
  * 自來源類別（預設銷售個獎）的獎金池提撥 ratePct%，本期不發放、不分配給人員，暫留待日後另製交屋獎金。

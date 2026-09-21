@@ -149,8 +149,9 @@ export function buildClaimGrid(model) {
   // 備註 + 右側紅字摘要
   g.set(rNote0, 0, '備註：', { align: 'left' });
   const noteSpan = Math.min(9, Math.max(4, cols.length - 8));
-  (model.notes || []).slice(0, 2).forEach((note, ni) => {
-    g.set(rNote0 + ni, 1, note, { align: 'left' });
+  const noteSlots = Array.isArray(model.noteSlots) ? model.noteSlots : (model.notes || []).slice(0, 2);
+  noteSlots.slice(0, 2).forEach((note, ni) => {
+    g.set(rNote0 + ni, 1, note || '', { align: 'left' });
     g.merge(rNote0 + ni, 1, rNote0 + ni, noteSpan);
   });
   if (model.showSummaryBlock) {
@@ -165,7 +166,17 @@ export function buildClaimGrid(model) {
   }
   for (let rr = rNote0; rr < rNote0 + 4; rr++) g.rowHeights[rr] = 36;
 
-  return g.toJSON();
+  // 可就地編輯的文字格（匯出中心即時預覽；對應請佣設定「文字自訂」）
+  const editCells = [
+    { r: rTitle, c: 0, key: 'claimTitlePattern', label: '請佣總表標題', hint: '可用 {建案名}{期別}{期別中文}{民國年月}' },
+    { r: rNote0, c: 1, key: 'note1', label: '請佣總表條文 1', multiline: true },
+    { r: rNote0 + 1, c: 1, key: 'note2', label: '請佣總表條文 2', multiline: true },
+  ];
+
+  // 戶別列（即時預覽拖曳上下排序；handle 為編號欄）
+  const unitRows = model.rows.map((row, ri) => ({ r: rData0 + ri, unitId: row.unitId, recordId: row.recordId, handleCol: 0 }));
+
+  return { ...g.toJSON(), editCells, unitRows };
 }
 
 // ================= 獎金表 grid =================
@@ -348,13 +359,24 @@ export function buildBonusGroupGrid(group, model) {
   // 左側管理人員金額（100% 呈現；置於其管理類別列）
   group.left.forEach((a, i) => {
     const col = LSTART + i;
-    let rowIdx = 2;   // 預設第一個管理類別列
-    const matchIdx = group.mgmtCats.findIndex(c =>
-      (a.mgmtCat === '輔導' && String(c.label).includes('輔導')) ||
-      (a.mgmtCat !== '輔導' && String(c.label).includes('主委'))
-    );
-    if (matchIdx >= 0) rowIdx = 2 + matchIdx;
-    g.set(rRow(rowIdx), col, Math.round(a.sub) || '', { fmt: '#,##0', border: true });
+    if (a.mgmtAmounts) {
+      // 各管理類別金額置於該類別列（左側標籤列 2+k）；另有個獎／團獎者置於 0／1 列
+      group.mgmtCats.forEach((c, k) => {
+        const v = Math.round(toNum(a.mgmtAmounts[c.key]));
+        if (v) g.set(rRow(2 + k), col, v, { fmt: '#,##0', border: true });
+      });
+      if (Math.round(a.indiv)) g.set(rRow(0), col, Math.round(a.indiv), { fmt: '#,##0', border: true });
+      if (Math.round(a.team)) g.set(rRow(1), col, Math.round(a.team), { fmt: '#,##0', border: true });
+    } else {
+      // 相容舊 model：依職務分類列
+      let rowIdx = 2;
+      const matchIdx = group.mgmtCats.findIndex(c =>
+        (a.mgmtCat === '輔導' && String(c.label).includes('輔導')) ||
+        (a.mgmtCat !== '輔導' && String(c.label).includes('主委'))
+      );
+      if (matchIdx >= 0) rowIdx = 2 + matchIdx;
+      g.set(rRow(rowIdx), col, Math.round(a.sub) || '', { fmt: '#,##0', border: true });
+    }
     g.set(rRow(RI.sub), col, Math.round(a.sub) || '', { fmt: '#,##0', bold: true, border: true });
     if (group.isYoufu) g.set(rRow(RI.youfu), col, Math.round(a.subDisc) || '', { fmt: '#,##0', bold: true, border: true });
     g.set(rRow(RI.keep), col, (group.isYoufu ? a.keepDisc : a.keep) || '', { fmt: '#,##0', border: true });
@@ -412,7 +434,33 @@ export function buildBonusGroupGrid(group, model) {
   });
   g.region(rGrand0 + GRAND_N - 1, 0, rGrand0 + GRAND_N - 1, RLAB, { bg: totalBg });
 
-  return g.toJSON();
+  // 人員欄位資訊（即時預覽拖曳排序用；不影響 Excel／PDF）
+  // section：top＝上段銷售人員（個獎／團獎兩欄）、left＝下段管理職、right＝下段銷售人員
+  const personCols = [];
+  group.topPersons.forEach((p, i) => {
+    personCols.push({ section: 'top', personKey: p.personKey, name: p.name, c1: FIX + 2 * i, c2: FIX + 2 * i + 1, r1: rH1, r2: rTopTotal });
+  });
+  group.left.forEach((a, i) => {
+    personCols.push({ section: 'left', mgmtCat: a.mgmtCat || '', personKey: a.personKey, name: a.name, c1: LSTART + i, c2: LSTART + i, r1: rbH, r2: rRow(RI.remark) });
+  });
+  group.right.forEach((a, i) => {
+    personCols.push({ section: 'right', personKey: a.personKey, name: a.name, c1: RLAB + 1 + i, c2: RLAB + 1 + i, r1: rbH, r2: rRow(RI.remark) });
+  });
+
+  // 可就地編輯的文字格（匯出中心即時預覽；對應請佣設定「文字自訂」）
+  const editCells = [
+    { r: rKilo, c: 13, key: 'kiloLabel', label: '「千4」標籤' },
+    { r: rH1, c: 9, key: 'partyALabel', label: '介紹費欄位 A' },
+  ];
+  if (group.isYoufu) {
+    editCells.push({ r: rRow(RI.youfu), c: 0, key: 'youfuLabelPattern', label: '優付列文字', hint: '{pct}＝請佣比例' });
+    editCells.push({ r: rRow(RI.youfu), c: RLAB, key: 'youfuLabelPattern', label: '優付列文字', hint: '{pct}＝請佣比例' });
+  }
+
+  // 戶別列（即時預覽拖曳上下排序；handle 為編號欄）
+  const unitRows = group.unitRows.map((d, i) => ({ r: rData0 + i, unitId: d.unitId, recordId: d.recordId, handleCol: 0 }));
+
+  return { ...g.toJSON(), personCols, editCells, unitRows };
 }
 
 export function buildBonusGrids(model) {
@@ -806,6 +854,19 @@ export function gridToHtml(grid) {
     }
   });
 
+  // 人員欄位標記：整欄加 data-pc（欄索引），表頭格加 data-person-key 供拖曳排序
+  const pcMap = {};   // "r,c" -> { idx, head }
+  (grid.personCols || []).forEach((pc, idx) => {
+    for (let r = pc.r1; r <= pc.r2; r++) {
+      for (let c = pc.c1; c <= pc.c2; c++) pcMap[`${r},${c}`] = { idx, head: r === pc.r1 && c === pc.c1 };
+    }
+  });
+
+  const edMap = {};   // "r,c" -> editCells index
+  (grid.editCells || []).forEach((ec, idx) => { edMap[`${ec.r},${ec.c}`] = idx; });
+  const urMap = {};   // r -> unitRows index
+  (grid.unitRows || []).forEach((ur, idx) => { urMap[ur.r] = idx; });
+
   const colTags = grid.cols.map(w => `<col style="width:${Math.round(w * 1.05)}px">`).join('');
   let html = `<table class="comm-grid" style="border-collapse:collapse;table-layout:fixed;font-family:'${grid.base.fontFamily || 'DFKai-SB'}','Noto Serif TC',serif">` + `<colgroup>${colTags}</colgroup>`;
   for (let r = 0; r < grid.nRows; r++) {
@@ -829,7 +890,26 @@ export function gridToHtml(grid) {
       styles.push(s.border ? 'border:1px solid #999' : 'border:1px solid transparent');
       const span = mk ? ` rowspan="${mk.rowspan}" colspan="${mk.colspan}"` : '';
       const text = cell ? escapeHtml(fmtValue(cell.v, s.fmt)) : '';
-      html += `<td${span} style="${styles.join(';')}">${text}</td>`;
+      const pc = pcMap[`${r},${c}`];
+      const ed = edMap[`${r},${c}`];
+      let attrs = '';
+      const classes = [];
+      if (pc) {
+        const meta = grid.personCols[pc.idx];
+        attrs += ` data-pc="${pc.idx}"`;
+        if (pc.head) {
+          attrs += ` data-person-key="${escapeAttr(meta.personKey)}" data-person-section="${meta.section}" data-person-cat="${escapeAttr(meta.mgmtCat || '')}" draggable="true"`;
+          classes.push('pc-head');
+        }
+      }
+      if (ed !== undefined) { attrs += ` data-ed="${ed}"`; classes.push('ed-cell'); }
+      const ur = urMap[r];
+      if (ur !== undefined) {
+        attrs += ` data-ur="${ur}"`;
+        if (c === (grid.unitRows[ur].handleCol ?? 0)) { attrs += ` data-unit-handle="1" draggable="true"`; classes.push('ur-handle'); }
+      }
+      if (classes.length) attrs += ` class="${classes.join(' ')}"`;
+      html += `<td${span}${attrs} style="${styles.join(';')}">${text}</td>`;
     }
     html += '</tr>';
   }
@@ -839,4 +919,7 @@ export function gridToHtml(grid) {
 
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+}
+function escapeAttr(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

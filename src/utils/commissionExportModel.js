@@ -118,8 +118,17 @@ export function defaultBonusConfig(settings) {
  * @param {Array} records - 該期有效 commissionRecords
  * @param {object} opts - { settings, config, period, projectName }
  */
+/** 戶別列排序：已儲存的戶別順序（unitOrder）優先，其餘依戶別編號自然排序接在後面 */
+export function sortRecordsByUnitOrder(records, unitOrder = []) {
+  const idx = {};
+  (unitOrder || []).forEach((u, i) => { if (idx[u] === undefined) idx[u] = i; });
+  const rank = r => (idx[String(r.unitId)] !== undefined ? idx[String(r.unitId)] : Number.MAX_SAFE_INTEGER);
+  return records.slice().sort((a, b) => (rank(a) - rank(b))
+    || String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true }));
+}
+
 export function buildClaimModel(records, opts) {
-  const { settings = {}, config = {}, period, projectName = '' } = opts;
+  const { settings = {}, config = {}, period, projectName = '', unitOrder = [] } = opts;
   const cfg = { ...defaultClaimConfig(settings), ...config };
   const keepPct = toNum(cfg.keepPct);
   const ctx = { keepPct, youfuTag: cfg.youfuTag || '5%優付' };
@@ -145,11 +154,11 @@ export function buildClaimModel(records, opts) {
       };
     });
 
-  const sorted = records.slice().sort((a, b) => String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true }));
+  const sorted = sortRecordsByUnitOrder(records, unitOrder);
   const rows = sorted.map((r, i) => {
     const cells = {};
-    CLAIM_COLUMNS.forEach(col => { cells[col.key] = col.get(r, i, ctx); });
-    return { cells, youfu: !!r.snapshot?.isPreferredPayment, refund: isRefundRecord(r) };
+    CLAIM_COLUMNS.forEach(col => { cells[col.key] = col.get(r, i, ctx); });   // 編號依排序後位置連續編號
+    return { cells, unitId: String(r.unitId), recordId: r.id, youfu: !!r.snapshot?.isPreferredPayment, refund: isRefundRecord(r) };
   });
 
   const totals = {};
@@ -177,6 +186,7 @@ export function buildClaimModel(records, opts) {
     keepPct, cashPct: toNum(cfg.cashPct),
     columns, rows, totals,
     notes: (cfg.notes || []).filter(n => String(n || '').trim() !== ''),
+    noteSlots: [String(cfg.notes?.[0] ?? ''), String(cfg.notes?.[1] ?? '')],   // 條文 1／2 固定位置（預覽可就地編輯）
     showSummaryBlock: cfg.showSummaryBlock !== false,
     summary: { baseSum, thisClaimSum, cash, bill: thisClaimSum - cash },
     paper: cfg.paper || 'A4',
@@ -204,6 +214,11 @@ function isMgmtRole(role) {
   if (s.includes('輔導')) return '輔導';
   return null;
 }
+/** 管理類別歸屬（主委／副總／輔導）：看類別名稱與對應職務 */
+function mgmtCatOf(cat) {
+  const s = `${cat?.label || ''} ${(cat?.rolePositions || []).join(' ')}`;
+  return isMgmtRole(s) || '主委';
+}
 
 /** 類別歸位：indiv（個獎欄）/ team（團獎欄）/ 其他右側列 / 管理左側 / handover（提撥類別，上段獨立欄、不計入任何人） */
 export function classifyCategories(settings) {
@@ -226,10 +241,33 @@ export function classifyCategories(settings) {
  * 「優付方案請款」列與扣款列以實際金額（amounts / keep / tax / nhi / net）。
  * @param {object} opts - { records, bonusRecords, settings, config, period, projectName, personnelOrder }
  */
+/**
+ * 人員排序比較函式：
+ * 1. 建案層級「獎金表人員欄排序」（personOrder，personKey 清單，即時預覽拖曳儲存）優先；
+ * 2. 未排過序者接在後面，依建案人員名單順序（personnelOrder，姓名）；
+ * 3. 其餘依姓名排序。
+ */
+export function makePersonRank(personOrder = [], personnelOrder = []) {
+  const keyIdx = {};
+  (personOrder || []).forEach((k, i) => { if (keyIdx[k] === undefined) keyIdx[k] = i; });
+  const nameIdx = {};
+  (personnelOrder || []).forEach((n, i) => { if (nameIdx[n] === undefined) nameIdx[n] = i; });
+  const base = (personOrder || []).length;
+  return p => {
+    if (p?.personKey !== undefined && keyIdx[p.personKey] !== undefined) return keyIdx[p.personKey];
+    if (nameIdx[p?.name] !== undefined) return base + nameIdx[p.name];
+    return Number.MAX_SAFE_INTEGER;
+  };
+}
+export function makePersonSorter(personOrder = [], personnelOrder = []) {
+  const rank = makePersonRank(personOrder, personnelOrder);
+  return (a, b) => (rank(a) - rank(b)) || String(a?.name || '').localeCompare(String(b?.name || ''), 'zh-Hant');
+}
+
 export function buildBonusModel(opts) {
   const {
     records = [], bonusRecords = [], settings = {}, config = {},
-    period, projectName = '', projectId = '', personnelOrder = [],
+    period, projectName = '', projectId = '', personnelOrder = [], personOrder = [], unitOrder = [],
   } = opts;
   const cfg = { ...defaultBonusConfig(settings), ...config };
   const cls = classifyCategories(settings);
@@ -243,9 +281,9 @@ export function buildBonusModel(opts) {
   const handoverRate = cls.handover.reduce((s, c) => s + toNum(c.ratePct), 0);
   const handoverX = handoverRate ? `${cls.indiv[0]?.label || '個獎'}×${handoverRate}%` : '';
 
-  const orderIdx = {};
-  personnelOrder.forEach((n, i) => { orderIdx[n] = i; });
-  const ord = n => (orderIdx[n] !== undefined ? orderIdx[n] : 9999);
+  const personSorter = makePersonSorter(personOrder, personnelOrder);
+  const personRank = makePersonRank(personOrder, personnelOrder);
+  const mgmtKeys = cls.mgmt.map(c => c.key);
 
   const minguoYM = firstMinguoYM(records);
   const saleYM = minguoYM;
@@ -309,16 +347,27 @@ export function buildBonusModel(opts) {
         a.netDisc = a.subDisc - a.keepDisc - a.taxDisc - a.nhiDisc;
       });
 
+      // 管理職（下段左側，銷售日期與項目欄之間）：以「實際領到管理類別獎金」歸位，
+      // 沒領管理類別但職務為主委／副總／輔導者亦列左側；其餘有獎金者列右側（項目欄右側）
       const left = [], right = [];
       Object.values(agg).forEach(a => {
-        const cat = isMgmtRole(a.role);
-        if (cat) { a.mgmtCat = cat; left.push(a); }
-        else if (a.sub !== 0) right.push(a);
+        const mgmtAmounts = {};
+        let mgmtSum = 0;
+        cls.mgmt.forEach(c => { const v = Math.round(toNum(a.byCat[c.key])); mgmtAmounts[c.key] = v; mgmtSum += v; });
+        const roleCat = isMgmtRole(a.role);
+        if (mgmtSum !== 0 || (roleCat && a.sub !== 0)) {
+          const firstCat = cls.mgmt.find(c => mgmtAmounts[c.key] !== 0);
+          a.mgmtCat = firstCat ? mgmtCatOf(firstCat) : roleCat;
+          a.mgmtAmounts = mgmtAmounts;
+          left.push(a);
+        } else if (a.sub !== 0) right.push(a);
       });
+      // 排序：已儲存的人員欄順序優先（可拖曳）；未排序者管理職依主委→副總→輔導，再依人員名單
       const catOrder = { 主委: 0, 副總: 1, 輔導: 2 };
-      left.sort((x, y) => (catOrder[x.mgmtCat] - catOrder[y.mgmtCat]) || (ord(x.name) - ord(y.name)));
-      right.sort((x, y) => ord(x.name) - ord(y.name));
-      const topPersons = right.map(a => ({ personKey: a.personKey, name: a.name, sourceProjectName: a.sourceProjectName, sourceProjectId: a.sourceProjectId }));
+      left.sort((x, y) => (personRank(x) - personRank(y))
+        || ((catOrder[x.mgmtCat] ?? 9) - (catOrder[y.mgmtCat] ?? 9))
+        || String(x.name).localeCompare(String(y.name), 'zh-Hant'));
+      right.sort(personSorter);
 
       // ---- 每戶列 + 每戶每人 個獎/團獎（100%） ----
       const perUnitPerson = {};   // commissionRecordId -> personKey -> {indiv, team}
@@ -329,8 +378,15 @@ export function buildBonusModel(opts) {
         perUnitPerson[b.commissionRecordId][b.personKey].indiv += sumCats(full, indivKeys);
         perUnitPerson[b.commissionRecordId][b.personKey].team += sumCats(full, teamKeys);
       });
+      // 上段人員欄：只列在任一戶有個獎或團獎金額的人員（只領其他類別者不出現）
+      const topPersons = right
+        .filter(a => Object.values(perUnitPerson).some(m => {
+          const v = m[a.personKey];
+          return v && (Math.round(v.indiv) !== 0 || Math.round(v.team) !== 0);
+        }))
+        .map(a => ({ personKey: a.personKey, name: a.name, sourceProjectName: a.sourceProjectName, sourceProjectId: a.sourceProjectId }));
 
-      const sortedRecords = g.records.slice().sort((a, b) => String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true }));
+      const sortedRecords = sortRecordsByUnitOrder(g.records, unitOrder);
       const unitRows = sortedRecords.map((r, i) => {
         const pp = {};
         topPersons.forEach(p => {
@@ -346,6 +402,7 @@ export function buildBonusModel(opts) {
         const refund = isRefundRecord(r);
         return {
           no: i + 1,
+          unitId: String(r.unitId), recordId: r.id,
           refund,
           sodate: toMinguo(r.snapshot?.depositDate),
           sign: toMinguo(r.snapshot?.contractDate),
@@ -463,10 +520,9 @@ export function periodsLabel(periods, forFile = false) {
 }
 
 /** 該期別範圍內有獎金紀錄的人員清單（供選擇器） */
-export function listPersonsInPeriods(bonusRecords, periods, personnelOrder = []) {
+export function listPersonsInPeriods(bonusRecords, periods, personnelOrder = [], personOrder = []) {
   const set = new Set((periods || []).map(toNum));
-  const orderIdx = {};
-  personnelOrder.forEach((n, i) => { orderIdx[n] = i; });
+  const personSorter = makePersonSorter(personOrder, personnelOrder);
   const map = {};
   (bonusRecords || []).forEach(b => {
     if (b.status === 'voided' || !set.has(toNum(b.period))) return;
@@ -478,8 +534,7 @@ export function listPersonsInPeriods(bonusRecords, periods, personnelOrder = [])
     map[key].net += toNum(b.net);
     if (b.role && !map[key].role) map[key].role = b.role;
   });
-  const ord = n => (orderIdx[n] !== undefined ? orderIdx[n] : 9999);
-  return Object.values(map).sort((a, b) => (ord(a.name) - ord(b.name)) || String(a.name).localeCompare(String(b.name), 'zh-Hant'));
+  return Object.values(map).sort(personSorter);
 }
 
 /**
