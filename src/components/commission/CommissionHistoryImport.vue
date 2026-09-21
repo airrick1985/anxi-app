@@ -4,7 +4,7 @@
       匯入至「{{ plan.name }}」。
       <span v-if="plan.priceBasis === 'package'">填寫「配套價格、配套底價」，不計車位。</span>
       <span v-else>非一般合約可選「配套房屋總價」來源；請佣總價含車位，房屋底價不含車位。</span>
-      檔案中的歷史金額優先採用，底價請填當時數值。
+      檔案中的歷史金額優先採用，底價請填當時數值；與目前銷控不同僅提醒，不阻擋匯入。
     </v-alert>
     <v-alert v-if="presetPeriodValue" type="info" variant="tonal" density="compact" class="mb-3" closable @click:close="presetPeriodValue = null">
       正在<b>重新匯入第 {{ presetPeriodValue }} 期</b>：請上傳修正後的檔案，匯入時會先將第 {{ presetPeriodValue }} 期既有有效紀錄整期作廢再寫入（已自動勾選覆蓋）。
@@ -135,7 +135,8 @@
                     <tr v-for="r in shownClaimRows" :key="r._idx" :class="rowClass(r)">
                       <td>{{ r._idx + 1 }}</td>
                       <td><v-chip size="x-small" :color="statusColor(r.status)" variant="tonal">{{ statusText(r.status) }}</v-chip></td>
-                      <td>{{ r.period }}</td><td>{{ r.unitId }}</td>
+                      <td>{{ r.period }}</td>
+                      <td>{{ r.unitId }} <v-chip v-if="r.type === 'refund'" size="x-small" color="error" variant="flat" class="ml-1">退佣</v-chip></td>
                       <td>{{ r.snapshot?.contractType || '未設定' }}</td>
                       <td>{{ priceSourceLabels[r.snapshot?.priceSource] || '原成交總價' }}</td>
                       <td class="text-right">{{ toNum(r.snapshot?.dealTotal).toLocaleString('en-US', { maximumFractionDigits: 4 }) }}</td>
@@ -164,7 +165,9 @@
                     <tr v-for="r in shownBonusRows" :key="r._idx" :class="rowClass(r)">
                       <td>{{ r._idx + 1 }}</td>
                       <td><v-chip size="x-small" :color="statusColor(r.status)" variant="tonal">{{ statusText(r.status) }}</v-chip></td>
-                      <td>{{ r.period }}</td><td>{{ r.unitId }}</td><td>{{ r.name }}</td><td>{{ r.personKey }}</td>
+                      <td>{{ r.period }}</td>
+                      <td>{{ r.unitId }} <v-chip v-if="r.type === 'refund'" size="x-small" color="error" variant="flat" class="ml-1">退佣</v-chip></td>
+                      <td>{{ r.name }}</td><td>{{ r.personKey }}</td>
                       <td class="text-right">{{ money(r.subtotal) }}</td>
                       <td class="text-right">{{ money(r.keep) }}</td>
                       <td class="text-right">{{ money(r.net) }}</td>
@@ -321,11 +324,14 @@ const ratioSummary = computed(() => {
   });
   return Object.keys(add).map(unitId => {
     const before = Math.round(ledgerBase(unitId) * 10) / 10;
-    return { unitId, before, after: Math.round((before + add[unitId]) * 10) / 10 };
+    return { unitId, before, after: Math.max(0, Math.round((before + add[unitId]) * 10) / 10) };
   });
 });
 
 const priceSourceLabels = { transaction: '原成交總價', splitHouse: '配套房屋總價', package: '配套價格' };
+// 退佣列：快照金額與試算結果取負值（與工作台退佣 buildRefundPlan 同規則）
+const REFUND_SNAPSHOT_KEYS = ['dealTotal', 'totalFloor', 'spread', 'houseDeal', 'parkDeal', 'houseFloor', 'parkFloor'];
+const REFUND_CALC_KEYS = ['feeWan', 'realSpread', 'baseWan', 'base', 'dealAfter', 'realClaim', 'claimKeep', 'thisClaim'];
 
 // ---------- 範本 ----------
 const CLAIM_HEADERS = computed(() => ([
@@ -350,11 +356,12 @@ function downloadTemplate() {
     ['【請佣紀錄】'],
     ['・必填：期別（數字）、戶別（需存在於本案銷控資料）、請佣比例'],
     ['・請佣比例／佣金比例：可填小數（0.5、0.022，沿用舊表）或百分比（50、2.2），系統自動判斷（≤1 視為小數）'],
-    ['・金額欄位單位為「萬」，介紹費為「元」。檔案金額優先，缺少成交價才取銷控現值；拆價底價須填歷史數字。'],
+    ['・金額欄位單位為「萬」，介紹費為「元」。檔案金額優先，缺少成交價才取銷控現值；拆價底價須填歷史數字。金額與銷控不同僅提醒，不阻擋匯入。'],
     [plan.value.priceBasis === 'package' ? '・配套方案：填配套價格、配套底價，不計車位。例 C-15 配套價格填 99。' : '・房屋方案：價格來源填「原成交總價」或「配套房屋總價」。來源未填則依合約自動判定。請佣總價含車位；房屋底價不含車位，未填車位底價沿用銷控。'],
     [plan.value.priceBasis === 'package' ? '・舊格式仍可讀取：成交總價／房屋成交價視為配套價格，總底價／房屋總底價視為配套底價；車位金額須為 0。' : '・C-15 若採配套房屋總價，請佣總價填 3750；底價請填當時房屋底價。舊格式未提供價格來源時沿用原成交價邏輯。'],
     [`・請佣及獎金均匯入「${plan.value.name}」，不會與其他方案合併。`],
     ['・日期格式 yyyy/mm/dd；未填保留款(%) 預設 10'],
+    ['・退佣（買方解約）：請佣比例填負數（如 -100 或 -0.5），金額填負值或正值皆可，系統以退佣紀錄寫入、獎金明細轉為追回負值。'],
     [''],
     ['【獎金紀錄】'],
     ['・必填：期別、戶別、人員姓名；(期別,戶別) 需對應到「請佣紀錄」分頁中的一列'],
@@ -388,7 +395,7 @@ function pctOf(v, fallback = 0) {
   if (v === '' || v === null || v === undefined) return fallback;
   const n = Number(v);
   if (Number.isNaN(n)) return fallback;
-  return n <= 1 ? round2(n * 100) : round2(n);
+  return Math.abs(n) <= 1 ? round2(n * 100) : round2(n);
 }
 
 function sheetToObjects(ws) {
@@ -463,13 +470,15 @@ function parseClaims(rows) {
 
     if (!unitId) { messages.push('缺少戶別'); status = 'error'; }
     if (!period || period <= 0) { messages.push('期別須為正整數'); status = 'error'; }
-    if (!(ratioPct > 0 && ratioPct <= 100)) { messages.push('請佣比例須介於 0～100'); status = 'error'; }
+    const isRefund = ratioPct < 0;   // 負比例＝退佣列（買方解約），金額反向寫入
+    if (!(Math.abs(ratioPct) > 0 && Math.abs(ratioPct) <= 100)) { messages.push('請佣比例須介於 0～100（退佣填負數）'); status = 'error'; }
 
     const unit = unitMap[unitId];
     if (unitId && !unit) { messages.push('戶別不存在於本案銷控資料'); status = 'error'; }
 
-    const finance = unit ? parseImportFinance(row, unit, props.parkings, plan.value) : null;
+    const finance = unit ? parseImportFinance(row, unit, props.parkings, plan.value, { refund: isRefund }) : null;
     if (finance?.errors.length) { messages.push(...finance.errors); status = 'error'; }
+    if (finance?.warnings?.length) { messages.push(...finance.warnings); if (status === 'ok') status = 'warn'; }
 
     const isPreferred = !!unit?.isPreferredPayment;
     const defaultComm = isPreferred
@@ -483,6 +492,7 @@ function parseClaims(rows) {
     let calcResult = null;
     if (finance && status !== 'error') {
       calcResult = calcClaim(finance, { commPct, keepPct, partyAFee, partyBFee });
+      if (isRefund) REFUND_CALC_KEYS.forEach(k => { calcResult[k] = -toNum(calcResult[k]); });
     }
 
     // 比例累計檢查（既有 ledger + 檔內累計）
@@ -492,6 +502,10 @@ function parseClaims(rows) {
         messages.push(`累計比例將達 ${Math.round((before + ratioPct) * 10) / 10}%，超過 100%`);
         status = 'error';
       } else {
+        if (before + ratioPct < -0.0001) {
+          messages.push(`退佣後累計比例為 ${Math.round((before + ratioPct) * 10) / 10}%，查無對應原請佣，已請比例以 0% 計`);
+          if (status === 'ok') status = 'warn';
+        }
         cumulative[unitId] = (cumulative[unitId] || 0) + ratioPct;
       }
     }
@@ -513,6 +527,7 @@ function parseClaims(rows) {
       houseDeal: finance?.houseDeal || 0, parkDeal: finance?.parkDeal || 0,
       houseFloor: finance?.houseFloor || 0, parkFloor: finance?.parkFloor || 0,
     } : {};
+    if (isRefund) REFUND_SNAPSHOT_KEYS.forEach(k => { if (k in snapshot) snapshot[k] = -toNum(snapshot[k]); });
 
     return {
       status, messages,
@@ -520,6 +535,7 @@ function parseClaims(rows) {
       ratioPct, commPct, keepPct, partyAFee, partyBFee,
       note: String(row['備註'] ?? '').trim(),
       snapshot, calc: calcResult || {},
+      ...(isRefund ? { type: 'refund', refundRatioPct: -ratioPct } : {}),
     };
   });
 }
@@ -554,28 +570,30 @@ function parseBonuses(rows) {
       else { personKey = `ext:${name}`; if (status !== 'error') { messages.push('查無電話，以姓名識別（無法跨案彙總）'); status = 'warn'; } }
     }
 
-    // 各類別金額（實際發放）＋回推 100%
+    // 各類別金額（實際發放）＋回推 100%；退佣列金額一律轉為負值（追回）
+    const isRefund = claim?.type === 'refund';
+    const signed = v => (isRefund ? -Math.abs(Math.round(v)) : Math.round(v));
     const amounts = {};
     const amountsFull = {};
-    const ratio = toNum(claim?.ratioPct) || 100;
+    const ratio = Math.abs(toNum(claim?.ratioPct)) || 100;
     cats.forEach(c => {
       const v = toNum(row[c.label]);
       if (v) {
-        amounts[c.key] = Math.round(v);
-        amountsFull[c.key] = ratio < 100 ? Math.round(v * 100 / ratio) : Math.round(v);
+        amounts[c.key] = signed(v);
+        amountsFull[c.key] = ratio < 100 ? signed(v * 100 / ratio) : signed(v);
       }
     });
     const amountSum = Object.values(amounts).reduce((s, v) => s + v, 0);
-    const subtotal = row['獎金小計'] !== '' && row['獎金小計'] !== undefined ? Math.round(toNum(row['獎金小計'])) : amountSum;
-    if (status !== 'error' && subtotal !== amountSum && amountSum > 0) {
+    const subtotal = row['獎金小計'] !== '' && row['獎金小計'] !== undefined ? signed(toNum(row['獎金小計'])) : amountSum;
+    if (status !== 'error' && subtotal !== amountSum && amountSum !== 0) {
       messages.push(`獎金小計(${money(subtotal)})與各類合計(${money(amountSum)})不一致，以表格小計為準`);
       if (status === 'ok') status = 'warn';
     }
-    const keep = Math.round(toNum(row['保留款']));
-    const tax = Math.round(toNum(row['稅金']));
-    const nhi = Math.round(toNum(row['二代健保']));
+    const keep = signed(toNum(row['保留款']));
+    const tax = signed(toNum(row['稅金']));
+    const nhi = signed(toNum(row['二代健保']));
     const net = row['實發金額'] !== '' && row['實發金額'] !== undefined
-      ? Math.round(toNum(row['實發金額']))
+      ? signed(toNum(row['實發金額']))
       : subtotal - keep - tax - nhi;
 
     return {
@@ -590,6 +608,7 @@ function parseBonuses(rows) {
       nhiPct: subtotal ? round2(nhi / subtotal * 100) : 0,
       keep, tax, nhi, net,
       remark: String(row['備註'] ?? '').trim(),
+      ...(isRefund ? { type: 'refund' } : {}),
     };
   });
 }

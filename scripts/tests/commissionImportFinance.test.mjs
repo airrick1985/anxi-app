@@ -10,7 +10,7 @@ const { defaultPriceSource } = require('../../functions/utils/commissionPlans.js
 const source = fs.readFileSync(new URL('../../src/utils/commissionImportFinance.js', import.meta.url), 'utf8')
   .replace(/^import .*;$/gm, '').replace('export function', 'function');
 const implementation = vm.runInNewContext(`${source}\nparseImportFinance`, { computeUnitFinance, defaultPriceSource });
-const parse = (row, plan, override = {}) => structuredClone(implementation(row, { unitId: 'C-15', contractType: '毛胚合約', price_transaction_house: 3649, price_package_deal: 3750, price_floor_house_total: 3400, ...override }, [{ buyerUnitId: 'C-15', status_backend: '簽約', price_transaction: 200, price_floor: 180 }], { priceBasis: plan }));
+const parse = (row, plan, override = {}, opts = {}) => structuredClone(implementation(row, { unitId: 'C-15', contractType: '毛胚合約', price_transaction_house: 3649, price_package_deal: 3750, price_floor_house_total: 3400, ...override }, [{ buyerUnitId: 'C-15', status_backend: '簽約', price_transaction: 200, price_floor: 180 }], { priceBasis: plan }, opts));
 
 test('配套新欄位 99/80 排除車位，且歷史金額不被目前成交價覆寫', () => {
   const f = parse({ 配套價格: 99, 配套底價: 80, 合約方式: '裝修合約' }, 'package', { price_transaction_house: 8000, price_package_deal: 8100 });
@@ -53,15 +53,54 @@ test('配套底價必填；無拆價資料不可用整筆房價代替配套價�
   assert.ok(parse({ 配套底價: 80 }, 'package', { price_package_deal: null }).errors.length);
   assert.deepEqual(parse({ 配套價格: 99, 配套底價: 0 }, 'package').errors, []);
 });
-test('錯誤數字、來源及不一致總價在匯入前阻擋', () => {
+test('錯誤數字與來源不符在匯入前阻擋', () => {
   assert.ok(parse({ 配套價格: 99, 配套底價: '錯誤' }, 'package').errors.length);
   assert.ok(parse({ 配套價格: 99, 配套底價: -1 }, 'package').errors.length);
-  assert.ok(parse({ 配套價格: 99, 配套底價: 80, 總底價: 90 }, 'package').errors.length);
   assert.ok(parse({ 價格來源: '配套價格', 配套價格: 99, 配套底價: 80 }, 'house').errors.length);
-  assert.ok(parse({ 價格來源: '配套房屋總價', '請佣總價(含車)': 3750, 房屋成交價: 3750, 房屋底價: 3300 }, 'house').errors.length);
+});
+test('歷史金額彼此加總不一致僅警告，不阻擋匯入', () => {
+  const pkg = parse({ 配套價格: 99, 配套底價: 80, 總底價: 90 }, 'package');
+  assert.deepEqual(pkg.errors, []);
+  assert.ok(pkg.warnings.some(w => w.includes('金額不一致')));
+  assert.equal(pkg.totalFloor, 80);
+  const f = parse({ 價格來源: '配套房屋總價', '請佣總價(含車)': 3750, 房屋成交價: 3750, 房屋底價: 3300 }, 'house');
+  assert.deepEqual(f.errors, []);
+  assert.ok(f.warnings.some(w => w.includes('請佣總價') && w.includes('不一致')));
+  assert.equal(f.dealTotal, 3750);
+  assert.equal(f.houseDeal, 3750);
+  assert.equal(f.parkDeal, 200);
+});
+test('歷史請佣總價與目前銷控不同僅提醒，仍以檔案金額計算', () => {
+  const f = parse({ '成交總價(含車)': 3700, 總底價: 3580 }, 'house');
+  assert.deepEqual(f.errors, []);
+  assert.ok(f.warnings.some(w => w.includes('與目前銷控')));
+  assert.equal(f.dealTotal, 3700);
+  const same = parse({ '成交總價(含車)': 3849, 總底價: 3580 }, 'house');
+  assert.deepEqual(same.warnings, []);
+  const split = parse({ 價格來源: '配套房屋總價', '請佣總價(含車)': 3700, 房屋底價: 3300 }, 'house');
+  assert.deepEqual(split.errors, []);
+  assert.ok(split.warnings.some(w => w.includes('與目前銷控 3,750')));
+  const pkg = parse({ 配套價格: 95, 配套底價: 80 }, 'package');
+  assert.deepEqual(pkg.errors, []);
+  assert.ok(pkg.warnings.some(w => w.includes('與目前銷控 99')));
+  assert.equal(pkg.dealTotal, 95);
 });
 
 test('新房屋／配套範本放錯方案時阻擋，不悄悄改用銷控金額', () => {
   assert.ok(parse({ 配套價格: 99, 配套底價: 80 }, 'house').errors.some(e => e.includes('切換至配套方案')));
   assert.ok(parse({ 價格來源: '', '請佣總價(含車)': 3750, 房屋底價: 3300 }, 'package').errors.some(e => e.includes('切換至房屋方案')));
+});
+
+test('退佣列：負值金額整列反向為正數計算，正值亦可；非退佣列負值仍阻擋', () => {
+  const neg = parse({ '請佣總價(含車)': '-3,845', 房屋成交價: -3660, 車位成交總價: -200, 房屋底價: -3400, 車位底價: -180, 總底價: -3580, 溢差價: -265 }, 'house', {}, { refund: true });
+  assert.deepEqual(neg.errors, []);
+  assert.equal(neg.dealTotal, 3845);
+  assert.equal(neg.parkDeal, 200);
+  assert.equal(neg.totalFloor, 3580);
+  assert.equal(neg.spread, 265);
+  assert.ok(neg.warnings.some(w => w.includes('不一致')));
+  const pos = parse({ '請佣總價(含車)': 3849, 總底價: 3580 }, 'house', {}, { refund: true });
+  assert.deepEqual(pos.errors, []);
+  assert.equal(pos.dealTotal, 3849);
+  assert.ok(parse({ '請佣總價(含車)': -3849, 總底價: -3580 }, 'house').errors.length);
 });

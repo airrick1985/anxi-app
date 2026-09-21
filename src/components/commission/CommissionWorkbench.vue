@@ -1,5 +1,5 @@
 <template>
-  <div class="commission-workbench">
+  <div class="commission-workbench" @keydown.capture="blockNumberSpin" @wheel.capture="blockNumberWheel">
     <!-- 工具列 -->
     <div class="d-flex align-center flex-wrap ga-2 mb-3">
       <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="openPicker">新增戶別</v-btn>
@@ -28,7 +28,7 @@
         :project-id="projectId"
         :project-name="projectName"
         :local-personnel="personnel"
-        :claimed-pct="claimedPctOf(e.unitId)"
+        :claimed-pct="entryClaimedPct(e)"
         @toggle="toggleCard(e)"
         @remove="removeEntry(e)"
       />
@@ -341,9 +341,24 @@ const handoverCategories = computed(() => enabledCategories.value.filter(isHando
 const hasHandover = computed(() => handoverCategories.value.length > 0);
 const handoverLabel = computed(() => handoverCategories.value.map(c => c.label).join('／') || '交屋團獎');
 
+// ---------- 數字欄位：禁用鍵盤上下鍵與滾輪調整（只能直接輸入） ----------
+function isNumberInput(el) {
+  return !!el && String(el.tagName).toLowerCase() === 'input' && el.type === 'number';
+}
+function blockNumberSpin(e) {
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && isNumberInput(e.target)) e.preventDefault();
+}
+function blockNumberWheel(e) {
+  if (isNumberInput(e.target) && document.activeElement === e.target) e.preventDefault();
+}
+
 // ---------- 已請比例（ledger + 本場已送出即時更新由父層 refresh） ----------
 function claimedPctOf(unitId) {
   return Math.round(toNum(props.ledgers[unitId]) * 10) / 10;
+}
+/** 卡片實際適用的已請比例：拉回編輯者先扣掉原紀錄比例（送出時原紀錄會作廢） */
+function entryClaimedPct(e) {
+  return Math.max(0, Math.round((claimedPctOf(e.unitId) - toNum(e.replaceRatioPct)) * 10) / 10);
 }
 
 // ---------- 戶別選擇 ----------
@@ -526,7 +541,7 @@ function profileKeyFor(personKey, contractDate) {
   return `${personKey}@${segmentId(segmentForDate(segs, contractDate).segment)}`;
 }
 
-function ensureProfile(personKey, name, contractDate) {
+function ensureProfile(personKey, name, contractDate, rates = null) {
   const key = profileKeyFor(personKey, contractDate);
   if (personProfiles[key]) return;
   const p = props.personnel.find(x => personKeyOf(x) === personKey || x.name === name);
@@ -543,6 +558,8 @@ function ensureProfile(personKey, name, contractDate) {
     sourceProjectId: props.projectId,
     sourceProjectName: props.projectName,
   };
+  // 獎金類別「預設人員」的扣款比例覆寫（設定頁有填者優先）
+  if (rates) ['keepPct', 'taxPct', 'nhiPct'].forEach(k => { if (rates[k] !== undefined) personProfiles[key][k] = toNum(rates[k]); });
 }
 
 /** 本戶參與人員的 profile（personKey → 依簽約日解析的段落費率） */
@@ -572,10 +589,16 @@ function evenAlloc(persons) {
   return allocations;
 }
 
-function addUnit(unitId) {
+/**
+ * 加入戶別卡片。
+ * @param {string} unitId
+ * @param {object|null} fromRecord - 拉回編輯：以既有請佣紀錄預帶所有設定與人員分配，送出時取代該紀錄
+ * @param {Array} bonusRows - 該紀錄的獎金明細（帶回每人扣款比例／備註）
+ */
+function addUnit(unitId, fromRecord = null, bonusRows = []) {
   const unit = props.households.find(u => u.unitId === unitId);
-  if (!unit) return;
-  if (unit.noCommission === true) return; // 銷控標記「不可請佣」者不可加入
+  if (!unit) return false;
+  if (unit.noCommission === true && !fromRecord) return false; // 銷控標記「不可請佣」者不可加入
   const previous = props.records.filter(r => r.unitId === unitId && r.status === 'active' && r.type !== 'refund' && !r.refundedBy)
     .slice().sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0) || Number(b.period) - Number(a.period))
     .find(r => r.snapshot?.priceSource);
@@ -589,7 +612,7 @@ function addUnit(unitId) {
     const defaultPersons = categoryDefaultPersons(cat, props.personnel);
     if (defaultPersons.length) {
       // 設定頁指定「預設人員」：不看對應職務／團獎分組，直接帶入這些人並均分
-      defaultPersons.forEach(dp => ensureProfile(dp.personKey, dp.name, unit.payment_contract_date));
+      defaultPersons.forEach(dp => ensureProfile(dp.personKey, dp.name, unit.payment_contract_date, dp.rates));
       allocations = evenAlloc(defaultPersons);
     } else if (cat.mode === 'individual') {
       const names = normalizeSalesNames(unit.salesperson);
@@ -620,25 +643,69 @@ function addUnit(unitId) {
     };
   });
 
+  // 拉回編輯：以原紀錄覆蓋類別分配與每人扣款比例
+  if (fromRecord) {
+    Object.keys(categories).forEach(key => {
+      const rc = fromRecord.categories?.[key];
+      if (!rc) return;
+      categories[key].allocations = JSON.parse(JSON.stringify(rc.allocations || []));
+      categories[key].ratePct = toNum(rc.ratePct);
+      if (rc.enabled !== undefined) categories[key].enabled = rc.enabled !== false;
+      if (rc.splitMode) categories[key].splitMode = rc.splitMode;
+      if (rc.sourceCatKey) categories[key].sourceCatKey = rc.sourceCatKey;
+    });
+    (bonusRows || []).filter(b => b.commissionRecordId === fromRecord.id).forEach(b => {
+      personProfiles[profileKeyFor(b.personKey, unit.payment_contract_date)] = {
+        name: b.name, role: b.role || '',
+        keepPct: toNum(b.keepPct), taxPct: toNum(b.taxPct), nhiPct: toNum(b.nhiPct),
+        remark: b.remark || '', segmentLabel: '',
+        sourceProjectId: b.sourceProjectId || props.projectId,
+        sourceProjectName: b.sourceProjectName || '',
+      };
+    });
+  }
+  const snap = fromRecord?.snapshot || {};
+
   entries.value.push({
     id: `e${seq++}`,
     unitId,
     unit,
-    priceSource,
-    manualFloor,
-    note: isNonGeneralContract(unit) ? String(unit.contractType).trim() : '',   // 請佣備註：非一般合約先帶合約方式
+    priceSource: fromRecord ? (snap.priceSource || priceSource) : priceSource,
+    manualFloor: fromRecord ? (snap.manualFloor ?? manualFloor) : manualFloor,
+    note: fromRecord ? String(fromRecord.note || '') : (isNonGeneralContract(unit) ? String(unit.contractType).trim() : ''),   // 請佣備註：非一般合約先帶合約方式
     get finance() { return computePlanFinance(unit, props.parkings, plan.value, this); },
-    period: props.nextPeriod,
-    requestDate: formatDateTW(new Date()),
-    ratioPct: Math.max(0, Math.round((100 - claimed) * 10) / 10),
-    commPct: resolveCommPct(props.settings, !!unit.isPreferredPayment),
-    keepPct: toNum(props.settings.defaultKeepPct),
-    partyAFee: 0,
-    partyBFee: 0,
-    teamSiteKeys: [],
+    period: fromRecord ? toNum(fromRecord.period) : props.nextPeriod,
+    requestDate: fromRecord?.requestDate || formatDateTW(new Date()),
+    ratioPct: fromRecord ? toNum(fromRecord.ratioPct) : Math.max(0, Math.round((100 - claimed) * 10) / 10),
+    commPct: fromRecord ? toNum(fromRecord.commPct) : resolveCommPct(props.settings, !!unit.isPreferredPayment),
+    keepPct: fromRecord ? toNum(fromRecord.keepPct) : toNum(props.settings.defaultKeepPct),
+    partyAFee: toNum(fromRecord?.partyAFee),
+    partyBFee: toNum(fromRecord?.partyBFee),
+    teamSiteKeys: Array.isArray(fromRecord?.teamSiteKeys) ? [...fromRecord.teamSiteKeys] : [],
     categories,
-    collapsed: true,
+    collapsed: !fromRecord,
+    replaceRecordId: fromRecord?.id || null,        // 拉回編輯：送出時取代此原紀錄
+    replaceRatioPct: fromRecord ? toNum(fromRecord.ratioPct) : 0,   // 原紀錄比例（已請比例顯示時先扣除）
   });
+  return true;
+}
+
+/**
+ * 拉回編輯：把已送出的請佣紀錄載回工作台（每筆一張卡片，預帶原設定），送出時取代原紀錄。
+ * 已在工作台中的戶別、找不到戶別資料者略過並提示。
+ */
+function loadFromRecords(records, bonusRows = []) {
+  const skipped = [];
+  let added = 0;
+  (records || []).forEach(r => {
+    if (!r || r.status !== 'active' || r.type === 'refund' || r.refundedBy) { skipped.push(`${r?.unitId || '?'}（不可拉回）`); return; }
+    if (entries.value.some(e => e.unitId === r.unitId)) { skipped.push(`${r.unitId}（已在工作台）`); return; }
+    if (!props.households.find(u => u.unitId === r.unitId)) { skipped.push(`${r.unitId}（找不到戶別資料）`); return; }
+    if (addUnit(r.unitId, r, bonusRows)) added++;
+  });
+  if (added) toast.info(`已拉回 ${added} 戶，修改後送出會取代原紀錄`);
+  if (skipped.length) toast.warning(`略過：${skipped.join('、')}`);
+  return added;
 }
 
 function removeEntry(e) {
@@ -694,7 +761,7 @@ function entryResult(e) {
 /** 該戶待處理項目數（與卡片標頭一致）：未選人類別 + 分配錯誤 + 比例問題 */
 function entryIssueCount(e) {
   const r = entryResult(e);
-  const claimed = claimedPctOf(e.unitId);
+  const claimed = entryClaimedPct(e);
   const missing = enabledCategories.value.filter(cat => {
     if (isHandoverCategory(cat)) return false;
     const c = e.categories[cat.key];
@@ -759,7 +826,7 @@ function collectIssues() {
 
   entries.value.forEach(e => {
     e.finance.errors.forEach(message => blocking.push(`${e.unitId}：${message}`));
-    const claimed = claimedPctOf(e.unitId);
+    const claimed = entryClaimedPct(e);
     if (claimed + toNum(e.ratioPct) > 100.0001) {
       blocking.push(`${e.unitId}：已請 ${claimed}% ＋ 本次 ${e.ratioPct}% 超過 100%`);
     }
@@ -942,6 +1009,7 @@ async function doSubmit() {
         teamSiteKeys: [...e.teamSiteKeys],
         categories: JSON.parse(JSON.stringify(e.categories)),
         personProfiles: profiles,
+        replaceRecordId: e.replaceRecordId || null,
       };
     });
 
@@ -982,10 +1050,14 @@ async function doSubmit() {
     submitting.value = false;
   }
 }
-defineExpose({ hasDraft: computed(() => entries.value.length > 0 || refunds.value.length > 0) });
+defineExpose({ hasDraft: computed(() => entries.value.length > 0 || refunds.value.length > 0), loadFromRecords });
 </script>
 
 <style scoped>
+/* 工作台內所有數字欄位：隱藏上下調整箭頭（鍵盤／滾輪調整由 blockNumberSpin／blockNumberWheel 攔截） */
+.commission-workbench :deep(input[type="number"]::-webkit-outer-spin-button),
+.commission-workbench :deep(input[type="number"]::-webkit-inner-spin-button) { -webkit-appearance: none; margin: 0; }
+.commission-workbench :deep(input[type="number"]) { -moz-appearance: textfield; appearance: textfield; }
 .picker-list { max-height: 50vh; overflow-y: auto; border: 1px solid rgba(0,0,0,.08); border-radius: 8px; }
 .sum-item { background: #f5f5f5; border-radius: 8px; padding: 8px 12px; }
 .sum-item label { font-size: 11px; color: #789; display: block; }

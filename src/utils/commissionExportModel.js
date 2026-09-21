@@ -275,7 +275,9 @@ export function buildBonusModel(opts) {
   const teamKeys = cls.team.map(c => c.key);
 
   // 交屋團獎（自個獎提撥、本期不發放）：設定有啟用提撥類別，或紀錄快照含金額時，上段多一欄
-  const handoverRecordAmt = r => toNum(r.handover?.totalFull !== undefined ? r.handover.totalFull : r.handover?.total);
+  // 交屋團獎暫留：以「本次實際提撥」（已乘請佣比例）呈現，請佣 50% 就暫留 50%，
+  // 下次再請剩餘比例時才不會重複暫留；退佣紀錄為負值抵銷
+  const handoverRecordAmt = r => toNum(r.handover?.total);
   const hasHandover = cls.handover.length > 0 || records.some(r => handoverRecordAmt(r) !== 0);
   const handoverLabel = cls.handover[0]?.label || '交屋團獎';
   const handoverRate = cls.handover.reduce((s, c) => s + toNum(c.ratePct), 0);
@@ -418,7 +420,7 @@ export function buildBonusModel(opts) {
           after: toNum(r.calc?.dealAfter),
           sales: Array.isArray(r.snapshot?.salesperson) ? r.snapshot.salesperson.join('、') : String(r.snapshot?.salesperson || ''),
           team: teamCount,
-          handover: Math.round(handoverRecordAmt(r)),   // 交屋團獎暫留（100% 重算，與個獎欄一致）
+          handover: Math.round(handoverRecordAmt(r)),   // 交屋團獎暫留（本次實際提撥，已乘請佣比例）
           pp,
         };
       });

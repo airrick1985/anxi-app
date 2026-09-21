@@ -84,6 +84,8 @@
           @refresh="handleSubmitted"
           @export-period="goExportPeriod"
           @reimport-period="goReimportPeriod"
+          @edit-record="r => goEditRecords([r])"
+          @edit-period="goEditPeriod"
         />
       </v-window-item>
 
@@ -376,6 +378,29 @@ function goReimportPeriod(period) {
   requestAnimationFrame(() => {
     importRef.value?.presetPeriod?.(period);
   });
+}
+
+/** 歷期總覽「拉回編輯」：切到工作台並把紀錄載回卡片（送出時取代原紀錄） */
+function goEditRecords(list) {
+  const records = (list || []).filter(Boolean);
+  if (!records.length) return;
+  tab.value = 'workbench';
+  let tries = 0;
+  const tick = () => {
+    if (workbenchRef.value?.loadFromRecords) {
+      workbenchRef.value.loadFromRecords(records, bonusRecords.value);
+    } else if (tries++ < 60) {
+      requestAnimationFrame(tick);
+    } else {
+      toast.error('工作台尚未就緒，請再試一次');
+    }
+  };
+  requestAnimationFrame(tick);
+}
+function goEditPeriod(period) {
+  const list = records.value.filter(r => toNum(r.period) === toNum(period) && r.status === 'active' && r.type !== 'refund' && !r.refundedBy);
+  if (!list.length) { toast.info('此期沒有可拉回編輯的紀錄'); return; }
+  goEditRecords(list);
 }
 
 function goExportPeriod(period) {

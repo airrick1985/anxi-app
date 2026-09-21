@@ -13,6 +13,7 @@
         </span>
         <v-chip size="x-small" variant="tonal" :color="contractTypeColor(entry.unit.contractType)">{{ entry.unit.contractType || '未設定合約方式' }}</v-chip>
         <span v-if="entry.unit.isPreferredPayment" class="text-caption text-medium-emphasis">優付戶</span>
+        <v-chip v-if="entry.replaceRecordId" size="x-small" color="orange-darken-3" variant="flat" prepend-icon="mdi-pencil-box-outline" title="送出後原紀錄作廢，以本卡片內容寫入新紀錄">拉回編輯・送出取代第 {{ entry.period }} 期原紀錄</v-chip>
       </button>
       <span class="head-amount"><small>本次請佣 </small>{{ money(result.claim.thisClaim) }} <small>元</small></span>
       <span v-if="issueCount" class="text-caption text-warning">{{ issueCount }} 項待完成</span>
@@ -557,7 +558,7 @@ const poolOptionsByCat = computed(() => {
     const defaultPersons = categoryDefaultPersons(cat, props.localPersonnel);
     if (defaultPersons.length) {
       // 設定頁指定「預設人員」：候選只列這些人（其他人可用「加入他案／臨時人員」加入）
-      list = defaultPersons.map(dp => ({ personKey: dp.personKey, name: dp.name, hint: dp.isExternal ? '預設人員（未在人員名單）' : '預設人員', disabled: false }));
+      list = defaultPersons.map(dp => ({ personKey: dp.personKey, name: dp.name, hint: dp.isExternal ? '預設人員（未在人員名單）' : '預設人員', disabled: false, rates: dp.rates }));
     } else if (cat.mode === 'role') {
       list = props.localPersonnel
         .filter(p => matchesRolePositions(p.positions, cat.rolePositions))
@@ -591,7 +592,7 @@ const poolOptionsByCat = computed(() => {
       });
     }
     // 註冊 profile（供計算扣款）
-    list.forEach(o => ensureLocalProfile(o.personKey, o.name));
+    list.forEach(o => ensureLocalProfile(o.personKey, o.name, o.rates || null));
     map[cat.key] = list;
   });
   return map;
@@ -603,7 +604,7 @@ function normalizeNames(v) {
   return [];
 }
 
-function ensureLocalProfile(personKey, name) {
+function ensureLocalProfile(personKey, name, rates = null) {
   const key = pk(personKey);
   if (props.profiles[key]) return;
   const p = props.localPersonnel.find(x => personKeyOf(x) === personKey || x.name === name);
@@ -620,6 +621,7 @@ function ensureLocalProfile(personKey, name) {
     sourceProjectId: props.projectId,
     sourceProjectName: props.projectName,
   };
+  if (rates) ['keepPct', 'taxPct', 'nhiPct'].forEach(k => { if (rates[k] !== undefined) props.profiles[key][k] = toNum(rates[k]); });
 }
 
 function profileOf(personKey) {
@@ -649,7 +651,7 @@ function applyTeamDefaults() {
     if (defaultPersons.length) {
       // 有預設人員的團隊類別：不依分組重設，固定帶入預設人員（均分）
       const allocations = defaultPersons.map(dp => {
-        ensureLocalProfile(dp.personKey, dp.name);
+        ensureLocalProfile(dp.personKey, dp.name, dp.rates);
         return {
           personKey: dp.personKey, name: dp.name,
           sourceProjectId: props.projectId, sourceProjectName: props.projectName,

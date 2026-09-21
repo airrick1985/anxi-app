@@ -37,6 +37,8 @@
                 </template>
                 <v-list density="compact" min-width="240">
                   <v-list-subheader>第 {{ pd.period }} 期管理</v-list-subheader>
+                  <v-list-item prepend-icon="mdi-pencil-box-multiple-outline" title="整期拉回編輯" :disabled="!editableRecords(pd).length"
+                    :subtitle="editableRecords(pd).length ? `${editableRecords(pd).length} 戶載回工作台，送出時取代原紀錄` : '沒有可拉回的紀錄'" @click="$emit('edit-period', pd.period)"></v-list-item>
                   <v-list-item prepend-icon="mdi-cancel" title="整期作廢" :disabled="!pd.activeCount"
                     subtitle="回溯全部戶別比例、連動作廢獎金明細" @click="openVoidPeriod(pd)"></v-list-item>
                   <v-list-item prepend-icon="mdi-delete-sweep-outline" title="清除已作廢紀錄" :disabled="!pd.voidedCount"
@@ -97,8 +99,12 @@
                     </td>
                     <td>
                       <v-btn v-if="r.status !== 'voided' && r.type === 'refund'" size="x-small" variant="text" color="error" @click="openVoid(r)">作廢退佣</v-btn>
-                      <v-btn v-else-if="r.status !== 'voided'" size="x-small" variant="text" color="error" :disabled="!!r.refundedBy"
-                        :title="r.refundedBy ? '已退佣，請先作廢對應的退佣紀錄' : ''" @click="openVoid(r)">作廢</v-btn>
+                      <template v-else-if="r.status !== 'voided'">
+                        <v-btn v-if="canManage" size="x-small" variant="text" color="primary" :disabled="!!r.refundedBy"
+                          :title="r.refundedBy ? '已退佣，請先作廢對應的退佣紀錄' : '載回工作台修改，送出時取代此紀錄'" @click="$emit('edit-record', r)">拉回編輯</v-btn>
+                        <v-btn size="x-small" variant="text" color="error" :disabled="!!r.refundedBy"
+                          :title="r.refundedBy ? '已退佣，請先作廢對應的退佣紀錄' : ''" @click="openVoid(r)">作廢</v-btn>
+                      </template>
                       <span v-else class="text-caption text-medium-emphasis" :title="r.voidReason">{{ r.voidedBy }}</span>
                     </td>
                   </tr>
@@ -343,7 +349,11 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['refresh', 'export-period', 'reimport-period']);
+const emit = defineEmits(['refresh', 'export-period', 'reimport-period', 'edit-record', 'edit-period']);
+/** 可拉回編輯的紀錄：有效、非退佣、未被退佣 */
+function editableRecords(pd) {
+  return (pd.records || []).filter(r => r.status === 'active' && r.type !== 'refund' && !r.refundedBy);
+}
 const toast = useToast();
 const userStore = useUserStore();
 

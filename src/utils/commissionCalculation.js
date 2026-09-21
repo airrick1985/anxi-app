@@ -116,8 +116,23 @@ export function categoryDefaultPersons(cat, personnel) {
       personKey: p ? (p.phone || `ext:${p.name}`) : `ext:${name}`,
       name: p?.name || name,
       isExternal: !p,
+      rates: defaultPersonRates(cat, name),
     };
   });
+}
+
+/**
+ * 預設人員在該類別設定的扣款比例覆寫 { keepPct?, taxPct?, nhiPct? }：
+ * 只回傳有填數值的欄位；留空者沿用人員名單的進退場費率（不在名單者為 0）。
+ */
+export function defaultPersonRates(cat, name) {
+  const r = cat?.defaultPersonRates?.[name];
+  const out = {};
+  ['keepPct', 'taxPct', 'nhiPct'].forEach(k => {
+    const v = r?.[k];
+    if (v !== undefined && v !== null && String(v).trim() !== '' && Number.isFinite(Number(v))) out[k] = Number(v);
+  });
+  return out;
 }
 
 /**

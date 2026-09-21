@@ -78,14 +78,14 @@
             <li><b>發放方式</b>：依職務＝發給符合職務的人；個人＝發給該戶銷售；團隊＝依團獎分組發放；若另設對應職務，需分組與職務同時符合。</li>
             <li><b>自個獎提撥</b>（交屋團獎）：自「來源類別」（預設銷售個獎）的獎金池提撥「比例(%)」，本期不發放、不分配給人員，暫留供日後另行製作交屋獎金；來源類別以提撥後的餘額分配。</li>
             <li><b>對應職務</b>：可多選，選項是本建案人員的職務；沒有的職務可直接打字新增。</li>
-            <li><b>預設人員</b>：可填多位；填入後該類別不再依對應職務找人，請佣工作台直接帶入這些人並均分。</li>
+            <li><b>預設人員</b>：可填多位；填入後該類別不再依對應職務找人，請佣工作台直接帶入這些人並均分。每人可填保留款／稅金／二代健保 %，留空沿用人員名單設定。</li>
             <li>不用的類別請「停用」，不要刪除，歷史資料才會保留。</li>
           </ul>
           <div class="table-scroll">
             <v-table density="compact" class="cat-table">
               <colgroup>
                 <col style="width:72px"><col style="width:168px"><col style="width:144px"><col style="width:198px">
-                <col style="width:360px"><col style="width:240px"><col style="width:64px"><col style="width:44px">
+                <col style="width:360px"><col style="width:330px"><col style="width:64px"><col style="width:44px">
               </colgroup>
               <thead>
                 <tr>
@@ -140,6 +140,19 @@
                         </v-chip>
                       </template>
                     </v-combobox>
+                    <!-- 預設人員扣款比例（留空＝沿用人員名單設定；臨時人員留空＝0） -->
+                    <div v-for="nm in (cat.defaultPersonNames || [])" :key="nm" class="dp-rates">
+                      <span class="dp-name" :title="nm">{{ nm }}</span>
+                      <v-text-field :model-value="rateOf(cat, nm).keepPct" type="number" step="0.01" placeholder="保留%" suffix="%"
+                        variant="outlined" density="compact" hide-details class="dp-rate" title="保留款 %"
+                        @update:model-value="v => setRate(cat, nm, 'keepPct', v)"></v-text-field>
+                      <v-text-field :model-value="rateOf(cat, nm).taxPct" type="number" step="0.01" placeholder="稅金%" suffix="%"
+                        variant="outlined" density="compact" hide-details class="dp-rate" title="稅金 %"
+                        @update:model-value="v => setRate(cat, nm, 'taxPct', v)"></v-text-field>
+                      <v-text-field :model-value="rateOf(cat, nm).nhiPct" type="number" step="0.01" placeholder="健保%" suffix="%"
+                        variant="outlined" density="compact" hide-details class="dp-rate" title="二代健保 %"
+                        @update:model-value="v => setRate(cat, nm, 'nhiPct', v)"></v-text-field>
+                    </div>
                   </td>
                   <td class="px-1"><v-switch v-model="cat.enabled" color="primary" density="compact" hide-details></v-switch></td>
                   <td class="px-1"><v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="error" @click="removeCat(i)"></v-btn></td>
@@ -303,6 +316,15 @@ const personnelNames = computed(() =>
 function hasDefaultPerson(cat) {
   return categoryDefaultPersonNames(cat).length > 0;
 }
+/** 預設人員扣款比例（每人 { keepPct, taxPct, nhiPct }；空字串＝沿用） */
+function rateOf(cat, name) {
+  if (!cat.defaultPersonRates) cat.defaultPersonRates = {};
+  if (!cat.defaultPersonRates[name]) cat.defaultPersonRates[name] = { keepPct: '', taxPct: '', nhiPct: '' };
+  return cat.defaultPersonRates[name];
+}
+function setRate(cat, name, key, v) {
+  rateOf(cat, name)[key] = (v === '' || v === null || v === undefined) ? '' : Number(v);
+}
 
 /** 個人明細「顯示全部戶別」關鍵字建議：本建案職務優先，再補常用職務 */
 const positionSuggestionItems = computed(() => {
@@ -343,6 +365,11 @@ function clone(v) {
   (s.bonusCategories || []).forEach(c => {
     c.defaultPersonNames = categoryDefaultPersonNames(c);
     delete c.defaultPersonName;
+    const rates = {};
+    Object.entries(c.defaultPersonRates || {}).forEach(([nm, r]) => {
+      rates[nm] = { keepPct: r?.keepPct ?? '', taxPct: r?.taxPct ?? '', nhiPct: r?.nhiPct ?? '' };
+    });
+    c.defaultPersonRates = rates;
   });
   return s;
 }
@@ -379,6 +406,16 @@ async function save() {
       c.rolePositions = Array.from(new Set((c.rolePositions || []).map(r => String(r || '').trim()).filter(Boolean)));
       c.defaultPersonNames = (c.mode === 'role' || c.mode === 'team') ? categoryDefaultPersonNames(c) : [];
       delete c.defaultPersonName;   // 舊版單一姓名欄位已併入 defaultPersonNames
+      // 扣款比例只保留仍在名單內、且至少一欄有填的人員；空欄存 null
+      const rates = {};
+      c.defaultPersonNames.forEach(nm => {
+        const r = c.defaultPersonRates?.[nm];
+        if (!r) return;
+        const clean = {};
+        ['keepPct', 'taxPct', 'nhiPct'].forEach(k => { clean[k] = (r[k] === '' || r[k] === null || r[k] === undefined || !Number.isFinite(Number(r[k]))) ? null : Number(r[k]); });
+        if (Object.values(clean).some(v => v !== null)) rates[nm] = clean;
+      });
+      c.defaultPersonRates = rates;
       if (c.mode === 'handover') {
         c.rolePositions = [];
         const valid = data.bonusCategories.some(o => o !== c && o.mode !== 'handover' && o.key === c.sourceCatKey);
@@ -414,8 +451,14 @@ defineExpose({ hasDraft: computed(() => JSON.stringify(local.value) !== JSON.str
 .cat-hints { padding-left: 18px; line-height: 1.7; }
 .split-radios :deep(.v-selection-control) { align-items: flex-start; margin-bottom: 6px; }
 .split-radios :deep(.v-label) { opacity: 1; }
-/* 獎金類別表：所有欄位固定寬度、表格不撐滿（總寬 1290px），寬螢幕靠左緊湊、窄螢幕橫向捲動 */
-.cat-table :deep(table) { table-layout: fixed; width: 1290px; }
+/* 獎金類別表：所有欄位固定寬度、表格不撐滿（總寬 1380px），寬螢幕靠左緊湊、窄螢幕橫向捲動 */
+.cat-table :deep(table) { table-layout: fixed; width: 1380px; }
+.dp-rates { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.dp-name { flex: 0 0 auto; max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.dp-rate { flex: 1 1 0; min-width: 0; }
+.dp-rate :deep(.v-field__input) { min-height: 30px; padding-block: 2px; font-size: 12px; }
+.dp-rate :deep(input) { padding: 0; }
+.dp-rate :deep(.v-text-field__suffix) { font-size: 11px; padding-inline-start: 2px; }
 .cat-table :deep(th) { white-space: nowrap; }
 .cat-table :deep(td) { padding-block: 4px; vertical-align: middle; }
 .cat-table :deep(.v-field__input) { min-height: 36px; }
