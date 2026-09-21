@@ -354,9 +354,9 @@
 
                     <draggable v-if="activeBookingMenu.length > 0" v-model="activeBookingMenu" item-key="title"
                       handle=".drag-handle" tag="v-expansion-panels"
-                      :component-data="{ variant: 'accordion', class: 'mb-6' }">
+                      :component-data="{ variant: 'accordion', class: 'mb-6', modelValue: openBookingMenuPanel, 'onUpdate:modelValue': setOpenBookingMenuPanel }">
                       <template #item="{ element: item, index: itemIndex }">
-                        <v-expansion-panel>
+                        <v-expansion-panel :value="item.title">
                           <v-expansion-panel-title>
                             <div class="d-flex align-center flex-grow-1">
                               <!-- Drag Handle for item -->
@@ -570,11 +570,13 @@
                     <!-- Dialog: Add/Edit Method -->
                     <v-dialog v-model="isMethodDialogVisible" max-width="400px">
                       <v-card>
-                        <v-card-title class="bg-secondary text-white">
-                          {{ editedMethodIndex === -1 ? '新增選擇方式' : '編輯選擇方式' }}
+                        <v-card-title class="bg-secondary text-white d-flex align-center">
+                          <v-icon start size="small">mdi-folder-outline</v-icon>
+                          <span class="mr-1">{{ editedMethodParentTitle }}</span>
+                          <span class="text-body-2 opacity-80">› {{ editedMethodIndex === -1 ? '新增選擇方式' : '編輯選擇方式' }}</span>
                         </v-card-title>
                         <v-card-text class="pa-4">
-                          <v-text-field v-model="editedMethodTitle" :label="editedMethodParentTitle + '方式'"
+                          <v-text-field v-model="editedMethodTitle" label="方式名稱"
                             variant="outlined"></v-text-field>
 
 
@@ -3495,6 +3497,38 @@
       </v-card>
     </v-dialog>
 
+    <!-- 預約項目尚未建立預約方式提醒 Dialog -->
+    <v-dialog v-model="noMethodDialog.show" max-width="460px" persistent>
+      <v-card>
+        <v-card-title class="bg-warning text-white d-flex align-center">
+          <v-icon start>mdi-alert-outline</v-icon>
+          預約項目尚未建立預約方式
+        </v-card-title>
+        <v-card-text class="pt-4">
+          <p class="text-body-2 mb-3">以下預約項目沒有預約方式，客戶將無法預約：</p>
+          <v-list density="compact" class="pa-0">
+            <v-list-item v-for="title in noMethodDialog.items" :key="title" class="px-0">
+              <template #prepend>
+                <v-icon color="warning">mdi-folder-alert-outline</v-icon>
+              </template>
+              <v-list-item-title class="font-weight-bold">{{ title }}</v-list-item-title>
+              <template #append>
+                <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-arrow-right"
+                  @click="goCreateMethod(title)">前往建立</v-btn>
+              </template>
+            </v-list-item>
+          </v-list>
+          <div class="text-caption text-grey-darken-1 mt-3">
+            路徑：預約系統狀態設定 › 預約選單與人員 › 新增選擇方式
+          </div>
+        </v-card-text>
+        <v-card-actions class="bg-grey-lighten-5">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="noMethodDialog.show = false">稍後再說</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="isConflictDialogVisible" max-width="800px" persistent>
       <v-card>
         <v-card-title class="text-h6 d-flex align-center primary-bg">
@@ -4106,6 +4140,49 @@ const isBatchDialogVisible = ref(false);
 const isBatchGuideVisible = ref(false);
 const batchForm = ref(null);
 const bookingBatches = ref([]);
+
+// --- 預約項目未建立預約方式提醒 ---
+const openBookingMenuPanel = ref(null); // 「預約選單與人員」目前展開的項目（以 title 為值）
+const setOpenBookingMenuPanel = (v) => { openBookingMenuPanel.value = v; };
+const noMethodDialog = reactive({ show: false, items: [] });
+const noMethodListPrompted = ref(false); // 批次列表提醒：每次進入批次管理分頁只提醒一次
+
+// 該預約項目是否存在於選單且沒有任何有效方式（不存在或「其他」則不提醒）
+const itemHasNoMethods = (title) => {
+  if (!title || title === '其他') return false;
+  const item = (projectSettings.value.bookingMenu || []).find(i => i.title === title && !i.deleted);
+  if (!item) return false;
+  return (item.methods || []).filter(m => !m.deleted).length === 0;
+};
+
+// 顯示提醒；回傳是否有任何項目需要提醒
+const showNoMethodDialog = (titles) => {
+  const list = [...new Set((titles || []).filter(Boolean))].filter(itemHasNoMethods);
+  if (list.length === 0) return false;
+  noMethodDialog.items = list;
+  noMethodDialog.show = true;
+  return true;
+};
+
+// 進入批次管理分頁時：檢查所有既有批次所屬項目
+const promptNoMethodForBatchList = () => {
+  if (noMethodListPrompted.value || activeTab.value !== 'batches' || isLoading.value) return;
+  noMethodListPrompted.value = true;
+  showNoMethodDialog(bookingBatches.value.map(b => b.bookingType));
+};
+
+// 前往建立：切到「預約選單與人員」、展開該項目並直接開啟「新增選擇方式」
+const goCreateMethod = async (title) => {
+  noMethodDialog.show = false;
+  isBatchDialogVisible.value = false;
+  activeTab.value = 'settings';
+  settingsSubTab.value = 'rules';
+  openBookingMenuPanel.value = title;
+  const idx = activeBookingMenu.value.findIndex(i => i.title === title);
+  if (idx === -1) return;
+  await nextTick();
+  openEditMethodDialog(idx);
+};
 
 //  建立 computed 屬性，動態產生預約項目選項
 const bookingTypeOptions = computed(() => {
@@ -6402,6 +6479,8 @@ async function loadDataForProject() {
     showSnackbar(`錯誤：找不到建案 ID ${projectId.value}`, 'error');
   }
   isLoading.value = false;
+  noMethodListPrompted.value = false;
+  promptNoMethodForBatchList();
 }
 
 // --- Dynamic Fields Logic ---
@@ -6973,8 +7052,11 @@ async function executeSave() {
     showSnackbar('儲存成功！');
     isConflictDialogVisible.value = false;
     isBatchDialogVisible.value = false;
+    const savedBookingType = currentBatchTypeRaw.value;
 
     await loadDataForProject();
+    // 批次儲存成功後，若所屬項目沒有預約方式則提醒（重新載入時若已跳出列表提醒則不覆蓋）
+    if (!noMethodDialog.show) showNoMethodDialog([savedBookingType]);
   } catch (error) {
     showSnackbar(`儲存失敗: ${error.message || '未知錯誤'}`, 'error');
   } finally {
@@ -8039,6 +8121,12 @@ watch(activeTab, (newTab) => {
     activeTab.value = 'batches';
     return;
   }
+
+  // 每次進入批次管理分頁，重新檢查既有批次所屬項目是否缺少預約方式
+  if (newTab === 'batches') {
+    noMethodListPrompted.value = false;
+    promptNoMethodForBatchList();
+  }
 });
 
 watch(() => [editedBatch.value.bookingStart, editedBatch.value.bookingEnd], () => {
@@ -8048,8 +8136,12 @@ watch(() => [editedBatch.value.bookingStart, editedBatch.value.bookingEnd], () =
   }
 });
 
-watch(() => editedBatch.value.bookingType, () => {
+watch(() => editedBatch.value.bookingType, (type) => {
   if (batchForm.value) batchForm.value.validate();
+  // 新增批次時選到沒有預約方式的項目，立即提醒
+  if (isBatchDialogVisible.value && !editedBatch.value.id && !isLoadingBatchData.value) {
+    showNoMethodDialog([type]);
+  }
 });
 
 watch(customBookingType, () => {
