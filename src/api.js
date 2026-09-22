@@ -9468,6 +9468,24 @@ export const fetchCommissionRecords = async (projectId) => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
+/** Independent bonus input snapshots (never contribute to commission ledgers). */
+export const fetchBonusEntries = async (projectId) => {
+  const snap = await getDocs(query(collection(db, 'bonusEntries'), where('projectId', '==', projectId)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+export const fetchBonusPeriodNotes = async (projectId) => {
+  const snap = await getDocs(query(collection(db, 'commissionSettings'), where('projectId', '==', projectId)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.kind === 'periodPersonNotes');
+};
+
+export const setBonusPeriodNotes = (projectId, rows, updatedBy = '') => Promise.all(rows.map(row =>
+  setDoc(doc(db, 'commissionSettings', `${projectId}__bonusNotes_${Number(row.period)}_${encodeURIComponent(row.personKey)}`), {
+    projectId, kind: 'periodPersonNotes', period: Number(row.period), personKey: row.personKey,
+    notes: row.notes.map(String), updatedBy, updatedAt: serverTimestamp(),
+  })
+));
+
 /** 讀取建案全部獎金明細（排序由前端處理） */
 export const fetchBonusRecords = async (projectId) => {
   const q = query(collection(db, 'bonusRecords'), where('projectId', '==', projectId));

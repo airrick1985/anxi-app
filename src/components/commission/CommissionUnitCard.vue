@@ -15,7 +15,8 @@
         <span v-if="entry.unit.isPreferredPayment" class="text-caption text-medium-emphasis">優付戶</span>
         <v-chip v-if="entry.replaceRecordId" size="x-small" color="orange-darken-3" variant="flat" prepend-icon="mdi-pencil-box-outline" title="送出後原紀錄作廢，以本卡片內容寫入新紀錄">拉回編輯・送出取代第 {{ entry.period }} 期原紀錄</v-chip>
       </button>
-      <span class="head-amount"><small>本次請佣 </small>{{ money(result.claim.thisClaim) }} <small>元</small></span>
+      <span class="head-amount"><small>{{ isBonus ? '本次獎金' : '本次請佣' }} </small>{{ money(isBonus ? result.people.reduce((s, p) => s + p.net, 0) : result.claim.thisClaim) }} <small>元</small></span>
+      <v-chip size="x-small" variant="tonal" color="primary" class="head-price-source" :title="priceSourceTitle">{{ priceSourceLabel }}</v-chip>
       <span v-if="issueCount" class="text-caption text-warning">{{ issueCount }} 項待完成</span>
       <span v-else class="text-caption text-medium-emphasis">已填妥</span>
       <v-btn icon="mdi-close" size="small" variant="text" class="remove-unit" title="移除此戶" @click="$emit('remove')" />
@@ -35,10 +36,10 @@
           <dd :class="{ 'text-error': hasValidFloor && entry.finance.spread < 0 }">{{ hasValidFloor ? fmtWan(entry.finance.spread, 4) : '—' }}</dd>
           <span class="metric-note">{{ hasValidFloor && entry.finance.spread < 0 ? '低於底價' : '成交總價－總底價' }}</span>
         </div>
-        <div class="finance-metric">
-          <dt>本筆可單獨調整</dt>
+        <div v-if="!isBonus" class="finance-metric">
+          <dt>佣金比例<span class="metric-unit">%</span></dt>
           <dd class="commission-rate-input">
-            <v-text-field v-model.number="entry.commPct" label="佣金比例(%)" :aria-label="`${entry.unitId} 佣金比例(%)`"
+            <v-text-field v-model.number="entry.commPct" :aria-label="`${entry.unitId} 佣金比例(%)`"
               type="number" step="0.01" variant="outlined" density="compact" hide-details />
           </dd>
           <div class="d-flex align-center flex-wrap ga-1">
@@ -48,7 +49,7 @@
           </div>
         </div>
         <div class="finance-metric">
-          <dt>本次請佣比例<span class="metric-unit">%</span></dt>
+          <dt>{{ isBonus ? '本次獎金比例' : '本次請佣比例' }}<span class="metric-unit">%</span></dt>
           <dd :class="{ 'text-error': ratioOver }">{{ fmtWan(entry.ratioPct, 4) }}</dd>
           <span class="metric-note">已請 {{ fmtWan(claimedPct, 4) }}% · {{ ratioOver ? '超過 100%' : `尚餘 ${round1(100 - totalPct)}%` }}</span>
         </div>
@@ -62,10 +63,10 @@
           <!-- ========== ① 請佣條件 ========== -->
           <div class="step-h">
             <span class="step-no">1</span>
-            <span class="step-title">請佣條件</span>
+            <span class="step-title">{{ isBonus ? '獎金計算條件' : '請佣條件' }}</span>
           </div>
           <div class="step-body">
-            <v-btn v-if="!entry.note && !showNote" variant="text" size="small" class="mb-2" @click="showNote = true">新增備註</v-btn>
+            <v-btn v-if="!isBonus && !entry.note && !showNote" variant="text" size="small" class="mb-2" @click="showNote = true">新增備註</v-btn>
             <v-row dense align="start" class="mb-2">
               <v-col cols="12" sm="6" v-if="plan.priceBasis === 'house' && isNonGeneralContract(entry.unit)">
                 <v-select :model-value="entry.priceSource" label="本次採用價格" @update:model-value="setPriceSource"
@@ -76,7 +77,19 @@
                 <v-text-field v-model.number="entry.manualFloor" :label="entry.priceSource === 'package' ? '配套底價（萬）＊' : '房屋底價（萬，不含車位）＊'"
                   type="number" min="0" step="0.0001" variant="outlined" density="compact" hide-details />
               </v-col>
-              <v-col cols="12" v-if="entry.note || showNote">
+              <v-col cols="12" sm="6" v-if="!isBonus">
+                <v-select v-model="entry.claimBasisMethod" label="請佣基準" :items="PRICE_BASIS_METHODS" item-title="title" item-value="value"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="12" sm="6" v-if="!isBonus">
+                <v-select v-model="entry.partyBFeeTiming" :label="`${settings.partyBLabel} 扣除時機`" :items="PARTY_B_FEE_TIMINGS" item-title="title" item-value="value"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="12" sm="6" v-if="isBonus">
+                <v-select v-model="entry.bonusBasisMethod" label="獎金基準" :items="PRICE_BASIS_METHODS" item-title="title" item-value="value"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="12" v-if="!isBonus && (entry.note || showNote)">
                 <v-text-field v-model="entry.note" label="請佣備註" maxlength="200" variant="outlined" density="compact" hide-details clearable />
               </v-col>
             </v-row>
@@ -91,12 +104,12 @@
                 <v-text-field v-model.number="entry.period" label="期別" type="number" variant="outlined" density="compact" hide-details></v-text-field>
               </v-col>
               <v-col cols="6" sm="3" md="3" lg="2">
-                <v-text-field v-model="entry.requestDate" label="請佣日期" placeholder="yyyy/mm/dd" variant="outlined" density="compact" hide-details></v-text-field>
+                <DateFieldTW v-model="entry.requestDate" :label="isBonus ? '獎金日期' : '請佣日期'" />
               </v-col>
               <v-col cols="12" sm="6" md="4" lg="3">
                 <v-text-field
                   :model-value="entry.ratioPct"
-                  label="本次請佣比例(%) *"
+                  :label="isBonus ? '本次獎金比例(%) *' : '本次請佣比例(%) *'"
                   type="number" step="0.1" variant="outlined" density="compact" hide-details
                   color="primary"
                   @update:model-value="onRatioInput"
@@ -113,7 +126,7 @@
                   已請 {{ claimedPct }}%・本次 {{ entry.ratioPct }}%・{{ ratioOver ? `超過 ${round1(totalPct - 100)}%` : `尚餘 ${round1(100 - totalPct)}%` }}
                 </div>
               </v-col>
-              <v-col cols="12" sm="8" md="12" lg="3" class="d-flex align-center flex-wrap ga-1">
+              <v-col v-if="!isBonus" cols="12" sm="8" md="12" lg="3" class="d-flex align-center flex-wrap ga-1">
                 <v-btn size="small" variant="text" :prepend-icon="showAdvanced ? 'mdi-chevron-up' : 'mdi-chevron-down'" @click="showAdvanced = !showAdvanced">
                   其他設定
                 </v-btn>
@@ -122,7 +135,7 @@
             </v-row>
 
             <v-expand-transition>
-              <v-row v-if="showAdvanced" dense class="mt-1 adv-row">
+              <v-row v-if="!isBonus && showAdvanced" dense class="mt-1 adv-row">
                 <v-col cols="12" sm="6" md="4">
                   <v-text-field v-model.number="entry.partyAFee" :label="`${settings.partyALabel}(元)`" type="number" variant="outlined" density="compact"
                     hint="計入獎金折數，會降低所有獎金" persistent-hint></v-text-field>
@@ -152,8 +165,11 @@
               </div>
             </v-alert>
 
+            <div v-if="isBonus" class="text-body-2 my-3">
+              獎金計算基準（唯讀）：佣金比例 {{ entry.commPct }}%・{{ settings.partyALabel }} {{ money(entry.partyAFee) }} 元・基準價 {{ money(result.claim.bonusBasisWan) }} 萬・獎金折數 {{ result.claim.discount.toFixed(2) }}・折數後總價 {{ money(result.claim.dealAfter) }} 萬
+            </div>
             <!-- 試算結果（精簡） -->
-            <div class="result-strip mt-3">
+            <div v-if="!isBonus" class="result-strip mt-3">
               <div class="rs-item hl"><label>本次請佣（元）</label><div>{{ money(result.claim.thisClaim) }}</div></div>
               <div class="rs-item"><label>實際請領（元）</label><div>{{ money(result.claim.realClaim) }}</div></div>
               <div class="rs-item"><label>保留款（元）</label><div>{{ money(result.claim.claimKeep) }}</div></div>
@@ -162,7 +178,7 @@
               </v-btn>
             </div>
             <v-expand-transition>
-              <div v-if="showCalc" class="mt-2">
+              <div v-if="!isBonus && showCalc" class="mt-2">
                 <div class="text-body-2 mb-2">{{ entry.priceSource === 'package' ? '配套價格' : '成交總價(含車)' }}：{{ fmtWan(entry.finance.dealTotal) }} 萬</div>
                 <div class="info-grid mb-2">
                   <div class="ro-field"><label>簽約日期</label><div>{{ contractDateText || '—' }}</div></div>
@@ -177,7 +193,7 @@
                     <thead>
                       <tr>
                         <th>總底價(萬)</th><th>總成交價(萬)</th><th>溢差價(萬)</th><th>介紹費(萬)</th><th>實際溢差價(萬)</th>
-                        <th>佣金比例</th><th>獎金折數</th><th>折數後總價(萬)</th><th>實際請領金額(元)</th><th>保留款(元)</th><th>本次請佣(元)</th>
+                        <th>請佣基準價(萬)</th><th>佣金比例</th><th>獎金折數</th><th>折數後總價(萬)</th><th>實際請領金額(元)</th><th>保留款(元)</th><th>本次請佣(元)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -187,6 +203,7 @@
                         <td :class="{ 'text-error': entry.finance.spread < 0 }">{{ fmtWan(entry.finance.spread) }}</td>
                         <td>{{ fmtWan(result.claim.feeWan, 4) }}</td>
                         <td :class="{ 'text-error': result.claim.realSpread < 0 }">{{ fmtWan(result.claim.realSpread) }}</td>
+                        <td>{{ fmtWan(result.claim.baseWan) }}</td>
                         <td>{{ (Number(entry.commPct) || 0).toFixed(2) }}%</td>
                         <td>{{ result.claim.discount.toFixed(2) }}</td>
                         <td>{{ money(result.claim.dealAfter) }}</td>
@@ -205,6 +222,7 @@
             </v-expand-transition>
           </div>
 
+          <template v-if="isBonus">
           <!-- ========== ② 獎金人員 ========== -->
           <div class="step-h mt-4">
             <span class="step-no">2</span>
@@ -286,13 +304,14 @@
             </template>
           </div>
 
+          </div>
           <!-- ========== ③ 結果 ========== -->
           <div class="step-h mt-4">
             <span class="step-no">3</span>
-            <span class="step-title">每人獎金結果</span>
-            <span class="text-caption text-medium-emphasis">保留款／稅金／二代健保比例與備註可直接改（跨戶共用）</span>
+            <v-btn variant="text" size="small" :aria-expanded="showResults" :prepend-icon="showResults ? 'mdi-chevron-up' : 'mdi-chevron-down'" @click="showResults = !showResults">每人獎金結果</v-btn>
+            <span class="text-caption text-medium-emphasis">保留款／稅金／二代健保比例可直接改（跨戶共用）</span>
           </div>
-          <div class="step-body">
+          <div v-show="showResults" class="step-body">
             <div class="table-scroll">
               <v-table density="compact" class="matrix-table">
                 <thead>
@@ -301,12 +320,12 @@
                     <th v-for="cat in payCategories" :key="cat.key" class="text-right">{{ cat.label }}</th>
                     <th class="text-right">小計</th>
                     <th class="text-right">保留款</th><th class="text-right">稅金</th><th class="text-right">二代健保</th>
-                    <th class="text-right">實發</th><th class="col-remark">備註</th>
+                    <th class="text-right">實發</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="!result.people.length">
-                    <td :colspan="payCategories.length + 8" class="text-center text-medium-emphasis">尚未選擇任何人員，請於步驟 2 點選</td>
+                    <td :colspan="payCategories.length + 7" class="text-center text-medium-emphasis">尚未選擇任何人員，請於步驟 2 點選</td>
                   </tr>
                   <tr v-for="p in result.people" :key="p.personKey">
                     <td class="font-weight-medium">
@@ -334,9 +353,7 @@
                       <div class="text-caption text-medium-emphasis">{{ money(p.nhi) }}</div>
                     </td>
                     <td class="text-right text-high-emphasis font-weight-bold">{{ money(p.net) }}</td>
-                    <td class="col-remark">
-                      <input class="rmk-input" type="text" :value="profileOf(p.personKey).remark" @change="e => setProfile(p.personKey, 'remark', e.target.value)">
-                    </td>
+
                   </tr>
                 </tbody>
               </v-table>
@@ -345,7 +362,7 @@
               另有 {{ handoverLabel }}暫留 {{ money(result.handoverTotal) }} 元（本期不發放，未計入上表）。
             </div>
           </div>
-          </div>
+          </template>
         </v-card-text>
       </div>
     </v-expand-transition>
@@ -367,14 +384,17 @@ import { ref, computed, watch } from 'vue';
 import { useToast } from 'vue-toastification';
 import AllocationEditor from './AllocationEditor.vue';
 import CrossProjectPersonPicker from './CrossProjectPersonPicker.vue';
+import DateFieldTW from './DateFieldTW.vue';
 import {
   calcUnitBonus, money, toNum, round2, formatDateTW, evenShares, paymentRatioPct,
   matchesRolePositions, isHandoverCategory, resolveCommPct, categoryDefaultPersons,
+  PRICE_BASIS_METHODS, PARTY_B_FEE_TIMINGS, basisMethodLabel,
 } from '@/utils/commissionCalculation';
 import { bonusSegments, segmentForDate, segmentLabel } from '@/utils/bonusSegments';
 import { resolveDisplayNotes, formatNoteTime, categoryMeta } from '@/utils/remarkNotes';
 
 const props = defineProps({
+  mode: { type: String, default: 'claim' },
   entry: { type: Object, required: true },
   settings: { type: Object, required: true },
   profiles: { type: Object, required: true },        // profileKey -> profile（reactive，跨卡共用）
@@ -399,8 +419,10 @@ function setPriceSource(value) {
 const pickerOpen = ref(false);
 const pickerTargetCat = ref('');
 
+const isBonus = computed(() => props.mode === 'bonus');
+const showResults = ref(false);
 const enabledCategories = computed(() =>
-  (props.settings.bonusCategories || [])
+  (isBonus.value ? (props.settings.bonusCategories || []) : [])
     .filter(c => c.enabled !== false)
     .slice()
     .sort((a, b) => (a.order || 0) - (b.order || 0))
@@ -448,6 +470,14 @@ const customCommPct = computed(() => toNum(props.entry.commPct) !== defaultCommP
 const totalPct = computed(() => props.claimedPct + toNum(props.entry.ratioPct));
 const ratioOver = computed(() => totalPct.value > 100.0001);
 const unitSalesText = computed(() => normalizeNames(props.entry.unit.salesperson).join('、'));
+const PRICE_SOURCE_TEXT = {
+  package: ['配套價格', '總價採配套價格，不計車位'],
+  splitHouse: ['配套房屋總價', '總價採配套房屋總價，含車位'],
+  transaction: ['成交總價', '總價採原成交總價，含車位'],
+};
+const basisMethodValue = computed(() => (isBonus.value ? props.entry.bonusBasisMethod : props.entry.claimBasisMethod));
+const priceSourceLabel = computed(() => `${(PRICE_SOURCE_TEXT[props.entry.priceSource] || PRICE_SOURCE_TEXT.transaction)[0]}・${basisMethodLabel(basisMethodValue.value)}`);
+const priceSourceTitle = computed(() => `${(PRICE_SOURCE_TEXT[props.entry.priceSource] || PRICE_SOURCE_TEXT.transaction)[1]}；${isBonus.value ? '獎金' : '請佣'}基準：${basisMethodLabel(basisMethodValue.value, false)}`);
 
 // ---------- 版面開關 ----------
 const showCalc = ref(false);
@@ -479,6 +509,9 @@ const result = computed(() => calcUnitBonus(props.entry.finance, {
   keepPct: toNum(props.entry.keepPct),
   partyAFee: toNum(props.entry.partyAFee),
   partyBFee: toNum(props.entry.partyBFee),
+  claimBasisMethod: props.entry.claimBasisMethod,
+  bonusBasisMethod: props.entry.bonusBasisMethod,
+  partyBFeeTiming: props.entry.partyBFeeTiming,
   categories: props.entry.categories,
 }, entryProfiles.value));
 
@@ -616,7 +649,7 @@ function ensureLocalProfile(personKey, name, rates = null) {
     keepPct: toNum(seg.keepPct),
     taxPct: toNum(seg.taxPct),
     nhiPct: toNum(seg.nhiPct),
-    remark: seg.remark || '',
+    remark: '',
     segmentLabel: segs.length > 1 ? segmentLabel(seg) : '',
     sourceProjectId: props.projectId,
     sourceProjectName: props.projectName,
@@ -792,10 +825,11 @@ function onPickPerson(person) {
   .unit-toggle { grid-column: 1; grid-row: 1; min-width: 0; }
   .remove-unit { grid-column: 2; grid-row: 1; }
   .head-amount { grid-column: 1; grid-row: 2; }
+  .head-price-source { grid-column: 2; grid-row: 2; justify-self: end; }
 }
 .finance-summary { flex-basis: 100%; width: 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 4px; }
 .finance-metric { min-width: 0; }
-.finance-metric dd.commission-rate-input { margin-top: 10px; margin-bottom: 4px; }
+.finance-metric dd.commission-rate-input { margin-top: 4px; margin-bottom: 4px; }
 .finance-metric dt { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: #555; }
 .metric-unit { font-size: 11px; color: #666; }
 .finance-metric dd { margin: 2px 0; font-size: 22px; line-height: 1.25; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

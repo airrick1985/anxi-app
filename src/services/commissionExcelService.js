@@ -197,6 +197,18 @@ function personHeaderName(p, model) {
   return p.name;
 }
 
+// Bound each rendered text row so arbitrarily many notes paginate instead of forming one oversized cell.
+function noteParts(text, size = 48) {
+  const chars = Array.from(String(text ?? ''));
+  if (!chars.length) return [''];
+  const parts = [];
+  for (let i = 0; i < chars.length; i += size) parts.push(chars.slice(i, i + size).join(''));
+  return parts;
+}
+function personNoteRows(model) {
+  return (model.periodRemarks || []).flatMap(note => noteParts(note.text, 120).map(text => ({ period: note.period, text })));
+}
+
 export function buildBonusGroupGrid(group, model) {
   const st = model.style || {};
   const HAS_H = !!(group.hasHandover ?? model.hasHandover);   // 交屋團獎欄（自個獎提撥、本期不發放）
@@ -227,7 +239,10 @@ export function buildBonusGroupGrid(group, model) {
   RI.youfu = group.isYoufu ? preRows + 1 : -1;
   RI.keep = group.isYoufu ? preRows + 2 : preRows + 1;
   RI.tax = RI.keep + 1; RI.nhi = RI.keep + 2; RI.net = RI.keep + 3; RI.remark = RI.keep + 4;
-  const nBottomRows = RI.remark + 1;
+  const notesFor = person => (person.remarkNotes || [person.remark || '']).flatMap(text => noteParts(text));
+  const noteCount = Math.max(1, ...group.left.concat(group.right).map(person => notesFor(person).length));
+  const remarkEnd = RI.remark + noteCount - 1;
+  const nBottomRows = remarkEnd + 1;
 
   const rGrand0 = rb0 + nBottomRows;
   const GRAND_N = 4;
@@ -260,15 +275,18 @@ export function buildBonusGroupGrid(group, model) {
   g.rowHeights[rKilo] = 18;
 
   // 上方表頭
-  const isPackage = model.priceBasis === 'package';
+  const isPackage = !model.mergedRows && model.priceBasis === 'package';
   const H1 = ['編號', '小訂日期', '簽約日期', '戶別', isPackage ? '配套底價(萬)' : '停車位', '姓名', isPackage ? '配套價格(萬)' : '成交價(萬)', '', isPackage ? '配套總價(萬)' : '總成交價(萬)', model.partyALabel, '折數', '折數後總價(萬)', '銷售人員', '團獎人數'];
   if (HAS_H) H1.push(`${group.handoverLabel || model.handoverLabel || '交屋團獎'}\n(暫留不發放)`);
+  if (model.mergedRows) {
+    H1[3] = '戶別／方案'; H1[4] = '停車位／配套底價(萬)'; H1[6] = '成交價／配套價格(萬)'; H1[8] = '總價(萬)';
+  }
   const hStyle = { sz: st.headerFontSize || 12, bold: true, align: 'center', wrap: true, bg: headerBg, border: true };
   H1.forEach((h, c) => { if (h) g.set(rH1, c, h, hStyle); });
   if (isPackage) {
     g.merge(rH1, 6, rH2, 7);
   } else {
-    g.set(rH2, 6, '房價', hStyle); g.set(rH2, 7, '車價', hStyle);
+    g.set(rH2, 6, model.mergedRows ? '房價／配套價' : '房價', hStyle); g.set(rH2, 7, '車價', hStyle);
     g.merge(rH1, 6, rH1, 7);
   }
   [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13].concat(HAS_H ? [HCOL] : []).forEach(c => g.merge(rH1, c, rH2, c));
@@ -284,15 +302,17 @@ export function buildBonusGroupGrid(group, model) {
   // 上方資料
   group.unitRows.forEach((d, i) => {
     const r = rData0 + i;
+    const rowIsPackage = model.mergedRows ? d.priceBasis === 'package' : isPackage;
+    if (model.mergedRows) g.rowHeights[r] = 36;
     const rc = d.refund ? '#C00000' : undefined;   // 退佣列紅字
     g.set(r, 0, d.no, { align: 'center', border: true, color: rc });
     g.set(r, 1, d.sodate, { align: 'center', border: true, color: rc });
     g.set(r, 2, d.sign, { align: 'center', border: true, color: rc });
-    g.set(r, 3, d.unit, { align: 'center', border: true, color: rc });
-    g.set(r, 4, isPackage ? d.packageFloor : d.park, { align: 'center', border: true, color: rc });
+    g.set(r, 3, model.mergedRows ? `${d.unit}\n${d.planName}` : d.unit, { align: 'center', wrap: !!model.mergedRows, border: true, color: rc });
+    g.set(r, 4, rowIsPackage ? d.packageFloor : d.park, { align: 'center', border: true, color: rc });
     g.set(r, 5, d.name, { align: 'center', border: true, color: rc });
     g.set(r, 6, d.house || '', { fmt: '#,##0', border: true, color: rc });
-    if (isPackage) g.merge(r, 6, r, 7);
+    if (rowIsPackage) g.merge(r, 6, r, 7);
     else g.set(r, 7, d.parkP || '', { fmt: '#,##0', border: true, color: rc });
     g.set(r, 8, d.total || '', { fmt: '#,##0', border: true, color: rc });
     g.set(r, 9, d.referral || '', { fmt: '#,##0', border: true, color: rc });
@@ -353,8 +373,8 @@ export function buildBonusGroupGrid(group, model) {
   g.set(rRow(RI.tax), 0, '稅金', { align: 'center', border: true });
   g.set(rRow(RI.nhi), 0, '二代健保', { align: 'center', border: true });
   g.set(rRow(RI.net), 0, '實發', { align: 'center', border: true });
-  g.set(rRow(RI.remark), 0, '備註', { align: 'center', border: true });
-  for (let k = RI.sub; k <= RI.remark; k++) g.merge(rRow(k), 0, rRow(k), 1);
+  for (let i = 0; i < noteCount; i++) g.set(rRow(RI.remark + i), 0, i ? '備註（續）' : '備註', { align: 'center', border: true });
+  for (let k = RI.sub; k <= remarkEnd; k++) g.merge(rRow(k), 0, rRow(k), 1);
 
   // 左側管理人員金額（100% 呈現；置於其管理類別列）
   group.left.forEach((a, i) => {
@@ -383,12 +403,16 @@ export function buildBonusGroupGrid(group, model) {
     g.set(rRow(RI.tax), col, (group.isYoufu ? a.taxDisc : a.tax) || '', { fmt: '#,##0', border: true });
     g.set(rRow(RI.nhi), col, (group.isYoufu ? a.nhiDisc : a.nhi) || '', { fmt: '#,##0', border: true });
     g.set(rRow(RI.net), col, (group.isYoufu ? a.netDisc : a.net) || '', { fmt: '#,##0', border: true });
-    g.set(rRow(RI.remark), col, a.remark || '', { align: 'center', border: true });
+    notesFor(a).forEach((text, i) => {
+      const r = rRow(RI.remark + i);
+      g.set(r, col, text, { align: 'left', wrap: true, border: true });
+      g.rowHeights[r] = Math.max(g.rowHeights[r], estimateRowHeight(text, g.cols[col], st.dataFontSize || 12, 24));
+    });
   });
 
   // 右側項目標籤 + 業務人員金額
   group.rightRows.forEach((rr, k) => {
-    g.set(rRow(k), RLAB, `${rr.label} ${toNum(rr.ratePct).toFixed(2)}%`, { align: 'center', border: true, sz: 10 });
+    g.set(rRow(k), RLAB, `${rr.label} ${rr.rateText ?? `${toNum(rr.ratePct).toFixed(2)}%`}`, { align: 'center', border: true, sz: 10 });
   });
   g.set(rRow(RI.sub), RLAB, '合計', { bold: true, align: 'center', border: true });
   if (group.isYoufu) g.set(rRow(RI.youfu), RLAB, group.youfuLabel, { bold: true, align: 'center', border: true, sz: 10 });
@@ -396,7 +420,7 @@ export function buildBonusGroupGrid(group, model) {
   g.set(rRow(RI.tax), RLAB, '稅金', { align: 'center', border: true });
   g.set(rRow(RI.nhi), RLAB, '二代健保', { align: 'center', border: true });
   g.set(rRow(RI.net), RLAB, '實發', { align: 'center', border: true });
-  g.set(rRow(RI.remark), RLAB, '備註', { align: 'center', border: true });
+  for (let i = 0; i < noteCount; i++) g.set(rRow(RI.remark + i), RLAB, i ? '備註（續）' : '備註', { align: 'center', border: true });
 
   group.right.forEach((a, i) => {
     const col = RLAB + 1 + i;
@@ -409,13 +433,17 @@ export function buildBonusGroupGrid(group, model) {
     g.set(rRow(RI.tax), col, (group.isYoufu ? a.taxDisc : a.tax) || '', { fmt: '#,##0', border: true });
     g.set(rRow(RI.nhi), col, (group.isYoufu ? a.nhiDisc : a.nhi) || '', { fmt: '#,##0', border: true });
     g.set(rRow(RI.net), col, (group.isYoufu ? a.netDisc : a.net) || '', { fmt: '#,##0', border: true });
-    g.set(rRow(RI.remark), col, a.remark || '', { align: 'center', border: true });
+    notesFor(a).forEach((text, i) => {
+      const r = rRow(RI.remark + i);
+      g.set(r, col, text, { align: 'left', wrap: true, border: true });
+      g.rowHeights[r] = Math.max(g.rowHeights[r], estimateRowHeight(text, g.cols[col], st.dataFontSize || 12, 24));
+    });
   });
 
   // 合計列黃底
   g.region(rRow(RI.sub), 0, rRow(RI.sub), NC - 1, { bg: totalBg, bold: true, border: true });
   if (group.isYoufu) g.region(rRow(RI.youfu), 0, rRow(RI.youfu), NC - 1, { bg: totalBg, bold: true, border: true });
-  g.region(rb0, 0, rRow(RI.remark), NC - 1, { border: true });
+  g.region(rb0, 0, rRow(remarkEnd), NC - 1, { border: true });
 
   // 底部合計區
   const GRAND = [
@@ -441,10 +469,10 @@ export function buildBonusGroupGrid(group, model) {
     personCols.push({ section: 'top', personKey: p.personKey, name: p.name, c1: FIX + 2 * i, c2: FIX + 2 * i + 1, r1: rH1, r2: rTopTotal });
   });
   group.left.forEach((a, i) => {
-    personCols.push({ section: 'left', mgmtCat: a.mgmtCat || '', personKey: a.personKey, name: a.name, c1: LSTART + i, c2: LSTART + i, r1: rbH, r2: rRow(RI.remark) });
+    personCols.push({ section: 'left', mgmtCat: a.mgmtCat || '', personKey: a.personKey, name: a.name, c1: LSTART + i, c2: LSTART + i, r1: rbH, r2: rRow(remarkEnd) });
   });
   group.right.forEach((a, i) => {
-    personCols.push({ section: 'right', personKey: a.personKey, name: a.name, c1: RLAB + 1 + i, c2: RLAB + 1 + i, r1: rbH, r2: rRow(RI.remark) });
+    personCols.push({ section: 'right', personKey: a.personKey, name: a.name, c1: RLAB + 1 + i, c2: RLAB + 1 + i, r1: rbH, r2: rRow(remarkEnd) });
   });
 
   // 可就地編輯的文字格（匯出中心即時預覽；對應請佣設定「文字自訂」）
@@ -685,6 +713,21 @@ function drawPersonRetention(g, r0, model, NC, secLabel = '三') {
   return r + 1;
 }
 
+function drawPersonNotes(g, start, model, columns) {
+  const rows = personNoteRows(model);
+  if (!rows.length) return;
+  g.set(start, 0, '當期備註', { bold: true, border: true });
+  g.merge(start, 0, start, columns - 1);
+  const width = g.cols.reduce((sum, w) => sum + w, 0);
+  rows.forEach((note, i) => {
+    const r = start + 1 + i;
+    const text = `第 ${note.period} 期：${note.text}`;
+    g.set(r, 0, text, { align: 'left', wrap: true, border: true });
+    g.merge(r, 0, r, columns - 1);
+    g.rowHeights[r] = estimateRowHeight(text, width, model.style?.dataFontSize || 11, 28);
+  });
+}
+
 /** 個人明細：單張合併 grid（PDF / 預覽） */
 const SEC = ['一', '二', '三'];
 
@@ -692,7 +735,7 @@ export function buildPersonGrid(model) {
   const cols = personDetailColumns(model);
   const NC = model.showDetail ? Math.max(cols.length, PERSON_SUMMARY_COLS.length) : PERSON_SUMMARY_COLS.length;
   const rc = personRowCounts(model);
-  const nRows = rc.head + (model.showDetail ? rc.detail + rc.spacer : 0) + rc.summary + rc.spacer + rc.retention;
+  const nRows = rc.head + (model.showDetail ? rc.detail + rc.spacer : 0) + rc.summary + rc.spacer + rc.retention + (personNoteRows(model).length ? personNoteRows(model).length + 1 : 0);
   const st = model.style || {};
   const g = new Grid(model.person.name || '個人明細', NC, nRows, { fontFamily: st.fontFamily || 'DFKai-SB', sz: st.dataFontSize || 11 });
   if (model.showDetail) {
@@ -710,7 +753,8 @@ export function buildPersonGrid(model) {
   }
   r = drawPersonSummary(g, r, model, NC, SEC[sec++]);
   g.rowHeights[r] = 14; r += 1;
-  drawPersonRetention(g, r, model, NC, SEC[sec++]);
+  r = drawPersonRetention(g, r, model, NC, SEC[sec++]);
+  drawPersonNotes(g, r, model, NC);
   return g.toJSON();
 }
 
@@ -722,12 +766,13 @@ export function buildPersonExcelGrids(model) {
 
   // 彙總
   const NC1 = PERSON_SUMMARY_COLS.length;
-  const g1 = new Grid('彙總', NC1, rc.head + rc.summary + rc.spacer + rc.retention, base);
+  const g1 = new Grid('彙總', NC1, rc.head + rc.summary + rc.spacer + rc.retention + (personNoteRows(model).length ? personNoteRows(model).length + 1 : 0), base);
   PERSON_SUMMARY_COLS.forEach((c, i) => { g1.cols[i] = c.width; });
   let r = drawPersonHead(g1, 0, model, NC1);
   r = drawPersonSummary(g1, r, model, NC1, '一');
   g1.rowHeights[r] = 14; r += 1;
-  drawPersonRetention(g1, r, model, NC1, '二');
+  r = drawPersonRetention(g1, r, model, NC1, '二');
+  drawPersonNotes(g1, r, model, NC1);
   if (!model.showDetail) return [g1.toJSON()];
 
   // 每戶明細（本人為銷售人員之戶別）

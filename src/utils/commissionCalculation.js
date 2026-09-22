@@ -55,7 +55,38 @@ export const DEFAULT_COMMISSION_SETTINGS = {
   equalSplitScope: 'team',        // 'team'＝僅團隊類別套用；'all'＝所有類別的均分皆套用
   teamGroups: [],
   personDetailShowAllRoles: [],   // 個人明細：職務含這些關鍵字者，每戶明細顯示全部戶別（含非本人銷售）
+  claimBasisMethod: 'lower',      // 請佣基準預設（見 PRICE_BASIS_METHODS）
+  bonusBasisMethod: 'deal',       // 獎金基準預設
+  partyBFeeTiming: 'before',      // 介紹費 B 扣除時機（見 PARTY_B_FEE_TIMINGS）
 };
+
+/** 請佣／獎金基準價取法；每戶請佣或獎金編輯可依當期改選，隨紀錄保存 */
+export const PRICE_BASIS_METHODS = [
+  { value: 'lower', title: '成交價與底價墊低法', short: '墊低法' },
+  { value: 'higher', title: '成交價與底價墊高法', short: '墊高法' },
+  { value: 'deal', title: '一律以成交價', short: '一律成交價' },
+  { value: 'floor', title: '一律以底價', short: '一律底價' },
+];
+/** 介紹費 B 扣除時機：before＝成交價先扣再與底價比較；after＝取基準價後再扣（一律以底價不扣） */
+export const PARTY_B_FEE_TIMINGS = [
+  { value: 'before', title: '先扣介紹費 B 再比較', short: '先扣再比' },
+  { value: 'after', title: '比較後再扣介紹費 B', short: '比完再扣' },
+];
+export function basisMethodOf(v) { return PRICE_BASIS_METHODS.some(m => m.value === v) ? v : ''; }
+export function feeTimingOf(v) { return PARTY_B_FEE_TIMINGS.some(m => m.value === v) ? v : ''; }
+export function basisMethodLabel(v, short = true) {
+  const m = PRICE_BASIS_METHODS.find(x => x.value === v) || PRICE_BASIS_METHODS[0];
+  return short ? m.short : m.title;
+}
+/** 依基準法自成交價／底價取基準價（萬） */
+export function pickBasisPrice(method, deal, floor) {
+  switch (method) {
+    case 'higher': return Math.max(deal, floor);
+    case 'deal': return deal;
+    case 'floor': return floor;
+    default: return Math.min(deal, floor);
+  }
+}
 
 /** 均分尾差處理方式（建案設定 teamSplitMode） */
 export const SPLIT_MODES = [
@@ -209,23 +240,32 @@ export function calcClaim(finance, input) {
     ? 0.1 : toNum(input.keepPct) / 100;
   const partyAFee = toNum(input.partyAFee);   // 計入折數（元）
   const partyBFee = toNum(input.partyBFee);   // 計入請佣基準（元）
+  const claimMethod = basisMethodOf(input.claimBasisMethod) || 'lower';
+  const bonusMethod = basisMethodOf(input.bonusBasisMethod) || 'deal';
+  const feeTiming = feeTimingOf(input.partyBFeeTiming) || 'before';
 
   const feeWan = partyBFee / 10000;
   const realSpread = finance.spread - feeWan;
-  const baseWan = Math.min(finance.dealTotal - feeWan, finance.totalFloor);
+  // 請佣基準價（萬）：一律以底價不扣介紹費 B；先扣再比＝成交價扣 B 後取值；比完再扣＝取值後扣 B
+  let baseWan;
+  if (claimMethod === 'floor') baseWan = finance.totalFloor;
+  else if (feeTiming === 'after') baseWan = pickBasisPrice(claimMethod, finance.dealTotal, finance.totalFloor) - feeWan;
+  else baseWan = pickBasisPrice(claimMethod, finance.dealTotal - feeWan, finance.totalFloor);
   const realClaim = Math.round(baseWan * comm * 10000);
   const claimKeep = Math.round(realClaim * keepRate);
 
-  // 獎金折數（partyAFee 參與）
-  const base = Math.min(finance.totalFloor, finance.dealTotal * comm) * 10000;
+  // 獎金基準價（萬）；折數（partyAFee 參與）與折數後總價皆以基準價計
+  const bonusBasisWan = pickBasisPrice(bonusMethod, finance.dealTotal, finance.totalFloor);
+  const base = Math.min(finance.totalFloor, bonusBasisWan * comm) * 10000;
   let discount = base > 0 ? (base - partyAFee) / base : 0;
   discount = round2(discount);
-  const dealAfter = Math.round(finance.dealTotal * discount);   // 折數後總價（萬）
+  const dealAfter = Math.round(bonusBasisWan * discount);   // 折數後總價（萬）
 
   return {
     feeWan, realSpread, baseWan, realClaim, claimKeep,
     thisClaim: realClaim - claimKeep,
-    base, discount, dealAfter,
+    base, discount, dealAfter, bonusBasisWan,
+    claimBasisMethod: claimMethod, bonusBasisMethod: bonusMethod, partyBFeeTiming: feeTiming,
   };
 }
 
@@ -526,7 +566,7 @@ export function money(n) {
 
 // ---------- 退佣（買方解約）試算 ----------
 const REFUND_SNAPSHOT_NUM_KEYS = ['dealTotal', 'totalFloor', 'spread', 'houseDeal', 'parkDeal', 'houseFloor', 'parkFloor'];
-const REFUND_CALC_NUM_KEYS = ['feeWan', 'realSpread', 'baseWan', 'base', 'dealAfter'];
+const REFUND_CALC_NUM_KEYS = ['feeWan', 'realSpread', 'baseWan', 'base', 'dealAfter', 'bonusBasisWan'];
 
 /**
  * 退佣試算（前後端同構；後端以 DB 現值重算，不信任前端數值）。

@@ -1,3 +1,4 @@
+import { periodPersonNotes } from './commissionPeriodBonus';
 /**
  * 請佣獎金 匯出模型（docs/請佣獎金系統-spec.md §7）
  * 前端預覽（HTML）、Excel（xlsx-js-style）、後端 PDF（pdfkit）三端共用同一 model，
@@ -322,7 +323,7 @@ export function buildBonusModel(opts) {
             sourceProjectId: b.sourceProjectId || '', sourceProjectName: b.sourceProjectName || '',
             indiv: 0, team: 0, byCat: {}, sub: 0,
             subDisc: 0, keepDisc: 0, taxDisc: 0, nhiDisc: 0,
-            remark: b.remark || '',
+            remark: b.remark || '', legacyNotes: [],
           };
         }
         const a = agg[b.personKey];
@@ -336,9 +337,11 @@ export function buildBonusModel(opts) {
         a.taxDisc += toNum(b.tax);
         a.nhiDisc += toNum(b.nhi);
         if (!a.remark) a.remark = b.remark || '';
+        if (b.remark && !a.legacyNotes.includes(b.remark)) a.legacyNotes.push(b.remark);
       });
       // 100% 的保留/稅/健保：以實際有效比例回推
       Object.values(agg).forEach(a => {
+        a.remarkNotes = periodPersonNotes(opts.periodNotes, period, a.personKey, a.legacyNotes);
         const kr = a.subDisc ? a.keepDisc / a.subDisc : 0;
         const tr = a.subDisc ? a.taxDisc / a.subDisc : 0;
         const nr = a.subDisc ? a.nhiDisc / a.subDisc : 0;
@@ -388,7 +391,7 @@ export function buildBonusModel(opts) {
         }))
         .map(a => ({ personKey: a.personKey, name: a.name, sourceProjectName: a.sourceProjectName, sourceProjectId: a.sourceProjectId }));
 
-      const sortedRecords = sortRecordsByUnitOrder(g.records, unitOrder);
+      const sortedRecords = opts.preserveRecordOrder ? g.records : sortRecordsByUnitOrder(g.records, unitOrder);
       const unitRows = sortedRecords.map((r, i) => {
         const pp = {};
         topPersons.forEach(p => {
@@ -463,7 +466,7 @@ export function buildBonusModel(opts) {
       return {
         pctKey, isYoufu, youfuLabel,
         sheetName: `業務獎金-${pctKey}%`,
-        title: `${projectName}－業務獎金　第 ${period} 期　請佣比例 ${pctKey}%`,
+        title: `${projectName}－業務獎金　第 ${period} 期　獎金發放比例 ${pctKey}%`,
         kiloLabel: cfg.kiloLabel, indivX, teamX,
         hasHandover, handoverLabel, handoverX,
         saleYM,
@@ -492,6 +495,52 @@ export function buildBonusModel(opts) {
     paper: cfg.paper || 'A3',
     orientation: cfg.orientation || 'landscape',
   };
+}
+
+/** Merge plan rows before layout, keeping category keys scoped to their source plan. */
+export function buildMergedBonusModel({ sources = [], ...opts }) {
+  const records = [], bonusRecords = [], bonusCategories = [];
+  const sourceByRecord = new Map();
+  sources.forEach(({ plan, records: planRecords, bonusRecords: planBonuses, settings, unitOrder }) => {
+    const keyOf = key => `${plan.id}:${key}`;
+    const remap = values => Object.fromEntries(Object.entries(values || {}).map(([key, value]) => [keyOf(key), value]));
+    (settings.bonusCategories || []).forEach(cat => bonusCategories.push({
+      ...cat, key: keyOf(cat.key), label: `${plan.name}・${cat.label}`,
+    }));
+    sortRecordsByUnitOrder(planRecords, unitOrder).forEach(record => {
+      const id = keyOf(record.id);
+      records.push({ ...record, id, categories: remap(record.categories) });
+      sourceByRecord.set(id, plan);
+    });
+    planBonuses.forEach(b => bonusRecords.push({
+      ...b, commissionRecordId: keyOf(b.commissionRecordId),
+      amounts: remap(b.amounts),
+      ...(b.amountsFull ? { amountsFull: remap(b.amountsFull) } : {}),
+    }));
+  });
+  const model = buildBonusModel({ ...opts, records, bonusRecords, preserveRecordOrder: true,
+    settings: { ...opts.settings, bonusCategories },
+  });
+  model.mergedRows = true;
+  model.includeClaimSheet = false;
+  model.groups.forEach(group => {
+    group.title = `${opts.projectName || ''}－合併獎金表　第 ${opts.period} 期　獎金發放比例 ${group.pctKey}%`;
+    group.sheetName = `合併獎金-${group.pctKey}%`;
+    group.kiloLabel = '各方案原獎金';
+    group.indivX = group.teamX = '依方案';
+    group.handoverLabel = '交屋團獎';
+    group.handoverX = '依方案';
+    group.rightRows.filter(row => ['_indiv', '_team'].includes(row.key)).forEach(row => {
+      row.label = row.key === '_indiv' ? '銷售個獎' : '銷售團獎';
+      row.rateText = '依方案';
+    });
+    group.unitRows.forEach(row => {
+      const plan = sourceByRecord.get(row.recordId);
+      row.planName = plan.name;
+      row.priceBasis = plan.priceBasis;
+    });
+  });
+  return model;
 }
 
 // ================= 個人獎金明細 model =================
@@ -665,6 +714,7 @@ export function buildPersonModel(opts) {
 
   return {
     docType: 'person',
+    periodRemarks: [...periodSet].sort((a, b) => a - b).flatMap(period => periodPersonNotes(opts.periodNotes, period, personKey, [...new Set(personRows.filter(b => toNum(b.period) === period).map(b => b.remark).filter(Boolean))]).map(text => ({ period, text }))),
     projectId, projectName,
     periods: [...periodSet].sort((a, b) => a - b),
     periodsLabel: label,

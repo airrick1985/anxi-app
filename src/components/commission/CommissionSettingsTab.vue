@@ -24,6 +24,20 @@
                 variant="outlined" density="compact" hint="其餘為期票比例" persistent-hint></v-text-field>
             </v-col>
           </v-row>
+          <v-row dense class="mt-1">
+            <v-col cols="12" sm="6" md="4">
+              <v-select v-model="local.claimBasisMethod" label="請佣基準預設" :items="PRICE_BASIS_METHODS" item-title="title" item-value="value"
+                variant="outlined" density="compact" hide-details></v-select>
+            </v-col>
+            <v-col cols="12" sm="6" md="4">
+              <v-select v-model="local.bonusBasisMethod" label="獎金基準預設" :items="PRICE_BASIS_METHODS" item-title="title" item-value="value"
+                variant="outlined" density="compact" hide-details></v-select>
+            </v-col>
+            <v-col cols="12" sm="6" md="4">
+              <v-select v-model="local.partyBFeeTiming" label="介紹費 B 扣除時機預設" :items="PARTY_B_FEE_TIMINGS" item-title="title" item-value="value"
+                variant="outlined" density="compact" hide-details></v-select>
+            </v-col>
+          </v-row>
         </v-card-text>
       </v-card>
 
@@ -246,7 +260,7 @@ import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { setCommissionSettings } from '@/api';
-import { mergeSettings, SPLIT_MODES, allocateAmounts, evenShares, money, categoryDefaultPersonNames } from '@/utils/commissionCalculation';
+import { mergeSettings, SPLIT_MODES, PRICE_BASIS_METHODS, PARTY_B_FEE_TIMINGS, allocateAmounts, evenShares, money, categoryDefaultPersonNames } from '@/utils/commissionCalculation';
 
 const props = defineProps({
   projectId: { type: String, required: true },

@@ -56,6 +56,9 @@ export function draftClaimRecord({ entry, result, projectId, planId, plan, creat
     keepPct: toNum(entry.keepPct),
     partyAFee: toNum(entry.partyAFee),
     partyBFee: toNum(entry.partyBFee),
+    claimBasisMethod: entry.claimBasisMethod || 'lower',
+    bonusBasisMethod: entry.bonusBasisMethod || 'deal',
+    partyBFeeTiming: entry.partyBFeeTiming || 'before',
     teamSiteKeys: [...(entry.teamSiteKeys || [])],
     note: String(entry.note ?? '').trim().slice(0, 200),
     snapshot: {

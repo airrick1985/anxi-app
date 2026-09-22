@@ -253,6 +253,8 @@ async function voidPeriodCore_(db, projectId, period, { reason, by }, planId) {
   const bonusSnap = await planRows_(db.collection("bonusRecords")
     .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "active"), planId);
   const bt = batcher_(db);
+  bonusSnap.docs = bonusSnap.docs.filter(d => inPeriod.has(d.data().commissionRecordId));
+  bonusSnap.size = bonusSnap.docs.length;
   for (const d of bonusSnap.docs) {
     await bt.add(b => b.update(d.ref, { status: "voided", voidedAt: FieldValue.serverTimestamp(), voidedBy: by || "" }));
   }
@@ -300,7 +302,7 @@ function validateEntry_(entry) {
   if (!entry || typeof entry !== "object") return "entry 格式錯誤";
   if (!entry.unitId) return "缺少 unitId";
   const period = Number(entry.period);
-  if (!Number.isFinite(period) || period <= 0) return `戶別 ${entry.unitId}：期別必須為正整數`;
+  if (!Number.isInteger(period) || period <= 0) return `戶別 ${entry.unitId}：期別必須為正整數`;
   const ratio = Number(entry.ratioPct);
   if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 100) return `戶別 ${entry.unitId}：本次請佣比例須介於 0～100`;
   return null;
@@ -311,42 +313,58 @@ function validateRefund_(rf) {
   if (!rf || typeof rf !== "object") return "refund 格式錯誤";
   if (!rf.unitId) return "退佣缺少 unitId";
   const period = Number(rf.period);
-  if (!Number.isFinite(period) || period <= 0) return `退佣 ${rf.unitId}：期別必須為正整數`;
+  if (!Number.isInteger(period) || period <= 0) return `退佣 ${rf.unitId}：期別必須為正整數`;
   if (!Array.isArray(rf.sourceRecordIds) || rf.sourceRecordIds.length === 0) return `退佣 ${rf.unitId}：未選擇要退回的原請佣紀錄`;
   return null;
 }
 
 /** 讀取退佣來源紀錄與關聯獎金明細並試算（transaction 外；transaction 內再確認狀態） */
-async function prepareRefund_(db, projectId, rf, planId) {
+/** 退獎金來源：獨立獎金紀錄（bonusEntries）優先，找不到再找舊版請佣附帶獎金（commissionRecords） */
+async function bonusSourceRef_(db, id) {
+  const ref = db.collection("bonusEntries").doc(id);
+  const sn = await ref.get();
+  return sn.exists ? ref : db.collection("commissionRecords").doc(id);
+}
+
+/**
+ * 退佣／退獎金試算前置。
+ * bonusOnly＝退獎金：來源為獎金紀錄、只追回獎金明細、標記欄位為 bonusRefundedBy（與請佣的退佣各自獨立）。
+ */
+async function prepareRefund_(db, projectId, rf, planId, bonusOnly = false) {
+  const label = bonusOnly ? "退獎金" : "退佣";
+  const marker = bonusOnly ? "bonusRefundedBy" : "refundedBy";
   const ids = [...new Set(rf.sourceRecordIds.map(String))];
-  const refs = ids.map(id => db.collection("commissionRecords").doc(id));
+  const refs = bonusOnly
+    ? await Promise.all(ids.map(id => bonusSourceRef_(db, id)))
+    : ids.map(id => db.collection("commissionRecords").doc(id));
   const snaps = await db.getAll(...refs);
   const sources = snaps.map(sn => {
-    if (!sn.exists) throw new HttpsError("not-found", `退佣 ${rf.unitId}：找不到原請佣紀錄 ${sn.id}`);
+    if (!sn.exists) throw new HttpsError("not-found", `${label} ${rf.unitId}：找不到原${bonusOnly ? "獎金" : "請佣"}紀錄 ${sn.id}`);
     return { id: sn.id, ...sn.data() };
   });
   sources.forEach(sr => {
     if (sr.projectId !== projectId || sr.unitId !== rf.unitId || planIdOf(sr) !== planId) {
-      throw new HttpsError("invalid-argument", `退佣 ${rf.unitId}：原紀錄 ${sr.id} 不屬於此戶別。`);
+      throw new HttpsError("invalid-argument", `${label} ${rf.unitId}：原紀錄 ${sr.id} 不屬於此戶別。`);
     }
-    if (sr.type === "refund") throw new HttpsError("invalid-argument", `退佣 ${rf.unitId}：不可退回退佣紀錄。`);
-    if (sr.status !== "active") throw new HttpsError("failed-precondition", `退佣 ${rf.unitId}：第 ${sr.period} 期原紀錄已作廢。`);
-    if (sr.refundedBy) throw new HttpsError("failed-precondition", `退佣 ${rf.unitId}：第 ${sr.period} 期原紀錄已退佣。`);
+    if (sr.type === "refund") throw new HttpsError("invalid-argument", `${label} ${rf.unitId}：不可退回${label}紀錄。`);
+    if (sr.status !== "active") throw new HttpsError("failed-precondition", `${label} ${rf.unitId}：第 ${sr.period} 期原紀錄已作廢。`);
+    if (sr[marker]) throw new HttpsError("failed-precondition", `${label} ${rf.unitId}：第 ${sr.period} 期原紀錄已${label}。`);
   });
   const bonuses = [];
   for (const id of ids) {
     const bs = await db.collection("bonusRecords").where("commissionRecordId", "==", id).get();
     bs.docs.forEach(d => { const b = d.data(); if (b.status === "active") bonuses.push({ id: d.id, ...b }); });
   }
+  if (bonusOnly && !bonuses.length) throw new HttpsError("failed-precondition", `退獎金 ${rf.unitId}：原紀錄沒有有效的獎金明細。`);
   const plan = calc.buildRefundPlan({
     sources,
     sourceBonuses: bonuses,
     includeKeep: !!rf.includeKeep,
-    refundBonus: rf.refundBonus !== false,
+    refundBonus: bonusOnly ? true : rf.refundBonus !== false,
     people: Array.isArray(rf.people) ? rf.people : null,
   });
-  if (plan.errors.length) throw new HttpsError("invalid-argument", `退佣 ${rf.unitId}：${plan.errors.join("；")}`);
-  return { rf, ids, refs, sources, plan };
+  if (plan.errors.length) throw new HttpsError("invalid-argument", `${label} ${rf.unitId}：${plan.errors.join("；")}`);
+  return { rf, ids, refs, sources, plan, marker, label };
 }
 
 /* ==========================================================
@@ -371,7 +389,15 @@ exports.submitCommissionEntries = onCall({
   memory: "512MiB",
 }, async (request) => {
   const planId = requestPlanId_(request);
-  const { projectId, entries, refunds, createdBy } = request.data || {};
+  const { projectId, entries, refunds, createdBy, submissionType = "both", periodNotes = [] } = request.data || {};
+  if (!['claim', 'bonus', 'both'].includes(submissionType)) throw new HttpsError('invalid-argument', '送出類型不正確。');
+  const bonusOnly = submissionType === 'bonus';
+  const claimOnly = submissionType === 'claim';
+  const recordCollection = bonusOnly ? 'bonusEntries' : 'commissionRecords';
+  const ledgerCollection = bonusOnly ? 'bonusUnitLedgers' : 'commissionUnitLedgers';
+  if (!Array.isArray(periodNotes) || periodNotes.some(n => !Number.isInteger(n.period) || n.period < 1 || typeof n.personKey !== 'string' || !n.personKey || !Array.isArray(n.notes) || n.notes.some(v => typeof v !== 'string'))) {
+    throw new HttpsError('invalid-argument', '當期人員備註格式錯誤。');
+  }
   const entryList = Array.isArray(entries) ? entries : [];
   const refundList = Array.isArray(refunds) ? refunds : [];
   if (!projectId || (entryList.length === 0 && refundList.length === 0)) {
@@ -407,20 +433,20 @@ exports.submitCommissionEntries = onCall({
 
   // 退佣：讀取原紀錄與獎金明細並試算（transaction 內再確認狀態）
   const preparedRefunds = [];
-  for (const rf of refundList) preparedRefunds.push(await prepareRefund_(db, projectId, rf, planId));
+  for (const rf of refundList) preparedRefunds.push(await prepareRefund_(db, projectId, claimOnly ? { ...rf, refundBonus: false } : rf, planId, bonusOnly));
 
   // 拉回編輯：要取代的原紀錄（送出時於同一 transaction 作廢原紀錄、寫入新紀錄；比例先扣原紀錄再驗證）
   const preparedReplaces = [];
   for (const entry of entryList) {
     if (!entry.replaceRecordId) continue;
-    const ref = db.collection("commissionRecords").doc(String(entry.replaceRecordId));
+    const ref = db.collection(bonusOnly && entry.replaceLegacyBonus ? "commissionRecords" : recordCollection).doc(String(entry.replaceRecordId));
     const sn = await ref.get();
     if (!sn.exists) throw new HttpsError("not-found", `戶別 ${entry.unitId}：找不到要取代的原紀錄。`);
     const rec = sn.data();
     if (rec.projectId !== projectId || planIdOf(rec) !== planId) throw new HttpsError("permission-denied", `戶別 ${entry.unitId}：原紀錄不屬於此建案／方案。`);
     if (rec.unitId !== entry.unitId) throw new HttpsError("invalid-argument", `戶別 ${entry.unitId}：原紀錄戶別不符（${rec.unitId}）。`);
     if (rec.type === "refund") throw new HttpsError("invalid-argument", `戶別 ${entry.unitId}：退佣紀錄不可拉回編輯。`);
-    preparedReplaces.push({ unitId: rec.unitId, recordId: String(entry.replaceRecordId), ref, ratioPct: calc.toNum(rec.ratioPct) });
+    preparedReplaces.push({ unitId: rec.unitId, recordId: String(entry.replaceRecordId), ref, ratioPct: calc.toNum(rec.ratioPct), legacyBonus: bonusOnly && !!entry.replaceLegacyBonus, record: rec });
   }
 
   // 逐戶讀取戶別資料並在伺服器端重算（不信任前端金額）
@@ -436,20 +462,32 @@ exports.submitCommissionEntries = onCall({
     if (finance.errors.length) throw new HttpsError('invalid-argument', `戶別 ${entry.unitId}：${finance.errors.join('；')}`);
     const isPreferred = !!unit.isPreferredPayment;
 
-    const commPct = (entry.commPct === undefined || entry.commPct === null || entry.commPct === "")
+    let basis = entry;
+    if (bonusOnly) {
+      const replacement = preparedReplaces.find(r => r.recordId === entry.replaceRecordId);
+      const claims = await db.collection('commissionRecords').where('projectId', '==', projectId).where('unitId', '==', entry.unitId).get();
+      const latest = claims.docs.map(d => d.data()).filter(r => planIdOf(r) === planId && r.status === 'active' && r.type !== 'refund')
+        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0) || Number(b.period) - Number(a.period))[0];
+      basis = replacement?.record || latest || {};
+    }
+    const commPct = (basis.commPct === undefined || basis.commPct === null || basis.commPct === "")
       ? calc.resolveCommPct(settings, isPreferred)
-      : Number(entry.commPct);
-    const keepPct = (entry.keepPct === undefined || entry.keepPct === null || entry.keepPct === "")
+      : Number(basis.commPct);
+    const keepPct = (basis.keepPct === undefined || basis.keepPct === null || basis.keepPct === "")
       ? calc.toNum(settings.defaultKeepPct)
-      : Number(entry.keepPct);
+      : Number(basis.keepPct);
 
+    // 基準法：請佣基準與介紹費 B 時機隨請佣紀錄；獎金基準可於獎金編輯時依當期改選；未指定則採方案設定預設
     const input = {
       ratioPct: Number(entry.ratioPct),
       commPct,
       keepPct,
-      partyAFee: calc.toNum(entry.partyAFee),
-      partyBFee: calc.toNum(entry.partyBFee),
-      categories: entry.categories || {},
+      partyAFee: calc.toNum(basis.partyAFee),
+      partyBFee: calc.toNum(basis.partyBFee),
+      claimBasisMethod: calc.basisMethodOf(basis.claimBasisMethod) || calc.basisMethodOf(settings.claimBasisMethod) || 'lower',
+      partyBFeeTiming: calc.feeTimingOf(basis.partyBFeeTiming) || calc.feeTimingOf(settings.partyBFeeTiming) || 'before',
+      bonusBasisMethod: calc.basisMethodOf(entry.bonusBasisMethod) || calc.basisMethodOf(basis.bonusBasisMethod) || calc.basisMethodOf(settings.bonusBasisMethod) || 'deal',
+      categories: claimOnly ? {} : (entry.categories || {}),
     };
     const result = calc.calcUnitBonus(finance, input, entry.personProfiles || {});
     if (result.errors.length) {
@@ -461,7 +499,7 @@ exports.submitCommissionEntries = onCall({
   }
 
   // 預估寫入量（每戶 1 請佣紀錄 + N 獎金明細 + 1 ledger），transaction 上限 500
-  const totalWrites = prepared.reduce((s, p) => s + 1 + p.result.people.length, 0) + prepared.length
+  const totalWrites = 1 + preparedReplaces.length + periodNotes.length + prepared.reduce((s, p) => s + 1 + p.result.people.length, 0) + prepared.length
     + preparedRefunds.reduce((s, r) => s + 1 + r.plan.people.length + r.ids.length + 1, 0);
   if (totalWrites > 450) {
     throw new HttpsError("invalid-argument", `本次寫入量過大（${totalWrites} 筆），請分批送出（建議一次少於 20 戶）。`);
@@ -494,10 +532,19 @@ exports.submitCommissionEntries = onCall({
     const ledgerRefs = {};
     const ledgerVals = {};
     for (const unitId of Object.keys(ratioAdd)) {
-      const ref = db.collection("commissionUnitLedgers").doc(ledgerId_(projectId, unitId, planId));
+      const ref = db.collection(ledgerCollection).doc(ledgerId_(projectId, unitId, planId));
       ledgerRefs[unitId] = ref;
       const snap = await tx.get(ref);
-      const existing = snap.exists ? calc.toNum(snap.data().claimedRatioPct) : 0;
+      let existing = snap.exists ? calc.toNum(snap.data().claimedRatioPct) : 0;
+      if (bonusOnly) {
+        const bonusSnap = await tx.get(db.collection('bonusRecords').where('projectId', '==', projectId).where('unitId', '==', unitId));
+        const sourceIds = [...new Set(bonusSnap.docs.filter(d => d.data().status !== 'voided' && planIdOf(d.data()) === planId).map(d => d.data().commissionRecordId))];
+        const independent = await tx.get(db.collection('bonusEntries').where('projectId', '==', projectId).where('unitId', '==', unitId));
+        const independentDocs = independent.docs.filter(d => d.data().status !== 'voided' && planIdOf(d.data()) === planId);
+        const ownIds = new Set(independent.docs.map(d => d.id));
+        const legacy = await Promise.all(sourceIds.filter(id => !ownIds.has(id)).map(id => tx.get(db.collection('commissionRecords').doc(id))));
+        existing = [...independentDocs, ...legacy.filter(d => d.exists)].reduce((sum, d) => sum + calc.toNum(d.data().ratioPct), 0);
+      }
       const afterRefund = Math.max(0, existing - (ratioSub[unitId] || 0));
       if (afterRefund + ratioAdd[unitId] > 100.0001) {
         throw new HttpsError("failed-precondition",
@@ -510,8 +557,8 @@ exports.submitCommissionEntries = onCall({
       const snaps = await Promise.all(r.refs.map(ref => tx.get(ref)));
       snaps.forEach(sn => {
         const d = sn.exists ? sn.data() : null;
-        if (!d || d.status !== "active") throw new HttpsError("failed-precondition", `退佣 ${r.rf.unitId}：原紀錄 ${sn.id} 已作廢或不存在，未寫入任何資料。`);
-        if (d.refundedBy) throw new HttpsError("failed-precondition", `退佣 ${r.rf.unitId}：原紀錄 ${sn.id} 已被退佣，未寫入任何資料。`);
+        if (!d || d.status !== "active") throw new HttpsError("failed-precondition", `${r.label} ${r.rf.unitId}：原紀錄 ${sn.id} 已作廢或不存在，未寫入任何資料。`);
+        if (d[r.marker]) throw new HttpsError("failed-precondition", `${r.label} ${r.rf.unitId}：原紀錄 ${sn.id} 已被${r.label}，未寫入任何資料。`);
       });
     }
 
@@ -520,9 +567,23 @@ exports.submitCommissionEntries = onCall({
     replaceSnaps.forEach((sn, i) => {
       const d = sn.exists ? sn.data() : null;
       const unitId = preparedReplaces[i].unitId;
-      if (!d || d.status !== "active") throw new HttpsError("failed-precondition", `戶別 ${unitId}：原紀錄已作廢或不存在，未寫入任何資料。`);
-      if (d.refundedBy) throw new HttpsError("failed-precondition", `戶別 ${unitId}：原紀錄已退佣，請先作廢對應退佣紀錄，未寫入任何資料。`);
+      if (!d || (d.status !== "active" && !preparedReplaces[i].legacyBonus)) throw new HttpsError("failed-precondition", `戶別 ${unitId}：原紀錄已作廢或不存在，未寫入任何資料。`);
+      if (bonusOnly ? d.bonusRefundedBy : d.refundedBy) throw new HttpsError("failed-precondition", `戶別 ${unitId}：原紀錄已${bonusOnly ? "退獎金" : "退佣"}，請先作廢對應紀錄，未寫入任何資料。`);
     });
+
+    const replacedBonusDocs = [];
+    if (!claimOnly) for (const rp of preparedReplaces) {
+      const sn = await tx.get(db.collection('bonusRecords').where('commissionRecordId', '==', rp.recordId));
+      const active = sn.docs.filter(d => d.data().status !== 'voided');
+      if (rp.legacyBonus && !active.length) throw new HttpsError('failed-precondition', '原獎金已修改，請重新載入。');
+      replacedBonusDocs.push(...active);
+    }
+    if (totalWrites + replacedBonusDocs.length > 450) throw new HttpsError('invalid-argument', '本次資料過多，請分批送出。');
+    replacedBonusDocs.forEach(d => tx.update(d.ref, { status: 'voided', voidedAt: FieldValue.serverTimestamp(), voidedBy: createdBy || '' }));
+    if (bonusOnly) periodNotes.forEach(n => tx.set(db.collection('commissionSettings').doc(`${projectId}__bonusNotes_${n.period}_${encodeURIComponent(n.personKey)}`), {
+      projectId, kind: 'periodPersonNotes', period: n.period, personKey: n.personKey, notes: n.notes,
+      updatedBy: createdBy || '', updatedAt: FieldValue.serverTimestamp(),
+    }));
 
     tx.set(planRef, { projectId, planId, name: currentPlan.name, priceBasis: currentPlan.priceBasis, used: true }, { merge: true });
 
@@ -530,10 +591,11 @@ exports.submitCommissionEntries = onCall({
     prepared.forEach(p => {
       const { entry, unit, finance, input, result } = p;
       const recordId = `${planDocumentId(projectId, planId)}_${entry.unitId}_${entry.period}_${stamp}${rand3_()}`;
-      const recordRef = db.collection("commissionRecords").doc(recordId);
+      const recordRef = db.collection(recordCollection).doc(recordId);
 
       tx.set(recordRef, {
         projectId,
+        submissionType,
         planId,
         unitId: entry.unitId,
         period: Number(entry.period),
@@ -544,6 +606,9 @@ exports.submitCommissionEntries = onCall({
         keepPct: input.keepPct,
         partyAFee: input.partyAFee,
         partyBFee: input.partyBFee,
+        claimBasisMethod: input.claimBasisMethod,
+        bonusBasisMethod: input.bonusBasisMethod,
+        partyBFeeTiming: input.partyBFeeTiming,
         teamSiteKeys: Array.isArray(entry.teamSiteKeys) ? entry.teamSiteKeys : [],
         note: noteOf_(entry.note),
         snapshot: {
@@ -579,7 +644,7 @@ exports.submitCommissionEntries = onCall({
           discount: result.claim.discount,
           dealAfter: result.claim.dealAfter,
         },
-        categories: entry.categories || {},
+        categories: claimOnly ? {} : (entry.categories || {}),
         // 交屋團獎（自個獎提撥、本期不發放）快照：total＝本次（已乘請佣比例）、totalFull＝100% 重算
         handover: {
           total: calc.toNum(result.handoverTotal),
@@ -594,7 +659,7 @@ exports.submitCommissionEntries = onCall({
       });
       if (entry.replaceRecordId) {
         const rp = preparedReplaces.find(x => x.recordId === entry.replaceRecordId);
-        if (rp) {
+        if (rp && !rp.legacyBonus) {
           tx.update(rp.ref, {
             status: "voided",
             voidedAt: FieldValue.serverTimestamp(),
@@ -610,6 +675,7 @@ exports.submitCommissionEntries = onCall({
         const bonusRef = db.collection("bonusRecords").doc(bonusId);
         tx.set(bonusRef, {
           projectId,
+          submissionType,
           planId,
           unitId: entry.unitId,
           period: Number(entry.period),
@@ -648,10 +714,11 @@ exports.submitCommissionEntries = onCall({
       const { rf, plan, ids } = r;
       const period = Number(rf.period);
       const recordId = `${planDocumentId(projectId, planId)}_${rf.unitId}_${period}_R${stamp}${rand3_()}`;
-      const recordRef = db.collection("commissionRecords").doc(recordId);
+      const recordRef = db.collection(recordCollection).doc(recordId);
       const requestDate = rf.requestDate || formatInTimeZone(new Date(), "Asia/Taipei", "yyyy/MM/dd");
       tx.set(recordRef, {
         projectId,
+        submissionType,
         planId,
         unitId: rf.unitId,
         period,
@@ -660,7 +727,7 @@ exports.submitCommissionEntries = onCall({
         requestDate,
         reason: String(rf.reason || ""),
         includeKeep: !!rf.includeKeep,
-        refundBonus: rf.refundBonus !== false,
+        refundBonus: bonusOnly ? true : rf.refundBonus !== false,
         ratioPct: -calc.toNum(plan.refundRatioPct),
         refundRatioPct: calc.toNum(plan.refundRatioPct),
         commPct: plan.commPct,
@@ -683,6 +750,7 @@ exports.submitCommissionEntries = onCall({
         const bonusRef = db.collection("bonusRecords").doc(`${recordId}_${person.personKey}`);
         tx.set(bonusRef, {
           projectId,
+          submissionType,
           planId,
           unitId: rf.unitId,
           period,
@@ -715,7 +783,9 @@ exports.submitCommissionEntries = onCall({
         });
       });
       r.refs.forEach(ref => {
-        tx.update(ref, { refundedBy: recordId, refundedAt: FieldValue.serverTimestamp(), refundPeriod: period });
+        tx.update(ref, bonusOnly
+          ? { bonusRefundedBy: recordId, bonusRefundedAt: FieldValue.serverTimestamp(), bonusRefundPeriod: period }
+          : { refundedBy: recordId, refundedAt: FieldValue.serverTimestamp(), refundPeriod: period });
       });
       results.push({ unitId: rf.unitId, period, recordId, people: plan.people.length, refund: true });
     });
@@ -724,6 +794,7 @@ exports.submitCommissionEntries = onCall({
     Object.keys(ratioAdd).forEach(unitId => {
       tx.set(ledgerRefs[unitId], {
         projectId,
+        submissionType,
         planId,
         unitId,
         claimedRatioPct: Math.round((ledgerVals[unitId] + ratioAdd[unitId]) * 1000) / 1000,
@@ -731,15 +802,6 @@ exports.submitCommissionEntries = onCall({
       }, { merge: true });
     });
   });
-
-  // 拉回編輯：被取代原紀錄的獎金明細連動作廢（transaction 外批次處理，同作廢流程）
-  for (const rp of preparedReplaces) {
-    const bonusSnap = await db.collection("bonusRecords").where("commissionRecordId", "==", rp.recordId).get();
-    if (bonusSnap.empty) continue;
-    const batch = db.batch();
-    bonusSnap.docs.forEach(d => batch.update(d.ref, { status: "voided", voidedAt: FieldValue.serverTimestamp(), voidedBy: createdBy || "" }));
-    await batch.commit();
-  }
 
   return { ok: true, results };
 });
@@ -754,27 +816,31 @@ exports.voidCommissionRecord = onCall({
   memory: "512MiB",
 }, async (request) => {
   const planId = requestPlanId_(request);
-  const { projectId, recordId, voidReason, voidedBy } = request.data || {};
+  const { projectId, recordId, voidReason, voidedBy, submissionType = "claim" } = request.data || {};
   if (!projectId || !recordId) {
     throw new HttpsError("invalid-argument", "缺少 projectId 或 recordId。");
   }
+  // 獨立獎金紀錄（含退獎金）：存於 bonusEntries，標記欄位為 bonusRefundedBy
+  const bonusOnly = submissionType === "bonus";
+  const marker = bonusOnly ? "bonusRefundedBy" : "refundedBy";
+  const label = bonusOnly ? "退獎金" : "退佣";
 
   const db = db_();
-  const recordRef = db.collection("commissionRecords").doc(recordId);
+  const recordRef = db.collection(bonusOnly ? "bonusEntries" : "commissionRecords").doc(recordId);
 
   let unitId = "";
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(recordRef);
-    if (!snap.exists) throw new HttpsError("not-found", "找不到此請佣紀錄。");
+    if (!snap.exists) throw new HttpsError("not-found", bonusOnly ? "找不到此獎金紀錄。" : "找不到此請佣紀錄。");
     const rec = snap.data();
     if (rec.projectId !== projectId || planIdOf(rec) !== planId) throw new HttpsError("permission-denied", "紀錄不屬於此建案。");
     if (rec.status === "voided") throw new HttpsError("failed-precondition", "此紀錄已作廢，不可重複作廢。");
-    if (rec.refundedBy) {
-      throw new HttpsError("failed-precondition", "此紀錄已退佣，請先作廢對應的退佣紀錄。");
+    if (rec[marker]) {
+      throw new HttpsError("failed-precondition", `此紀錄已${label}，請先作廢對應的${label}紀錄。`);
     }
     unitId = rec.unitId;
 
-    const ledgerRef = db.collection("commissionUnitLedgers").doc(ledgerId_(projectId, rec.unitId, planId));
+    const ledgerRef = db.collection(bonusOnly ? "bonusUnitLedgers" : "commissionUnitLedgers").doc(ledgerId_(projectId, rec.unitId, planId));
     const ledgerSnap = await tx.get(ledgerRef);
     const existing = ledgerSnap.exists ? calc.toNum(ledgerSnap.data().claimedRatioPct) : 0;
     let next;
@@ -788,10 +854,15 @@ exports.voidCommissionRecord = onCall({
           `該戶已重新請佣（已請 ${Math.round(existing * 10) / 10}%），加回 ${back}% 將超過 100%，無法作廢此退佣紀錄。`);
       }
       next = Math.round((existing + back) * 1000) / 1000;
-      sourceRefs = (rec.sourceRecordIds || []).map(id => db.collection("commissionRecords").doc(String(id)));
+      sourceRefs = bonusOnly
+        ? await Promise.all((rec.sourceRecordIds || []).map(id => bonusSourceRef_(db, String(id))))
+        : (rec.sourceRecordIds || []).map(id => db.collection("commissionRecords").doc(String(id)));
       const srcSnaps = await Promise.all(sourceRefs.map(ref => tx.get(ref)));
       srcSnaps.forEach(sn => {
-        if (sn.exists) tx.update(sn.ref, { refundedBy: FieldValue.delete(), refundedAt: FieldValue.delete(), refundPeriod: FieldValue.delete() });
+        if (!sn.exists) return;
+        tx.update(sn.ref, bonusOnly
+          ? { bonusRefundedBy: FieldValue.delete(), bonusRefundedAt: FieldValue.delete(), bonusRefundPeriod: FieldValue.delete() }
+          : { refundedBy: FieldValue.delete(), refundedAt: FieldValue.delete(), refundPeriod: FieldValue.delete() });
       });
     } else {
       next = Math.max(0, Math.round((existing - calc.toNum(rec.ratioPct)) * 1000) / 1000);
@@ -939,6 +1010,9 @@ exports.importCommissionHistory = onCall({
       keepPct: c.keepPct === undefined ? 10 : calc.toNum(c.keepPct),
       partyAFee: calc.toNum(c.partyAFee),
       partyBFee: calc.toNum(c.partyBFee),
+      claimBasisMethod: calc.basisMethodOf(c.claimBasisMethod) || 'lower',
+      bonusBasisMethod: calc.basisMethodOf(c.bonusBasisMethod) || 'deal',
+      partyBFeeTiming: calc.feeTimingOf(c.partyBFeeTiming) || 'before',
       teamSiteKeys: [],
       note: noteOf_(c.note),
       snapshot: c.snapshot || {},
@@ -1093,10 +1167,18 @@ exports.purgeVoidedCommissionPeriod = onCall({
     .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "voided"), planId);
   const bonusSnap = await planRows_(db.collection("bonusRecords")
     .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "voided"), planId);
+  const claimIds = new Set(recSnap.docs.map(d => d.id));
+  bonusSnap.docs = bonusSnap.docs.filter(d => claimIds.has(d.data().commissionRecordId));
+  bonusSnap.size = bonusSnap.docs.length;
+  bonusSnap.empty = !bonusSnap.size;
   if (recSnap.empty && bonusSnap.empty) {
     throw new HttpsError("failed-precondition", `第 ${p} 期沒有已作廢的紀錄可清除。`);
   }
 
+  const activeBonuses = await planRows_(db.collection('bonusRecords').where('projectId', '==', projectId).where('status', '==', 'active'), planId);
+  const usedIds = new Set(activeBonuses.docs.map(d => d.data().commissionRecordId));
+  recSnap.docs = recSnap.docs.filter(d => !usedIds.has(d.id));
+  recSnap.size = recSnap.docs.length;
   const bt = batcher_(db);
   for (const d of recSnap.docs) await bt.add(b => b.delete(d.ref));
   for (const d of bonusSnap.docs) await bt.add(b => b.delete(d.ref));

@@ -491,7 +491,7 @@ function parseClaims(rows) {
 
     let calcResult = null;
     if (finance && status !== 'error') {
-      calcResult = calcClaim(finance, { commPct, keepPct, partyAFee, partyBFee });
+      calcResult = calcClaim(finance, { commPct, keepPct, partyAFee, partyBFee, claimBasisMethod: s.claimBasisMethod, bonusBasisMethod: s.bonusBasisMethod, partyBFeeTiming: s.partyBFeeTiming });
       if (isRefund) REFUND_CALC_KEYS.forEach(k => { calcResult[k] = -toNum(calcResult[k]); });
     }
 
@@ -533,6 +533,7 @@ function parseClaims(rows) {
       status, messages,
       unitId, period, requestDate: cellDate(row['請佣日期']),
       ratioPct, commPct, keepPct, partyAFee, partyBFee,
+      claimBasisMethod: s.claimBasisMethod, bonusBasisMethod: s.bonusBasisMethod, partyBFeeTiming: s.partyBFeeTiming,
       note: String(row['備註'] ?? '').trim(),
       snapshot, calc: calcResult || {},
       ...(isRefund ? { type: 'refund', refundRatioPct: -ratioPct } : {}),

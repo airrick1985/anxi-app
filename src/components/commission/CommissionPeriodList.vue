@@ -6,6 +6,10 @@
     <template v-else>
       <!-- 工具列 -->
       <div class="d-flex align-center flex-wrap ga-2 mb-3">
+        <v-btn-toggle v-model="view" mandatory density="compact" color="primary" variant="outlined" divided class="mr-2">
+          <v-btn value="claim" size="small">請佣</v-btn>
+          <v-btn value="bonus" size="small">獎金</v-btn>
+        </v-btn-toggle>
         <v-switch v-model="showVoided" label="顯示作廢紀錄" color="error" density="compact" hide-details class="mr-2"></v-switch>
         <span v-if="totalVoided" class="text-caption text-medium-emphasis">（共 {{ totalVoided }} 筆已作廢）</span>
         <v-spacer></v-spacer>
@@ -13,7 +17,7 @@
       </div>
 
       <v-alert v-if="!periods.length" type="info" variant="tonal">
-        目前沒有任何請佣紀錄。可於「請佣工作台」建立，或用「歷史匯入」銜接舊資料。
+        {{ isBonusView ? '目前沒有任何獎金紀錄。可於「獎金編輯」建立。' : '目前沒有任何請佣紀錄。可於「請佣工作台」建立，或用「歷史匯入」銜接舊資料。' }}
       </v-alert>
 
       <v-expansion-panels v-else variant="accordion" multiple>
@@ -23,15 +27,16 @@
               <span class="text-subtitle-1 font-weight-bold" :class="{ 'text-medium-emphasis': !pd.activeCount }">第 {{ pd.period }} 期</span>
               <v-chip size="x-small" variant="tonal">{{ pd.requestDate || '—' }}</v-chip>
               <v-chip v-if="pd.claimCount" size="x-small" variant="tonal" color="primary">{{ pd.claimCount }} 戶</v-chip>
-              <v-chip v-if="pd.refundCount" size="x-small" variant="tonal" color="error" prepend-icon="mdi-cash-refund">退佣 {{ pd.refundCount }} 戶</v-chip>
+              <v-chip v-if="pd.refundCount" size="x-small" variant="tonal" color="error" prepend-icon="mdi-cash-refund">{{ refundWord }} {{ pd.refundCount }} 戶</v-chip>
               <v-chip v-if="!pd.activeCount && pd.voidedCount" size="x-small" variant="flat" color="error">已全數作廢</v-chip>
               <v-chip v-else-if="pd.voidedCount" size="x-small" variant="tonal" color="error">作廢 {{ pd.voidedCount }} 戶</v-chip>
               <v-chip v-if="pd.hasImport" size="x-small" variant="tonal" color="grey">含歷史匯入</v-chip>
               <v-spacer></v-spacer>
-              <span v-if="pd.activeCount" class="text-body-2 mr-2">實際請領 <b class="text-primary">{{ money(pd.claimSum) }}</b>｜本次請佣 <b class="text-success">{{ money(pd.thisClaimSum) }}</b>｜獎金實發 <b>{{ money(pd.netSum) }}</b><template v-if="pd.handoverSum">｜交屋團獎暫留 <b class="text-orange-darken-3">{{ money(pd.handoverSum) }}</b></template></span>
+              <span v-if="pd.activeCount && !isBonusView" class="text-body-2 mr-2">實際請領 <b class="text-primary">{{ money(pd.claimSum) }}</b>｜本次請佣 <b class="text-success">{{ money(pd.thisClaimSum) }}</b>｜獎金實發 <b>{{ money(pd.netSum) }}</b><template v-if="pd.handoverSum">｜交屋團獎暫留 <b class="text-orange-darken-3">{{ money(pd.handoverSum) }}</b></template></span>
+              <span v-else-if="pd.activeCount" class="text-body-2 mr-2">獎金實發 <b class="text-success">{{ money(pd.netSum) }}</b><template v-if="pd.handoverSum">｜交屋團獎暫留 <b class="text-orange-darken-3">{{ money(pd.handoverSum) }}</b></template></span>
               <v-btn v-if="pd.activeCount" size="small" variant="tonal" color="primary" prepend-icon="mdi-file-export-outline"
-                @click.stop="$emit('export-period', pd.period)">匯出此期</v-btn>
-              <v-menu v-if="canManage">
+                @click.stop="$emit('export-period', pd.period, view)">匯出此期</v-btn>
+              <v-menu v-if="canManage && !isBonusView">
                 <template #activator="{ props: mp }">
                   <v-btn v-bind="mp" icon="mdi-dots-vertical" size="small" variant="text" @click.stop></v-btn>
                 </template>
@@ -59,10 +64,63 @@
           </v-expansion-panel-title>
           <v-expansion-panel-text>
             <v-alert v-if="!pd.activeCount" type="warning" variant="tonal" density="compact" class="mb-3">
-              此期所有請佣紀錄皆已作廢。可由右上「⋯」選單清除作廢紀錄，或「重新匯入此期」。
+              {{ isBonusView ? '此期所有獎金紀錄皆已作廢。' : '此期所有請佣紀錄皆已作廢。可由右上「⋯」選單清除作廢紀錄，或「重新匯入此期」。' }}
               <span v-if="!showVoided">開啟「顯示作廢紀錄」可查看原始資料。</span>
             </v-alert>
-            <div class="table-scroll">
+            <!-- 獎金紀錄（獨立獎金、退獎金；舊版請佣附帶獎金唯讀） -->
+            <div v-if="isBonusView" class="table-scroll">
+              <v-table density="compact">
+                <thead>
+                  <tr>
+                    <th>戶別</th><th>買方</th><th>獎金日期</th>
+                    <th class="text-right">獎金比例</th><th class="text-right">佣金比例</th>
+                    <th class="text-right">折數後總價(萬)</th>
+                    <th class="text-center">人數</th><th class="text-right">獎金實發(元)</th>
+                    <th v-if="pd.handoverSum" class="text-right">交屋團獎暫留(元)</th>
+                    <th>狀態</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in visibleRecords(pd)" :key="r.id" :class="{ 'voided-row': r.status === 'voided', 'refund-row': r.type === 'refund' && r.status !== 'voided' }">
+                    <td class="font-weight-medium">
+                      {{ r.unitId }}
+                      <v-icon v-if="r.type === 'refund'" size="x-small" color="error" :title="r.reason || '退獎金'">mdi-cash-refund</v-icon>
+                    </td>
+                    <td>{{ r.snapshot?.buyerName || '—' }}<div v-if="r.note" class="text-caption text-medium-emphasis">{{ r.note }}</div></td>
+                    <td>{{ r.requestDate || '—' }}</td>
+                    <td class="text-right">{{ r.ratioPct }}%</td>
+                    <td class="text-right">{{ (Number(r.commPct) || 0).toFixed(2) }}%</td>
+                    <td class="text-right">{{ money(r.calc?.dealAfter || 0) }}</td>
+                    <td class="text-center">{{ bonusCountOf(r.id) }}</td>
+                    <td class="text-right font-weight-bold">{{ money(bonusNetOf(r.id)) }}</td>
+                    <td v-if="pd.handoverSum" class="text-right text-orange-darken-3">{{ money(r.handover?.total || 0) }}</td>
+                    <td>
+                      <v-chip v-if="r.status === 'voided'" size="x-small" color="error" variant="tonal" :title="r.voidReason">已作廢</v-chip>
+                      <v-chip v-else-if="r.type === 'refund'" size="x-small" color="error" variant="flat" :title="r.reason">退獎金</v-chip>
+                      <v-chip v-else-if="r.bonusRefundedBy" size="x-small" color="orange-darken-3" variant="tonal" :title="`已於第 ${r.bonusRefundPeriod || '?'} 期退獎金`">已退獎金</v-chip>
+                      <v-chip v-else-if="r._legacyBonus" size="x-small" color="grey" variant="tonal" title="舊版請佣附帶獎金，作廢請至請佣頁">請佣附帶</v-chip>
+                      <v-chip v-else size="x-small" color="success" variant="tonal">有效</v-chip>
+                    </td>
+                    <td>
+                      <template v-if="r.status !== 'voided' && r.type === 'refund'">
+                        <v-btn v-if="!r._legacyBonus" size="x-small" variant="text" color="error" @click="openVoid(r)">作廢退獎金</v-btn>
+                      </template>
+                      <template v-else-if="r.status !== 'voided'">
+                        <v-btn v-if="canManage" size="x-small" variant="text" color="primary" :disabled="!!r.bonusRefundedBy"
+                          :title="r.bonusRefundedBy ? '已退獎金，請先作廢對應的退獎金紀錄' : '載回獎金編輯修改，送出時取代此紀錄'" @click="$emit('edit-bonus-record', r)">拉回編輯</v-btn>
+                        <v-btn v-if="!r._legacyBonus" size="x-small" variant="text" color="error" :disabled="!!r.bonusRefundedBy"
+                          :title="r.bonusRefundedBy ? '已退獎金，請先作廢對應的退獎金紀錄' : ''" @click="openVoid(r)">作廢</v-btn>
+                      </template>
+                      <span v-else class="text-caption text-medium-emphasis" :title="r.voidReason">{{ r.voidedBy }}</span>
+                    </td>
+                  </tr>
+                  <tr v-if="!visibleRecords(pd).length">
+                    <td :colspan="pd.handoverSum ? 11 : 10" class="text-center text-medium-emphasis py-3">沒有可顯示的紀錄</td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </div>
+            <div v-else class="table-scroll">
               <v-table density="compact">
                 <thead>
                   <tr>
@@ -153,20 +211,20 @@
     <v-dialog v-model="voidOpen" max-width="460" persistent>
       <v-card>
         <v-card-title class="text-subtitle-1 text-error">
-          <v-icon start>mdi-alert-circle-outline</v-icon>{{ voidTarget?.type === 'refund' ? '作廢退佣紀錄' : '作廢請佣紀錄' }}
+          <v-icon start>mdi-alert-circle-outline</v-icon>作廢{{ voidTarget?.type === 'refund' ? refundWord : recordWord }}紀錄
         </v-card-title>
         <v-card-text>
           <p class="mb-2">
-            確定作廢 <b>第 {{ voidTarget?.period }} 期／{{ voidTarget?.unitId }}</b> 的{{ voidTarget?.type === 'refund' ? '退佣' : '請佣' }}紀錄？
+            確定作廢 <b>第 {{ voidTarget?.period }} 期／{{ voidTarget?.unitId }}</b> 的{{ voidTarget?.type === 'refund' ? refundWord : recordWord }}紀錄？
           </p>
           <ul v-if="voidTarget?.type === 'refund'" class="text-body-2 mb-3 pl-4">
-            <li>原請佣紀錄（{{ (voidTarget?.sources || []).map(x => `第${x.period}期`).join('、') }}）恢復有效、移除「已退佣」標記</li>
-            <li>該戶「已請比例」加回 {{ voidTarget?.refundRatioPct }}%（若已重新請佣致超過 100% 將被擋下）</li>
+            <li>原{{ recordWord }}紀錄（{{ (voidTarget?.sources || []).map(x => `第${x.period}期`).join('、') }}）恢復有效、移除「已{{ refundWord }}」標記</li>
+            <li>該戶「已{{ isBonusView ? '送獎金' : '請' }}比例」加回 {{ voidTarget?.refundRatioPct }}%（若已重新{{ isBonusView ? '送獎金' : '請佣' }}致超過 100% 將被擋下）</li>
             <li>負向獎金明細一併作廢，人員保留款與交屋團獎累積同步還原</li>
             <li>作廢紀錄保留完整資料痕跡，不可復原</li>
           </ul>
           <ul v-else class="text-body-2 mb-3 pl-4">
-            <li>該戶「已請比例」將回溯 {{ voidTarget?.ratioPct }}%（可重新請佣）</li>
+            <li>該戶「已{{ isBonusView ? '送獎金' : '請' }}比例」將回溯 {{ voidTarget?.ratioPct }}%（可重新{{ isBonusView ? '送獎金' : '請佣' }}）</li>
             <li>關聯的每人獎金明細將一併作廢，不再列入統計與匯出</li>
             <li>作廢紀錄保留完整資料痕跡，不可復原</li>
           </ul>
@@ -346,10 +404,17 @@ const props = defineProps({
   settings: { type: Object, required: true },
   records: { type: Array, default: () => [] },
   bonusRecords: { type: Array, default: () => [] },
+  bonusEntries: { type: Array, default: () => [] },   // 本方案獨立獎金紀錄（含退獎金、作廢）
   loading: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['refresh', 'export-period', 'reimport-period', 'edit-record', 'edit-period']);
+const emit = defineEmits(['refresh', 'export-period', 'reimport-period', 'edit-record', 'edit-period', 'edit-bonus-record']);
+
+// 檢視：請佣紀錄／獎金紀錄（獨立獎金＋退獎金，舊版請佣附帶獎金唯讀列出）
+const view = ref('claim');
+const isBonusView = computed(() => view.value === 'bonus');
+const recordWord = computed(() => (isBonusView.value ? '獎金' : '請佣'));
+const refundWord = computed(() => (isBonusView.value ? '退獎金' : '退佣'));
 /** 可拉回編輯的紀錄：有效、非退佣、未被退佣 */
 function editableRecords(pd) {
   return (pd.records || []).filter(r => r.status === 'active' && r.type !== 'refund' && !r.refundedBy);
@@ -404,10 +469,22 @@ const bonusByRecord = computed(() => {
 });
 
 function bonusCountOf(recordId) {
-  return (bonusByRecord.value[recordId] || []).length;
+  return (bonusByRecord.value[recordId] || []).filter(b => b.status !== 'voided').length;
+}
+function bonusNetOf(recordId) {
+  return (bonusByRecord.value[recordId] || []).filter(b => b.status !== 'voided').reduce((s, b) => s + toNum(b.net), 0);
 }
 
-const totalVoided = computed(() => props.records.filter(r => r.status === 'voided').length);
+/** 目前檢視的紀錄來源：獎金檢視＝舊版請佣附帶獎金（有獎金明細者）＋獨立獎金紀錄 */
+const sourceRecords = computed(() => {
+  if (!isBonusView.value) return props.records;
+  const legacy = props.records
+    .filter(r => r.status !== 'voided' && (bonusByRecord.value[r.id] || []).some(b => b.status !== 'voided'))
+    .map(r => ({ ...r, _legacyBonus: true }));
+  return [...legacy, ...props.bonusEntries];
+});
+
+const totalVoided = computed(() => sourceRecords.value.filter(r => r.status === 'voided').length);
 
 /** 全建案匯入批次（撤銷時顯示跨期資訊） */
 const batchIndex = computed(() => {
@@ -425,7 +502,7 @@ const batchIndex = computed(() => {
 
 const periods = computed(() => {
   const byPeriod = {};
-  props.records.forEach(r => {
+  sourceRecords.value.forEach(r => {
     const p = toNum(r.period);
     if (!byPeriod[p]) byPeriod[p] = [];
     byPeriod[p].push(r);
@@ -514,11 +591,12 @@ async function doVoid() {
       projectId: props.projectId,
       planId: planId.value,
       recordId: voidTarget.value.id,
+      submissionType: isBonusView.value ? 'bonus' : 'claim',
       voidReason: voidReason.value,
       voidedBy: operatorName.value,
     });
     if (res?.ok) {
-      toast.success(`已作廢 ${voidTarget.value.unitId} 的${voidTarget.value.type === 'refund' ? '退佣' : '請佣'}紀錄（連同 ${res.bonusVoided} 筆獎金明細）`);
+      toast.success(`已作廢 ${voidTarget.value.unitId} 的${voidTarget.value.type === 'refund' ? refundWord.value : recordWord.value}紀錄（連同 ${res.bonusVoided} 筆獎金明細）`);
       voidOpen.value = false;
       emit('refresh');
     }

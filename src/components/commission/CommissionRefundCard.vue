@@ -3,14 +3,15 @@
     <!-- 標頭 -->
     <div class="card-head d-flex align-center flex-wrap ga-2 px-4 py-2" role="button" tabindex="0" :aria-expanded="!entry.collapsed" @keydown.enter.self="$emit('toggle')" @keydown.space.prevent.self="$emit('toggle')" @click="$emit('toggle')">
       <v-icon size="small" :class="{ 'rotate-collapsed': entry.collapsed }">mdi-chevron-down</v-icon>
-      <v-chip size="x-small" color="error" variant="flat">退佣</v-chip>
+      <v-chip size="x-small" color="error" variant="flat">{{ isBonus ? '退獎金' : '退佣' }}</v-chip>
       <span class="text-subtitle-1 font-weight-bold text-error">{{ entry.unitId }}</span>
       <span class="text-body-2">{{ buyerName || '—' }}</span>
       <v-chip size="x-small" :color="isReleased ? 'error' : 'default'" variant="tonal">{{ statusText || '—' }}</v-chip>
       <v-chip size="x-small" variant="tonal" :color="contractTypeColor(entry.unit?.contractType)">{{ entry.unit?.contractType || '未設定合約方式' }}</v-chip>
       <v-spacer></v-spacer>
-      <strong class="text-body-1">退回 {{ money(plan.calc.thisClaim) }} 元</strong>
-      <v-chip v-if="entry.refundBonus" size="x-small" variant="tonal" color="default">追回獎金 {{ money(peopleTotals.net) }} 元</v-chip>
+      <strong v-if="!isBonus" class="text-body-1">退回 {{ money(plan.calc.thisClaim) }} 元</strong>
+      <strong v-else class="text-body-1">追回獎金 {{ money(peopleTotals.net) }} 元</strong>
+      <v-chip v-if="entry.refundBonus && !isBonus" size="x-small" variant="tonal" color="default">追回獎金 {{ money(peopleTotals.net) }} 元</v-chip>
       <v-chip v-if="issueCount" size="x-small" color="warning" variant="flat">
         <v-icon start size="x-small">mdi-alert</v-icon>{{ issueCount }} 項待處理
       </v-chip>
@@ -24,7 +25,7 @@
           <!-- ① 退佣來源 -->
           <div class="step-h">
             <span class="step-no">1</span>
-            <span class="step-title">退佣來源</span>
+            <span class="step-title">{{ isBonus ? '退獎金來源' : '退佣來源' }}</span>
           </div>
           <div class="step-body">
             <v-row dense align="start" class="mb-1">
@@ -32,12 +33,12 @@
                 <v-text-field v-model.number="entry.period" label="期別" type="number" variant="outlined" density="compact" hide-details></v-text-field>
               </v-col>
               <v-col cols="6" sm="3" md="3" lg="2">
-                <v-text-field v-model="entry.requestDate" label="退佣日期" placeholder="yyyy/mm/dd" variant="outlined" density="compact" hide-details></v-text-field>
+                <DateFieldTW v-model="entry.requestDate" :label="isBonus ? '退獎金日期' : '退佣日期'" />
               </v-col>
               <v-col cols="12" sm="6" md="4" lg="3">
-                <v-text-field v-model="entry.reason" label="退佣原因" variant="outlined" density="compact" hide-details></v-text-field>
+                <v-text-field v-model="entry.reason" :label="isBonus ? '退獎金原因' : '退佣原因'" variant="outlined" density="compact" hide-details></v-text-field>
               </v-col>
-              <v-col cols="12" sm="6" md="3" lg="3" class="d-flex align-center">
+              <v-col v-if="!isBonus" cols="12" sm="6" md="3" lg="3" class="d-flex align-center">
                 <v-switch v-model="entry.includeKeep" color="error" density="compact" hide-details
                   :label="entry.includeKeep ? '含保留款（退實際請領）' : '不含保留款（退本次請佣）'"></v-switch>
               </v-col>
@@ -48,9 +49,10 @@
                 <thead>
                   <tr>
                     <th style="width:40px"></th>
-                    <th>期別</th><th>請佣日期</th>
-                    <th class="text-right">請佣比例</th>
-                    <th class="text-right">實際請領(元)</th><th class="text-right">保留款(元)</th><th class="text-right">本次請佣(元)</th>
+                    <th>期別</th><th>{{ isBonus ? '獎金日期' : '請佣日期' }}</th>
+                    <th class="text-right">{{ isBonus ? '獎金比例' : '請佣比例' }}</th>
+                    <template v-if="!isBonus"><th class="text-right">實際請領(元)</th><th class="text-right">保留款(元)</th><th class="text-right">本次請佣(元)</th></template>
+                    <th v-else class="text-right">獎金實發(元)</th>
                     <th class="text-right">獎金明細</th>
                   </tr>
                 </thead>
@@ -60,13 +62,16 @@
                     <td>第 {{ r.period }} 期</td>
                     <td>{{ r.requestDate || '—' }}</td>
                     <td class="text-right">{{ r.ratioPct }}%</td>
-                    <td class="text-right">{{ money(r.calc?.realClaim || 0) }}</td>
-                    <td class="text-right">{{ money(r.calc?.claimKeep || 0) }}</td>
-                    <td class="text-right">{{ money(r.calc?.thisClaim || 0) }}</td>
+                    <template v-if="!isBonus">
+                      <td class="text-right">{{ money(r.calc?.realClaim || 0) }}</td>
+                      <td class="text-right">{{ money(r.calc?.claimKeep || 0) }}</td>
+                      <td class="text-right">{{ money(r.calc?.thisClaim || 0) }}</td>
+                    </template>
+                    <td v-else class="text-right">{{ money(bonusNetOf(r.id)) }}</td>
                     <td class="text-right">{{ bonusCountOf(r.id) }} 筆</td>
                   </tr>
                   <tr v-if="!entry.candidates.length">
-                    <td colspan="8" class="text-center text-medium-emphasis">此戶沒有可退回的請佣紀錄</td>
+                    <td colspan="8" class="text-center text-medium-emphasis">此戶沒有可退回的{{ isBonus ? '獎金' : '請佣' }}紀錄</td>
                   </tr>
                 </tbody>
               </v-table>
@@ -74,9 +79,12 @@
 
             <div class="result-strip mt-2">
               <div class="rs-item"><label>退回比例</label><div>{{ plan.refundRatioPct }}%</div></div>
-              <div class="rs-item"><label>實際請領反向</label><div>{{ money(plan.calc.realClaim) }}</div></div>
-              <div class="rs-item"><label>保留款抵銷</label><div>{{ money(plan.calc.claimKeep) }}</div></div>
-              <div class="rs-item hl"><label>退回業主</label><div>{{ money(plan.calc.thisClaim) }}</div></div>
+              <template v-if="!isBonus">
+                <div class="rs-item"><label>實際請領反向</label><div>{{ money(plan.calc.realClaim) }}</div></div>
+                <div class="rs-item"><label>保留款抵銷</label><div>{{ money(plan.calc.claimKeep) }}</div></div>
+                <div class="rs-item hl"><label>退回業主</label><div>{{ money(plan.calc.thisClaim) }}</div></div>
+              </template>
+              <div v-else class="rs-item hl"><label>追回獎金實發</label><div>{{ money(peopleTotals.net) }}</div></div>
               <div v-if="plan.handover.total" class="rs-item"><label>{{ handoverLabel }}沖回</label><div>{{ money(plan.handover.total) }}</div></div>
             </div>
           </div>
@@ -85,8 +93,7 @@
           <div class="step-h mt-4">
             <span class="step-no">2</span>
             <span class="step-title">獎金追回</span>
-            <v-switch v-model="entry.refundBonus" color="default" density="compact" hide-details class="ml-2"
-              :label="entry.refundBonus ? '追回已發獎金' : '不追回獎金'"></v-switch>
+
             <v-spacer></v-spacer>
             <v-btn v-if="entry.refundBonus && entry.people" size="small" variant="text" prepend-icon="mdi-restore" @click="entry.people = null">恢復原數</v-btn>
           </div>
@@ -162,14 +169,17 @@ import { computed, watch } from 'vue';
 import { money, toNum, isHandoverCategory } from '@/utils/commissionCalculation';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
 import { buildRefundEntryPlan } from './refundEntry';
+import DateFieldTW from './DateFieldTW.vue';
 
 const props = defineProps({
   entry: { type: Object, required: true },        // 退佣 entry（reactive）
   settings: { type: Object, required: true },
   projectId: { type: String, required: true },
   bonusRecords: { type: Array, default: () => [] },
+  mode: { type: String, default: 'claim' },   // 'bonus'＝退獎金：來源為獎金紀錄，只追回獎金
 });
 defineEmits(['remove', 'toggle']);
+const isBonus = computed(() => props.mode === 'bonus');
 
 const buyerName = computed(() => props.entry.unit?.buyerName || props.entry.candidates[0]?.snapshot?.buyerName || '');
 const statusText = computed(() => props.entry.unit?.salesStatus_backend || '');
@@ -224,6 +234,9 @@ function toggleSource(id) {
 }
 function bonusCountOf(recordId) {
   return props.bonusRecords.filter(b => b.commissionRecordId === recordId && b.status !== 'voided').length;
+}
+function bonusNetOf(recordId) {
+  return props.bonusRecords.filter(b => b.commissionRecordId === recordId && b.status !== 'voided').reduce((s, b) => s + toNum(b.net), 0);
 }
 
 // 來源變動 → 逐人調整重置為原數

@@ -40,7 +40,8 @@
     </v-dialog>
 
     <v-tabs v-model="tab" color="primary" density="comfortable" show-arrows>
-      <v-tab value="workbench" prepend-icon="mdi-briefcase-edit-outline">請佣工作台</v-tab>
+      <v-tab value="workbench" prepend-icon="mdi-briefcase-edit-outline">請佣編輯</v-tab>
+      <v-tab value="bonus" prepend-icon="mdi-account-cash-outline">獎金編輯</v-tab>
       <v-tab value="periods" prepend-icon="mdi-history">歷期總覽</v-tab>
       <v-tab value="stats" prepend-icon="mdi-chart-bar">累計統計</v-tab>
       <v-tab value="export" prepend-icon="mdi-file-export-outline">匯出中心</v-tab>
@@ -54,10 +55,11 @@
       <div class="text-body-2 text-medium-emphasis mt-4">載入建案與請佣資料中…</div>
     </div>
 
-    <v-window :class="{ 'workbench-window': tab === 'workbench' }" v-else :key="selectedPlanId + activePlan.priceBasis" v-model="tab" :touch="false">
+    <v-window :class="{ 'workbench-window': ['workbench', 'bonus'].includes(tab) }" v-else :key="selectedPlanId + activePlan.priceBasis" v-model="tab" :touch="false">
       <v-window-item value="workbench">
         <CommissionWorkbench
           ref="workbenchRef"
+          mode="claim"
           :project-id="projectId"
           :project-name="projectName"
           :settings="settings"
@@ -73,6 +75,29 @@
         />
       </v-window-item>
 
+      <v-window-item value="bonus">
+        <CommissionWorkbench
+          ref="bonusWorkbenchRef"
+          mode="bonus"
+          :project-id="projectId"
+          :project-name="projectName"
+          :settings="settings"
+          :households="households"
+          :parkings="parkings"
+          :personnel="personnel"
+          :ledgers="bonusLedgerMap"
+          :next-period="nextBonusPeriod"
+          :records="planBonusSources"
+          :claim-records="records"
+          :bonus-records="bonusRecords"
+          :all-bonus-records="allBonusRecords"
+          :period-notes="periodNotes"
+          @notes-saved="loadPeriodNotes"
+          :person-order="personOrder"
+          @submitted="handleSubmitted"
+        />
+      </v-window-item>
+
       <v-window-item value="periods">
         <CommissionPeriodList
           :project-id="projectId"
@@ -80,11 +105,13 @@
           :settings="settings"
           :records="records"
           :bonus-records="bonusRecords"
+          :bonus-entries="planBonusEntries"
           :loading="recordsLoading"
           @refresh="handleSubmitted"
           @export-period="goExportPeriod"
           @reimport-period="goReimportPeriod"
           @edit-record="r => goEditRecords([r])"
+          @edit-bonus-record="r => goEditBonusRecords([r])"
           @edit-period="goEditPeriod"
         />
       </v-window-item>
@@ -102,6 +129,8 @@
       <v-window-item value="export">
         <CommissionExportCenter
           ref="exportCenterRef"
+          :bonus-source-records="allBonusSources"
+          :period-notes="periodNotes"
           :all-records="allRecords"
           :all-bonus-records="allBonusRecords"
           :plans="plans"
@@ -113,6 +142,7 @@
           :personnel="personnel"
           :loading="recordsLoading"
           :preset-period="exportPeriod"
+          :preset-doc-type="exportDocType"
           :person-order="personOrder"
           @update:person-order="v => { personOrder = v; }"
           :unit-orders="unitOrders"
@@ -158,12 +188,13 @@ import { useSalesDataStore } from '@/store/salesDataStore';
 import {
   fetchCommissionSettings, fetchCommissionPlans, createCommissionPlan, updateCommissionPlan, deleteCommissionPlan,
   fetchCommissionRecords,
-  fetchBonusRecords,
+  fetchBonusRecords, fetchBonusEntries, fetchBonusPeriodNotes,
   fetchCommissionLedgers,
   fetchCommissionPersonOrder,
   fetchCommissionUnitOrders,
 } from '@/api';
 import { DEFAULT_PLANS, planIdOf, isBuiltInPlan, mergePlans } from '@/utils/commissionPlans';
+import { bonusSourceRecords } from '@/utils/commissionPeriodBonus';
 import { mergeSettings, toNum } from '@/utils/commissionCalculation';
 
 const CommissionWorkbench = defineAsyncComponent(() => import('@/components/commission/CommissionWorkbench.vue'));
@@ -186,13 +217,27 @@ const isLoading = ref(true);
 const recordsLoading = ref(false);
 const exportCenterRef = ref(null);
 const importRef = ref(null);
-const exportPeriod = ref(null);   // 匯出中心要帶入的期別（歷期總覽「匯出此期」／工作台送出後）
+const exportPeriod = ref(null);
+const exportDocType = ref('claim');   // 匯出中心要帶入的期別（歷期總覽「匯出此期」／工作台送出後）
 
 const settings = ref(mergeSettings(null));
 const personOrder = ref([]);   // 建案層級：獎金表人員欄排序（personKey 清單；即時預覽拖曳儲存）
 const unitOrders = ref({});    // 戶別列順序 { [planId]: { [period]: [unitId] } }（即時預覽拖曳儲存）
 const allRecords = ref([]);
 const allBonusRecords = ref([]);
+const allBonusEntries = ref([]);
+const periodNotes = ref([]);
+const allBonusSources = computed(() => bonusSourceRecords(allRecords.value, allBonusEntries.value, allBonusRecords.value));
+const planBonusSources = computed(() => allBonusSources.value.filter(r => planIdOf(r) === selectedPlanId.value));
+const planBonusEntries = computed(() => allBonusEntries.value.filter(r => planIdOf(r) === selectedPlanId.value));
+const bonusLedgerMap = computed(() => {
+  const map = {};
+  planBonusSources.value.forEach(r => { map[r.unitId] = (map[r.unitId] || 0) + toNum(r.ratioPct); });
+  return map;
+});
+const nextBonusPeriod = computed(() => Math.max(0, ...allBonusSources.value.map(r => toNum(r.period))) + 1);
+async function loadPeriodNotes() { periodNotes.value = await fetchBonusPeriodNotes(projectId.value); }
+
 const savedPlans = ref([]);
 const selectedPlanId = ref('general');
 const switchingPlan = ref(false);
@@ -202,6 +247,7 @@ provide('commissionPlan', activePlan);
 const records = computed(() => allRecords.value.filter(r => planIdOf(r) === selectedPlanId.value));
 const bonusRecords = computed(() => allBonusRecords.value.filter(r => planIdOf(r) === selectedPlanId.value));
 const workbenchRef = ref(null);
+const bonusWorkbenchRef = ref(null);
 const settingsRef = ref(null);
 const planDialog = ref(false);
 const renameOnly = ref(false);
@@ -211,7 +257,7 @@ const planForm = ref({ id: '', name: '', priceBasis: 'package' });
 const planLocked = computed(() => !!planForm.value.id && (isBuiltInPlan(planForm.value.id) || planHasData(planForm.value.id)));
 
 function hasDraft() {
-  return !!(workbenchRef.value?.hasDraft || settingsRef.value?.hasDraft || importRef.value?.hasDraft || exportCenterRef.value?.hasDraft);
+  return !!(workbenchRef.value?.hasDraft || bonusWorkbenchRef.value?.hasDraft || settingsRef.value?.hasDraft || importRef.value?.hasDraft || exportCenterRef.value?.hasDraft);
 }
 // 有請佣、獎金紀錄或已請額度的方案不可刪除或變更價格來源。
 function planHasData(id) {
@@ -339,12 +385,16 @@ async function loadLedgers() {
 async function loadRecords() {
   recordsLoading.value = true;
   try {
-    const [recs, bonuses] = await Promise.all([
+    const [recs, bonuses, bonusEntries, notes] = await Promise.all([
       fetchCommissionRecords(projectId.value),
       fetchBonusRecords(projectId.value),
+      fetchBonusEntries(projectId.value),
+      fetchBonusPeriodNotes(projectId.value),
     ]);
     allRecords.value = recs;
     allBonusRecords.value = bonuses;
+    allBonusEntries.value = bonusEntries;
+    periodNotes.value = notes;
   } catch (e) {
     console.error('[CommissionBonus] 載入請佣紀錄失敗:', e);
     toast.error(`載入請佣紀錄失敗：${e.message}`);
@@ -369,7 +419,10 @@ async function reloadAll() {
 /** 送出/匯入完成後：刷新 ledger 與紀錄；工作台送出帶期別時直接跳到匯出中心該期 */
 async function handleSubmitted(payload = null) {
   await Promise.all([loadLedgers(), loadRecords()]);
-  if (payload?.period) goExportPeriod(payload.period);
+  if (payload?.period) {
+    exportDocType.value = payload.docType || 'claim';
+    goExportPeriod(payload.period);
+  }
 }
 
 /** 歷期總覽「重新匯入此期」：切到歷史匯入並預帶期別（自動勾選覆蓋） */
@@ -397,13 +450,32 @@ function goEditRecords(list) {
   };
   requestAnimationFrame(tick);
 }
+/** 歷期總覽（獎金檢視）「拉回編輯」：載入獎金編輯工作台 */
+function goEditBonusRecords(list) {
+  const records = (list || []).filter(Boolean);
+  if (!records.length) return;
+  tab.value = 'bonus';
+  let tries = 0;
+  const tick = () => {
+    if (bonusWorkbenchRef.value?.loadFromRecords) {
+      bonusWorkbenchRef.value.loadFromRecords(records, bonusRecords.value);
+    } else if (tries++ < 60) {
+      requestAnimationFrame(tick);
+    } else {
+      toast.error('獎金編輯尚未就緒，請再試一次');
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
 function goEditPeriod(period) {
   const list = records.value.filter(r => toNum(r.period) === toNum(period) && r.status === 'active' && r.type !== 'refund' && !r.refundedBy);
   if (!list.length) { toast.info('此期沒有可拉回編輯的紀錄'); return; }
   goEditRecords(list);
 }
 
-function goExportPeriod(period) {
+function goExportPeriod(period, docType = 'claim') {
+  exportDocType.value = docType === 'bonus' ? 'bonus' : 'claim';
   exportPeriod.value = toNum(period);
   tab.value = 'export';
   // 匯出中心已掛載時直接選取（同一期別再次點選也能生效）；尚未掛載則由 preset-period 帶入

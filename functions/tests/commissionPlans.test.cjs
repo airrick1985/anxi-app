@@ -32,6 +32,36 @@ test('房屋只取代房屋底價；配套排除車位，價格不重複計入',
   assert.equal(calc.calcClaim(pkg, { commPct: 3 }).realClaim, 24000);
 });
 
+test('請佣／獎金基準法：墊低、墊高、一律成交價、一律底價；介紹費 B 先扣再比或比完再扣', () => {
+  // dealTotal 3750、totalFloor 3480、介紹費 B 100 萬（feeWan=100）
+  const house = computePlanFinance(unit, [parking], DEFAULT_PLANS[0], { manualFloor: 3300 });
+  const run = (extra) => calc.calcClaim(house, { commPct: 2, partyBFee: 1000000, ...extra });
+  assert.equal(run({}).baseWan, 3480);                                               // 預設墊低法＝min(3650, 3480)
+  assert.equal(run({ claimBasisMethod: 'higher' }).baseWan, 3650);                   // max(3650, 3480)
+  assert.equal(run({ claimBasisMethod: 'deal' }).baseWan, 3650);                     // 成交價扣 B
+  assert.equal(run({ claimBasisMethod: 'floor' }).baseWan, 3480);                    // 底價不扣 B
+  assert.equal(run({ claimBasisMethod: 'higher', partyBFeeTiming: 'after' }).baseWan, 3650);   // max(3750,3480)−100
+  assert.equal(run({ claimBasisMethod: 'lower', partyBFeeTiming: 'after' }).baseWan, 3380);    // min(3750,3480)−100
+  assert.equal(run({ claimBasisMethod: 'floor', partyBFeeTiming: 'after' }).baseWan, 3480);
+  assert.equal(run({ claimBasisMethod: 'higher' }).realClaim, 730000);
+  // 獎金基準：折數與折數後總價皆以基準價計
+  const deal = run({ partyAFee: 75000 });                       // base = 3750×2%×10000 = 750000 → 折數 0.9
+  assert.equal(deal.bonusBasisWan, 3750);
+  assert.equal(deal.discount, 0.9);
+  assert.equal(deal.dealAfter, 3375);
+  const floor = run({ partyAFee: 69600, bonusBasisMethod: 'floor' });   // base = 3480×2%×10000 = 696000 → 折數 0.9
+  assert.equal(floor.bonusBasisWan, 3480);
+  assert.equal(floor.discount, 0.9);
+  assert.equal(floor.dealAfter, 3132);
+  assert.equal(run({ bonusBasisMethod: 'higher' }).bonusBasisWan, 3750);
+  assert.equal(run({ bonusBasisMethod: 'lower' }).bonusBasisWan, 3480);
+  // 無效值回到預設
+  assert.equal(run({ claimBasisMethod: 'x', bonusBasisMethod: 'y', partyBFeeTiming: 'z' }).claimBasisMethod, 'lower');
+  assert.equal(calc.basisMethodOf('deal'), 'deal');
+  assert.equal(calc.basisMethodOf('nope'), '');
+  assert.equal(calc.feeTimingOf('after'), 'after');
+});
+
 test('房屋底價預設為配套房屋總價減車位底價；其他來源不預設', () => {
   assert.equal(defaultManualFloor(unit, 180, 'splitHouse'), 3570);
   assert.equal(defaultManualFloor(unit, 0, 'splitHouse'), 3750);
@@ -125,10 +155,10 @@ function harness() {
   rows.set('users/admin', { roles: ['系統管理員'] });
   rows.set(`commissionSettings/${planDocumentId(projectId, 'package')}`, { defaultCommissionPct: 3 });
   const entry = { unitId, period: 1, ratioPct: 100, manualFloor: 80, categories: { indiv: { ratePct: 1, allocations: [{ personKey: 'p1', name: '業務', sharePct: 100, mode: 'percent' }] } }, personProfiles: { p1: { name: '業務', role: '銷售', keepPct: 0, taxPct: 0, nhiPct: 0 } } };
-  const call = (name, data) => exports[name]({ data: { projectId, operatorKey: 'admin', createdBy: '測試', ...data } });
+  const call = async (name, data) => structuredClone(await exports[name]({ data: { projectId, operatorKey: 'admin', createdBy: '測試', ...data } }));
   const submit = (planId, overrides = {}) => call('submitCommissionEntries', { planId, entries: [{ ...entry, ...overrides }] });
   const ledger = planId => rows.get(`commissionUnitLedgers/${commissionLedgerId(projectId, unitId, planId)}`)?.claimedRatioPct;
-  return { rows, call, submit, ledger };
+  return { rows, call, submit, ledger, entry };
 }
 
 test('同戶一般、配套、自訂各請100%；各自佣金設定、紀錄及獎金，超額被拒絕', async () => {
@@ -184,6 +214,41 @@ test('退佣及作廢退佣只回溯本方案；跨方案來源被拒絕', async
   await h.call('voidCommissionRecord', { planId: 'package', recordId: result.results[0].recordId });
   assert.equal(h.ledger('package'), 100);
   await assert.rejects(h.call('voidCommissionRecord', { planId: 'package', recordId: general.results[0].recordId }), /不屬於/);
+});
+
+test('退獎金：只追回獎金明細、標記 bonusRefundedBy 與退佣獨立；作廢退獎金還原', async () => {
+  const h = harness();
+  const bonus = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [h.entry] });
+  const sourceId = bonus.results[0].recordId;
+  const refund = { unitId, period: 2, sourceRecordIds: [sourceId], includeKeep: false, refundBonus: false };
+  // 請佣模式找不到獎金紀錄；獎金模式可退
+  await assert.rejects(h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim', refunds: [refund] }), /找不到/);
+  const result = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', refunds: [refund] });
+  const refundId = result.results[0].recordId;
+  const source = h.rows.get(`bonusEntries/${sourceId}`);
+  assert.equal(source.bonusRefundedBy, refundId);
+  assert.equal(source.refundedBy, undefined);
+  const refundDoc = h.rows.get(`bonusEntries/${refundId}`);
+  assert.equal(refundDoc.type, 'refund');
+  assert.equal(refundDoc.ratioPct, -100);
+  assert.equal(refundDoc.refundBonus, true);
+  const rows = [...h.rows.entries()].filter(([k, v]) => k.startsWith('bonusRecords/') && v.planId === 'package').map(([, v]) => v);
+  assert.equal(rows.length, 2);
+  assert.equal(rows.reduce((n, b) => n + b.subtotal, 0), 0);
+  assert.equal(rows.find(b => b.type === 'refund').commissionRecordId, refundId);
+  // 已退獎金不可重複退、不可拉回；比例已回溯可再送獎金
+  await assert.rejects(h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', refunds: [refund] }), /已退獎金/);
+  await assert.rejects(h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [{ ...h.entry, replaceRecordId: sourceId }] }), /已退獎金/);
+  const again = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [{ ...h.entry, period: 3 }] });
+  assert.ok(again.ok);
+  // 已重新送獎金時作廢退獎金會超過 100%；作廢新獎金後可作廢退獎金並還原標記
+  await assert.rejects(h.call('voidCommissionRecord', { planId: 'package', recordId: refundId, submissionType: 'bonus' }), /超過 100%/);
+  await h.call('voidCommissionRecord', { planId: 'package', recordId: again.results[0].recordId, submissionType: 'bonus' });
+  await h.call('voidCommissionRecord', { planId: 'package', recordId: refundId, submissionType: 'bonus' });
+  assert.equal(h.rows.get(`bonusEntries/${sourceId}`).bonusRefundedBy, undefined);
+  assert.equal(h.rows.get(`bonusEntries/${refundId}`).status, 'voided');
+  assert.equal(rows.length, 2);
+  await assert.rejects(h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [{ ...h.entry, period: 4 }] }), /超過 100%/);
 });
 
 test('整期作廢、清除及保留款檢查只作用於該方案；舊紀錄仍算一般', async () => {
@@ -301,4 +366,55 @@ test('同批請佣各戶採用個別佣金比例，未指定者沿用方案預�
   assert.deepEqual(records.map(r => r.commPct), [1.25, 4.5, 3]);
   assert.deepEqual(records.map(r => r.calc.realClaim), [10000, 36000, 24000]);
   assert.equal(JSON.stringify(h.rows.get(settingsPath)), before);
+});
+
+
+test('獎金可先獨立送出，再請佣100%，兩者額度及明細互不混用', async () => {
+  const h = harness();
+  const bonus = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [{ ...h.entry, commPct: 99, keepPct: 88, partyAFee: 12345 }] });
+  assert.equal(h.ledger('package'), undefined);
+  assert.equal([...h.rows.keys()].filter(k => k.startsWith('commissionRecords/')).length, 0);
+  const source = h.rows.get(`bonusEntries/${bonus.results[0].recordId}`);
+  assert.equal(source.commPct, 3, 'bonus input cannot override commission rate');
+  assert.equal(source.partyAFee, 0, 'bonus input cannot override commission fees');
+  const before = [...h.rows.entries()].filter(([k]) => k.startsWith('bonusRecords/'));
+  await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim', entries: [h.entry] });
+  assert.equal(h.ledger('package'), 100);
+  assert.deepEqual([...h.rows.entries()].filter(([k]) => k.startsWith('bonusRecords/')), before);
+  await assert.rejects(h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [h.entry] }), /超過 100%/);
+  const notes = Array.from({ length: 75 }, (_, i) => `備註 ${i + 1}`);
+  await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [{ ...h.entry, replaceRecordId: bonus.results[0].recordId, ratioPct: 50 }], periodNotes: [{ period: 1, personKey: 'p1', notes }] });
+  assert.equal(h.ledger('package'), 100);
+  assert.equal(h.rows.get(`bonusEntries/${bonus.results[0].recordId}`).status, 'voided');
+  assert.equal([...h.rows.values()].filter(v => v.commissionRecordId === bonus.results[0].recordId && v.status === 'active').length, 0);
+  assert.deepEqual(h.rows.get(`commissionSettings/${projectId}__bonusNotes_1_p1`).notes, notes);
+});
+
+test('獨立修改舊獎金不作廢原請佣；獨立修改舊請佣保留原獎金', async () => {
+  for (const mode of ['bonus', 'claim']) {
+    const h = harness();
+    const old = await h.submit('package');
+    const id = old.results[0].recordId;
+    const beforeClaim = structuredClone(h.rows.get(`commissionRecords/${id}`));
+    const oldBonusKey = [...h.rows.keys()].find(k => k.startsWith('bonusRecords/'));
+    await h.call('submitCommissionEntries', { planId: 'package', submissionType: mode,
+      entries: [{ ...h.entry, replaceRecordId: id, replaceLegacyBonus: mode === 'bonus' }] });
+    assert.equal(h.ledger('package'), 100);
+    if (mode === 'bonus') {
+      assert.deepEqual(structuredClone(h.rows.get(`commissionRecords/${id}`)), beforeClaim);
+      assert.equal(h.rows.get(oldBonusKey).status, 'voided');
+      await assert.rejects(h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [{ ...h.entry, replaceRecordId: id, replaceLegacyBonus: true }] }), /已修改/);
+    } else assert.equal(h.rows.get(oldBonusKey).status, 'active');
+  }
+});
+
+
+test('請佣整期作廢與清除不會動到獨立獎金', async () => {
+  const h = harness();
+  const bonus = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [h.entry] });
+  await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim', entries: [h.entry] });
+  await h.call('voidCommissionPeriod', { planId: 'package', period: 1, voidReason: '測試', voidedBy: '測試' });
+  await h.call('purgeVoidedCommissionPeriod', { planId: 'package', period: 1, purgedBy: '測試' });
+  assert.equal(h.rows.get(`bonusEntries/${bonus.results[0].recordId}`).status, 'active');
+  assert.equal([...h.rows.values()].filter(r => r.commissionRecordId === bonus.results[0].recordId && r.status === 'active').length, 1);
 });

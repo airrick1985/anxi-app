@@ -1,6 +1,6 @@
 <template>
   <div>
-    <v-alert type="info" variant="tonal" density="compact" class="mb-3">請佣、獎金可各自選擇方案分檔或合併。合併放在同一個 Sheet，依方案分區保留各筆資料與小計；目前方案使用下方所選版型，其他方案沿用自己的設定與預設版型。個人明細仍依目前方案匯出。</v-alert>
+    <v-alert type="info" variant="tonal" density="compact" class="mb-3">請佣、獎金可各自選擇方案分檔或合併。「合併同一 Sheet」依方案分區；獎金表另可選「合併列」，將一般與配套戶別接續編號、合計獎金（不同請佣比例分頁），使用目前所選版型；目前方案使用下方所選版型，其他方案沿用自己的設定與預設版型。個人明細仍依目前方案匯出。</v-alert>
     <div v-if="loading" class="text-center py-10">
       <v-progress-circular indeterminate color="primary"></v-progress-circular>
     </div>
@@ -137,7 +137,7 @@
       <!-- 預覽 -->
       <CommissionGridPreview v-else :grids="grids" caption="與下載之 Excel / PDF 同一版面模型" :unit-label="isPerson ? '人' : '張分頁'"
         :sortable="docType === 'bonus'" @reorder="onReorderPersons"
-        :unit-sortable="!isPerson" @reorder-units="onReorderUnits"
+        :unit-sortable="!isPerson && groupingMode === 'current'" @reorder-units="onReorderUnits"
         :editable="!isPerson" :edit-values="editValues" @edit="onTextEdit">
         <template #actions>
           <template v-if="hasTextEdits">
@@ -251,7 +251,7 @@ import {
   generateCommissionPdfAPI, sendCommissionPersonEmailAPI, setCommissionPersonOrder, setCommissionSettings, setCommissionUnitOrder,
 } from '@/api';
 import {
-  buildClaimModel, buildBonusModel, buildPersonModel,
+  buildClaimModel, buildBonusModel, buildMergedBonusModel, buildPersonModel,
   defaultClaimConfig, defaultBonusConfig, defaultPersonConfig,
   periodsLabel, listPersonsInPeriods, withProjectName, exportProjectNameOf,
 } from '@/utils/commissionExportModel';
@@ -269,9 +269,12 @@ const props = defineProps({
   bonusRecords: { type: Array, default: () => [] },
   personnel: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
+  bonusSourceRecords: { type: Array, default: () => [] },
+  periodNotes: { type: Array, default: () => [] },
   allRecords: { type: Array, default: () => [] },
   allBonusRecords: { type: Array, default: () => [] },
   plans: { type: Array, default: () => [] },
+  presetDocType: { type: String, default: 'claim' },
   presetPeriod: { type: Number, default: null },   // 由父層指定要帶入的期別（送出後跳轉）
   personOrder: { type: Array, default: () => [] },   // 建案層級：獎金表人員欄排序（personKey 清單）
   unitOrders: { type: Object, default: () => ({}) },   // 戶別列順序 { [planId]: { [period]: [unitId] } }
@@ -338,12 +341,14 @@ function goTemplateManager() {
   router.push({ name: 'CommissionTemplateManager', query: { priceBasis: plan.value.priceBasis } });
 }
 
-const docType = ref('claim');
-const groupingOptions = [
+const docType = ref(props.presetDocType);
+watch(() => props.presetDocType, value => { docType.value = value; });
+const groupingOptions = computed(() => [
   { title: '目前方案（單獨一份）', value: 'current' },
   { title: '所選方案分開檔案（ZIP）', value: 'separate' },
   { title: '所選方案合併同一 Sheet', value: 'combined' },
-];
+  ...(docType.value === 'bonus' ? [{ title: '所選方案獎金合併列（接續編號）', value: 'mergedRows' }] : []),
+]);
 const preferenceKey = computed(() => `commission-export-grouping:${userStore.user?.key || userStore.user?.phone || 'local'}:${props.projectId}`);
 function readGrouping() {
   try { return JSON.parse(localStorage.getItem(preferenceKey.value) || '{}') || {}; } catch { return {}; }
@@ -411,9 +416,12 @@ const isAdmin = computed(() => {
   return roles.includes('超級管理員') || roles.includes('系統管理員');
 });
 
+const allSourceRecords = computed(() => docType.value === 'claim' ? props.allRecords : props.bonusSourceRecords);
+const currentSourceRecords = computed(() => docType.value === 'claim' ? props.records : props.bonusSourceRecords.filter(belongsToPlan));
+
 const availablePeriods = computed(() => {
   const set = new Set();
-  (isPerson.value || groupingMode.value === 'current' ? props.records : props.allRecords.filter(r => selectedPlanIds.value.includes(planIdOf(r)))).forEach(r => { if (r.status !== 'voided') set.add(toNum(r.period)); });
+  (isPerson.value || groupingMode.value === 'current' ? currentSourceRecords.value : allSourceRecords.value.filter(r => selectedPlanIds.value.includes(planIdOf(r)))).forEach(r => { if (r.status !== 'voided') set.add(toNum(r.period)); });
   return [...set].sort((a, b) => b - a);
 });
 
@@ -426,7 +434,7 @@ watch(availablePeriods, (list) => {
 
 const activePeriodSet = computed(() => new Set(isPerson.value ? periods.value.map(toNum) : [toNum(period.value)]));
 const activeRecords = computed(() =>
-  (isPerson.value || groupingMode.value === 'current' ? props.records : props.allRecords.filter(r => selectedPlanIds.value.includes(planIdOf(r)))).filter(r => r.status !== 'voided' && activePeriodSet.value.has(toNum(r.period)))
+  (isPerson.value || groupingMode.value === 'current' ? currentSourceRecords.value : allSourceRecords.value.filter(r => selectedPlanIds.value.includes(planIdOf(r)))).filter(r => r.status !== 'voided' && activePeriodSet.value.has(toNum(r.period)))
 );
 const activeBonusRows = computed(() =>
   props.bonusRecords.filter(b => b.status !== 'voided' && activePeriodSet.value.has(toNum(b.period)))
@@ -545,9 +553,9 @@ async function onReorderPersons({ personKeys }) {
 }
 
 const claimModel = computed(() => {
-  if (isPerson.value || !activeRecords.value.length) return null;
+  if (isPerson.value || !props.records.some(r => r.status !== 'voided' && toNum(r.period) === toNum(period.value))) return null;
   const cfg = docType.value === 'claim' ? currentConfig.value : projectDefaultClaimConfig();
-  return buildClaimModel(activeRecords.value.filter(belongsToPlan), {
+  return buildClaimModel(props.records.filter(r => r.status !== 'voided' && toNum(r.period) === toNum(period.value)), {
     settings: exportSettings.value, config: cfg, period: period.value, projectName: exportProjectName.value,
     unitOrder: currentUnitOrder.value,
   });
@@ -561,6 +569,7 @@ function projectDefaultClaimConfig() {
 const bonusModel = computed(() => {
   if (docType.value !== 'bonus' || !activeRecords.value.length) return null;
   return buildBonusModel({
+    periodNotes: props.periodNotes,
     records: activeRecords.value.filter(belongsToPlan),
     bonusRecords: activeBonusRows.value,
     settings: exportSettings.value,
@@ -601,7 +610,8 @@ const personModels = computed(() => {
     .slice()
     .sort((a, b) => order.indexOf(a) - order.indexOf(b))
     .map(personKey => buildPersonModel({
-      records: props.records,
+      periodNotes: props.periodNotes,
+      records: currentSourceRecords.value,
       bonusRecords: props.bonusRecords,
       payouts: payouts.value,
       personnel: props.personnel,
@@ -630,16 +640,32 @@ const groupedDocuments = computed(() => {
     };
     const projectName = `${props.projectName}・${p.name}`;
     const unitOrder = unitOrderOf(p.id, period.value);
-    const claim = buildClaimModel(records, { settings, config: configOf('claim'), period: period.value, projectName, unitOrder });
+    const claimRecords = props.allRecords.filter(r => planIdOf(r) === p.id && r.status !== 'voided' && toNum(r.period) === toNum(period.value));
+    const claim = buildClaimModel(claimRecords, { settings, config: configOf('claim'), period: period.value, projectName, unitOrder });
     if (docType.value === 'claim') return [{ plan: p, model: claim, grids: [buildClaimGrid(claim)] }];
-    const bonus = buildBonusModel({ records,
+    const bonus = buildBonusModel({ records, periodNotes: props.periodNotes,
       bonusRecords: props.allBonusRecords.filter(b => b.status !== 'voided' && planIdOf(b) === p.id && toNum(b.period) === toNum(period.value)),
       settings, config: configOf('bonus'), period: period.value, projectName, projectId: props.projectId,
       personnelOrder: personnelOrder.value,
       personOrder: props.personOrder,
       unitOrder,
     });
-    return [{ plan: p, model: bonus, grids: [...(bonus.includeClaimSheet ? [buildClaimGrid(claim)] : []), ...buildBonusGrids(bonus)] }];
+    return [{ plan: p, model: bonus, grids: [...(bonus.includeClaimSheet && claimRecords.length ? [buildClaimGrid(claim)] : []), ...buildBonusGrids(bonus)] }];
+  });
+});
+
+const mergedBonusModel = computed(() => {
+  if (docType.value !== 'bonus' || groupingMode.value !== 'mergedRows' || groupingLoading.value || groupingError.value) return null;
+  const sources = props.plans.filter(p => selectedPlanIds.value.includes(p.id)).map(p => ({
+    plan: p,
+    records: activeRecords.value.filter(r => planIdOf(r) === p.id),
+    bonusRecords: props.allBonusRecords.filter(b => b.status !== 'voided' && planIdOf(b) === p.id && toNum(b.period) === toNum(period.value)),
+    settings: p.id === planId.value ? exportSettings.value : (groupingSettings.value[p.id] || {}),
+    unitOrder: unitOrderOf(p.id, period.value),
+  })).filter(source => source.records.length);
+  return buildMergedBonusModel({ sources, periodNotes: props.periodNotes, settings: exportSettings.value, config: currentConfig.value,
+    period: period.value, projectName: props.projectName, projectId: props.projectId,
+    personnelOrder: personnelOrder.value, personOrder: props.personOrder,
   });
 });
 
@@ -648,6 +674,7 @@ const grids = computed(() => {
     if (!activeRecords.value.length) return [];
     if (isPerson.value) return personModels.value.map(m => buildPersonGrid(m));
     if (groupingMode.value !== 'current') {
+      if (groupingMode.value === 'mergedRows') return mergedBonusModel.value ? buildBonusGrids(mergedBonusModel.value) : [];
       const documents = groupedDocuments.value;
       if (groupingMode.value === 'combined') {
         const combined = combineCommissionGrids(documents.flatMap(d => d.grids), docType.value === 'claim' ? '合併請佣總表' : '合併獎金表');
@@ -672,7 +699,7 @@ const grids = computed(() => {
 // 檔名：依文件/期別/版型自動帶入，可改
 watch([docType, period, periods, claimModel, bonusModel, personModels, groupingMode, groupedDocuments], () => {
   if (!isPerson.value && groupingMode.value !== 'current') {
-    fileName.value = withProjectName(`第${period.value || ""}期_${docType.value === "claim" ? "請佣" : "獎金"}_${groupingMode.value === "combined" ? "合併" : "分檔"}`, props.projectName);
+    fileName.value = withProjectName(`第${period.value || ""}期_${docType.value === "claim" ? "請佣" : "獎金"}_${groupingMode.value === "mergedRows" ? "合併列" : groupingMode.value === "combined" ? "合併" : "分檔"}`, props.projectName);
     return;
   }
   if (isPerson.value) {
@@ -685,7 +712,7 @@ watch([docType, period, periods, claimModel, bonusModel, personModels, groupingM
     }
     return;
   }
-  const model = docType.value === 'claim' ? claimModel.value : bonusModel.value;
+  const model = groupingMode.value === 'mergedRows' ? mergedBonusModel.value : docType.value === 'claim' ? claimModel.value : bonusModel.value;
   if (model) fileName.value = model.fileName || '';
 }, { immediate: true });
 
@@ -800,7 +827,7 @@ async function downloadPdf() {
       toast.success('PDF 分檔 ZIP 已下載');
       return;
     }
-    const model = docType.value === 'claim' ? claimModel.value : bonusModel.value;
+    const model = groupingMode.value === 'mergedRows' ? mergedBonusModel.value : docType.value === 'claim' ? claimModel.value : bonusModel.value;
     const res = await generateCommissionPdfAPI({
       projectId: props.projectId,
       planId: planId.value,

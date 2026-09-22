@@ -3,16 +3,16 @@
  */
 import { buildRefundPlan, toNum } from '@/utils/commissionCalculation';
 
-/** 可退回的原請佣紀錄：有效、非退佣、尚未被退佣 */
-export function isRefundableRecord(r) {
-  return r && r.status !== 'voided' && r.type !== 'refund' && !r.refundedBy;
+/** 可退回的原紀錄：有效、非退佣、尚未被退佣；bonus＝退獎金（標記欄位 bonusRefundedBy，與退佣各自獨立） */
+export function isRefundableRecord(r, bonus = false) {
+  return !!r && r.status !== 'voided' && r.type !== 'refund' && !(bonus ? r.bonusRefundedBy : r.refundedBy);
 }
 
 /** 依戶別彙整可退回的原紀錄 */
-export function refundableRecordsByUnit(records) {
+export function refundableRecordsByUnit(records, bonus = false) {
   const map = {};
   (records || []).forEach(r => {
-    if (!isRefundableRecord(r)) return;
+    if (!isRefundableRecord(r, bonus)) return;
     if (!map[r.unitId]) map[r.unitId] = [];
     map[r.unitId].push(r);
   });
