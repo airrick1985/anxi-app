@@ -116,13 +116,16 @@
                   :model-value="entry.ratioPct"
                   :label="isBonus ? '本次獎金比例(%) *' : '本次請佣比例(%) *'"
                   type="number" step="0.1" variant="outlined" density="compact" hide-details
-                  color="primary"
+                  :color="ratioAttention ? 'error' : 'primary'"
+                  :class="{ 'fee-attention': ratioAttention }"
+                  :prepend-inner-icon="ratioAttention ? 'mdi-alert-circle' : undefined"
                   @update:model-value="onRatioInput"
                 >
                   <template #append-inner>
                     <v-btn v-if="claimedPct < 100" size="x-small" variant="text" color="primary" @click.stop="onRatioInput(100 - claimedPct)">全部</v-btn>
                   </template>
                 </v-text-field>
+                <div v-if="ratioAttention" class="text-caption text-error font-weight-bold mt-1">請佣僅 {{ claimTotalPct }}%，本次獎金比例為 100%</div>
                 <div class="ratio-bar mt-1" :title="`已請 ${claimedPct}%　本次 ${entry.ratioPct}%　尚餘 ${round1(Math.max(0, 100 - totalPct))}%`">
                   <span class="seg done" :style="{ width: Math.min(100, claimedPct) + '%' }"></span>
                   <span class="seg now" :style="{ width: Math.min(100 - Math.min(100, claimedPct), toNum(entry.ratioPct)) + '%' }"></span>
@@ -146,6 +149,8 @@
               <v-row v-if="!isBonus && showAdvanced" dense class="mt-1 adv-row">
                 <v-col cols="12" sm="6" md="4">
                   <v-text-field v-model.number="entry.partyAFee" :label="`${settings.partyALabel}(元)`" type="number" variant="outlined" density="compact"
+                    :class="{ 'fee-attention': feeAttention }" :color="feeAttention ? 'error' : undefined"
+                    :prepend-inner-icon="feeAttention ? 'mdi-alert-circle' : undefined"
                     hint="計入獎金折數，會降低所有獎金" persistent-hint></v-text-field>
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
@@ -173,9 +178,19 @@
               </div>
             </v-alert>
 
-            <div v-if="isBonus" class="text-body-2 my-3">
-              獎金計算基準（唯讀）：佣金比例 {{ entry.commPct }}%・{{ settings.partyALabel }} {{ money(entry.partyAFee) }} 元・基準價 {{ money(result.claim.bonusBasisWan) }} 萬・獎金折數 {{ result.claim.discount.toFixed(2) }}・折數後總價 {{ money(result.claim.dealAfter) }} 萬
-            </div>
+            <template v-if="isBonus">
+              <v-row dense class="mt-1">
+                <v-col cols="12" sm="6" md="4">
+                  <v-text-field v-model.number="entry.partyAFee" :label="`${settings.partyALabel}(元)`" type="number" variant="outlined" density="compact"
+                    :class="{ 'fee-attention': feeAttention }" :color="feeAttention ? 'error' : undefined"
+                    :prepend-inner-icon="feeAttention ? 'mdi-alert-circle' : undefined"
+                    hide-details :aria-label="`${entry.unitId} ${settings.partyALabel}`"></v-text-field>
+                </v-col>
+              </v-row>
+              <div class="text-body-2 my-3">
+                獎金計算基準：佣金比例 {{ entry.commPct }}%・基準價 {{ money(result.claim.bonusBasisWan) }} 萬・獎金折數 {{ result.claim.discount.toFixed(2) }}・折數後總價 {{ money(result.claim.dealAfter) }} 萬
+              </div>
+            </template>
             <!-- 試算結果（精簡） -->
             <div v-if="!isBonus" class="result-strip mt-3">
               <div class="rs-item hl"><label>本次請佣（元）</label><div>{{ money(result.claim.thisClaim) }}</div></div>
@@ -353,6 +368,7 @@ const props = defineProps({
   projectName: { type: String, default: '' },
   localPersonnel: { type: Array, default: () => [] },
   claimedPct: { type: Number, default: 0 },
+  claimTotalPct: { type: Number, default: null },   // 獎金編輯：該戶請佣已請合計（提醒請佣不足 100% 卻送 100% 獎金）
   split: { type: Boolean, default: false },   // 左右分欄：由工作台選取顯示，永遠展開、不可收合
 });
 
@@ -385,6 +401,10 @@ const handoverCategories = computed(() => enabledCategories.value.filter(isHando
 const noteText = computed(() => String(props.entry.unit.remarks || ''));
 const hasNote = computed(() => noteText.value.trim() !== '');
 const feeHint = computed(() => hasNote.value && /介紹|贈品/.test(noteText.value));
+/** 備註提到介紹費／贈品但介紹費 A 尚未填：欄位以紅色醒目樣式提醒輸入；填入後恢復一般樣式 */
+const feeAttention = computed(() => feeHint.value && toNum(props.entry.partyAFee) === 0);
+/** 獎金編輯：該戶請佣不足 100% 但本次獎金比例填 100% → 比例欄位紅色醒目提醒 */
+const ratioAttention = computed(() => isBonus.value && props.claimTotalPct !== null && props.claimTotalPct < 100 && toNum(props.entry.ratioPct) >= 100);
 /** 備註分段：優先用留言式 remarkNotes，沒有則以舊字串備註呈現（換行保留） */
 const displayNotes = computed(() => {
   const u = props.entry.unit || {};
@@ -714,6 +734,14 @@ function onPickPerson(person) {
 
 <style scoped>
 .unit-card { border-radius: 12px; overflow: visible; scroll-margin-top: 80px; border-color: #ddd; }
+/* 介紹費 A 提醒輸入：備註提到介紹費／贈品且尚未填時，紅框、淡紅底、紅色驚嘆號並輕微脈動 */
+.fee-attention :deep(.v-field) { background: #fff3f3; box-shadow: 0 0 0 2px rgba(198, 40, 40, .35); animation: fee-pulse 1.6s ease-in-out infinite; }
+.fee-attention :deep(.v-field__outline) { color: #c62828; }
+.fee-attention :deep(.v-label), .fee-attention :deep(.v-field__prepend-inner .v-icon) { color: #c62828; opacity: 1; }
+@keyframes fee-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(198, 40, 40, .35); }
+  50% { box-shadow: 0 0 0 4px rgba(198, 40, 40, .15); }
+}
 .card-head { background: #fff; border-radius: 12px 12px 0 0; }
 /* 步驟標題 */
 .step-h { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }

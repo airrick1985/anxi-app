@@ -31,5 +31,6 @@ export function buildRefundEntryPlan(entry, bonusRecords) {
     includeKeep: !!entry.includeKeep,
     refundBonus: entry.refundBonus !== false,
     people: entry.people,
+    refundRatioPct: entry.refundRatioPct ?? null,   // null＝全額退回（來源比例合計）
   });
 }

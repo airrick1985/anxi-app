@@ -24,7 +24,7 @@
           <v-icon start size="x-small">mdi-alert-circle</v-icon>{{ result.error }}
         </v-chip>
         <v-chip v-else size="x-small" color="default" variant="tonal">
-          <v-icon start size="x-small">mdi-check</v-icon>{{ category.allocations.length }} 人・{{ isEven ? '均分' : '自訂分配' }}
+          <v-icon start size="x-small">mdi-check</v-icon>{{ category.allocations.length }} 人・{{ modeLabel }}
         </v-chip>
       </div>
     </div>
@@ -35,13 +35,12 @@
         v-for="p in poolOptions"
         :key="p.personKey"
         size="small"
-        :color="isSelected(p.personKey) ? 'primary' : undefined"
+        :color="isSelected(p.personKey) ? 'primary' : (p.disabled ? 'warning' : undefined)"
         :variant="isSelected(p.personKey) ? 'flat' : 'outlined'"
-        :disabled="p.disabled"
-        :title="p.disabled ? '資格不符' : (isSelected(p.personKey) ? '點選移除' : '點選加入')"
-        @click="!p.disabled && togglePerson(p)"
+        :title="p.disabled ? (isSelected(p.personKey) ? '資格不符，已加入；點選移除' : '資格不符，仍可加入') : (isSelected(p.personKey) ? '點選移除' : '點選加入')"
+        @click="togglePerson(p)"
       >
-        <v-icon start size="x-small">{{ isSelected(p.personKey) ? 'mdi-check-circle' : 'mdi-plus-circle-outline' }}</v-icon>
+        <v-icon start size="x-small">{{ isSelected(p.personKey) ? 'mdi-check-circle' : (p.disabled ? 'mdi-alert-circle-outline' : 'mdi-plus-circle-outline') }}</v-icon>
         {{ p.name }}
         <span v-if="isSelected(p.personKey)" class="chip-amt">{{ money(result.amounts[p.personKey] || 0) }}</span>
         <span v-else-if="p.hint" class="text-caption ml-1 opacity-70">{{ p.hint }}</span>
@@ -64,9 +63,10 @@
     <!-- 分配方式 -->
     <div v-if="category.allocations.length" class="d-flex flex-wrap align-center ga-2 mt-2">
       <span class="text-caption text-medium-emphasis">分配方式：</span>
-      <v-btn-toggle :model-value="customOpen ? 'custom' : 'even'" mandatory density="compact" variant="outlined" divided color="primary"
+      <v-btn-toggle :model-value="allocMode" mandatory density="compact" variant="outlined" divided color="primary"
         @update:model-value="onModeToggle">
         <v-btn size="x-small" value="even">均分</v-btn>
+        <v-btn size="x-small" value="each">單獨</v-btn>
         <v-btn size="x-small" value="custom">自訂比例／鎖定金額</v-btn>
       </v-btn-toggle>
       <span v-if="!customOpen" class="text-caption text-medium-emphasis">{{ evenText }}</span>
@@ -124,7 +124,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { computed, watch } from 'vue';
 import { money, evenShares, toNum } from '@/utils/commissionCalculation';
 
 const props = defineProps({
@@ -173,9 +173,20 @@ const evenText = computed(() => {
     : `每人約 ${money(min)} 元，尾差由最後一人吸收（${money(max)} 元）；可於設定分頁改為「每人相同」`;
 });
 
-// 自訂分配表：非均分時自動展開
-const customOpen = ref(!isEven.value);
-watch(isEven, v => { if (!v) customOpen.value = true; });
+/**
+ * 分配方式：even 均分／each 單獨（每人各得比例）／custom 自訂比例或鎖定金額。
+ * 舊紀錄沒有 allocMode 時依實際分配判斷；分配非均分（含鎖定額）一律視為自訂。
+ */
+const allocMode = computed(() => {
+  const m = props.category.allocMode;
+  if (m === 'custom') return 'custom';
+  if (!isEven.value) return 'custom';
+  return m === 'each' ? 'each' : 'even';
+});
+const modeLabel = computed(() => ({ even: '均分', each: '單獨', custom: '自訂分配' })[allocMode.value]);
+// 自訂分配表：自訂時展開；分配被改成非均分時自動切為自訂
+const customOpen = computed(() => allocMode.value === 'custom');
+watch(isEven, v => { if (!v && props.category.allocMode !== 'custom') props.category.allocMode = 'custom'; });
 
 function isSelected(personKey) {
   return selectedKeys.value.has(personKey);
@@ -227,12 +238,15 @@ function switchMode(a, mode) {
 function resetEven() {
   props.category.allocations.forEach(a => { a.mode = 'pct'; a.lockedAmount = null; });
   reEvenPct();
-  customOpen.value = false;
+  props.category.allocMode = 'even';
 }
 
+/** 切換分配方式：均分／單獨皆重設為等比例（單獨的池＝比例 × 人數，由計算引擎處理）；自訂保留目前分配並展開表格 */
 function onModeToggle(v) {
-  if (v === 'even') resetEven();
-  else customOpen.value = true;
+  if (!v || v === allocMode.value) return;
+  if (v === 'custom') { props.category.allocMode = 'custom'; return; }
+  resetEven();
+  props.category.allocMode = v;
 }
 
 defineExpose({ togglePerson, reEvenPct });

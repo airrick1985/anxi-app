@@ -182,6 +182,10 @@
         <template #item.requestDate="{ item }">{{ item.requestDate || '—' }}</template>
         <template #item.ratioPct="{ item }">{{ item.ratioPct }}%</template>
         <template #item.commPct="{ item }">{{ item.commPct.toFixed(2) }}%</template>
+        <template #item.transactionTotal="{ item }">{{ money(item.transactionTotal) }}</template>
+        <template #item.dealTotal="{ item }">{{ money(item.dealTotal) }}</template>
+        <template #item.totalFloor="{ item }">{{ money(item.totalFloor) }}</template>
+        <template #item.spread="{ item }"><span :class="item.spread < 0 ? 'text-error' : ''">{{ money(item.spread) }}</span></template>
         <template #item.dealAfter="{ item }">{{ money(item.dealAfter) }}</template>
         <template #item.realClaim="{ item }">{{ money(item.realClaim) }}</template>
         <template #item.claimKeep="{ item }">{{ money(item.claimKeep) }}</template>
@@ -656,6 +660,10 @@ const allRows = computed(() => sourceRecords.value.slice()
     requestDate: r.requestDate || '',
     ratioPct: toNum(r.ratioPct),
     commPct: toNum(r.commPct),
+    dealTotal: toNum(r.snapshot?.dealTotal),
+    transactionTotal: toNum(r.snapshot?.transactionTotal ?? r.snapshot?.dealTotal),
+    totalFloor: toNum(r.snapshot?.totalFloor),
+    spread: toNum(r.snapshot?.spread),
     dealAfter: toNum(r.calc?.dealAfter),
     realClaim: toNum(r.calc?.realClaim),
     claimKeep: toNum(r.calc?.claimKeep),
@@ -683,6 +691,10 @@ const CLAIM_COLUMNS = [
   { key: 'requestDate', title: '請佣日期', filter: 'date' },
   { key: 'ratioPct', title: '請佣比例', align: 'end', filter: 'number' },
   { key: 'commPct', title: '佣金比例', align: 'end', filter: 'number' },
+  { key: 'transactionTotal', title: '成交總價(萬)', align: 'end', filter: 'number' },
+  { key: 'dealTotal', title: '請佣總價(萬)', align: 'end', filter: 'number', hidden: true },
+  { key: 'totalFloor', title: '總底價(萬)', align: 'end', filter: 'number' },
+  { key: 'spread', title: '溢差價(萬)', align: 'end', filter: 'number' },
   { key: 'dealAfter', title: '折數後總價(萬)', align: 'end', filter: 'number' },
   { key: 'realClaim', title: '實際請領(元)', align: 'end', filter: 'number' },
   { key: 'claimKeep', title: '保留款(元)', align: 'end', filter: 'number' },
@@ -701,6 +713,10 @@ const BONUS_COLUMNS = [
   { key: 'requestDate', title: '獎金日期', filter: 'date' },
   { key: 'ratioPct', title: '獎金比例', align: 'end', filter: 'number' },
   { key: 'commPct', title: '佣金比例', align: 'end', filter: 'number', hidden: true },
+  { key: 'transactionTotal', title: '成交總價(萬)', align: 'end', filter: 'number' },
+  { key: 'dealTotal', title: '請佣總價(萬)', align: 'end', filter: 'number', hidden: true },
+  { key: 'totalFloor', title: '總底價(萬)', align: 'end', filter: 'number' },
+  { key: 'spread', title: '溢差價(萬)', align: 'end', filter: 'number' },
   { key: 'dealAfter', title: '折數後總價(萬)', align: 'end', filter: 'number' },
   { key: 'bonusCount', title: '人數', align: 'center', filter: 'number' },
   { key: 'bonusNet', title: '獎金實發(元)', align: 'end', filter: 'number' },

@@ -140,6 +140,13 @@ function categoryPool(dealAfter, ratePct, ratioPct) {
   return dealAfter * (toNum(ratePct) / 100) * 10000 * (toNum(ratioPct) / 100);
 }
 
+/** 類別獎金池倍率：單獨模式（allocMode: each）＝人數（未選人視為 1）；其他模式＝1 */
+function poolMultiplier(cat) {
+  if (!cat || cat.allocMode !== 'each') return 1;
+  const n = Array.isArray(cat.allocations) ? cat.allocations.length : 0;
+  return n > 0 ? n : 1;
+}
+
 function evenShares(n) {
   if (!n) return [];
   const base = Math.floor((100 / n) * 100) / 100;
@@ -263,13 +270,14 @@ function calcUnitBonus(finance, input, personProfiles) {
   const payKeys = catList.filter(c => !isHandoverCategory(c)).map(c => c.key);
   const handoverKeys = catList.filter(c => isHandoverCategory(c)).map(c => c.key);
 
-  // 1) 各發放類別原始獎金池
+  // 1) 各發放類別原始獎金池（單獨模式：每人各得比例，池＝比例 × 人數）
   const rawPools = {};
   const rawPoolsFull = {};
   payKeys.forEach(catKey => {
     const cat = cats[catKey] || {};
-    rawPools[catKey] = categoryPool(claim.dealAfter, cat.ratePct, ratioPct);
-    rawPoolsFull[catKey] = categoryPool(claim.dealAfter, cat.ratePct, 100);
+    const mult = poolMultiplier(cat);
+    rawPools[catKey] = categoryPool(claim.dealAfter, cat.ratePct, ratioPct) * mult;
+    rawPoolsFull[catKey] = categoryPool(claim.dealAfter, cat.ratePct, 100) * mult;
   });
 
   // 2) 提撥類別（交屋團獎）：自來源類別池先提撥 ratePct%，來源池扣除後再分配；提撥金額不分配給人員
@@ -372,7 +380,7 @@ function matchesRolePositions(personPositions, rolePositions) {
 }
 
 // ---------- 退佣（買方解約）試算 ----------
-const REFUND_SNAPSHOT_NUM_KEYS = ['dealTotal', 'totalFloor', 'spread', 'houseDeal', 'parkDeal', 'houseFloor', 'parkFloor'];
+const REFUND_SNAPSHOT_NUM_KEYS = ['dealTotal', 'transactionTotal', 'totalFloor', 'spread', 'houseDeal', 'parkDeal', 'houseFloor', 'parkFloor'];
 const REFUND_CALC_NUM_KEYS = ['feeWan', 'realSpread', 'baseWan', 'base', 'dealAfter', 'bonusBasisWan'];
 
 /**
@@ -386,6 +394,8 @@ const REFUND_CALC_NUM_KEYS = ['feeWan', 'realSpread', 'baseWan', 'base', 'dealAf
  *   refundBonus    是否連動追回獎金
  *   people         逐人調整（null＝原數）：[{ personKey, amounts: { [catKey]: 正數 }, remark }]，
  *                  未列出的人員視為不追回；金額鉗制於 0～原數
+ *   refundRatioPct 本次退回比例（null＝來源比例合計＝全額退回）；小於合計時按比例部分退回：
+ *                  金額、快照、交屋團獎、每人獎金原數皆乘以（退回比例 ÷ 來源比例合計）
  * @returns {{ refundRatioPct, sources, snapshot, commPct, keepPct, calc, handover, people, errors }}
  */
 function buildRefundPlan(opts) {
@@ -411,10 +421,16 @@ function buildRefundPlan(opts) {
     claimKeep: toNum(s.calc && s.calc.claimKeep),
     thisClaim: toNum(s.calc && s.calc.thisClaim),
   }));
-  const refundRatioPct = Math.round(sourceList.reduce((s, x) => s + x.ratioPct, 0) * 1000) / 1000;
-  const sumR = sourceList.reduce((s, x) => s + x.realClaim, 0);
-  const sumK = sourceList.reduce((s, x) => s + x.claimKeep, 0);
-  const sumT = sourceList.reduce((s, x) => s + x.thisClaim, 0);
+  const fullRatioPct = Math.round(sourceList.reduce((s, x) => s + x.ratioPct, 0) * 1000) / 1000;
+  const wanted = opts.refundRatioPct === null || opts.refundRatioPct === undefined || opts.refundRatioPct === '' ? null : toNum(opts.refundRatioPct);
+  if (wanted !== null && (!(wanted > 0) || wanted > fullRatioPct + 0.0001)) errors.push(`退回比例須介於 0～${fullRatioPct}%（已勾選來源合計）`);
+  const refundRatioPct = wanted !== null && wanted > 0 && wanted <= fullRatioPct + 0.0001 ? Math.round(wanted * 1000) / 1000 : fullRatioPct;
+  const factor = fullRatioPct > 0 ? refundRatioPct / fullRatioPct : 1;   // 部分退回比例
+  const partial = Math.abs(factor - 1) > 0.000001;
+  const scale = v => (partial ? Math.round(v * factor) : v);
+  const sumR = scale(sourceList.reduce((s, x) => s + x.realClaim, 0));
+  const sumK = scale(sourceList.reduce((s, x) => s + x.claimKeep, 0));
+  const sumT = scale(sourceList.reduce((s, x) => s + x.thisClaim, 0));
 
   // 戶別快照：文字取最新一筆、數值取負向加總
   const ls = latest.snapshot || {};
@@ -429,12 +445,14 @@ function buildRefundPlan(opts) {
     remarks: ls.remarks || '',
   };
   REFUND_SNAPSHOT_NUM_KEYS.forEach(k => {
-    snapshot[k] = -sources.reduce((s, x) => s + toNum(x.snapshot && x.snapshot[k]), 0);
+    const v = -sources.reduce((s, x) => s + toNum(x.snapshot && x.snapshot[k]), 0);
+    snapshot[k] = partial ? Math.round(v * factor * 10000) / 10000 : v;
   });
 
   const calc = {};
   REFUND_CALC_NUM_KEYS.forEach(k => {
-    calc[k] = -sources.reduce((s, x) => s + toNum(x.calc && x.calc[k]), 0);
+    const v = -sources.reduce((s, x) => s + toNum(x.calc && x.calc[k]), 0);
+    calc[k] = partial ? Math.round(v * factor * 10000) / 10000 : v;
   });
   calc.discount = toNum(latest.calc && latest.calc.discount);
   calc.realClaim = -sumR;
@@ -450,13 +468,13 @@ function buildRefundPlan(opts) {
       const h = (s.handover && s.handover.byCat) || {};
       Object.keys(h).forEach(k => {
         if (!byCat[k]) byCat[k] = { sourceCatKey: h[k].sourceCatKey || '', ratePct: toNum(h[k].ratePct), sourcePool: 0, sourcePoolFull: 0, amount: 0, amountFull: 0 };
-        byCat[k].sourcePool -= toNum(h[k].sourcePool);
-        byCat[k].sourcePoolFull -= toNum(h[k].sourcePoolFull);
-        byCat[k].amount -= toNum(h[k].amount);
-        byCat[k].amountFull -= toNum(h[k].amountFull);
+        byCat[k].sourcePool -= scale(toNum(h[k].sourcePool));
+        byCat[k].sourcePoolFull -= scale(toNum(h[k].sourcePoolFull));
+        byCat[k].amount -= scale(toNum(h[k].amount));
+        byCat[k].amountFull -= scale(toNum(h[k].amountFull));
       });
-      hTotal -= toNum(s.handover && s.handover.total);
-      hTotalFull -= toNum(s.handover && s.handover.totalFull);
+      hTotal -= scale(toNum(s.handover && s.handover.total));
+      hTotalFull -= scale(toNum(s.handover && s.handover.totalFull));
     });
   }
   const handover = { total: hTotal, totalFull: hTotalFull, byCat };
@@ -481,6 +499,14 @@ function buildRefundPlan(opts) {
     Object.keys(b.amounts || {}).forEach(k => { o.amounts[k] = (o.amounts[k] || 0) + toNum(b.amounts[k]); });
     o.subtotal += toNum(b.subtotal); o.keep += toNum(b.keep); o.tax += toNum(b.tax); o.nhi += toNum(b.nhi);
   });
+  // 部分退回：每人原數按比例縮減（扣款比例仍以原明細回推）
+  if (partial) {
+    order.forEach(key => {
+      const o = orig[key];
+      Object.keys(o.amounts).forEach(k => { o.amounts[k] = Math.round(o.amounts[k] * factor); });
+      o.subtotal = Math.round(o.subtotal * factor); o.keep = Math.round(o.keep * factor); o.tax = Math.round(o.tax * factor); o.nhi = Math.round(o.nhi * factor);
+    });
+  }
   // 有效扣款比例：以原明細加總回推（多筆比例不同時取加權結果）
   order.forEach(key => {
     const o = orig[key];
@@ -531,6 +557,8 @@ function buildRefundPlan(opts) {
 
   return {
     refundRatioPct,
+    fullRatioPct,
+    partial,
     sources: sourceList,
     snapshot,
     commPct: toNum(latest.commPct),
@@ -542,6 +570,7 @@ function buildRefundPlan(opts) {
 
 module.exports = {
   toNum,
+  poolMultiplier,
   round2,
   DEFAULT_BONUS_CATEGORIES,
   DEFAULT_COMMISSION_SETTINGS,

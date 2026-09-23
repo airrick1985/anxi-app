@@ -127,7 +127,7 @@
               <div class="table-scroll">
                 <v-table density="compact">
                   <thead>
-                    <tr><th>#</th><th>狀態</th><th>期別</th><th>戶別</th><th>合約方式</th><th>價格來源</th><th class="text-right">請佣價格(萬)</th><th class="text-right">總底價(萬)</th><th>請佣日期</th>
+                    <tr><th>#</th><th>狀態</th><th>期別</th><th>戶別</th><th>合約方式</th><th>價格來源</th><th class="text-right">成交總價(萬)</th><th class="text-right">請佣價格(萬)</th><th class="text-right">總底價(萬)</th><th>請佣日期</th>
                       <th class="text-right">請佣比例</th><th class="text-right">佣金比例</th>
                       <th class="text-right">實際請領(元)</th><th class="text-right">本次請佣(元)</th><th>訊息</th></tr>
                   </thead>
@@ -139,6 +139,7 @@
                       <td>{{ r.unitId }} <v-chip v-if="r.type === 'refund'" size="x-small" color="error" variant="flat" class="ml-1">退佣</v-chip></td>
                       <td>{{ r.snapshot?.contractType || '未設定' }}</td>
                       <td>{{ priceSourceLabels[r.snapshot?.priceSource] || '原成交總價' }}</td>
+                      <td class="text-right">{{ toNum(r.snapshot?.transactionTotal ?? r.snapshot?.dealTotal).toLocaleString('en-US', { maximumFractionDigits: 4 }) }}</td>
                       <td class="text-right">{{ toNum(r.snapshot?.dealTotal).toLocaleString('en-US', { maximumFractionDigits: 4 }) }}</td>
                       <td class="text-right">{{ toNum(r.snapshot?.totalFloor).toLocaleString('en-US', { maximumFractionDigits: 4 }) }}</td>
                       <td>{{ r.requestDate || '—' }}</td>
@@ -275,9 +276,9 @@ const activeByPeriod = computed(() => {
 const conflictPeriods = computed(() => filePeriods.value.filter(p => (activeByPeriod.value[p] || []).length > 0));
 const conflictActiveCount = computed(() => conflictPeriods.value.reduce((s, p) => s + (activeByPeriod.value[p] || []).length, 0));
 
-/** 比例基準：勾選覆蓋時，扣掉將被整期作廢的既有比例 */
+/** 比例基準：以該戶有效紀錄加總（退佣為負）重算，與後端一致；勾選覆蓋時，扣掉將被整期作廢的既有比例 */
 function ledgerBase(unitId) {
-  let base = toNum(props.ledgers[unitId]);
+  let base = props.records.filter(r => r.unitId === unitId && r.status !== 'voided').reduce((s, r) => s + toNum(r.ratioPct), 0);
   if (replaceExisting.value) {
     conflictPeriods.value.forEach(p => {
       (activeByPeriod.value[p] || []).forEach(r => { if (r.unitId === unitId) base -= toNum(r.ratioPct); });
@@ -330,7 +331,7 @@ const ratioSummary = computed(() => {
 
 const priceSourceLabels = { transaction: '原成交總價', splitHouse: '配套房屋總價', package: '配套價格' };
 // 退佣列：快照金額與試算結果取負值（與工作台退佣 buildRefundPlan 同規則）
-const REFUND_SNAPSHOT_KEYS = ['dealTotal', 'totalFloor', 'spread', 'houseDeal', 'parkDeal', 'houseFloor', 'parkFloor'];
+const REFUND_SNAPSHOT_KEYS = ['dealTotal', 'transactionTotal', 'totalFloor', 'spread', 'houseDeal', 'parkDeal', 'houseFloor', 'parkFloor'];
 const REFUND_CALC_KEYS = ['feeWan', 'realSpread', 'baseWan', 'base', 'dealAfter', 'realClaim', 'claimKeep', 'thisClaim'];
 
 // ---------- 範本 ----------
@@ -338,7 +339,7 @@ const CLAIM_HEADERS = computed(() => ([
   '期別', '戶別', '請佣日期', '請佣比例', '佣金比例',
   mergedSettings.value.partyALabel, mergedSettings.value.partyBLabel, '保留款(%)',
   '合約方式',
-  ...(plan.value.priceBasis === 'package' ? ['配套價格', '配套底價'] : ['價格來源', '請佣總價(含車)', '房屋成交價', '車位成交總價', '房屋底價', '車位底價', '總底價', '溢差價']),
+  ...(plan.value.priceBasis === 'package' ? ['配套價格', '配套底價', '成交總價'] : ['價格來源', '成交總價', '請佣總價(含車)', '房屋成交價', '車位成交總價', '房屋底價', '車位底價', '總底價', '溢差價']),
   '買方姓名', '簽約日期', '小訂日期', ...(plan.value.priceBasis === 'package' ? [] : ['持有車位']), '銷售人員', '備註',
 ]));
 
@@ -358,6 +359,7 @@ function downloadTemplate() {
     ['・請佣比例／佣金比例：可填小數（0.5、0.022，沿用舊表）或百分比（50、2.2），系統自動判斷（≤1 視為小數）'],
     ['・金額欄位單位為「萬」，介紹費為「元」。檔案金額優先，缺少成交價才取銷控現值；拆價底價須填歷史數字。金額與銷控不同僅提醒，不阻擋匯入。'],
     [plan.value.priceBasis === 'package' ? '・配套方案：填配套價格、配套底價，不計車位。例 C-15 配套價格填 99。' : '・房屋方案：價格來源填「原成交總價」或「配套房屋總價」。來源未填則依合約自動判定。請佣總價含車位；房屋底價不含車位，未填車位底價沿用銷控。'],
+    ['・「成交總價」＝房屋成交＋車位成交（原始成交金額），與請佣採用的「請佣總價」分開記錄；未填時原成交總價來源取請佣總價，配套來源取當時銷控原成交總價。'],
     [plan.value.priceBasis === 'package' ? '・舊格式仍可讀取：成交總價／房屋成交價視為配套價格，總底價／房屋總底價視為配套底價；車位金額須為 0。' : '・C-15 若採配套房屋總價，請佣總價填 3750；底價請填當時房屋底價。舊格式未提供價格來源時沿用原成交價邏輯。'],
     [`・請佣及獎金均匯入「${plan.value.name}」，不會與其他方案合併。`],
     ['・日期格式 yyyy/mm/dd；未填保留款(%) 預設 10'],
@@ -523,7 +525,7 @@ function parseClaims(rows) {
       depositDate: cellDate(row['小訂日期']) || formatDateTW(unit.payment_deposit_date),
       salesStatus: unit.salesStatus_backend || '',
       remarks: unit.remarks || '',
-      dealTotal: finance?.dealTotal || 0, totalFloor: finance?.totalFloor || 0, spread: finance?.spread || 0,
+      dealTotal: finance?.dealTotal || 0, transactionTotal: finance?.transactionTotal || 0, totalFloor: finance?.totalFloor || 0, spread: finance?.spread || 0,
       houseDeal: finance?.houseDeal || 0, parkDeal: finance?.parkDeal || 0,
       houseFloor: finance?.houseFloor || 0, parkFloor: finance?.parkFloor || 0,
     } : {};

@@ -38,6 +38,20 @@ async function planRows_(query, planId) {
   const docs = snap.docs.filter(d => planIdOf(d.data()) === planId);
   return { docs, size: docs.length, empty: docs.length === 0 };
 }
+/**
+ * 依有效紀錄重算某戶已請比例：Σ active 紀錄 ratioPct（退佣為負），最低 0。
+ * ledger 只是快取；作廢、撤銷匯入、歷史匯入一律以此重算，避免增減運算累積殘留
+ * （例如先整期作廢原請佣、再作廢退佣期，ledger 會被加回成 100% 而實際已無有效紀錄）。
+ * excludeIds：本次即將作廢／刪除的紀錄；tx 有值時於 transaction 內讀取（須在任何寫入之前呼叫）。
+ */
+async function activeRatioSum_(db, projectId, planId, collection, unitId, excludeIds = new Set(), tx = null) {
+  const q = db.collection(collection).where("projectId", "==", projectId).where("unitId", "==", unitId);
+  const snap = tx ? await tx.get(q) : await q.get();
+  const sum = snap.docs.filter(d => !excludeIds.has(d.id)).map(d => d.data())
+    .filter(r => planIdOf(r) === planId && r.status === "active")
+    .reduce((s, r) => s + calc.toNum(r.ratioPct), 0);
+  return Math.max(0, Math.round(sum * 1000) / 1000);
+}
 function planFromSnapshot_(snap, projectId, planId) {
   const saved = snap.exists ? snap.data() : null;
   const builtIn = DEFAULT_PLANS.find(p => p.id === planId);
@@ -230,6 +244,9 @@ async function voidPeriodCore_(db, projectId, period, { reason, by }, planId, bo
     const stillActive = recSnaps.filter(sn => sn.exists && sn.data().status === "active");
     const rb = {};
     stillActive.forEach(sn => { const d = sn.data(); rb[d.unitId] = (rb[d.unitId] || 0) + calc.toNum(d.ratioPct); });
+    // 以其餘有效紀錄重算各戶已請比例（排除本期即將作廢者）；所有讀取須在寫入之前完成
+    const voidIds = new Set(stillActive.map(sn => sn.id));
+    const nextSums = await Promise.all(unitIds.map(u => activeRatioSum_(db, projectId, planId, recordCollection, u, voidIds, tx)));
 
     // 每份文件只組一次 update（退佣紀錄的來源若同在本期，需同時作廢＋移除標記）
     const updates = new Map();
@@ -252,12 +269,11 @@ async function voidPeriodCore_(db, projectId, period, { reason, by }, planId, bo
     unitIds.forEach((u, i) => {
       const existing = ledgerSnaps[i].exists ? calc.toNum(ledgerSnaps[i].data().claimedRatioPct) : 0;
       const dec = rb[u] || 0;   // 退佣紀錄 ratioPct 為負 → 作廢時加回
-      const raw = Math.round((existing - dec) * 1000) / 1000;
-      if (raw > 100.0001) {
+      const next = nextSums[i];
+      if (next > 100.0001) {
         throw new HttpsError("failed-precondition",
           `戶別 ${u} 已重新${bonusOnly ? "送獎金" : "請佣"}，作廢本期${label}紀錄將使已${bonusOnly ? "送" : "請"}比例超過 100%，無法整期作廢。`);
       }
-      const next = Math.max(0, raw);
       units.push({ unitId: u, before: existing, after: next, ratioPct: dec });
       tx.set(ledgerRefs[i], { projectId, planId, unitId: u, claimedRatioPct: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     });
@@ -345,6 +361,7 @@ function validateRefund_(rf) {
   const period = Number(rf.period);
   if (!Number.isInteger(period) || period <= 0) return `退佣 ${rf.unitId}：期別必須為正整數`;
   if (!Array.isArray(rf.sourceRecordIds) || rf.sourceRecordIds.length === 0) return `退佣 ${rf.unitId}：未選擇要退回的原請佣紀錄`;
+  if (rf.refundRatioPct !== undefined && rf.refundRatioPct !== null && rf.refundRatioPct !== '' && !(Number(rf.refundRatioPct) > 0)) return `退佣 ${rf.unitId}：退回比例須大於 0`;
   return null;
 }
 
@@ -392,6 +409,7 @@ async function prepareRefund_(db, projectId, rf, planId, bonusOnly = false) {
     includeKeep: !!rf.includeKeep,
     refundBonus: bonusOnly ? true : rf.refundBonus !== false,
     people: Array.isArray(rf.people) ? rf.people : null,
+    refundRatioPct: rf.refundRatioPct === undefined || rf.refundRatioPct === null || rf.refundRatioPct === '' ? null : Number(rf.refundRatioPct),   // 部分退回
   });
   if (plan.errors.length) throw new HttpsError("invalid-argument", `${label} ${rf.unitId}：${plan.errors.join("；")}`);
   return { rf, ids, refs, sources, plan, marker, label };
@@ -496,7 +514,8 @@ exports.submitCommissionEntries = onCall({
     if (bonusOnly) {
       const replacement = preparedReplaces.find(r => r.recordId === entry.replaceRecordId);
       const claims = await db.collection('commissionRecords').where('projectId', '==', projectId).where('unitId', '==', entry.unitId).get();
-      const latest = claims.docs.map(d => d.data()).filter(r => planIdOf(r) === planId && r.status === 'active' && r.type !== 'refund')
+      // 獎金基準取最近一筆未退佣的請佣紀錄（退戶後重新請佣以新紀錄為準）
+      const latest = claims.docs.map(d => d.data()).filter(r => planIdOf(r) === planId && r.status === 'active' && r.type !== 'refund' && !r.refundedBy)
         .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0) || Number(b.period) - Number(a.period))[0];
       basis = replacement?.record || latest || {};
     }
@@ -512,7 +531,8 @@ exports.submitCommissionEntries = onCall({
       ratioPct: Number(entry.ratioPct),
       commPct,
       keepPct,
-      partyAFee: calc.toNum(basis.partyAFee),
+      // 介紹費 A（計入獎金折數）：獎金編輯可逐戶修改，有傳值即採用；未傳則沿用請佣紀錄
+      partyAFee: (entry.partyAFee === undefined || entry.partyAFee === null || entry.partyAFee === '') ? calc.toNum(basis.partyAFee) : calc.toNum(entry.partyAFee),
       partyBFee: calc.toNum(basis.partyBFee),
       claimBasisMethod: calc.basisMethodOf(basis.claimBasisMethod) || calc.basisMethodOf(settings.claimBasisMethod) || 'lower',
       partyBFeeTiming: calc.feeTimingOf(basis.partyBFeeTiming) || calc.feeTimingOf(settings.partyBFeeTiming) || 'before',
@@ -656,6 +676,7 @@ exports.submitCommissionEntries = onCall({
           salesStatus: unit.salesStatus_backend || "",
           remarks: unit.remarks || "",
           dealTotal: finance.dealTotal,
+          transactionTotal: finance.transactionTotal,   // 原成交總價（房屋成交＋車位成交），與請佣採用價格分開記錄
           totalFloor: finance.totalFloor,
           spread: finance.spread,
           houseDeal: finance.houseDeal,
@@ -883,19 +904,17 @@ exports.voidCommissionRecord = onCall({
     unitId = rec.unitId;
 
     const ledgerRef = db.collection(bonusOnly ? "bonusUnitLedgers" : "commissionUnitLedgers").doc(ledgerId_(projectId, rec.unitId, planId));
-    const ledgerSnap = await tx.get(ledgerRef);
-    const existing = ledgerSnap.exists ? calc.toNum(ledgerSnap.data().claimedRatioPct) : 0;
-    let next;
+    // 以該戶其餘有效紀錄重算已請比例（ledger 只是快取；退佣紀錄 ratioPct 為負，排除後即加回）
+    const next = await activeRatioSum_(db, projectId, planId, bonusOnly ? "bonusEntries" : "commissionRecords", rec.unitId, new Set([recordId]), tx);
     const isRefund = rec.type === "refund";
     let sourceRefs = [];
     if (isRefund) {
       // 作廢退佣：原紀錄恢復有效（移除已退佣標記）、已請比例加回
       const back = calc.toNum(rec.refundRatioPct !== undefined ? rec.refundRatioPct : -calc.toNum(rec.ratioPct));
-      if (existing + back > 100.0001) {
+      if (next > 100.0001) {
         throw new HttpsError("failed-precondition",
-          `該戶已重新請佣（已請 ${Math.round(existing * 10) / 10}%），加回 ${back}% 將超過 100%，無法作廢此退佣紀錄。`);
+          `該戶已重新請佣（其餘有效紀錄合計 ${Math.round((next - back) * 10) / 10}%），加回 ${back}% 將超過 100%，無法作廢此退佣紀錄。`);
       }
-      next = Math.round((existing + back) * 1000) / 1000;
       sourceRefs = bonusOnly
         ? await Promise.all((rec.sourceRecordIds || []).map(id => bonusSourceRef_(db, String(id))))
         : (rec.sourceRecordIds || []).map(id => db.collection("commissionRecords").doc(String(id)));
@@ -906,8 +925,6 @@ exports.voidCommissionRecord = onCall({
           ? { bonusRefundedBy: FieldValue.delete(), bonusRefundedAt: FieldValue.delete(), bonusRefundPeriod: FieldValue.delete() }
           : { refundedBy: FieldValue.delete(), refundedAt: FieldValue.delete(), refundPeriod: FieldValue.delete() });
       });
-    } else {
-      next = Math.max(0, Math.round((existing - calc.toNum(rec.ratioPct)) * 1000) / 1000);
     }
 
     tx.update(recordRef, {
@@ -1003,11 +1020,10 @@ exports.importCommissionHistory = onCall({
     }
   }
 
-  // 驗證每戶比例累計（含既有 ledger；若有覆蓋，ledger 已回溯）
+  // 驗證每戶比例累計：以有效紀錄重算既有比例（若有覆蓋，衝突期別已作廢）；ledger 只是快取，匯入後一併校正
   const ledgerBase = {};
   for (const unitId of Object.keys(ratioAdd)) {
-    const snap = await db.collection("commissionUnitLedgers").doc(ledgerId_(projectId, unitId, planId)).get();
-    const existing = snap.exists ? calc.toNum(snap.data().claimedRatioPct) : 0;
+    const existing = await activeRatioSum_(db, projectId, planId, "commissionRecords", unitId);
     if (existing + ratioAdd[unitId] > 100.0001) {
       throw new HttpsError("failed-precondition",
         `戶別 ${unitId} 匯入後累計比例將超過 100%（既有 ${existing}% ＋ 匯入 ${ratioAdd[unitId]}%），未寫入任何資料。`);
@@ -1270,9 +1286,12 @@ exports.undoCommissionImport = onCall({
     await db.runTransaction(async (tx) => {
       const refs = unitIds.map(u => db.collection("commissionUnitLedgers").doc(ledgerId_(projectId, u, planId)));
       const snaps = await Promise.all(refs.map(ref => tx.get(ref)));
+      // 以其餘有效紀錄重算（排除本批即將刪除者）
+      const removeIds = new Set(recs.map(r => r.ref.id));
+      const nextSums = await Promise.all(unitIds.map(u => activeRatioSum_(db, projectId, planId, "commissionRecords", u, removeIds, tx)));
       unitIds.forEach((u, i) => {
         const existing = snaps[i].exists ? calc.toNum(snaps[i].data().claimedRatioPct) : 0;
-        const next = Math.max(0, Math.round((existing - rollback[u]) * 1000) / 1000);
+        const next = nextSums[i];
         units.push({ unitId: u, before: existing, after: next, ratioPct: rollback[u] });
         tx.set(refs[i], { projectId, planId, unitId: u, claimedRatioPct: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       });

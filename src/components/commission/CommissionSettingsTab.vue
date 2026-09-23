@@ -90,6 +90,7 @@
         <v-card-text>
           <ul class="text-caption text-medium-emphasis mb-3 cat-hints">
             <li><b>發放方式</b>：依職務＝發給符合職務的人；個人＝發給該戶銷售；團隊＝依團獎分組發放；若另設對應職務，需分組與職務同時符合。</li>
+            <li><b>分配方式</b>：均分＝比例為整個類別，人員平分（0.1%、2 人各 0.05%）；單獨＝每人各得比例（0.1%、2 人各 0.1%）。戶別卡片可再改為自訂比例／鎖定金額。</li>
             <li><b>自個獎提撥</b>（交屋團獎）：自「來源類別」（預設銷售個獎）的獎金池提撥「比例(%)」，本期不發放、不分配給人員，暫留供日後另行製作交屋獎金；來源類別以提撥後的餘額分配。</li>
             <li><b>對應職務</b>：可多選，選項是本建案人員的職務；沒有的職務可直接打字新增。</li>
             <li><b>預設人員</b>：可填多位；填入後該類別不再依對應職務找人，請佣工作台直接帶入這些人並均分。每人可填保留款／稅金／二代健保 %，留空沿用人員名單設定。</li>
@@ -98,13 +99,13 @@
           <div class="table-scroll">
             <v-table density="compact" class="cat-table">
               <colgroup>
-                <col style="width:72px"><col style="width:168px"><col style="width:144px"><col style="width:198px">
+                <col style="width:72px"><col style="width:168px"><col style="width:144px"><col style="width:198px"><col style="width:150px">
                 <col style="width:360px"><col style="width:330px"><col style="width:64px"><col style="width:44px">
               </colgroup>
               <thead>
                 <tr>
                   <th>順序</th><th>名稱</th><th>比例(%)</th>
-                  <th>發放方式</th><th>對應職務 / 來源類別</th>
+                  <th>發放方式</th><th>分配方式</th><th>對應職務 / 來源類別</th>
                   <th>預設人員</th><th>啟用</th><th></th>
                 </tr>
               </thead>
@@ -122,6 +123,11 @@
                   <td>
                     <v-select v-model="cat.mode" :items="modeOptions" item-title="title" item-value="value"
                       variant="outlined" density="compact" hide-details></v-select>
+                  </td>
+                  <td>
+                    <v-select :model-value="cat.allocMode === 'each' ? 'each' : 'even'" :items="ALLOC_MODES" item-title="title" item-value="value"
+                      variant="outlined" density="compact" hide-details :disabled="cat.mode === 'handover'"
+                      @update:model-value="v => { cat.allocMode = v; }"></v-select>
                   </td>
                   <td>
                     <v-select v-if="cat.mode === 'handover'" v-model="cat.sourceCatKey" :items="sourceOptions(cat)"
@@ -260,7 +266,7 @@ import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { setCommissionSettings } from '@/api';
-import { mergeSettings, SPLIT_MODES, PRICE_BASIS_METHODS, PARTY_B_FEE_TIMINGS, allocateAmounts, evenShares, money, categoryDefaultPersonNames } from '@/utils/commissionCalculation';
+import { mergeSettings, SPLIT_MODES, ALLOC_MODES, PRICE_BASIS_METHODS, PARTY_B_FEE_TIMINGS, allocateAmounts, evenShares, money, categoryDefaultPersonNames } from '@/utils/commissionCalculation';
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -399,7 +405,7 @@ function moveCat(i, dir) {
 function addCategory() {
   const key = `cat${Date.now().toString(36)}`;
   local.value.bonusCategories.push({
-    key, label: '新類別', ratePct: 0, mode: 'role', rolePositions: [], enabled: true,
+    key, label: '新類別', ratePct: 0, mode: 'role', allocMode: 'even', rolePositions: [], enabled: true,
     order: local.value.bonusCategories.length + 1,
   });
 }
@@ -418,6 +424,7 @@ async function save() {
     data.bonusCategories.forEach((c, idx) => {
       c.order = idx + 1;
       c.rolePositions = Array.from(new Set((c.rolePositions || []).map(r => String(r || '').trim()).filter(Boolean)));
+      c.allocMode = (c.mode !== 'handover' && c.allocMode === 'each') ? 'each' : 'even';   // 分配方式：均分／單獨（提撥類別不適用）
       c.defaultPersonNames = (c.mode === 'role' || c.mode === 'team') ? categoryDefaultPersonNames(c) : [];
       delete c.defaultPersonName;   // 舊版單一姓名欄位已併入 defaultPersonNames
       // 扣款比例只保留仍在名單內、且至少一欄有填的人員；空欄存 null
@@ -465,8 +472,8 @@ defineExpose({ hasDraft: computed(() => JSON.stringify(local.value) !== JSON.str
 .cat-hints { padding-left: 18px; line-height: 1.7; }
 .split-radios :deep(.v-selection-control) { align-items: flex-start; margin-bottom: 6px; }
 .split-radios :deep(.v-label) { opacity: 1; }
-/* 獎金類別表：所有欄位固定寬度、表格不撐滿（總寬 1380px），寬螢幕靠左緊湊、窄螢幕橫向捲動 */
-.cat-table :deep(table) { table-layout: fixed; width: 1380px; }
+/* 獎金類別表：所有欄位固定寬度、表格不撐滿（總寬 1530px），寬螢幕靠左緊湊、窄螢幕橫向捲動 */
+.cat-table :deep(table) { table-layout: fixed; width: 1530px; }
 .dp-rates { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
 .dp-name { flex: 0 0 auto; max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .dp-rate { flex: 1 1 0; min-width: 0; }

@@ -63,7 +63,10 @@
             <span class="dot" :class="row.issueClass"></span>
             <span class="main">
               <b class="u">{{ row.unitId }}</b>
+              <span v-if="row.feeHint" class="fee-mark" title="銷控備註提到介紹費／贈品"><v-icon size="16" color="error">mdi-alert-circle</v-icon>有介紹費</span>
+              <span v-if="row.partialRatio" class="fee-mark" title="請佣比例不足 100%"><v-icon size="16" color="error">mdi-alert-circle</v-icon>請佣 {{ row.claimPct }}%</span>
               <span class="b">{{ row.buyer || '—' }}</span>
+              <v-chip size="x-small" variant="tonal" :color="contractTypeColor(row.contractType)">{{ row.contractType || '未設定合約方式' }}</v-chip>
               <v-chip v-if="row.refund" size="x-small" color="error" variant="flat">{{ refundLabel }}</v-chip>
               <span v-if="row.note" class="note-mark" :title="row.note">✎ {{ row.note }}</span>
             </span>
@@ -103,6 +106,7 @@
           :project-name="projectName"
           :local-personnel="personnel"
           :claimed-pct="entryClaimedPct(selectedEntry)"
+          :claim-total-pct="isBonus ? unitClaimedPct(selectedEntry.unitId) : null"
           split
           @remove="removeEntry(selectedEntry)"
         />
@@ -243,10 +247,11 @@
                   <span v-if="u.claimedPct > 0" class="text-caption ml-1" :class="u.claimedPct >= 100 ? 'text-disabled' : 'text-medium-emphasis'">
                     （{{ isBonus ? '已送獎金' : '已請佣' }} {{ u.claimedPct }}%）
                   </span>
+                  <span v-if="u.claimPct !== null && u.claimPct < 100" class="fee-mark" title="請佣比例不足 100%"><v-icon size="16" color="error">mdi-alert-circle</v-icon>請佣 {{ u.claimPct }}%</span>
                 </v-list-item-title>
                 <v-list-item-subtitle class="text-caption">
                   <span v-if="u.buyerName" class="mr-2">{{ u.buyerName }}</span>
-                  <span v-if="u.paymentRatio !== null" class="text-medium-emphasis">繳款 {{ u.paymentRatio }}%</span>
+                  <span v-if="u.paymentRatio !== null" class="font-weight-bold" :class="u.paymentRatio >= 10 ? 'text-success' : (u.paymentRatio >= 5 ? 'text-error' : 'text-medium-emphasis')">繳款 {{ u.paymentRatio }}%</span>
                   <span v-else class="text-medium-emphasis">繳款 —</span>
                 </v-list-item-subtitle>
                 <template #append>
@@ -285,6 +290,57 @@
       </v-card>
     </v-dialog>
 
+    <!-- 進預覽前確認：介紹費未填／請佣不足 100% 但獎金 100%（僅提醒，不擋流程） -->
+    <v-dialog v-model="confirmOpen" max-width="560" persistent>
+      <v-card>
+        <v-card-title class="text-subtitle-1 text-error">
+          <v-icon start>mdi-alert</v-icon>請確認以下提醒
+        </v-card-title>
+        <v-card-text style="max-height: 60vh; overflow: auto">
+          <div v-for="(sec, i) in confirmSections" :key="i" class="mb-3">
+            <div class="font-weight-bold mb-1">{{ sec.title }}</div>
+            <div v-if="sec.subtitle" class="text-caption text-medium-emphasis mb-1">{{ sec.subtitle }}</div>
+            <v-alert v-for="(item, j) in sec.items" :key="j" density="compact"
+              :variant="sec.critical ? 'flat' : 'tonal'" :color="sec.critical ? 'error' : undefined" :type="sec.critical ? undefined : 'warning'"
+              :class="['mb-1', { 'critical-alert': sec.critical }]">
+              <div class="mb-2">{{ item.text ?? item }}</div>
+              <!-- 尚未勾選人員：每個類別列候選人員，點選即加入（均分） -->
+              <div v-for="cat in (item.cats || [])" :key="cat.key" class="d-flex flex-wrap align-center ga-1 mb-1">
+                <span class="text-caption font-weight-bold mr-1">{{ cat.label }}</span>
+                <v-chip
+                  v-for="c in categoryCandidates(item.entry, cat)" :key="c.personKey" size="small"
+                  :color="isPersonInCategory(item.entry, cat.key, c.personKey) ? 'primary' : (c.hint === '資格不符' ? 'warning' : undefined)"
+                  :variant="isPersonInCategory(item.entry, cat.key, c.personKey) ? 'flat' : 'outlined'"
+                  @click="togglePersonInCategory(item.entry, cat.key, c)"
+                >
+                  <v-icon start size="x-small">{{ isPersonInCategory(item.entry, cat.key, c.personKey) ? 'mdi-check-circle' : 'mdi-plus-circle-outline' }}</v-icon>
+                  {{ c.name }}<span v-if="c.hint" class="text-caption ml-1 opacity-70">{{ c.hint }}</span>
+                </v-chip>
+                <span v-if="!categoryCandidates(item.entry, cat).length" class="text-caption text-medium-emphasis">無候選人員，請回卡片用「他案人員」加入</span>
+              </div>
+              <v-text-field
+                v-if="item.field"
+                :model-value="item.entry[item.field]" :label="item.label" type="number" min="0"
+                :step="item.field === 'ratioPct' ? 0.1 : 1" :suffix="item.field === 'ratioPct' ? '%' : '元'"
+                variant="solo" density="compact" hide-details bg-color="white" class="confirm-input"
+                @update:model-value="v => setConfirmValue(item, v)"
+              >
+                <template v-if="item.field === 'ratioPct' && item.suggest > 0" #append-inner>
+                  <v-btn size="x-small" variant="text" color="primary" @click.stop="setConfirmValue(item, item.suggest)">同請佣 {{ item.suggest }}%</v-btn>
+                </template>
+              </v-text-field>
+            </v-alert>
+          </div>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="confirmOpen = false">返回修改</v-btn>
+          <v-btn color="error" variant="flat" @click="confirmPreview">繼續預覽</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- 送出前預覽（與匯出中心同一版面模型） -->
     <v-dialog v-model="previewOpen" fullscreen transition="dialog-bottom-transition" :persistent="submitting">
       <v-card class="preview-dialog">
@@ -307,7 +363,9 @@
           <div v-for="(sec, i) in previewWarnings" :key="i" class="mb-3">
             <div class="font-weight-bold mb-1">{{ sec.title }}</div>
             <div v-if="sec.subtitle" class="text-caption text-medium-emphasis mb-1">{{ sec.subtitle }}</div>
-            <v-alert v-for="(item, j) in sec.items" :key="j" density="compact" variant="tonal" type="warning" class="mb-1">{{ item }}</v-alert>
+            <v-alert v-for="(item, j) in sec.items" :key="j" density="compact"
+              :variant="sec.critical ? 'flat' : 'tonal'" :type="sec.critical ? undefined : 'warning'" :color="sec.critical ? 'error' : undefined"
+              :class="['mb-1', { 'critical-alert': sec.critical }]">{{ item.text ?? item }}</v-alert>
           </div>
 
           <CommissionGridPreview :grids="previewGrids" title="送出後匯出的版面" max-height="none" />
@@ -386,6 +444,8 @@ const pickerSearch = ref('');
 const pickSel = reactive({});
 const submitting = ref(false);
 const blockingOpen = ref(false);
+const confirmOpen = ref(false);        // 進預覽前的紅底提醒確認（介紹費未填／請佣不足但獎金 100%）
+const confirmSections = ref([]);
 const blockingItems = ref([]);
 
 // 送出前預覽
@@ -422,15 +482,30 @@ function blockNumberWheel(e) {
 function claimedPctOf(unitId) {
   return Math.round(toNum(props.ledgers[unitId]) * 10) / 10;
 }
+/** 該戶「請佣」已請比例合計（未作廢、未退佣的請佣紀錄）；獎金編輯用來提醒請佣不足 100% */
+function unitClaimedPct(unitId) {
+  const sum = props.claimRecords
+    .filter(r => r.unitId === unitId && r.status === 'active' && r.type !== 'refund' && !r.refundedBy)
+    .reduce((s, r) => s + toNum(r.ratioPct), 0);
+  return Math.round(sum * 100) / 100;
+}
+/** 同一戶在本批退佣／退獎金卡片要退回的比例合計（送出時先回溯，該戶可再請） */
+function pendingRefundPct(unitId) {
+  return refunds.value.filter(e => e.unitId === unitId).reduce((s, e) => s + toNum(refundPlan(e).refundRatioPct), 0);
+}
+/** 扣掉本批退佣後的已請比例 */
+function effectiveClaimedPct(unitId) {
+  return Math.max(0, Math.round((claimedPctOf(unitId) - pendingRefundPct(unitId)) * 10) / 10);
+}
 /**
- * 卡片實際適用的已請比例：先扣掉同一戶所有拉回編輯原紀錄的比例（送出時作廢），
+ * 卡片實際適用的已請比例：先扣掉同一戶本批退佣與所有拉回編輯原紀錄的比例（送出時回溯／作廢），
  * 再加上同一戶其他卡片的本次比例（同批送出同戶多筆時，與後端 ledger 驗證一致）。
  */
 function entryClaimedPct(e) {
   const siblings = entries.value.filter(x => x.unitId === e.unitId);
   const replaced = siblings.reduce((s, x) => s + toNum(x.replaceRatioPct), 0);
   const others = siblings.filter(x => x !== e).reduce((s, x) => s + toNum(x.ratioPct), 0);
-  return Math.max(0, Math.round((claimedPctOf(e.unitId) - replaced + others) * 10) / 10);
+  return Math.max(0, Math.round((effectiveClaimedPct(e.unitId) - replaced + others) * 10) / 10);
 }
 
 // ---------- 戶別選擇 ----------
@@ -444,19 +519,25 @@ const eligibleUnits = computed(() =>
 const pickerUnits = computed(() => {
   const added = new Set(entries.value.map(e => e.unitId));
   return eligibleUnits.value.map(u => {
-    const claimed = claimedPctOf(u.unitId);
+    const refundPct = pendingRefundPct(u.unitId);          // 本批退佣／退獎金：送出時先回溯，已請畢者可再選
+    const claimed = effectiveClaimedPct(u.unitId);
     const full = claimed >= 100;
     const isAdded = added.has(u.unitId);
     const noCommission = u.noCommission === true; // 銷控「銷售資訊」勾選「不可請佣」：請佣與獎金皆不可加入
+    const remain = Math.round((100 - claimed) * 10) / 10;
     return {
       unitId: u.unitId,
       contractType: String(u.contractType || '').trim() || '未設定合約方式',
       buyerName: u.buyerName || '',
       claimedPct: claimed,
+      refundPct,
       noCommission,
       paymentRatio: paymentRatioPct(u, computeUnitFinance(u, props.parkings).dealTotal),
+      claimPct: isBonus.value ? unitClaimedPct(u.unitId) : null,   // 獎金編輯：該戶請佣已請合計，不足 100% 提醒
       disabled: full || isAdded || noCommission,
-      statusText: isAdded ? '已加入' : (noCommission ? '不可請佣' : (full ? '已請畢' : (claimed > 0 ? `尚餘 ${Math.round((100 - claimed) * 10) / 10}%` : ''))),
+      statusText: isAdded ? '已加入' : (noCommission ? '不可請佣'
+        : (refundPct > 0 ? `本批${refundLabel.value} ${refundPct}%・可再${isBonus.value ? '送' : '請'} ${remain}%`
+          : (full ? '已請畢' : (claimed > 0 ? `尚餘 ${remain}%` : '')))),
       _raw: u,
     };
   });
@@ -467,7 +548,7 @@ const PICKER_SORTS = [
   { key: 'paymentRatio', label: '繳款比例' },
   { key: 'claimedPct', label: '已請比例' },
 ];
-const pickerSort = ref({ key: 'unitId', dir: 'asc' });
+const pickerSort = ref({ key: 'paymentRatio', dir: 'desc' });   // 預設：繳款比例高→低
 function setPickerSort(key) {
   if (pickerSort.value.key === key) {
     pickerSort.value = { key, dir: pickerSort.value.dir === 'asc' ? 'desc' : 'asc' };
@@ -479,6 +560,8 @@ function compareUnitId(a, b) {
   return String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true });
 }
 function comparePickerUnits(a, b) {
+  // 不可選（已加入／已請畢／不可請佣）一律排在可選項目之後
+  if (!!a.disabled !== !!b.disabled) return a.disabled ? 1 : -1;
   const { key, dir } = pickerSort.value;
   const sign = dir === 'asc' ? 1 : -1;
   if (key === 'unitId') return sign * compareUnitId(a, b);
@@ -587,6 +670,7 @@ function addRefund(unitId) {
     requestDate: isBonus.value ? bonusDate.value : claimDate.value,
     reason: '買方解約',
     note: '',
+    refundRatioPct: null,   // 本次退回比例（null＝已勾選來源比例合計，即全額退回）
     includeKeep: false,
     refundBonus: isBonus.value,   // 退獎金：只追回獎金明細；請佣的退佣不追回獎金（各自獨立）
     candidates,
@@ -608,7 +692,7 @@ function refundPlan(e) {
 }
 
 function refundIssueCount(e) {
-  return (e.selectedIds.length ? 0 : 1) + (toNum(e.period) > 0 ? 0 : 1);
+  return (e.selectedIds.length ? 0 : 1) + (toNum(e.period) > 0 ? 0 : 1) + (e.selectedIds.length ? refundPlan(e).errors.length : 0);
 }
 
 // ---------- 建立戶別卡片 ----------
@@ -680,12 +764,20 @@ function addUnit(unitId, fromRecord = null, bonusRows = []) {
   const unit = props.households.find(u => u.unitId === unitId);
   if (!unit) return false;
   if (unit.noCommission === true && !fromRecord) return false; // 銷控標記「不可請佣」者不可加入（請佣與獎金皆同）
-  const previous = props.records.filter(r => r.unitId === unitId && r.status === 'active' && r.type !== 'refund' && !r.refundedBy)
+  // 沿用先前紀錄的價格來源／房屋底價時，排除已退佣與「本批正在退佣」的紀錄：
+  // 退戶後重新請佣（新買方／新價格）一律以銷控目前資料為準，不沿用退戶前的歷史紀錄
+  const refundingIds = new Set(refunds.value.flatMap(e => e.selectedIds || []));
+  const previous = props.records.filter(r => r.unitId === unitId && r.status === 'active' && r.type !== 'refund' && !r.refundedBy && !refundingIds.has(r.id))
     .slice().sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0) || Number(b.period) - Number(a.period))
     .find(r => r.snapshot?.priceSource);
   const priceSource = previous?.snapshot?.priceSource || defaultPriceSource(unit, plan.value);
   const manualFloor = previous?.snapshot?.manualFloor ?? defaultManualFloor(unit, computeUnitFinance(unit, props.parkings).parkFloor, priceSource);
-  const claimed = claimedPctOf(unitId);
+  const claimed = effectiveClaimedPct(unitId);   // 扣掉本批退佣後的已請比例
+
+  // 團獎案場：拉回編輯沿用原紀錄；新增戶別預設勾選目前所在建案（需在建案設定的團獎分組中）
+  const teamSiteKeys = Array.isArray(fromRecord?.teamSiteKeys)
+    ? [...fromRecord.teamSiteKeys]
+    : ((props.settings.teamGroups || []).some(g => g.key === props.projectId) ? [props.projectId] : []);
 
   const categories = {};
   enabledCategories.value.forEach(cat => {
@@ -711,6 +803,20 @@ function addUnit(unitId, fromRecord = null, bonusRows = []) {
         ensureProfile(personKey, pool[0].name, unit.payment_contract_date);
         allocations = evenAlloc([{ personKey, name: pool[0].name }]);
       }
+    } else if (cat.mode === 'team' && teamSiteKeys.length) {
+      // 團隊類別：依預設勾選的團獎案場 + 簽約日進退場資格帶入人員（與卡片切換案場的邏輯相同）
+      const persons = props.personnel.filter(p => {
+        const { segment: seg, matched } = segmentForDate(bonusSegments(p?.bonusConfig), unit.payment_contract_date);
+        const groups = Array.isArray(seg?.teamGroupKeys) ? seg.teamGroupKeys : [];
+        const inSite = groups.some(g => teamSiteKeys.includes(g));
+        const roleOk = (cat.rolePositions || []).length ? matchesRolePositions(p.positions, cat.rolePositions) : true;
+        return inSite && matched && roleOk;
+      }).map(p => {
+        const personKey = personKeyOf(p);
+        ensureProfile(personKey, p.name, unit.payment_contract_date);
+        return { personKey, name: p.name };
+      });
+      allocations = evenAlloc(persons);
     }
     categories[cat.key] = {
       key: cat.key,
@@ -720,6 +826,7 @@ function addUnit(unitId, fromRecord = null, bonusRows = []) {
       sourceCatKey: cat.sourceCatKey || '',   // 提撥類別的來源類別（其他類別為空）
       enabled: true,                          // 提撥類別：本戶是否提撥（工作台可關閉）
       splitMode: resolveSplitMode(props.settings, cat),   // 均分尾差處理（建案設定；隨紀錄快照）
+      allocMode: cat.allocMode === 'each' ? 'each' : 'even',   // 分配方式：均分／單獨（設定頁預設；卡片可改自訂）
       allocations,                            // 提撥類別不分配人員，恆為空
     };
   });
@@ -733,6 +840,7 @@ function addUnit(unitId, fromRecord = null, bonusRows = []) {
       categories[key].ratePct = toNum(rc.ratePct);
       if (rc.enabled !== undefined) categories[key].enabled = rc.enabled !== false;
       if (rc.splitMode) categories[key].splitMode = rc.splitMode;
+      if (rc.allocMode) categories[key].allocMode = rc.allocMode;
       if (rc.sourceCatKey) categories[key].sourceCatKey = rc.sourceCatKey;
     });
     (bonusRows || []).filter(b => b.commissionRecordId === fromRecord.id).forEach(b => {
@@ -745,7 +853,8 @@ function addUnit(unitId, fromRecord = null, bonusRows = []) {
       };
     });
   }
-  const basis = fromRecord || (isBonus.value ? props.claimRecords.filter(r => r.unitId === unitId && r.status === 'active' && r.type !== 'refund').slice().sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0) || toNum(b.period) - toNum(a.period))[0] : null);
+  // 獎金基準（佣金比例／介紹費／保留款）取該戶最近一筆「未退佣」的請佣紀錄；已退佣者不再沿用
+  const basis = fromRecord || (isBonus.value ? props.claimRecords.filter(r => r.unitId === unitId && r.status === 'active' && r.type !== 'refund' && !r.refundedBy).slice().sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0) || toNum(b.period) - toNum(a.period))[0] : null);
   const snap = (fromRecord || basis)?.snapshot || {};
 
   entries.value.push({
@@ -767,7 +876,7 @@ function addUnit(unitId, fromRecord = null, bonusRows = []) {
     claimBasisMethod: basisMethodOf(basis?.claimBasisMethod) || basisMethodOf(props.settings.claimBasisMethod) || 'lower',
     partyBFeeTiming: feeTimingOf(basis?.partyBFeeTiming) || feeTimingOf(props.settings.partyBFeeTiming) || 'before',
     bonusBasisMethod: basisMethodOf(fromRecord?.bonusBasisMethod) || basisMethodOf(basis?.bonusBasisMethod) || basisMethodOf(props.settings.bonusBasisMethod) || 'deal',
-    teamSiteKeys: Array.isArray(fromRecord?.teamSiteKeys) ? [...fromRecord.teamSiteKeys] : [],
+    teamSiteKeys,
     categories,
     collapsed: !fromRecord,
     replaceRecordId: fromRecord?.id || null,
@@ -835,12 +944,18 @@ const listRows = computed(() => {
     const over = entryClaimedPct(e) + toNum(e.ratioPct) > 100.0001;
     return {
       id: e.id, refund: false, unitId: e.unitId, buyer: e.unit?.buyerName || '',
+      contractType: String(e.unit?.contractType || '').trim(),
       sales: normalizeSalesNames(e.unit?.salesperson).join('、'),
       deposit: fmt(e.unit?.payment_deposit_date), contract: fmt(e.unit?.payment_contract_date),
       amount: isBonus.value ? r.people.reduce((s, p) => s + p.net, 0) : r.claim.thisClaim,
       amountLabel: isBonus.value ? '獎金實發' : '本次請佣',
       commPct: toNum(e.commPct), ratioPct: toNum(e.ratioPct), ratioLabel: isBonus.value ? '獎金' : '請佣',
       paymentRatio: paymentRatioPct(e.unit, e.finance?.transactionTotal),
+      // 獎金編輯：銷控備註提到介紹費／贈品 → 清單卡片紅色驚嘆號提醒（介紹費會影響獎金折數）
+      feeHint: isBonus.value && /介紹|贈品/.test(String(e.unit?.remarks || '')),
+      // 請佣比例不足 100% → 紅字提醒。獎金編輯的 ratioPct 是獎金比例，改看該戶請佣紀錄的已請合計
+      claimPct: isBonus.value ? unitClaimedPct(e.unitId) : toNum(e.ratioPct),
+      partialRatio: isBonus.value ? unitClaimedPct(e.unitId) < 100 : (toNum(e.ratioPct) > 0 && toNum(e.ratioPct) < 100),
       note: String(e.note || ''), issues, issueClass: over ? 'err' : issues ? 'warn' : '',
     };
   });
@@ -849,6 +964,7 @@ const listRows = computed(() => {
     const issues = refundIssueCount(e);
     rows.push({
       id: e.id, refund: true, unitId: e.unitId, buyer: e.unit?.buyerName || '',
+      contractType: String(e.unit?.contractType || '').trim(),
       sales: normalizeSalesNames(e.unit?.salesperson).join('、'),
       deposit: fmt(e.unit?.payment_deposit_date), contract: fmt(e.unit?.payment_contract_date),
       amount: isBonus.value ? pl.people.reduce((s, p) => s + p.net, 0) : pl.calc.thisClaim,
@@ -988,6 +1104,7 @@ function collectIssues() {
   const blocking = [];
   const warnings = [];
   const feeMiss = [];
+  const ratioMismatch = [];   // 獎金編輯：請佣不足 100% 但本次獎金比例 100%
 
   entries.value.forEach(e => {
     if (!Number.isInteger(Number(e.period)) || Number(e.period) < 1) blocking.push(`${e.unitId}：期別須為正整數`);
@@ -1012,15 +1129,26 @@ function collectIssues() {
       const c = e.categories[cat.key];
       if (c && c.allocations.length === 0 && toNum(c.ratePct) > 0) missCats.push(cat.label);
     });
-    if (missCats.length) warnings.push(`${e.unitId}：${missCats.join('、')} 尚未勾選人員`);
+    if (missCats.length) {
+      // 帶 entry 與類別，確認對話框可直接點選人員加入
+      const cats = enabledCategories.value.filter(cat => missCats.includes(cat.label));
+      warnings.push({ text: `${e.unitId}：${missCats.join('、')} 尚未勾選人員`, entry: e, cats });
+    }
     if (props.settings.teamGroups.length && e.teamSiteKeys.length === 0) {
       const hasTeamCat = enabledCategories.value.some(c => c.mode === 'team');
       if (hasTeamCat) warnings.push(`${e.unitId}：未勾選團獎案場`);
     }
 
     const note = String(e.unit.remarks || '');
+    // 以下兩項為紅底白字提醒（不擋流程）；帶 entry 與欄位名，確認對話框可直接輸入
     if (/介紹|贈品/.test(note) && toNum(e.partyAFee) === 0 && toNum(e.partyBFee) === 0) {
-      feeMiss.push(`${e.unitId}：${note}`);
+      feeMiss.push({ text: `${e.unitId}：${note}`, entry: e, field: 'partyAFee', label: `${props.settings.partyALabel}(元)` });
+    }
+    if (isBonus.value) {
+      const claimTotal = unitClaimedPct(e.unitId);
+      if (claimTotal < 100 && toNum(e.ratioPct) >= 100) {
+        ratioMismatch.push({ text: `${e.unitId}：請佣僅 ${claimTotal}%，本次獎金比例 100%`, entry: e, field: 'ratioPct', label: '本次獎金比例(%)', suggest: claimTotal });
+      }
     }
   });
 
@@ -1029,6 +1157,7 @@ function collectIssues() {
     if (!e.selectedIds.length) blocking.push(`${refundLabel.value} ${e.unitId}：未勾選要退回的原${isBonus.value ? '獎金' : '請佣'}紀錄`);
     if (!(toNum(e.period) > 0)) blocking.push(`${refundLabel.value} ${e.unitId}：期別須為正整數`);
     const pl = refundPlan(e);
+    if (e.selectedIds.length) pl.errors.forEach(err => blocking.push(`${refundLabel.value} ${e.unitId}：${err}`));
     const status = e.unit?.salesStatus_backend || '';
     const released = classifySalesStatus(status) === 'released';
     const bonusText = e.refundBonus ? `追回獎金 ${money(pl.people.reduce((s, p) => s + p.net, 0))} 元` : '不追回獎金';
@@ -1036,7 +1165,7 @@ function collectIssues() {
     refundNotes.push(`${e.unitId}（${status || '狀態不明'}）：${claimText}${bonusText}${released ? '' : '；⚠ 銷控狀態非解約／退戶'}`);
   });
 
-  return { blocking, warnings, feeMiss, refundNotes };
+  return { blocking, warnings, feeMiss, ratioMismatch, refundNotes };
 }
 
 // ---------- 送出前預覽 ----------
@@ -1226,20 +1355,94 @@ async function loadPreviewConfigs() {
 }
 
 function openPreview() {
-  const { blocking, warnings, feeMiss, refundNotes } = collectIssues();
+  const { blocking, warnings, feeMiss, ratioMismatch, refundNotes } = collectIssues();
   if (blocking.length) {
     blockingItems.value = blocking;
     blockingOpen.value = true;
     return;
   }
+  const critical = buildSections({ warnings, feeMiss, ratioMismatch, refundNotes }).filter(s => s.confirm);
+  if (critical.length) {
+    confirmSections.value = critical;
+    confirmOpen.value = true;
+    return;
+  }
+  enterPreview();
+}
+/** 預覽頁提示區段；items 為字串或 { text, entry, field, label }（紅底白字項目可於確認對話框直接輸入） */
+function buildSections({ warnings, feeMiss, ratioMismatch, refundNotes }) {
   const sections = [];
   if (refundNotes.length) sections.push({ title: `↩ ${refundLabel.value}戶別`, subtitle: isBonus.value ? '送出後原獎金紀錄標記「已退獎金」、已送比例回溯，可於本期已送出獎金清單作廢退獎金紀錄還原：' : '送出後原紀錄標記「已退佣」、已請比例回溯，可於歷期總覽作廢退佣紀錄還原：', items: refundNotes });
-  if (warnings.length) sections.push({ title: '⚠ 有項目尚未勾選人員', subtitle: '確認是否刻意留空：', items: warnings });
-  if (feeMiss.length) sections.push({ title: '🎁 可能有介紹費/贈品尚未填寫', subtitle: '備註提到介紹/贈品但金額為 0：', items: feeMiss });
-  previewWarnings.value = sections;
+  // confirm：進預覽前先以 dialog 確認（可直接處理或略過）；critical：紅底白字
+  if (warnings.length) sections.push({ title: '⚠ 有項目尚未勾選人員', subtitle: '可直接點選人員加入，或刻意留空繼續：', items: warnings, confirm: true });
+  if (feeMiss.length) sections.push({ title: '🎁 介紹費/贈品尚未填寫', subtitle: '備註提到介紹/贈品但金額為 0，可直接填入或略過：', items: feeMiss, confirm: true, critical: true });
+  if (ratioMismatch.length) sections.push({ title: '⚠ 請佣不足 100% 但獎金比例 100%', subtitle: '可直接改比例或維持 100% 繼續：', items: ratioMismatch, confirm: true, critical: true });
+  return sections;
+}
+/** 確認對話框按「繼續預覽」後進入預覽（對話框內若已填值，預覽提示會重新計算） */
+function confirmPreview() {
+  confirmOpen.value = false;
+  enterPreview();
+}
+function enterPreview() {
+  const { warnings, feeMiss, ratioMismatch, refundNotes } = collectIssues();
+  previewWarnings.value = buildSections({ warnings, feeMiss, ratioMismatch, refundNotes });
   previewDocType.value = props.mode;
   previewOpen.value = true;
   loadPreviewConfigs();
+}
+/** 確認對話框內直接輸入：介紹費為非負整數元；獎金比例 0～100，並依卡片規則寫回 entry */
+function setConfirmValue(item, v) {
+  let n = Number(v);
+  if (!Number.isFinite(n) || n < 0) n = 0;
+  if (item.field === 'ratioPct') n = Math.min(100, Math.round(n * 10) / 10);
+  else n = Math.round(n);
+  item.entry[item.field] = n;
+}
+/**
+ * 確認對話框「尚未勾選人員」：某戶某類別的候選人員（與卡片「獎金人員與分配」候選相同）
+ * 預設人員 → 只列預設人員；依職務 → 職務符合者；團隊 → 團獎職務符合者（附進退場提示）；個人 → 銷售職務者＋本戶銷售
+ */
+function categoryCandidates(e, cat) {
+  const contractDate = e.unit?.payment_contract_date;
+  const defaultPersons = categoryDefaultPersons(cat, props.personnel);
+  if (defaultPersons.length) return defaultPersons.map(dp => ({ personKey: dp.personKey, name: dp.name, isExternal: dp.isExternal, rates: dp.rates, hint: '預設人員' }));
+  if (cat.mode === 'role') {
+    return props.personnel.filter(p => matchesRolePositions(p.positions, cat.rolePositions)).map(p => ({ personKey: personKeyOf(p), name: p.name, hint: '' }));
+  }
+  if (cat.mode === 'team') {
+    const roleOk = p => ((cat.rolePositions || []).length ? matchesRolePositions(p.positions, cat.rolePositions) : (p.positions || []).some(pos => ['專案', '副專', '銷售'].some(r => String(pos).includes(r))));
+    return props.personnel.filter(roleOk).map(p => {
+      const { matched } = segmentForDate(bonusSegments(p?.bonusConfig), contractDate);
+      return { personKey: personKeyOf(p), name: p.name, hint: matched ? '' : '資格不符' };
+    });
+  }
+  const unitSales = normalizeSalesNames(e.unit?.salesperson);
+  const list = props.personnel.filter(p => (p.positions || []).some(pos => String(pos).includes('銷售')))
+    .map(p => ({ personKey: personKeyOf(p), name: p.name, hint: unitSales.includes(p.name) ? '本戶銷售' : '' }));
+  unitSales.forEach(nm => { if (!list.some(o => o.name === nm)) list.push({ personKey: `ext:${nm}`, name: nm, isExternal: true, hint: '本戶銷售' }); });
+  return list;
+}
+function isPersonInCategory(e, catKey, personKey) {
+  return (e.categories[catKey]?.allocations || []).some(a => a.personKey === personKey);
+}
+/** 確認對話框點選人員：加入／移除該類別分配，並依目前分配方式維持均分（鎖定額不動） */
+function togglePersonInCategory(e, catKey, cand) {
+  const cat = e.categories[catKey];
+  if (!cat) return;
+  const idx = cat.allocations.findIndex(a => a.personKey === cand.personKey);
+  if (idx >= 0) cat.allocations.splice(idx, 1);
+  else {
+    ensureProfile(cand.personKey, cand.name, e.unit?.payment_contract_date, cand.rates || null);
+    cat.allocations.push({
+      personKey: cand.personKey, name: cand.name,
+      sourceProjectId: props.projectId, sourceProjectName: props.projectName,
+      isExternal: !!cand.isExternal, mode: 'pct', sharePct: 0, lockedAmount: null,
+    });
+  }
+  const pcts = cat.allocations.filter(a => a.mode !== 'locked');
+  const shares = evenShares(pcts.length);
+  pcts.forEach((a, i) => { a.sharePct = shares[i]; });
 }
 
 async function doSubmit() {
@@ -1283,6 +1486,7 @@ async function doSubmit() {
       requestDate: e.requestDate,
       reason: String(e.reason || ''),
       note: String(e.note || '').trim(),
+      refundRatioPct: e.refundRatioPct ?? null,
       includeKeep: !!e.includeKeep,
       refundBonus: isBonus.value,
       sourceRecordIds: [...e.selectedIds],
@@ -1362,6 +1566,14 @@ defineExpose({ hasDraft: computed(() => entries.value.length > 0 || refunds.valu
 .list-row .dot.err { background: #c62828; }
 .list-row .main { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
 .list-row .u { font-weight: 700; }
+/* 紅底白字提醒（進預覽前確認對話框與預覽頁共用） */
+.critical-alert { color: #fff !important; font-weight: 700; }
+.critical-alert :deep(.v-alert__content) { color: #fff; }
+.critical-alert .confirm-input { max-width: 320px; }
+.opacity-70 { opacity: .7; }
+.critical-alert .confirm-input :deep(input), .critical-alert .confirm-input :deep(.v-label), .critical-alert .confirm-input :deep(.v-text-field__suffix) { color: #222; font-weight: 500; }
+/* 紅色驚嘆號提醒（左側清單與新增戶別選單共用） */
+.fee-mark { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 700; color: #c62828; }
 .list-row .b { font-size: 12px; color: #66707f; }
 .list-row .note-mark { font-size: 11px; color: #8a5a00; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-row .amt { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }

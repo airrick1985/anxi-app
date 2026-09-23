@@ -76,6 +76,7 @@ export function draftClaimRecord({ entry, result, projectId, planId, plan, creat
       salesStatus: unit.salesStatus_backend || '',
       remarks: unit.remarks || '',
       dealTotal: finance.dealTotal,
+      transactionTotal: finance.transactionTotal,   // 原成交總價（房屋成交＋車位成交），與請佣採用價格分開記錄
       totalFloor: finance.totalFloor,
       spread: finance.spread,
       houseDeal: finance.houseDeal,

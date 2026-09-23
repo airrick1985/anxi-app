@@ -6,7 +6,7 @@ import { periodPersonNotes, personNoteHistory } from './commissionPeriodBonus';
  */
 
 import {
-  toNum, money, toMinguo, toMinguoYM, fillPattern, formatDateTW,
+  toNum, money, toMinguo, toMinguoYM, fillPattern, formatDateTW, pctText,
 } from '@/utils/commissionCalculation';
 
 // ================= 檔名：統一加上建案名 =================
@@ -46,7 +46,7 @@ export const CLAIM_COLUMNS = [
   { key: 'spread',     title: '溢差價(萬)',      width: 60, numFmt: '#,##0', sum: true, get: r => toNum(r.snapshot?.spread) },
   { key: 'feeWan',     title: '介紹費(萬)',      width: 68, numFmt: '0.0',   sum: true, get: r => toNum(r.calc?.feeWan) },
   { key: 'realSpread', title: '實際溢差價(萬)',  width: 70, numFmt: '0.0',   sum: true, get: r => toNum(r.calc?.realSpread) },
-  { key: 'commPct',    title: '佣金比例(%)',     width: 120, align: 'center', get: r => `${toNum(r.commPct).toFixed(1)}%` },
+  { key: 'commPct',    title: '佣金比例(%)',     width: 120, align: 'center', get: r => `${pctText(r.commPct)}%` },
   { key: 'realClaim',  title: '實際請領金額(元)', width: 100, numFmt: '#,##0', sum: true, get: r => toNum(r.calc?.realClaim) },
   // 退佣紀錄（type: 'refund'）：保留款／本次請佣以紀錄存值為準（保留款抵銷、退回金額依「含／不含保留款」決定），不依版型保留款％重算
   { key: 'keep',       title: '保留款',          width: 100, numFmt: '#,##0', sum: true, get: (r, i, ctx) => (isRefundRecord(r) ? toNum(r.calc?.claimKeep) : Math.round(toNum(r.calc?.realClaim) * ctx.keepPct / 100)), headerSub: ctx => `${ctx.keepPct}%` },
@@ -197,7 +197,7 @@ export function buildClaimModel(records, opts) {
 
 // ================= 獎金表 model =================
 function ratioKey(ratioPct) {
-  return String(Math.round(toNum(ratioPct) * 10) / 10);
+  return pctText(ratioPct);   // 依來源精度（不四捨五入到一位）
 }
 
 function firstMinguoYM(records) {
@@ -229,7 +229,7 @@ export function classifyCategories(settings) {
   cats.forEach(c => {
     if (c.mode === 'handover') handover.push(c);
     else if (c.mode === 'individual') indiv.push(c);
-    else if (c.mode === 'team' || String(c.label).includes('團獎')) team.push(c);
+    else if (c.mode === 'team' || String(c.label).trim() === '銷售團獎') team.push(c);   // 名稱只認「銷售團獎」；其他含「團獎」的類別（如專案團獎）獨立列示
     else if ((c.rolePositions || []).some(r => mgmtRoles.some(m => String(r).includes(m)))) mgmt.push(c);
     else others.push(c);
   });
@@ -356,17 +356,46 @@ export function buildBonusModel(opts) {
 
       // 管理職（下段左側，銷售日期與項目欄之間）：以「實際領到管理類別獎金」歸位，
       // 沒領管理類別但職務為主委／副總／輔導者亦列左側；其餘有獎金者列右側（項目欄右側）
+      // 同一人同時領管理類別與業務類別（個獎／團獎／其他類別，如輔導專案兼專案）時，左右各一欄：
+      // 左側只放管理類別金額，右側放其餘類別金額；保留／稅／健保依各自小計按有效比例拆分
       const left = [], right = [];
+      const isMgmtKey = k => cls.mgmt.some(c => c.key === k);
+      const otherKeys = cls.others.map(c => c.key);
+      const partOf = (a, keepKey) => {
+        const byCat = {};
+        Object.keys(a.byCat).forEach(k => { if (keepKey(k)) byCat[k] = a.byCat[k]; });
+        const sub = Object.values(byCat).reduce((s, v) => s + toNum(v), 0);
+        const ratio = a.sub ? sub / a.sub : 0;
+        const kr = a.subDisc ? a.keepDisc / a.subDisc : 0;
+        const tr = a.subDisc ? a.taxDisc / a.subDisc : 0;
+        const nr = a.subDisc ? a.nhiDisc / a.subDisc : 0;
+        const p = {
+          ...a, byCat, sub,
+          indiv: keepKey('__nonMgmt') ? a.indiv : 0,
+          team: keepKey('__nonMgmt') ? a.team : 0,
+          subDisc: Math.round(a.subDisc * ratio), keepDisc: Math.round(a.keepDisc * ratio),
+          taxDisc: Math.round(a.taxDisc * ratio), nhiDisc: Math.round(a.nhiDisc * ratio),
+        };
+        p.keep = Math.round(sub * kr); p.tax = Math.round(sub * tr); p.nhi = Math.round(sub * nr);
+        p.net = sub - p.keep - p.tax - p.nhi;
+        p.netDisc = p.subDisc - p.keepDisc - p.taxDisc - p.nhiDisc;
+        return p;
+      };
       Object.values(agg).forEach(a => {
         const mgmtAmounts = {};
         let mgmtSum = 0;
         cls.mgmt.forEach(c => { const v = Math.round(toNum(a.byCat[c.key])); mgmtAmounts[c.key] = v; mgmtSum += v; });
+        const otherSum = Math.round(a.sub) - mgmtSum;                                          // 個獎＋團獎＋其他類別
+        const otherCatSum = otherKeys.reduce((s, k) => s + Math.round(toNum(a.byCat[k])), 0);  // 其他類別（右側獨立列，左側無列可放）
         const roleCat = isMgmtRole(a.role);
-        if (mgmtSum !== 0 || (roleCat && a.sub !== 0)) {
-          const firstCat = cls.mgmt.find(c => mgmtAmounts[c.key] !== 0);
-          a.mgmtCat = firstCat ? mgmtCatOf(firstCat) : roleCat;
-          a.mgmtAmounts = mgmtAmounts;
-          left.push(a);
+        const firstCat = cls.mgmt.find(c => mgmtAmounts[c.key] !== 0);
+        const pushLeft = x => { x.mgmtCat = firstCat ? mgmtCatOf(firstCat) : roleCat; x.mgmtAmounts = mgmtAmounts; left.push(x); };
+        if (mgmtSum !== 0 && otherSum !== 0) {
+          pushLeft(partOf(a, isMgmtKey));
+          right.push(partOf(a, k => k === '__nonMgmt' || !isMgmtKey(k)));
+        } else if (mgmtSum !== 0 || (roleCat && a.sub !== 0 && otherCatSum === 0)) {
+          // 只領管理類別；或管理職只領個獎／團獎（左側 0／1 列可呈現）
+          pushLeft(a);
         } else if (a.sub !== 0) right.push(a);
       });
       // 排序：已儲存的人員欄順序優先（可拖曳）；未排序者管理職依主委→副總→輔導，再依人員名單

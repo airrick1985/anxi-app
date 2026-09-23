@@ -499,3 +499,81 @@ test('請佣與獎金作廢各自獨立：作廢請佣不動獎金明細；獎�
   assert.equal(h.rows.get(`commissionRecords/${claim.results[0].recordId}`).status, 'active');
   assert.equal(h.ledger('package'), 100);
 });
+
+test('同批退佣＋重新請佣同一戶：先回溯再驗證，已請畢戶別可再請', async () => {
+  const h = harness();
+  const first = await h.submit('package');
+  assert.equal(h.ledger('package'), 100);
+  const res = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim',
+    refunds: [{ unitId, period: 2, sourceRecordIds: [first.results[0].recordId], includeKeep: true }],
+    entries: [{ ...h.entry, period: 2 }] });
+  assert.ok(res.ok);
+  assert.equal(h.ledger('package'), 100);
+  assert.equal(h.rows.get(`commissionRecords/${first.results[0].recordId}`).refundedBy !== undefined, true);
+});
+
+test('已請比例以有效紀錄重算：先作廢原請佣期再作廢匯入退佣期，ledger 歸零且可重新匯入', async () => {
+  const h = harness();
+  const data = { planId: 'package', claims: [
+    { unitId, period: 5, ratioPct: 100 },
+    { unitId, period: 7, ratioPct: -100, type: 'refund', refundRatioPct: 100 },
+  ], bonuses: [] };
+  await h.call('importCommissionHistory', data);
+  assert.equal(h.ledger('package'), 0);
+  await h.call('voidCommissionPeriod', { planId: 'package', period: 5, voidReason: '測試' });
+  assert.equal(h.ledger('package'), 0);
+  // 舊邏輯：作廢退佣期會把 100% 加回 ledger，實際上已無有效紀錄 → 重新匯入被擋「超過 100%」
+  await h.call('voidCommissionPeriod', { planId: 'package', period: 7, voidReason: '測試' });
+  assert.equal(h.ledger('package'), 0);
+  const again = await h.call('importCommissionHistory', { planId: 'package', claims: [{ unitId, period: 5, ratioPct: 100 }], bonuses: [] });
+  assert.ok(again.ok);
+  assert.equal(h.ledger('package'), 100);
+});
+
+test('部分退佣：退回比例可小於來源合計，金額與獎金按比例縮減，比例回溯後可再請剩餘', async () => {
+  const h = harness();
+  const first = await h.submit('package');
+  const src = h.rows.get(`commissionRecords/${first.results[0].recordId}`);
+  const res = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim',
+    refunds: [{ unitId, period: 2, sourceRecordIds: [first.results[0].recordId], includeKeep: true, refundRatioPct: 40 }] });
+  assert.ok(res.ok);
+  assert.equal(h.ledger('package'), 60);
+  const refund = h.rows.get(`commissionRecords/${res.results[0].recordId}`);
+  assert.equal(refund.ratioPct, -40);
+  assert.equal(refund.refundRatioPct, 40);
+  assert.equal(refund.calc.realClaim, -Math.round(src.calc.realClaim * 0.4));
+  assert.equal(refund.snapshot.dealTotal, -Math.round(src.snapshot.dealTotal * 0.4 * 10000) / 10000);
+  // 超過來源合計 → 擋下；剩餘 40% 可再請
+  await assert.rejects(h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim',
+    refunds: [{ unitId, period: 3, sourceRecordIds: [first.results[0].recordId], refundRatioPct: 70 }] }), /退回比例|已退佣/);
+  const again = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim', entries: [{ ...h.entry, period: 3, ratioPct: 40 }] });
+  assert.ok(again.ok);
+  assert.equal(h.ledger('package'), 100);
+});
+
+test('獎金類別分配方式：單獨＝每人各得比例（池＝比例×人數）；均分＝人員平分整個比例', () => {
+  const finance = computePlanFinance(unit, [parking], DEFAULT_PLANS[0], { manualFloor: 3300 });
+  const people = [
+    { personKey: 'p1', name: '甲', mode: 'pct', sharePct: 50, lockedAmount: null },
+    { personKey: 'p2', name: '乙', mode: 'pct', sharePct: 50, lockedAmount: null },
+  ];
+  const base = { ratioPct: 100, commPct: 2.2, partyAFee: 0, partyBFee: 0, keepPct: 10 };
+  const run = allocMode => calc.calcUnitBonus(finance, {
+    ...base,
+    categories: { chairman: { ratePct: 0.1, mode: 'role', allocMode, allocations: people.map(p => ({ ...p })) } },
+  }, {});
+  const even = run('even');
+  const each = run('each');
+  assert.equal(calc.poolMultiplier({ allocMode: 'each', allocations: people }), 2);
+  assert.equal(calc.poolMultiplier({ allocMode: 'even', allocations: people }), 1);
+  assert.equal(calc.poolMultiplier({ allocMode: 'each', allocations: [] }), 1);
+  assert.ok(even.pools.chairman > 0);
+  assert.equal(each.pools.chairman, even.pools.chairman * 2);
+  const evenPer = even.categoryResults.chairman.amounts.p1;
+  assert.equal(each.categoryResults.chairman.amounts.p1, Math.round(even.pools.chairman));
+  assert.equal(each.categoryResults.chairman.amounts.p2, Math.round(even.pools.chairman));
+  assert.equal(evenPer, Math.round(even.pools.chairman * 0.5));
+  // 未設定 allocMode 的舊紀錄維持均分
+  const legacy = calc.calcUnitBonus(finance, { ...base, categories: { chairman: { ratePct: 0.1, mode: 'role', allocations: people.map(p => ({ ...p })) } } }, {});
+  assert.equal(legacy.pools.chairman, even.pools.chairman);
+});

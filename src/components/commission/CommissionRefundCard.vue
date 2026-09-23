@@ -1,22 +1,64 @@
 <template>
   <v-card class="mb-3 refund-card" :id="`comm-card-${entry.id}`" variant="outlined" :class="{ 'has-issue': issueCount > 0, 'is-expanded': isOpen, 'is-split': split }">
-    <!-- 標頭 -->
-    <div class="card-head d-flex align-center flex-wrap ga-2 px-4 py-2" :role="split ? undefined : 'button'" :tabindex="split ? undefined : 0" :aria-expanded="isOpen"
+    <!-- 標頭：比照請佣卡片（戶別 / 買方 / 銷售 / 小訂簽約 / 合約 / 備註 / 退回金額 / 完成度）＋ 數據列 -->
+    <div class="card-head d-flex align-center flex-wrap ga-2 px-4 py-3" :role="split ? undefined : 'button'" :tabindex="split ? undefined : 0" :aria-expanded="isOpen"
       @keydown.enter.self="!split && $emit('toggle')" @keydown.space.prevent.self="!split && $emit('toggle')" @click="!split && $emit('toggle')">
-      <v-icon v-if="!split" size="small" :class="{ 'rotate-collapsed': entry.collapsed }">mdi-chevron-down</v-icon>
-      <v-chip size="x-small" color="error" variant="flat">{{ isBonus ? '退獎金' : '退佣' }}</v-chip>
-      <span class="text-subtitle-1 font-weight-bold text-error">{{ entry.unitId }}</span>
-      <span class="text-body-2">{{ buyerName || '—' }}</span>
-      <v-chip size="x-small" :color="isReleased ? 'error' : 'default'" variant="tonal">{{ statusText || '—' }}</v-chip>
-      <v-chip size="x-small" variant="tonal" :color="contractTypeColor(entry.unit?.contractType)">{{ entry.unit?.contractType || '未設定合約方式' }}</v-chip>
-      <v-spacer></v-spacer>
-      <strong v-if="!isBonus" class="text-body-1">退回 {{ money(plan.calc.thisClaim) }} 元</strong>
-      <strong v-else class="text-body-1">追回獎金 {{ money(peopleTotals.net) }} 元</strong>
+      <div class="unit-toggle">
+        <v-icon v-if="!split" size="small" :class="{ 'rotate-collapsed': entry.collapsed }">mdi-chevron-down</v-icon>
+        <v-chip size="x-small" color="error" variant="flat">{{ isBonus ? '退獎金' : '退佣' }}</v-chip>
+        <strong>{{ entry.unitId }}</strong>
+        <span class="text-body-2">{{ buyerName || '—' }}</span>
+        <span class="text-body-2 text-medium-emphasis">銷售人員：{{ salesText || '未設定' }}</span>
+        <span class="head-dates text-caption text-medium-emphasis">
+          <span>小訂 <b>{{ depositDateText || '—' }}</b></span>
+          <span>簽約 <b>{{ contractDateText || '—' }}</b></span>
+        </span>
+        <v-chip size="x-small" variant="tonal" :color="contractTypeColor(entry.unit?.contractType)">{{ entry.unit?.contractType || '未設定合約方式' }}</v-chip>
+        <v-chip size="x-small" :color="isReleased ? 'error' : 'default'" variant="tonal">{{ statusText || '狀態不明' }}</v-chip>
+        <span v-if="entry.note" class="head-note" :title="entry.note"><v-icon size="x-small">mdi-note-text-outline</v-icon>{{ entry.note }}</span>
+      </div>
+      <span class="head-amount text-error"><small>{{ isBonus ? '追回獎金' : '退回' }} </small>{{ money(isBonus ? peopleTotals.net : plan.calc.thisClaim) }} <small>元</small></span>
       <v-chip v-if="entry.refundBonus && !isBonus" size="x-small" variant="tonal" color="default">追回獎金 {{ money(peopleTotals.net) }} 元</v-chip>
-      <v-chip v-if="issueCount" size="x-small" color="warning" variant="flat">
-        <v-icon start size="x-small">mdi-alert</v-icon>{{ issueCount }} 項待處理
-      </v-chip>
-      <v-btn icon="mdi-close" size="small" variant="text" color="error" title="移除此戶" @click.stop="$emit('remove')"></v-btn>
+      <span v-if="issueCount" class="text-caption text-warning">{{ issueCount }} 項待完成</span>
+      <span v-else class="text-caption text-medium-emphasis">已填妥</span>
+      <v-btn icon="mdi-close" size="small" variant="text" class="remove-unit" title="移除此戶" @click.stop="$emit('remove')"></v-btn>
+      <dl class="finance-summary" :aria-label="`戶別${isBonus ? '退獎金' : '退佣'}數據`">
+        <div class="finance-metric">
+          <dt>成交總價<span class="metric-unit">萬</span></dt>
+          <dd>{{ fmtWan(sourceSnap.dealTotal) }}</dd>
+          <span class="metric-note">{{ sourceLabel }}</span>
+        </div>
+        <div class="finance-metric">
+          <dt>總底價<span class="metric-unit">萬</span></dt>
+          <dd>{{ fmtWan(sourceSnap.totalFloor) }}</dd>
+          <span class="metric-note">原紀錄快照</span>
+        </div>
+        <div class="finance-metric">
+          <dt>溢差價<span class="metric-unit">萬</span></dt>
+          <dd :class="{ 'text-error': toNum(sourceSnap.spread) < 0 }">{{ fmtWan(sourceSnap.spread) }}</dd>
+          <span class="metric-note">成交總價－總底價</span>
+        </div>
+        <div v-if="!isBonus" class="finance-metric">
+          <dt>佣金比例<span class="metric-unit">%</span></dt>
+          <dd class="locked"><v-icon size="x-small" class="mr-1">mdi-lock-outline</v-icon>{{ plan.sources.length ? fmtWan(plan.commPct) : '—' }}</dd>
+          <span class="metric-note">依原紀錄固定，不可修改</span>
+        </div>
+        <div class="finance-metric">
+          <dt>{{ isBonus ? '本次退獎金' : '本次退佣' }}<span class="metric-unit">%</span></dt>
+          <dd class="ratio-input">
+            <v-text-field :model-value="entry.refundRatioPct ?? plan.fullRatioPct" :aria-label="`${entry.unitId} 本次退回比例(%)`"
+              type="number" step="0.1" min="0" :max="plan.fullRatioPct" variant="outlined" density="compact" hide-details color="error"
+              :error="ratioInvalid" :disabled="!entry.selectedIds.length" @update:model-value="onRefundRatioInput" @click.stop>
+              <template #append-inner>
+                <v-btn v-if="plan.partial" size="x-small" variant="text" color="error" @click.stop="entry.refundRatioPct = null">全部</v-btn>
+              </template>
+            </v-text-field>
+          </dd>
+          <span class="metric-note" :class="{ 'text-error': ratioInvalid }">
+            {{ ratioInvalid ? `須介於 0～${fmtWan(plan.fullRatioPct)}%` : (plan.partial ? `部分退回・來源合計 ${fmtWan(plan.fullRatioPct)}%` : `已勾選 ${entry.selectedIds.length} 筆原紀錄，全額退回`) }}
+          </span>
+        </div>
+      </dl>
     </div>
 
     <v-expand-transition>
@@ -165,7 +207,8 @@
 <script setup>
 import { contractTypeColor } from '@/utils/contractTypeColor';
 import { computed, watch } from 'vue';
-import { money, toNum, isHandoverCategory } from '@/utils/commissionCalculation';
+import { money, toNum, isHandoverCategory, formatDateTW } from '@/utils/commissionCalculation';
+import { normalizeSalesNames } from '@/utils/commissionDraftRecords';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
 import { buildRefundEntryPlan } from './refundEntry';
 
@@ -182,6 +225,22 @@ const isBonus = computed(() => props.mode === 'bonus');
 const isOpen = computed(() => props.split || !props.entry.collapsed);
 
 const buyerName = computed(() => props.entry.unit?.buyerName || props.entry.candidates[0]?.snapshot?.buyerName || '');
+const salesText = computed(() => normalizeSalesNames(props.entry.unit?.salesperson ?? props.entry.candidates[0]?.snapshot?.salesperson).join('、'));
+const depositDateText = computed(() => formatDateTW(props.entry.unit?.payment_deposit_date) || props.entry.candidates[0]?.snapshot?.depositDate || '');
+const contractDateText = computed(() => formatDateTW(props.entry.unit?.payment_contract_date) || props.entry.candidates[0]?.snapshot?.contractDate || '');
+/** 數據列：以最新一筆已勾選原紀錄的快照為準（未勾選時取候選第一筆），金額為原值（正數） */
+const sourceSnap = computed(() => {
+  const picked = props.entry.candidates.filter(r => props.entry.selectedIds.includes(r.id));
+  const list = picked.length ? picked : props.entry.candidates;
+  const latest = list.slice().sort((a, b) => toNum(b.period) - toNum(a.period))[0];
+  return latest?.snapshot || {};
+});
+const PRICE_SOURCE_TEXT = { transaction: '原成交總價，含車位', splitHouse: '配套房屋總價，含車位', package: '配套價格，不計車位' };
+const sourceLabel = computed(() => PRICE_SOURCE_TEXT[sourceSnap.value.priceSource] || '原紀錄快照');
+function fmtWan(v) {
+  if (v === undefined || v === null || v === '') return '—';
+  return Number(toNum(v).toFixed(4)).toLocaleString('zh-TW', { maximumFractionDigits: 4 });
+}
 const statusText = computed(() => props.entry.unit?.salesStatus_backend || '');
 const isReleased = computed(() => classifySalesStatus(statusText.value) === 'released');
 
@@ -239,8 +298,15 @@ function bonusNetOf(recordId) {
   return props.bonusRecords.filter(b => b.commissionRecordId === recordId && b.status !== 'voided').reduce((s, b) => s + toNum(b.net), 0);
 }
 
-// 來源變動 → 逐人調整重置為原數
-watch(() => props.entry.selectedIds.slice(), () => { props.entry.people = null; });
+// 來源變動 → 逐人調整重置為原數、退回比例回到全額
+watch(() => props.entry.selectedIds.slice(), () => { props.entry.people = null; props.entry.refundRatioPct = null; });
+const ratioInvalid = computed(() => props.entry.selectedIds.length > 0 && plan.value.errors.some(e => e.includes('退回比例')));
+function onRefundRatioInput(v) {
+  const s = String(v ?? '').trim();
+  if (s === '') { props.entry.refundRatioPct = null; return; }
+  const n = Number(s);
+  props.entry.refundRatioPct = Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+}
 
 /** 逐人調整：第一次修改時由原數具體化 */
 function materialize() {
@@ -282,6 +348,30 @@ function removePerson(personKey) {
 .refund-card.has-issue { border-color: #fb8c00; }
 .card-head { cursor: pointer; background: #fff; border-radius: 12px 12px 0 0; }
 .refund-card.is-split .card-head { cursor: default; }
+.unit-toggle { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 1; text-align: left; min-width: 180px; padding: 4px 0; }
+.head-dates { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; font-variant-numeric: tabular-nums; }
+.head-dates b { font-weight: 600; color: #334155; }
+.head-note { display: inline-flex; align-items: center; gap: 4px; max-width: 260px; padding: 1px 8px; border-radius: 999px; background: #fff7e0; color: #8a5a00; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.head-amount { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.head-amount small { font-size: 12px; font-weight: 400; }
+.finance-summary { flex-basis: 100%; width: 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 4px; margin-bottom: 0; }
+.finance-metric { min-width: 0; }
+.finance-metric dt { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: #555; }
+.metric-unit { font-size: 11px; color: #666; }
+.finance-metric dd { margin: 2px 0; font-size: 22px; line-height: 1.25; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.metric-note { display: block; font-size: 11px; color: #666; line-height: 1.4; }
+.finance-metric dd.locked { color: #64748b; display: flex; align-items: center; }
+.finance-metric dd.ratio-input { margin-top: 4px; margin-bottom: 4px; }
+.finance-metric dd.ratio-input :deep(input) { font-size: 16px; font-weight: 700; }
+.finance-metric dd.ratio-input :deep(.v-field__append-inner) { padding-top: 0; align-items: center; }
+@media (max-width: 600px) {
+  .card-head { display: grid !important; grid-template-columns: 1fr auto; }
+  .unit-toggle { grid-column: 1; grid-row: 1; min-width: 0; }
+  .remove-unit { grid-column: 2; grid-row: 1; }
+  .head-amount { grid-column: 1; grid-row: 2; }
+  .finance-summary { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; padding-top: 8px; }
+  .finance-metric dd { font-size: 19px; }
+}
 .refund-card.is-split { margin-bottom: 0 !important; }
 .step-h { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .step-no {

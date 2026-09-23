@@ -1,7 +1,7 @@
 import { computeUnitFinance } from './commissionCalculation';
 import { defaultPriceSource } from './commissionPlans';
 
-const MONEY_KEYS = ['車位成交總價', '車位底價', '配套價格', '成交總價(含車)', '房屋成交價', '配套底價', '總底價', '房屋底價', '房屋總底價', '請佣總價(含車)', '配套房屋總價', '配套房屋總價(含車)', '溢差價'];
+const MONEY_KEYS = ['成交總價', '車位成交總價', '車位底價', '配套價格', '成交總價(含車)', '房屋成交價', '配套底價', '總底價', '房屋底價', '房屋總底價', '請佣總價(含車)', '配套房屋總價', '配套房屋總價(含車)', '溢差價'];
 
 // 匯入先採檔案的歷史數字，缺少成交價才讀銷控；拆價底價不可回填目前房屋底價。
 // 歷史金額與目前銷控或彼此加總不一致時僅列警告提醒，不阻擋匯入。
@@ -68,12 +68,15 @@ export function parseImportFinance(row, unit, parkings, plan, opts = {}) {
     const totalFloor = number(['總底價']);
     finance.parkDeal = parkDeal ?? original.parkDeal;
     finance.parkFloor = parkFloor ?? original.parkFloor;
-    finance.dealTotal = total ?? (houseDeal !== null ? houseDeal + finance.parkDeal : priceSource === 'splitHouse' ? Number(unit.price_package_deal) : original.houseDeal + finance.parkDeal);
-    finance.houseDeal = houseDeal ?? (finance.dealTotal - finance.parkDeal);
+    // 配套房屋總價來源：請佣總價＝配套房屋總價（含車位），檔案的「房屋成交價」為原成交房屋價，只用於成交總價，不參與請佣價格
+    const splitHouse = priceSource === 'splitHouse';
+    finance.dealTotal = total ?? (splitHouse ? Number(unit.price_package_deal) : houseDeal !== null ? houseDeal + finance.parkDeal : original.houseDeal + finance.parkDeal);
+    finance.houseDeal = splitHouse ? finance.dealTotal - finance.parkDeal : (houseDeal ?? (finance.dealTotal - finance.parkDeal));
+    if (splitHouse && houseDeal !== null) finance.originalHouseDeal = houseDeal;
     if (priceSource === 'splitHouse' && houseFloor === null && totalFloor === null) errors.push('請填寫歷史房屋底價（萬，不含車位），或總底價');
     finance.houseFloor = houseFloor ?? (totalFloor !== null ? totalFloor - finance.parkFloor : priceSource === 'splitHouse' ? 0 : original.houseFloor);
     finance.totalFloor = totalFloor ?? (finance.houseFloor + finance.parkFloor);
-    if (differ(finance.dealTotal, finance.houseDeal + finance.parkDeal)) {
+    if (!splitHouse && differ(finance.dealTotal, finance.houseDeal + finance.parkDeal)) {
       warnings.push(`請佣總價 ${fmt(finance.dealTotal)} 與房屋成交價＋車位成交價 ${fmt(finance.houseDeal + finance.parkDeal)} 不一致，以請佣總價計算`);
     }
     if (differ(finance.totalFloor, finance.houseFloor + finance.parkFloor)) {
@@ -87,5 +90,17 @@ export function parseImportFinance(row, unit, parkings, plan, opts = {}) {
   if (!Number.isFinite(finance.dealTotal) || !(finance.dealTotal > 0) || finance.houseDeal < 0) errors.push('請佣價格須大於 0，且不得低於車位成交價');
   if (finance.houseFloor < 0) errors.push('房屋底價不得為負數，請確認總底價與車位底價');
   finance.spread = number(['溢差價'], true) ?? (finance.dealTotal - finance.totalFloor);
+  // 成交總價（房屋成交＋車位成交，原始成交金額）：與請佣總價（請佣採用的價格）分開記錄；
+  // 未填時：原成交總價來源＝請佣總價；配套房屋總價／配套價格來源＝當時銷控原成交總價
+  const transactionTotal = number(['成交總價']);
+  const fileOriginal = finance.originalHouseDeal !== undefined ? finance.originalHouseDeal + finance.parkDeal : null;   // 配套來源：檔案房屋成交價＋車位成交價
+  finance.transactionTotal = transactionTotal ?? (priceSource === 'transaction' ? finance.dealTotal : (fileOriginal ?? original.dealTotal));
+  delete finance.originalHouseDeal;
+  if (transactionTotal !== null && priceSource === 'transaction' && differ(transactionTotal, finance.dealTotal)) {
+    warnings.push(`成交總價 ${fmt(transactionTotal)} 與請佣總價 ${fmt(finance.dealTotal)} 不同（原成交總價來源兩者應相同），以各自填寫值記錄`);
+  }
+  if (transactionTotal !== null && fileOriginal !== null && differ(transactionTotal, fileOriginal)) {
+    warnings.push(`成交總價 ${fmt(transactionTotal)} 與房屋成交價＋車位成交價 ${fmt(fileOriginal)} 不一致，以成交總價記錄`);
+  }
   return { ...finance, errors, warnings };
 }

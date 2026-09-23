@@ -9,7 +9,7 @@
  */
 
 import * as XLSX from 'xlsx-js-style';
-import { toNum, money } from '@/utils/commissionCalculation';
+import { toNum, money, pctText } from '@/utils/commissionCalculation';
 import { applyPrintSetup, NARROW_MARGINS } from './xlsxPrintSetup';
 
 // ================= Grid 基礎 =================
@@ -162,7 +162,7 @@ export function buildClaimGrid(model) {
     g.set(rNote0, valCol, model.summary.baseSum, sumStyle);       g.set(rNote0, labCol, '萬元', labStyle);
     g.set(rNote0 + 1, valCol, model.summary.thisClaimSum, sumStyle); g.set(rNote0 + 1, labCol, '元', labStyle);
     g.set(rNote0 + 2, valCol, model.summary.cash, sumStyle);      g.set(rNote0 + 2, labCol, '現金', labStyle);
-    g.set(rNote0 + 3, valCol, model.summary.bill, sumStyle);      g.set(rNote0 + 3, labCol, '一個期票支付', labStyle);
+    g.set(rNote0 + 3, valCol, model.summary.bill, sumStyle);      g.set(rNote0 + 3, labCol, '30天期票支付', labStyle);
   }
   for (let rr = rNote0; rr < rNote0 + 4; rr++) g.rowHeights[rr] = 36;
 
@@ -187,7 +187,7 @@ function uniformKeepPctText(people) {
       .map(a => (a.subDisc ? Math.round((a.keepDisc / a.subDisc) * 10000) / 100 : 0))
       .filter(v => v > 0)
   )];
-  return rates.length === 1 ? `　${rates[0].toFixed(2)}%` : '';
+  return rates.length === 1 ? `　${pctText(rates[0])}%` : '';
 }
 
 function personHeaderName(p, model) {
@@ -361,7 +361,7 @@ export function buildBonusGroupGrid(group, model) {
   const leftLabels = [];
   leftLabels[0] = group.saleYM || '';
   leftLabels[1] = `總銷　${money(group.topTotal.after || 0)}`;
-  group.mgmtCats.forEach((c, i) => { leftLabels[2 + i] = `${c.label}　${toNum(c.ratePct).toFixed(2)}%`; });
+  group.mgmtCats.forEach((c, i) => { leftLabels[2 + i] = `${c.label}　${pctText(c.ratePct)}%`; });
   for (let k = 0; k < preRows; k++) {
     g.set(rRow(k), 0, leftLabels[k] || '', { align: 'center', border: true });
     g.merge(rRow(k), 0, rRow(k), 1);
@@ -412,7 +412,7 @@ export function buildBonusGroupGrid(group, model) {
 
   // 右側項目標籤 + 業務人員金額
   group.rightRows.forEach((rr, k) => {
-    g.set(rRow(k), RLAB, `${rr.label} ${rr.rateText ?? `${toNum(rr.ratePct).toFixed(2)}%`}`, { align: 'center', border: true, sz: 10 });
+    g.set(rRow(k), RLAB, `${rr.label} ${rr.rateText ?? `${pctText(rr.ratePct)}%`}`, { align: 'center', border: true, sz: 10 });
   });
   g.set(rRow(RI.sub), RLAB, '合計', { bold: true, align: 'center', border: true });
   if (group.isYoufu) g.set(rRow(RI.youfu), RLAB, group.youfuLabel, { bold: true, align: 'center', border: true, sz: 10 });
@@ -510,7 +510,7 @@ function personDetailColumns(model) {
   model.categories.forEach(c => {
     cols.push({
       key: `cat_${c.key}`, label: c.label, width: 74, numFmt: '#,##0', sum: true,
-      headerSub: `${toNum(c.ratePct).toFixed(2)}%`,   // 類別比例（建案設定 ratePct，單位 %）
+      headerSub: `${pctText(c.ratePct)}%`,   // 類別比例（建案設定 ratePct，單位 %）
       get: r => r.amounts[c.key], sumGet: t => t.amounts[c.key],
     });
   });
