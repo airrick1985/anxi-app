@@ -38,6 +38,10 @@
               <v-btn color="primary" @click="openBatchDialog()" prepend-icon="mdi-plus">新增批次</v-btn>
             </v-toolbar>
 
+            <p class="text-caption text-grey-darken-1 mb-3">
+              「客戶可見」控制整個預約項目的入口，同項目的所有批次共用此開關；切換後立即儲存，實際預約仍依批次開放時間。
+            </p>
+
             <div class="d-none d-md-block">
               <v-data-table :headers="batchHeaders" :items="processedBookingBatches" :loading="isBatchLoading"
                 :search="searchQuery" item-value="id" class="elevation-1">
@@ -98,6 +102,17 @@
                     {{ item.statusText }}
                   </v-chip>
                 </template>
+                <template v-slot:item.customerVisibility="{ item }">
+                  <v-switch
+                    :model-value="!isItemHiddenFromCustomer(item.bookingType)"
+                    :label="isItemHiddenFromCustomer(item.bookingType) ? '已對客戶隱藏' : '客戶可見'"
+                    :aria-label="`${item.bookingType}：客戶可見開關`"
+                    :loading="itemVisibilitySavingTitle === item.bookingType ? 'warning' : false"
+                    :disabled="itemVisibilitySaving || !item.bookingType"
+                    color="green" inset hide-details density="compact" class="text-no-wrap"
+                    @update:model-value="toggleItemVisibility(item.bookingType, $event)"
+                  />
+                </template>
                 <template v-slot:item.actions="{ item }">
                   <v-btn icon="mdi-eye" variant="text" color="info" size="small" class="mr-1"
                     @click="openPreviewDialog(item)"></v-btn>
@@ -127,6 +142,18 @@
                   </v-card-title>
                   <v-divider></v-divider>
                   <v-card-text class="py-2">
+                    <div class="mb-2">
+                      <div class="text-caption text-grey-darken-1">預約項目對外顯示</div>
+                      <v-switch
+                        :model-value="!isItemHiddenFromCustomer(item.bookingType)"
+                        :label="isItemHiddenFromCustomer(item.bookingType) ? '已對客戶隱藏' : '客戶可見'"
+                        :aria-label="`${item.bookingType}：客戶可見開關`"
+                        :loading="itemVisibilitySavingTitle === item.bookingType ? 'warning' : false"
+                        :disabled="itemVisibilitySaving || !item.bookingType"
+                        color="green" inset hide-details density="compact" class="text-no-wrap"
+                        @update:model-value="toggleItemVisibility(item.bookingType, $event)"
+                      />
+                    </div>
                     <div class="mb-2">
                       <div class="text-caption text-grey-darken-1">預約開放區間</div>
                       <div class="d-flex align-center">
@@ -1268,7 +1295,7 @@
                             {{ projectSettings.pageSettingsByItem[selectedBookingItemForSetting].visibleToCustomer !== false ? '客戶可以看到此預約項目' : '已對客戶隱藏此預約項目' }}
                           </span>
                           <span class="text-caption text-grey-darken-1 ml-3">
-                            關閉後，客戶在預約頁面將完全看不到此項目的入口（即使批次在開放期間）；切換後立即生效，不需按「儲存設定」。
+                            批次到達開放時間後，系統會在約 1 分鐘內自動開啟客戶可見；開放後仍可手動隱藏。切換後立即生效，不需按「儲存設定」。
                           </span>
                         </v-sheet>
 
@@ -3743,6 +3770,7 @@ import { BOOKING_FIELD_LABEL_GROUPS, ensureFieldLabelsShape, getDefaultLabel } f
 import {
   updateProjectSettings,
   updateBookingItemVisibility,
+  subscribeBookingItemVisibility,
   fetchProjectConfig,
   checkDateConflicts,
   saveBatchWithRules,
@@ -4244,14 +4272,17 @@ function isItemHiddenFromCustomer(title) {
 }
 
 // 切換預約項目「客戶可見」：立即寫入資料庫，不需按「儲存設定」
-const itemVisibilitySaving = ref(false);
+const itemVisibilitySavingTitle = ref('');
+const itemVisibilitySaving = computed(() => !!itemVisibilitySavingTitle.value);
 async function toggleItemVisibility(title, value) {
+  if (!title || itemVisibilitySaving.value) return;
+  ensurePageSettingsForItem(title);
   const newVal = value === true;
   const ps = projectSettings.value.pageSettingsByItem?.[title];
   const oldVal = ps ? ps.visibleToCustomer !== false : true;
   if (ps) ps.visibleToCustomer = newVal; // 先更新畫面
 
-  itemVisibilitySaving.value = true;
+  itemVisibilitySavingTitle.value = title;
   try {
     const res = await updateBookingItemVisibility(projectId.value, title, newVal);
     if (res.status !== 'success') throw new Error(res.message);
@@ -4262,9 +4293,29 @@ async function toggleItemVisibility(title, value) {
     if (ps) ps.visibleToCustomer = oldVal; // 儲存失敗時還原
     showSnackbar(`儲存失敗: ${err.message || '未知錯誤'}`, 'error');
   } finally {
-    itemVisibilitySaving.value = false;
+    itemVisibilitySavingTitle.value = '';
   }
 }
+
+// 只同步可見欄位，保留尚未儲存的頁面文字、附件與其他設定。
+watch([projectId, isLoading], ([id, loading], _previous, onCleanup) => {
+  if (!id || loading) return;
+  const unsubscribe = subscribeBookingItemVisibility(id, settingsByItem => {
+    const titles = new Set([
+      ...Object.keys(projectSettings.value.pageSettingsByItem || {}),
+      ...Object.keys(settingsByItem),
+    ]);
+    for (const title of titles) {
+      ensurePageSettingsForItem(title);
+      projectSettings.value.pageSettingsByItem[title].visibleToCustomer =
+        settingsByItem[title]?.visibleToCustomer !== false;
+    }
+  }, error => {
+    console.error('預約項目可見性同步失敗:', error);
+    showSnackbar('對外顯示狀態同步失敗，請重新整理頁面確認最新狀態。', 'error');
+  });
+  onCleanup(unsubscribe);
+});
 
 // Derived Available Booking Types for Capacity Groups
 const availableBookingTypes = computed(() => {
@@ -5908,7 +5959,8 @@ const batchHeaders = [
   { title: '名額模式', key: 'quotaMode', sortable: true },
   { title: '預約開放區間', key: 'applicationWindow', sortable: false },
   { title: '可預約區間', key: 'bookingWindow', sortable: false },
-  { title: '狀態', key: 'statusText', sortable: true },
+  { title: '批次狀態', key: 'statusText', sortable: true },
+  { title: '預約項目對外顯示', key: 'customerVisibility', sortable: false },
   { title: '操作', key: 'actions', sortable: false, align: 'end' },
 ];
 

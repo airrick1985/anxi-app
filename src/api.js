@@ -2854,6 +2854,13 @@ export async function updateBookingItemVisibility(projectId, itemTitle, visible)
   }
 }
 
+// 後台只同步可見性，避免覆蓋編輯中的其他頁面設定。
+export function subscribeBookingItemVisibility(projectId, onChange, onError) {
+  return onSnapshot(doc(db, 'projects', projectId), snapshot => {
+    if (snapshot.exists()) onChange(snapshot.data().pageSettingsByItem || {});
+  }, onError);
+}
+
 /**
  * [新增] 從 Firestore 獲取建案的公開設定 (V2: 呼叫 bookingApi 路由)
  * @param {string} projectId 建案 ID
@@ -3469,6 +3476,7 @@ export async function saveBatchWithRules(payload) {
       dataToSave.isDeleted = false;
     }
     delete dataToSave.dailyRules;
+    delete dataToSave.customerVisibilityOpeningKey; // 後端開放紀錄，避免舊畫面覆寫
     delete dataToSave._originalQuotaMode; // 移除前端暫存的比對用欄位，不寫入 Firestore
     if (!isNewBatch) {
       delete dataToSave.isDeleted;

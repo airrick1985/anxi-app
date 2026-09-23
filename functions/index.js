@@ -31149,3 +31149,8 @@ const salesAi = require("./salesAi");
 salesAi.init({ performCancelPurchase, buildRemarksSummary: buildRemarksSummaryFromNotes, recordSalesStatusChange });
 exports.salesAiAgent = salesAi.salesAiAgent;
 exports.salesAiAdmin = salesAi.salesAiAdmin;
+
+// 批次開放時同步開啟預約項目的客戶可見性。
+const bookingVisibility = require('./bookingVisibility');
+exports.openBookingItemOnBatchWrite = bookingVisibility.openBookingItemOnBatchWrite;
+exports.openScheduledBookingItems = bookingVisibility.openScheduledBookingItems;
