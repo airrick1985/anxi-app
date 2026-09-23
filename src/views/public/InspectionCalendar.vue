@@ -1244,11 +1244,11 @@
     <!-- 顯示設定：標題顯示 + 事件顏色（原「篩選與顯示設定」瘦身而來） -->
     <v-dialog v-model="isFilterDialogVisible" max-width="640px" scrollable :fullscreen="xs">
       <v-card class="d-flex flex-column">
-        <v-card-title class="d-flex align-center bg-primary text-white py-3 px-4">
+        <v-card-title v-draggable-dialog class="d-flex align-center bg-primary text-white py-3 px-4">
           <v-icon start>mdi-tune-variant</v-icon>
           <span class="text-subtitle-1 font-weight-bold">顯示設定</span>
           <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" variant="text" color="white" size="small" @click="isFilterDialogVisible = false"></v-btn>
+          <v-btn icon="mdi-close" variant="text" color="white" size="small" @mousedown.stop @click="isFilterDialogVisible = false"></v-btn>
         </v-card-title>
 
         <v-card-text class="pa-4" style="background-color:#f5f6f8;">
@@ -2080,6 +2080,7 @@ import { useClipboard } from '@vueuse/core';
 import { vDraggableDialog } from '@/directives/vDraggableDialog';
 import { useSystemPresence } from '@/composables/useSystemPresence';
 import { formatSalespersons, normalizeSalespersons } from '@/utils/salespersonUtils';
+import { collectCalendarCustomFields, getCalendarCustomFieldValue } from '@/utils/calendarCustomFields';
 
 
 
@@ -2348,26 +2349,9 @@ const displayFieldOptions = computed(() => {
     { key: 'inspectors', label: '驗屋人員', formatter: (val) => val ? `【${val}】` : null },
     { key: 'salesperson', label: '銷售人員' },
   ];
-  // 動態掃描 bookingMenu 中所有 methods 的 customFields，篩選 expanded === true
-  const dynamicFields = [];
-  const menu = projectSettings.value?.bookingMenu;
-  if (Array.isArray(menu)) {
-    const seenLabels = new Set(baseFields.map(f => f.label));
-    for (const item of menu) {
-      if (!Array.isArray(item.methods)) continue;
-      for (const method of item.methods) {
-        if (method.deleted) continue;
-        if (!Array.isArray(method.customFields)) continue;
-        for (const cf of method.customFields) {
-          if (cf.expanded && cf.label && !seenLabels.has(cf.label)) {
-            seenLabels.add(cf.label);
-            // isDynamic 標記為動態欄位，取值時從 bookingMethodDetails[key] 讀取
-            dynamicFields.push({ key: cf.id, label: cf.label, isDynamic: true });
-          }
-        }
-      }
-    }
-  }
+  const dynamicFields = collectCalendarCustomFields(
+    projectSettings.value?.bookingMenu, baseFields.map(f => f.label)
+  );
   // 將動態欄位插入到「選擇方式」之後
   const insertIndex = baseFields.findIndex(f => f.key === 'inspectionMethod') + 1;
   const result = [...baseFields];
@@ -2376,10 +2360,10 @@ const displayFieldOptions = computed(() => {
 });
 
 // 從事件資料中取得欄位值的輔助函式
-// 靜態欄位直接從 event[key] 讀取，動態欄位從 event.bookingMethodDetails[key] 讀取
+// 靜態欄位直接讀取；同名動態欄位依預約項目／方式找到對應的儲存 ID。
 function getFieldValue(eventData, fieldOption) {
   if (fieldOption.isDynamic) {
-    return eventData.bookingMethodDetails?.[fieldOption.key] ?? null;
+    return getCalendarCustomFieldValue(eventData, fieldOption);
   }
   // 銷售人員（陣列，容忍舊字串）：格式化為「、」分隔字串，空值回傳 null 以跳過顯示
   if (fieldOption.key === 'salesperson') {
@@ -2393,7 +2377,7 @@ function getFieldValue(eventData, fieldOption) {
 const listExportColumns = computed(() => {
   const dynamic = displayFieldOptions.value
     .filter(f => f.isDynamic)
-    .map(f => ({ key: `dyn:${f.key}`, title: f.label }));
+    .map(f => ({ key: `dyn:${f.key}`, title: f.label, sources: f.sources }));
   return [
     { key: 'date', title: '日期' },
     { key: 'weekday', title: '星期' },
@@ -3589,7 +3573,8 @@ function pivotDimensionLabel(key) {
 // 取得事件在某維度下的值（陣列；驗屋人員一筆可拆多人，各計一次）
 function getPivotValues(evt, dimKey) {
   if (dimKey.startsWith('dyn:')) {
-    const v = evt.bookingMethodDetails?.[dimKey.slice(4)];
+    const field = displayFieldOptions.value.find(f => f.isDynamic && f.key === dimKey.slice(4));
+    const v = field ? getFieldValue(evt, field) : null;
     return (v === null || v === undefined || v === '') ? [PIVOT_EMPTY_LABEL] : [String(v)];
   }
   switch (dimKey) {
@@ -5251,6 +5236,7 @@ async function handleDownloadExcel() {
         key: option.key,
         label: option.label,
         isDynamic: option.isDynamic || false,
+        sources: option.sources,
         wch: 20
       })),
       { key: 'status', label: '狀態', wch: 12 },

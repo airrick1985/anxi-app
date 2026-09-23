@@ -369,6 +369,7 @@ import draggable from 'vuedraggable';
 import * as XLSX from 'xlsx-js-style';
 import { useToast, POSITION } from 'vue-toastification';
 import { format } from 'date-fns';
+import { getCalendarCustomFieldValue } from '@/utils/calendarCustomFields';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -425,7 +426,8 @@ const formatDateLike = (value) => {
 // 匯出/搜尋共用的儲存格取值
 const getCellValue = (item, key) => {
   if (key.startsWith('dyn:')) {
-    const v = item.bookingMethodDetails?.[key.slice(4)];
+    const column = props.columns.find(column => column.key === key);
+    const v = getCalendarCustomFieldValue(item, { key: key.slice(4), sources: column?.sources });
     if (v === null || v === undefined) return '';
     return Array.isArray(v) ? v.join('、') : String(v);
   }
