@@ -1,8 +1,9 @@
 <template>
-  <v-card class="mb-3 refund-card" :id="`comm-card-${entry.id}`" variant="outlined" :class="{ 'has-issue': issueCount > 0, 'is-expanded': !entry.collapsed }">
+  <v-card class="mb-3 refund-card" :id="`comm-card-${entry.id}`" variant="outlined" :class="{ 'has-issue': issueCount > 0, 'is-expanded': isOpen, 'is-split': split }">
     <!-- 標頭 -->
-    <div class="card-head d-flex align-center flex-wrap ga-2 px-4 py-2" role="button" tabindex="0" :aria-expanded="!entry.collapsed" @keydown.enter.self="$emit('toggle')" @keydown.space.prevent.self="$emit('toggle')" @click="$emit('toggle')">
-      <v-icon size="small" :class="{ 'rotate-collapsed': entry.collapsed }">mdi-chevron-down</v-icon>
+    <div class="card-head d-flex align-center flex-wrap ga-2 px-4 py-2" :role="split ? undefined : 'button'" :tabindex="split ? undefined : 0" :aria-expanded="isOpen"
+      @keydown.enter.self="!split && $emit('toggle')" @keydown.space.prevent.self="!split && $emit('toggle')" @click="!split && $emit('toggle')">
+      <v-icon v-if="!split" size="small" :class="{ 'rotate-collapsed': entry.collapsed }">mdi-chevron-down</v-icon>
       <v-chip size="x-small" color="error" variant="flat">{{ isBonus ? '退獎金' : '退佣' }}</v-chip>
       <span class="text-subtitle-1 font-weight-bold text-error">{{ entry.unitId }}</span>
       <span class="text-body-2">{{ buyerName || '—' }}</span>
@@ -19,7 +20,7 @@
     </div>
 
     <v-expand-transition>
-      <div v-show="!entry.collapsed">
+      <div v-show="isOpen">
         <v-divider></v-divider>
         <v-card-text class="pt-3">
           <!-- ① 退佣來源 -->
@@ -29,14 +30,12 @@
           </div>
           <div class="step-body">
             <v-row dense align="start" class="mb-1">
-              <v-col cols="6" sm="3" md="2">
-                <v-text-field v-model.number="entry.period" label="期別" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-              </v-col>
-              <v-col cols="6" sm="3" md="3" lg="2">
-                <DateFieldTW v-model="entry.requestDate" :label="isBonus ? '退獎金日期' : '退佣日期'" />
-              </v-col>
               <v-col cols="12" sm="6" md="4" lg="3">
                 <v-text-field v-model="entry.reason" :label="isBonus ? '退獎金原因' : '退佣原因'" variant="outlined" density="compact" hide-details></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6" md="4" lg="3">
+                <v-text-field v-model="entry.note" label="備註" maxlength="200" variant="outlined" density="compact" hide-details clearable
+                  class="claim-note-field" prepend-inner-icon="mdi-note-edit-outline" :aria-label="`${entry.unitId} 備註`" />
               </v-col>
               <v-col v-if="!isBonus" cols="12" sm="6" md="3" lg="3" class="d-flex align-center">
                 <v-switch v-model="entry.includeKeep" color="error" density="compact" hide-details
@@ -169,7 +168,6 @@ import { computed, watch } from 'vue';
 import { money, toNum, isHandoverCategory } from '@/utils/commissionCalculation';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
 import { buildRefundEntryPlan } from './refundEntry';
-import DateFieldTW from './DateFieldTW.vue';
 
 const props = defineProps({
   entry: { type: Object, required: true },        // 退佣 entry（reactive）
@@ -177,9 +175,11 @@ const props = defineProps({
   projectId: { type: String, required: true },
   bonusRecords: { type: Array, default: () => [] },
   mode: { type: String, default: 'claim' },   // 'bonus'＝退獎金：來源為獎金紀錄，只追回獎金
+  split: { type: Boolean, default: false },   // 左右分欄：由工作台選取顯示，永遠展開、不可收合
 });
 defineEmits(['remove', 'toggle']);
 const isBonus = computed(() => props.mode === 'bonus');
+const isOpen = computed(() => props.split || !props.entry.collapsed);
 
 const buyerName = computed(() => props.entry.unit?.buyerName || props.entry.candidates[0]?.snapshot?.buyerName || '');
 const statusText = computed(() => props.entry.unit?.salesStatus_backend || '');
@@ -274,9 +274,15 @@ function removePerson(personKey) {
 </script>
 
 <style scoped>
-.refund-card { border-radius: 12px; overflow: visible; border-color: #ddd; }
+.claim-note-field :deep(.v-field) { background: #fffbea; }
+.claim-note-field :deep(.v-field__outline) { color: #e0b64a; }
+.claim-note-field :deep(.v-field--focused .v-field__outline) { color: rgb(var(--v-theme-primary)); }
+.claim-note-field :deep(.v-field__prepend-inner .v-icon) { color: #b8860b; opacity: 1; }
+.refund-card { border-radius: 12px; overflow: visible; scroll-margin-top: 80px; border-color: #ddd; }
 .refund-card.has-issue { border-color: #fb8c00; }
 .card-head { cursor: pointer; background: #fff; border-radius: 12px 12px 0 0; }
+.refund-card.is-split .card-head { cursor: default; }
+.refund-card.is-split { margin-bottom: 0 !important; }
 .step-h { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .step-no {
   width: 22px; height: 22px; border-radius: 50%; background: #eee; color: #555;

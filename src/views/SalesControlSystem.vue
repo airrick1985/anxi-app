@@ -444,9 +444,9 @@
           <div class="d-flex flex-column">
             <span class="text-caption text-grey ml-1">小訂日期</span>
             <div class="d-flex align-center gap-1">
-              <input type="date" v-model="filters.depositDateStart" class="date-input-compact">
+              <input type="date" v-model="filters.depositDateStart" class="date-input-compact" :class="{ 'is-empty': !filters.depositDateStart }">
               <span class="text-grey">~</span>
-              <input type="date" v-model="filters.depositDateEnd" class="date-input-compact">
+              <input type="date" v-model="filters.depositDateEnd" class="date-input-compact" :class="{ 'is-empty': !filters.depositDateEnd }">
             </div>
           </div>
         </v-col>
@@ -455,9 +455,9 @@
           <div class="d-flex flex-column">
             <span class="text-caption text-grey ml-1">簽約日期</span>
             <div class="d-flex align-center gap-1">
-              <input type="date" v-model="filters.contractDateStart" class="date-input-compact">
+              <input type="date" v-model="filters.contractDateStart" class="date-input-compact" :class="{ 'is-empty': !filters.contractDateStart }">
               <span class="text-grey">~</span>
-              <input type="date" v-model="filters.contractDateEnd" class="date-input-compact">
+              <input type="date" v-model="filters.contractDateEnd" class="date-input-compact" :class="{ 'is-empty': !filters.contractDateEnd }">
             </div>
           </div>
         </v-col>
@@ -1550,6 +1550,11 @@
             合計 {{ pivotMatrix.grand.count }} 筆
           </v-chip>
           <v-spacer></v-spacer>
+          <v-btn size="small" variant="tonal" color="grey-darken-1" class="mr-1"
+            :icon="isMobile ? 'mdi-broom' : undefined" :prepend-icon="isMobile ? undefined : 'mdi-broom'"
+            title="清除列／欄／值／篩選器" :disabled="!pivotHasAnySetting" @click="clearPivotSettings">
+            <template v-if="!isMobile">清除全部</template>
+          </v-btn>
           <!-- 方案（建案層級共用）：套用／重新命名／刪除 -->
           <v-menu :close-on-content-click="false" v-model="isPivotPresetMenuOpen">
             <template #activator="{ props: menuProps }">
@@ -1702,7 +1707,24 @@
                       @click="f.from = ''; f.to = ''">清除</v-chip>
                   </div>
                 </template>
-                <v-autocomplete v-model="f.selected" :items="pivotFilterOptionsMap[f.field] || []"
+                <template v-else-if="pivotFilterIsNumeric(f.field)">
+                  <div class="d-flex align-center ga-1">
+                    <v-select v-model="f.op" :items="PIVOT_NUMBER_OP_OPTIONS" item-title="label" item-value="key"
+                      density="compact" hide-details variant="outlined" class="pivot-num-op"
+                      :menu-props="{ maxHeight: 320 }" @update:model-value="f.n2 = ''"></v-select>
+                    <v-text-field v-model="f.n1" type="number" inputmode="decimal" density="compact" hide-details
+                      variant="outlined" class="pivot-num-input" :placeholder="f.op === 'between' ? '下限' : '數值'"
+                      @wheel="onPivotNumWheel"></v-text-field>
+                    <template v-if="f.op === 'between'">
+                      <span class="text-caption text-grey">～</span>
+                      <v-text-field v-model="f.n2" type="number" inputmode="decimal" density="compact" hide-details
+                        variant="outlined" class="pivot-num-input" placeholder="上限" @wheel="onPivotNumWheel"></v-text-field>
+                    </template>
+                    <v-btn v-if="pivotFilterHasNumber(f)" icon="mdi-backspace-outline" size="x-small" variant="text"
+                      color="grey" title="清除" @click="f.n1 = ''; f.n2 = ''"></v-btn>
+                  </div>
+                </template>
+                <v-autocomplete v-if="!pivotFilterIsNumeric(f.field)" v-model="f.selected" :items="pivotFilterOptionsMap[f.field] || []"
                   multiple chips closable-chips clearable density="compact" hide-details variant="outlined"
                   placeholder="全部（未勾選＝不限）" :menu-props="{ maxHeight: 320 }"></v-autocomplete>
               </div>
@@ -3211,6 +3233,51 @@ function pivotFilterValuesOf(item, field) {
 // --- 日期／月份欄位篩選器：起訖範圍（與勾選並存，兩者同時成立）---
 const PIVOT_MONTH_KEYS = new Set(['depositMonth', 'contractMonth']);
 function pivotFilterIsDate(field) { return PIVOT_DATE_KEYS.has(field) || PIVOT_MONTH_KEYS.has(field); }
+// --- 數值欄位篩選器：比較運算（介於／≥／≤／>／<／=／≠），不逐值勾選 ---
+function pivotFilterIsNumeric(field) { return PIVOT_BINNED_DIM_KEYS.has(field); }
+const PIVOT_NUMBER_OP_OPTIONS = [
+  { key: 'between', label: '介於' },
+  { key: 'gte', label: '≥' },
+  { key: 'lte', label: '≤' },
+  { key: 'gt', label: '>' },
+  { key: 'lt', label: '<' },
+  { key: 'eq', label: '=' },
+  { key: 'ne', label: '≠' },
+];
+const PIVOT_NUMBER_OP_KEYS = new Set(PIVOT_NUMBER_OP_OPTIONS.map(o => o.key));
+// 輸入框字串 → 數字（空白／非數字 = null，代表不限）
+function pivotNumInput(v) {
+  if (v === null || v === undefined || String(v).trim() === '') return null;
+  const n = Number(v);
+  return isFinite(n) ? n : null;
+}
+// 數字輸入框：滾輪不改變數值（聚焦中就先失焦，讓滾輪只捲動頁面）
+function onPivotNumWheel(e) {
+  if (document.activeElement === e.target) e.target.blur();
+}
+function pivotFilterHasNumber(f) {
+  if (!pivotFilterIsNumeric(f.field)) return false;
+  return f.op === 'between'
+    ? (pivotNumInput(f.n1) !== null || pivotNumInput(f.n2) !== null)
+    : pivotNumInput(f.n1) !== null;
+}
+// 資料列的數值是否符合比較條件；未填寫一律排除
+function pivotNumberValueMatches(item, f) {
+  const raw = item[f.field];
+  const v = Number(raw);
+  if (raw === null || raw === undefined || raw === '' || !isFinite(v)) return false;
+  const n1 = pivotNumInput(f.n1);
+  const n2 = pivotNumInput(f.n2);
+  switch (f.op) {
+    case 'gte': return v >= n1;
+    case 'lte': return v <= n1;
+    case 'gt': return v > n1;
+    case 'lt': return v < n1;
+    case 'eq': return Math.abs(v - n1) < 1e-9;
+    case 'ne': return Math.abs(v - n1) >= 1e-9;
+    default: return (n1 === null || v >= n1) && (n2 === null || v <= n2);
+  }
+}
 const PIVOT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 function pivotFilterHasRange(f) { return pivotFilterIsDate(f.field) && (PIVOT_DATE_RE.test(f.from || '') || PIVOT_DATE_RE.test(f.to || '')); }
 // 維度值（yyyy-MM-dd 或 yyyy-MM）是否落在起訖內；未填寫一律排除。月份以起訖所屬月份比對
@@ -3262,7 +3329,7 @@ function pivotDateQuickActive(f, key) {
 }
 function addPivotFilter(fieldKey) {
   if (fieldKey && !pivotFilters.value.some(f => f.field === fieldKey)) {
-    pivotFilters.value.push({ field: fieldKey, selected: [], from: '', to: '' });
+    pivotFilters.value.push({ field: fieldKey, selected: [], from: '', to: '', op: 'between', n1: '', n2: '' });
   }
   nextTick(() => { pivotFilterFieldToAdd.value = null; });
 }
@@ -3271,6 +3338,7 @@ function removePivotFilter(i) { pivotFilters.value.splice(i, 1); }
 const pivotFilterOptionsMap = computed(() => {
   const map = {};
   for (const f of pivotFilters.value) {
+    if (pivotFilterIsNumeric(f.field)) continue; // 數值欄位用比較條件，不需逐值清單
     const set = new Set();
     for (const it of pivotBaseItems.value) pivotFilterValuesOf(it, f.field).forEach(v => set.add(v));
     // 日期／月份有設起訖時，勾選清單只列範圍內的值
@@ -3284,11 +3352,17 @@ const pivotFilterOptionsMap = computed(() => {
 // 最終資料 = 基底 + 所有啟用中的篩選器（每個篩選器內為 OR、篩選器之間為 AND）
 const pivotSourceItems = computed(() => {
   const active = pivotFilters.value
-    .filter(f => f.selected.length > 0 || pivotFilterHasRange(f))
-    .map(f => ({ field: f.field, sel: f.selected.length ? new Set(f.selected) : null, range: pivotFilterHasRange(f) ? f : null }));
+    .filter(f => (pivotFilterIsNumeric(f.field) ? pivotFilterHasNumber(f) : (f.selected.length > 0 || pivotFilterHasRange(f))))
+    .map(f => ({
+      field: f.field,
+      num: pivotFilterIsNumeric(f.field) ? f : null,
+      sel: f.selected.length ? new Set(f.selected) : null,
+      range: pivotFilterHasRange(f) ? f : null,
+    }));
   if (!active.length) return pivotBaseItems.value;
   return pivotBaseItems.value.filter(item =>
     active.every(f => {
+      if (f.num) return pivotNumberValueMatches(item, f.num);
       let values = pivotFilterValuesOf(item, f.field);
       if (f.range) values = values.filter(v => pivotDateValueInRange(v, f.range));
       if (!values.length) return false;
@@ -3730,7 +3804,12 @@ function buildPivotSettingsSnapshot() {
     rowDims: [...pivotRowDims.value],
     colDims: [...pivotColDims.value],
     values: pivotValues.value.map(vd => ({ field: vd.field, mode: vd.mode })),
-    filters: pivotFilters.value.map(f => ({ field: f.field, selected: [...(f.selected || [])], from: f.from || '', to: f.to || '' })),
+    filters: pivotFilters.value.map(f => ({
+      field: f.field, selected: [...(f.selected || [])], from: f.from || '', to: f.to || '',
+      ...(pivotFilterIsNumeric(f.field)
+        ? { op: PIVOT_NUMBER_OP_KEYS.has(f.op) ? f.op : 'between', n1: pivotNumInput(f.n1) !== null ? String(f.n1) : '', n2: pivotNumInput(f.n2) !== null ? String(f.n2) : '' }
+        : {}),
+    })),
     sort: sort ? {
       type: sort.type, dir: sort.dir,
       ...(sort.li !== undefined ? { li: sort.li } : {}),
@@ -3775,12 +3854,28 @@ function applyPivotSettingsObject(s, { scope = false } = {}) {
     if (Array.isArray(s.filters)) {
       pivotFilters.value = s.filters
         .filter(f => f && validDim(f.field))
-        .map(f => ({
-          field: f.field,
-          selected: Array.isArray(f.selected) ? [...f.selected] : [],
-          from: (pivotFilterIsDate(f.field) && PIVOT_DATE_RE.test(f.from || '')) ? f.from : '',
-          to: (pivotFilterIsDate(f.field) && PIVOT_DATE_RE.test(f.to || '')) ? f.to : '',
-        }));
+        .map(f => {
+          const entry = {
+            field: f.field,
+            selected: Array.isArray(f.selected) ? [...f.selected] : [],
+            from: (pivotFilterIsDate(f.field) && PIVOT_DATE_RE.test(f.from || '')) ? f.from : '',
+            to: (pivotFilterIsDate(f.field) && PIVOT_DATE_RE.test(f.to || '')) ? f.to : '',
+            op: 'between', n1: '', n2: '',
+          };
+          if (pivotFilterIsNumeric(f.field)) {
+            if (PIVOT_NUMBER_OP_KEYS.has(f.op)) {
+              entry.op = f.op;
+              entry.n1 = pivotNumInput(f.n1) !== null ? String(f.n1) : '';
+              entry.n2 = f.op === 'between' && pivotNumInput(f.n2) !== null ? String(f.n2) : '';
+            } else if (entry.selected.length) {
+              // 舊版設定（逐值勾選）→ 轉為勾選值的最小～最大區間
+              const nums = entry.selected.map(v => Number(String(v).replace(/,/g, ''))).filter(n => isFinite(n));
+              if (nums.length) { entry.n1 = String(Math.min(...nums)); entry.n2 = String(Math.max(...nums)); }
+            }
+            entry.selected = [];
+          }
+          return entry;
+        });
     }
     if (typeof s.showBoth === 'boolean') pivotShowBoth.value = s.showBoth;
     if (PIVOT_CELL_PCT_OPTIONS.some(o => o.key === s.cellPct)) pivotCellPct.value = s.cellPct;
@@ -3876,6 +3971,23 @@ function unsubscribePivotPresets() {
   pivotActivePresetId.value = null;
 }
 onUnmounted(unsubscribePivotPresets);
+// 清除全部：列／欄／值／篩選器／排序／欄順序一併清空（資料範圍與顯示選項保留）
+const pivotHasAnySetting = computed(() =>
+  pivotRowDims.value.length > 0 || pivotColDims.value.length > 0 || pivotValues.value.length > 0
+  || pivotFilters.value.length > 0 || pivotSort.value !== null || pivotColKeyOrder.value.length > 0
+);
+function clearPivotSettings() {
+  pivotRowDims.value = [];
+  pivotColDims.value = [];
+  pivotValues.value = [];
+  pivotFilters.value = [];
+  pivotSort.value = null;
+  pivotColKeyOrder.value = [];
+  pivotRowDimToAdd.value = null;
+  pivotColDimToAdd.value = null;
+  pivotFilterFieldToAdd.value = null;
+  pivotActivePresetId.value = null;
+}
 function applyPivotPreset(preset) {
   if (!preset) return;
   applyPivotSettingsObject(preset.settings, { scope: true });
@@ -6792,6 +6904,25 @@ const uploadData = async () => {
   border-radius: 6px;
   padding: 4px 6px;
 }
+/* 數值篩選：運算子 + 數字輸入（隱藏數字微調鈕） */
+.pivot-num-op {
+  flex: 0 0 82px;
+  min-width: 0;
+}
+.pivot-num-input {
+  min-width: 0;
+  flex: 1 1 0;
+}
+.pivot-num-input :deep(input) {
+  font-size: 12px;
+  padding-inline: 4px;
+  -moz-appearance: textfield;
+}
+.pivot-num-input :deep(input::-webkit-outer-spin-button),
+.pivot-num-input :deep(input::-webkit-inner-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
 /* 右：分析結果（flex 欄位配置：表格永遠在可視範圍內，水平捲軸不會被推到看不到的地方） */
 .pivot-pane-result {
   flex: 1;
@@ -8122,6 +8253,13 @@ overflow: hidden;
 .date-input-compact:focus {
   outline: 2px solid #1976D2; /* Primary color */
   border-color: transparent;
+}
+/* 空值且未聚焦時隱藏瀏覽器原生「年/月/日」佔位文字，預設呈現空白 */
+.date-input-compact.is-empty:not(:focus) {
+  color: transparent;
+}
+.date-input-compact.is-empty:not(:focus)::-webkit-datetime-edit {
+  color: transparent;
 }
 .border-dashed {
   border-style: dashed !important;

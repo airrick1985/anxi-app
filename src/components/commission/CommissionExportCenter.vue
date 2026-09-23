@@ -235,6 +235,7 @@
 <script setup>
 import { combineCommissionGrids } from '@/utils/commissionExportGrouping';
 import { planIdOf } from '@/utils/commissionPlans';
+import { personNoteHistory } from '@/utils/commissionPeriodBonus';
 import { mergeSettings } from '@/utils/commissionCalculation';
 import { useCommissionPlan } from '@/composables/useCommissionPlan';
 const { plan, planId, belongsToPlan } = useCommissionPlan();
@@ -566,10 +567,14 @@ function projectDefaultClaimConfig() {
   return def?.config || defaultClaimConfig(exportSettings.value);
 }
 
+/** 每人歷期備註（全建案獎金明細）：當期未存備註時獎金表自動帶入最近一期，與工作台一致 */
+const noteHistoryAll = computed(() => personNoteHistory(props.allBonusRecords || []));
+
 const bonusModel = computed(() => {
   if (docType.value !== 'bonus' || !activeRecords.value.length) return null;
   return buildBonusModel({
     periodNotes: props.periodNotes,
+    noteHistory: noteHistoryAll.value,
     records: activeRecords.value.filter(belongsToPlan),
     bonusRecords: activeBonusRows.value,
     settings: exportSettings.value,
@@ -643,7 +648,7 @@ const groupedDocuments = computed(() => {
     const claimRecords = props.allRecords.filter(r => planIdOf(r) === p.id && r.status !== 'voided' && toNum(r.period) === toNum(period.value));
     const claim = buildClaimModel(claimRecords, { settings, config: configOf('claim'), period: period.value, projectName, unitOrder });
     if (docType.value === 'claim') return [{ plan: p, model: claim, grids: [buildClaimGrid(claim)] }];
-    const bonus = buildBonusModel({ records, periodNotes: props.periodNotes,
+    const bonus = buildBonusModel({ records, periodNotes: props.periodNotes, noteHistory: noteHistoryAll.value,
       bonusRecords: props.allBonusRecords.filter(b => b.status !== 'voided' && planIdOf(b) === p.id && toNum(b.period) === toNum(period.value)),
       settings, config: configOf('bonus'), period: period.value, projectName, projectId: props.projectId,
       personnelOrder: personnelOrder.value,

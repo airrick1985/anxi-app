@@ -1,4 +1,4 @@
-import { periodPersonNotes } from './commissionPeriodBonus';
+import { periodPersonNotes, personNoteHistory } from './commissionPeriodBonus';
 /**
  * 請佣獎金 匯出模型（docs/請佣獎金系統-spec.md §7）
  * 前端預覽（HTML）、Excel（xlsx-js-style）、後端 PDF（pdfkit）三端共用同一 model，
@@ -340,8 +340,10 @@ export function buildBonusModel(opts) {
         if (b.remark && !a.legacyNotes.includes(b.remark)) a.legacyNotes.push(b.remark);
       });
       // 100% 的保留/稅/健保：以實際有效比例回推
+      // 每人歷期備註：呼叫端可傳入以全建案獎金明細算好的 noteHistory（送出前預覽只帶本次草稿時仍能帶入最近一期備註）
+      const noteHistory = opts.noteHistory || personNoteHistory(bonusRecords);
       Object.values(agg).forEach(a => {
-        a.remarkNotes = periodPersonNotes(opts.periodNotes, period, a.personKey, a.legacyNotes);
+        a.remarkNotes = periodPersonNotes(opts.periodNotes, period, a.personKey, a.legacyNotes, noteHistory[a.personKey] || []);
         const kr = a.subDisc ? a.keepDisc / a.subDisc : 0;
         const tr = a.subDisc ? a.taxDisc / a.subDisc : 0;
         const nr = a.subDisc ? a.nhiDisc / a.subDisc : 0;

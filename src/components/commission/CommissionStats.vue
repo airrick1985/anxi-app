@@ -96,7 +96,7 @@
         </v-card-title>
         <v-card-text>
           <div class="text-caption text-medium-emphasis mb-2">
-            每期請佣時自「銷售個獎」提撥的交屋團獎（依請佣紀錄快照；作廢紀錄不計）。此金額尚未發放給任何人員，供日後製作交屋獎金時查閱。
+            每期送出獎金時自「銷售個獎」提撥的交屋團獎（依獎金紀錄快照；作廢紀錄不計）。此金額尚未發放給任何人員，供日後製作交屋獎金時查閱。
           </div>
           <div v-if="!handoverPeriods.length" class="text-center text-medium-emphasis py-4">尚無交屋團獎暫留紀錄</div>
           <div v-else class="table-scroll">
@@ -187,6 +187,7 @@ const props = defineProps({
   projectName: { type: String, default: '' },
   records: { type: Array, default: () => [] },
   bonusRecords: { type: Array, default: () => [] },
+  bonusSources: { type: Array, default: () => [] },   // 獎金紀錄（獨立獎金＋舊版請佣附帶獎金）：交屋團獎提撥來源
   loading: { type: Boolean, default: false },
 });
 
@@ -282,7 +283,7 @@ const handoverExpanded = ref(null);
 
 const handoverPeriods = computed(() => {
   const byPeriod = {};
-  props.records
+  props.bonusSources
     .filter(r => r.status !== 'voided' && toNum(r.handover?.total) !== 0)
     .forEach(r => {
       const p = toNum(r.period);

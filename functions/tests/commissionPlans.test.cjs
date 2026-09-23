@@ -251,6 +251,35 @@ test('退獎金：只追回獎金明細、標記 bonusRefundedBy 與退佣獨立
   await assert.rejects(h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [{ ...h.entry, period: 4 }] }), /超過 100%/);
 });
 
+test('獎金整期作廢與清除：只作用於獨立獎金紀錄，退獎金來源標記還原，不動請佣', async () => {
+  const h = harness();
+  const claim = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim', entries: [h.entry] });
+  const bonus = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [{ ...h.entry, period: 2 }] });
+  const sourceId = bonus.results[0].recordId;
+  await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', refunds: [{ unitId, period: 3, sourceRecordIds: [sourceId] }] });
+  assert.equal(h.rows.get(`bonusEntries/${sourceId}`).bonusRefundedBy !== undefined, true);
+  // 第 2 期原獎金已於第 3 期退獎金 → 先擋
+  await assert.rejects(h.call('voidCommissionPeriod', { planId: 'package', period: 2, voidReason: '測試', submissionType: 'bonus' }), /退獎金/);
+  // 作廢第 3 期（退獎金）→ 原獎金標記還原
+  const r3 = await h.call('voidCommissionPeriod', { planId: 'package', period: 3, voidReason: '測試', submissionType: 'bonus' });
+  assert.equal(r3.records, 1);
+  assert.equal(h.rows.get(`bonusEntries/${sourceId}`).bonusRefundedBy, undefined);
+  const r2 = await h.call('voidCommissionPeriod', { planId: 'package', period: 2, voidReason: '測試', submissionType: 'bonus' });
+  assert.equal(r2.records, 1);
+  assert.equal(r2.bonuses, 1);
+  assert.equal(h.rows.get(`bonusEntries/${sourceId}`).status, 'voided');
+  assert.equal(h.rows.get(`commissionRecords/${claim.results[0].recordId}`).status, 'active');
+  assert.equal(h.ledger('package'), 100);
+  // 沒有獨立獎金的期別不可作廢；清除只刪獎金紀錄
+  await assert.rejects(h.call('voidCommissionPeriod', { planId: 'package', period: 1, voidReason: '測試', submissionType: 'bonus' }), /沒有有效的獎金/);
+  const purge = await h.call('purgeVoidedCommissionPeriod', { planId: 'package', period: 2, submissionType: 'bonus' });
+  assert.equal(purge.records, 1);
+  assert.equal(h.rows.has(`bonusEntries/${sourceId}`), false);
+  assert.equal(h.rows.has(`commissionRecords/${claim.results[0].recordId}`), true);
+  const bonusAgain = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [{ ...h.entry, period: 4 }] });
+  assert.ok(bonusAgain.ok);
+});
+
 test('整期作廢、清除及保留款檢查只作用於該方案；舊紀錄仍算一般', async () => {
   const h = harness();
   const general = await h.submit('general', { manualFloor: 3300 });
@@ -262,6 +291,15 @@ test('整期作廢、清除及保留款檢查只作用於該方案；舊紀錄�
   assert.equal(h.ledger('package'), 0);
   assert.equal(h.ledger('general'), 100);
   assert.equal(h.rows.get(`commissionRecords/${general.results[0].recordId}`).status, 'active');
+  // 請佣作廢不連動獎金明細：附帶獎金仍有效，請佣清除保留被引用的紀錄；獎金側整期作廢後才可清除
+  const pkgBonusKey = [...h.rows.keys()].find(k => k.startsWith('bonusRecords/') && h.rows.get(k).planId === 'package');
+  assert.equal(h.rows.get(pkgBonusKey).status, 'active');
+  await h.call('purgeVoidedCommissionPeriod', { planId: 'package', period: 1 });
+  assert.equal(h.rows.has(`commissionRecords/${pkg.results[0].recordId}`), true);
+  const bv = await h.call('voidCommissionPeriod', { planId: 'package', period: 1, voidReason: '測試', submissionType: 'bonus' });
+  assert.equal(bv.records, 0);
+  assert.equal(bv.bonuses, 1);
+  assert.equal(h.rows.get(pkgBonusKey).status, 'voided');
   await h.call('purgeVoidedCommissionPeriod', { planId: 'package', period: 1 });
   assert.equal(h.rows.has(`commissionRecords/${pkg.results[0].recordId}`), false);
   await assert.rejects(h.call('voidCommissionPeriod', { period: 1, voidReason: '測試' }), /保留款/);
@@ -417,4 +455,47 @@ test('請佣整期作廢與清除不會動到獨立獎金', async () => {
   await h.call('purgeVoidedCommissionPeriod', { planId: 'package', period: 1, purgedBy: '測試' });
   assert.equal(h.rows.get(`bonusEntries/${bonus.results[0].recordId}`).status, 'active');
   assert.equal([...h.rows.values()].filter(r => r.commissionRecordId === bonus.results[0].recordId && r.status === 'active').length, 1);
+});
+
+test('同一戶同期多筆紀錄可於同批各自拉回取代：原紀錄全部作廢、比例不重複計入', async () => {
+  const h = harness();
+  const a = await h.submit('package', { ratioPct: 50 });
+  const b = await h.submit('package', { ratioPct: 50 });
+  const [idA, idB] = [a.results[0].recordId, b.results[0].recordId];
+  assert.equal(h.ledger('package'), 100);
+  const res = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim', entries: [
+    { ...h.entry, ratioPct: 50, replaceRecordId: idA },
+    { ...h.entry, ratioPct: 50, replaceRecordId: idB },
+  ] });
+  assert.equal(h.ledger('package'), 100);
+  assert.equal(h.rows.get(`commissionRecords/${idA}`).status, 'voided');
+  assert.equal(h.rows.get(`commissionRecords/${idB}`).status, 'voided');
+  const active = [...h.rows.entries()].filter(([k, v]) => k.startsWith('commissionRecords/') && v.status === 'active');
+  assert.equal(active.length, 2);
+  assert.deepEqual(active.map(([, v]) => v.replaces).sort(), [idA, idB].sort());
+  assert.equal(res.results.length, 2);
+});
+
+test('請佣與獎金作廢各自獨立：作廢請佣不動獎金明細；獎金側可單獨作廢舊版請佣附帶獎金', async () => {
+  const h = harness();
+  const both = await h.submit('package');
+  const id = both.results[0].recordId;
+  const bonusKey = [...h.rows.keys()].find(k => k.startsWith('bonusRecords/') && h.rows.get(k).commissionRecordId === id);
+  const res = await h.call('voidCommissionRecord', { planId: 'package', recordId: id, voidReason: '測試' });
+  assert.equal(res.bonusVoided, 0);
+  assert.equal(h.rows.get(`commissionRecords/${id}`).status, 'voided');
+  assert.equal(h.rows.get(bonusKey).status, 'active');
+  assert.equal(h.ledger('package'), 0);
+  const legacy = await h.call('voidCommissionRecord', { planId: 'package', recordId: id, voidReason: '測試', submissionType: 'bonus' });
+  assert.equal(legacy.bonusVoided, 1);
+  assert.equal(legacy.legacy, true);
+  assert.equal(h.rows.get(bonusKey).status, 'voided');
+  await assert.rejects(h.call('voidCommissionRecord', { planId: 'package', recordId: id, voidReason: '測試', submissionType: 'bonus' }), /沒有有效的獎金明細/);
+  // 獨立獎金作廢不動請佣
+  const claim = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim', entries: [h.entry] });
+  const bonus = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [h.entry] });
+  const bres = await h.call('voidCommissionRecord', { planId: 'package', recordId: bonus.results[0].recordId, voidReason: '測試', submissionType: 'bonus' });
+  assert.equal(bres.bonusVoided, 1);
+  assert.equal(h.rows.get(`commissionRecords/${claim.results[0].recordId}`).status, 'active');
+  assert.equal(h.ledger('package'), 100);
 });

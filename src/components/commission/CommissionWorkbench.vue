@@ -5,9 +5,6 @@
       <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="openPicker">新增戶別</v-btn>
       <span class="text-body-2 text-medium-emphasis">下一期別 {{ nextPeriod }}｜已選 {{ entries.length }} 戶<template v-if="refunds.length">｜{{ refundLabel }} {{ refunds.length }} 戶</template></span>
       <v-spacer></v-spacer>
-      <template v-if="entries.length || refunds.length">
-        <v-btn size="small" variant="text" @click="setAllCollapsed(true)">全部收合</v-btn>
-      </template>
     </div>
 
     <p class="text-body-2 text-medium-emphasis mb-4">選擇戶別後，{{ isBonus ? '編輯本次獎金比例與人員分配，再獨立送出獎金。' : '編輯請佣條件，再獨立送出請佣。' }}</p>
@@ -16,19 +13,27 @@
       尚未選擇戶別，請點「新增戶別」。{{ isBonus ? '獎金額度與請佣分開計算，不需先送出請佣。' : '買方解約需退回佣金時，切到「退佣」頁籤。' }}
     </v-alert>
 
-    <div v-if="isBonus" class="d-flex align-center ga-3 mb-3">
+    <!-- 獎金：期別／獎金日期整批共用（各戶卡片不再個別填寫） -->
+    <div v-if="isBonus" class="d-flex align-center flex-wrap ga-3 mb-3 claim-batch-fields">
       <v-combobox v-model="summaryPeriod" :items="summaryPeriods" label="獎金期別／當期彙總" type="number" variant="outlined" density="compact" hide-details style="max-width: 260px" />
+      <DateFieldTW v-model="bonusDate" label="獎金日期" style="max-width: 220px" />
+    </div>
+    <!-- 請佣：期別／請佣日期整批共用（各戶卡片不再個別填寫） -->
+    <div v-else class="d-flex align-center flex-wrap ga-3 mb-3 claim-batch-fields">
+      <v-text-field v-model.number="claimPeriod" label="期別" type="number" min="1" variant="outlined" density="compact" hide-details style="max-width: 140px" />
+      <DateFieldTW v-model="claimDate" label="請佣日期" style="max-width: 220px" />
     </div>
     <template v-if="isBonus">
-      <PeriodBonusSummary :period="Number(summaryPeriod)" :summary="periodSummary" :notes="effectiveNotes"
-        :dirty="noteEdits.length > 0" :saving="savingNotes" @update="updatePeriodNote" @save="savePeriodNotes" />
+      <PeriodBonusSummary :period="Number(summaryPeriod)" :summary="periodSummary" :notes="effectiveNotes" :rates="draftPersonRates" :history="personNoteHistory"
+        :categories="settings.bonusCategories || []"
+        :dirty="noteEdits.length > 0" :saving="savingNotes" @update="updatePeriodNote" @update-rate="updatePersonRate" @save="savePeriodNotes" />
       <v-expansion-panels v-if="savedPeriodEntries.length || savedPeriodRefunds.length" class="mb-4">
         <v-expansion-panel title="本方案本期已送出獎金（可拉回修改）">
           <v-expansion-panel-text>
             <div v-for="record in savedPeriodEntries" :key="record.id" class="d-flex align-center flex-wrap ga-3 mb-2">
               <span>{{ record.unitId }}・獎金比例 {{ record.ratioPct }}%</span>
               <v-chip v-if="record.bonusRefundedBy" size="x-small" color="orange-darken-3" variant="tonal">已退獎金</v-chip>
-              <v-btn size="small" variant="tonal" :disabled="!!record.bonusRefundedBy || entries.some(e => e.unitId === record.unitId)" @click="loadFromRecords([record], bonusRecords)">拉回修改</v-btn>
+              <v-btn size="small" variant="tonal" :disabled="!!record.bonusRefundedBy || entries.some(e => e.replaceRecordId === record.id)" @click="loadFromRecords([record], bonusRecords)">拉回修改</v-btn>
             </div>
             <div v-for="record in savedPeriodRefunds" :key="record.id" class="d-flex align-center flex-wrap ga-3 mb-2">
               <v-chip size="x-small" color="error" variant="flat">退獎金</v-chip>
@@ -40,36 +45,79 @@
       </v-expansion-panels>
     </template>
 
-    <!-- 上下配置：上＝戶別卡片編輯區（全寬）、下＝本次合計（全寬） -->
-    <div class="cards-area">
-      <CommissionUnitCard
-        v-for="e in entries"
-        :key="e.id"
-        :entry="e"
-        :mode="mode"
-        :settings="settings"
-        :profiles="personProfiles"
-        :resolve-profile-key="k => profileKeyFor(k, e.unit?.payment_contract_date)"
-        :project-id="projectId"
-        :project-name="projectName"
-        :local-personnel="personnel"
-        :claimed-pct="entryClaimedPct(e)"
-        @toggle="toggleCard(e)"
-        @remove="removeEntry(e)"
-      />
-      <CommissionRefundCard
-        v-for="e in refunds"
-        :key="e.id"
-        :entry="e"
-        :settings="settings"
-        :project-id="projectId"
-        :bonus-records="bonusRecords"
-        :mode="mode"
-        @toggle="toggleCard(e)"
-        @remove="removeRefund(e)"
-      />
-    </div>
+    <!-- 左右分欄：左＝戶別清單（固定）、右＝目前選取戶別的編輯區 -->
+    <div v-if="entries.length || refunds.length" class="split-area">
+      <aside class="unit-list" aria-label="本次戶別">
+        <div class="list-h">
+          <b>{{ entries.length }} 戶</b><span v-if="refunds.length">・{{ refundLabel }} {{ refunds.length }} 戶</span>
+          <span class="text-medium-emphasis">・{{ totalIssues ? `${totalIssues} 項待完成` : '已填妥' }}</span>
+          <v-spacer />
+          <v-btn-toggle v-model="listFilter" mandatory density="compact" variant="outlined" divided class="list-filter">
+            <v-btn value="all" size="x-small">全部</v-btn>
+            <v-btn value="issue" size="x-small">待完成</v-btn>
+          </v-btn-toggle>
+        </div>
+        <div class="list-body" role="listbox" aria-label="戶別清單" @keydown.down.prevent="selectOffset(1)" @keydown.up.prevent="selectOffset(-1)">
+          <button v-for="row in visibleListRows" :key="row.id" type="button" class="list-row" :class="{ active: row.id === selectedId, 'is-refund': row.refund }"
+            role="option" :aria-selected="row.id === selectedId" @click="selectCard(row.id)">
+            <span class="dot" :class="row.issueClass"></span>
+            <span class="main">
+              <b class="u">{{ row.unitId }}</b>
+              <span class="b">{{ row.buyer || '—' }}</span>
+              <v-chip v-if="row.refund" size="x-small" color="error" variant="flat">{{ refundLabel }}</v-chip>
+              <span v-if="row.note" class="note-mark" :title="row.note">✎ {{ row.note }}</span>
+            </span>
+            <span class="amt">{{ money(row.amount) }}<small>{{ row.amountLabel }}</small></span>
+            <span class="meta">
+              <span>銷售 <b>{{ row.sales || '—' }}</b></span>
+              <span>小訂 <b>{{ row.deposit || '—' }}</b></span>
+              <span>簽約 <b>{{ row.contract || '—' }}</b></span>
+              <span v-if="!row.refund">佣金 <b>{{ row.commPct }}%</b></span>
+              <span>{{ row.ratioLabel }} <b>{{ row.ratioPct }}%</b></span>
+            </span>
+          </button>
+          <div v-if="!visibleListRows.length" class="text-caption text-medium-emphasis pa-3 text-center">沒有待完成的戶別</div>
+        </div>
+        <div class="list-f">
+          <span>{{ isBonus ? '本次獎金實發' : '本次請佣合計' }}</span>
+          <b>{{ money(isBonus ? summary.totals.net : summary.thisClaimSum) }}</b>
+        </div>
+      </aside>
 
+      <section class="unit-editor" aria-live="polite">
+        <div class="editor-nav">
+          <v-btn size="small" variant="text" prepend-icon="mdi-chevron-up" :disabled="selectedIndex <= 0" @click="selectOffset(-1)">上一戶</v-btn>
+          <v-btn size="small" variant="text" append-icon="mdi-chevron-down" :disabled="selectedIndex < 0 || selectedIndex >= visibleListRows.length - 1" @click="selectOffset(1)">下一戶</v-btn>
+          <span class="text-caption text-medium-emphasis ml-2" v-if="selectedIndex >= 0">{{ selectedIndex + 1 }} / {{ visibleListRows.length }}</span>
+        </div>
+        <CommissionUnitCard
+          v-if="selectedEntry"
+          :key="selectedEntry.id"
+          :entry="selectedEntry"
+          :mode="mode"
+          :settings="settings"
+          :profiles="personProfiles"
+          :resolve-profile-key="k => profileKeyFor(k, selectedEntry.unit?.payment_contract_date)"
+          :project-id="projectId"
+          :project-name="projectName"
+          :local-personnel="personnel"
+          :claimed-pct="entryClaimedPct(selectedEntry)"
+          split
+          @remove="removeEntry(selectedEntry)"
+        />
+        <CommissionRefundCard
+          v-else-if="selectedRefund"
+          :key="selectedRefund.id"
+          :entry="selectedRefund"
+          :settings="settings"
+          :project-id="projectId"
+          :bonus-records="bonusRecords"
+          :mode="mode"
+          split
+          @remove="removeRefund(selectedRefund)"
+        />
+      </section>
+    </div>
     <!-- 彙總 -->
     <v-card v-if="!isBonus && (entries.length || refunds.length) && showSummary" id="comm-summary" variant="outlined" class="mb-4 summary-card">
       <v-card-title class="text-subtitle-1 bg-grey-lighten-4">
@@ -77,7 +125,7 @@
       </v-card-title>
       <v-card-text>
         <v-row dense class="mb-3">
-          <v-col cols="6" md="3"><div class="sum-item"><label>獎金總銷（折數後合計）</label><div>{{ money(summary.grandAfter) }} 元</div></div></v-col>
+          <v-col cols="6" md="3"><div class="sum-item"><label>折數後總價合計</label><div>{{ money(summary.grandAfter) }} 元</div></div></v-col>
           <v-col cols="6" md="3"><div class="sum-item"><label>實際請領金額合計</label><div>{{ money(summary.claimSum) }} 元</div></div></v-col>
           <v-col cols="6" md="3"><div class="sum-item"><label>請佣保留款合計</label><div>{{ money(summary.keepSum) }} 元</div></div></v-col>
           <v-col cols="6" md="3"><div class="sum-item highlight"><label>本次請佣合計</label><div>{{ money(summary.thisClaimSum) }} 元</div></div></v-col>
@@ -283,13 +331,14 @@ import { ref, reactive, computed, watch, nextTick } from 'vue';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import PeriodBonusSummary from './PeriodBonusSummary.vue';
-import { summarizePeriodBonus } from '@/utils/commissionPeriodBonus';
+import { summarizePeriodBonus, personNoteHistory as buildPersonNoteHistory } from '@/utils/commissionPeriodBonus';
 import CommissionUnitCard from './CommissionUnitCard.vue';
+import DateFieldTW from './DateFieldTW.vue';
 import CommissionRefundCard from './CommissionRefundCard.vue';
 import CommissionGridPreview from './CommissionGridPreview.vue';
 import { refundableRecordsByUnit, buildRefundEntryPlan } from './refundEntry';
 import { submitCommissionEntriesAPI, fetchCommissionExportConfigs, setBonusPeriodNotes, voidCommissionRecordAPI } from '@/api';
-import { buildClaimModel, buildBonusModel, defaultClaimConfig, defaultBonusConfig, exportProjectNameOf } from '@/utils/commissionExportModel';
+import { buildClaimModel, buildBonusModel, defaultClaimConfig, defaultBonusConfig, exportProjectNameOf, makePersonSorter } from '@/utils/commissionExportModel';
 import { buildClaimGrid, buildBonusGrids } from '@/services/commissionExcelService';
 import { draftClaimRecord, draftRefundRecord, normalizeSalesNames } from '@/utils/commissionDraftRecords';
 import {
@@ -372,9 +421,15 @@ function blockNumberWheel(e) {
 function claimedPctOf(unitId) {
   return Math.round(toNum(props.ledgers[unitId]) * 10) / 10;
 }
-/** 卡片實際適用的已請比例：拉回編輯者先扣掉原紀錄比例（送出時原紀錄會作廢） */
+/**
+ * 卡片實際適用的已請比例：先扣掉同一戶所有拉回編輯原紀錄的比例（送出時作廢），
+ * 再加上同一戶其他卡片的本次比例（同批送出同戶多筆時，與後端 ledger 驗證一致）。
+ */
 function entryClaimedPct(e) {
-  return Math.max(0, Math.round((claimedPctOf(e.unitId) - toNum(e.replaceRatioPct)) * 10) / 10);
+  const siblings = entries.value.filter(x => x.unitId === e.unitId);
+  const replaced = siblings.reduce((s, x) => s + toNum(x.replaceRatioPct), 0);
+  const others = siblings.filter(x => x !== e).reduce((s, x) => s + toNum(x.ratioPct), 0);
+  return Math.max(0, Math.round((claimedPctOf(e.unitId) - replaced + others) * 10) / 10);
 }
 
 // ---------- 戶別選擇 ----------
@@ -505,14 +560,14 @@ function confirmPick() {
     Object.keys(pickSel).forEach(unitId => {
       if (pickSel[unitId] && !refunds.value.some(e => e.unitId === unitId)) addRefund(unitId);
     });
-    if (refunds.value.length > before) { setAllCollapsed(true); refunds.value[before].collapsed = false; }
+    if (refunds.value.length > before) selectCard(refunds.value[before].id);   // 選取本次新增的第一筆
   } else {
     const before = entries.value.length;
     Object.keys(pickSel).forEach(unitId => {
       if (pickSel[unitId] && !entries.value.some(e => e.unitId === unitId)) addUnit(unitId);
     });
     // 只加入一戶時直接展開
-    if (entries.value.length > before) { setAllCollapsed(true); entries.value[before].collapsed = false; }
+    if (entries.value.length > before) selectCard(entries.value[before].id);   // 選取本次新增的第一筆
   }
   Object.keys(pickSel).forEach(k => delete pickSel[k]);
   pickerOpen.value = false;
@@ -527,9 +582,10 @@ function addRefund(unitId) {
     kind: 'refund',
     unitId,
     unit: props.households.find(u => u.unitId === unitId) || null,
-    period: props.nextPeriod,
-    requestDate: formatDateTW(new Date()),
+    period: isBonus.value ? (Number(summaryPeriod.value) || props.nextPeriod) : claimPeriod.value,
+    requestDate: isBonus.value ? bonusDate.value : claimDate.value,
     reason: '買方解約',
+    note: '',
     includeKeep: false,
     refundBonus: isBonus.value,   // 退獎金：只追回獎金明細；請佣的退佣不追回獎金（各自獨立）
     candidates,
@@ -537,10 +593,13 @@ function addRefund(unitId) {
     people: null,           // 逐人調整（null＝原數反向）
     collapsed: true,
   });
+  selectedId.value = refunds.value[refunds.value.length - 1].id;
 }
 
 function removeRefund(e) {
+  const next = selectNeighborAfterRemove(e.id);
   refunds.value = refunds.value.filter(x => x !== e);
+  if (next) selectedId.value = next;
 }
 
 function refundPlan(e) {
@@ -696,8 +755,8 @@ function addUnit(unitId, fromRecord = null, bonusRows = []) {
     manualFloor: fromRecord ? (snap.manualFloor ?? manualFloor) : manualFloor,
     note: fromRecord ? String(fromRecord.note || '') : (isNonGeneralContract(unit) ? String(unit.contractType).trim() : ''),   // 請佣備註：非一般合約先帶合約方式
     get finance() { return computePlanFinance(unit, props.parkings, plan.value, this); },
-    period: fromRecord ? toNum(fromRecord.period) : (isBonus.value ? Number(summaryPeriod.value) || props.nextPeriod : props.nextPeriod),
-    requestDate: fromRecord?.requestDate || formatDateTW(new Date()),
+    period: isBonus.value ? (Number(summaryPeriod.value) || props.nextPeriod) : claimPeriod.value,
+    requestDate: isBonus.value ? bonusDate.value : claimDate.value,
     ratioPct: fromRecord ? toNum(fromRecord.ratioPct) : Math.max(0, Math.round((100 - claimed) * 10) / 10),
     commPct: basis?.commPct != null ? toNum(basis.commPct) : resolveCommPct(props.settings, !!unit.isPreferredPayment),
     keepPct: basis?.keepPct != null ? toNum(basis.keepPct) : toNum(props.settings.defaultKeepPct),
@@ -714,35 +773,117 @@ function addUnit(unitId, fromRecord = null, bonusRows = []) {
     replaceLegacyBonus: isBonus.value && !!fromRecord && fromRecord.submissionType !== 'bonus',        // 拉回編輯：送出時取代此原紀錄
     replaceRatioPct: fromRecord ? toNum(fromRecord.ratioPct) : 0,   // 原紀錄比例（已請比例顯示時先扣除）
   });
+  selectedId.value = entries.value[entries.value.length - 1].id;
   return true;
 }
 
 /**
  * 拉回編輯：把已送出的請佣紀錄載回工作台（每筆一張卡片，預帶原設定），送出時取代原紀錄。
- * 已在工作台中的戶別、找不到戶別資料者略過並提示。
+ * 同一戶同期有多筆紀錄時每筆各一張卡片；已載回的同一筆、找不到戶別資料者略過並提示。
  */
 function loadFromRecords(records, bonusRows = []) {
   const skipped = [];
   let added = 0;
+  if (!entries.value.length) {
+    const first = (records || []).find(r => r && r.status === 'active' && r.type !== 'refund');
+    if (first) {
+      if (isBonus.value) {
+        if (toNum(first.period) > 0) summaryPeriod.value = toNum(first.period);
+        if (first.requestDate) bonusDate.value = first.requestDate;
+      } else {
+        if (toNum(first.period) > 0) claimPeriod.value = toNum(first.period);
+        if (first.requestDate) claimDate.value = first.requestDate;
+      }
+    }
+  }
   (records || []).forEach(r => {
     if (!r || r.status !== 'active' || r.type === 'refund' || (isBonus.value ? r.bonusRefundedBy : r.refundedBy)) { skipped.push(`${r?.unitId || '?'}（不可拉回）`); return; }
-    if (entries.value.some(e => e.unitId === r.unitId)) { skipped.push(`${r.unitId}（已在工作台）`); return; }
+    if (entries.value.some(e => e.replaceRecordId === r.id)) { skipped.push(`${r.unitId}（已在工作台）`); return; }
     if (!props.households.find(u => u.unitId === r.unitId)) { skipped.push(`${r.unitId}（找不到戶別資料）`); return; }
     if (addUnit(r.unitId, r, bonusRows)) added++;
   });
-  if (added) toast.info(`已拉回 ${added} 戶，修改後送出會取代原紀錄`);
+  if (added) toast.info(`已拉回 ${added} 筆，修改後送出會取代原紀錄`);
   if (skipped.length) toast.warning(`略過：${skipped.join('、')}`);
   return added;
 }
 
+/** 移除後選取相鄰的一筆 */
+function selectNeighborAfterRemove(id) {
+  const rows = visibleListRows.value;
+  const idx = rows.findIndex(r => r.id === id);
+  const next = rows[idx + 1] || rows[idx - 1] || null;
+  return next ? next.id : null;
+}
 function removeEntry(e) {
+  const next = selectNeighborAfterRemove(e.id);
   entries.value = entries.value.filter(x => x !== e);
+  if (next) selectedId.value = next;
 }
 
-function setAllCollapsed(v) {
-  entries.value.forEach(e => { e.collapsed = v; });
-  refunds.value.forEach(e => { e.collapsed = v; });
+// ---------- 左右分欄：目前選取的戶別 ----------
+const selectedId = ref(null);
+const listFilter = ref('all');
+const selectedEntry = computed(() => entries.value.find(e => e.id === selectedId.value) || null);
+const selectedRefund = computed(() => refunds.value.find(e => e.id === selectedId.value) || null);
+/** 左側清單列（請佣卡片在前、退佣卡片在後） */
+const listRows = computed(() => {
+  const fmt = v => formatDateTW(v) || '';
+  const rows = entries.value.map(e => {
+    const r = entryResult(e);
+    const issues = entryIssueCount(e);
+    const over = entryClaimedPct(e) + toNum(e.ratioPct) > 100.0001;
+    return {
+      id: e.id, refund: false, unitId: e.unitId, buyer: e.unit?.buyerName || '',
+      sales: normalizeSalesNames(e.unit?.salesperson).join('、'),
+      deposit: fmt(e.unit?.payment_deposit_date), contract: fmt(e.unit?.payment_contract_date),
+      amount: isBonus.value ? r.people.reduce((s, p) => s + p.net, 0) : r.claim.thisClaim,
+      amountLabel: isBonus.value ? '獎金實發' : '本次請佣',
+      commPct: toNum(e.commPct), ratioPct: toNum(e.ratioPct), ratioLabel: isBonus.value ? '獎金' : '請佣',
+      note: String(e.note || ''), issues, issueClass: over ? 'err' : issues ? 'warn' : '',
+    };
+  });
+  refunds.value.forEach(e => {
+    const pl = refundPlan(e);
+    const issues = refundIssueCount(e);
+    rows.push({
+      id: e.id, refund: true, unitId: e.unitId, buyer: e.unit?.buyerName || '',
+      sales: normalizeSalesNames(e.unit?.salesperson).join('、'),
+      deposit: fmt(e.unit?.payment_deposit_date), contract: fmt(e.unit?.payment_contract_date),
+      amount: isBonus.value ? pl.people.reduce((s, p) => s + p.net, 0) : pl.calc.thisClaim,
+      amountLabel: isBonus.value ? '追回獎金' : '退回',
+      commPct: 0, ratioPct: toNum(pl.refundRatioPct), ratioLabel: '退回',
+      note: String(e.note || ''), issues, issueClass: issues ? 'warn' : '',
+    });
+  });
+  return rows;
+});
+const visibleListRows = computed(() => (listFilter.value === 'issue' ? listRows.value.filter(r => r.issues > 0) : listRows.value));
+const selectedIndex = computed(() => visibleListRows.value.findIndex(r => r.id === selectedId.value));
+// 選取失效（被移除／尚未選）時退回第一筆
+watch(listRows, rows => {
+  if (!rows.some(r => r.id === selectedId.value)) selectedId.value = rows[0]?.id ?? null;
+}, { immediate: true });
+function selectCard(id) {
+  selectedId.value = id;
+  focusEditor();
 }
+function selectOffset(delta) {
+  const rows = visibleListRows.value;
+  if (!rows.length) return;
+  const idx = selectedIndex.value < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, selectedIndex.value + delta));
+  selectCard(rows[idx].id);
+}
+/** 手機（單欄）時把編輯區捲到最上方；桌機清單固定在左側，只需確保編輯區頂端可見 */
+async function focusEditor() {
+  await nextTick();
+  requestAnimationFrame(() => {
+    const el = document.querySelector('.unit-editor');
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    if (top < 0 || window.innerWidth <= 960) el.scrollIntoView({ behavior: 'auto', block: 'start' });
+  });
+}
+
 
 async function toggleSummary() {
   showSummary.value = !showSummary.value;
@@ -751,22 +892,14 @@ async function toggleSummary() {
     document.getElementById('comm-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
-function toggleCard(e) {
-  const open = e.collapsed;
-  setAllCollapsed(true);
-  e.collapsed = !open;
-}
+function toggleCard(e) { selectCard(e.id); }
 function gotoFirstIssue() {
   const entry = entries.value.find(e => entryIssueCount(e)) || refunds.value.find(e => refundIssueCount(e));
   if (entry) gotoCard(entry);
 }
 function gotoCard(e) {
-  setAllCollapsed(true);
-  e.collapsed = false;
-  requestAnimationFrame(() => {
-    const el = document.getElementById(`comm-card-${e.id}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
+  if (listFilter.value === 'issue' && !(entryIssueCount(e) || refundIssueCount(e))) listFilter.value = 'all';
+  selectCard(e.id);
 }
 
 // ---------- 計算 ----------
@@ -927,13 +1060,33 @@ const draftData = computed(() => {
 });
 
 const summaryPeriod = ref(props.nextPeriod);
+// ---------- 獎金：整批共用期別／獎金日期（同步到所有戶別卡片） ----------
+const bonusDate = ref(formatDateTW(new Date()));
+watch([summaryPeriod, bonusDate], ([p, d]) => {
+  if (!isBonus.value) return;
+  [...entries.value, ...refunds.value].forEach(e => { e.period = Number(p) || 0; e.requestDate = d; });
+});
+// ---------- 請佣：整批共用期別／請佣日期（同步到所有戶別卡片） ----------
+const claimPeriod = ref(props.nextPeriod);
+const claimDate = ref(formatDateTW(new Date()));
+watch([claimPeriod, claimDate], ([p, d]) => {
+  if (isBonus.value) return;
+  [...entries.value, ...refunds.value].forEach(e => { e.period = Number(p) || 0; e.requestDate = d; });
+});
+// 送出後父層重新載入 → 下一期別更新；工作台沒有草稿時跟著切到下一期
+watch(() => props.nextPeriod, next => { if (!entries.value.length) claimPeriod.value = next; });
 const noteEdits = ref([]);
 const savingNotes = ref(false);
 const effectiveNotes = computed(() => [...noteEdits.value, ...props.periodNotes]);
+/** 每人歷期獎金明細備註（含歷史匯入）：當期未存備註時，每人當期獎金結果自動帶入最近一期 */
+const personNoteHistory = computed(() => buildPersonNoteHistory(props.allBonusRecords));
 const summaryPeriods = computed(() => [...new Set([props.nextPeriod, ...props.allBonusRecords.map(b => toNum(b.period)), ...entries.value.map(e => toNum(e.period))])].filter(p => p > 0).sort((a, b) => b - a));
 const periodSummary = computed(() => summarizePeriodBonus({
   period: summaryPeriod.value, saved: props.allBonusRecords, drafts: draftData.value.bonusRecords,
   replacingIds: entries.value.map(e => e.replaceRecordId),
+  // 先依獎金類別順序（與卡片「獎金人員與分配」相同：主委 → 副總 → … → 銷售個獎），同類別再依獎金表人員欄順序
+  categoryOrder: enabledCategories.value.map(c => c.key),
+  sorter: makePersonSorter(props.personOrder, props.personnel.map(p => p.name)),
 }));
 const savedPeriodEntries = computed(() => props.records.filter(r => r.status !== 'voided' && r.type !== 'refund' && !r.refundedBy && toNum(r.period) === Number(summaryPeriod.value)));
 const savedPeriodRefunds = computed(() => props.records.filter(r => r.status !== 'voided' && r.type === 'refund' && toNum(r.period) === Number(summaryPeriod.value)));
@@ -961,6 +1114,23 @@ async function doVoidRefund() {
     emit('submitted');
   } catch (error) { toast.error(`作廢失敗：${error.message}`); }
   finally { voidingRefund.value = false; }
+}
+/** 本次草稿各人員的扣款比例（保留款／稅金／二代健保）：於「每人當期獎金結果」直接編輯，跨戶共用同一 profile */
+const draftPersonRates = computed(() => {
+  const map = {};
+  entries.value.forEach(e => {
+    Object.entries(entryProfiles(e)).forEach(([personKey, prof]) => {
+      if (!map[personKey]) map[personKey] = { keepPct: toNum(prof.keepPct), taxPct: toNum(prof.taxPct), nhiPct: toNum(prof.nhiPct), profiles: [] };
+      if (!map[personKey].profiles.includes(prof)) map[personKey].profiles.push(prof);
+    });
+  });
+  return map;
+});
+function updatePersonRate({ personKey, field, value }) {
+  const item = draftPersonRates.value[personKey];
+  if (!item || !['keepPct', 'taxPct', 'nhiPct'].includes(field)) return;
+  const v = Math.round((Number(value) || 0) * 100) / 100;
+  item.profiles.forEach(prof => { prof[field] = v; });
 }
 function updatePeriodNote(row) {
   noteEdits.value = [...noteEdits.value.filter(n => n.period !== row.period || n.personKey !== row.personKey), row];
@@ -1021,6 +1191,7 @@ const previewGrids = computed(() => {
           ...base,
           records: recs,
           periodNotes: effectiveNotes.value,
+          noteHistory: personNoteHistory.value,   // 與「每人當期獎金結果」相同的備註來源（含自動帶入的最近一期備註）
           bonusRecords: bonusRecords.filter(b => ids.has(b.commissionRecordId)),
           config: previewConfigOf('bonus'),
           projectId: props.projectId,
@@ -1109,6 +1280,7 @@ async function doSubmit() {
       period: Number(e.period) || 0,
       requestDate: e.requestDate,
       reason: String(e.reason || ''),
+      note: String(e.note || '').trim(),
       includeKeep: !!e.includeKeep,
       refundBonus: isBonus.value,
       sourceRecordIds: [...e.selectedIds],
@@ -1171,6 +1343,45 @@ defineExpose({ hasDraft: computed(() => entries.value.length > 0 || refunds.valu
 .people-table th, .people-table td { white-space: nowrap; }
 .people-table .col-name { min-width: 110px; }
 .people-table .col-source { min-width: 90px; }
+/* ---- 左右分欄 ---- */
+.split-area { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; align-items: start; margin-bottom: 16px; }
+.unit-list { position: sticky; top: 12px; max-height: calc(100vh - 120px); display: flex; flex-direction: column; background: #fff; border: 1px solid #ddd; border-radius: 12px; overflow: hidden; }
+.list-h { display: flex; align-items: center; gap: 4px; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #66707f; }
+.list-h b { color: #1e2532; font-size: 13px; }
+.list-body { overflow: auto; flex: 1; }
+.list-row { display: grid; grid-template-columns: 8px 1fr auto; gap: 0 10px; align-items: center; width: 100%; padding: 10px 12px; border: 0; border-bottom: 1px solid #eef0f4; background: transparent; text-align: left; position: relative; font: inherit; color: inherit; cursor: pointer; }
+.list-row:hover { background: #f7f8fb; }
+.list-row.active { background: #e6edfb; }
+.list-row.active::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: rgb(var(--v-theme-primary)); }
+.list-row.is-refund .u { color: #c62828; }
+.list-row:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: -2px; }
+.list-row .dot { width: 8px; height: 8px; border-radius: 50%; background: #2e7d32; }
+.list-row .dot.warn { background: #fb8c00; }
+.list-row .dot.err { background: #c62828; }
+.list-row .main { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
+.list-row .u { font-weight: 700; }
+.list-row .b { font-size: 12px; color: #66707f; }
+.list-row .note-mark { font-size: 11px; color: #8a5a00; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-row .amt { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.list-row .amt small { display: block; font-weight: 400; font-size: 11px; color: #66707f; }
+.list-row .meta { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: #66707f; margin-top: 2px; }
+.list-row .meta b { color: #1e2532; font-weight: 500; }
+.list-f { display: flex; justify-content: space-between; padding: 8px 12px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #66707f; }
+.list-f b { color: #1e2532; font-variant-numeric: tabular-nums; }
+.unit-editor { min-width: 0; scroll-margin-top: 80px; }
+.editor-nav { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+@media (max-width: 960px) {
+  .split-area { grid-template-columns: 1fr; }
+  .unit-list { position: static; max-height: none; }
+  .list-body { display: flex; overflow-x: auto; gap: 8px; padding: 8px; }
+  .list-row { width: auto; min-width: 230px; flex: 0 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; grid-template-columns: 8px 1fr; }
+  .list-row.active { border-color: rgb(var(--v-theme-primary)); }
+  .list-row.active::before { display: none; }
+  .list-row .amt { grid-column: 2; text-align: left; }
+  .list-row .meta { grid-column: 2; }
+  .list-f { display: none; }
+  .unit-editor { scroll-margin-top: 58px; }
+}
 .submit-bar { position: sticky; bottom: 12px; z-index: 6; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 2px 12px #00000012; }
 .submit-total { font-size: 20px; font-variant-numeric: tabular-nums; }
 .commission-workbench { padding-bottom: 16px; }

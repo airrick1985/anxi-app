@@ -183,28 +183,47 @@ function batcher_(db) {
  * 整期作廢核心：該期所有 active 請佣紀錄 → voided、每戶 ledger 回溯、獎金明細連動作廢。
  * 回傳 { records, bonuses, units: [{unitId, before, after, ratioPct}] }
  */
-async function voidPeriodCore_(db, projectId, period, { reason, by }, planId) {
+/**
+ * 整期作廢核心。bonusOnly＝獨立獎金紀錄（bonusEntries／bonusUnitLedgers，退獎金標記 bonusRefundedBy）。
+ */
+async function voidPeriodCore_(db, projectId, period, { reason, by }, planId, bonusOnly = false) {
   const p = Number(period);
-  const recSnap = await planRows_(db.collection("commissionRecords")
+  const recordCollection = bonusOnly ? "bonusEntries" : "commissionRecords";
+  const marker = bonusOnly ? "bonusRefundedBy" : "refundedBy";
+  const label = bonusOnly ? "退獎金" : "退佣";
+  const recSnap = await planRows_(db.collection(recordCollection)
     .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "active"), planId);
   const recs = recSnap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }));
-  if (!recs.length) return { records: 0, bonuses: 0, units: [] };
+  // 獎金整期作廢：即使沒有獨立獎金紀錄，仍可能有舊版請佣附帶的獎金明細要作廢
+  if (!recs.length && !bonusOnly) return { records: 0, bonuses: 0, units: [] };
 
   // 期內原紀錄若已被「其他期」的退佣紀錄退回 → 需先作廢該退佣紀錄
   const inPeriod = new Set(recs.map(r => r.id));
-  const blocked = recs.filter(r => r.refundedBy && !inPeriod.has(String(r.refundedBy)));
+  const blocked = recs.filter(r => r[marker] && !inPeriod.has(String(r[marker])));
   if (blocked.length) {
     throw new HttpsError("failed-precondition",
-      `${blocked.map(r => r.unitId).join("、")} 已於其他期別退佣，請先作廢對應的退佣紀錄再整期作廢。`);
+      `${blocked.map(r => r.unitId).join("、")} 已於其他期別${label}，請先作廢對應的${label}紀錄再整期作廢。`);
   }
+  // 退佣／退獎金紀錄的來源文件（退獎金來源可能是獨立獎金或舊版請佣紀錄，先於 transaction 外解析）
+  const refundSourceRefs = {};
+  for (const r of recs) {
+    if (r.type !== "refund") continue;
+    const ids = (r.sourceRecordIds || []).map(String);
+    refundSourceRefs[r.id] = bonusOnly
+      ? await Promise.all(ids.map(id => bonusSourceRef_(db, id)))
+      : ids.map(id => db.collection("commissionRecords").doc(id));
+  }
+  const unmark = bonusOnly
+    ? { bonusRefundedBy: FieldValue.delete(), bonusRefundedAt: FieldValue.delete(), bonusRefundPeriod: FieldValue.delete() }
+    : { refundedBy: FieldValue.delete(), refundedAt: FieldValue.delete(), refundPeriod: FieldValue.delete() };
 
   const rollback = {};
   recs.forEach(r => { rollback[r.unitId] = (rollback[r.unitId] || 0) + calc.toNum(r.ratioPct); });
   const unitIds = Object.keys(rollback);
   const units = [];
 
-  await db.runTransaction(async (tx) => {
-    const ledgerRefs = unitIds.map(u => db.collection("commissionUnitLedgers").doc(ledgerId_(projectId, u, planId)));
+  if (recs.length) await db.runTransaction(async (tx) => {
+    const ledgerRefs = unitIds.map(u => db.collection(bonusOnly ? "bonusUnitLedgers" : "commissionUnitLedgers").doc(ledgerId_(projectId, u, planId)));
     const ledgerSnaps = await Promise.all(ledgerRefs.map(ref => tx.get(ref)));
     // 再次確認紀錄仍為 active（避免並發重複回溯）
     const recSnaps = await Promise.all(recs.map(r => tx.get(r.ref)));
@@ -227,12 +246,7 @@ async function voidPeriodCore_(db, projectId, period, { reason, by }, planId) {
         voidReason: reason || "",
       });
       const d = sn.data();
-      if (d.type === "refund") {
-        (d.sourceRecordIds || []).forEach(id => {
-          addUpdate(db.collection("commissionRecords").doc(String(id)),
-            { refundedBy: FieldValue.delete(), refundedAt: FieldValue.delete(), refundPeriod: FieldValue.delete() });
-        });
-      }
+      if (d.type === "refund") (refundSourceRefs[sn.id] || []).forEach(ref => addUpdate(ref, { ...unmark }));
     });
     updates.forEach(u => tx.update(u.ref, u.fields));
     unitIds.forEach((u, i) => {
@@ -241,7 +255,7 @@ async function voidPeriodCore_(db, projectId, period, { reason, by }, planId) {
       const raw = Math.round((existing - dec) * 1000) / 1000;
       if (raw > 100.0001) {
         throw new HttpsError("failed-precondition",
-          `戶別 ${u} 已重新請佣，作廢本期退佣紀錄將使已請比例超過 100%，無法整期作廢。`);
+          `戶別 ${u} 已重新${bonusOnly ? "送獎金" : "請佣"}，作廢本期${label}紀錄將使已${bonusOnly ? "送" : "請"}比例超過 100%，無法整期作廢。`);
       }
       const next = Math.max(0, raw);
       units.push({ unitId: u, before: existing, after: next, ratioPct: dec });
@@ -249,18 +263,34 @@ async function voidPeriodCore_(db, projectId, period, { reason, by }, planId) {
     });
   });
 
-  // 獎金明細連動作廢
-  const bonusSnap = await planRows_(db.collection("bonusRecords")
-    .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "active"), planId);
+  // 獎金明細：請佣與獎金各自獨立 → 請佣整期作廢不動獎金明細；
+  // 獎金整期作廢則作廢該期全部有效獎金明細（獨立獎金＋舊版請佣附帶獎金）
+  let bonuses = 0;
+  if (bonusOnly) {
+    const bonusSnap = await planRows_(db.collection("bonusRecords")
+      .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "active"), planId);
+    const bt = batcher_(db);
+    for (const d of bonusSnap.docs) {
+      await bt.add(b => b.update(d.ref, { status: "voided", voidedAt: FieldValue.serverTimestamp(), voidedBy: by || "" }));
+    }
+    await bt.flush();
+    bonuses = bonusSnap.docs.length;
+  }
+
+  return { records: recs.length, bonuses, units };
+}
+
+/** 作廢某筆紀錄（獨立獎金或舊版請佣）附帶的有效獎金明細，回傳筆數 */
+async function voidBonusDetails_(db, recordId, by) {
+  const snap = await db.collection("bonusRecords").where("commissionRecordId", "==", recordId).get();
+  const docs = snap.docs.filter(d => d.data().status === "active");
+  if (!docs.length) return 0;
   const bt = batcher_(db);
-  bonusSnap.docs = bonusSnap.docs.filter(d => inPeriod.has(d.data().commissionRecordId));
-  bonusSnap.size = bonusSnap.docs.length;
-  for (const d of bonusSnap.docs) {
+  for (const d of docs) {
     await bt.add(b => b.update(d.ref, { status: "voided", voidedAt: FieldValue.serverTimestamp(), voidedBy: by || "" }));
   }
   await bt.flush();
-
-  return { records: recs.length, bonuses: bonusSnap.size, units };
+  return docs.length;
 }
 
 /** 讀取建案的請佣設定（合併預設值） */
@@ -726,6 +756,7 @@ exports.submitCommissionEntries = onCall({
         status: "active",
         requestDate,
         reason: String(rf.reason || ""),
+        note: noteOf_(rf.note),
         includeKeep: !!rf.includeKeep,
         refundBonus: bonusOnly ? true : rf.refundBonus !== false,
         ratioPct: -calc.toNum(plan.refundRatioPct),
@@ -828,6 +859,17 @@ exports.voidCommissionRecord = onCall({
   const db = db_();
   const recordRef = db.collection(bonusOnly ? "bonusEntries" : "commissionRecords").doc(recordId);
 
+  // 獎金作廢：找不到獨立獎金紀錄時視為舊版請佣附帶獎金 → 只作廢其獎金明細，不動請佣紀錄與已請比例
+  if (bonusOnly && !(await recordRef.get()).exists) {
+    const legacySnap = await db.collection("commissionRecords").doc(recordId).get();
+    if (!legacySnap.exists) throw new HttpsError("not-found", "找不到此獎金紀錄。");
+    const rec = legacySnap.data();
+    if (rec.projectId !== projectId || planIdOf(rec) !== planId) throw new HttpsError("permission-denied", "紀錄不屬於此建案。");
+    const bonusVoided = await voidBonusDetails_(db, recordId, voidedBy);
+    if (!bonusVoided) throw new HttpsError("failed-precondition", "此請佣紀錄沒有有效的獎金明細可作廢。");
+    return { ok: true, unitId: rec.unitId, bonusVoided, legacy: true };
+  }
+
   let unitId = "";
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(recordRef);
@@ -883,22 +925,10 @@ exports.voidCommissionRecord = onCall({
     }, { merge: true });
   });
 
-  // 關聯獎金明細連動作廢（transaction 外批次處理）
-  const bonusSnap = await db.collection("bonusRecords")
-    .where("commissionRecordId", "==", recordId).get();
-  if (!bonusSnap.empty) {
-    const batch = db.batch();
-    bonusSnap.docs.forEach(d => {
-      batch.update(d.ref, {
-        status: "voided",
-        voidedAt: FieldValue.serverTimestamp(),
-        voidedBy: voidedBy || "",
-      });
-    });
-    await batch.commit();
-  }
+  // 獎金明細只隨「獨立獎金紀錄」作廢；請佣作廢不連動獎金（各自獨立）
+  const bonusVoided = bonusOnly ? await voidBonusDetails_(db, recordId, voidedBy) : 0;
 
-  return { ok: true, unitId, bonusVoided: bonusSnap.size };
+  return { ok: true, unitId, bonusVoided };
 });
 
 /* ==========================================================
@@ -1121,7 +1151,8 @@ exports.voidCommissionPeriod = onCall({
   memory: "512MiB",
 }, async (request) => {
   const planId = requestPlanId_(request);
-  const { projectId, period, voidReason, voidedBy, operatorKey } = request.data || {};
+  const { projectId, period, voidReason, voidedBy, operatorKey, submissionType = "claim" } = request.data || {};
+  const bonusOnly = submissionType === "bonus";
   const p = Number(period);
   if (!projectId || !Number.isFinite(p) || p <= 0) throw new HttpsError("invalid-argument", "缺少 projectId 或期別。");
   if (!String(voidReason || "").trim()) throw new HttpsError("invalid-argument", "作廢原因為必填。");
@@ -1135,13 +1166,13 @@ exports.voidCommissionPeriod = onCall({
       `第 ${p} 期已有 ${payouts.length} 筆保留款發還登記，請先於「保留款追蹤」刪除後再整期作廢。`);
   }
 
-  const result = await voidPeriodCore_(db, projectId, p, { reason: voidReason, by: voidedBy || "" }, planId);
-  if (!result.records) throw new HttpsError("failed-precondition", `第 ${p} 期沒有有效的請佣紀錄可作廢。`);
+  const result = await voidPeriodCore_(db, projectId, p, { reason: voidReason, by: voidedBy || "" }, planId, bonusOnly);
+  if (!result.records && !result.bonuses) throw new HttpsError("failed-precondition", `第 ${p} 期沒有有效的${bonusOnly ? "獎金" : "請佣"}紀錄可作廢。`);
 
   await writeAudit_(db, {
     projectId, planId, action: "voidPeriod", period: p,
     operator: voidedBy || "", operatorKey: String(operatorKey), reason: voidReason,
-    impact: { records: result.records, bonuses: result.bonuses, units: result.units },
+    impact: { submissionType, records: result.records, bonuses: result.bonuses, units: result.units },
   });
   return { ok: true, period: p, ...result };
 });
@@ -1156,19 +1187,20 @@ exports.purgeVoidedCommissionPeriod = onCall({
   memory: "512MiB",
 }, async (request) => {
   const planId = requestPlanId_(request);
-  const { projectId, period, purgedBy, operatorKey } = request.data || {};
+  const { projectId, period, purgedBy, operatorKey, submissionType = "claim" } = request.data || {};
+  const bonusOnly = submissionType === "bonus";
   const p = Number(period);
   if (!projectId || !Number.isFinite(p) || p <= 0) throw new HttpsError("invalid-argument", "缺少 projectId 或期別。");
 
   const db = db_();
   await ensureManagePermission_(db, operatorKey, projectId);
 
-  const recSnap = await planRows_(db.collection("commissionRecords")
+  const recSnap = await planRows_(db.collection(bonusOnly ? "bonusEntries" : "commissionRecords")
     .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "voided"), planId);
   const bonusSnap = await planRows_(db.collection("bonusRecords")
     .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "voided"), planId);
-  const claimIds = new Set(recSnap.docs.map(d => d.id));
-  bonusSnap.docs = bonusSnap.docs.filter(d => claimIds.has(d.data().commissionRecordId));
+  // 請佣與獎金各自獨立：請佣清除不動獎金明細；獎金清除一併刪除該期全部作廢獎金明細（含舊版請佣附帶）
+  if (!bonusOnly) bonusSnap.docs = [];
   bonusSnap.size = bonusSnap.docs.length;
   bonusSnap.empty = !bonusSnap.size;
   if (recSnap.empty && bonusSnap.empty) {
@@ -1187,7 +1219,7 @@ exports.purgeVoidedCommissionPeriod = onCall({
   await writeAudit_(db, {
     projectId, planId, action: "purgeVoided", period: p,
     operator: purgedBy || "", operatorKey: String(operatorKey), reason: "",
-    impact: { records: recSnap.size, bonuses: bonusSnap.size },
+    impact: { submissionType, records: recSnap.size, bonuses: bonusSnap.size },
   });
   return { ok: true, period: p, records: recSnap.size, bonuses: bonusSnap.size };
 });
