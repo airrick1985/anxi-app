@@ -13,6 +13,7 @@
         </span>
         <v-chip size="x-small" variant="tonal" :color="contractTypeColor(entry.unit.contractType)">{{ entry.unit.contractType || '未設定合約方式' }}</v-chip>
         <span v-if="entry.unit.isPreferredPayment" class="text-caption text-medium-emphasis">優付戶</span>
+        <span v-if="!isBonus" class="head-pay text-caption" :class="paymentRatio === null ? 'text-medium-emphasis' : ''">繳款 <b>{{ paymentRatio === null ? '—' : `${paymentRatio}%` }}</b></span>
         <span v-if="!isBonus && entry.note" class="head-note" :title="entry.note"><v-icon size="x-small">mdi-note-text-outline</v-icon>{{ entry.note }}</span>
         <v-chip v-if="entry.replaceRecordId" size="x-small" color="orange-darken-3" variant="flat" prepend-icon="mdi-pencil-box-outline" title="送出後原紀錄作廢，以本卡片內容寫入新紀錄">拉回編輯・送出取代第 {{ entry.period }} 期原紀錄</v-chip>
       </button>
@@ -766,6 +767,7 @@ function onPickPerson(person) {
 .unit-toggle:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 4px; }
 .head-dates { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; font-variant-numeric: tabular-nums; }
 .head-dates b { font-weight: 600; color: #334155; }
+.head-pay b { font-weight: 600; color: #334155; }
 .head-note { display: inline-flex; align-items: center; gap: 4px; max-width: 260px; padding: 1px 8px; border-radius: 999px; background: #fff7e0; color: #8a5a00; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .claim-note-field :deep(.v-field) { background: #fffbea; }
 .claim-note-field :deep(.v-field__outline) { color: #e0b64a; }

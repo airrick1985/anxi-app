@@ -74,6 +74,7 @@
               <span>簽約 <b>{{ row.contract || '—' }}</b></span>
               <span v-if="!row.refund">佣金 <b>{{ row.commPct }}%</b></span>
               <span>{{ row.ratioLabel }} <b>{{ row.ratioPct }}%</b></span>
+              <span v-if="!row.refund && !isBonus">繳款 <b>{{ row.paymentRatio === null ? '—' : `${row.paymentRatio}%` }}</b></span>
             </span>
           </button>
           <div v-if="!visibleListRows.length" class="text-caption text-medium-emphasis pa-3 text-center">沒有待完成的戶別</div>
@@ -839,6 +840,7 @@ const listRows = computed(() => {
       amount: isBonus.value ? r.people.reduce((s, p) => s + p.net, 0) : r.claim.thisClaim,
       amountLabel: isBonus.value ? '獎金實發' : '本次請佣',
       commPct: toNum(e.commPct), ratioPct: toNum(e.ratioPct), ratioLabel: isBonus.value ? '獎金' : '請佣',
+      paymentRatio: paymentRatioPct(e.unit, e.finance?.transactionTotal),
       note: String(e.note || ''), issues, issueClass: over ? 'err' : issues ? 'warn' : '',
     };
   });
