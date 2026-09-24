@@ -56,7 +56,7 @@
         <v-list-subheader>工具</v-list-subheader>
         <v-list-item prepend-icon="mdi-account-group" title="BY序" @click="onMenuClick(openStandbyDialog)" />
         <v-list-item prepend-icon="mdi-clipboard-text-outline" title="貴賓資料表" @click="onMenuClick(() => router.push('/vip-login'))" />
-        <v-list-item prepend-icon="mdi-account-details-outline" title="客戶資料表" @click="onMenuClick(() => router.push('/customer-data-sheet'))" />
+        <v-list-item prepend-icon="mdi-account-details-outline" title="客戶資料表" @click="onMenuClick(() => router.push('/customer-form-share'))" />
 
         <template v-if="user">
           <v-divider class="my-1" />

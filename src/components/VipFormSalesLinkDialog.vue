@@ -153,6 +153,9 @@ const salesFormUrl = computed(() => {
   if (selectedSalesName.value) {
     url += `&sn=${encodeURIComponent(selectedSalesName.value)}`;
   }
+  if (formType.value === 'customer' && props.projectName) {
+    url += `&pn=${encodeURIComponent(props.projectName)}`;
+  }
   return url;
 });
 

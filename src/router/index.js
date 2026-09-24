@@ -366,6 +366,12 @@ const routes = [
   },
 
   {
+    path: '/customer-form-share',
+    name: 'CustomerFormShare',
+    component: () => import('@/views/CustomerFormShare.vue'),
+    meta: { requiresAuth: true, layout: DefaultLayout, title: '客戶資料表' }
+  },
+  {
     // ✓ 1. 新增「銷售人員登入」專用路徑 (沒有 props)
     path: '/customer-data-sheet',
     name: 'CustomerDataSheetLogin', // 登入頁

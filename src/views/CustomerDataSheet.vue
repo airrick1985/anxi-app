@@ -21,7 +21,7 @@
           </v-stepper-header>
         </v-stepper>
 
-        <v-window v-model="step">
+        <v-window v-if="!isCustomerMode" v-model="step">
 
           <v-window-item :value="1">
             <v-card flat class="text-center pa-10">
@@ -240,7 +240,20 @@
         </v-dialog>
 
 
-        <div v-if="step === 4">
+        <div v-if="step === 4" :aria-busy="isFormInitializing || isLoading">
+          <section v-if="isFormInitializing || isLoading" class="cds-loading" role="status" aria-live="polite">
+            <div class="cds-loading__animation" aria-hidden="true">
+              <div class="cds-loading__orbit"></div>
+              <v-icon size="36" color="#54715d">mdi-home-city-outline</v-icon>
+            </div>
+            <h1>{{ loadingProjectName ? `${loadingProjectName} 客戶資料卡載入中` : '客戶資料卡載入中' }}</h1>
+            <div class="cds-loading__dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          </section>
+          <v-card v-else-if="formLoadError" class="pa-8 text-center" rounded="xl">
+            <v-alert type="error" variant="tonal" class="mb-5">{{ formLoadError }}</v-alert>
+            <v-btn color="primary" @click="retryFormLoad">重新載入</v-btn>
+          </v-card>
+          <template v-else>
           <v-card v-if="showCoverImage && coverImageUrl" class="mb-5" elevation="4" rounded="xl">
             <v-img :src="coverImageUrl" aspect-ratio="16/9" cover></v-img>
           </v-card>
@@ -255,11 +268,7 @@
               <v-btn v-if="!isCustomerMode" variant="text" @click="qrDialog = true" icon="mdi-qrcode" title="產生客戶填寫QR Code" aria-label="產生客戶填寫QR Code"></v-btn>
             </header>
 
-            <v-card-text v-if="isLoading" class="text-center pa-10">
-              <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
-            </v-card-text>
-
-            <v-card-text v-else-if="isSubmitted" class="text-center pa-10">
+            <v-card-text v-if="isSubmitted" class="text-center pa-10">
               <v-icon size="80" color="success">mdi-check-circle-outline</v-icon>
               <h2 class="text-h5 mt-4">資料已送出</h2>
               <p class="text-body-1 mt-2">客戶資料已成功{{ currentDocId ? '更新' : '建立' }}！</p>
@@ -438,6 +447,7 @@
               </v-form>
             </v-card-text>
           </v-card>
+          </template>
         </div>
 
         <v-dialog v-model="qrDialog" max-width="400">
@@ -712,13 +722,15 @@ const DynamicFormField = {
 };
 
 // --- State ---
-const step = ref(1);
+const step = ref(props.projectId ? 4 : 1);
+const isFormInitializing = ref(Boolean(props.projectId));
+const formLoadError = ref(null);
 const isLoading = ref(false);
 const isSubmitting = ref(false);
 const isSubmitted = ref(false);
 const errorMessage = ref(null);
 const step1Error = ref(null);
-const isCustomerMode = ref(false);
+const isCustomerMode = ref(Boolean(props.projectId));
 // ✅ [修改] 移除 salesPassword 等輸入框 ref
 const showBindButton = ref(false);
 
@@ -732,6 +744,9 @@ const selectedGuestId = ref(null);
 const formRef = ref(null);
 const currentDocId = ref(null);
 const projectName = ref('');
+const loadingProjectName = computed(() => projectName.value
+  || salesPerson.value.projects.find(project => project.id === selectedProjectId.value)?.name
+  || (typeof route.query.pn === 'string' ? route.query.pn : '')); // URL name is a display hint only; settings remain authoritative.
 const coverImageUrl = ref(null);
 const showCoverImage = ref(false);
 const systemSettings = ref({ fields: {} });
@@ -768,7 +783,8 @@ const currentUrl = computed(() => {
     },
     query: {
       sp: selectedSalesPhone,
-      sn: selectedSalesName || undefined
+      sn: selectedSalesName || undefined,
+      pn: projectName.value || undefined
     }
   }).href;
   return `${window.location.origin}${path}`;
@@ -956,7 +972,7 @@ async function handleProjectSelected(isUrlEntry = false) {
   isLoading.value = true;
   try {
     const [guests, settings] = await Promise.all([
-      fetchVipGuests(selectedProjectId.value),
+      isUrlEntry ? Promise.resolve([]) : fetchVipGuests(selectedProjectId.value),
       fetchCustomerSheetSettings(selectedProjectId.value)
     ]);
 
@@ -975,9 +991,12 @@ async function handleProjectSelected(isUrlEntry = false) {
     if (!isUrlEntry) {
       step.value = 3;
     }
+    return true;
   } catch (error) {
     console.error("載入建案資料失敗:", error);
     errorMessage.value = error.message;
+    if (isUrlEntry) formLoadError.value = error.message || '建案資料載入失敗，請重試。';
+    return false;
   } finally {
     isLoading.value = false;
   }
@@ -1019,6 +1038,7 @@ function executeNewCustomer() {
 
 async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameFromUrl = null) {
   isLoading.value = true;
+  formLoadError.value = null;
   errorMessage.value = null;
   isSubmitted.value = false;
 
@@ -1127,6 +1147,7 @@ async function loadForm(isUrlEntry = false, salesPhoneFromUrl = null, salesNameF
   } catch (error) {
     console.error("載入表單失敗:", error);
     errorMessage.value = `載入表單資料失敗: ${error.message}`;
+    formLoadError.value = errorMessage.value;
   } finally {
     isLoading.value = false;
   }
@@ -1259,30 +1280,46 @@ function formatGuestDate(val) {
   }
 }
 
+async function initializeCustomerForm() {
+  isFormInitializing.value = true;
+  formLoadError.value = null;
+  selectedProjectId.value = props.projectId;
+  currentDocId.value = props.docId;
+  try {
+    // Settings must arrive before dynamic fields and existing customer values are initialized.
+    if (await handleProjectSelected(true)) {
+      await loadForm(true, route.query.sp, route.query.sn);
+    }
+  } finally {
+    isFormInitializing.value = false;
+  }
+}
+function retryFormLoad() {
+  return isCustomerMode.value ? initializeCustomerForm() : loadForm();
+}
 onMounted(() => {
   if (props.projectId) {
-    // 這是客戶/QR Code 流程
-    isCustomerMode.value = true;
-    step.value = 4;
-    selectedProjectId.value = props.projectId;
-    currentDocId.value = props.docId;
-
-    const salesPhoneFromUrl = route.query.sp;
-    const salesNameFromUrl = route.query.sn;
-
-    handleProjectSelected(true);
-    loadForm(true, salesPhoneFromUrl, salesNameFromUrl);
+    initializeCustomerForm();
   } else {
-    // ✅ [修改] 銷售人員流程：初始化 LIFF
-    isCustomerMode.value = false;
-    step.value = 1;
-    initializeLiff(); // 啟動 LIFF
+    initializeLiff();
   }
 });
 
 </script>
 
 <style scoped>
+.cds-loading { min-height: 65svh; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 26px; padding: 40px 20px; text-align: center; }
+.cds-loading h1 { max-width: 100%; font-size: clamp(18px, 4vw, 24px); font-weight: 600; color: #365443; line-height: 1.7; overflow-wrap: anywhere; }
+.cds-loading__animation { position: relative; width: 104px; height: 104px; display: grid; place-items: center; border-radius: 50%; background: #edf2e8; }
+.cds-loading__orbit { position: absolute; inset: -7px; border: 2px solid #dfe8d9; border-top-color: #78936c; border-radius: 50%; animation: cds-orbit 1.6s linear infinite; }
+.cds-loading__dots { display: flex; gap: 8px; }
+.cds-loading__dots i { width: 7px; height: 7px; border-radius: 50%; background: #78936c; animation: cds-pulse 1.2s ease-in-out infinite; }
+.cds-loading__dots i:nth-child(2) { animation-delay: .15s; }
+.cds-loading__dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes cds-orbit { to { transform: rotate(360deg); } }
+@keyframes cds-pulse { 0%, 80%, 100% { opacity: .35; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-5px); } }
+@media (prefers-reduced-motion: reduce) { .cds-loading__orbit, .cds-loading__dots i { animation: none; } }
+
 .mobile-stepper :deep(.v-stepper-item__title) {
   font-size: 12px !important;
   line-height: 1.2;
