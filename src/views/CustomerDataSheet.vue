@@ -268,13 +268,14 @@
               <v-btn v-if="!isCustomerMode" variant="text" @click="qrDialog = true" icon="mdi-qrcode" title="產生客戶填寫QR Code" aria-label="產生客戶填寫QR Code"></v-btn>
             </header>
 
-            <v-card-text v-if="isSubmitted" class="text-center pa-10">
-              <v-icon size="80" color="success">mdi-check-circle-outline</v-icon>
-              <h2 class="text-h5 mt-4">資料已送出</h2>
-              <p class="text-body-1 mt-2">客戶資料已成功{{ currentDocId ? '更新' : '建立' }}！</p>
-              <v-btn color="primary" @click="handleSubmitSuccessAction" class="mt-6">
-                {{ isCustomerMode ? '關閉視窗' : '返回客戶列表' }}
-              </v-btn>
+            <v-card-text v-if="isSubmitted" class="pa-0">
+              <CustomerFormReceived
+                :title="isCustomerMode ? '已收到您的資料' : '資料已送出'"
+                :subtitle="isCustomerMode ? '感謝您的填寫' : `客戶資料已成功${currentDocId ? '更新' : '建立'}`"
+                :action-label="isCustomerMode ? '關閉視窗' : '返回客戶列表'"
+                :action-icon="isCustomerMode ? 'mdi-close' : 'mdi-arrow-left'"
+                @action="handleSubmitSuccessAction"
+              />
             </v-card-text>
 
             <v-card-text v-else class="pa-6">
@@ -496,6 +497,7 @@ import QrCode from 'qrcode.vue';
 import twCitiesData from '@/assets/TwCities.json';
 import { VCombobox, VSelect, VTextField } from 'vuetify/components';
 import ChoiceChipField from '@/components/form/ChoiceChipField.vue';
+import CustomerFormReceived from '@/components/CustomerFormReceived.vue';
 
 // ✅ [打勾] 請在此填入您的 LIFF ID
 const LIFF_ID = '2008257338-8AWzYeNQ'; //2008257338-6N3jwqxA 測試用    2008257338-8AWzYeNQ 正式
