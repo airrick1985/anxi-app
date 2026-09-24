@@ -246,12 +246,14 @@
           </v-card>
 
           <v-card class="cds-card" rounded="xl" elevation="3">
-            <v-toolbar color="white" density="compact" class="cds-toolbar">
-              <v-btn v-if="!isCustomerMode" icon="mdi-arrow-left" @click="step = 3; isSubmitted = false;"></v-btn>
-              <v-toolbar-title class="cds-toolbar__title">{{ pageTitle }}</v-toolbar-title>
-              <v-spacer></v-spacer>
-              <v-btn v-if="!isCustomerMode" @click="qrDialog = true" icon="mdi-qrcode" title="產生客戶填寫QR Code"></v-btn>
-            </v-toolbar>
+            <header class="cds-toolbar">
+              <v-btn v-if="!isCustomerMode" variant="text" icon="mdi-arrow-left" aria-label="返回選擇客戶" @click="step = 3; isSubmitted = false;"></v-btn>
+              <h1 class="cds-toolbar__title">
+                <span v-if="projectName" class="cds-toolbar__project">{{ projectName }}</span>
+                <span class="cds-toolbar__label">客戶資料表</span>
+              </h1>
+              <v-btn v-if="!isCustomerMode" variant="text" @click="qrDialog = true" icon="mdi-qrcode" title="產生客戶填寫QR Code" aria-label="產生客戶填寫QR Code"></v-btn>
+            </header>
 
             <v-card-text v-if="isLoading" class="text-center pa-10">
               <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
@@ -747,8 +749,6 @@ const allManageableUsers = ref([]);
 const allUserPermissionsMap = ref({});
 
 // --- Computed ---
-const pageTitle = computed(() => `${projectName.value} 客戶資料表`);
-
 const getTodayInTaiwan = () => {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
 };
@@ -1303,12 +1303,57 @@ onMounted(() => {
   overflow: hidden;
 }
 .cds-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 4px 12px;
+  background: #FFFFFF;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
+.cds-toolbar > .v-btn {
+  flex: 0 0 auto;
+}
 .cds-toolbar__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.25rem;
   font-weight: 600;
+  line-height: 1.5;
   letter-spacing: 0.04em;
   color: #1F2A3A;
+  overflow-wrap: anywhere;
+}
+.cds-toolbar__project {
+  margin-inline-end: 0.35em;
+}
+
+@media (max-width: 599px) {
+  .cds-toolbar {
+    align-items: flex-start;
+    gap: 4px;
+    padding: 16px 12px;
+  }
+  .cds-toolbar > .v-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .cds-toolbar__title {
+    font-size: 1.125rem;
+    letter-spacing: 0.02em;
+  }
+  .cds-toolbar__project {
+    display: block;
+    margin-inline-end: 0;
+  }
+  .cds-toolbar__project + .cds-toolbar__label {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #667085;
+  }
 }
 
 /* 區塊標題：左側主色短線 */
