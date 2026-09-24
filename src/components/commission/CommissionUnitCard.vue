@@ -29,9 +29,13 @@
           <span class="metric-note">{{ entry.priceSource === 'package' ? '不計車位' : entry.priceSource === 'splitHouse' ? '配套房屋總價，含車位' : '原成交總價，含車位' }}</span>
         </div>
         <div class="finance-metric">
-          <dt>總底價<span class="metric-unit">萬</span></dt>
-          <dd>{{ hasValidFloor ? fmtWan(entry.finance.totalFloor, 4) : '—' }}</dd>
-          <span class="metric-note">{{ hasValidFloor ? (entry.priceSource === 'package' ? '配套底價，不計車位' : '房屋＋車位底價') : '待填有效底價' }}</span>
+          <dt>{{ entry.finance.manualFloorRequired ? (entry.priceSource === 'package' ? '配套底價' : '房屋底價') : '總底價' }}<span class="metric-unit">萬</span></dt>
+          <dd v-if="entry.finance.manualFloorRequired" class="commission-rate-input">
+            <v-text-field v-model.number="entry.manualFloor" :aria-label="`${entry.unitId} ${entry.priceSource === 'package' ? '配套底價' : '房屋底價'}(萬)`"
+              type="number" min="0" step="0.0001" variant="outlined" density="compact" hide-details :error="!hasValidFloor" />
+          </dd>
+          <dd v-else>{{ fmtWan(entry.finance.totalFloor, 4) }}</dd>
+          <span class="metric-note" :class="{ 'text-error': !hasValidFloor }">{{ floorNote }}</span>
         </div>
         <div class="finance-metric">
           <dt>溢差價<span class="metric-unit">萬</span></dt>
@@ -87,10 +91,6 @@
                   :items="[{ title: '配套房屋總價（含車位）', value: 'splitHouse' }, { title: '原成交總價（含車位）', value: 'transaction' }]"
                   variant="outlined" density="compact" hide-details />
               </v-col>
-              <v-col cols="12" sm="6" v-if="entry.finance.manualFloorRequired">
-                <v-text-field v-model.number="entry.manualFloor" :label="entry.priceSource === 'package' ? '配套底價（萬）＊' : '房屋底價（萬，不含車位）＊'"
-                  type="number" min="0" step="0.0001" variant="outlined" density="compact" hide-details />
-              </v-col>
               <v-col cols="12" sm="6" v-if="!isBonus">
                 <v-select v-model="entry.claimBasisMethod" label="請佣基準" :items="PRICE_BASIS_METHODS" item-title="title" item-value="value"
                   variant="outlined" density="compact" hide-details />
@@ -104,11 +104,6 @@
                   variant="outlined" density="compact" hide-details />
               </v-col>
             </v-row>
-            <div class="text-body-2 mb-3" v-if="entry.finance.manualFloorRequired">
-              {{ entry.priceSource === 'package' ? '配套價格' : '配套房屋總價（含車位）' }}：<strong>{{ fmtWan(entry.finance.dealTotal) }} 萬</strong>
-              <span v-if="entry.priceSource === 'package'">・不計車位</span>
-              <span v-else>・車位底價 {{ fmtWan(entry.finance.parkFloor) }} 萬（沿用銷控資料）</span>
-            </div>
             <v-alert v-for="message in entry.finance.errors" :key="message" type="warning" variant="tonal" density="compact" class="mb-2">{{ message }}</v-alert>
             <v-row dense align="start">
               <v-col v-if="isBonus" cols="12" sm="6" md="4" lg="3">
@@ -434,6 +429,14 @@ const hasValidFloor = computed(() => {
   if (!props.entry.finance.manualFloorRequired) return true;
   const value = props.entry.manualFloor;
   return value !== null && value !== undefined && String(value).trim() !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
+});
+/** 標頭底價欄說明：需手填時顯示總底價組成；未填提示待填 */
+const floorNote = computed(() => {
+  const f = props.entry.finance;
+  if (!f.manualFloorRequired) return '房屋＋車位底價';
+  if (!hasValidFloor.value) return '待填';
+  if (props.entry.priceSource === 'package') return '不計車位';
+  return `＋車位 ${fmtWan(f.parkFloor, 4)} 萬＝總底價 ${fmtWan(f.totalFloor, 4)} 萬`;
 });
 const defaultCommPct = computed(() => resolveCommPct(props.settings, !!props.entry.unit.isPreferredPayment));
 const customCommPct = computed(() => toNum(props.entry.commPct) !== defaultCommPct.value);
