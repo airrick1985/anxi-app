@@ -65,6 +65,10 @@
             <v-icon size="18" class="mr-1 unit-tab-icon">mdi-file-upload-outline</v-icon>上傳文件
             <v-badge v-if="viewUnitDocuments.length" :content="viewUnitDocuments.length" color="indigo" inline class="ml-1 unit-tab-badge" />
           </v-tab>
+          <v-tab value="cancelled">
+            <v-icon size="18" class="mr-1 unit-tab-icon">mdi-account-cancel-outline</v-icon>退戶紀錄
+            <v-badge v-if="unitCancelledCount" :content="unitCancelledCount" color="error" inline class="ml-1 unit-tab-badge" />
+          </v-tab>
           <v-tab v-if="canUseSalesAi" value="aiAssistant"><v-icon size="18" class="mr-1 unit-tab-icon">mdi-robot-outline</v-icon>AI助理</v-tab>
         </v-tabs>
         <v-divider></v-divider>
@@ -1154,6 +1158,19 @@
             </div>
           </v-window-item>
 
+          <!-- 退戶紀錄分頁：本戶歷次退戶回顧，eager 掛載以便開啟戶別資訊時即載入筆數 badge -->
+          <v-window-item value="cancelled" eager>
+            <div class="pa-2 unit-subtab">
+              <UnitCancelledHistoryPanel
+                :show="show && viewMode === 'sales'"
+                :project-id="projectId"
+                :unit-id="unitData?.unitId || ''"
+                @count="unitCancelledCount = $event"
+                @restored="onUnitCancelledRestored"
+              />
+            </div>
+          </v-window-item>
+
           <v-window-item value="aiAssistant">
             <!-- ✅ 銷控 AI 智能助理：共用對話元件，帶入目前戶別作為上下文（docs/銷控AI智能助理-spec.md §2 #17） -->
             <div class="unit-ai-chat">
@@ -1589,6 +1606,7 @@ import LandParcelsPanel from './LandParcelsPanel.vue';
 import PaymentRecordsPanel from './PaymentRecordsPanel.vue';
 import UnitDocumentsPanel from './UnitDocumentsPanel.vue';
 import RemarkNotesPanel from './RemarkNotesPanel.vue';
+import UnitCancelledHistoryPanel from '@/components/UnitCancelledHistoryPanel.vue';
 import { db } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { buildRemarksSummary } from '@/utils/remarkNotes';
@@ -2111,6 +2129,13 @@ const currentImage = computed(() => {
 
 
 const tab = ref('info');
+// 退戶紀錄分頁筆數（由 UnitCancelledHistoryPanel 載入後回報）
+const unitCancelledCount = ref(0);
+// 於退戶紀錄分頁復原退戶：銷售資料已回寫本戶，比照辦理退戶後關閉並刷新
+function onUnitCancelledRestored() {
+  emit('data-updated');
+  close();
+}
 const isEditing = ref(false);
 // 單區塊編輯：離開編輯模式時清除（必須放在 isEditing 宣告之後，否則 setup 期間 TDZ 錯誤導致視窗打不開）
 watch(isEditing, (v) => { if (!v) focusedEditSection.value = null; });
@@ -4440,6 +4465,7 @@ watch(() => props.show, (newVal) => {
   if (newVal) {
     if (props.projectId) statusColorStore.fetchColors(props.projectId);
     tab.value = 'info';
+    unitCancelledCount.value = 0;
     tempParkingSelection.value = null;
     editingParkingSelection.value = null; // 重置編輯暫存
     currentImageIndex.value = 0;
