@@ -77,7 +77,6 @@
     "register-service-worker": "^1.7.2",
     "shepherd.js": "^14.5.1",
     "subjx": "^1.1.2",
-    "three": "^0.186.0",
     "uuid": "^12.0.0",
     "vue": "^3.5.13",
     "vue-axios": "^3.5.2",

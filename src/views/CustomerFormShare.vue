@@ -1,12 +1,8 @@
 <template>
   <main class="customer-share">
-    <ClayNeighborhood :paused="paused" />
+    <div class="share-backdrop" :style="{ backgroundImage: `url(${backdrop})` }" aria-hidden="true"></div>
     <div class="share-topline">
       <router-link to="/home" class="share-brand">ANXI <span>安心相遇・從這裡開始</span></router-link>
-      <button class="motion-button" :aria-pressed="paused" @click="paused = !paused">
-        <v-icon size="17">{{ paused ? 'mdi-play-outline' : 'mdi-pause' }}</v-icon>
-        {{ paused ? '播放背景' : '暫停背景' }}
-      </button>
     </div>
 
     <section class="share-content" aria-labelledby="share-title">
@@ -16,7 +12,7 @@
         <p>讓每一次相遇，都有家的開始。</p>
       </header>
 
-      <article class="share-card">
+      <article ref="card" class="share-card">
         <template v-if="projects.length">
           <label for="share-project" class="select-label">選擇建案</label>
           <div class="project-select">
@@ -34,25 +30,26 @@
             <p>需要您的姓名與帳號資料，才能建立專屬表單連結。請至選單編輯個人資料。</p>
           </div>
           <template v-else-if="selectedProject">
-            <div class="qr-stage" aria-live="polite" :aria-busy="qrLoading">
+            <div ref="qrStage" class="qr-stage" :style="{ width: `${qrSize}px`, height: `${qrSize}px` }" aria-live="polite" :aria-busy="qrLoading">
               <img v-if="qrImage" class="share-qr" :src="qrImage" :alt="`${selectedProject.name}・${userStore.user.name} 的客戶資料表 QR Code`" width="280" height="280" />
               <div v-else class="qr-placeholder">
                 <template v-if="qrError"><p role="alert">{{ qrError }}</p><button class="text-button" @click="generateQr">重新產生</button></template>
                 <template v-else><v-progress-circular indeterminate color="#54715d" size="32" /><p>正在準備您的 QR Code…</p></template>
               </div>
             </div>
-            <div class="share-identity">
-              <h2>{{ selectedProject.name }}</h2>
-              <p><v-icon size="17">mdi-account-outline</v-icon> {{ userStore.user.name }}</p>
-            </div>
             <p class="scan-hint">開啟相機掃描，即可填寫客戶資料</p>
             <a class="open-form" :href="formUrl" target="_blank" rel="noopener noreferrer">開啟客戶資料表 <v-icon size="19">mdi-arrow-top-right</v-icon></a>
             <div class="share-actions">
-              <button @click="copyLink"><v-icon size="17">mdi-content-copy</v-icon> 複製連結</button>
+              <button :aria-expanded="targetsOpen" @click="shareLink"><v-icon size="17">mdi-share-variant-outline</v-icon> 分享</button>
               <button :disabled="!qrImage" @click="downloadQr"><v-icon size="18">mdi-download-outline</v-icon> 下載 QR Code</button>
             </div>
-            <label class="url-label" for="share-url">表單連結</label>
-            <input id="share-url" class="share-url" :value="formUrl" readonly @focus="$event.target.select()" />
+            <div v-if="targetsOpen" class="share-targets" role="menu">
+              <button v-for="target in shareTargets" :key="target.label" role="menuitem" @click="openTarget(target)">
+                <img v-if="target.image" :src="target.image" alt="" width="22" height="22" />
+                <v-icon v-else size="22">{{ target.icon }}</v-icon>
+                <span>{{ target.label }}</span>
+              </button>
+            </div>
           </template>
           <div v-else class="share-empty" role="status">
             <div class="empty-symbol"><v-icon size="58">mdi-qrcode</v-icon></div>
@@ -67,13 +64,14 @@
         <div v-if="feedback" class="share-feedback" role="status">{{ feedback }}</div>
       </article>
     </section>
-    <div class="scene-caption" aria-hidden="true"><span>A LITTLE NEIGHBORHOOD</span><br />美好的生活，從認識彼此開始。</div>
+    <div class="scene-caption" aria-hidden="true">美好的生活，從認識彼此開始。</div>
   </main>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import ClayNeighborhood from '@/components/ClayNeighborhood.vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import backdrop from '@/assets/customer-share-bg.webp';
+import lineIcon from '@/assets/icons/line.svg';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { customerFormProjects, customerFormQr, customerFormUrl } from '@/utils/customerFormLink';
@@ -84,11 +82,29 @@ const projects = computed(() => customerFormProjects(userStore.user?.permissions
 const selectedId = ref('');
 const selectedProject = computed(() => projects.value.find(project => project.id === selectedId.value));
 const identityReady = computed(() => Boolean(userStore.user?.key && userStore.user?.name));
-const paused = ref(false);
 const qrImage = ref('');
 const qrLoading = ref(false);
 const qrError = ref('');
 const feedback = ref('');
+const card = ref(null);
+const qrStage = ref(null);
+const qrSize = ref(280);
+let resizeObserver;
+function fitQr() {
+  const host = card.value;
+  const stage = qrStage.value;
+  if (!host || !stage) return;
+  const hostStyle = getComputedStyle(host);
+  let used = parseFloat(hostStyle.paddingTop) + parseFloat(hostStyle.paddingBottom);
+  for (const child of host.children) {
+    if (child === stage || child.classList.contains('share-feedback')) continue;
+    const style = getComputedStyle(child);
+    used += child.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+  }
+  const room = host.clientHeight - used - 12;
+  const size = Math.max(96, Math.min(280, host.clientWidth - 56, Math.floor(room)));
+  if (size !== qrSize.value) qrSize.value = size;
+}
 let feedbackTimer;
 let generation = 0;
 const formUrl = computed(() => customerFormUrl(window.location.href, selectedProject.value?.id, userStore.user, selectedProject.value?.name));
@@ -116,6 +132,36 @@ function notify(message) {
   clearTimeout(feedbackTimer);
   feedbackTimer = setTimeout(() => { feedback.value = ''; }, 5000);
 }
+const targetsOpen = ref(false);
+const shareText = computed(() => `${selectedProject.value?.name ?? ''}・${userStore.user?.name ?? ''} 的客戶資料表`);
+const shareTargets = computed(() => {
+  const url = encodeURIComponent(formUrl.value);
+  const text = encodeURIComponent(shareText.value);
+  return [
+    { label: 'LINE', image: lineIcon, href: `https://social-plugins.line.me/lineit/share?url=${url}&text=${text}` },
+    { label: 'WhatsApp', icon: 'mdi-whatsapp', href: `https://wa.me/?text=${text}%0A${url}` },
+    { label: 'Telegram', icon: 'mdi-send-outline', href: `https://t.me/share/url?url=${url}&text=${text}` },
+    { label: 'Facebook', icon: 'mdi-facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${url}` },
+    { label: 'Email', icon: 'mdi-email-outline', href: `mailto:?subject=${text}&body=${text}%0A${url}` },
+    { label: '複製連結', icon: 'mdi-content-copy', copy: true },
+  ];
+});
+watch(() => selectedProject.value?.id, () => { targetsOpen.value = false; });
+async function shareLink() {
+  const url = formUrl.value;
+  if (!navigator.share) { targetsOpen.value = !targetsOpen.value; return; }
+  try {
+    await navigator.share({ title: `${selectedProject.value.name} 客戶資料表`, text: shareText.value, url });
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    if (formUrl.value === url) targetsOpen.value = true;
+  }
+}
+function openTarget(target) {
+  targetsOpen.value = false;
+  if (target.copy) return copyLink();
+  window.open(target.href, '_blank', 'noopener,noreferrer');
+}
 async function copyLink() {
   const copiedUrl = formUrl.value;
   try {
@@ -123,8 +169,16 @@ async function copyLink() {
     if (formUrl.value === copiedUrl) notify('已複製表單連結');
   } catch {
     if (formUrl.value !== copiedUrl) return;
-    document.getElementById('share-url')?.focus();
-    notify('無法自動複製，已選取下方連結，請手動複製。');
+    const area = document.createElement('textarea');
+    area.value = copiedUrl;
+    area.setAttribute('readonly', '');
+    area.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+    document.body.appendChild(area);
+    area.select();
+    let copied = false;
+    try { copied = document.execCommand('copy'); } catch { copied = false; }
+    area.remove();
+    notify(copied ? '已複製表單連結' : '無法自動複製，請開啟客戶資料表後複製網址。');
   }
 }
 function downloadQr() {
@@ -134,60 +188,80 @@ function downloadQr() {
   link.download = `${selectedProject.value.name}_${userStore.user.name}_客戶資料表.png`.replace(/[\\/:*?"<>|]/g, '_');
   link.click();
 }
-onBeforeUnmount(() => { generation++; clearTimeout(feedbackTimer); });
+watch(() => selectedProject.value?.id, () => nextTick(fitQr));
+onMounted(() => {
+  resizeObserver = new ResizeObserver(() => fitQr());
+  if (card.value) resizeObserver.observe(card.value);
+  window.addEventListener('resize', fitQr);
+  nextTick(fitQr);
+});
+onBeforeUnmount(() => {
+  generation++;
+  clearTimeout(feedbackTimer);
+  resizeObserver?.disconnect();
+  window.removeEventListener('resize', fitQr);
+});
 </script>
 
 <style scoped>
-.customer-share { display: flex; flex-direction: column; flex: none; position: relative; isolation: isolate; min-height: 100svh; overflow: hidden; background: #f5f3e9; color: #304c40; font-family: 'Noto Sans TC', system-ui, sans-serif; }
-.share-topline { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; padding: 27px 38px 0 76px; gap: 12px; }
+.customer-share { box-sizing: border-box; display: flex; flex-direction: column; flex: none; position: relative; isolation: isolate; height: 100svh; overflow: hidden; background: #f5f3e9; color: #304c40; font-family: 'Noto Sans TC', system-ui, sans-serif; }
+.share-backdrop { position: absolute; inset: 0; z-index: 0; pointer-events: none; background: #f5f3e9 center / cover no-repeat; }
+.share-topline { flex: none; position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; padding: 22px 38px 0 76px; gap: 12px; }
 .share-brand { color: #304c40; text-decoration: none; font-size: 22px; letter-spacing: 4px; font-weight: 800; }
 .share-brand span { margin-left: 14px; font-size: 11px; letter-spacing: 2px; font-weight: 500; }
-.motion-button { display: flex; align-items: center; gap: 5px; padding: 8px 12px; border: 1px solid #d3d9cd; border-radius: 24px; font-size: 12px; background: #f9faf3c9; }
-.share-content { position: relative; z-index: 1; width: min(424px, calc(100% - 32px)); margin: 24px auto 32px; text-align: center; }
-.share-heading { position: relative; isolation: isolate; padding: 14px 24px 16px; }
+.share-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; position: relative; z-index: 1; width: min(424px, calc(100% - 32px)); margin: 16px auto 0; text-align: center; }
+.share-heading { flex: none; position: relative; isolation: isolate; padding: 12px 24px 14px; }
 .share-heading::before { content: ''; position: absolute; inset: -14px -40px; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at center, #f5f3e9e6 0%, #f5f3e9b3 42%, #f5f3e900 72%); backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px); -webkit-mask-image: radial-gradient(ellipse at center, #000 38%, transparent 72%); mask-image: radial-gradient(ellipse at center, #000 38%, transparent 72%); }
 .share-heading > * { text-shadow: 0 1px 0 #ffffffd9, 0 0 8px #f5f3e9, 0 0 18px #f5f3e9, 0 0 30px #f5f3e9cc; }
 .share-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 4px; color: #66795f; }
 .share-heading h1 { margin: 8px 0 6px; font-size: 30px; letter-spacing: 3px; line-height: 1.4; font-weight: 650; }
 .share-heading p { color: #62705f; font-size: 13px; letter-spacing: 1px; }
-.share-card { margin-top: 20px; padding: 24px 28px; border: 1px solid #fff; border-radius: 28px; background: #fffefaF5; box-shadow: 0 18px 65px #58705012, 0 3px 8px #465e4010; }
-.select-label, .url-label { display: block; text-align: left; font-size: 11px; color: #768273; margin-bottom: 7px; }
+.share-card { flex: 1 1 auto; min-height: 0; max-height: 700px; display: flex; flex-direction: column; position: relative; overflow: hidden auto; margin-top: 16px; padding: 22px 28px; border: 1px solid #fff; border-radius: 28px; background: #fffefaF5; box-shadow: 0 18px 65px #58705012, 0 3px 8px #465e4010; }
+.share-card > * { flex: none; }
+.select-label { display: block; text-align: left; font-size: 11px; color: #768273; margin-bottom: 7px; }
 .project-select { display: flex; align-items: center; gap: 10px; background: #f3f5ec; border: 1px solid #e2e8d9; border-radius: 13px; padding: 0 13px; }
 .project-select select { appearance: none; min-width: 0; width: 100%; padding: 12px 0; color: #304c40; cursor: pointer; outline: none; font-size: 14px; }
 .project-select:focus-within { outline: 2px solid #68825e; outline-offset: 3px; }
-.qr-stage { width: min(280px, 100%); aspect-ratio: 1; margin: 18px auto 14px; background: #fff; border: 1px solid #edf0e7; border-radius: 15px; overflow: hidden; }
+.qr-stage { flex: none; align-self: center; width: 280px; height: 280px; max-width: 100%; margin: auto; background: #fff; border: 1px solid #edf0e7; border-radius: 15px; overflow: hidden; }
 .share-qr { width: 100%; height: 100%; display: block; }
 .qr-placeholder { height: 100%; display: flex; flex-direction: column; gap: 15px; align-items: center; justify-content: center; padding: 18px; font-size: 13px; }
-.share-identity { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 12px; }
-.share-identity h2 { max-width: 100%; font-size: 19px; font-weight: 650; letter-spacing: 2px; overflow-wrap: anywhere; }
-.share-identity p { max-width: 100%; padding: 3px 9px; border-radius: 20px; background: #f0f3e9; font-size: 12px; color: #607258; overflow-wrap: anywhere; }
-.scan-hint { margin: 10px 0 18px; font-size: 12px; color: #798472; }
+.scan-hint { margin: 0 0 14px; font-size: 12px; color: #798472; }
 .open-form { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 46px; padding: 12px; border-radius: 12px; background: #46664f; color: white; text-decoration: none; font-weight: 600; font-size: 14px; }
 .open-form:hover { background: #36543f; }
-.share-actions { display: flex; gap: 8px; margin: 8px 0 16px; }
+.share-actions { display: flex; gap: 8px; margin-top: 8px; }
 .share-actions button { flex: 1; min-width: 0; min-height: 44px; border: 1px solid #e3e8da; background: #f8f9f3; font-size: 12px; color: #50684b; border-radius: 8px; }
 .share-actions button:hover { background: #f0f3e9; }
 .share-actions button:disabled { opacity: .4; cursor: default; }
-.share-url { width: 100%; font-size: 11px; color: #75806e; border: 1px solid #e7eadd; border-radius: 8px; padding: 8px 10px; background: #f8f9f4; }
-.share-empty { min-height: 270px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px 4px 16px; color: #879a7e; }
+.share-targets { position: absolute; left: 20px; right: 20px; bottom: 64px; z-index: 2; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 10px; border: 1px solid #e3e8da; border-radius: 16px; background: #fffefa; box-shadow: 0 14px 40px #46664f2a; }
+.share-targets button { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 4px; border-radius: 10px; font-size: 11px; color: #50684b; }
+.share-targets button:hover { background: #f0f3e9; }
+.share-targets img { display: block; width: 22px; height: 22px; }
+.share-empty { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px 4px; color: #879a7e; }
 .empty-symbol { border: 1px dashed #bac8ad; border-radius: 22px; width: 104px; height: 104px; display: grid; place-items: center; margin: 0 auto 8px; background: #f2f5ec; }
 .share-empty h2 { font-size: 17px; color: #4b6347; margin: 18px 0 12px; }
 .share-empty p { font-size: 13px; line-height: 1.9; color: #768273; }
-.share-feedback { margin-top: 12px; font-size: 12px; color: #46664f; }
+.share-feedback { position: absolute; left: 0; right: 0; bottom: 6px; font-size: 12px; color: #46664f; pointer-events: none; }
 .text-button { text-decoration: underline; }
-.scene-caption { position: relative; z-index: 1; width: calc(100% - 32px); margin: auto auto 28px; text-align: center; font-size: 12px; color: #7b896f; line-height: 2.4; letter-spacing: 1px; }
-.scene-caption span { font-size: 9px; letter-spacing: 2px; }
+.scene-caption { flex: none; position: relative; z-index: 1; width: calc(100% - 32px); margin: 10px auto 18px; text-align: center; font-size: 12px; color: #7b896f; line-height: 2.4; letter-spacing: 1px; }
 button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #54715d; outline-offset: 4px; }
+@media (max-height: 760px) {
+  .share-topline { padding-top: 16px; }
+  .share-content { margin-top: 8px; }
+  .share-heading { padding: 6px 24px 8px; }
+  .share-heading h1 { margin: 4px 0 2px; font-size: 24px; }
+  .share-card { margin-top: 10px; padding: 16px 22px; border-radius: 22px; }
+  .scene-caption { display: none; }
+  .customer-share { padding-bottom: 14px; }
+}
 @media (max-width: 700px) {
-  .share-topline { padding: 18px 18px 0 66px; }
+  .share-topline { padding: 16px 18px 0 66px; }
   .share-brand { font-size: 19px; }
   .share-brand span, .scene-caption { display: none; }
-  .share-content { margin: 20px auto 24px; }
-  .share-heading { padding: 10px 16px 12px; }
-  .share-heading h1 { font-size: 27px; }
+  .customer-share { padding-bottom: 14px; }
+  .share-content { margin-top: 10px; }
+  .share-heading { padding: 8px 16px 10px; }
+  .share-heading h1 { font-size: 26px; }
   .share-heading p { font-size: 12px; letter-spacing: .5px; }
-  .share-card { padding: 20px; margin-top: 18px; border-radius: 24px; }
-  .qr-stage { margin-top: 14px; }
-  .share-empty { min-height: 240px; }
+  .share-card { padding: 18px 20px; margin-top: 12px; border-radius: 24px; }
 }
 </style>
