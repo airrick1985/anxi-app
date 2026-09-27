@@ -266,6 +266,9 @@
                         class="rounded"
                       ></v-img>
                       <div v-if="item.hidden" class="thumbnail-hidden-tag">已隱藏</div>
+                      <div v-if="item.pinnedToQuote" class="thumbnail-pinned-tag">
+                        <v-icon size="10">mdi-pin</v-icon>報價頁
+                      </div>
                       <template v-if="canUpload && manageMode">
                         <v-btn
                           icon="mdi-drag"
@@ -283,6 +286,15 @@
                           :loading="visibilityBusyId === item.id"
                           :title="item.hidden ? '點擊改為顯示' : '點擊改為隱藏'"
                           @click.stop="toggleVisibility(item)"
+                        ></v-btn>
+                        <v-btn
+                          :icon="item.pinnedToQuote ? 'mdi-pin' : 'mdi-pin-outline'"
+                          size="x-small"
+                          :color="item.pinnedToQuote ? 'orange-darken-2' : 'grey-darken-2'"
+                          class="thumbnail-pin"
+                          :loading="pinBusyId === item.id"
+                          :title="item.pinnedToQuote ? '點擊取消釘選（報價單設定頁不再顯示）' : '點擊釘選到報價單設定頁'"
+                          @click.stop="togglePinned(item)"
                         ></v-btn>
                         <v-btn
                           icon="mdi-close"
@@ -421,6 +433,7 @@ import {
   deleteActivityMessage,
   updateActivityMessagesOrder,
   updateActivityMessageVisibility,
+  updateActivityMessagePinned,
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
 
@@ -432,6 +445,8 @@ const props = defineProps({
   projectId: { type: String, required: true },
   projectName: { type: String, default: '' },
   canUpload: { type: Boolean, default: false },
+  // 開啟時定位到指定文件（報價單設定頁點縮圖進來用）；找不到則從第一張開始
+  initialId: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -474,8 +489,11 @@ const pendingDeleteItem = ref(null);
 const isDeleting = ref(false);
 
 const visibilityBusyId = ref(null);
+const pinBusyId = ref(null);
 
 let unsubscribe = null;
+// 開啟時要定位的文件 id（首次快照到齊後套用一次）
+let pendingInitialId = '';
 
 // --- 燈箱縮放/拖曳 (panzoom 動態載入) ---
 const stageRef = ref(null);
@@ -701,6 +719,21 @@ async function toggleVisibility(item) {
   }
 }
 
+// 切換單張文件「釘選到報價單設定頁」
+async function togglePinned(item) {
+  if (!item || pinBusyId.value) return;
+  const nextPinned = !item.pinnedToQuote;
+  pinBusyId.value = item.id;
+  try {
+    await updateActivityMessagePinned(item.id, nextPinned);
+    toast.success(nextPinned ? '已釘選到報價單設定頁' : '已取消釘選', { timeout: 1500 });
+  } catch (err) {
+    toast.error(`更新釘選狀態失敗：${err.message}`);
+  } finally {
+    pinBusyId.value = null;
+  }
+}
+
 // 切換縮圖列可見性後，主圖區寬度會變 → 重新初始化 panzoom 邊界 / 重新量測 PDF 寬度
 watch(isThumbnailVisible, async () => {
   await nextTick();
@@ -772,6 +805,11 @@ function startListening() {
     props.projectId,
     (items) => {
       messages.value = items;
+      if (pendingInitialId) {
+        const idx = displayMessages.value.findIndex(m => m.id === pendingInitialId);
+        if (idx >= 0) currentIndex.value = idx;
+        pendingInitialId = '';
+      }
       if (currentIndex.value >= displayMessages.value.length) currentIndex.value = 0;
       isLoading.value = false;
     },
@@ -797,6 +835,7 @@ watch(
     if (open) {
       manageMode.value = false;
       keyBuffer = '';
+      pendingInitialId = props.initialId || '';
       startListening();
       document.addEventListener('keydown', onKeydown);
       window.addEventListener('keyup', onUnlockKeyup, true);
@@ -1345,6 +1384,31 @@ async function executeDelete() {
   right: -8px;
 }
 
+.thumbnail-pin {
+  position: absolute;
+  bottom: -8px;
+  left: -8px;
+}
+
+/* 已釘選到報價單設定頁：右上角小標籤（一般瀏覽也看得到） */
+.thumbnail-pinned-tag {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background-color: rgba(230, 81, 0, 0.9);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
 /* 已隱藏縮圖：圖片變淡，並在左下角標示 */
 .thumbnail-item.is-hidden :deep(.v-img) {
   opacity: 0.4;
@@ -1352,7 +1416,9 @@ async function executeDelete() {
 .thumbnail-hidden-tag {
   position: absolute;
   bottom: 2px;
-  left: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
   background-color: rgba(0, 0, 0, 0.72);
   color: #ffca28;
   font-size: 10px;

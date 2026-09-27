@@ -230,8 +230,35 @@
         </v-row>
       </v-card-text>
     </v-card>
-    
 
+    <!-- ✅ [新增] 釘選活動訊息：燈箱管理模式釘選的文件以橫向縮圖列顯示，點縮圖開燈箱直接跳到該張 -->
+    <v-card v-if="pinnedActivityMessages.length > 0" class="mt-4 pinned-activity-card">
+      <div class="pinned-activity-header">
+        <span class="pinned-activity-title">
+          <v-icon size="18" color="orange-darken-2">mdi-bullhorn-outline</v-icon>活動訊息
+        </span>
+        <button type="button" class="mac-btn" @click="handleOpenActivityMessage">
+          <v-icon size="16">mdi-image-multiple-outline</v-icon><span>看全部</span>
+        </button>
+      </div>
+      <div class="pinned-activity-strip">
+        <button
+          v-for="item in pinnedActivityMessages"
+          :key="item.id"
+          type="button"
+          class="pinned-activity-thumb"
+          :title="item.fileName"
+          @click="openPinnedActivityMessage(item)"
+        >
+          <div v-if="isPdfActivityItem(item)" class="pinned-activity-pdf">
+            <v-icon size="44" color="red-lighten-1">mdi-file-pdf-box</v-icon>
+            <span class="pinned-activity-pdf-name">{{ item.fileName }}</span>
+          </div>
+          <img v-else :src="item.downloadURL" :alt="item.fileName" loading="lazy" />
+          <span class="pinned-activity-zoom"><v-icon size="16">mdi-magnify-plus-outline</v-icon></span>
+        </button>
+      </div>
+    </v-card>
 
     <v-dialog v-model="isSlideDialogVisible" fullscreen hide-overlay transition="dialog-bottom-transition">
       <v-card class="d-flex flex-column">
@@ -286,6 +313,7 @@
       :project-id="projectId"
       :project-name="projectName"
       :can-upload="canUploadActivityMessage"
+      :initial-id="activityInitialId"
     />
 
     <!-- ✅ [新增] 列印前配套提醒：有配套價但未勾選配套的戶別，先讓使用者決定再進入列印 -->
@@ -472,6 +500,7 @@ import {
   fetchCompanyLoanTemplates, // 公司借貸範本 API（期款範本附掛用）
   selectApplicableTemplates, // 新增：範本選擇邏輯
   listenToQuotePlans, // ✅ [新增] 方案編輯器：即時監聽方案清單
+  listenToActivityMessages, // ✅ [新增] 釘選活動訊息縮圖列
 } from '@/api';
 import { useSlideViewer } from '@/composables/useSlideViewer';
 import { useTapUnlock } from '@/composables/useTapUnlock';
@@ -642,6 +671,38 @@ const currentQuoteItem = ref(null); // 目前處理的報價項目
 
 // --- 活動訊息相關狀態 ---
 const isActivityDialogVisible = ref(false);
+const activityInitialId = ref('');
+
+// ✅ [新增] 釘選活動訊息：監聽該建案活動訊息，過濾出「已釘選且未隱藏」者，順序沿用活動訊息排序
+const activityMessages = ref([]);
+let unsubActivityMessages = null;
+const pinnedActivityMessages = computed(() =>
+  activityMessages.value.filter(m => m.pinnedToQuote && !m.hidden)
+);
+function isPdfActivityItem(item) {
+  return item?.contentType === 'application/pdf' || /\.pdf$/i.test(item?.fileName || '');
+}
+function subscribeActivityMessages() {
+  if (unsubActivityMessages) unsubActivityMessages();
+  activityMessages.value = [];
+  if (!projectId.value) return;
+  unsubActivityMessages = listenToActivityMessages(
+    projectId.value,
+    (items) => { activityMessages.value = items; },
+    () => { activityMessages.value = []; }
+  );
+}
+onMounted(subscribeActivityMessages);
+onUnmounted(() => {
+  if (unsubActivityMessages) unsubActivityMessages();
+});
+watch(projectId, (newId, oldId) => {
+  if (newId && newId !== oldId) subscribeActivityMessages();
+});
+function openPinnedActivityMessage(item) {
+  activityInitialId.value = item?.id || '';
+  isActivityDialogVisible.value = true;
+}
 
 // ✅ [新增] 列印報價單(含期款) 對話框
 const isQuotePrintDialogVisible = ref(false);
@@ -948,6 +1009,7 @@ function applyNewRounding(value, method, roundingValue = 1) {
 
 // --- 處理活動訊息點擊事件 ---
 function handleOpenActivityMessage() {
+  activityInitialId.value = '';
   isActivityDialogVisible.value = true;
 }
 
@@ -1512,5 +1574,94 @@ function runTool(action) {
   background: rgba(255, 255, 255, 0.7) !important;
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+}
+
+/* ✅ 釘選活動訊息縮圖列 */
+.pinned-activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 0;
+}
+.pinned-activity-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+.pinned-activity-strip {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.pinned-activity-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  height: 200px;
+  max-width: 320px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f5f5f7;
+  cursor: zoom-in;
+  scroll-snap-align: start;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.pinned-activity-thumb:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+}
+.pinned-activity-thumb img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 320px;
+  object-fit: cover;
+}
+.pinned-activity-pdf {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 160px;
+  height: 100%;
+  padding: 12px;
+}
+.pinned-activity-pdf-name {
+  font-size: 12px;
+  color: #3a3a3c;
+  text-align: center;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pinned-activity-zoom {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  pointer-events: none;
+}
+@media (max-width: 599px) {
+  .pinned-activity-thumb { height: 160px; max-width: 260px; }
+  .pinned-activity-thumb img { max-width: 260px; }
 }
 </style>

@@ -4990,6 +4990,18 @@ export const updateActivityMessageVisibility = async (docId, hidden) => {
   });
 };
 
+/**
+ * 更新活動訊息「釘選到報價單設定頁」狀態
+ * pinnedToQuote = true 時，報價單設定頁最下方會以縮圖列顯示該文件（已隱藏者仍不顯示）
+ */
+export const updateActivityMessagePinned = async (docId, pinned) => {
+  if (!docId) throw new Error('缺少 docId，無法更新釘選狀態。');
+  await updateDoc(doc(db, "activityMessages", docId), {
+    pinnedToQuote: !!pinned,
+    updatedAt: serverTimestamp(),
+  });
+};
+
 //  START: 新增 checkInToSystem API 函式
 
 /**
