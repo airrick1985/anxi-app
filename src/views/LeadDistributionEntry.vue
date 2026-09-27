@@ -49,7 +49,7 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
-import liff from '@line/liff';
+import { initLiffAndEnsureLogin, getLiffProfileOrRelogin } from '@/utils/liffAuth';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -86,13 +86,11 @@ const initializeAuth = async () => {
     // 1. 初始化 LIFF
     statusMessage.value = '連接 LINE 服務中...';
     // 請將此處 ID 替換為您的 LIFF ID
-    await liff.init({ liffId: '2008257338-FSWtfaEM' }); //2008257338-FSWtfaEM 正式 2008257338-6N3jwqxA 測試
-
-    if (!liff.isLoggedIn()) {
-      statusMessage.value = '正在導向 LINE 登入...';
-      liff.login({ redirectUri: window.location.href });
-      return;
-    }
+    //2008257338-FSWtfaEM 正式 2008257338-6N3jwqxA 測試
+    // token 被撤銷／過期時自動登出重登；尚未登入則轉址登入
+    statusMessage.value = '正在導向 LINE 登入...';
+    const ready = await initLiffAndEnsureLogin('2008257338-FSWtfaEM', { redirectUri: window.location.href });
+    if (!ready) return;
 
     // ✅ 接力導回名單回報頁：
     //    使用者原本要開的是 /contact?id=xxx，但 LIFF 登入轉址把 hash route 的 query 弄丟，
@@ -105,7 +103,8 @@ const initializeAuth = async () => {
     }
 
     // 2. 取得 LINE ID 並同步權限
-    const profile = await liff.getProfile();
+    const profile = await getLiffProfileOrRelogin({ redirectUri: window.location.href });
+    if (!profile) return;
     const lineId = profile.userId;
 
     if (!lineId) throw new Error('無法取得 LINE User ID');

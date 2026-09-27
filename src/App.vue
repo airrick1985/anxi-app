@@ -107,7 +107,8 @@ onMounted(() => {
   if (liffPath) {
     // 如果有路標，就使用 router 導向到正確的 Hash 路徑
     // 使用 replace 可避免在瀏覽歷史中留下帶有 liff_path 的紀錄
-    router.replace({ path: `/${liffPath}` });
+    // 以字串形式導向，讓 liff_path 內夾帶的 query（例如 contact?id=xxx）能被正確解析
+    router.replace(`/${liffPath.replace(/^\/+/, '')}`);
   }
   // --- 新增的 LIFF 重新導向處理邏輯 END ---
 

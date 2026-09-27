@@ -56,6 +56,13 @@
           </v-btn>
         </v-card>
 
+        <v-card v-else-if="authStatus === 'error'" class="rounded-xl pa-6 text-center elevation-3 border-0">
+          <v-icon color="warning" size="64">mdi-alert-circle-outline</v-icon>
+          <div class="text-h6 font-weight-bold mt-4">驗證失敗</div>
+          <p class="text-body-2 text-grey-darken-1 mt-2">{{ errorDetail || '請重新整理後再試' }}</p>
+          <v-btn color="primary" block rounded="pill" class="mt-4" prepend-icon="mdi-refresh" @click="retryAuth">重試</v-btn>
+        </v-card>
+
         <v-card v-else-if="authStatus === 'granted'" class="rounded-xl elevation-3 overflow-hidden border-0">
           <v-toolbar color="primary" density="comfortable" dark>
             <v-toolbar-title class="text-subtitle-2 font-weight-bold">
@@ -319,7 +326,7 @@ import {
 } from 'firebase/firestore';
 import { useUiStore } from '@/store/uiStore';
 import { useUserStore } from '@/store/user';
-import liff from '@line/liff';
+import { initLiffAndEnsureLogin, getLiffProfileOrRelogin, buildLiffRedirectUri } from '@/utils/liffAuth';
 import ViewingReservationDialog from '@/components/ViewingReservationDialog.vue';
 
 const route = useRoute();
@@ -327,7 +334,11 @@ const uiStore = useUiStore();
 const userStore = useUserStore();
 
 const leadId = route.query.id;
+// loading | granted | denied（未綁定／無權限）| error（驗證過程失敗，可重試）
 const authStatus = ref('loading');
+const errorDetail = ref('');
+const retryAuth = () => window.location.reload();
+const PENDING_LEAD_KEY = 'pendingLeadReportId';
 const projectName = ref('');
 const leadData = ref({ name: '', phone: '', projectId: '', source: '', budget: '', date: '', note: '' });
 // 無權限時顯示的「名單歸屬人」資訊（已去識別化，供使用者向客服說明或聯繫負責人）
@@ -477,8 +488,9 @@ const verifyAccess = async (lineId) => {
     console.error(`[權限驗證] ❌ 用戶沒有此項目的客資系統權限`);
     return false;
   } catch (err) {
+    // 名單不存在／Firestore 讀取失敗等，屬驗證流程錯誤而非權限不足，交由呼叫端顯示為可重試的錯誤
     console.error(`[權限驗證] ❌ 驗證失敗:`, err.message);
-    return false;
+    throw err;
   }
 };
 
@@ -536,22 +548,34 @@ onMounted(async () => {
 
     if (!liffId) {
       console.error('❌ 錯誤: .env 中找不到 VITE_LIFF_ID_LEAD_REPORT');
-      authStatus.value = 'denied';
+      errorDetail.value = '系統設定缺少 LIFF ID';
+      authStatus.value = 'error';
       return;
     }
+
+    // ✅ 登入轉址策略（雙保險）：
+    //    1. redirectUri 改用不含 hash 的 ?liff_path=contact?id=...，LINE Login 回跳時 id 不會遺失，
+    //       由 App.vue 依 liff_path 導回本頁。
+    //    2. 若 LINE 仍回跳到 LIFF Endpoint（客資入口頁），先暫存 leadId，
+    //       由入口頁 (LeadDistributionEntry) 接力導回 /contact。
+    const loginOpts = {
+      redirectUri: buildLiffRedirectUri(`contact?id=${encodeURIComponent(leadId)}`),
+      onBeforeLogin: () => {
+        try {
+          localStorage.setItem(PENDING_LEAD_KEY, JSON.stringify({ id: leadId, ts: Date.now() }));
+        } catch (e) { /* localStorage 不可用時忽略 */ }
+      },
+    };
+
     console.log(`[LeadReport] 初始化 LIFF...`);
-    await liff.init({ liffId });
-    if (!liff.isLoggedIn()) {
-      // ✅ LIFF 登入轉址常會在 OAuth 來回過程中遺失 hash route 的 query (?id=...)，
-      //    導致登入後落到「請選擇建案」入口頁而非本名單頁。
-      //    先把 leadId 暫存，登入完成後由入口頁 (LeadDistributionEntry) 接力導回 /contact。
-      try {
-        localStorage.setItem('pendingLeadReportId', JSON.stringify({ id: leadId, ts: Date.now() }));
-      } catch (e) { /* localStorage 不可用時忽略 */ }
-      liff.login({ redirectUri: window.location.href });
-      return;
-    }
-    const profile = await liff.getProfile();
+    // token 被撤銷／過期時自動登出重登，不再誤顯示為「無權限」
+    const ready = await initLiffAndEnsureLogin(liffId, loginOpts);
+    if (!ready) return;
+
+    const profile = await getLiffProfileOrRelogin(loginOpts);
+    if (!profile) return;
+    try { localStorage.removeItem(PENDING_LEAD_KEY); } catch (e) { /* ignore */ }
+
     const isGranted = await verifyAccess(profile.userId);
     if (isGranted) {
       authStatus.value = 'granted';
@@ -567,7 +591,9 @@ onMounted(async () => {
       authStatus.value = 'denied';
     }
   } catch (err) {
-    authStatus.value = 'denied';
+    console.error('[LeadReport] 驗證流程失敗:', err);
+    errorDetail.value = err?.message || '';
+    authStatus.value = 'error';
   }
 });
 
