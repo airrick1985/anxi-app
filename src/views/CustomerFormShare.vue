@@ -41,7 +41,8 @@
             <a class="open-form" :href="formUrl" target="_blank" rel="noopener noreferrer">開啟客戶資料表 <v-icon size="19">mdi-arrow-top-right</v-icon></a>
             <div class="share-actions">
               <button :aria-expanded="targetsOpen" @click="shareLink"><v-icon size="17">mdi-share-variant-outline</v-icon> 分享</button>
-              <button :disabled="!qrImage" @click="downloadQr"><v-icon size="18">mdi-download-outline</v-icon> 下載 QR Code</button>
+              <button :disabled="!qrImage" @click="downloadQr"><v-icon size="18">mdi-download-outline</v-icon> 下載 QR</button>
+              <button :disabled="!formUrl" @click="printOpen = true"><v-icon size="18">mdi-printer-outline</v-icon> 列印表單</button>
             </div>
             <div v-if="targetsOpen" class="share-targets" role="menu">
               <button v-for="target in shareTargets" :key="target.label" role="menuitem" @click="openTarget(target)">
@@ -65,6 +66,14 @@
       </article>
     </section>
     <div class="scene-caption" aria-hidden="true">美好的生活，從認識彼此開始。</div>
+    <BlankCustomerFormDialog
+      v-model="printOpen"
+      :project-id="selectedProject?.id || ''"
+      :project-name="selectedProject?.name || ''"
+      :sales-name="userStore.user?.name || ''"
+      :form-url="formUrl"
+      @notify="notify"
+    />
   </main>
 </template>
 
@@ -72,6 +81,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import backdrop from '@/assets/customer-share-bg.webp';
 import lineIcon from '@/assets/icons/line.svg';
+import BlankCustomerFormDialog from '@/components/BlankCustomerFormDialog.vue';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { customerFormProjects, customerFormQr, customerFormUrl } from '@/utils/customerFormLink';
@@ -133,6 +143,7 @@ function notify(message) {
   feedbackTimer = setTimeout(() => { feedback.value = ''; }, 5000);
 }
 const targetsOpen = ref(false);
+const printOpen = ref(false);
 const shareText = computed(() => `${selectedProject.value?.name ?? ''}・${userStore.user?.name ?? ''} 的客戶資料表`);
 const shareTargets = computed(() => {
   const url = encodeURIComponent(formUrl.value);
@@ -229,7 +240,7 @@ onBeforeUnmount(() => {
 .open-form { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 46px; padding: 12px; border-radius: 12px; background: #46664f; color: white; text-decoration: none; font-weight: 600; font-size: 14px; }
 .open-form:hover { background: #36543f; }
 .share-actions { display: flex; gap: 8px; margin-top: 8px; }
-.share-actions button { flex: 1; min-width: 0; min-height: 44px; border: 1px solid #e3e8da; background: #f8f9f3; font-size: 12px; color: #50684b; border-radius: 8px; }
+.share-actions button { flex: 1; min-width: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; border: 1px solid #e3e8da; background: #f8f9f3; font-size: 12px; color: #50684b; border-radius: 8px; }
 .share-actions button:hover { background: #f0f3e9; }
 .share-actions button:disabled { opacity: .4; cursor: default; }
 .share-targets { position: absolute; left: 20px; right: 20px; bottom: 64px; z-index: 2; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 10px; border: 1px solid #e3e8da; border-radius: 16px; background: #fffefa; box-shadow: 0 14px 40px #46664f2a; }

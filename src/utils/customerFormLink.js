@@ -56,3 +56,17 @@ export async function customerFormQr(url, projectName, userName) {
   });
   return canvas.toDataURL('image/png');
 }
+
+// Paper QR: drop the display-only project name, skip the label overlay and use medium correction
+// so the code keeps few, large modules that survive office printers.
+export async function customerFormPrintQr(url) {
+  const printable = new URL(url);
+  const [path, query = ''] = printable.hash.split('?');
+  const params = new URLSearchParams(query);
+  params.delete('pn');
+  printable.hash = `${path}?${params}`;
+  return QRCode.toDataURL(printable.href, {
+    width: 720, margin: 4, errorCorrectionLevel: 'M',
+    color: { dark: '#000000', light: '#ffffff' },
+  });
+}
