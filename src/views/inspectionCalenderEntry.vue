@@ -51,7 +51,8 @@
               </v-btn>
 
               <v-alert v-if="needReload" type="warning" density="compact" class="mt-4">
-                有新版本，請重新載入
+                {{ chunkFailure.message }}
+                <div v-if="chunkFailure.detail" class="text-caption">{{ chunkFailure.detail }}</div>
                 <template #append><v-btn size="small" color="warning" variant="flat" @click="reloadToLatest">重新載入</v-btn></template>
               </v-alert>
               <v-alert v-if="error" type="error" density="compact" class="mt-4">{{ error }}</v-alert>
@@ -77,7 +78,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { getProjectsForInspectionCalendar, checkInToSystem } from '@/api';
-import { isChunkLoadError, reloadToLatest } from '@/utils/chunkReload'; // 新版 chunk 載入失敗自救
+import { isChunkLoadError, recoverFromChunkError, reloadToLatest, chunkFailure } from '@/utils/chunkReload'; // 新版 chunk 載入失敗自救
 import { prefetchInspectionCalendarChunks, prefetchInspectionCalendarData } from '@/utils/inspectionPrefetch'; // ✅ [效能] 簽到期間預載
 
 const router = useRouter();
@@ -156,9 +157,9 @@ const enterProject = async () => {
   } catch (err) {
     console.error('進入專案時發生錯誤:', err);
     if (isChunkLoadError(err)) {
-      // 舊版頁面載不到新版 chunk（安裝版／長開分頁常見）：router.onError 會嘗試自動重載，
-      // 自動重載放棄時才需要使用者按此提示手動重載
-      needReload.value = true;
+      // 舊版頁面載不到新版 chunk（安裝版／長開分頁常見）：先讓自救流程重抓資源／自動重載，
+      // 放棄自動處理時才顯示提示與手動重載按鈕
+      if (!(await recoverFromChunkError())) needReload.value = true;
       return;
     }
     error.value = `客戶端錯誤: ${err.message}`;

@@ -36,7 +36,9 @@ import piniaPluginPersistedstate from 'pinia-plugin-persistedstate' // <--- 1. �
 // ✅ Vite 資源預載失敗自救（router.onError 之外的另一條路徑）：
 // 發新版後舊 chunk/CSS 已從伺服器消失時觸發 → 清掉舊 SW／快取後自動重新載入拿新版。
 // 已重載過仍失敗 → 不攔截，讓錯誤流到 router.onError 做「線上是否真有新版」的二次判斷。
-import { chunkReloadAttempted, recoverFromChunkError } from '@/utils/chunkReload';
+import { chunkReloadAttempted, recoverFromChunkError, recordAssetLoadError } from '@/utils/chunkReload';
+// modulepreload / stylesheet 元素載入失敗不會冒泡，用 capture 在 window 接住，記下載不到的資源 URL 供自救診斷
+window.addEventListener('error', recordAssetLoadError, true);
 window.addEventListener('vite:preloadError', () => {
   if (chunkReloadAttempted()) return;
   // 保留原始錯誤，讓 router.onError 仍能取得使用者要前往的路由。
