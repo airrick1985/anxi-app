@@ -33,17 +33,14 @@ import piniaPluginPersistedstate from 'pinia-plugin-persistedstate' // <--- 1. �
 // public/sw.js 仍會被瀏覽器自動更新檢查到 → 跑一次 activate 就會清掉舊快取並自我 unregister，
 // 之後新訪客完全不會有 SW 介入網路請求。
 
-// ✅ [新增] Vite 資源預載失敗自救（router.onError 之外的另一條路徑）：
-// 發新版後舊 chunk/CSS 已從伺服器消失時觸發 → 自動重新載入一次拿新版。
-// 與 router 共用同一組 sessionStorage 保險絲，同一版本只自動 reload 一次。
-import { appVersion } from '@/version';
-import { forceReloadToLatest } from '@/composables/useVersionCheck';
+// ✅ Vite 資源預載失敗自救（router.onError 之外的另一條路徑）：
+// 發新版後舊 chunk/CSS 已從伺服器消失時觸發 → 清掉舊 SW／快取後自動重新載入拿新版。
+// 已重載過仍失敗 → 不攔截，讓錯誤流到 router.onError 做「線上是否真有新版」的二次判斷。
+import { chunkReloadAttempted, recoverFromChunkError } from '@/utils/chunkReload';
 window.addEventListener('vite:preloadError', (event) => {
-  const guardKey = `anxi-chunk-reload-${appVersion}`;
-  if (sessionStorage.getItem(guardKey)) return; // 已重載過仍失敗 → 放行原本的錯誤處理
+  if (chunkReloadAttempted()) return;
   event.preventDefault();
-  sessionStorage.setItem(guardKey, '1');
-  forceReloadToLatest();
+  recoverFromChunkError();
 });
 
 /* import the fontawesome core */

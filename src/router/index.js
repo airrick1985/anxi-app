@@ -2,8 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useQuoteStore } from '@/store/quoteStore';
-import { appVersion } from '@/version';
-import { forceReloadToLatest } from '@/composables/useVersionCheck';
+import { isChunkLoadError, recoverFromChunkError } from '@/utils/chunkReload';
 
 
 
@@ -964,21 +963,14 @@ const router = createRouter({
   routes
 });
 
-// ✅ [新增] chunk 載入失敗自救：發新版後舊 chunk 檔已從伺服器消失，
-// 長開分頁切換頁面時 dynamic import 會失敗 → 自動重新載入一次拿新版。
-// sessionStorage 保險絲：同一版本只自動 reload 一次，避免無限循環（純網路問題時第二次改放行報錯）。
-const CHUNK_ERROR_PATTERN = /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Unable to preload CSS/i;
+// ✅ chunk 載入失敗自救：發新版後舊 chunk 檔已從伺服器消失，
+// 長開分頁／安裝版切換頁面時 dynamic import 會失敗 → 清掉舊 SW／快取後自動重新載入拿新版。
+// 保險絲與二次判斷（比對線上 manifest 版本）集中在 utils/chunkReload.js。
 router.onError((error, to) => {
-  if (!CHUNK_ERROR_PATTERN.test(String(error?.message || ''))) return;
-  const guardKey = `anxi-chunk-reload-${appVersion}`;
-  if (sessionStorage.getItem(guardKey)) {
-    console.error('[Router] chunk 載入失敗且已自動重載過，放棄自動處理:', error);
-    return;
-  }
-  sessionStorage.setItem(guardKey, '1');
-  // 先把 hash 指到目標路徑，reload 後直接落在使用者要去的頁面
-  if (to?.fullPath) window.location.hash = '#' + to.fullPath;
-  forceReloadToLatest();
+  if (!isChunkLoadError(error)) return;
+  recoverFromChunkError(to?.fullPath).then((reloaded) => {
+    if (!reloaded) console.error('[Router] chunk 載入失敗且線上無新版本，放棄自動處理:', error);
+  });
 });
 
 

@@ -51,6 +51,10 @@
         <v-progress-circular indeterminate color="#111827" size="28" width="3" />
       </div>
 
+      <v-alert v-if="needReload" type="warning" density="compact" variant="tonal" class="mb-4">
+        有新版本，請重新載入
+        <template #append><v-btn size="small" color="warning" variant="flat" @click="reloadToLatest">重新載入</v-btn></template>
+      </v-alert>
       <v-alert v-if="error" type="error" density="compact" variant="tonal" class="mb-4">{{ error }}</v-alert>
 
       <v-alert
@@ -139,6 +143,7 @@ import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { checkInToSystem } from '@/api'; // 引入驗證 API
+import { isChunkLoadError, reloadToLatest } from '@/utils/chunkReload'; // 新版 chunk 載入失敗自救
 import { trackTrialEvent } from '@/utils/trialTracking'; // 試用留資事件追蹤
 import { prefetchSalesChunks, prefetchSalesData } from '@/utils/salesPrefetch'; // ✅ [效能] 銷控/報價預載
 import draggable from 'vuedraggable'; // 引入 draggable
@@ -153,6 +158,7 @@ const { mobile } = useDisplay();
 const orderedProjects = ref([]);
 const loadingProjects = ref(true);
 const error = ref(null);
+const needReload = ref(false); // 舊版頁面載不到新版 chunk 時顯示重新載入提示
 const isValidating = ref(false);
 const projectToEnterName = ref('');
 
@@ -388,6 +394,12 @@ const enterProject = async (project) => {
     }
   } catch (err) {
     console.error('進入專案時發生錯誤:', err);
+    if (isChunkLoadError(err)) {
+      // 舊版頁面載不到新版 chunk（安裝版／長開分頁常見）：router.onError 會嘗試自動重載，
+      // 自動重載放棄時才需要使用者按此提示手動重載
+      needReload.value = true;
+      return;
+    }
     error.value = `客戶端錯誤: ${err.message}`;
   } finally {
     isValidating.value = false;
