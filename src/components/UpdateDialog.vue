@@ -49,7 +49,7 @@
   
   <script setup>
   import { ref, computed, watch } from 'vue';
-  import { forceReloadToLatest } from '@/composables/useVersionCheck';
+  import { reloadToLatest } from '@/utils/chunkReload';
   import { useUserStore } from '@/store/user';
 
   const props = defineProps({
@@ -99,7 +99,7 @@
   
   const refreshApp = () => {
     // 帶時間戳 query 重新載入，突破 index.html 的 HTTP 快取
-    forceReloadToLatest();
+    return reloadToLatest();
   };
 
   // 對話框開啟時抓取更新內容（未登入不抓，避免內部更新內容出現在客戶端的網路請求中）

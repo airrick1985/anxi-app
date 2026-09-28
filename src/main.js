@@ -37,9 +37,10 @@ import piniaPluginPersistedstate from 'pinia-plugin-persistedstate' // <--- 1. �
 // 發新版後舊 chunk/CSS 已從伺服器消失時觸發 → 清掉舊 SW／快取後自動重新載入拿新版。
 // 已重載過仍失敗 → 不攔截，讓錯誤流到 router.onError 做「線上是否真有新版」的二次判斷。
 import { chunkReloadAttempted, recoverFromChunkError } from '@/utils/chunkReload';
-window.addEventListener('vite:preloadError', (event) => {
+window.addEventListener('vite:preloadError', () => {
   if (chunkReloadAttempted()) return;
-  event.preventDefault();
+  // 保留原始錯誤，讓 router.onError 仍能取得使用者要前往的路由。
+  // preventDefault 會讓 Vite 吞掉 import 錯誤，路由只拿到 undefined。
   recoverFromChunkError();
 });
 

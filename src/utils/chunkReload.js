@@ -40,9 +40,26 @@ export async function purgeServiceWorkers() {
 }
 
 /** 清掉舊 SW／快取後強制重新載入到最新版 */
-export async function reloadToLatest() {
-  await purgeServiceWorkers();
-  forceReloadToLatest();
+let pendingReload = null;
+let recoveryTargetPath;
+export function reloadToLatest() {
+  if (!pendingReload) {
+    pendingReload = (async () => {
+      // iOS 安裝版的 SW / Cache Storage API 可能永遠不 resolve。
+      // 清理是盡力而為，不能讓使用者按下重新載入後永遠停在原頁。
+      let timer;
+      try {
+        await Promise.race([
+          purgeServiceWorkers(),
+          new Promise((resolve) => { timer = setTimeout(resolve, 2000); }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+      forceReloadToLatest(recoveryTargetPath);
+    })().finally(() => { pendingReload = null; });
+  }
+  return pendingReload;
 }
 
 /**
@@ -51,14 +68,17 @@ export async function reloadToLatest() {
  */
 let pendingRecovery = null;
 export function recoverFromChunkError(targetPath) {
+  if (typeof targetPath === 'string' && targetPath.startsWith('/')) {
+    recoveryTargetPath = targetPath;
+  }
   // 同一次失敗會同時觸發 router.onError 與呼叫端 catch，共用同一個處理避免重複 reload／重複消耗保險絲
   if (!pendingRecovery) {
-    pendingRecovery = doRecover(targetPath).finally(() => { pendingRecovery = null; });
+    pendingRecovery = doRecover().finally(() => { pendingRecovery = null; });
   }
   return pendingRecovery;
 }
 
-async function doRecover(targetPath) {
+async function doRecover() {
   let shouldReload = false;
   if (!guardGet(GUARD_KEY)) {
     guardSet(GUARD_KEY);
@@ -74,7 +94,6 @@ async function doRecover(targetPath) {
     }
   }
   if (!shouldReload) return false;
-  if (targetPath) window.location.hash = '#' + targetPath;
   await reloadToLatest();
   return true;
 }

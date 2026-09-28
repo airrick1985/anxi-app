@@ -14,9 +14,10 @@ const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 每 5 分鐘檢查一次
  * （GitHub Pages 全站 max-age=600，單純 location.reload() 可能仍拿到快取的舊 index.html）。
  * Hash router：query 放在 # 之前，reload 後仍停留在原頁面路徑。
  */
-export function forceReloadToLatest() {
+export function forceReloadToLatest(targetPath) {
   const url = new URL(window.location.href);
   url.searchParams.set('_v', String(Date.now()));
+  if (typeof targetPath === 'string' && targetPath.startsWith('/')) url.hash = targetPath;
   window.location.replace(url.href);
 }
 
