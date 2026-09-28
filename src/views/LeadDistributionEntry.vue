@@ -45,7 +45,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
@@ -60,6 +60,9 @@ const isLoading = ref(true);
 const statusMessage = ref('客資系統啟動中...');
 const errorMessage = ref('');
 const availableProjects = ref([]);
+let authTimer;
+let disposed = false;
+onBeforeUnmount(() => { disposed = true; clearTimeout(authTimer); });
 
 onMounted(async () => {
   await initializeAuth();
@@ -81,6 +84,10 @@ const consumePendingLeadReportId = () => {
 const initializeAuth = async () => {
   isLoading.value = true;
   errorMessage.value = '';
+  authTimer = setTimeout(() => {
+    errorMessage.value = 'LINE 驗證或資料連線逾時，請確認網路後重試。';
+    isLoading.value = false;
+  }, 45000);
 
   try {
     // 1. 初始化 LIFF
@@ -90,7 +97,7 @@ const initializeAuth = async () => {
     // token 被撤銷／過期時自動登出重登；尚未登入則轉址登入
     statusMessage.value = '正在導向 LINE 登入...';
     const ready = await initLiffAndEnsureLogin('2008257338-FSWtfaEM', { redirectUri: window.location.href });
-    if (!ready) return;
+    if (!ready || disposed || errorMessage.value) return;
 
     // ✅ 接力導回名單回報頁：
     //    使用者原本要開的是 /contact?id=xxx，但 LIFF 登入轉址把 hash route 的 query 弄丟，
@@ -104,7 +111,7 @@ const initializeAuth = async () => {
 
     // 2. 取得 LINE ID 並同步權限
     const profile = await getLiffProfileOrRelogin({ redirectUri: window.location.href });
-    if (!profile) return;
+    if (!profile || disposed || errorMessage.value) return;
     const lineId = profile.userId;
 
     if (!lineId) throw new Error('無法取得 LINE User ID');
@@ -118,12 +125,15 @@ const initializeAuth = async () => {
     }
 
     // 3. 處理客資系統專屬權限過濾
+    if (disposed || errorMessage.value) return;
     await processLeadPermissions();
 
   } catch (err) {
     console.error('[LeadEntry] Error:', err);
     errorMessage.value = err.message || '發生未知錯誤';
     isLoading.value = false;
+  } finally {
+    if (!isLoading.value || errorMessage.value) clearTimeout(authTimer);
   }
 };
 
@@ -135,6 +145,7 @@ const processLeadPermissions = async () => {
     await projectStore.fetchProjects();
   }
 
+  if (disposed || errorMessage.value) return;
   const allowedProjects = [];
   // 定義客資系統目標權限
   const targetSystems = ['客資系統-櫃台', '客資系統-銷售']; 
@@ -164,7 +175,7 @@ const processLeadPermissions = async () => {
   // 自動導向或顯示選單
   if (allowedProjects.length === 1) {
     statusMessage.value = `正在進入 ${allowedProjects[0].name}...`;
-    selectProject(allowedProjects[0].id);
+    await selectProject(allowedProjects[0].id);
   } else {
     availableProjects.value = allowedProjects;
     isLoading.value = false;
@@ -173,7 +184,7 @@ const processLeadPermissions = async () => {
 
 const selectProject = (projectId) => {
   // 跳轉至統一的名單管理頁面
-  router.replace({
+  return router.replace({
     name: 'LeadDistribution',
     params: { projectId }
   });

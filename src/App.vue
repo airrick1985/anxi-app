@@ -116,7 +116,7 @@ onMounted(() => {
 
 // 靜態公開頁與登入頁不需要全建案列表；切到需要資料的頁面後再載入。
 watch(() => route.name, (name) => {
-  if (name && !['LandingPage', 'Login', 'PrivacyPolicy', 'TermsOfService'].includes(name)) {
+  if (name && !['LandingPage', 'Login', 'PrivacyPolicy', 'TermsOfService', 'LeadReport', 'LeadDistributionEntry'].includes(name)) {
     projectStore.fetchProjects();
   }
 }, { immediate: true });

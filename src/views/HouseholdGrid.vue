@@ -1146,6 +1146,9 @@ import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user';
 import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments, cancelAppointment, updateAppointment } from '@/api';
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
+import SwitchHeaderRenderer from '@/components/household/SwitchHeaderRenderer.vue';
+import SwitchRenderer from '@/components/household/SwitchRenderer.vue';
+import CustomerMessageRenderer from '@/components/household/CustomerMessageRenderer.vue';
 import * as XLSX from 'xlsx-js-style';
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import { ModuleRegistry } from "ag-grid-community";
@@ -1421,148 +1424,6 @@ const linkRenderer = (params) => {
   return `<a href="${params.value}" target="_blank" rel="noopener noreferrer" style="color: #1976D2; font-size: 1.2rem; text-decoration: none;">
             <i class="mdi mdi-folder"></i>
           </a>`;
-};
-const SwitchHeaderRenderer = {
-  template: `
-    <div class="d-flex flex-column align-center justify-center w-100 h-100">
-      <span>{{ params.displayName }}</span>
-      <div class="d-flex align-center mt-n2">
-        <span class="mr-1 text-caption">全選</span>
-        <v-switch
-          v-model="checked"
-          :indeterminate="indeterminate"
-          @update:modelValue="onToggle"
-          color="success"
-          hide-details
-          density="compact"
-        ></v-switch>
-      </div>
-    </div>
-  `,
-  data() {
-    return {
-      checked: false,
-      indeterminate: false,
-    };
-  },
-  methods: {
-    async onToggle(newValue) {
-      const field = this.params.column.getColDef().field;
-      const updates = [];
-      
-      this.params.api.forEachNode(node => {
-        if (node.data) {
-          updates.push({
-            docId: node.data._docId,
-            data: { [field]: newValue }
-          });
-        }
-      });
-
-      if (updates.length > 0) {
-        try {
-          await batchUpdateHouseholds(updates);
-          this.params.api.forEachNode(node => {
-            node.setDataValue(field, newValue);
-          });
-          this.updateHeaderState();
-        } catch (e) {
-          console.error('批次更新失敗', e);
-        }
-      }
-    },
-    updateHeaderState() {
-      const field = this.params.column.getColDef().field;
-      let trueCount = 0;
-      let totalCount = 0;
-      this.params.api.forEachNode(node => {
-        if (node.data) {
-          if (node.data[field] === true) {
-            trueCount++;
-          }
-          totalCount++;
-        }
-      });
-
-      if (totalCount === 0) {
-        this.checked = false;
-        this.indeterminate = false;
-      } else if (trueCount === totalCount) {
-        this.checked = true;
-        this.indeterminate = false;
-      } else if (trueCount === 0) {
-        this.checked = false;
-        this.indeterminate = false;
-      } else {
-        this.checked = false;
-        this.indeterminate = true;
-      }
-    },
-  },
-  onModelUpdated() {
-    this.updateHeaderState();
-  },
-  mounted() {
-    this.params.api.addEventListener('modelUpdated', this.onModelUpdated);
-    this.updateHeaderState();
-  },
-  beforeUnmount() {
-    this.params.api.removeEventListener('modelUpdated', this.onModelUpdated);
-  }
-};
-
-// v-switch 顯示組件 (可直接互動)
-const SwitchRenderer = {
-  template: `
-    <div class="d-flex justify-center align-center w-100 h-100" @click.stop>
-      <v-switch
-        :model-value="params.value"
-        @update:modelValue="toggleValue"
-        color="success"
-        inset
-        hide-details
-        density="compact"
-      ></v-switch>
-    </div>
-  `,
-  methods: {
-    // 當 switch 被點擊時，直接更新 AG Grid 的資料
-    toggleValue(newValue) {
-      // 呼叫 AG Grid 的 API 來設定新值，這會觸發 onCellValueChanged
-      this.params.setValue(newValue);
-    },
-  },
-};
-
-// --- Customer Message Renderer ---
-const CustomerMessageRenderer = {
-  template: `
-    <div class="d-flex justify-center align-center h-100">
-       <v-btn v-if="messageCount > 0"
-          color="info" size="small" variant="tonal"
-          @click.stop="onClick"
-          class="px-2"
-          style="min-width: 60px;"
-       >
-          {{ messageCount }} 則
-       </v-btn>
-       <span v-else class="text-grey-lighten-1">-</span>
-    </div>
-  `,
-  setup(props) {
-     const messageCount = computed(() => {
-        const msgs = props.params.value;
-        if (!Array.isArray(msgs)) return 0;
-        // 正體中文註解：只計算未被冷刪除的訊息數量
-        return msgs.filter(m => !m.isDeleted).length;
-     });
-     const onClick = () => {
-        if (props.params.colDef.cellRendererParams && props.params.colDef.cellRendererParams.onClick) {
-           props.params.colDef.cellRendererParams.onClick(props.params.data);
-        }
-     };
-     return { messageCount, onClick };
-  }
 };
 
 // --- Customer Message Dialog Logic ---

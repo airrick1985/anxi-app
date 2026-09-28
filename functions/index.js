@@ -25429,7 +25429,7 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
   if (recipients.length === 0) return null;
 
   // 注意：這裡的 URL 請根據您的實際 domain 調整
-  const liffUrl = `https://anxismart.com/#/contact?id=${docId}`;
+  const liffUrl = `https://liff.line.me/2008257338-FSWtfaEM?leadReportId=${encodeURIComponent(docId)}`;
 
   const messages = [{
       type: "flex",
@@ -31154,3 +31154,9 @@ exports.salesAiAdmin = salesAi.salesAiAdmin;
 const bookingVisibility = require('./bookingVisibility');
 exports.openBookingItemOnBatchWrite = bookingVisibility.openBookingItemOnBatchWrite;
 exports.openScheduledBookingItems = bookingVisibility.openScheduledBookingItems;
+
+// LINE 名單回報：獨立 callable，免 ANXI 登入但必須驗證 LINE token 與名單權限。
+exports.lineLeadReport = onCall({ region: 'asia-east1', timeoutSeconds: 45 },
+  require('./leadReportAccess.cjs').createLeadReportHandler({
+    db: defaultDb, axios, HttpsError, FieldValue: admin.firestore.FieldValue,
+  }));

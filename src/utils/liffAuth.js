@@ -1,5 +1,30 @@
 import liff from '@line/liff';
 
+export function withLiffTimeout(promise, message = 'LINE 驗證逾時，請確認網路後重試。', ms = 15000) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+let initialization;
+let initializedId;
+export function initializeLiff(liffId) {
+  if (!initialization || initializedId !== liffId) {
+    initializedId = liffId;
+    initialization = withLiffTimeout(liff.init({ liffId }));
+  }
+  return initialization;
+}
+
+export function getLiffAccessToken() {
+  const token = liff.getAccessToken();
+  if (!token) throw new Error('LINE 登入已失效，請重新從通知開啟。');
+  return token;
+}
+
+
 // 同一分頁內，token 失效觸發的「登出→重新登入」只做一次，避免無限轉址迴圈
 const RELOGIN_KEY = 'anxi-liff-relogin-at';
 const RELOGIN_WINDOW_MS = 2 * 60 * 1000;
@@ -51,7 +76,7 @@ const doRelogin = (redirectUri, onBeforeLogin) => {
  */
 export async function initLiffAndEnsureLogin(liffId, { redirectUri, onBeforeLogin } = {}) {
   try {
-    await liff.init({ liffId });
+    await initializeLiff(liffId);
   } catch (err) {
     if (isLiffTokenError(err) && !hasRecentRelogin()) {
       console.warn('[LIFF] token 失效，重新登入:', err?.message);
@@ -62,6 +87,8 @@ export async function initLiffAndEnsureLogin(liffId, { redirectUri, onBeforeLogi
   }
 
   if (!liff.isLoggedIn()) {
+    if (hasRecentRelogin()) throw new Error('LINE 登入尚未完成，請重新從 LINE 通知開啟。');
+    markRelogin();
     doLogin(redirectUri, onBeforeLogin);
     return false;
   }
@@ -74,7 +101,7 @@ export async function initLiffAndEnsureLogin(liffId, { redirectUri, onBeforeLogi
  */
 export async function getLiffProfileOrRelogin({ redirectUri, onBeforeLogin } = {}) {
   try {
-    const profile = await liff.getProfile();
+    const profile = await withLiffTimeout(liff.getProfile());
     clearRelogin();
     return profile;
   } catch (err) {

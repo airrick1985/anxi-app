@@ -5,34 +5,15 @@
         
         <div v-if="authStatus === 'loading'" class="text-center pa-10 mt-10">
           <v-progress-circular indeterminate color="indigo" size="50"></v-progress-circular>
-          <p class="mt-4 text-grey-darken-1 font-weight-bold">安全驗證中，請稍候...</p>
+          <p class="mt-4 text-grey-darken-1 font-weight-bold">{{ authMessage }}</p>
         </div>
 
         <v-card v-else-if="authStatus === 'denied'" class="rounded-xl pa-6 text-center elevation-3 border-0">
           <v-icon color="error" size="64">mdi-lock-alert</v-icon>
           <div class="text-h6 font-weight-bold mt-4 text-error">用戶無檢視資料權限</div>
           <p class="text-body-2 text-grey-darken-1 mt-2">
-            您的身份尚未綁定或無此項目的作業權限，<br>請聯絡 ANXI 客服進行開通。
+            {{ errorDetail || '您的 LINE 尚未綁定，或這筆名單已重新分配，請聯絡管理員確認。' }}
           </p>
-
-          <!-- 名單歸屬人（去識別化）：方便使用者向客服說明或聯繫負責人 -->
-          <div v-if="deniedOwnerInfo" class="owner-info-box mt-4 text-start">
-            <div class="d-flex align-center mb-2">
-              <v-icon size="18" color="grey-darken-1" class="me-2">mdi-account-lock-outline</v-icon>
-              <span class="text-caption font-weight-bold text-grey-darken-2">此名單歸屬人員</span>
-            </div>
-            <template v-if="deniedOwnerInfo.userId || deniedOwnerInfo.name">
-              <div class="d-flex align-center flex-wrap ga-2">
-                <span class="owner-tag">USERID</span>
-                <span class="owner-value">{{ deniedOwnerInfo.userId || '—' }}</span>
-                <span class="owner-value owner-name">{{ deniedOwnerInfo.name || '—' }}</span>
-              </div>
-            </template>
-            <div v-else class="text-body-2 text-grey-darken-1">此名單尚未指派銷售人員</div>
-            <div class="text-caption text-grey mt-2">
-              為保護個資，以上資訊已去識別化顯示。
-            </div>
-          </div>
 
           <v-divider class="my-6"></v-divider>
           
@@ -61,6 +42,7 @@
           <div class="text-h6 font-weight-bold mt-4">驗證失敗</div>
           <p class="text-body-2 text-grey-darken-1 mt-2">{{ errorDetail || '請重新整理後再試' }}</p>
           <v-btn color="primary" block rounded="pill" class="mt-4" prepend-icon="mdi-refresh" @click="retryAuth">重試</v-btn>
+          <v-btn :href="lineEntryUrl" color="success" block variant="tonal" rounded="pill" class="mt-3">從 LINE 重新開啟</v-btn>
         </v-card>
 
         <v-card v-else-if="authStatus === 'granted'" class="rounded-xl elevation-3 overflow-hidden border-0">
@@ -257,7 +239,8 @@
                   rounded="lg"
                   elevation="2"
                   min-width="200"
-                  :disabled="isSubmitDisabled"
+                  :disabled="isSubmitDisabled || isSubmitting"
+                  :loading="isSubmitting"
                   @click="submitReport"
                   class="font-weight-bold"
                 >
@@ -317,32 +300,39 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, watch, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, reactive, watch, computed, defineAsyncComponent } from 'vue';
 import { useRoute } from 'vue-router';
-import { db } from '@/firebase';
-import { 
-  doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, 
-  query, where, getDocs, orderBy 
-} from 'firebase/firestore';
-import { useUiStore } from '@/store/uiStore';
+import { functions } from '@/firebase';
+import { httpsCallable } from 'firebase/functions';
 import { useUserStore } from '@/store/user';
-import { initLiffAndEnsureLogin, getLiffProfileOrRelogin, buildLiffRedirectUri } from '@/utils/liffAuth';
-import ViewingReservationDialog from '@/components/ViewingReservationDialog.vue';
+import { initLiffAndEnsureLogin, getLiffProfileOrRelogin, getLiffAccessToken, buildLiffRedirectUri } from '@/utils/liffAuth';
+import { leadReportLiffUrl, LEAD_REPORT_LIFF_ID } from '@/utils/leadReportLink';
+// 回報表單不等待賞屋預約的大型相依套件。
+const ViewingReservationDialog = defineAsyncComponent(() => import('@/components/ViewingReservationDialog.vue'));
 
 const route = useRoute();
-const uiStore = useUiStore();
 const userStore = useUserStore();
 
-const leadId = route.query.id;
+const leadId = typeof route.query.id === 'string' ? route.query.id : '';
+const lineEntryUrl = leadReportLiffUrl(leadId);
+const authMessage = ref('正在確認 LINE 身分…');
+const isSubmitting = ref(false);
+const callLeadReport = httpsCallable(functions, 'lineLeadReport', { timeout: 40000 });
 // loading | granted | denied（未綁定／無權限）| error（驗證過程失敗，可重試）
 const authStatus = ref('loading');
 const errorDetail = ref('');
+const readableError = (err) => ({
+  'functions/deadline-exceeded': '連線逾時，請確認網路後重試。',
+  'functions/unavailable': '服務暫時無法連線，請稍後重試。',
+  'functions/unauthenticated': 'LINE 登入已失效，請從 LINE 重新開啟此名單。',
+}[err?.code] || err?.message || '連線失敗，請確認網路後重試。');
 const retryAuth = () => window.location.reload();
+let authTimer;
+let disposed = false;
+onBeforeUnmount(() => { disposed = true; clearTimeout(authTimer); });
 const PENDING_LEAD_KEY = 'pendingLeadReportId';
 const projectName = ref('');
 const leadData = ref({ name: '', phone: '', projectId: '', source: '', budget: '', date: '', note: '' });
-// 無權限時顯示的「名單歸屬人」資訊（已去識別化，供使用者向客服說明或聯繫負責人）
-const deniedOwnerInfo = ref(null);
 const form = ref({ status: '', reason: '', note: '' });
 const historyLogs = ref([]);
 const snackbar = reactive({ show: false, text: '', color: '' });
@@ -388,260 +378,66 @@ watch(() => form.value.status, (newStatus) => {
   }
 });
 
-/**
- * 去識別化：USERID（手機號）僅遮蔽末 3 碼，例：0980111222 → 0980111XXX
- */
-const maskUserId = (value) => {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (raw.length <= 3) return 'X'.repeat(raw.length);
-  return raw.slice(0, -3) + 'XXX';
+// 所有權限與資料讀取由後端使用 LINE token 驗證，不依賴 ANXI 登入或 WebView 的 Firestore 快取。
+const fetchReport = async () => {
+  const { data } = await callLeadReport({ leadId, accessToken: getLiffAccessToken() });
+  return data;
 };
-
-/**
- * 去識別化：姓名保留首尾字、中間以 O 取代，例：王大明 → 王O明、王明 → 王O
- */
-const maskName = (value) => {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (raw.length === 1) return raw;
-  if (raw.length === 2) return `${raw[0]}O`;
-  return `${raw[0]}${'O'.repeat(raw.length - 2)}${raw[raw.length - 1]}`;
-};
-
-/**
- * 權限與設定驗證
- */
-const verifyAccess = async (lineId) => {
-  try {
-    console.log(`[權限驗證] 開始檢查 lineId: ${lineId}`);
-
-    const leadSnap = await getDoc(doc(db, 'leads', leadId));
-    if (!leadSnap.exists()) throw new Error('名單不存在');
-    const leadInfo = leadSnap.data();
-    const targetProjectId = leadInfo.projectId;
-    console.log(`[權限驗證] 名單所屬項目: ${targetProjectId}`);
-
-    // 先記錄名單歸屬人（去識別化），後續任一驗證未通過時可顯示於無權限畫面
-    deniedOwnerInfo.value = {
-      userId: maskUserId(leadInfo.assignedTo),
-      name: maskName(leadInfo.assignedName),
-    };
-
-    const setSnap = await getDoc(doc(db, 'projectSettings', targetProjectId));
-    if (setSnap.exists()) {
-      const settings = setSnap.data();
-      if (settings.statusOptions?.length > 0) statusOptions.value = settings.statusOptions;
-      if (settings.reasonOptions?.length > 0) reasonOptions.value = settings.reasonOptions;
-    }
-
-    // 查詢 users 表
-    const userQuery = query(collection(db, 'users'), where('lineId', '==', lineId));
-    const userSnap = await getDocs(userQuery);
-    console.log(`[權限驗證] 查詢 users 表結果: ${userSnap.size} 筆`);
-
-    if (userSnap.empty) {
-      console.error(`[權限驗證] ❌ 找不到綁定此 lineId 的用戶: ${lineId}`);
-      return false;
-    }
-
-    const userData = userSnap.docs[0].data();
-    const userPhone = userData.phone;
-    console.log(`[權限驗證] 用戶電話: ${userPhone}`);
-
-    // 查詢 userPermissions 表
-    const permSnap = await getDoc(doc(db, 'userPermissions', userPhone));
-    console.log(`[權限驗證] userPermissions 存在: ${permSnap.exists()}`);
-
-    if (!permSnap.exists()) {
-      console.error(`[權限驗證] ❌ 用戶 ${userPhone} 的權限記錄不存在`);
-      return false;
-    }
-
-    const permissions = permSnap.data().permissions || {};
-    const projectPerm = permissions[targetProjectId];
-    console.log(`[權限驗證] 項目 ${targetProjectId} 的權限:`, projectPerm);
-
-    if (projectPerm && projectPerm.systems) {
-      // ✅ 修復：檢查新的權限命名規則（客資系統-銷售 或 客資系統-櫃台）
-      // 同時保留向後相容性，檢查是否包含 '客資系統'
-      const hasRole = projectPerm.systems.some(s =>
-        s === '客資系統-銷售' ||
-        s === '客資系統-櫃台' ||
-        s.includes('客資系統')
-      );
-      console.log(`[權限驗證] 系統權限:`, projectPerm.systems, `| 有客資系統權限: ${hasRole}`);
-
-      if (hasRole) {
-        projectName.value = projectPerm.projectName || targetProjectId;
-        // ✅ 修正點：加入 key 屬性，避免預約組件 operatorId 報錯
-        userStore.user = {
-            name: userData.name,
-            phone: userPhone,
-            key: userPhone
-        };
-        leadData.value = { id: leadSnap.id, ...leadInfo };
-        console.log(`[權限驗證] ✅ 權限驗證成功`);
-        return true;
-      }
-    }
-    console.error(`[權限驗證] ❌ 用戶沒有此項目的客資系統權限`);
-    return false;
-  } catch (err) {
-    // 名單不存在／Firestore 讀取失敗等，屬驗證流程錯誤而非權限不足，交由呼叫端顯示為可重試的錯誤
-    console.error(`[權限驗證] ❌ 驗證失敗:`, err.message);
-    throw err;
-  }
+const applyReport = (data) => {
+  leadData.value = data.lead;
+  projectName.value = data.projectName;
+  statusOptions.value = data.statusOptions;
+  reasonOptions.value = data.reasonOptions;
+  historyLogs.value = data.logs;
+  existingReservations.value = data.reservations
+    .map(item => ({ ...item, reservationTime: new Date(item.reservationTime) }))
+    .filter(item => item.reservationTime > new Date())
+    .sort((a, b) => a.reservationTime - b.reservationTime);
+  // 預約對話框使用同一份員工資料；不同身分不能沿用前一次 ANXI session。
+  if (userStore.user?.key !== data.user.key) userStore.sessionId = null;
+  userStore.user = data.user;
+  if (data.detailsIncomplete) showMsg('部分歷史或預約資料暫時無法載入，可重新整理再試。', 'warning');
 };
 
 onMounted(async () => {
-  if (!leadId) { authStatus.value = 'denied'; return; }
-
-  // 加上本地環境判斷，略過 LINE LIFF 驗證方便開發
-  if (window.location.hostname === 'localhost') {
-    try {
-      const leadSnap = await getDoc(doc(db, 'leads', leadId));
-      if (leadSnap.exists()) {
-        const leadInfo = leadSnap.data();
-        leadData.value = { id: leadSnap.id, ...leadInfo };
-        const targetProjectId = leadInfo.projectId;
-        projectName.value = targetProjectId || '測試專案';
-        
-        // 取得專案設定的選項
-        if (targetProjectId) {
-          const setSnap = await getDoc(doc(db, 'projectSettings', targetProjectId));
-          if (setSnap.exists()) {
-            const settings = setSnap.data();
-            if (settings.statusOptions?.length > 0) statusOptions.value = settings.statusOptions;
-            if (settings.reasonOptions?.length > 0) reasonOptions.value = settings.reasonOptions;
-          }
-        }
-
-        userStore.user = {
-            name: '本地開發人員',
-            phone: '0900000000',
-            key: '0900000000'
-        };
-        authStatus.value = 'granted';
-
-        const logsSnap = await getDocs(query(
-          collection(db, `leads/${leadId}/contactLogs`),
-          orderBy('createdAt', 'desc')
-        ));
-        historyLogs.value = logsSnap.docs.map(d => d.data());
-
-        // ✅ 新增：加載該客戶的預約記錄
-        await loadCustomerReservations();
-      } else {
-        authStatus.value = 'denied';
-      }
-    } catch (err) {
-      console.error('Local dev mock error:', err);
-      authStatus.value = 'denied';
-    }
+  if (!leadId) {
+    authStatus.value = 'error';
+    errorDetail.value = '名單連結不完整，請重新點選 LINE 通知中的「回報聯絡狀況」。';
     return;
   }
-
-  try {
-    // ✅ 使用名單回報專用的 LIFF ID
-    const liffId = import.meta.env.VITE_LIFF_ID_LEAD_REPORT;
-
-    if (!liffId) {
-      console.error('❌ 錯誤: .env 中找不到 VITE_LIFF_ID_LEAD_REPORT');
-      errorDetail.value = '系統設定缺少 LIFF ID';
+  // 包含 LINE 跳轉未發生的情況：任何一步都不會永久停留在驗證中。
+  authTimer = setTimeout(() => {
+    if (authStatus.value === 'loading') {
       authStatus.value = 'error';
-      return;
+      errorDetail.value = '連線時間較久，請確認網路後重試，或從 LINE 重新開啟。';
     }
-
-    // ✅ 登入轉址策略（雙保險）：
-    //    1. redirectUri 改用不含 hash 的 ?liff_path=contact?id=...，LINE Login 回跳時 id 不會遺失，
-    //       由 App.vue 依 liff_path 導回本頁。
-    //    2. 若 LINE 仍回跳到 LIFF Endpoint（客資入口頁），先暫存 leadId，
-    //       由入口頁 (LeadDistributionEntry) 接力導回 /contact。
+  }, 45000);
+  try {
     const loginOpts = {
       redirectUri: buildLiffRedirectUri(`contact?id=${encodeURIComponent(leadId)}`),
       onBeforeLogin: () => {
-        try {
-          localStorage.setItem(PENDING_LEAD_KEY, JSON.stringify({ id: leadId, ts: Date.now() }));
-        } catch (e) { /* localStorage 不可用時忽略 */ }
+        authMessage.value = '正在連接 LINE，完成授權後會自動回到此名單…';
+        try { localStorage.setItem(PENDING_LEAD_KEY, JSON.stringify({ id: leadId, ts: Date.now() })); } catch { /* ignore */ }
       },
     };
-
-    console.log(`[LeadReport] 初始化 LIFF...`);
-    // token 被撤銷／過期時自動登出重登，不再誤顯示為「無權限」
-    const ready = await initLiffAndEnsureLogin(liffId, loginOpts);
+    const ready = await initLiffAndEnsureLogin(import.meta.env.VITE_LIFF_ID_LEAD_REPORT || LEAD_REPORT_LIFF_ID, loginOpts);
     if (!ready) return;
-
     const profile = await getLiffProfileOrRelogin(loginOpts);
     if (!profile) return;
-    try { localStorage.removeItem(PENDING_LEAD_KEY); } catch (e) { /* ignore */ }
-
-    const isGranted = await verifyAccess(profile.userId);
-    if (isGranted) {
-      authStatus.value = 'granted';
-      const logsSnap = await getDocs(query(
-        collection(db, `leads/${leadId}/contactLogs`),
-        orderBy('createdAt', 'desc')
-      ));
-      historyLogs.value = logsSnap.docs.map(d => d.data());
-
-      // ✅ 新增：加載該客戶的預約記錄
-      await loadCustomerReservations();
-    } else {
-      authStatus.value = 'denied';
-    }
+    authMessage.value = '正在確認名單權限並載入回報表單…';
+    const data = await fetchReport();
+    if (disposed || authStatus.value !== 'loading') return;
+    applyReport(data);
+    try { localStorage.removeItem(PENDING_LEAD_KEY); } catch { /* ignore */ }
+    authStatus.value = 'granted';
   } catch (err) {
-    console.error('[LeadReport] 驗證流程失敗:', err);
-    errorDetail.value = err?.message || '';
-    authStatus.value = 'error';
+    if (disposed || authStatus.value !== 'loading') return;
+    errorDetail.value = readableError(err);
+    authStatus.value = err?.code === 'functions/permission-denied' ? 'denied' : 'error';
+  } finally {
+    if (authStatus.value !== 'loading') clearTimeout(authTimer);
   }
 });
-
-// ✅ 新增：查詢該客戶的有效預約記錄
-const loadCustomerReservations = async () => {
-  console.log('🔍 開始查詢預約記錄...');
-  console.log('📱 客戶電話:', leadData.value.phone);
-  console.log('🏢 項目ID:', leadData.value.projectId);
-
-  if (!leadData.value.phone || !leadData.value.projectId) {
-    console.warn('⚠️ 缺少客戶電話或項目ID，跳過查詢');
-    return;
-  }
-
-  try {
-    const reservationsQuery = query(
-      collection(db, 'viewing_reservations'),
-      where('projectId', '==', leadData.value.projectId),
-      where('customerPhone', '==', leadData.value.phone),
-      where('status', '==', 'active'),
-      orderBy('reservationTime', 'desc')
-    );
-
-    const reservationsSnap = await getDocs(reservationsQuery);
-    console.log('📊 查詢結果數量:', reservationsSnap.size);
-
-    const now = new Date();
-
-    // 篩選有效預約（未來的預約）
-    existingReservations.value = reservationsSnap.docs
-      .map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          reservationTime: data.reservationTime?.toDate ? data.reservationTime.toDate() : new Date(data.reservationTime)
-        };
-      })
-      .filter(res => res.reservationTime > now)
-      .sort((a, b) => a.reservationTime - b.reservationTime);
-
-    console.log('✅ 有效預約數量:', existingReservations.value.length);
-    console.log('📋 預約記錄:', existingReservations.value);
-  } catch (err) {
-    console.error('❌ 查詢預約記錄失敗:', err);
-    console.error('錯誤詳情:', err.message);
-  }
-};
 
 const openBookingDialog = () => {
   bookingInitialData.value = {
@@ -699,30 +495,26 @@ const isSubmitDisabled = computed(() => {
   return baseValidation || bookingValidation;
 });
 
+let pendingSubmission;
 const submitReport = async (successMsg = '回報成功') => {
-  const currentUserName = userStore.user?.name || '業務人員';
+  if (isSubmitting.value || isSubmitDisabled.value) return;
+  isSubmitting.value = true;
+  const report = { ...form.value };
+  const fingerprint = JSON.stringify(report);
+  if (pendingSubmission?.fingerprint !== fingerprint) {
+    pendingSubmission = { fingerprint, requestId: crypto.randomUUID() };
+  }
   try {
-    uiStore.setLoading(true);
-    await updateDoc(doc(db, 'leads', leadId), {
-      status: form.value.status,
-      reason: form.value.reason,
-      lastReportedAt: serverTimestamp()
-    });
-    await addDoc(collection(db, `leads/${leadId}/contactLogs`), {
-      ...form.value,
-      createdBy: currentUserName,
-      createdAt: serverTimestamp()
-    });
+    await callLeadReport({ leadId, accessToken: getLiffAccessToken(), action: 'submit', report, requestId: pendingSubmission.requestId });
+    historyLogs.value.unshift({ ...report, createdBy: userStore.user?.name || '業務人員', createdAt: new Date().toISOString() });
+    pendingSubmission = null;
     showMsg(typeof successMsg === 'string' ? successMsg : '回報成功', 'success');
-    // ✅ 送出成功後完整重置表單，避免（自動送出後）又誤點手動送出造成重複空白回報
     form.value = { status: '', reason: '', note: '' };
     isBookingCompleted.value = false;
-    const logsSnap = await getDocs(query(collection(db, `leads/${leadId}/contactLogs`), orderBy('createdAt', 'desc')));
-    historyLogs.value = logsSnap.docs.map(d => d.data());
   } catch (err) {
-    showMsg('提交失敗', 'error');
+    showMsg(readableError(err), 'error');
   } finally {
-    uiStore.setLoading(false);
+    isSubmitting.value = false;
   }
 };
 
@@ -762,34 +554,6 @@ const getStatusKey = (s) => ({ '已約賞屋': 'success', '不考慮': 'error', 
 .history-item:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1) !important;
-}
-
-/* 無權限畫面：名單歸屬人（去識別化） */
-.owner-info-box {
-  background-color: #f5f6f8;
-  border: 1px solid #e3e6ea;
-  border-radius: 12px;
-  padding: 12px 14px;
-}
-.owner-tag {
-  display: inline-block;
-  background-color: #607d8b;
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  border-radius: 4px;
-  padding: 2px 6px;
-}
-.owner-value {
-  font-size: 1rem;
-  font-weight: 800;
-  color: #37474f;
-  letter-spacing: 0.5px;
-  font-variant-numeric: tabular-nums;
-}
-.owner-name {
-  padding-left: 4px;
 }
 
 </style>
