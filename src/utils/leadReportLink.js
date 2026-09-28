@@ -25,3 +25,28 @@ export function isLeadLiffLaunch(href) {
   return url.searchParams.has('leadReportId') || paths.some(value =>
     value && /(?:^|[/?#])(?:contact(?:[?/#]|$)|lead-distribution-entry(?:[?/#]|$)|leadReportId=)/.test(value));
 }
+
+// 舊通知直接連到網站 hash；先轉成正式 LIFF URL，不在一般 LINE WebView 啟動另一輪 OAuth。
+export function legacyLeadReportRedirect(href) {
+  const url = new URL(href);
+  if (!/^#\/contact(?:\?|$)/.test(url.hash)) return null;
+  // OAuth / LIFF 回跳必須留給 SDK 處理，不能再次轉出或丟掉授權碼。
+  if (['code', 'state', 'error', 'liff.state', 'liff_path', 'liffClientId', 'leadReportId']
+    .some(key => url.searchParams.has(key))) return null;
+  const id = readLeadReportId(href);
+  return id ? leadReportLiffUrl(id) : null;
+}
+
+// 只救援本入口的近期登入回跳，不讓過期暫存影響一般首頁或其他 LIFF 功能。
+export function pendingLeadReportCallback(href, rawPending, now = Date.now()) {
+  const url = new URL(href);
+  if ((url.hash && url.hash !== '#/' && url.hash !== '#') ||
+      url.searchParams.has('liff_path') || url.searchParams.has('liff.state') ||
+      !url.searchParams.has('code') || !url.searchParams.has('state')) return null;
+  try {
+    const { id, ts } = JSON.parse(rawPending || 'null') || {};
+    const age = now - ts;
+    return typeof id === 'string' && id.length > 0 && id.length <= 200 && !id.includes('/') &&
+      Number.isFinite(ts) && age >= 0 && age < 5 * 60 * 1000 ? id : null;
+  } catch { return null; }
+}

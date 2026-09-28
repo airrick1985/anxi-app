@@ -1,10 +1,19 @@
-import { isLeadLiffLaunch, readLeadReportId, LEAD_REPORT_LIFF_ID } from './utils/leadReportLink';
+import { isLeadLiffLaunch, readLeadReportId, legacyLeadReportRedirect, pendingLeadReportCallback, LEAD_REPORT_LIFF_ID } from './utils/leadReportLink';
 
 async function bootstrap() {
+  const legacyRedirect = legacyLeadReportRedirect(window.location.href);
+  if (legacyRedirect) {
+    window.location.replace(legacyRedirect);
+    return;
+  }
+  let pendingId;
+  try {
+    pendingId = pendingLeadReportCallback(window.location.href, localStorage.getItem('pendingLeadReportId'));
+  } catch { /* storage 不可用不影響帶有名單 ID 的連結 */ }
   // LIFF 必須先處理 OAuth / primary redirect，之後才能建立會改寫 hash 的 Vue Router。
   // 一般頁面不下載 LINE SDK。
-  if (isLeadLiffLaunch(window.location.href)) {
-    const leadId = readLeadReportId(window.location.href);
+  if (isLeadLiffLaunch(window.location.href) || pendingId) {
+    const leadId = readLeadReportId(window.location.href) || pendingId;
     const { initializeLiff } = await import('./utils/liffAuth');
     try {
       await initializeLiff(import.meta.env.VITE_LIFF_ID_LEAD_REPORT || LEAD_REPORT_LIFF_ID);
