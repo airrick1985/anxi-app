@@ -992,15 +992,12 @@ router.beforeEach(async (to, from, next) => {
 
   // 2. 如果偵測到 liff.state 且目前路由停在首頁 '/'
   if (liffState && to.path === '/') {
-    // 解碼路徑 (例如將 %23%2F 轉回 #/)
-    const decodedPath = decodeURIComponent(liffState);
-    // 移除最前面的 '#' 字元，以便 Vue Router 跳轉
-    const cleanPath = decodedPath.replace(/^#/, '');
-
-    console.log('[LIFF Redirect] 偵測到登入回傳狀態，自動導向目標路徑:', cleanPath);
-
-    // 強制跳轉至救援路徑，並結束此次守衛
-    return next(cleanPath);
+    // URLSearchParams 已解碼；query-only state 不能當路由重新導向根目錄，否則守衛無限重入。
+    // 名單回報的多層 state 已由 bootstrap 在 LIFF 初始化後還原。
+    const cleanPath = liffState.replace(/^#/, '');
+    if (cleanPath.startsWith('/') && !cleanPath.startsWith('//') && cleanPath !== to.fullPath) {
+      return next(cleanPath);
+    }
   }
 
   // **** 👆👆👆 修改點結束 👆👆👆 ****

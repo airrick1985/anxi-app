@@ -31156,7 +31156,8 @@ exports.openBookingItemOnBatchWrite = bookingVisibility.openBookingItemOnBatchWr
 exports.openScheduledBookingItems = bookingVisibility.openScheduledBookingItems;
 
 // LINE 名單回報：獨立 callable，免 ANXI 登入但必須驗證 LINE token 與名單權限。
-exports.lineLeadReport = onCall({ region: 'asia-east1', timeoutSeconds: 45 },
+// 此 entrypoint 會載入共用套件，256 MiB 已發生 OOM；明確設定容量並限制單實例併發。
+exports.lineLeadReport = onCall({ region: 'asia-east1', timeoutSeconds: 45, memory: '512MiB', concurrency: 10 },
   require('./leadReportAccess.cjs').createLeadReportHandler({
     db: defaultDb, axios, HttpsError, FieldValue: admin.firestore.FieldValue,
   }));

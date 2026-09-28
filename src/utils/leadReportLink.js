@@ -4,26 +4,40 @@ export function leadReportLiffUrl(id) {
   return `https://liff.line.me/${LEAD_REPORT_LIFF_ID}?leadReportId=${encodeURIComponent(id)}`;
 }
 
-// URLSearchParams 已解碼一次；不要對整段 state 再 decode，否則名單 ID 內的 & 會變成參數。
-export function readLeadReportId(href) {
-  const url = new URL(href);
-  const candidates = [url.searchParams, new URLSearchParams(url.hash.split('?').slice(1).join('?'))];
-  for (const key of ['liff.state', 'liff_path']) {
-    const value = url.searchParams.get(key);
-    if (value) candidates.push(new URLSearchParams(value.slice(value.indexOf('?') + 1)));
+// 逐層解析已解碼的參數值，不能一次 decode 整段網址：ID 裡的 & / % 必須保留。
+function leadLinkLayers(href) {
+  const origin = new URL(href).origin;
+  const queue = [href];
+  const seen = new Set();
+  const layers = [];
+  while (queue.length && layers.length < 16) {
+    const value = queue.shift();
+    if (seen.has(value)) continue;
+    seen.add(value);
+    let url;
+    try { url = new URL(value.replace(/^#/, ''), origin + '/'); } catch { continue; }
+    if (url.origin !== origin) continue;
+    layers.push(url);
+    if (url.hash.startsWith('#/')) queue.push(url.hash);
+    for (const key of ['liff.state', 'liff_path', 'liffRedirectUri']) {
+      const nested = url.searchParams.get(key);
+      if (nested) queue.push(nested);
+    }
   }
-  for (const params of candidates) {
-    const id = params.get('leadReportId') || params.get('id');
+  return layers;
+}
+
+export function readLeadReportId(href) {
+  for (const url of leadLinkLayers(href)) {
+    const id = url.searchParams.get('leadReportId') || url.searchParams.get('id');
     if (id && id.length <= 200 && !id.includes('/')) return id;
   }
   return null;
 }
 
 export function isLeadLiffLaunch(href) {
-  const url = new URL(href);
-  const paths = [url.hash, url.searchParams.get('liff_path'), url.searchParams.get('liff.state')];
-  return url.searchParams.has('leadReportId') || paths.some(value =>
-    value && /(?:^|[/?#])(?:contact(?:[?/#]|$)|lead-distribution-entry(?:[?/#]|$)|leadReportId=)/.test(value));
+  return leadLinkLayers(href).some(url => url.searchParams.has('leadReportId') ||
+    /^\/(?:contact|lead-distribution-entry)\/?$/.test(url.pathname));
 }
 
 // 舊通知直接連到網站 hash；先轉成正式 LIFF URL，不在一般 LINE WebView 啟動另一輪 OAuth。

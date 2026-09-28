@@ -100,3 +100,33 @@ test('遺失路徑的登入回跳也在 SDK 完成後才恢復名單', async () 
   await context.done;
   assert.deepEqual(events, ['#/contact?id=old-lead', 'main']);
 });
+
+// 與實際故障網址相同的多層編碼，OAuth code / state 改用假值，不能重播真人授權碼。
+const reportedCallback = 'https://app.test/?liff.state=%3Fliff_path%3Dcontact%253Fid%253Dlead-test&code=fake-code&state=fake-state&liffClientId=2008257338&liffRedirectUri=https%3A%2F%2Fapp.test%2F%3Fliff.state%3D%253Fliff_path%253Dcontact%25253Fid%25253Dlead-test#/';
+test('實際回報的 liff.state → liff_path → contact 多層網址可辨識，不依賴暫存', () => {
+  assert.equal(isLeadLiffLaunch(reportedCallback), true);
+  assert.equal(readLeadReportId(reportedCallback), 'lead-test');
+  assert.equal(legacyLeadReportRedirect(reportedCallback), null);
+  const onlyRedirect = new URL(reportedCallback);
+  onlyRedirect.searchParams.delete('liff.state');
+  assert.equal(readLeadReportId(onlyRedirect.href), 'lead-test');
+  const encodedId = new URL('https://app.test');
+  encodedId.searchParams.set('liff.state', '?liff_path=' + encodeURIComponent('contact?id=' + encodeURIComponent('a&b%23')));
+  assert.equal(readLeadReportId(encodedId.href), 'a&b%23');
+});
+
+test('query-only liff.state 不能讓根目錄路由守衛無限自我導向', async () => {
+  const source = await readFile(new URL('../../src/router/index.js', import.meta.url), 'utf8');
+  const start = source.indexOf('  const urlParams = new URLSearchParams(window.location.search);');
+  const end = source.indexOf('  const userStore = useUserStore();', start);
+  const calls = [];
+  const context = vm.createContext({ URLSearchParams,
+    window: { location: { search: new URL(reportedCallback).search } },
+    next: value => calls.push(value), to: { path: '/', fullPath: '/' },
+  });
+  vm.runInContext(`(function () { ${source.slice(start, end)} })()`, context);
+  assert.deepEqual(calls, []);
+  context.window.location.search = '?liff.state=%2Fcontact%3Fid%3Da';
+  vm.runInContext(`(function () { ${source.slice(start, end)} })()`, context);
+  assert.deepEqual(calls, ['/contact?id=a']);
+});

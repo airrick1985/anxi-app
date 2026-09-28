@@ -16,17 +16,19 @@ const fixture = await mkdtemp(path.join(root, '.lead-report-test-'));
 let server, browser;
 try {
   const files = {
-    'index.html': '<html><body><div id="app"></div><script type="module" src="./main.js"></script></body></html>',
+    'index.html': '<html><body><div id="app"></div><script type="module" src="./entry.js"></script></body></html>',
+    'entry.js': `import '../src/bootstrap.js';`,
     'main.js': `import { createApp, h } from 'vue'; import { createVuetify } from 'vuetify'; import { VApp } from 'vuetify/components'; import 'vuetify/styles'; import LeadReport from '../src/views/LeadReport.vue';
 window.scenario = new URLSearchParams(location.search).get('scenario');
 const originalTimer = window.setTimeout;
 window.setTimeout = (fn, delay, ...args) => originalTimer(fn, delay === 45000 ? 200 : delay, ...args);
 window.requests = [];
 createApp({ render: () => h(VApp, {}, () => h(LeadReport)) }).use(createVuetify()).mount('#app');`,
-    'router.js': `export function useRoute() { return { query: { id: 'lead-test' } }; }`,
+    'router.js': `export function useRoute() { return { query: { id: new URLSearchParams(location.hash.split('?')[1]).get('id') || 'lead-test' } }; }`,
     'user.js': `import { reactive } from 'vue'; const store = reactive({ user: { key: 'old-user' }, sessionId: 'old-session' }); window.testStore = store; export const useUserStore = () => store;`,
     'firebase.js': 'export const functions = {};',
-    'liff.js': `export async function initLiffAndEnsureLogin() { if (window.scenario === 'init-stuck') return new Promise(() => {}); if (window.scenario === 'redirect') return false; return true; }
+    'liff.js': `export async function initializeLiff() { window.beforeLiff = location.href; await new Promise(resolve => setTimeout(resolve, 20)); }
+export async function initLiffAndEnsureLogin() { if (window.scenario === 'init-stuck') return new Promise(() => {}); if (window.scenario === 'redirect') return false; return true; }
 export async function getLiffProfileOrRelogin() { return { userId: 'Utest' }; }
 export const getLiffAccessToken = () => 'test-token';
 export const buildLiffRedirectUri = () => 'https://example.test';`,
@@ -47,7 +49,15 @@ return { data: {
     'Booking.vue': '<template><div>預約測試視窗</div></template>',
   };
   for (const [name, content] of Object.entries(files)) await writeFile(path.join(fixture, name), content);
-  await build({ configFile: false, root: fixture, logLevel: 'error', plugins: [vue(), vuetify({ autoImport: true })],
+  await build({ configFile: false, root: fixture, logLevel: 'error', plugins: [{
+      name: 'isolated-bootstrap-dependencies', enforce: 'pre',
+      resolveId(source, importer) {
+        if (importer?.endsWith('/src/bootstrap.js')) {
+          if (source === './main') return path.join(fixture, 'main.js');
+          if (source === './utils/liffAuth') return path.join(fixture, 'liff.js');
+        }
+      },
+    }, vue(), vuetify({ autoImport: true })],
     resolve: { alias: {
       'vue-router': path.join(fixture, 'router.js'),
       '@/store/user': path.join(fixture, 'user.js'),
@@ -61,15 +71,21 @@ return { data: {
   server = await preview({ configFile: false, root: fixture, preview: { host: '127.0.0.1', port: 0, open: false } });
   const base = `http://127.0.0.1:${server.httpServer.address().port}`;
   browser = await puppeteer.launch({ executablePath, headless: true });
-  for (const scenario of ['success', 'retry', 'denied', 'network', 'init-stuck', 'redirect']) {
+  for (const scenario of ['success', 'nested-callback', 'retry', 'denied', 'network', 'init-stuck', 'redirect']) {
     const page = await browser.newPage();
     await page.setViewport({ width: 390, height: 844 });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.setRequestInterception(true);
     page.on('request', request => request.url().startsWith(base) ? request.continue() : request.abort());
-    await page.goto(`${base}/?scenario=${scenario}`);
-    if (['success', 'retry'].includes(scenario)) {
+    const callback = '&liff.state=%3Fliff_path%3Dcontact%253Fid%253Dlead-test&code=fake-code&state=fake-state&liffClientId=2008257338&liffRedirectUri=' + encodeURIComponent(base + '/?liff.state=%3Fliff_path%3Dcontact%253Fid%253Dlead-test') + '#/';
+    await page.goto(`${base}/?scenario=${scenario}${scenario === 'nested-callback' ? callback : ''}`);
+    if (scenario === 'nested-callback') {
+      await page.waitForFunction(() => location.hash === '#/contact?id=lead-test');
+      assert.equal(await page.evaluate(() => new URL(window.beforeLiff).hash), '#/');
+      assert.equal(await page.evaluate(() => new URL(location.href).searchParams.has('liff.state')), false);
+    }
+    if (['success', 'nested-callback', 'retry'].includes(scenario)) {
       await page.waitForFunction(() => document.body.textContent.includes('聯絡狀況回報'));
       assert.equal(await page.evaluate(() => window.testStore.sessionId), null);
       await page.click('.v-select');
