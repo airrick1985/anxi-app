@@ -4400,50 +4400,46 @@ watch(currentImageIndex, () => {
 });
 
 let printFrame = null;
+// 預設 A3 橫向（留白 10mm → 內容區約 400×275mm），圖片縮放至紙張寬度；過高的圖改以高度為限，避免跨頁
+// @page 邊界設 0：瀏覽器的頁首頁尾（日期、標題、網址、頁碼）印在邊界區，邊界為 0 就不會印出；留白改由 body padding 提供
+const PRINT_AREA_MM = { w: 400, h: 275 }; // 高度略小於 277，避免換算誤差多出一張空白頁
 const printImage = () => {
   const url = currentImage.value?.downloadURL;
   if (!url) return;
-  // 先在主頁載入圖片，取得長寬以決定紙張方向
-  const probe = new Image();
-  probe.onerror = () => toast.error('圖片載入失敗，無法列印');
-  probe.onload = () => {
-    if (printFrame?.parentNode) printFrame.parentNode.removeChild(printFrame);
-    const landscape = probe.naturalWidth > probe.naturalHeight;
-    // 內容區（A4 扣 10mm 邊界）；不用 vh，避免以 iframe 尺寸計算導致圖片被壓成 0 高而印出空白
-    const [areaW, areaH] = landscape ? [277, 190] : [190, 277];
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1200px;height:1200px;border:0;';
-    document.body.appendChild(iframe);
-    printFrame = iframe;
+  if (printFrame?.parentNode) printFrame.parentNode.removeChild(printFrame);
+  const iframe = document.createElement('iframe');
+  // 不可設 0×0：列印時尺寸會以 iframe 計算，圖片被壓成 0 高而印出空白
+  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1600px;height:1100px;border:0;';
+  document.body.appendChild(iframe);
+  printFrame = iframe;
 
-    const win = iframe.contentWindow;
-    const doc = win.document;
-    doc.open();
-    doc.write(`<!doctype html><html><head><meta charset="utf-8">
-      <title>列印圖面 - ${props.unitData?.unitId || ''}</title>
-      <style>
-        @page { size: ${landscape ? 'landscape' : 'portrait'}; margin: 10mm; }
-        html, body { margin: 0; background: #fff; }
-        body { width: ${areaW}mm; height: ${areaH}mm; display: flex; justify-content: center; align-items: center; overflow: hidden; }
-        img { max-width: ${areaW}mm; max-height: ${areaH}mm; object-fit: contain; }
-      </style></head>
-      <body><img src="${url}"></body></html>`);
-    doc.close();
+  const { w, h } = PRINT_AREA_MM;
+  const win = iframe.contentWindow;
+  const doc = win.document;
+  doc.open();
+  doc.write(`<!doctype html><html><head><meta charset="utf-8">
+    <title>列印圖面 - ${props.unitData?.unitId || ''}</title>
+    <style>
+      @page { size: A3 landscape; margin: 0; }
+      html, body { margin: 0; background: #fff; }
+      body { box-sizing: content-box; padding: 10mm; width: ${w}mm; height: ${h}mm; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+      img { width: ${w}mm; height: auto; max-height: ${h}mm; object-fit: contain; }
+    </style></head>
+    <body><img src="${url}"></body></html>`);
+  doc.close();
 
-    const cleanup = () => {
-      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      if (printFrame === iframe) printFrame = null;
-    };
-    win.addEventListener('afterprint', () => setTimeout(cleanup, 0));
-    const doPrint = () => setTimeout(() => { win.focus(); win.print(); }, 100);
-    const img = doc.querySelector('img');
-    if (img.complete && img.naturalWidth) doPrint();
-    else {
-      img.onload = doPrint;
-      img.onerror = () => { cleanup(); toast.error('圖片載入失敗，無法列印'); };
-    }
+  const cleanup = () => {
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    if (printFrame === iframe) printFrame = null;
   };
-  probe.src = url;
+  win.addEventListener('afterprint', () => setTimeout(cleanup, 0));
+  const doPrint = () => setTimeout(() => { win.focus(); win.print(); }, 100);
+  const img = doc.querySelector('img');
+  if (img.complete && img.naturalWidth) doPrint();
+  else {
+    img.onload = doPrint;
+    img.onerror = () => { cleanup(); toast.error('圖片載入失敗，無法列印'); };
+  }
 };
 
 watch(() => props.show, (newVal) => {
