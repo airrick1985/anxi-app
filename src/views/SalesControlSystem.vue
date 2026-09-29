@@ -2362,6 +2362,7 @@ import {
   rowToLandParcel,
 } from '@/constants/landParcelColumns';
 import { COLUMN_DEFINITIONS, UNIT_EXPORT_COMPUTED_COLUMNS } from '@/constants/householdColumns';
+import { isSpecialContractType } from '@/composables/usePriceFormula';
 // ✅ [效能] 戶別詳情 Modal（含合約製作、付款設定、xlsx…約 500KB+）改為非同步載入；
 // 模板本來就以 v-if 於開啟時建立，故非同步安全。銷控資料載入完成後會閒置預抓（見 loadCurrentProjectData），首次點開不會等下載。
 const loadUnitDetailModal = () => import('@/components/UnitDetailModal.vue');
@@ -5265,6 +5266,11 @@ const enrichUnitItem = (unit, parkingMap) => {
     // 合計底價
     const houseFloor = Number(unit.price_floor_house_total) || 0;
     item.total_floor = houseFloor + parkingFloorTotal;
+
+    // 配套價格：與戶別「成交總覽」同口徑即時計算（成交總價 − 配套房屋總價），不取資料庫舊值；非配套合約留空
+    item.price_package = isSpecialContractType(unit.contractType)
+        ? (Number(unit.price_transaction_total) || item.total_transaction) - (Number(unit.price_package_deal) || 0)
+        : null;
 
     // 溢差價計算
     if (houseTrans > 0) {
