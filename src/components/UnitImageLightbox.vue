@@ -1,15 +1,18 @@
 <template>
   <!-- 第一層：圖片燈箱（輪播 + 縮圖列） -->
   <v-dialog v-model="dialogModel" max-width="1000" scrollable>
-    <v-card v-if="images.length > 0">
-      <v-toolbar density="compact" color="primary">
-        <v-toolbar-title class="text-subtitle-1 font-weight-bold">
-          {{ title }} 戶別圖片
-          <span class="text-caption ml-2">{{ currentIndex + 1 }} / {{ images.length }}</span>
-        </v-toolbar-title>
-        <v-spacer></v-spacer>
-        <v-btn icon="mdi-close" @click="dialogModel = false"></v-btn>
-      </v-toolbar>
+    <v-card v-if="images.length > 0" class="mac-sheet">
+      <div class="mac-sheet-head">
+        <v-icon size="18">mdi-image-multiple-outline</v-icon>
+        <span class="lb-title">{{ title }} 戶別圖片</span>
+        <span class="lb-count">{{ currentIndex + 1 }} / {{ images.length }}</span>
+        <button type="button" class="mac-btn ml-auto" title="列印目前圖片（A3 橫向）" @click="printCurrent">
+          <v-icon size="16">mdi-printer-outline</v-icon><span>列印</span>
+        </button>
+        <button type="button" class="mac-sheet-close ml-1" title="關閉" @click="dialogModel = false">
+          <v-icon size="18">mdi-close</v-icon>
+        </button>
+      </div>
 
       <v-card-text class="pa-3">
         <v-carousel
@@ -79,6 +82,7 @@
         <v-btn icon="mdi-magnify-minus-outline" variant="flat" size="small" @click.stop="zoomBy(-0.25)"></v-btn>
         <v-btn icon="mdi-magnify-plus-outline" variant="flat" size="small" @click.stop="zoomBy(0.25)"></v-btn>
         <v-btn icon="mdi-backup-restore" variant="flat" size="small" @click.stop="resetZoom"></v-btn>
+        <v-btn icon="mdi-printer-outline" variant="flat" size="small" title="列印（A3 橫向）" @click.stop="printCurrent"></v-btn>
         <span class="zoom-caption">{{ currentIndex + 1 }} / {{ images.length }}</span>
       </div>
 
@@ -89,6 +93,8 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { useToast } from 'vue-toastification';
+import { printImageA3 } from '@/utils/printImageA3';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -106,6 +112,15 @@ const currentIndex = ref(0);
 const zoomDialog = ref(false);
 
 const currentImage = computed(() => props.images[currentIndex.value] || null);
+
+// 列印目前圖片：與戶別資訊圖片列印同規則（A3 橫向、縮放至紙張寬度、不印頁首頁尾）
+const toast = useToast();
+function printCurrent() {
+  printImageA3(currentImage.value?.downloadURL, {
+    title: `列印圖面 - ${props.title || ''}`,
+    onError: () => toast.error('圖片載入失敗，無法列印'),
+  });
+}
 
 // 每次重新開啟燈箱時回到第一張
 watch(dialogModel, (open) => {
@@ -179,6 +194,9 @@ function prevImage() {
 </script>
 
 <style scoped>
+.lb-title { font-size: 14px; font-weight: 600; }
+.lb-count { font-size: 12px; font-weight: 500; color: #6e6e73; }
+
 /* 輪播主圖底色：淺灰白，避免白底圖片與卡片融成一片 */
 .carousel-stage {
   background-color: #e8eaed;
