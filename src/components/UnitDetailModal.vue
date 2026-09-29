@@ -4399,66 +4399,51 @@ watch(currentImageIndex, () => {
   }
 });
 
+let printFrame = null;
 const printImage = () => {
-  if (currentImage.value && currentImage.value.downloadURL) {
+  const url = currentImage.value?.downloadURL;
+  if (!url) return;
+  // 先在主頁載入圖片，取得長寬以決定紙張方向
+  const probe = new Image();
+  probe.onerror = () => toast.error('圖片載入失敗，無法列印');
+  probe.onload = () => {
+    if (printFrame?.parentNode) printFrame.parentNode.removeChild(printFrame);
+    const landscape = probe.naturalWidth > probe.naturalHeight;
+    // 內容區（A4 扣 10mm 邊界）；不用 vh，避免以 iframe 尺寸計算導致圖片被壓成 0 高而印出空白
+    const [areaW, areaH] = landscape ? [277, 190] : [190, 277];
     const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = 'none';
+    iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1200px;height:1200px;border:0;';
     document.body.appendChild(iframe);
+    printFrame = iframe;
 
-    iframe.onload = () => {
-      // 確保 iframe 內部載入完成後再寫入內容
-      const doc = iframe.contentWindow.document;
-      doc.open();
-      // 使用 onload 觸發列印，確保圖片完全載入
-      doc.write(`
-        <html>
-          <head>
-            <title>列印圖面 - ${props.unitData?.unitId || ''}</title>
-            <style>
-              body { 
-                margin: 0; 
-                display: flex; 
-                justify-content: center; 
-                align-items: center; 
-                height: 100vh; 
-                background-color: #fff; 
-              }
-              img { 
-                max-width: 100%; 
-                max-height: 100vh; 
-                object-fit: contain; 
-              }
-              @media print {
-                @page { margin: 10mm; size: auto; }
-                body { margin: 0; }
-              }
-            </style>
-          </head>
-          <body>
-            <img src="${currentImage.value.downloadURL}" onload="window.print();" />
-          </body>
-        </html>
-      `);
-      doc.close();
+    const win = iframe.contentWindow;
+    const doc = win.document;
+    doc.open();
+    doc.write(`<!doctype html><html><head><meta charset="utf-8">
+      <title>列印圖面 - ${props.unitData?.unitId || ''}</title>
+      <style>
+        @page { size: ${landscape ? 'landscape' : 'portrait'}; margin: 10mm; }
+        html, body { margin: 0; background: #fff; }
+        body { width: ${areaW}mm; height: ${areaH}mm; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+        img { max-width: ${areaW}mm; max-height: ${areaH}mm; object-fit: contain; }
+      </style></head>
+      <body><img src="${url}"></body></html>`);
+    doc.close();
 
-      // 列印結束或取消後移除 iframe (設置一個安全的延遲以免列印對話框還沒完全開啟就被移除了)
-      iframe.contentWindow.onbeforeunload = () => {
-        document.body.removeChild(iframe);
-      };
-      // 備用的移除機制
-      setTimeout(() => {
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe);
-        }
-      }, 10000); // 10秒後自動清理
+    const cleanup = () => {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      if (printFrame === iframe) printFrame = null;
     };
-
-    // 觸發 onload
-    iframe.src = 'about:blank';
-  }
+    win.addEventListener('afterprint', () => setTimeout(cleanup, 0));
+    const doPrint = () => setTimeout(() => { win.focus(); win.print(); }, 100);
+    const img = doc.querySelector('img');
+    if (img.complete && img.naturalWidth) doPrint();
+    else {
+      img.onload = doPrint;
+      img.onerror = () => { cleanup(); toast.error('圖片載入失敗，無法列印'); };
+    }
+  };
+  probe.src = url;
 };
 
 watch(() => props.show, (newVal) => {
