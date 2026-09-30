@@ -255,7 +255,7 @@
 
         <div class="global-search-bar">
           <v-text-field
-            v-model="filters.keyword"
+            v-model="keywordInput"
             placeholder="全域搜尋：戶別、買方、電話、銷售人員、備註、車位編號／車位備註…（可空白分隔多關鍵字）"
             prepend-inner-icon="mdi-magnify"
             variant="solo"
@@ -292,224 +292,14 @@
         </v-btn>
       </div>
 
-      <v-expand-transition>
-  <div v-if="showFilterPanel" class="filter-panel-container mb-2">
-    <v-card variant="outlined" class="bg-white pa-3">
-      <v-row dense>
-        <v-col cols="12" sm="6" md="3">
-          <v-select
-            v-model="filters.buildings"
-            :items="buildingOptions"
-            label="棟別 (多選)"
-            multiple
-            chips
-            closable-chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            clearable
-            :menu-props="{ maxHeight: 320 }"
-          ></v-select>
-        </v-col>
-        <v-col cols="12" sm="6" md="3">
-          <v-select
-            v-model="filters.floors"
-            :items="floorOptions"
-            label="樓層 (多選)"
-            multiple
-            chips
-            closable-chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            clearable
-            :menu-props="{ maxHeight: 320 }"
-          ></v-select>
-        </v-col>
-        <!-- ✅ [新增] 文字標籤篩選（任一符合即顯示；可選「(無標籤)」） -->
-        <v-col cols="12" sm="6" md="3">
-          <v-select
-            v-model="filters.tags"
-            :items="tagOptions"
-            item-title="text"
-            item-value="text"
-            label="標籤 (多選)"
-            multiple
-            chips
-            closable-chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            clearable
-            :menu-props="{ maxHeight: 320 }"
-          >
-            <template #chip="{ props: chipProps, item }">
-              <v-chip
-                v-bind="chipProps"
-                size="small"
-                label
-                :style="item.raw.bgColor ? { backgroundColor: item.raw.bgColor, color: item.raw.textColor } : {}"
-              >{{ item.raw.text }}</v-chip>
-            </template>
-            <template #item="{ props: itemProps, item }">
-              <v-list-item v-bind="itemProps" :title="undefined">
-                <span
-                  class="unit-tag-chip unit-tag-chip--lg mr-2"
-                  :style="item.raw.bgColor ? { backgroundColor: item.raw.bgColor, color: item.raw.textColor } : { backgroundColor: '#eceff1', color: '#607d8b' }"
-                >{{ item.raw.text }}</span>
-                <span class="text-caption text-grey">{{ item.raw.count }} 戶</span>
-              </v-list-item>
-            </template>
-          </v-select>
-        </v-col>
-        <v-col cols="12" sm="6" md="3">
-           <div class="d-flex align-center gap-2">
-              <v-text-field v-model.number="filters.areaMin" label="面積 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-              <span class="text-grey">~</span>
-              <v-text-field v-model.number="filters.areaMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-           </div>
-        </v-col>
-        <v-col cols="12" sm="6" md="3">
-           <div class="d-flex align-center gap-2">
-              <v-text-field v-model.number="filters.totalPriceMin" label="房屋總價 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-              <span class="text-grey">~</span>
-              <v-text-field v-model.number="filters.totalPriceMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-           </div>
-        </v-col>
-        <v-col cols="12" sm="6" md="3">
-           <div class="d-flex align-center gap-2">
-              <v-text-field v-model.number="filters.unitPriceMin" label="房屋單價 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-              <span class="text-grey">~</span>
-              <v-text-field v-model.number="filters.unitPriceMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-           </div>
-        </v-col>
-      </v-row>
-
-      <v-divider v-if="currentViewMode !== 'quote'" class="my-3 border-dashed"></v-divider>
-
-      <v-row dense v-if="currentViewMode !== 'quote'">
-        <v-col cols="12" class="pb-0">
-          <v-switch
-            v-model="filters.quoteCustomized"
-            label="只看報價顯示已自訂的戶別"
-            color="blue"
-            density="compact"
-            hide-details
-            inset
-          ></v-switch>
-        </v-col>
-      </v-row>
-      <v-row dense v-if="currentViewMode !== 'quote'">
-        <v-col cols="12" sm="6" md="3">
-          <v-select
-            v-model="filters.statuses"
-            :items="statusOptions"
-            label="銷控狀態 (多選)"
-            multiple
-            chips
-            closable-chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            clearable
-          ></v-select>
-        </v-col>
-
-        <v-col cols="12" sm="6" md="3"> <v-autocomplete
-            v-model="filters.salesperson"
-            :items="personnelOptions"
-            label="銷售人員 (多選)" 
-            multiple
-            chips
-            closable-chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            clearable
-          ></v-autocomplete>
-        </v-col>
-
-        <v-col cols="12" sm="6" md="2">
-          <v-text-field
-            v-model="filters.buyerName"
-            label="買方姓名"
-            variant="outlined"
-            density="compact"
-            hide-details
-            clearable
-          ></v-text-field>
-        </v-col>
-
-        <v-col cols="12" sm="6" md="2.5">
-          <div class="d-flex flex-column">
-            <span class="text-caption text-grey ml-1">小訂日期</span>
-            <div class="d-flex align-center gap-1">
-              <input type="date" v-model="filters.depositDateStart" class="date-input-compact" :class="{ 'is-empty': !filters.depositDateStart }">
-              <span class="text-grey">~</span>
-              <input type="date" v-model="filters.depositDateEnd" class="date-input-compact" :class="{ 'is-empty': !filters.depositDateEnd }">
-            </div>
-          </div>
-        </v-col>
-
-        <v-col cols="12" sm="6" md="2.5">
-          <div class="d-flex flex-column">
-            <span class="text-caption text-grey ml-1">簽約日期</span>
-            <div class="d-flex align-center gap-1">
-              <input type="date" v-model="filters.contractDateStart" class="date-input-compact" :class="{ 'is-empty': !filters.contractDateStart }">
-              <span class="text-grey">~</span>
-              <input type="date" v-model="filters.contractDateEnd" class="date-input-compact" :class="{ 'is-empty': !filters.contractDateEnd }">
-            </div>
-          </div>
-        </v-col>
-      </v-row>
-
-
-      
-      <template v-if="currentViewMode !== 'quote'">
-        <v-divider class="my-3 border-dashed"></v-divider>
-        <div class="text-caption text-grey mb-1 ml-1 font-weight-bold">進階價格篩選</div>
-        <v-row dense>
-          <v-col cols="12" sm="6" md="4">
-             <div class="d-flex align-center gap-2">
-                <v-text-field v-model.number="filters.floorPriceMin" label="底價 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-                <span class="text-grey">~</span>
-                <v-text-field v-model.number="filters.floorPriceMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-             </div>
-          </v-col>
-
-          <v-col cols="12" sm="6" md="4">
-             <div class="d-flex align-center gap-2">
-                <v-text-field v-model.number="filters.floorUnitPriceMin" label="底價單價 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-                <span class="text-grey">~</span>
-                <v-text-field v-model.number="filters.floorUnitPriceMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-             </div>
-          </v-col>
-
-          <v-col cols="12" sm="6" md="4">
-             <div class="d-flex align-center gap-2">
-                <v-text-field v-model.number="filters.transPriceMin" label="成交總價 最小" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-                <span class="text-grey">~</span>
-                <v-text-field v-model.number="filters.transPriceMax" label="最大" type="number" variant="outlined" density="compact" hide-details></v-text-field>
-             </div>
-          </v-col>
-        </v-row>
-      </template>
-      
-      <div class="d-flex justify-end mt-2">
-        <v-btn 
-          color="grey-darken-1" 
-          variant="text" 
-          size="small" 
-          prepend-icon="mdi-broom"
-          @click="clearFilters"
-          v-if="activeFilterCount > 0"
-        >
-          清除所有條件
-        </v-btn>
-      </div>
-    </v-card>
-  </div>
-</v-expand-transition>
+      <!-- 桌面版：網格上方展開；第一次開啟後改用 v-show 保留，避免每次重建整組輸入元件 -->
+      <v-expand-transition v-if="!isMobile && filterPanelBooted">
+        <div v-show="showFilterPanel" class="filter-panel-container mb-2">
+          <v-card variant="outlined" class="bg-white pa-3">
+            <SalesFilterPanel v-bind="filterPanelProps" @apply="applyFilterDraft" @clear="clearFilters" />
+          </v-card>
+        </div>
+      </v-expand-transition>
 
       <div v-if="viewFormat === 'grid'" class="layout-grid">
         <div class="header-top-left"></div>
@@ -527,17 +317,23 @@
 
         <div ref="mainGridRef" @scroll="handleScroll" class="main-grid-container">
           <div class="grid-table">
-            <div v-for="item in flatGridData" :key="item.key" class="data-cell">
+            <!-- 效能：卡片顯示資料由 gridCells 預先算好，v-memo 讓無關狀態（開關篩選面板等）變動時跳過重繪 -->
+            <div
+              v-for="item in gridCells"
+              :key="item.key"
+              v-memo="[item.view, item.data && isUnitFilteredOut(item.data), item.data && quoteStore.isItemInQuote(item.data.unitId), !!item.data && quickMenuActiveUnitId === item.data.unitId]"
+              class="data-cell"
+            >
              <div v-if="item.data"
   class="unit-card"
   :class="[{
     'in-quote': quoteStore.isItemInQuote(item.data.unitId),
-    'has-terrace': item.data.area_terrace_ping > 0,
+    'has-terrace': item.view.hasTerrace,
     'filtered-out': isUnitFilteredOut(item.data),
-    'has-tags': getUnitTags(item.data).length > 0,
-    'quick-menu-active': quickMenu.open && quickMenu.unit && quickMenu.unit.unitId === item.data.unitId
-  }, unitEffectClass(item.data.unitEffect)]"
-  :style="{ backgroundColor: statusColorMap.get(item.data[statusField]) || '#ffffff', ...unitEffectStyle(item.data.unitEffect) }"
+    'has-tags': item.view.tags.length > 0,
+    'quick-menu-active': quickMenuActiveUnitId === item.data.unitId
+  }, item.view.effectClass]"
+  :style="item.view.style"
   @click="handleUnitCardClick(item.data)"
   @contextmenu.prevent="onUnitCardContextMenu($event, item.data)"
   @touchstart.passive="onUnitCardTouchStart($event, item.data)"
@@ -547,24 +343,24 @@
 >
             <!-- ✅ [新增] 文字標籤帶：右上角，最多露出 2 個、其餘折成 +N；hover 顯示全部 -->
             <!-- ✅ [報價顯示] 銷控模式：此戶報價顯示已自訂 → 左上角小眼睛 -->
-            <span v-if="currentViewMode === 'sales' && unitHasQuoteOverrides(item.data)" class="quote-vis-badge">
+            <span v-if="item.view.quoteBadge" class="quote-vis-badge">
               <v-icon size="10">mdi-eye-off-outline</v-icon>
               <v-tooltip activator="parent" location="top">報價顯示已自訂</v-tooltip>
             </span>
-            <template v-if="qf(item.data, 'unitTags') && getUnitTags(item.data).length > 0">
+            <template v-if="item.view.showTags">
               <div class="unit-tags-strip">
                 <span
-                  v-for="(tag, ti) in getUnitTags(item.data).slice(0, 2)"
+                  v-for="(tag, ti) in item.view.tags.slice(0, 2)"
                   :key="ti"
                   class="unit-tag-chip"
                   :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
                 >{{ tag.text }}</span>
-                <span v-if="getUnitTags(item.data).length > 2" class="unit-tag-chip unit-tag-more">+{{ getUnitTags(item.data).length - 2 }}</span>
+                <span v-if="item.view.tags.length > 2" class="unit-tag-chip unit-tag-more">+{{ item.view.tags.length - 2 }}</span>
               </div>
               <v-tooltip activator="parent" location="top" content-class="unit-tags-tooltip">
                 <div class="d-flex flex-wrap ga-1">
                   <span
-                    v-for="(tag, ti) in getUnitTags(item.data)"
+                    v-for="(tag, ti) in item.view.tags"
                     :key="ti"
                     class="unit-tag-chip unit-tag-chip--lg"
                     :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
@@ -573,43 +369,43 @@
               </v-tooltip>
             </template>
             <span class="unit-name">
-              {{ item.data.unitId }}
+              {{ item.view.unitId }}
               
               <!-- ✅ [優化] 露臺標示：由 icon 改為小 chip，文字直接標明「露臺」 -->
-              <v-tooltip location="top" v-if="qf(item.data, 'areaTerrace') && item.data.area_terrace_ping && Number(item.data.area_terrace_ping) > 0">
+              <v-tooltip location="top" v-if="item.view.showTerraceChip">
                 <template v-slot:activator="{ props }">
                   <span v-bind="props" class="terrace-chip">露台</span>
                 </template>
-                <span>含有露臺：{{ item.data.area_terrace_ping }} 坪</span>
+                <span>含有露臺：{{ item.view.terrace }} 坪</span>
               </v-tooltip>
             </span>
-                <template v-if="statusField === 'salesStatus_quote' && item.data.salesStatus_quote === '已售'">
+                <template v-if="item.view.kind === 'sold'">
                   <span class="unit-total-price sold-text">已售</span>
-                  <span class="unit-area"><template v-if="qf(item.data, 'areaTotal')">{{ item.data.area_house_ping }} 坪</template></span>
+                  <span class="unit-area"><template v-if="item.view.showArea">{{ item.view.area }} 坪</template></span>
                   <span class="unit-per-price"></span>
                 </template>
                 <!-- ✅ [報價顯示] 報價模式隱藏總價 → 面議 -->
-                <template v-else-if="currentViewMode === 'quote' && !qf(item.data, 'priceTotal')">
+                <template v-else-if="item.view.kind === 'negotiable'">
                   <span class="unit-total-price negotiable-text">面議</span>
-                  <span class="unit-area"><template v-if="qf(item.data, 'areaTotal')">{{ item.data.area_house_ping }} 坪</template></span>
+                  <span class="unit-area"><template v-if="item.view.showArea">{{ item.view.area }} 坪</template></span>
                   <span class="unit-per-price"></span>
                 </template>
                 <!-- ✅ [新增] 網格主要顯示內容：簽約日期 -->
-                <template v-else-if="effectiveGridContentMode === 'date'">
-                  <span class="unit-total-price contract-date-text">{{ getContractDateDisplay(item.data) }}</span>
-                  <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
+                <template v-else-if="item.view.kind === 'date'">
+                  <span class="unit-total-price contract-date-text">{{ item.view.contractDate }}</span>
+                  <span class="unit-area">{{ item.view.area }} 坪</span>
                   <span class="unit-per-price"></span>
                 </template>
                 <!-- ✅ [新增] 網格主要顯示內容：單價（主）＋總價（副） -->
-                <template v-else-if="effectiveGridContentMode === 'unit'">
-                  <span class="unit-total-price">{{ calculateUnitPrice(item.data) }} 萬/坪</span>
-                  <span class="unit-area">{{ item.data.area_house_ping }} 坪</span>
-                  <span class="unit-per-price">{{ getDisplayTotalPrice(item.data) }} 萬</span>
+                <template v-else-if="item.view.kind === 'unit'">
+                  <span class="unit-total-price">{{ item.view.unitPrice }} 萬/坪</span>
+                  <span class="unit-area">{{ item.view.area }} 坪</span>
+                  <span class="unit-per-price">{{ item.view.totalPrice }} 萬</span>
                 </template>
                 <template v-else>
-                  <span class="unit-total-price">{{ getDisplayTotalPrice(item.data) }} 萬</span>
-                  <span class="unit-area"><template v-if="qf(item.data, 'areaTotal')">{{ item.data.area_house_ping }} 坪</template></span>
-                  <span class="unit-per-price"><template v-if="qf(item.data, 'unitPrice')">{{ calculateUnitPrice(item.data) }} 萬/坪</template></span>
+                  <span class="unit-total-price">{{ item.view.totalPrice }} 萬</span>
+                  <span class="unit-area"><template v-if="item.view.showArea">{{ item.view.area }} 坪</template></span>
+                  <span class="unit-per-price"><template v-if="item.view.showUnitPrice">{{ item.view.unitPrice }} 萬/坪</template></span>
                 </template>
               </div>
               <div v-else class="unit-card empty"></div>
@@ -1109,6 +905,11 @@
     </v-bottom-navigation>
 
     <!-- 📱 顯示設定面板：價格顯示／網格內容切換，chip 呈現目前選取狀態（可下滑或按 X 關閉） -->
+    <!-- 📱 手機版篩選：底部面板覆蓋在網格上，不擠壓網格；開過一次後保留內容 -->
+    <MobileBottomSheet v-if="isMobile && filterPanelBooted" v-model="showFilterPanel" icon="mdi-filter-variant" title="篩選">
+      <SalesFilterPanel v-bind="filterPanelProps" @apply="applyFilterDraft" @clear="clearFilters" />
+    </MobileBottomSheet>
+
     <MobileBottomSheet v-model="isDisplaySheetOpen" icon="mdi-currency-usd" title="顯示設定">
         <div class="mobile-sheet-section">
           <div class="mobile-sheet-label">價格顯示</div>
@@ -1163,8 +964,9 @@
         </div>
     </MobileBottomSheet>
 
+   <!-- 效能：第一次開啟才建立，之後換戶別只更新資料、不再整個重建（切換建案時才卸載） -->
    <UnitDetailModal
-      v-if="isModalVisible"
+      v-if="unitModalBooted"
       v-model:show="isModalVisible"
       :unit-data="selectedUnitData"
       :view-mode="currentViewMode"
@@ -2368,6 +2170,7 @@ import { isSpecialContractType } from '@/composables/usePriceFormula';
 const loadUnitDetailModal = () => import('@/components/UnitDetailModal.vue');
 const UnitDetailModal = defineAsyncComponent(loadUnitDetailModal);
 import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
+import SalesFilterPanel from '@/components/SalesFilterPanel.vue';
 import RemarkNotesPanel from '@/components/RemarkNotesPanel.vue';
 // ✅ [快速選單] 變更狀態通知 / 標籤編輯 / 戶別圖片燈箱
 // SalesStatusNotifyDialog 改靜態匯入：UnitDetailModal 與 SalesAiPanel 也靜態引用同一元件，
@@ -2417,6 +2220,9 @@ import { getUnitParkings, getParkingTransactionTotal, getParkingFloorTotal, getU
 
 // 2. 變數與狀態定義 (由上而下)
 const showFilterPanel = ref(false);
+// 篩選面板第一次開啟才建立，之後只隱藏不銷毀
+const filterPanelBooted = ref(false);
+watch(showFilterPanel, (open) => { if (open) filterPanelBooted.value = true; });
 
 // ✅ 列表模式：實測 thead 高度寫入 --sticky-header-height，讓上方合計列凍結在表頭正下方
 const listViewRef = ref(null);
@@ -2679,6 +2485,8 @@ const activeFilterCount = computed(() => {
 
 // 4. 修改 clearFilters (重置新欄位)
 const clearFilters = () => {
+  clearTimeout(keywordApplyTimer);
+  keywordInput.value = '';
   filters.keyword = '';
   filters.quoteCustomized = false;
   filters.buildings = [];
@@ -2701,6 +2509,27 @@ const clearFilters = () => {
   filters.terraceMin = null; filters.terraceMax = null;
 
 };
+
+// 篩選面板（桌面展開 / 手機底部面板共用）：面板內輸入延遲套用，這裡只收最終結果
+const filterPanelProps = computed(() => ({
+  filters,
+  viewMode: currentViewMode.value,
+  activeCount: activeFilterCount.value,
+  buildingOptions: buildingOptions.value,
+  floorOptions: floorOptions.value,
+  tagOptions: tagOptions.value,
+  statusOptions: statusOptions.value,
+  personnelOptions: personnelOptions.value,
+}));
+const applyFilterDraft = (next) => { Object.assign(filters, next); };
+
+// 全域搜尋：停止輸入後才套用，避免每個字都重算篩選與重繪網格
+const keywordInput = ref('');
+let keywordApplyTimer = null;
+watch(keywordInput, (val) => {
+  clearTimeout(keywordApplyTimer);
+  keywordApplyTimer = setTimeout(() => { filters.keyword = val || ''; }, 250);
+});
 
 // ✅ [新增] 全域關鍵字搜尋輔助：把一筆 item 攤平成可搜尋字串（涵蓋所有欄位）
 const buildSearchBlob = (item) => {
@@ -4764,6 +4593,8 @@ const headerLeftRef = ref(null);
 const mainGridRef = ref(null);
 const isModalVisible = ref(false);
 const selectedUnitData = ref(null);
+const unitModalBooted = ref(false);
+watch(isModalVisible, (open) => { if (open) unitModalBooted.value = true; });
 const isQuoteSidebarOpen = ref(false);
 const isGridDownloadDialogVisible = ref(false); // ✅ [新增] 下載銷控表 PDF 對話框
 const displayType = ref('住家');
@@ -4912,6 +4743,8 @@ function goToQuoteSettingsDirect() {
 // --- Computed Properties ---
 const projectStore = useProjectStore();
 const projectId = computed(() => route.params.projectName);
+// 戶別資訊：換建案時卸載，避免沿用上一個建案的視窗狀態
+watch(projectId, () => { if (!isModalVisible.value) unitModalBooted.value = false; });
 const currentViewMode = computed(() => route.meta.viewMode || 'sales');
 // 每次進入建案或由報價切回銷控重新檢查；即時更新與關閉清單不重播。
 watch([projectId, currentViewMode], () => {
@@ -5008,6 +4841,47 @@ const flatGridData = computed(() => {
 });
 
 const statusField = computed(() => currentViewMode.value === 'quote' ? 'salesStatus_quote' : 'salesStatus_backend');
+
+// 網格卡片顯示資料一次算好：資料、模式、價格顯示或狀態色有變才重算，
+// 搭配模板 v-memo，開關篩選面板等無關狀態不會讓每張卡片重跑標籤 / 價格 / 報價欄位計算
+const gridCells = computed(() => {
+  const mode = currentViewMode.value;
+  const contentMode = effectiveGridContentMode.value;
+  const sField = statusField.value;
+  const colors = statusColorMap.value;
+  return flatGridData.value.map(({ key, data: u }) => {
+    if (!u) return { key, data: null, view: null };
+    const tags = getUnitTags(u);
+    const terrace = u.area_terrace_ping;
+    let kind = 'total';
+    if (sField === 'salesStatus_quote' && u.salesStatus_quote === '已售') kind = 'sold';
+    else if (mode === 'quote' && !qf(u, 'priceTotal')) kind = 'negotiable';
+    else if (contentMode === 'date') kind = 'date';
+    else if (contentMode === 'unit') kind = 'unit';
+    return {
+      key,
+      data: u,
+      view: {
+        unitId: u.unitId,
+        area: u.area_house_ping,
+        terrace,
+        tags,
+        showTags: qf(u, 'unitTags') && tags.length > 0,
+        quoteBadge: mode === 'sales' && unitHasQuoteOverrides(u),
+        hasTerrace: terrace > 0,
+        showTerraceChip: !!(qf(u, 'areaTerrace') && terrace && Number(terrace) > 0),
+        effectClass: unitEffectClass(u.unitEffect),
+        style: { backgroundColor: colors.get(u[sField]) || '#ffffff', ...unitEffectStyle(u.unitEffect) },
+        kind,
+        showArea: qf(u, 'areaTotal'),
+        showUnitPrice: qf(u, 'unitPrice'),
+        totalPrice: getDisplayTotalPrice(u),
+        unitPrice: calculateUnitPrice(u),
+        contractDate: kind === 'date' ? getContractDateDisplay(u) : '',
+      },
+    };
+  });
+});
 
 const statusColorMap = computed(() => {
   const map = new Map();
@@ -5571,6 +5445,7 @@ watch(salesHouseholds, (list) => {
 // 電腦版以 v-menu 定位在游標座標；手機版沿用 MobileBottomSheet 底部面板。
 // =====================================================
 const quickMenu = reactive({ open: false, unit: null, x: 0, y: 0 });
+const quickMenuActiveUnitId = computed(() => (quickMenu.open && quickMenu.unit ? quickMenu.unit.unitId : null));
 const LONG_PRESS_MS = 500;      // 長按判定時間
 const LONG_PRESS_MOVE_PX = 10;  // 手指移動超過即視為捲動、取消長按
 let longPressTimer = null;

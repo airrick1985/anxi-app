@@ -81,7 +81,7 @@
 import { ref, reactive, computed, watch } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useToast, POSITION } from 'vue-toastification';
-import { getCancelledPurchases } from '@/api';
+import { getCancelledPurchasesCached } from '@/api';
 import { formatSalespersons } from '@/utils/salespersonUtils';
 import { formatDateOnly, formatPrice, calculateTotalTransactionPrice } from '@/utils/cancelledPurchaseUtils';
 import CancelledPurchaseDetail from './CancelledPurchaseDetail.vue';
@@ -114,7 +114,7 @@ async function loadData() {
   isLoading.value = true;
   try {
     // 不含冷刪除；含「復原時保留」的已復原紀錄（僅供查閱）
-    const result = await getCancelledPurchases(props.projectId, false, true);
+    const result = await getCancelledPurchasesCached(props.projectId, false, true);
     if (seq !== loadSeq) return; // 期間已切換戶別，丟棄舊結果
     if (result.status === 'success') {
       items.value = (result.data || []).filter(i => i.unitId === props.unitId);

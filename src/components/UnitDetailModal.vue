@@ -391,6 +391,7 @@
                       <v-carousel v-model="currentImageIndex" height="auto" hide-delimiters show-arrows="hover">
                         <v-carousel-item v-for="image in householdImages" :key="image.id">
                           <v-img :src="image.downloadURL" class="main-carousel-image" contain
+                            @load="thumbsReady = true" @error="thumbsReady = true"
                             @click="openFullscreenViewer" style="cursor: zoom-in;"></v-img>
                         </v-carousel-item>
                       </v-carousel>
@@ -398,7 +399,8 @@
                         <div v-for="(image, index) in householdImages" :key="image.id" class="small-thumbnail-wrapper"
                           :class="{ 'thumbnail-active': index === currentImageIndex }"
                           @click="currentImageIndex = index">
-                          <v-img :src="image.downloadURL" aspect-ratio="16/9" cover></v-img>
+                          <!-- 縮圖與主圖同一原檔：等主圖載入完才載入，避免開啟時同時下載多張大圖 -->
+                          <v-img :src="thumbsReady ? image.downloadURL : undefined" aspect-ratio="16/9" cover></v-img>
                         </div>
                       </div>
                     </div>
@@ -463,6 +465,7 @@
                           </div>
                         </div>
                         <LandParcelsPanel
+                          :key="panelOpenKey"
                           class="mt-2"
                           :model-value="unitData.landParcels || []"
                           :editable="false"
@@ -926,6 +929,7 @@
                         <!-- ✅ 備註（留言式）：檢視模式即可 CRUD，不必進「修改銷控」 -->
                         <v-divider class="my-2"></v-divider>
                         <RemarkNotesPanel
+                          :key="panelOpenKey"
                           :notes="viewRemarkNotes"
                           :legacy-remarks="viewLegacyRemarks"
                           :persist-handler="persistRemarkNotes"
@@ -1122,10 +1126,11 @@
             </template>
           </v-window-item>
 
-          <!-- 繳款紀錄分頁（檢視模式：免進編輯模式即可新增/編輯/刪除，即時儲存） -->
-          <v-window-item value="payments" eager>
+          <!-- 繳款紀錄分頁（檢視模式：免進編輯模式即可新增/編輯/刪除，即時儲存）；點開才建立 -->
+          <v-window-item value="payments">
             <div v-if="unitData" class="pa-2 unit-subtab">
               <PaymentRecordsPanel
+                :key="panelOpenKey"
                 :model-value="viewPaymentRecords"
                 :editable="false"
                 :default-expanded="true"
@@ -1141,9 +1146,10 @@
           </v-window-item>
 
           <!-- 上傳文件分頁（即時儲存至戶別 Drive 資料夾，SPEC_UnitDocumentUpload.md） -->
-          <v-window-item value="documents" eager>
+          <v-window-item value="documents">
             <div v-if="unitData" class="pa-2 unit-subtab">
               <UnitDocumentsPanel
+                :key="panelOpenKey"
                 ref="unitDocumentsPanelRef"
                 :model-value="viewUnitDocuments"
                 :project-id="projectId"
@@ -1153,15 +1159,15 @@
                 :upload-handler="handleUploadUnitDocument"
                 :rename-handler="handleRenameUnitDocument"
                 :delete-handler="handleDeleteUnitDocument"
-                :auto-open-upload="autoOpenDocumentsUploadOnce"
               />
             </div>
           </v-window-item>
 
-          <!-- 退戶紀錄分頁：本戶歷次退戶回顧，eager 掛載以便開啟戶別資訊時即載入筆數 badge -->
-          <v-window-item value="cancelled" eager>
+          <!-- 退戶紀錄分頁：本戶歷次退戶回顧；點開才建立，分頁筆數 badge 由 loadCancelledCount 另外取得 -->
+          <v-window-item value="cancelled">
             <div class="pa-2 unit-subtab">
               <UnitCancelledHistoryPanel
+                :key="panelOpenKey"
                 :show="show && viewMode === 'sales'"
                 :project-id="projectId"
                 :unit-id="unitData?.unitId || ''"
@@ -1595,7 +1601,7 @@ import FloorplanSizingTool from '@/views/FloorplanSizingTool.vue';
 import { ref, reactive, watch, computed, defineProps, defineEmits, onUnmounted, onMounted, nextTick, defineAsyncComponent } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
-import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot, paymentProofApi, unitDocumentApi } from '@/api';
+import { IMAGE_PROXY_BASE_URL, updateSalesData, cancelPurchase, updateParkingLot, paymentProofApi, unitDocumentApi, getCancelledPurchasesCached } from '@/api';
 import SalesInfoForm from './SalesInfoForm.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 import { getUnitTags, collectTagSuggestions, getContrastTextColor } from '@/utils/unitTags';
@@ -1746,7 +1752,8 @@ const { tap: tapUnlockPriceQuote } = useTapUnlock(() => {
   showHiddenPriceQuote.value = !showHiddenPriceQuote.value;
 });
 const handleKeyPress = (e) => {
-  if (e.key.toLowerCase() === 'a') {
+  if (!props.show) return; // 視窗關閉時仍保留掛載，不處理按鍵
+  if (e.key?.toLowerCase() === 'a') {
     keySequence.value += 'a';
     if (keySequence.value.length > 8) {
       keySequence.value = keySequence.value.slice(-8);
@@ -2079,6 +2086,15 @@ const sizingToolDialog = ref(false);
 
 const currentImageIndex = ref(0);
 const fullscreenViewerDialog = ref(false);
+// 縮圖延後載入：主圖載入完（或最多 1.5 秒）才給縮圖 src，避免開啟時同時下載多張原圖
+const thumbsReady = ref(false);
+let thumbsReadyTimer = null;
+watch(() => props.unitData?.unitId, () => {
+  thumbsReady.value = false;
+  clearTimeout(thumbsReadyTimer);
+  thumbsReadyTimer = setTimeout(() => { thumbsReady.value = true; }, 1500);
+}, { immediate: true });
+onUnmounted(() => clearTimeout(thumbsReadyTimer));
 const allProjectImages = computed(() => props.allData['銷控圖片'] || []);
 
 const householdImages = computed(() => {
@@ -3040,20 +3056,18 @@ watch(() => props.unitData, (val) => {
     : [];
 }, { immediate: true });
 const unitDocumentsPanelRef = ref(null);
-// 快速選單進入時只自動開一次（避免父層 prop 保持 true 導致重開）
-const autoOpenDocumentsUploadOnce = ref(false);
 
 function openDocumentsUpload() {
   if (isEditing.value) return;
   tab.value = 'documents'; // 上傳文件已是獨立分頁，先切過去再開上傳
-  const panel = unitDocumentsPanelRef.value;
-  if (panel && typeof panel.openUpload === 'function') {
-    panel.openUpload();
-  } else {
-    // 面板尚未掛載（例如剛開啟 Modal）→ 以 prop 觸發，掛載後自動開啟
-    autoOpenDocumentsUploadOnce.value = true;
-    nextTick(() => { autoOpenDocumentsUploadOnce.value = false; });
-  }
+  // 分頁點開才建立（剛開啟視窗時也可能尚未掛載）→ 稍候重試直到面板就緒
+  let tries = 0;
+  const tryOpen = () => {
+    const panel = unitDocumentsPanelRef.value;
+    if (panel && typeof panel.openUpload === 'function') panel.openUpload();
+    else if (++tries < 20) setTimeout(tryOpen, 50);
+  };
+  nextTick(tryOpen);
 }
 
 function currentUploaderInfo() {
@@ -4407,16 +4421,71 @@ const printImage = () => {
   });
 };
 
+// 視窗由父層第一次開啟後保留掛載、換戶別只更新資料（效能）；
+// 因此每次開啟都要把狀態還原成「剛建立」的樣子，行為與過去每次重建一致
+// 檢視模式的子面板（備註草稿、展開狀態、快速新增表單…）每次開啟重新建立，不沿用上一戶的輸入
+const panelOpenSeq = ref(0);
+const panelOpenKey = computed(() => `${props.unitData?.unitId || ''}-${panelOpenSeq.value}`);
+function resetForOpen() {
+  panelOpenSeq.value++;
+  if (isEditing.value) cancelEditing();
+  if (sectionEditDialog.value.show) cancelSectionEdit();
+  tab.value = 'info';
+  tempParkingSelection.value = null;
+  editingParkingSelection.value = null; // 重置編輯暫存
+  currentImageIndex.value = 0;
+  showInfoOverlay.value = false;
+  isPriceEditable.value = false;
+  activeEditSection.value = 'sales';
+  activeMobileEditSection.value = 'all';
+  keySequence.value = '';
+  showHiddenPriceQuote.value = false;
+  // 上次留著沒關的附屬視窗 / 面板
+  isUnitToolsSheetOpen.value = false;
+  showCancelDialog.value = false;
+  showPriceChangeDialog.value = false;
+  showRealPriceReportDialog.value = false;
+  isFullscreenImageOpen.value = false;
+  fullscreenViewerDialog.value = false;
+  sizingToolDialog.value = false;
+  paymentSettingsDialog.value = false;
+  contractDocDialog.value = false;
+  showParkingSpotEditor.value = false;
+  isQuickParkingPickerOpen.value = false;
+  isHoldParkingPickerOpen.value = false;
+  releaseHoldDialog.value.show = false;
+  showRatioBreakdown.value = false;
+  isBuyerImportOpen.value = false;
+  isCustomerCardDialogOpen.value = false;
+  annotationDialog.show = false;
+}
+
+// 依父層指定的初始狀態開啟：切到指定分頁、直接進入修改銷控或自動彈出上傳文件
+function applyInitialOpenState() {
+  if (props.viewMode !== 'sales') return;
+  if (props.initialTab && props.initialTab !== 'info') tab.value = props.initialTab;
+  if (props.initialEditing) nextTick(() => startEditing());
+  else if (props.autoOpenDocumentsUpload) nextTick(() => openDocumentsUpload());
+}
+
+// 退戶紀錄分頁 badge：分頁點開才建立，筆數在這裡另外取得（同建案共用快取，不必每戶重抓）
+let cancelledCountSeq = 0;
+async function loadCancelledCount() {
+  const seq = ++cancelledCountSeq;
+  unitCancelledCount.value = 0;
+  const unitId = props.unitData?.unitId;
+  if (props.viewMode !== 'sales' || !props.projectId || !unitId) return;
+  const result = await getCancelledPurchasesCached(props.projectId, false, true);
+  if (seq !== cancelledCountSeq || result?.status !== 'success') return;
+  unitCancelledCount.value = (result.data || []).filter(i => i.unitId === unitId).length;
+}
+
 watch(() => props.show, (newVal) => {
   if (newVal) {
     if (props.projectId) statusColorStore.fetchColors(props.projectId);
-    tab.value = 'info';
-    unitCancelledCount.value = 0;
-    tempParkingSelection.value = null;
-    editingParkingSelection.value = null; // 重置編輯暫存
-    currentImageIndex.value = 0;
-    showInfoOverlay.value = false;
-    if (isEditing.value) cancelEditing();
+    resetForOpen();
+    applyInitialOpenState();
+    loadCancelledCount();
   } else {
     sizingToolDialog.value = false;
     // 關閉時重置丈量工具
@@ -4734,13 +4803,11 @@ const downloadExcel = async () => {
 // 🔐 [隱藏功能] 事件監聽器設定
 onMounted(() => {
   document.addEventListener('keydown', handleKeyPress);
-  // ✅ [快速選單] 依父層指定的初始狀態開啟：切到指定分頁或直接進入修改銷控
-  // （Modal 以 v-if 掛載，props.show 的 watcher 在首次掛載時不會觸發，故在此處理）
-  if (props.viewMode === 'sales') {
-    if (props.initialTab && props.initialTab !== 'info') tab.value = props.initialTab;
-    if (props.initialEditing) nextTick(() => startEditing());
-    // ✅ [上傳文件] 快速選單「上傳文件」進入：面板掛載後自動彈出上傳對話框
-    if (props.autoOpenDocumentsUpload && !props.initialEditing) nextTick(() => openDocumentsUpload());
+  // ✅ [快速選單] 第一次開啟：掛載當下 show 已為 true，props.show 的 watcher 不會觸發，故在此處理；
+  // 之後的開啟由 show watcher 處理
+  if (props.show) {
+    applyInitialOpenState();
+    loadCancelledCount();
   }
 });
 

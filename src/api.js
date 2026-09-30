@@ -1130,6 +1130,7 @@ export async function fetchSvgFromDrive(folderUrl, projectName) {
  * @returns {Promise<object>}
  */
 export async function cancelPurchase(projectName, projectId, unitId, operatorName, cancelReasons = [], cancellationDate = null) {
+  clearCancelledPurchasesCache(); // 退戶資料異動 → 戶別資訊的退戶紀錄重抓
   //console.log('[api.js] cancelPurchase called with params:', { projectName, projectId, unitId, operatorName, cancelReasons, cancellationDate });
 
   if (!projectId || !unitId || !operatorName) {
@@ -1225,6 +1226,26 @@ export async function logSalesStatusNotification(payload) {
 // /  退戶資料管理 API
 // ===============================================
 
+// 戶別資訊每開一戶都要顯示「退戶紀錄」筆數：同一建案短時間內共用一次查詢結果，
+// 本機有任何退戶異動（退戶、復原、改原因／日期／備註、刪除）即清空；60 秒後自動重抓以涵蓋他人異動
+const CANCELLED_CACHE_TTL_MS = 60 * 1000;
+const cancelledPurchasesCache = new Map();
+function clearCancelledPurchasesCache() {
+  cancelledPurchasesCache.clear();
+}
+export function getCancelledPurchasesCached(projectId, includeDeleted = true, includeRestored = false) {
+  const key = `${projectId}|${includeDeleted}|${includeRestored}`;
+  const hit = cancelledPurchasesCache.get(key);
+  if (hit && Date.now() - hit.at < CANCELLED_CACHE_TTL_MS) return hit.promise;
+  const promise = getCancelledPurchases(projectId, includeDeleted, includeRestored).then((res) => {
+    // 失敗結果不快取，下次再試
+    if (res?.status !== 'success' && cancelledPurchasesCache.get(key)?.promise === promise) cancelledPurchasesCache.delete(key);
+    return res;
+  });
+  cancelledPurchasesCache.set(key, { promise, at: Date.now() });
+  return promise;
+}
+
 /**
  * 讀取指定專案的所有退戶資料列表
  * @param {string} projectId - 專案 ID
@@ -1255,6 +1276,7 @@ export async function getCancelledPurchases(projectId, includeDeleted = true, in
  * @returns {Promise<object>}
  */
 export async function restoreCancelledPurchase(projectId, cancelledDocId, operatorName, keepRecord = false) {
+  clearCancelledPurchasesCache(); // 退戶資料異動 → 戶別資訊的退戶紀錄重抓
   if (!projectId || !cancelledDocId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少必要參數。" };
   }
@@ -1276,6 +1298,7 @@ export async function restoreCancelledPurchase(projectId, cancelledDocId, operat
  * @param {string} operatorName - 執行此操作的使用者名稱
  */
 export async function updateCancelReason(projectId, cancelledDocId, cancelReasons, operatorName) {
+  clearCancelledPurchasesCache(); // 退戶資料異動 → 戶別資訊的退戶紀錄重抓
   if (!projectId || !cancelledDocId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少必要參數。" };
   }
@@ -1298,6 +1321,7 @@ export async function updateCancelReason(projectId, cancelledDocId, cancelReason
  * @returns {Promise<object>} API 響應
  */
 export async function updateCancellationDate(projectId, cancelledDocId, cancellationDate, operatorName) {
+  clearCancelledPurchasesCache(); // 退戶資料異動 → 戶別資訊的退戶紀錄重抓
   if (!projectId || !cancelledDocId || !cancellationDate || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少必要參數。" };
   }
@@ -1321,6 +1345,7 @@ export async function updateCancellationDate(projectId, cancelledDocId, cancella
  * @returns {Promise<object>} API 響應（留言模式回傳 remarks 為後端產生的相容字串）
  */
 export async function updateRemarks(projectId, cancelledDocId, remarks, operatorName, remarkNotes = null) {
+  clearCancelledPurchasesCache(); // 退戶資料異動 → 戶別資訊的退戶紀錄重抓
   if (!projectId || !cancelledDocId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少必要參數。" };
   }
@@ -1343,6 +1368,7 @@ export async function updateRemarks(projectId, cancelledDocId, remarks, operator
  * @param {string} operatorName - 執行此操作的使用者名稱
  */
 export async function softDeleteCancelledPurchase(projectId, cancelledDocId, operatorName) {
+  clearCancelledPurchasesCache(); // 退戶資料異動 → 戶別資訊的退戶紀錄重抓
   if (!projectId || !cancelledDocId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少必要參數。" };
   }
@@ -1363,6 +1389,7 @@ export async function softDeleteCancelledPurchase(projectId, cancelledDocId, ope
  * @param {string} operatorName - 執行此操作的使用者名稱
  */
 export async function undoSoftDeleteCancelledPurchase(projectId, cancelledDocId, operatorName) {
+  clearCancelledPurchasesCache(); // 退戶資料異動 → 戶別資訊的退戶紀錄重抓
   if (!projectId || !cancelledDocId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少必要參數。" };
   }
@@ -1383,6 +1410,7 @@ export async function undoSoftDeleteCancelledPurchase(projectId, cancelledDocId,
  * @param {string} operatorName - 執行此操作的使用者名稱
  */
 export async function hardDeleteCancelledPurchase(projectId, cancelledDocId, operatorName) {
+  clearCancelledPurchasesCache(); // 退戶資料異動 → 戶別資訊的退戶紀錄重抓
   if (!projectId || !cancelledDocId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少必要參數。" };
   }
