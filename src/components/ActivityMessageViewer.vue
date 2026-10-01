@@ -1005,7 +1005,9 @@ function escapeHtml(text) {
 function createPrintFrame() {
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
-  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  // 不可設 0×0 或 visibility:hidden：圖片的 100vh 會以 iframe 高度計算而變 0、PDF 檢視器也不會渲染，皆印出空白
+  // 尺寸取 A4 扣除 10mm 邊界的內容區，讓 100vh 剛好一頁
+  frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:190mm;height:277mm;border:0;';
   document.body.appendChild(frame);
   return frame;
 }
@@ -1071,15 +1073,18 @@ async function printPdf(item) {
 
     frame.onload = () => {
       clearTimeout(timer);
-      try {
-        triggerPrint(frame);
-        resolve();
-      } catch (e) {
-        reject(e);
-      } finally {
-        // PDF 需保留較久，列印預覽是由外掛非同步接手渲染的
-        setTimeout(() => { frame.remove(); URL.revokeObjectURL(blobUrl); }, 60000);
-      }
+      // onload 時 PDF 檢視器才剛載入、頁面尚未渲染，稍候再印以免空白
+      setTimeout(() => {
+        try {
+          triggerPrint(frame);
+          resolve();
+        } catch (e) {
+          reject(e);
+        } finally {
+          // PDF 需保留較久，列印預覽是由外掛非同步接手渲染的
+          setTimeout(() => { frame.remove(); URL.revokeObjectURL(blobUrl); }, 60000);
+        }
+      }, 800);
     };
     frame.src = blobUrl;
   });
