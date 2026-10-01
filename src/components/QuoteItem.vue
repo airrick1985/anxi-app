@@ -255,6 +255,14 @@
       </div>
     </div>
 
+    <!-- ✅ 戶別說明（unitAnnotation）：與戶別資訊相同的琥珀便條，唯讀；無內容不顯示 -->
+    <div v-if="unitAnnotation" class="unit-annotation" :class="{ 'is-mobile': isMobile }">
+      <div class="unit-annotation__title">
+        <v-icon size="18" class="mr-1">mdi-note-text-outline</v-icon>{{ item.unitId }} 說明
+      </div>
+      <div class="unit-annotation__body" v-html="unitAnnotation.safeHtml"></div>
+    </div>
+
 <!-- ✅ [優化] 付款方式展開列：整列可點擊、狀態一目了然；選擇方案與已套用方案 chips 集中於此，不再塞在表格欄位內 -->
 <div
   ref="paymentToggleBarRef"
@@ -999,6 +1007,7 @@ import {
   TEMPLATE_MENU_PROPS
 } from '@/utils/paymentTemplateMatch';
 import PaymentTemplateOptionItem from '@/components/PaymentTemplateOptionItem.vue';
+import { normalizeUnitAnnotation, sanitizeAnnotationHtml } from '@/utils/unitAnnotation';
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -1070,6 +1079,12 @@ const householdImages = computed(() => {
   return names.map(name => imageMap.get(name)).filter(img => img && img.downloadURL);
 });
 const hasHouseholdImages = computed(() => householdImages.value.length > 0);
+
+// ✅ 戶別說明（銷控於戶別資訊維護，報價唯讀）
+const unitAnnotation = computed(() => {
+  const a = normalizeUnitAnnotation(props.item.unitDetails?.unitAnnotation);
+  return a ? { ...a, safeHtml: sanitizeAnnotationHtml(a.html) } : null;
+});
 
 function openImageLightbox() {
   if (!hasHouseholdImages.value) return;
@@ -2897,4 +2912,41 @@ function isPlanModified(appliedPlan) {
 .neg-preview {
   font-variant-numeric: tabular-nums;
 }
+/* ── ✅ 戶別說明：沿用戶別資訊的琥珀色便條風格 ── */
+.unit-annotation {
+  margin: 0 8px 8px;
+  padding: 8px 12px 10px;
+  border-radius: 10px;
+  border: 1px solid #f3d47c;
+  border-left: 6px solid #f9a825;
+  background: linear-gradient(180deg, #fffbe6 0%, #fff6cc 100%);
+}
+.unit-annotation.is-mobile {
+  margin: 0;
+  border-radius: 0;
+  border-left-width: 6px;
+}
+.unit-annotation__title {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #7a5c00;
+}
+.unit-annotation__body {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #3e3a2a;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.unit-annotation__body :deep(p) { margin: 0 0 4px; }
+.unit-annotation__body :deep(p:last-child) { margin-bottom: 0; }
+.unit-annotation__body :deep(ul),
+.unit-annotation__body :deep(ol) { padding-left: 1.4em; margin: 2px 0 4px; }
+.unit-annotation__body :deep(a) { color: #1565c0; text-decoration: underline; }
+.unit-annotation__body :deep(h1),
+.unit-annotation__body :deep(h2),
+.unit-annotation__body :deep(h3) { font-size: 1rem; margin: 4px 0; }
 </style>

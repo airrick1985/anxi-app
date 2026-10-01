@@ -132,6 +132,7 @@ export const QUOTE_UNIT_WHITELIST = [
   'price_package_deal', 'price_package',
   'priceRemarks', 'priceRemarkImages',
   'unitTags', 'unitEffect', 'salesImages', 'availablePlans', 'svgName',
+  'unitAnnotation', // ✅ 戶別說明（富文本，報價系統唯讀）
   '配套價格', '配套價',
 ];
 

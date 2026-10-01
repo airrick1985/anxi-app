@@ -121,6 +121,16 @@
             hide-details
             class="mr-8"
           ></v-switch>
+          <!-- ✅ 戶別說明：預設不列印，僅勾選戶別有說明時出現 -->
+          <v-switch
+            v-if="hasUnitAnnotation"
+            v-model="optShowAnnotation"
+            label="列印戶別說明"
+            color="#0071e3"
+            density="compact"
+            hide-details
+            class="mr-8"
+          ></v-switch>
           <!-- ✅ [新增] 顯示採用方案（方案編輯器功能） -->
           <v-switch
             v-model="optShowPlans"
@@ -369,6 +379,7 @@ import { useParkingStore } from '@/store/parkingStore';
 import { useUserStore } from '@/store/user';
 import { fetchQuoteRemark, checkQuoteFloor, notifyQuoteApproval, listQuoteSupervisors } from '@/api';
 import { generateQrDataUrl } from '@/utils/quoteQrCode';
+import { normalizeUnitAnnotation, sanitizeAnnotationHtml } from '@/utils/unitAnnotation';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -658,6 +669,7 @@ const optShowPlans = ref(true);        // ✅ [新增] 顯示採用方案（方�
 const optShowLoan = ref(true);         // 公司借貸攤還表（有附掛借貸的戶別），預設開啟
 const optShowApproval = ref(true);     // ✅ [新增] 主管簽核／用印欄，預設開啟
 const optShowQr = ref(true);           // ✅ [新增] 建案簡介 QR Code（僅在有設定網址時可切換）
+const optShowAnnotation = ref(false);  // ✅ 戶別說明（unitAnnotation），預設不列印
 const optQuoteDate = ref('');          // 報價日期（可自訂）
 const optValidUntil = ref('');         // 有效期限（選填）
 
@@ -736,6 +748,7 @@ watch(show, (visible) => {
   optShowQr.value = true;
   optShowPlans.value = true; // ✅ [新增] 顯示採用方案預設開啟
   optShowLoan.value = true;  // 公司借貸攤還表預設開啟
+  optShowAnnotation.value = false; // 戶別說明預設不列印
   optQuoteDate.value = isoTodayTW();
   optValidUntil.value = '';
   isRemarkExpanded.value = false;
@@ -748,6 +761,11 @@ watch(show, (visible) => {
   lastNotice.value = null;
   runFloorCheck(true);
 });
+
+// 勾選中的戶別是否有說明（無則不顯示「列印戶別說明」開關）
+const hasUnitAnnotation = computed(() =>
+  quoteStore.items.some(i => selectedIds.value.includes(i.internalId) && normalizeUnitAnnotation(i.unitDetails?.unitAnnotation))
+);
 
 const isAllSelected = computed(() =>
   quoteStore.items.length > 0 && selectedIds.value.length === quoteStore.items.length
@@ -1090,6 +1108,14 @@ function renderSheet(item) {
       <span class="plan-plus">＋</span>`)}
     </section>` : '';
 
+  // ✅ 戶別說明（富文本）：勾選「列印戶別說明」才渲染
+  const annotation = optShowAnnotation.value ? normalizeUnitAnnotation(ud.unitAnnotation) : null;
+  const annotationBlock = annotation ? `
+      <div class="unit-note">
+        <div class="unit-note-title">${esc(item.unitId)} 說明</div>
+        <div class="unit-note-body">${sanitizeAnnotationHtml(annotation.html)}</div>
+      </div>` : '';
+
   const notes = optShowNotes.value ? (pay.notes || []).filter(Boolean) : [];
   const notesHtml = notes.length ? `
       <div class="notes">
@@ -1149,6 +1175,7 @@ function renderSheet(item) {
     ${planBand}
 
     ${payArea}
+    ${annotationBlock}
     ${notesHtml}
     ${remarkBlock}
     ${approvalBlock}
@@ -1364,6 +1391,21 @@ const SHEET_CSS = `
   .notes-title { font-size: 10.5pt; font-weight: 700; color: #8a6d1c; margin-bottom: 1.5mm; }
   .notes ol { padding-left: 5mm; }
   .notes li { font-size: 10pt; color: #5d4f1e; line-height: 1.7; }
+  .unit-note {
+    margin-top: 5mm; padding: 2.5mm 4mm;
+    background: #fffbe6; border: 1px solid #f3d47c; border-left: 1.5mm solid #f9a825; border-radius: 1.5mm;
+  }
+  .unit-note-title { font-size: 10.5pt; font-weight: 700; color: #7a5c00; margin-bottom: 1mm; }
+  .unit-note-body { font-size: 10.5pt; line-height: 1.7; color: #3e3a2a; word-break: break-word; }
+  .unit-note-body p { margin: 0 0 1mm; }
+  .unit-note-body p:last-child { margin-bottom: 0; }
+  .unit-note-body ul, .unit-note-body ol { padding-left: 6mm; }
+  .unit-note-body h1, .unit-note-body h2, .unit-note-body h3 { font-size: 11pt; margin: 1mm 0; }
+  .unit-note-body b, .unit-note-body strong { font-weight: 700; }
+  .unit-note-body i, .unit-note-body em { font-style: italic; }
+  .unit-note-body u { text-decoration: underline; }
+  .unit-note-body s { text-decoration: line-through; }
+  .unit-note-body a { color: #1565c0; text-decoration: underline; }
   .remark { margin-top: 5mm; border: 1px solid #cfd8dc; border-radius: 1.5mm; overflow: hidden; }
   .remark-title {
     background: #eceff1; color: #37474f;
@@ -1446,6 +1488,8 @@ const SHEET_CSS = `
   .sheet.compact .plan-band .plan-item em { font-size: 8pt; }
   .sheet.compact .notes { margin-top: 3mm; padding: 2mm 3mm; }
   .sheet.compact .notes li { font-size: 9.5pt; line-height: 1.55; }
+  .sheet.compact .unit-note { margin-top: 3mm; padding: 2mm 3mm; }
+  .sheet.compact .unit-note-body { font-size: 9.5pt; line-height: 1.55; }
   .sheet.compact .remark { margin-top: 3mm; }
   .sheet.compact .remark-body { padding: 2mm 4mm; font-size: 9.5pt; line-height: 1.6; }
   .sheet.compact .approval { margin-top: 2.5mm; min-height: 18mm; }

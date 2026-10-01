@@ -1,4 +1,5 @@
 import { projectUnitForQuote } from '@/utils/quoteFieldVisibility';
+import { normalizeUnitAnnotation } from '@/utils/unitAnnotation';
 
 /**
  * 報價系統共用：把 Firestore salesHouseholds 戶別文件轉成 quoteStore.addItem / item.unitDetails 所需結構。
@@ -27,5 +28,7 @@ export function toQuoteUnitData(u, project) {
     area_main_sqm: p.area_main_sqm,
     area_ancillary_sqm: p.area_ancillary_sqm,
     area_common_sqm: p.area_common_sqm,
+    // 戶別說明：正規化為純物件（Firestore Timestamp 轉字串），空內容為 null
+    unitAnnotation: normalizeUnitAnnotation(p.unitAnnotation),
   };
 }
