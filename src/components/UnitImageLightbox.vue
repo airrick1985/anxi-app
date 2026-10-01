@@ -1,6 +1,6 @@
 <template>
   <!-- 第一層：圖片燈箱（輪播 + 縮圖列） -->
-  <v-dialog v-model="dialogModel" max-width="1000" scrollable>
+  <v-dialog v-model="dialogModel" max-width="1000" scrollable transition="fade-transition">
     <v-card v-if="images.length > 0" class="mac-sheet">
       <div class="mac-sheet-head">
         <v-icon size="18">mdi-image-multiple-outline</v-icon>
@@ -28,6 +28,8 @@
               contain
               max-height="65vh"
               style="cursor: zoom-in;"
+              @load="thumbsReady = true"
+              @error="thumbsReady = true"
               @click="openZoom"
             ></v-img>
           </v-carousel-item>
@@ -43,7 +45,8 @@
             :class="{ 'thumb-active': index === currentIndex }"
             @click="currentIndex = index"
           >
-            <v-img :src="image.downloadURL" aspect-ratio="16/9" cover></v-img>
+            <!-- 縮圖與主圖同一原檔：等主圖載入完才載入，避免開啟時同時下載多張大圖 -->
+            <v-img :src="thumbsReady ? image.downloadURL : undefined" aspect-ratio="16/9" cover></v-img>
           </div>
         </div>
       </v-card-text>
@@ -67,6 +70,7 @@
         class="zoom-image"
         :style="zoomStyle"
         draggable="false"
+        decoding="async"
       />
 
       <div v-if="scale > 1.01" class="zoom-indicator">{{ Math.round(scale * 100) }}%</div>
@@ -92,7 +96,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onUnmounted } from 'vue';
 import { useToast } from 'vue-toastification';
 import { printImageA3 } from '@/utils/printImageA3';
 
@@ -122,11 +126,21 @@ function printCurrent() {
   });
 }
 
+// 縮圖延後載入：主圖載入完（或最多 1.5 秒）才給縮圖 src
+const thumbsReady = ref(false);
+let thumbsReadyTimer = null;
+
 // 每次重新開啟燈箱時回到第一張
 watch(dialogModel, (open) => {
-  if (open) currentIndex.value = 0;
-  else zoomDialog.value = false;
-});
+  clearTimeout(thumbsReadyTimer);
+  if (open) {
+    currentIndex.value = 0;
+    thumbsReady.value = false;
+    thumbsReadyTimer = setTimeout(() => { thumbsReady.value = true; }, 1500);
+  } else {
+    zoomDialog.value = false;
+  }
+}, { immediate: true });
 
 // --- 放大燈箱：縮放 / 平移 ---
 const scale = ref(1);
@@ -157,8 +171,18 @@ function openZoom() {
   zoomDialog.value = true;
 }
 
+// 觸控板一幀內會送出多個 wheel 事件：累計後每幀套用一次
+let wheelDelta = 0;
+let wheelRaf = 0;
 function onWheel(e) {
-  zoomBy(e.deltaY < 0 ? 0.2 : -0.2);
+  wheelDelta += e.deltaY < 0 ? 0.2 : -0.2;
+  if (wheelRaf) return;
+  wheelRaf = requestAnimationFrame(() => {
+    wheelRaf = 0;
+    const delta = wheelDelta;
+    wheelDelta = 0;
+    zoomBy(delta);
+  });
 }
 
 function startPan(e) {
@@ -170,15 +194,32 @@ function startPan(e) {
   panStart.oy = offsetY.value;
 }
 
+// mousemove 比畫面更新頻繁：只記錄最後位置，每幀套用一次
+let panX = 0;
+let panY = 0;
+let panRaf = 0;
 function onPan(e) {
   if (!isPanning.value) return;
-  offsetX.value = panStart.ox + (e.clientX - panStart.x);
-  offsetY.value = panStart.oy + (e.clientY - panStart.y);
+  panX = e.clientX;
+  panY = e.clientY;
+  if (panRaf) return;
+  panRaf = requestAnimationFrame(() => {
+    panRaf = 0;
+    if (!isPanning.value) return;
+    offsetX.value = panStart.ox + (panX - panStart.x);
+    offsetY.value = panStart.oy + (panY - panStart.y);
+  });
 }
 
 function endPan() {
   isPanning.value = false;
 }
+
+onUnmounted(() => {
+  clearTimeout(thumbsReadyTimer);
+  if (wheelRaf) cancelAnimationFrame(wheelRaf);
+  if (panRaf) cancelAnimationFrame(panRaf);
+});
 
 function nextImage() {
   if (props.images.length < 2) return;
