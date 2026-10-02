@@ -101,7 +101,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { DateTime } = require('luxon'); // ✅ 處理台灣時區
 
 const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
-const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentWritten, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { Firestore, FieldPath: GCloudFieldPath, } = require("@google-cloud/firestore");
 const { getStorage } = require("firebase-admin/storage"); //  1. 引入 GCS Admin SDK
 const { pipeline } = require("stream/promises"); //  2. 引入 stream.pipeline 以安全地處理流
@@ -342,22 +342,8 @@ exports.forgotPasswordSender = onCall({ region: "asia-east1", secrets: gmailSecr
 // / 自動為超級管理員授權 (新版 - 依角色動態查找)
 // =================================================================
 
-exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated({ document: "subscriptions/{subscriptionId}", database: 'anxi-app', region: 'asia-east2' }, async (event) => {
+async function grantSuperAdminsForProject(projectId, projectName) {
   const anxiDb = new Firestore({ databaseId: 'anxi-app' });
-  const snap = event.data;
-  if (!snap) {
-    console.log("事件中沒有文件資料，中止操作。");
-    return;
-  }
-
-  const newSubscription = snap.data();
-  const { projectName, projectId } = newSubscription;
-
-  if (!projectName || !projectId) {
-    console.log('新的訂閱紀錄缺少 projectName 或 projectId，中止操作。');
-    return;
-  }
-
   try {
     // ✓ START: 動態獲取所有系統權限的中文名稱
     const systemFunctionsRef = anxiDb.collection('systemFunctions');
@@ -413,6 +399,35 @@ exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated({ docume
   } catch (error) {
     console.error('為超級管理員授權時發生錯誤:', error);
   }
+}
+
+exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated({ document: "subscriptions/{subscriptionId}", database: 'anxi-app', region: 'asia-east2' }, async (event) => {
+  const snap = event.data;
+  if (!snap) {
+    console.log("事件中沒有文件資料，中止操作。");
+    return;
+  }
+
+  const { projectName, projectId, startDate } = snap.data();
+  if (!projectName || !projectId) {
+    console.log('新的訂閱紀錄缺少 projectName 或 projectId，中止操作。');
+    return;
+  }
+  // 跟進流程：報價階段建立的訂閱尚未啟用，待「系統啟用」寫入啟用日時再授權
+  if (!startDate) {
+    console.log(`訂閱 [${projectName}] 尚未啟用，暫不授權。`);
+    return;
+  }
+  await grantSuperAdminsForProject(projectId, projectName);
+});
+
+// 跟進流程「系統啟用」：startDate 由空變有值時授權
+exports.grantSuperAdminPermissionsOnSubscriptionActivated = onDocumentUpdated({ document: "subscriptions/{subscriptionId}", database: 'anxi-app', region: 'asia-east2' }, async (event) => {
+  const before = event.data?.before?.data();
+  const after = event.data?.after?.data();
+  if (!after || !after.startDate || (before && before.startDate)) return;
+  if (!after.projectName || !after.projectId) return;
+  await grantSuperAdminsForProject(after.projectId, after.projectName);
 });
 
 
@@ -30872,88 +30887,179 @@ exports.notifyOnFormSubmission = onDocumentCreated({
 });
 
 // =================================================================
-// 【訂閱管理】繳款紀錄到期 Email 提醒
-// 規格：docs/SPEC_SubscriptionPaymentRecords.md
+// 【訂閱管理】每日跟進提醒 (繳款到期 / 逾期未兌現 / 報價未回簽 / 續約 / 待跟進)
+// 規格：docs/SPEC_SubscriptionPipeline.md §6（取代 SPEC_SubscriptionPaymentRecords.md §4）
 // =================================================================
 
+function escapeSubHtml(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function subscriptionReminderTable(columns, rows) {
+  const th = columns.map(c => `<th style="padding: 8px 6px; text-align: ${c.align || 'left'}; white-space: nowrap;">${c.title}</th>`).join('');
+  const body = rows.map(r => `<tr style="border-bottom: 1px solid #eeeeee;">${columns.map(c => (
+    `<td style="padding: 8px 6px; text-align: ${c.align || 'left'};${c.style ? c.style(r) : ''}">${c.html ? c.html(r) : escapeSubHtml(r[c.key])}</td>`
+  )).join('')}</tr>`).join('');
+  return `
+    <div style="overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; margin: 8px 0 20px; font-size: 13px;">
+        <thead><tr style="background-color: #f0f4f8; border-bottom: 2px solid #004383;">${th}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+}
+
 /**
- * 核心邏輯：掃描所有訂閱的 paymentRecords，
- * 對「約定繳款日期(台北時間)」前 30/14/7 天級距內、未繳款且未寄過該級距提醒的紀錄，
- * 彙整成一封 Email (BCC) 寄給具訂閱管理權限者（超級管理員/系統管理員），
- * 寄送成功後回寫 remindersSent 去重。
+ * 核心邏輯：掃描所有訂閱的跟進流程 (cycles；舊資料以 legacyToCycles 即時轉換)，
+ * 彙整五類提醒成一封 Email (BCC) 寄給超級管理員/系統管理員，寄送成功後回寫去重紀錄。
  */
 async function executeSubscriptionPaymentReminderLogic() {
   const functionName = "subscriptionPaymentReminder";
   const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  const pipeline = require("./utils/subscriptionPipeline");
 
-  // 以台北時間定義「今天」
-  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
-  const todayMs = new Date(todayStr).getTime();
+  const todayStr = pipeline.taiwanToday();
   const sentAtIso = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).replace(' ', 'T') + '+08:00';
-
   const TIER_LABELS = { d30: '30天前', d14: '14天前', d7: '7天內' };
+  const STAGE_TEXT = { invoice: '待開票', submitted: '待送件', cashed: '待兌現' };
+  const tsToYmd = (v) => (v && typeof v.toDate === 'function' ? v.toDate().toISOString().split('T')[0] : (v || ''));
 
-  // 1. 掃描所有訂閱，收集本次應提醒的繳款紀錄
-  const subsSnapshot = await anxiDb.collection("subscriptions").get();
-  const dueItems = [];              // 信件表格資料
-  const updatesBySub = new Map();   // subId -> 更新後的 paymentRecords 陣列
-
-  subsSnapshot.forEach(docSnap => {
-    const sub = docSnap.data();
-    const records = Array.isArray(sub.paymentRecords) ? sub.paymentRecords : [];
-    if (records.length === 0) return;
-
-    let changed = false;
-    const newRecords = records.map(rec => {
-      if (!rec || !rec.agreedDate || rec.paidDate) return rec;
-
-      const agreedMs = new Date(rec.agreedDate).getTime();
-      if (isNaN(agreedMs)) return rec;
-      const diffDays = Math.round((agreedMs - todayMs) / 86400000);
-      if (diffDays < 0 || diffDays > 30) return rec;
-
-      // 級距互斥：7 天內 > 14 天 > 30 天，取最小適用級距
-      const sent = rec.remindersSent || {};
-      let tier = null;
-      if (diffDays <= 7) {
-        if (!sent.d7) tier = 'd7';
-      } else if (diffDays <= 14) {
-        if (!sent.d14) tier = 'd14';
-      } else {
-        if (!sent.d30) tier = 'd30';
-      }
-      if (!tier) return rec;
-
-      dueItems.push({
-        projectName: sub.projectName || '(未命名建案)',
-        systemFunction: Array.isArray(sub.systemFunction) ? sub.systemFunction.join('、') : (sub.systemFunction || ''),
-        subscriptionType: sub.subscriptionType || '—',
-        contactName: sub.contactName || '—',
-        agreedDate: rec.agreedDate,
-        diffDays: diffDays,
-        amount: Number(rec.amount) || 0,
-        invoiceIssued: !!rec.invoiceIssued,
-        tierLabel: TIER_LABELS[tier],
+  // 「首次有效預約後 N」基準：查各建案最早有效預約日 (快取)
+  const apptCache = new Map();
+  async function firstAppointmentOf(projectId) {
+    if (!projectId) return '';
+    if (apptCache.has(projectId)) return apptCache.get(projectId);
+    let earliest = '';
+    try {
+      const snap = await anxiDb.collection('appointments')
+        .where('projectId', '==', projectId)
+        .where('status', 'in', ['預約中', '已完成'])
+        .get();
+      snap.forEach(d => {
+        const date = d.data().appointmentDate;
+        if (date && typeof date.toDate === 'function') {
+          const s = date.toDate().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+          if (!earliest || s < earliest) earliest = s;
+        }
       });
-
-      changed = true;
-      return {
-        ...rec,
-        remindersSent: { ...(rec.remindersSent || {}), [tier]: sentAtIso },
-      };
-    });
-
-    if (changed) {
-      updatesBySub.set(docSnap.id, newRecords);
+    } catch (e) {
+      console.warn(`[${functionName}] 查詢建案 ${projectId} 最早預約失敗:`, e.message);
     }
-  });
-
-  if (dueItems.length === 0) {
-    console.log(`[${functionName}] 今日 (${todayStr}) 無需提醒的繳款紀錄。`);
-    return { status: "success", sent: 0, message: "無需提醒的繳款紀錄。" };
+    apptCache.set(projectId, earliest);
+    return earliest;
   }
 
-  // 2. 查詢收件人：roles 含「超級管理員」或「系統管理員」且有有效 email
+  const sections = { due: [], overdue: [], unsigned: [], renewal: [], followup: [] };
+  const updatesBySub = new Map(); // subId -> 更新後的 cycles
+
+  const subsSnapshot = await anxiDb.collection("subscriptions").get();
+  for (const docSnap of subsSnapshot.docs) {
+    const raw = docSnap.data();
+    const sub = { ...raw, startDate: tsToYmd(raw.startDate), endDate: tsToYmd(raw.endDate) };
+    const base = {
+      projectName: sub.projectName || '(未命名建案)',
+      systemFunction: Array.isArray(sub.systemFunction) ? sub.systemFunction.join('、') : (sub.systemFunction || ''),
+      contactName: sub.contactName || '—',
+    };
+
+    if (sub.nextFollowUpDate && sub.nextFollowUpDate <= todayStr) {
+      sections.followup.push({
+        ...base,
+        date: sub.nextFollowUpDate,
+        days: pipeline.diffDays(todayStr, sub.nextFollowUpDate),
+        text: sub.lastFollowUpText || '',
+      });
+    }
+
+    const cycles = pipeline.legacyToCycles(sub);
+    if (cycles.length === 0) continue;
+
+    const needsAppt = cycles.some(c => c.installments.some(i => !i.dueDate && i.base === 'firstAppointment'));
+    const ctx = needsAppt ? { firstAppointmentDate: await firstAppointmentOf(sub.projectId) } : {};
+    let changed = false;
+    const lastNo = cycles[cycles.length - 1].no;
+
+    const newCycles = cycles.map(original => {
+      const resolved = pipeline.resolveDueDates(original, ctx);
+      const c = JSON.parse(JSON.stringify(resolved.cycle));
+      if (resolved.changed) changed = true;
+      const isCurrent = c.no === lastNo;
+
+      // 報價未回簽：報價完成 ≥ 7 天，每 7 天提醒一次
+      if (isCurrent && pipeline.isClosed(c.steps.quote) && !pipeline.isClosed(c.steps.signed) && c.steps.quote.date) {
+        const days = pipeline.diffDays(todayStr, c.steps.quote.date);
+        const last = c.reminders.unsigned;
+        if (days >= 7 && (!last || pipeline.diffDays(todayStr, last) >= 7)) {
+          sections.unsigned.push({
+            ...base,
+            quoteDate: c.steps.quote.date,
+            days,
+            amount: c.quote ? pipeline.quoteTotals(c.quote).finalAmount : 0,
+          });
+          c.reminders.unsigned = todayStr;
+          changed = true;
+        }
+      }
+
+      // 續約：目前輪已啟用，停用日前 60 / 30 天
+      if (isCurrent && pipeline.isClosed(c.steps.activated) && sub.endDate) {
+        const left = pipeline.diffDays(sub.endDate, todayStr);
+        if (left !== null && left >= 0 && left <= 60) {
+          const key = left <= 30 ? 'd30' : 'd60';
+          if (!c.reminders.renewal[key]) {
+            sections.renewal.push({ ...base, endDate: sub.endDate, daysLeft: left });
+            c.reminders.renewal[key] = todayStr;
+            changed = true;
+          }
+        }
+      }
+
+      // 款項：客戶已回簽才提醒
+      if (!pipeline.isClosed(c.steps.signed)) return c;
+      c.installments = c.installments.map(inst => {
+        const due = pipeline.effectiveDueDate(inst);
+        if (pipeline.isClosed(inst.steps.cashed) || !due) return inst;
+        const diff = pipeline.diffDays(due, todayStr);
+        if (diff === null || diff > 30) return inst;
+        const sent = inst.remindersSent || {};
+        const item = {
+          ...base,
+          label: inst.label,
+          dueDate: due,
+          diffDays: diff,
+          amount: Number(inst.amount) || 0,
+          stage: STAGE_TEXT[pipeline.installmentStage(inst)] || '',
+        };
+        if (diff >= 0) {
+          let tier = null;
+          if (diff <= 7) { if (!sent.d7) tier = 'd7'; }
+          else if (diff <= 14) { if (!sent.d14) tier = 'd14'; }
+          else if (!sent.d30) tier = 'd30';
+          if (!tier) return inst;
+          sections.due.push({ ...item, tierLabel: TIER_LABELS[tier] });
+          changed = true;
+          return { ...inst, remindersSent: { ...sent, [tier]: sentAtIso } };
+        }
+        // 逾期未兌現：每 7 天提醒一次
+        if (sent.overdue && pipeline.diffDays(todayStr, sent.overdue) < 7) return inst;
+        sections.overdue.push(item);
+        changed = true;
+        return { ...inst, remindersSent: { ...sent, overdue: todayStr } };
+      });
+      return c;
+    });
+
+    if (changed) updatesBySub.set(docSnap.id, newCycles);
+  }
+
+  const total = Object.values(sections).reduce((s, list) => s + list.length, 0);
+  if (total === 0) {
+    console.log(`[${functionName}] 今日 (${todayStr}) 無需提醒的項目。`);
+    return { status: "success", sent: 0, message: "無需提醒的項目。" };
+  }
+
+  // 收件人：roles 含「超級管理員」或「系統管理員」且有有效 email
   const [superSnap, sysSnap] = await Promise.all([
     anxiDb.collection("users").where("roles", "array-contains", "超級管理員").get(),
     anxiDb.collection("users").where("roles", "array-contains", "系統管理員").get(),
@@ -30965,90 +31071,106 @@ async function executeSubscriptionPaymentReminderLogic() {
       recipientEmails.add(email.trim());
     }
   }));
-
   if (recipientEmails.size === 0) {
     console.warn(`[${functionName}] 找不到任何有效收件人 (超級管理員/系統管理員需有 email)，本次不寄送、不回寫去重紀錄。`);
     return { status: "success", sent: 0, message: "找不到任何有效收件人。" };
   }
 
-  // 3. 組信件內容 (彙整成一封)
-  dueItems.sort((a, b) => a.agreedDate.localeCompare(b.agreedDate));
-  const tableRows = dueItems.map(item => `
-    <tr style="border-bottom: 1px solid #eeeeee;">
-      <td style="padding: 10px 8px;">${item.projectName}</td>
-      <td style="padding: 10px 8px;">${item.systemFunction}</td>
-      <td style="padding: 10px 8px; white-space: nowrap;">${item.agreedDate}</td>
-      <td style="padding: 10px 8px; text-align: center; color: ${item.diffDays <= 7 ? '#d32f2f' : '#e65100'}; font-weight: bold;">${item.diffDays} 天</td>
-      <td style="padding: 10px 8px; text-align: right;">$${item.amount.toLocaleString()}</td>
-      <td style="padding: 10px 8px; text-align: center;">${item.invoiceIssued ? '✅' : '—'}</td>
-      <td style="padding: 10px 8px;">${item.subscriptionType}</td>
-      <td style="padding: 10px 8px;">${item.contactName}</td>
-    </tr>`).join('');
+  const money = (n) => `$${(Number(n) || 0).toLocaleString()}`;
+  const projectCols = [
+    { title: '建案名稱', key: 'projectName' },
+    { title: '系統', key: 'systemFunction' },
+  ];
+  const blocks = [];
+  const pushBlock = (title, color, list, columns) => {
+    if (list.length === 0) return;
+    blocks.push(`<h3 style="margin: 18px 0 4px; font-size: 16px; color: ${color};">${title}（${list.length}）</h3>${subscriptionReminderTable(columns, list)}`);
+  };
 
-  const subject = `【訂閱管理】繳款到期提醒 — ${dueItems.length} 筆款項即將到期 (${todayStr})`;
+  sections.due.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  sections.overdue.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  pushBlock('繳款即將到期', '#e65100', sections.due, [
+    ...projectCols,
+    { title: '期別', key: 'label' },
+    { title: '到期日', key: 'dueDate', style: () => ' white-space: nowrap;' },
+    { title: '剩餘', align: 'center', html: r => `${r.diffDays} 天`, style: r => ` font-weight: bold; color: ${r.diffDays <= 7 ? '#d32f2f' : '#e65100'};` },
+    { title: '金額', align: 'right', html: r => money(r.amount) },
+    { title: '進度', key: 'stage' },
+    { title: '聯絡人', key: 'contactName' },
+  ]);
+  pushBlock('逾期未兌現', '#d32f2f', sections.overdue, [
+    ...projectCols,
+    { title: '期別', key: 'label' },
+    { title: '到期日', key: 'dueDate', style: () => ' white-space: nowrap;' },
+    { title: '逾期', align: 'center', html: r => `${-r.diffDays} 天`, style: () => ' font-weight: bold; color: #d32f2f;' },
+    { title: '金額', align: 'right', html: r => money(r.amount) },
+    { title: '進度', key: 'stage' },
+    { title: '聯絡人', key: 'contactName' },
+  ]);
+  pushBlock('報價未回簽', '#3949ab', sections.unsigned, [
+    ...projectCols,
+    { title: '報價日', key: 'quoteDate', style: () => ' white-space: nowrap;' },
+    { title: '已過', align: 'center', html: r => `${r.days} 天` },
+    { title: '報價金額', align: 'right', html: r => money(r.amount) },
+    { title: '聯絡人', key: 'contactName' },
+  ]);
+  pushBlock('續約提醒', '#00796b', sections.renewal, [
+    ...projectCols,
+    { title: '停用日', key: 'endDate', style: () => ' white-space: nowrap;' },
+    { title: '剩餘', align: 'center', html: r => `${r.daysLeft} 天` },
+    { title: '聯絡人', key: 'contactName' },
+  ]);
+  pushBlock('今日待跟進', '#004383', sections.followup, [
+    ...projectCols,
+    { title: '跟進日', key: 'date', style: () => ' white-space: nowrap;' },
+    { title: '最後跟進', key: 'text' },
+    { title: '聯絡人', key: 'contactName' },
+  ]);
+
+  const subject = `【訂閱管理】每日跟進提醒 — ${total} 項 (${todayStr})`;
   const htmlBody = `
 <div style="font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f4f4f7; padding: 20px;">
-<div style="max-width: 700px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
+<div style="max-width: 760px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e0e0e0; overflow: hidden;">
   <div style="background-color: #004383; color: #ffffff; padding: 20px; text-align: center;">
-    <h2 style="margin: 0; font-size: 22px;">訂閱繳款到期提醒</h2>
+    <h2 style="margin: 0; font-size: 22px;">訂閱管理每日跟進提醒</h2>
   </div>
-  <div style="padding: 24px; line-height: 1.6; color: #333333;">
-    <p>您好：</p>
-    <p>以下訂閱的<strong>約定繳款日期</strong>即將到期（台北時間 ${todayStr}），請留意繳款進度：</p>
-    <div style="overflow-x: auto;">
-      <table style="width: 100%; border-collapse: collapse; margin-top: 16px; margin-bottom: 16px; font-size: 14px;">
-        <thead>
-          <tr style="background-color: #f0f4f8; border-bottom: 2px solid #004383;">
-            <th style="padding: 10px 8px; text-align: left;">建案名稱</th>
-            <th style="padding: 10px 8px; text-align: left;">系統功能</th>
-            <th style="padding: 10px 8px; text-align: left;">約定繳款日期</th>
-            <th style="padding: 10px 8px; text-align: center;">剩餘天數</th>
-            <th style="padding: 10px 8px; text-align: right;">金額</th>
-            <th style="padding: 10px 8px; text-align: center;">已開發票請款</th>
-            <th style="padding: 10px 8px; text-align: left;">訂閱類型</th>
-            <th style="padding: 10px 8px; text-align: left;">聯絡人</th>
-          </tr>
-        </thead>
-        <tbody>${tableRows}</tbody>
-      </table>
-    </div>
+  <div style="padding: 20px 24px; line-height: 1.6; color: #333333;">
+    <p style="margin-top: 0;">台北時間 ${todayStr}，以下項目需要處理：</p>
+    ${blocks.join('')}
     <p style="text-align: center; margin-top: 25px;">
       <a href="https://anxismart.com/#/subscription-management" target="_blank" style="display: inline-block; padding: 12px 24px; background-color: #004383; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">
         前往訂閱管理
       </a>
     </p>
     <p style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #eeeeee; font-size: 12px; color: #999;">
-      此信件為系統自動發送（每日台北時間 09:00 檢查，於約定繳款日期前 30 / 14 / 7 天提醒），請勿直接回覆。<br>
-      繳款完成後請於訂閱管理填入「繳款日期」，系統即停止該筆提醒。
+      此信件為系統自動發送（每日台北時間 09:00），請勿直接回覆。
     </p>
   </div>
 </div>
 </div>`;
 
-  // 4. 寄送 (BCC 彙整一封)
   const mailTransport = nodemailer.createTransport({
     service: 'gmail',
     auth: { user: process.env.SENDER_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
   });
-
   await mailTransport.sendMail({
     from: `"安熙智慧建案管理系統" <${process.env.SENDER_EMAIL}>`,
     to: process.env.SENDER_EMAIL,
     bcc: Array.from(recipientEmails),
-    subject: subject,
+    subject,
     html: htmlBody,
   });
-  console.log(`[${functionName}] 已寄送提醒信：${dueItems.length} 筆款項，收件人 ${recipientEmails.size} 位。`);
+  console.log(`[${functionName}] 已寄送提醒信：${total} 項，收件人 ${recipientEmails.size} 位。`);
 
-  // 5. 寄送成功後回寫 remindersSent 去重紀錄
+  // 寄送成功後回寫去重紀錄 (同時保存舊資料轉換與已解析的預計繳款日)
   const batch = anxiDb.batch();
-  updatesBySub.forEach((newRecords, subId) => {
-    batch.update(anxiDb.collection("subscriptions").doc(subId), { paymentRecords: newRecords });
+  updatesBySub.forEach((cycles, subId) => {
+    batch.update(anxiDb.collection("subscriptions").doc(subId), { cycles: JSON.parse(JSON.stringify(cycles)) });
   });
   await batch.commit();
-  console.log(`[${functionName}] 已回寫 ${updatesBySub.size} 筆訂閱的 remindersSent。`);
+  console.log(`[${functionName}] 已回寫 ${updatesBySub.size} 筆訂閱的提醒紀錄。`);
 
-  return { status: "success", sent: dueItems.length, recipients: recipientEmails.size };
+  return { status: "success", sent: total, recipients: recipientEmails.size };
 }
 
 // 排程觸發：每日台北時間 09:00
@@ -31090,7 +31212,7 @@ exports.manualTriggerSubscriptionPaymentReminder = onCall({
   console.log(`[${functionName}] 由 ${adminKey} 手動觸發...`);
   try {
     const result = await executeSubscriptionPaymentReminderLogic();
-    return { ...result, message: result.message || `已寄送 ${result.sent} 筆到期款項提醒。` };
+    return { ...result, message: result.message || `已寄送 ${result.sent} 項跟進提醒。` };
   } catch (error) {
     console.error(`[${functionName}] 執行失敗:`, error);
     throw new HttpsError("internal", `執行繳款提醒任務失敗: ${error.message}`);

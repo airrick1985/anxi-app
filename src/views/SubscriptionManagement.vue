@@ -1,5 +1,5 @@
 <template>
-  <v-container>
+  <v-container fluid class="sub-page">
     <v-card class="mx-auto">
       <v-toolbar color="#004383" dark>
         <v-toolbar-title>
@@ -7,17 +7,41 @@
           訂閱管理
         </v-toolbar-title>
         <v-spacer></v-spacer>
-        <v-btn color="white" @click="openEditDialog()">
-          <v-icon left>mdi-plus</v-icon>
-          新增訂閱
+        <v-btn variant="text" :icon="mobile" @click="settingsDialog = true">
+          <v-icon :start="!mobile">mdi-cog-outline</v-icon>
+          <span v-if="!mobile">報價單設定</span>
+        </v-btn>
+        <v-btn color="white" :icon="mobile" @click="openEditDialog()">
+          <v-icon :start="!mobile">mdi-plus</v-icon>
+          <span v-if="!mobile">新增訂閱</span>
         </v-btn>
       </v-toolbar>
+
+      <!-- 階段卡 -->
+      <div class="stage-cards">
+        <div
+          v-for="card in stageCards"
+          :key="card.key"
+          class="stage-card"
+          :class="{ 'is-active': stageFilter === card.key }"
+          @click="stageFilter = card.key"
+        >
+          <div class="stage-card-label">
+            <span v-if="card.color" class="stage-dot" :class="`bg-${card.color}`"></span>{{ card.label }}
+          </div>
+          <div class="stage-card-count">{{ card.count }}</div>
+          <div class="stage-card-sub" :class="{ 'text-red': card.overdue > 0 }">
+            {{ card.overdue > 0 ? `逾期 ${card.overdue}` : '' }}
+          </div>
+        </div>
+      </div>
+
       <v-card-title class="pb-0">
         <v-row dense align="center">
           <v-col cols="12" md="4">
             <v-text-field
               v-model="search"
-              label="搜尋建案、系統或聯絡人..."
+              label="搜尋建案、系統、買受人或聯絡人..."
               prepend-inner-icon="mdi-magnify"
               variant="outlined"
               density="compact"
@@ -25,11 +49,11 @@
               clearable
             ></v-text-field>
           </v-col>
-          <v-col cols="6" sm="4" md="2">
+          <v-col cols="6" sm="4" md="3">
             <v-select
               v-model="statusFilter"
               :items="statusFilterOptions"
-              label="狀態"
+              label="訂閱狀態"
               variant="outlined"
               density="compact"
               hide-details
@@ -39,7 +63,7 @@
               closable-chips
             ></v-select>
           </v-col>
-          <v-col cols="6" sm="4" md="2">
+          <v-col cols="6" sm="4" md="3">
             <v-select
               v-model="systemFilter"
               :items="masterData.systemFunctions"
@@ -53,22 +77,8 @@
               closable-chips
             ></v-select>
           </v-col>
-          <v-col cols="6" sm="4" md="2">
-            <v-select
-              v-model="paymentFilter"
-              :items="paymentFilterOptions"
-              label="繳款狀態"
-              variant="outlined"
-              density="compact"
-              hide-details
-              multiple
-              clearable
-              chips
-              closable-chips
-            ></v-select>
-          </v-col>
-          <v-col cols="6" sm="12" md="2" class="d-flex align-center">
-            <span class="text-caption text-grey me-2">共 {{ filteredSubscriptions.length }} 筆</span>
+          <v-col cols="12" sm="4" md="2" class="d-flex align-center">
+            <span class="text-caption text-grey me-2">共 {{ filteredRows.length }} 筆</span>
             <v-btn
               v-if="hasActiveFilters"
               size="small"
@@ -81,10 +91,10 @@
         </v-row>
       </v-card-title>
 
-<v-data-table
+      <v-data-table
         :headers="headers"
-        :items="filteredSubscriptions"
-        :search="search"
+        :items="filteredRows"
+        :sort-by="[{ key: 'stageRank', order: 'asc' }]"
         :loading="loading"
         :items-per-page="25"
         density="comfortable"
@@ -93,28 +103,68 @@
         class="elevation-1 subscription-table mt-3"
         items-per-page-text="每頁顯示："
         :page-text="`第 {0} - {1} 筆，共 {2} 筆`"
+        @click:row="(e, { item }) => openDrawer(item)"
       >
         <template v-slot:item.status="{ item }">
           <v-chip :color="item.color" size="small" label>{{ item.status }}</v-chip>
         </template>
 
         <template v-slot:item.projectName="{ item }">
-          <span class="font-weight-medium">{{ item.projectName }}</span>
+          <div class="font-weight-medium">{{ item.projectName }}</div>
+          <div v-if="item.billTo?.name" class="text-caption text-grey text-no-wrap">{{ item.billTo.name }}</div>
         </template>
 
-         <template v-slot:item.currentUserLimit="{ item }">
-          <v-chip v-if="typeof item.currentUserLimit === 'number'" color="primary" size="small" label>
+        <template v-slot:item.stageRank="{ item }">
+          <div class="d-flex align-center ga-2">
+            <v-chip :color="stageMeta(item.pipeline.stage).color" size="small" label variant="flat">
+              {{ stageMeta(item.pipeline.stage).label }}
+            </v-chip>
+            <span v-if="item.cycles.length > 1" class="text-caption text-grey">第{{ item.cycles[item.cycles.length - 1].no }}輪</span>
+          </div>
+          <div class="progress-bar mt-1" :title="PROGRESS_LABELS.join(' → ')">
+            <span
+              v-for="(label, i) in PROGRESS_LABELS"
+              :key="i"
+              :class="{ 'is-on': i < item.pipeline.progress }"
+            ></span>
+          </div>
+        </template>
+
+        <template v-slot:item.nextDate="{ item }">
+          <template v-if="item.pipeline.action">
+            <div class="text-no-wrap">
+              {{ item.pipeline.action }}
+              <span v-if="item.pipeline.installment" class="text-caption text-grey">
+                {{ item.pipeline.installment.label }} · ${{ (Number(item.pipeline.installment.amount) || 0).toLocaleString() }}
+              </span>
+            </div>
+            <div class="text-caption text-no-wrap" :class="nextHint(item).class">{{ nextHint(item).text }}</div>
+          </template>
+          <span v-else class="text-caption text-grey">{{ item.pipeline.hint }}</span>
+        </template>
+
+        <template v-slot:item.nextFollowUpDate="{ item }">
+          <div v-if="item.nextFollowUpDate">
+            <div class="text-no-wrap">{{ item.nextFollowUpDate }}</div>
+            <div class="text-caption text-no-wrap" :class="followUpHint(item).class">{{ followUpHint(item).text }}</div>
+          </div>
+          <span v-else class="text-grey">—</span>
+        </template>
+
+        <template v-slot:item.currentUserLimit="{ item }">
+          <v-chip v-if="item.currentUserLimit" color="primary" size="small" label>
             <v-icon start>mdi-account-group</v-icon>
             {{ item.currentUserLimit }} 人
           </v-chip>
-          <span v-else class="text-grey">{{ item.currentUserLimit }}</span>
+          <span v-else class="text-grey">—</span>
         </template>
 
         <template v-slot:item.endDate="{ item }">
-          <div class="text-no-wrap">{{ item.startDate || '—' }} ～ {{ item.endDate || '—' }}</div>
-          <div v-if="typeof item.durationDays === 'number'" class="text-caption text-grey">
-            共 {{ item.durationDays }} 天
-          </div>
+          <template v-if="item.startDate">
+            <div class="text-no-wrap">{{ item.startDate }} ～ {{ item.endDate || '—' }}</div>
+            <div v-if="typeof item.durationDays === 'number'" class="text-caption text-grey">共 {{ item.durationDays }} 天</div>
+          </template>
+          <span v-else class="text-grey">—</span>
         </template>
 
         <template v-slot:item.contactName="{ item }">
@@ -125,50 +175,13 @@
           <span v-else class="text-grey">—</span>
         </template>
 
-        <template v-slot:item.nextAgreedDate="{ item }">
-          <div v-if="item.nextAgreedDate">
-            <div class="text-no-wrap font-weight-medium">{{ item.nextAgreedDate }}</div>
-            <div class="text-caption text-no-wrap" :class="agreedDateHint(item).class">
-              {{ agreedDateHint(item).text }}
-            </div>
-          </div>
-          <span v-else class="text-grey">—</span>
-        </template>
-
-        <template v-slot:item.paymentRecords="{ item }">
-          <template v-if="paymentSummary(item)">
-            <v-chip
-              :color="paymentSummary(item).color"
-              size="small"
-              label
-              style="cursor: pointer;"
-              @click="openEditDialog(item)"
-            >
-              {{ paymentSummary(item).text }}
-            </v-chip>
-            <div v-if="paymentSummary(item).sub" class="text-caption text-grey mt-1">
-              {{ paymentSummary(item).sub }}
-            </div>
-          </template>
-          <span v-else class="text-grey">—</span>
-        </template>
-
         <template v-slot:item.earliestAppointmentDate="{ item }">
           <div v-if="item.earliestAppointmentDate">
             <div class="text-no-wrap font-weight-medium">{{ item.earliestAppointmentDate }}</div>
             <div class="text-caption text-grey text-no-wrap">{{ earliestElapsedText(item) }}</div>
-            <div
-              v-if="earliestVsAgreedText(item)"
-              class="text-caption text-blue-grey text-no-wrap"
-            >{{ earliestVsAgreedText(item) }}</div>
+            <div v-if="earliestVsDueText(item)" class="text-caption text-blue-grey text-no-wrap">{{ earliestVsDueText(item) }}</div>
           </div>
-          <v-progress-circular
-            v-else-if="earliestLoading"
-            size="16"
-            width="2"
-            indeterminate
-            color="grey"
-          ></v-progress-circular>
+          <v-progress-circular v-else-if="earliestLoading" size="16" width="2" indeterminate color="grey"></v-progress-circular>
           <span v-else class="text-grey">—</span>
         </template>
 
@@ -182,38 +195,9 @@
           <span v-else class="text-grey">—</span>
         </template>
 
-        <template v-slot:item.attachments="{ item }">
-          <div class="d-flex align-center">
-            <template v-for="(att, i) in (item.attachments || []).slice(0, 3)" :key="i">
-              <v-avatar
-                v-if="isImageAttachment(att)"
-                size="32"
-                rounded
-                class="me-1 attachment-thumb"
-                style="cursor: pointer; border: 1px solid #e0e0e0;"
-                @click="openPreview(att)"
-              >
-                <v-img :src="att.url" cover></v-img>
-              </v-avatar>
-              <v-icon
-                v-else
-                color="red-darken-2"
-                size="32"
-                class="me-1"
-                style="cursor: pointer;"
-                @click="openPreview(att)"
-              >mdi-file-pdf-box</v-icon>
-            </template>
-            <span v-if="(item.attachments || []).length > 3" class="text-caption text-grey">
-              +{{ item.attachments.length - 3 }}
-            </span>
-            <span v-if="!item.attachments || item.attachments.length === 0" class="text-grey">—</span>
-          </div>
-        </template>
-
         <template v-slot:item.actions="{ item }">
-          <v-icon class="me-2" @click="openEditDialog(item)">mdi-pencil</v-icon>
-          <v-icon color="error" @click="openDeleteDialog(item)">mdi-delete</v-icon>
+          <v-icon class="me-2" @click.stop="openEditDialog(item)">mdi-pencil</v-icon>
+          <v-icon color="error" @click.stop="openDeleteDialog(item)">mdi-delete</v-icon>
         </template>
         <template v-slot:no-data>
           <div class="pa-4 text-center">
@@ -223,443 +207,212 @@
       </v-data-table>
     </v-card>
 
-   <v-dialog v-model="dialog" persistent max-width="1200px">
+    <!-- 訂閱資料 -->
+    <v-dialog v-model="dialog" persistent max-width="1000px" scrollable>
       <v-card>
         <v-card-title class="bg-blue-darken-4 text-white d-flex align-center">
-          <span class="text-h5">{{ isEditing ? '編輯訂閱' : '新增訂閱' }}</span>
+          <span class="text-h6">{{ isEditing ? '訂閱資料' : '新增訂閱' }}</span>
           <v-spacer></v-spacer>
           <v-btn icon="mdi-close" variant="text" @click="closeDialog"></v-btn>
         </v-card-title>
         <v-card-text>
-          <v-container>
-            <v-row>
-              <v-col cols="12" sm="6">
-             <v-combobox
-                  v-model="editedItem.projectName"
-                  :items="masterData.projectNames"
-                  label="建案名稱*"
-                  :rules="rules.required"
-                  hint="可從選單選取或手動輸入新名稱"
-                  persistent-hint
-                ></v-combobox>
-              </v-col>
+          <v-row dense class="pt-2">
+            <v-col cols="12" sm="6">
+              <v-combobox
+                v-model="editedItem.projectName"
+                :items="masterData.projectNames"
+                label="建案名稱*"
+                :rules="rules.required"
+                variant="outlined"
+                density="compact"
+              ></v-combobox>
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="editedItem.projectId"
+                label="建案 ID"
+                placeholder="啟用時再設定"
+                persistent-placeholder
+                :rules="!isProjectIdDisabled ? rules.projectId : []"
+                :disabled="isProjectIdDisabled"
+                variant="outlined"
+                density="compact"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-select
+                v-model="editedItem.systemFunction"
+                :items="masterData.systemFunctions"
+                label="系統功能*"
+                :rules="rules.requiredArray"
+                multiple
+                chips
+                closable-chips
+                :disabled="isEditing"
+                variant="outlined"
+                density="compact"
+              ></v-select>
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-file-input
+                v-model="fileToUpload"
+                label="建案圖示"
+                accept="image/png, image/jpeg, image/gif"
+                prepend-icon=""
+                prepend-inner-icon="mdi-image-area"
+                variant="outlined"
+                density="compact"
+                clearable
+              >
+                <template v-if="iconPreviewUrl" v-slot:append>
+                  <v-avatar size="40" rounded><v-img :src="iconPreviewUrl" cover></v-img></v-avatar>
+                </template>
+              </v-file-input>
+            </v-col>
 
-               <v-col cols="12" sm="6">
-                <v-text-field
-                  v-model="editedItem.projectId"
-                  label="建案 ID*"
-                  :rules="!isProjectIdDisabled ? rules.projectId : []"
-                  :disabled="isProjectIdDisabled"
-                  :hint="isProjectIdDisabled ? '系統已有ID，不可任意修改' : '請為新專案設定一個唯一ID，英文及數字組合'"
-                  persistent-hint
-                ></v-text-field>
-              </v-col>
+            <v-col cols="12"><div class="form-section">買受人</div></v-col>
+            <v-col cols="12" sm="8"><v-text-field v-model="editedItem.billTo.name" label="公司名稱" variant="outlined" density="compact" hide-details></v-text-field></v-col>
+            <v-col cols="12" sm="4"><v-text-field v-model="editedItem.billTo.taxId" label="統編" variant="outlined" density="compact" hide-details></v-text-field></v-col>
+            <v-col cols="12" sm="4"><v-text-field v-model="editedItem.contactName" label="聯絡人" variant="outlined" density="compact" hide-details></v-text-field></v-col>
+            <v-col cols="12" sm="4"><v-text-field v-model="editedItem.contactPhone" label="聯絡人手機" variant="outlined" density="compact" hide-details></v-text-field></v-col>
+            <v-col cols="12" sm="4"><v-text-field v-model="editedItem.contactEmail" label="聯絡人Email" :rules="rules.email" variant="outlined" density="compact" hide-details="auto"></v-text-field></v-col>
+            <v-col cols="12" sm="4">
+              <v-select
+                v-model="subscriptionTypeSelection"
+                :items="subscriptionTypeOptions"
+                label="訂閱類型"
+                variant="outlined"
+                density="compact"
+                hide-details
+              ></v-select>
+            </v-col>
+            <v-col v-if="subscriptionTypeSelection === '其他'" cols="12" sm="4">
+              <v-text-field v-model="otherSubscriptionType" label="其他類型" variant="outlined" density="compact" hide-details></v-text-field>
+            </v-col>
+
+            <template v-if="isEditing && editedItem.startDate">
+              <v-col cols="12"><div class="form-section">訂閱期間</div></v-col>
+              <v-col cols="6" sm="4"><v-text-field v-model="editedItem.startDate" label="啟用日期" type="date" variant="outlined" density="compact" hide-details></v-text-field></v-col>
+              <v-col cols="6" sm="4"><v-text-field v-model="editedItem.endDate" label="停用日期" type="date" variant="outlined" density="compact" hide-details></v-text-field></v-col>
 
               <v-col cols="12">
-                <v-file-input
-                  v-model="fileToUpload"
-                  label="建案圖示 (上傳新圖檔將覆蓋舊檔)"
-                  accept="image/png, image/jpeg, image/gif"
-                  prepend-icon="mdi-image-area"
-                  variant="outlined"
-                  density="compact"
-                  clearable
-                ></v-file-input>
-                <v-img
-                  v-if="iconPreviewUrl"
-                  :src="iconPreviewUrl"
-                  height="100"
-                  contain
-                  class="mt-2"
-                  style="border: 1px solid #e0e0e0; border-radius: 4px;"
-                ></v-img>
-                <div v-else class="text-center text-grey-darken-1 pa-4" style="border: 2px dashed #ccc; border-radius: 8px;">
-                  尚無建案圖示
-                </div>
-              </v-col>
-              <v-col cols="12">
-                <v-divider class="my-3"></v-divider>
-              </v-col>
-
-              <v-col cols="12" sm="6">
-                <v-select
-                  v-model="editedItem.systemFunction"
-                  :items="masterData.systemFunctions"
-                  label="系統功能*"
-                  :rules="rules.requiredArray"
-                  multiple
-                  chips
-                  closable-chips
-                  :disabled="isEditing"
-                  :hint="isEditing ? '編輯模式下無法修改系統功能' : ''"
-                  :persistent-hint="isEditing"
-                ></v-select>
-              </v-col>
-              <v-col cols="12" sm="6"><v-text-field v-model="editedItem.contactName" label="聯絡人"></v-text-field></v-col>
-              <v-col cols="12" sm="6"><v-text-field v-model="editedItem.contactPhone" label="聯絡人手機"></v-text-field></v-col>
-              <v-col cols="12">
-                              <v-text-field 
-                                v-model="editedItem.contactEmail" 
-                                label="聯絡人Email"
-                                :rules="rules.email"
-                              ></v-text-field>
-                            </v-col>
-              <v-col cols="12" sm="6">
-                <v-select
-                  v-model="subscriptionTypeSelection"
-                  :items="['月繳', '年繳', '季繳', '試用', '其他']"
-                  label="訂閱類型"
-                ></v-select>
-                <v-text-field
-                  v-if="subscriptionTypeSelection === '其他'"
-                  v-model="otherSubscriptionType"
-                  label="請輸入其他類型"
-                  class="mt-2"
-                  variant="outlined"
-                  dense
-                ></v-text-field>
-              </v-col>
-              
-              <v-col cols="12" sm="6"><v-text-field v-model="editedItem.paymentAmount" label="繳費金額" type="number"></v-text-field></v-col>
-              <v-col cols="12" sm="4"><v-text-field v-model="editedItem.paymentDate" label="繳費日期" type="date"></v-text-field></v-col>
-              <v-col cols="12" sm="4"><v-text-field v-model="editedItem.startDate" label="啟用日期*" type="date" :rules="rules.required"></v-text-field></v-col>
-              <v-col cols="12" sm="4"><v-text-field v-model="editedItem.endDate" label="停用日期*" type="date" :rules="rules.required"></v-text-field></v-col>
-              <v-col cols="12">
-                <v-divider class="my-4"></v-divider>
-                <div class="d-flex align-center mb-2">
-                  <h3 class="text-h6 font-weight-medium">使用者人數方案</h3>
+                <div class="form-section d-flex align-center">
+                  使用者人數方案
                   <v-spacer></v-spacer>
-                  <v-btn color="primary" @click="addUserTier" prepend-icon="mdi-plus">
-                    新增方案
-                  </v-btn>
+                  <v-btn size="small" variant="text" color="primary" prepend-icon="mdi-plus" @click="addUserTier">新增方案</v-btn>
                 </div>
-
-                <div v-if="!editedItem.userLimitTiers || editedItem.userLimitTiers.length === 0" class="text-center text-grey py-4 my-2" style="border: 2px dashed #ccc; border-radius: 8px;">
-                  尚未設定任何使用者人數方案
-                </div>
-
-                <v-card 
-                  v-for="(tier, index) in editedItem.userLimitTiers" 
-                  :key="index" 
-                  class="mb-3"
-                  variant="outlined"
-                >
-                  <v-card-text>
-                    <v-row align="center">
-                      <v-col cols="6" sm="4" md="2">
-                        <v-text-field
-                          v-model.number="tier.count"
-                          label="人數"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          hide-details="auto"
-                          persistent-hint
-                        ></v-text-field>
-                      </v-col>
-                      <v-col cols="6" sm="4" md="2">
-                        <v-text-field
-                          v-model.number="tier.paymentAmount"
-                          label="付款金額"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          hide-details="auto"
-                        ></v-text-field>
-                      </v-col>
-                      <v-col cols="12" sm="4" md="2">
-                        <v-text-field
-                          v-model="tier.paymentDate"
-                          label="付款日期"
-                          type="date"
-                          variant="outlined"
-                          density="compact"
-                          hide-details="auto"
-                        ></v-text-field>
-                      </v-col>
-                      <v-col cols="12" sm="6" md="2">
-                        <v-text-field
-                          v-model="tier.startDate"
-                          label="啟用日期*"
-                          type="date"
-                          variant="outlined"
-                          density="compact"
-                          hide-details="auto"
-                          :rules="rules.required"
-                        ></v-text-field>
-                      </v-col>
-                      <v-col cols="12" sm="6" md="2">
-                        <v-text-field
-                          v-model="tier.endDate"
-                          label="停用日期*"
-                          type="date"
-                          variant="outlined"
-                          density="compact"
-                          hide-details="auto"
-                          :rules="rules.required"
-                        ></v-text-field>
-                      </v-col>
-                      <v-col cols="12" md="1" class="text-center">
-                        <v-btn icon="mdi-delete" color="error" variant="text" @click="removeUserTier(index)"></v-btn>
-                      </v-col>
-                    </v-row>
-                  </v-card-text>
-                </v-card>
-              </v-col>
-              
-              <v-col cols="12">
-                <v-divider class="my-4"></v-divider>
-                <div class="d-flex align-center mb-2">
-                  <h3 class="text-h6 font-weight-medium">繳款紀錄</h3>
-                  <v-spacer></v-spacer>
-                  <v-btn color="primary" @click="addPaymentRecord" prepend-icon="mdi-plus">
-                    新增繳款紀錄
-                  </v-btn>
-                </div>
-
-                <div v-if="!editedItem.paymentRecords || editedItem.paymentRecords.length === 0"
-                     class="text-center text-grey py-4 my-2" style="border: 2px dashed #ccc; border-radius: 8px;">
-                  尚未建立任何繳款紀錄
-                </div>
-
-                <v-card
-                  v-for="(rec, index) in editedItem.paymentRecords"
-                  :key="rec.id || index"
-                  class="mb-3"
-                  variant="outlined"
-                >
-                  <v-card-text>
-                    <div class="d-flex align-center mb-2">
-                      <v-chip :color="paymentRecordStatus(rec).color" size="small" label>
-                        {{ paymentRecordStatus(rec).text }}
-                      </v-chip>
-                      <span v-if="remindersSentText(rec)" class="text-caption text-grey ms-3">
-                        {{ remindersSentText(rec) }}
-                      </span>
-                      <v-spacer></v-spacer>
-                      <v-btn icon="mdi-delete" color="error" variant="text" density="comfortable" @click="removePaymentRecord(index)"></v-btn>
-                    </div>
-                    <v-row align="center">
-                      <v-col cols="12" sm="6" md="3">
-                        <v-text-field
-                          v-model="rec.agreedDate"
-                          label="約定繳款日期*"
-                          type="date"
-                          variant="outlined"
-                          density="compact"
-                          hide-details="auto"
-                          :rules="rules.required"
-                        ></v-text-field>
-                      </v-col>
-                      <v-col cols="12" sm="6" md="3">
-                        <v-text-field
-                          v-model="rec.paidDate"
-                          label="繳款日期 (實際繳款日)"
-                          type="date"
-                          variant="outlined"
-                          density="compact"
-                          hide-details="auto"
-                          clearable
-                        ></v-text-field>
-                      </v-col>
-                      <v-col cols="12" sm="6" md="3">
-                        <v-text-field
-                          v-model.number="rec.amount"
-                          label="金額"
-                          type="number"
-                          variant="outlined"
-                          density="compact"
-                          hide-details="auto"
-                          prefix="$"
-                        ></v-text-field>
-                      </v-col>
-                      <v-col cols="12" sm="6" md="3">
-                        <v-checkbox
-                          v-model="rec.invoiceIssued"
-                          label="已開發票請款"
-                          density="compact"
-                          hide-details
-                          color="primary"
-                        ></v-checkbox>
-                      </v-col>
-                      <v-col cols="12">
-                        <v-text-field
-                          v-model="rec.note"
-                          label="備註"
-                          variant="outlined"
-                          density="compact"
-                          hide-details="auto"
-                          clearable
-                        ></v-text-field>
-                      </v-col>
-                    </v-row>
-                  </v-card-text>
-                </v-card>
-              </v-col>
-
-              <v-col cols="12">
-                <v-divider class="my-4"></v-divider>
-                <h3 class="text-h6 font-weight-medium mb-2">附件資料 (PDF / 圖檔)</h3>
-
-                <v-file-input
-                  v-model="pendingAttachmentFiles"
-                  label="新增附件 (可多選，單檔上限 7MB)"
-                  accept="image/png, image/jpeg, image/gif, image/webp, application/pdf"
-                  prepend-icon="mdi-paperclip"
-                  variant="outlined"
-                  density="compact"
-                  multiple
-                  chips
-                  clearable
-                ></v-file-input>
-
-                <div v-if="(editedItem.attachments || []).length === 0 && pendingAttachmentFiles.length === 0"
-                     class="text-center text-grey py-4 my-2" style="border: 2px dashed #ccc; border-radius: 8px;">
-                  尚無附件資料
-                </div>
-
-                <v-card
-                  v-for="(att, index) in editedItem.attachments"
-                  :key="att.storagePath || index"
-                  class="mb-2"
-                  variant="outlined"
-                >
-                  <v-card-text class="d-flex align-center py-2">
-                    <v-avatar
-                      v-if="isImageAttachment(att)"
-                      size="48"
-                      rounded
-                      class="me-3 attachment-clickable"
-                      style="border: 1px solid #e0e0e0;"
-                      @click="openPreview(att)"
-                    >
-                      <v-img :src="att.url" cover></v-img>
-                    </v-avatar>
-                    <v-icon
-                      v-else
-                      color="red-darken-2"
-                      size="48"
-                      class="me-3 attachment-clickable"
-                      @click="openPreview(att)"
-                    >mdi-file-pdf-box</v-icon>
-                    <div class="flex-grow-1 attachment-clickable" style="min-width: 0;" @click="openPreview(att)">
-                      <div class="text-body-2 text-truncate">{{ att.name }}</div>
-                      <div class="text-caption text-grey">
-                        {{ formatFileSize(att.size) }}
-                        <span v-if="att.uploadedAt"> · {{ att.uploadedAt.split('T')[0] }}</span>
-                      </div>
-                    </div>
-                    <v-btn icon="mdi-eye" variant="text" color="primary" @click="openPreview(att)"></v-btn>
-                    <v-btn icon="mdi-delete" variant="text" color="error" @click="markAttachmentForDelete(index)"></v-btn>
-                  </v-card-text>
-                </v-card>
-
-                <v-card
-                  v-for="(file, index) in pendingAttachmentFiles"
-                  :key="'pending-' + index"
-                  class="mb-2"
-                  variant="outlined"
-                  color="blue-lighten-5"
-                >
-                  <v-card-text class="d-flex align-center py-2">
-                    <v-icon :color="file.type === 'application/pdf' ? 'red-darken-2' : 'primary'" size="48" class="me-3">
-                      {{ file.type === 'application/pdf' ? 'mdi-file-pdf-box' : 'mdi-image' }}
-                    </v-icon>
-                    <div class="flex-grow-1" style="min-width: 0;">
-                      <div class="text-body-2 text-truncate">{{ file.name }}</div>
-                      <div class="text-caption text-grey">{{ formatFileSize(file.size) }} · 待上傳 (儲存時上傳)</div>
-                    </div>
-                    <v-btn icon="mdi-close" variant="text" @click="removePendingFile(index)"></v-btn>
-                  </v-card-text>
-                </v-card>
-
-                <div v-if="attachmentsToDelete.length > 0" class="text-caption text-red mt-1">
-                  已標記刪除 {{ attachmentsToDelete.length }} 個附件，將於儲存時移除。
+                <div
+                  v-if="!editedItem.userLimitTiers || editedItem.userLimitTiers.length === 0"
+                  class="text-center text-grey py-3"
+                  style="border: 2px dashed #ccc; border-radius: 8px;"
+                >尚未設定</div>
+                <div v-for="(tier, index) in editedItem.userLimitTiers" :key="index" class="d-flex flex-wrap ga-2 align-center mb-2">
+                  <v-text-field v-model.number="tier.count" label="人數" type="number" variant="outlined" density="compact" hide-details style="max-width: 100px;"></v-text-field>
+                  <v-text-field v-model="tier.startDate" label="啟用日期" type="date" variant="outlined" density="compact" hide-details style="max-width: 170px;"></v-text-field>
+                  <v-text-field v-model="tier.endDate" label="停用日期" type="date" variant="outlined" density="compact" hide-details style="max-width: 170px;"></v-text-field>
+                  <v-chip v-if="tier.cycleId" size="x-small" label>系統啟用</v-chip>
+                  <v-btn icon="mdi-delete" color="error" variant="text" size="small" @click="removeUserTier(index)"></v-btn>
                 </div>
               </v-col>
+            </template>
 
-              <v-col cols="12"><v-textarea v-model="editedItem.remarks" label="備註" rows="2"></v-textarea></v-col>
-            </v-row>
-          </v-container>
-          <small>* 為必填欄位</small>
+            <v-col cols="12">
+              <div class="form-section">附件</div>
+              <AttachmentField
+                v-model="editedItem.attachments"
+                :path-prefix="`subscriptions/${editedItem.projectId || 'misc'}/attachments`"
+                :project-id="editedItem.projectId"
+              />
+            </v-col>
+
+            <v-col cols="12" class="mt-2">
+              <v-textarea v-model="editedItem.remarks" label="備註" rows="2" auto-grow variant="outlined" density="compact" hide-details></v-textarea>
+            </v-col>
+          </v-row>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn color="blue-darken-1" variant="text" @click="closeDialog">取消</v-btn>
-          <v-btn color="blue-darken-1" variant="text" @click="save" :loading="saving">儲存</v-btn>
+          <v-btn color="blue-darken-1" variant="flat" @click="save" :loading="saving">{{ isEditing ? '儲存' : '建立並開始報價' }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
     <v-dialog v-model="deleteDialog" persistent max-width="400">
-        <v-card>
-          <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
+      <v-card>
+        <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
           <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
           確認刪除訂閱
         </v-card-title>
-          <v-card-text>
-            您確定要刪除這筆訂閱紀錄嗎？<br>
-            <br>
-            <strong>建案:</strong> {{ itemToDelete.projectName }} <br>
-            <strong>系統:</strong> {{ itemToDelete.systemFunction }} <br>
-            <br>
-            此操作無法復原。
-          </v-card-text>
-          <v-card-actions>
-            <v-spacer></v-spacer>
-            <v-btn text @click="closeDeleteDialog">取消</v-btn>
-            <v-btn color="error" text @click="confirmDelete" :loading="saving">確認刪除</v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
-
-    <v-dialog v-model="previewDialog" max-width="960px">
-      <v-card>
-        <v-toolbar density="compact" color="#004383" dark>
-          <v-toolbar-title class="text-body-1">{{ previewAttachment?.name }}</v-toolbar-title>
-          <v-spacer></v-spacer>
-          <v-btn icon="mdi-open-in-new" variant="text" @click="openInNewTab(previewAttachment?.url)"></v-btn>
-          <v-btn icon="mdi-close" variant="text" @click="previewDialog = false"></v-btn>
-        </v-toolbar>
-        <v-card-text class="pa-0 bg-grey-lighten-3" style="height: 75vh;">
-          <v-img
-            v-if="previewAttachment && isImageAttachment(previewAttachment)"
-            :src="previewAttachment.url"
-            height="100%"
-            contain
-          ></v-img>
-          <iframe
-            v-else-if="previewAttachment"
-            :src="previewAttachment.url"
-            style="width: 100%; height: 100%; border: 0;"
-            title="附件預覽"
-          ></iframe>
+        <v-card-text>
+          您確定要刪除這筆訂閱紀錄嗎？<br>
+          <br>
+          <strong>建案:</strong> {{ itemToDelete.projectName }} <br>
+          <strong>系統:</strong> {{ itemToDelete.systemFunction }} <br>
+          <br>
+          此操作無法復原。
         </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn text @click="closeDeleteDialog">取消</v-btn>
+          <v-btn color="error" text @click="confirmDelete" :loading="saving">確認刪除</v-btn>
+        </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <PipelineDrawer
+      v-model="drawerOpen"
+      :subscription="drawerSub"
+      :first-appointment-date="drawerSub ? earliestAppointmentMap[drawerSub.projectId] || '' : ''"
+      :settings="quoteSettings"
+      :copy-sources="copySources"
+      :user="currentUser"
+      :admin-key="adminKey"
+      :project-id-validator="(id, s) => projectIdError(id, s.projectName, s.id, true)"
+      :assign-project-id="assignProjectId"
+      @updated="loadData"
+      @edit="openEditDialog"
+      @settings-saved="quoteSettings = mergeQuoteSettings($event)"
+    />
+
+    <QuoteSettingsDialog
+      v-model="settingsDialog"
+      :settings="quoteSettings"
+      :admin-key="adminKey"
+      @saved="quoteSettings = mergeQuoteSettings($event)"
+    />
   </v-container>
 </template>
 
 <script setup>
 import { ref, onMounted, computed, nextTick, watch } from 'vue';
+import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
-import { 
-    fetchAllSubscriptions,
-    fetchMasterDataForSubscriptionForm,
-    fetchEarliestValidAppointmentDates,
-    addSubscription,
-    updateSubscription,
-    deleteSubscription,
-    //  1. 從 @/api.js 引入 SalesSettings 在用的函式
-    uploadSalesImage,
-    updateProjectSalesSettings,
-    deleteSalesImage,
+import {
+  fetchAllSubscriptions,
+  fetchMasterDataForSubscriptionForm,
+  fetchEarliestValidAppointmentDates,
+  fetchSubscriptionQuoteSettings,
+  saveSubscriptionFields,
+  addSubscription,
+  updateSubscription,
+  deleteSubscription,
+  uploadSalesImage,
+  updateProjectSalesSettings,
 } from '@/api.js';
-//  2. 移除 firebase/storage 的 import，我們不再需要它
-// import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import {
+  STAGES, PROGRESS_LABELS, legacyToCycles, currentCycleOf, cycleSummary, createCycle,
+  taiwanToday, diffDays,
+} from '@/utils/subscriptionPipeline';
+import PipelineDrawer from '@/components/subscription/PipelineDrawer.vue';
+import QuoteSettingsDialog from '@/components/subscription/QuoteSettingsDialog.vue';
+import AttachmentField from '@/components/subscription/AttachmentField.vue';
+import { mergeQuoteSettings } from '@/components/subscription/quoteDefaults';
 
 const userStore = useUserStore();
 const adminKey = computed(() => userStore.user?.key);
+const currentUser = computed(() => ({ key: userStore.user?.key || '', name: userStore.user?.name || '' }));
+const { mobile } = useDisplay();
 
 const loading = ref(true);
 const saving = ref(false);
@@ -667,45 +420,81 @@ const search = ref('');
 const subscriptions = ref([]);
 const masterData = ref({ projectNames: [], systemFunctions: [] });
 const projects = ref([]);
+const quoteSettings = ref(mergeQuoteSettings(null));
 
-// --- 篩選狀態 ---
+// --- 篩選 ---
 const statusFilter = ref([]);
 const systemFilter = ref([]);
-const paymentFilter = ref([]);
-const statusFilterOptions = ['啟用中', '即將到期', '已到期', '尚未啟用'];
-const paymentFilterOptions = ['已逾期', '未繳款', '已繳清', '無紀錄'];
+const stageFilter = ref('all');
+const statusFilterOptions = ['啟用中', '即將到期', '已到期', '尚未啟用', '未啟用'];
 
 const hasActiveFilters = computed(() =>
-  statusFilter.value.length > 0 || systemFilter.value.length > 0 || paymentFilter.value.length > 0
+  statusFilter.value.length > 0 || systemFilter.value.length > 0 || !!search.value || stageFilter.value !== 'all'
 );
 
 function clearFilters() {
   statusFilter.value = [];
   systemFilter.value = [];
-  paymentFilter.value = [];
+  stageFilter.value = 'all';
   search.value = '';
 }
 
-const filteredSubscriptions = computed(() => {
-  return subscriptions.value.filter(item => {
+function stageMeta(key) {
+  return STAGES.find(s => s.key === key) || STAGES[0];
+}
+
+// --- 最早有效驗屋預約 ---
+const earliestLoading = ref(false);
+const earliestAppointmentMap = ref({});
+
+const rows = computed(() => subscriptions.value.map(sub => {
+  const pipeline = cycleSummary(currentCycleOf(sub.cycles), { firstAppointmentDate: earliestAppointmentMap.value[sub.projectId] || '' });
+  return {
+    ...sub,
+    pipeline,
+    stageRank: STAGES.findIndex(s => s.key === pipeline.stage),
+    nextDate: pipeline.date,
+    earliestAppointmentDate: earliestAppointmentMap.value[sub.projectId] || '',
+  };
+}));
+
+const baseFilteredRows = computed(() => {
+  const keyword = (search.value || '').trim().toLowerCase();
+  return rows.value.filter(item => {
+    if (keyword) {
+      const text = [item.projectName, item.systemFunction, item.contactName, item.contactPhone, item.billTo?.name, item.remarks]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!text.includes(keyword)) return false;
+    }
     if (statusFilter.value.length > 0) {
       const matched = statusFilter.value.some(f =>
         f === '即將到期' ? (item.status || '').startsWith('即將到期') : item.status === f
       );
       if (!matched) return false;
     }
-    if (systemFilter.value.length > 0 && !systemFilter.value.includes(item.systemFunction)) {
-      return false;
-    }
-    if (paymentFilter.value.length > 0 && !paymentFilter.value.includes(paymentCategory(item))) {
-      return false;
-    }
+    if (systemFilter.value.length > 0 && !systemFilter.value.includes(item.systemFunction)) return false;
     return true;
   });
 });
 
-// --- 自訂排序 ---
-// 日期字串比較：空值排最後
+const filteredRows = computed(() => (
+  stageFilter.value === 'all'
+    ? baseFilteredRows.value
+    : baseFilteredRows.value.filter(r => r.pipeline.stage === stageFilter.value)
+));
+
+const stageCards = computed(() => {
+  const list = baseFilteredRows.value;
+  return [
+    { key: 'all', label: '全部', color: '', count: list.length, overdue: list.filter(r => r.pipeline.overdue).length },
+    ...STAGES.map(s => {
+      const inStage = list.filter(r => r.pipeline.stage === s.key);
+      return { ...s, count: inStage.length, overdue: inStage.filter(r => r.pipeline.overdue).length };
+    }),
+  ];
+});
+
+// --- 排序 ---
 function compareDatesEmptyLast(a, b) {
   if (a === b) return 0;
   if (!a) return 1;
@@ -718,364 +507,141 @@ function statusRank(item) {
   if (s.startsWith('即將到期')) return 0;
   if (s === '啟用中') return 1;
   if (s === '尚未啟用') return 2;
-  if (s === '已到期') return 3;
-  return 4;
+  if (s === '未啟用') return 3;
+  if (s === '已到期') return 4;
+  return 5;
 }
-
-// 繳款狀態分類：已逾期 / 未繳款 / 已繳清 / 無紀錄 (供篩選與排序共用)
-function paymentCategory(item) {
-  const recs = item.paymentRecords || [];
-  if (recs.length === 0) return '無紀錄';
-  const unpaid = recs.filter(r => !r.paidDate && r.agreedDate);
-  if (unpaid.length === 0) return '已繳清';
-  return unpaid.some(r => daysUntil(r.agreedDate) < 0) ? '已逾期' : '未繳款';
-}
-
-const paymentCategoryRank = { '已逾期': 0, '未繳款': 1, '已繳清': 2, '無紀錄': 3 };
 
 const headers = [
-    { title: '狀態', key: 'status', width: 110, sortRaw: (a, b) => (statusRank(a) - statusRank(b)) || compareDatesEmptyLast(a.endDate, b.endDate) },
-    { title: '建案名稱', key: 'projectName', minWidth: 110 },
-    { title: '系統功能', key: 'systemFunction', minWidth: 100 },
-    { title: '使用者上限', key: 'currentUserLimit', align: 'center', width: 100 },
-    { title: '訂閱期間', key: 'endDate', minWidth: 190, sort: compareDatesEmptyLast },
-    { title: '訂閱類型', key: 'subscriptionType', width: 90 },
-    { title: '聯絡人', key: 'contactName', minWidth: 110 },
-    { title: '約定繳款日', key: 'nextAgreedDate', minWidth: 120, sort: compareDatesEmptyLast },
-    { title: '繳款紀錄', key: 'paymentRecords', minWidth: 130, sortRaw: (a, b) => (paymentCategoryRank[paymentCategory(a)] - paymentCategoryRank[paymentCategory(b)]) || compareDatesEmptyLast(a.nextAgreedDate, b.nextAgreedDate) },
-    { title: '最早有效預約', key: 'earliestAppointmentDate', minWidth: 140, sort: compareDatesEmptyLast },
-    { title: '備註', key: 'remarks', minWidth: 140 },
-    { title: '附件', key: 'attachments', sortable: false, width: 130 },
-    { title: '操作', key: 'actions', sortable: false, align: 'center', width: 100 },
+  { title: '狀態', key: 'status', width: 110, sortRaw: (a, b) => (statusRank(a) - statusRank(b)) || compareDatesEmptyLast(a.endDate, b.endDate) },
+  { title: '建案名稱', key: 'projectName', minWidth: 130 },
+  { title: '系統功能', key: 'systemFunction', minWidth: 100 },
+  { title: '進度', key: 'stageRank', minWidth: 150, sortRaw: (a, b) => (a.stageRank - b.stageRank) || compareDatesEmptyLast(a.nextDate, b.nextDate) },
+  { title: '下一步', key: 'nextDate', minWidth: 170, sort: compareDatesEmptyLast },
+  { title: '下次跟進', key: 'nextFollowUpDate', minWidth: 110, sort: compareDatesEmptyLast },
+  { title: '使用者上限', key: 'currentUserLimit', align: 'center', width: 100 },
+  { title: '訂閱期間', key: 'endDate', minWidth: 190, sort: compareDatesEmptyLast },
+  { title: '聯絡人', key: 'contactName', minWidth: 110 },
+  { title: '最早有效預約', key: 'earliestAppointmentDate', minWidth: 140, sort: compareDatesEmptyLast },
+  { title: '備註', key: 'remarks', minWidth: 140 },
+  { title: '操作', key: 'actions', sortable: false, align: 'center', width: 100 },
 ];
 
-const dialog = ref(false);
-const deleteDialog = ref(false);
-const isEditing = ref(false);
+function relativeText(dateStr) {
+  const d = diffDays(dateStr, taiwanToday());
+  if (d === null) return { text: '', class: 'text-grey' };
+  if (d < 0) return { text: `逾期 ${-d} 天`, class: 'text-red' };
+  if (d === 0) return { text: '今天', class: 'text-red' };
+  return { text: `${d} 天後`, class: d <= 30 ? 'text-orange' : 'text-grey' };
+}
 
-const defaultItem = {
-    id: null,
-    projectName: '', 
-    projectId: '', 
-    iconUrl: '', 
-    systemFunction: [], 
-    userLimitTiers: [],
-    contactName: '', 
-    contactEmail: '', 
-    contactPhone: '',
-    paymentDate: '', 
-    subscriptionType: '', 
-    startDate: '', 
-    endDate: '', 
-    paymentAmount: '',
-    remarks: '',
-    attachments: [],
-    paymentRecords: []
-};
-const editedItem = ref({ ...defaultItem });
-const itemToDelete = ref({});
-
-const fileToUpload = ref(null);
-const newIconPreview = ref(null);
-
-const iconPreviewUrl = computed(() => {
-  return newIconPreview.value || editedItem.value.iconUrl;
-});
-
-watch(fileToUpload, (newFile) => {
-  if (newIconPreview.value) {
-    URL.revokeObjectURL(newIconPreview.value);
-    newIconPreview.value = null;
+function nextHint(item) {
+  const p = item.pipeline;
+  if (p.date) {
+    const rel = relativeText(p.date);
+    return { text: `${p.hint ? `${p.hint} ` : ''}${p.date} · ${rel.text}`, class: rel.class };
   }
-  if (newFile) {
-    newIconPreview.value = URL.createObjectURL(newFile);
-  }
-});
-
-// --- 繳款紀錄相關 ---
-function taiwanToday() {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+  return { text: p.hint, class: p.overdue ? 'text-red' : 'text-grey' };
 }
 
-function daysUntil(dateStr) {
-  return Math.round((new Date(dateStr).getTime() - new Date(taiwanToday()).getTime()) / 86400000);
+function followUpHint(item) {
+  return relativeText(item.nextFollowUpDate);
 }
 
-function addPaymentRecord() {
-  if (!editedItem.value.paymentRecords) {
-    editedItem.value.paymentRecords = [];
-  }
-  editedItem.value.paymentRecords.push({
-    id: `PAY-${Date.now()}-${editedItem.value.paymentRecords.length}`,
-    agreedDate: taiwanToday(),
-    paidDate: '',
-    amount: 0,
-    invoiceIssued: false,
-    note: '',
-    remindersSent: { d30: null, d14: null, d7: null },
-  });
-}
-
-function removePaymentRecord(index) {
-  editedItem.value.paymentRecords.splice(index, 1);
-}
-
-function paymentRecordStatus(rec) {
-  if (rec.paidDate) return { text: '已繳款', color: 'green' };
-  if (!rec.agreedDate) return { text: '未設定日期', color: 'grey' };
-  const diff = daysUntil(rec.agreedDate);
-  if (diff < 0) return { text: `已逾期 ${-diff} 天`, color: 'red' };
-  if (diff <= 30) return { text: `未繳款 (${diff} 天後到期)`, color: 'orange' };
-  return { text: '未繳款', color: 'blue-grey' };
-}
-
-function remindersSentText(rec) {
-  const sent = rec.remindersSent || {};
-  const labels = [];
-  if (sent.d30) labels.push('30天前');
-  if (sent.d14) labels.push('14天前');
-  if (sent.d7) labels.push('7天前');
-  return labels.length > 0 ? `已寄提醒: ${labels.join('、')}` : '';
-}
-
-// 取得最早一筆「未繳款」的約定繳款日 (無未繳款則回傳空字串)
-function nextAgreedDateOf(recs) {
-  const unpaid = (recs || [])
-    .filter(r => !r.paidDate && r.agreedDate)
-    .sort((a, b) => a.agreedDate.localeCompare(b.agreedDate));
-  return unpaid.length > 0 ? unpaid[0].agreedDate : '';
-}
-
-// 列表摘要：最近一筆未繳款的狀態與金額 (約定日期已獨立成「約定繳款日」欄位)
-function paymentSummary(item) {
-  const recs = item.paymentRecords || [];
-  if (recs.length === 0) return null;
-  const unpaid = recs
-    .filter(r => !r.paidDate && r.agreedDate)
-    .sort((a, b) => a.agreedDate.localeCompare(b.agreedDate));
-  if (unpaid.length === 0) return { text: `已繳清 (${recs.length} 筆)`, color: 'green', sub: '' };
-  const rec = unpaid[0];
-  const diff = daysUntil(rec.agreedDate);
-  const amt = `$${(Number(rec.amount) || 0).toLocaleString()}`;
-  let text;
-  let color;
-  if (diff < 0) {
-    text = `逾期 ${-diff} 天 · ${amt}`;
-    color = 'red';
-  } else if (diff <= 30) {
-    text = `${diff} 天後 · ${amt}`;
-    color = 'orange';
-  } else {
-    text = `未繳 · ${amt}`;
-    color = 'blue-grey';
-  }
-  const sub = unpaid.length > 1 ? `共 ${unpaid.length} 筆未繳` : '';
-  return { text, color, sub };
-}
-
-// 「約定繳款日」欄位下方的提示文字與顏色
-function agreedDateHint(item) {
-  const diff = daysUntil(item.nextAgreedDate);
-  if (diff < 0) return { text: `已逾期 ${-diff} 天`, class: 'text-red' };
-  if (diff === 0) return { text: '今天到期', class: 'text-red' };
-  if (diff <= 30) return { text: `${diff} 天後到期`, class: 'text-orange' };
-  return { text: `${diff} 天後到期`, class: 'text-grey' };
-}
-
-// 「最早有效預約」距今天數文字
 function earliestElapsedText(item) {
-  const diff = daysUntil(item.earliestAppointmentDate);
+  const diff = diffDays(item.earliestAppointmentDate, taiwanToday());
   if (diff > 0) return `${diff} 天後`;
   if (diff === 0) return '就是今天';
   return `已過 ${-diff} 天`;
 }
 
-// 「最早有效預約」與約定繳款日的差異天數文字
-function earliestVsAgreedText(item) {
-  if (!item.nextAgreedDate || !item.earliestAppointmentDate) return '';
-  const diff = Math.round(
-    (new Date(item.nextAgreedDate).getTime() - new Date(item.earliestAppointmentDate).getTime()) / 86400000
-  );
+// 「最早有效預約」與目前款項預計繳款日的差異
+function earliestVsDueText(item) {
+  const due = item.pipeline.installment?.dueDate;
+  if (!due || !item.earliestAppointmentDate) return '';
+  const diff = diffDays(due, item.earliestAppointmentDate);
   if (diff === 0) return '與繳款日同日';
   return diff > 0 ? `繳款日晚 ${diff} 天` : `繳款日早 ${-diff} 天`;
 }
 
-// --- 附件資料相關狀態 ---
-const MAX_ATTACHMENT_SIZE = 7 * 1024 * 1024; // 7MB (Base64 代理上傳的安全上限)
-const pendingAttachmentFiles = ref([]);
-const attachmentsToDelete = ref([]);
-const previewDialog = ref(false);
-const previewAttachment = ref(null);
+// --- 抽屜 ---
+const drawerOpen = ref(false);
+const drawerSubId = ref(null);
+const drawerSub = computed(() => rows.value.find(r => r.id === drawerSubId.value) || null);
 
-// v-file-input 清空時可能回傳 null，統一正規化為陣列
-watch(pendingAttachmentFiles, (val) => {
-  if (!val) pendingAttachmentFiles.value = [];
+function openDrawer(item) {
+  drawerSubId.value = item.id;
+  drawerOpen.value = true;
+}
+
+// 報價單「從其他報價複製」來源
+const copySources = computed(() => {
+  const list = [];
+  subscriptions.value.forEach(s => {
+    s.cycles.forEach(c => {
+      if (c.quote) {
+        list.push({ title: `${s.projectName} · ${s.systemFunction} · 第${c.no}輪 · ${c.quote.date}`, quote: c.quote });
+      }
+    });
+  });
+  return list.sort((a, b) => (b.quote.date || '').localeCompare(a.quote.date || ''));
 });
 
-function isImageAttachment(att) {
-  if (att?.contentType) return att.contentType.startsWith('image/');
-  return /\.(png|jpe?g|gif|webp)(\?|$)/i.test(att?.url || '');
+// --- 資料載入 ---
+function userLimitOf(tiers) {
+  const today = taiwanToday();
+  return (tiers || []).reduce((sum, t) => (
+    t.startDate && t.endDate && t.startDate <= today && today <= t.endDate ? sum + (Number(t.count) || 0) : sum
+  ), 0);
 }
-
-function formatFileSize(bytes) {
-  if (!bytes && bytes !== 0) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function openPreview(att) {
-  previewAttachment.value = att;
-  previewDialog.value = true;
-}
-
-function openInNewTab(url) {
-  if (url) window.open(url, '_blank');
-}
-
-function markAttachmentForDelete(index) {
-  const [removed] = editedItem.value.attachments.splice(index, 1);
-  if (removed?.storagePath) {
-    attachmentsToDelete.value.push(removed);
-  }
-}
-
-function removePendingFile(index) {
-  pendingAttachmentFiles.value = pendingAttachmentFiles.value.filter((_, i) => i !== index);
-}
-
-const subscriptionTypeOptions = ['月繳', '年繳', '季繳', '試用', '其他'];
-const subscriptionTypeSelection = ref('');
-const otherSubscriptionType = ref('');
-
-
-const rules = {
-    required: [ value => !!value || '此欄位為必填項。' ],
-    requiredArray: [ value => (value && value.length > 0) || '請至少選擇一個項目。' ],
-    email: [ value => !value || /.+@.+\..+/.test(value) || 'E-mail 格式不正確。' ],
-    projectId: [
-      v => !!v || '建案 ID 為必填項。',
-      // ✓ [新增] 即時驗證規則：僅允許半形英文及數字
-      v => /^[a-zA-Z0-9]+$/.test(v) || '僅能輸入半形英文及數字。',
-      v => !projects.value.some(p => p.id === v) || '此建案 ID 已存在，請使用別的 ID。'
-    ],
-};
-
-const isProjectNameExisting = computed(() => {
-  return !!editedItem.value.projectName && projects.value.some(p => p.name === editedItem.value.projectName);
-});
-
-const isProjectIdDisabled = computed(() => {
-  return isEditing.value || isProjectNameExisting.value;
-});
-
-watch(() => editedItem.value.projectName, (newName) => {
-  if (isEditing.value) return;
-
-  const existingProject = projects.value.find(p => p.name === newName);
-  
-  if (existingProject) {
-    editedItem.value.projectId = existingProject.id;
-    editedItem.value.iconUrl = existingProject.iconUrl || '';
-  } else {
-    editedItem.value.projectId = '';
-    editedItem.value.iconUrl = '';
-  }
-});
 
 async function loadData() {
-    if (!adminKey.value) {
-        alert('無法獲取管理者資訊，請重新登入。');
-        return;
-    }
-    loading.value = true;
-    try {
-        const [subs, mData] = await Promise.all([
-            fetchAllSubscriptions(adminKey.value),
-            fetchMasterDataForSubscriptionForm(adminKey.value)
-        ]);
-        
-        subscriptions.value = subs.map(sub => {
-          const newSub = { ...sub };
+  if (!adminKey.value) {
+    alert('無法獲取管理者資訊，請重新登入。');
+    return;
+  }
+  if (subscriptions.value.length === 0) loading.value = true;
+  try {
+    const [subs, mData, settings] = await Promise.all([
+      fetchAllSubscriptions(adminKey.value),
+      fetchMasterDataForSubscriptionForm(adminKey.value),
+      fetchSubscriptionQuoteSettings().catch(() => null),
+    ]);
 
-          // --- 計算 durationDays ---
-          if (sub.startDate && sub.endDate) {
-            const startDate = new Date(sub.startDate);
-            const endDate = new Date(sub.endDate);
-            if (!isNaN(startDate) && !isNaN(endDate)) {
-              const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
-              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-              newSub.durationDays = diffDays;
-            } else {
-              newSub.durationDays = 'N/A';
-            }
-          } else {
-            newSub.durationDays = 'N/A';
-          }
+    subscriptions.value = subs.map(sub => {
+      const cycles = legacyToCycles(sub);
+      const days = sub.startDate && sub.endDate ? (diffDays(sub.endDate, sub.startDate) + 1) : null;
+      return {
+        ...sub,
+        billTo: { name: '', taxId: '', ...(sub.billTo || {}) },
+        // 無任何紀錄的訂閱給一個固定 id 的第 1 輪，首次操作時寫入
+        cycles: cycles.length ? cycles : [{ ...createCycle(1), id: 'CYC-1' }],
+        durationDays: days,
+        currentUserLimit: userLimitOf(sub.userLimitTiers),
+      };
+    });
 
-          // --- 計算 currentUserLimit ---
-          const tiers = sub.userLimitTiers || [];
-          if (tiers.length > 0) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0); 
+    projects.value = mData.projects;
+    const pendingNames = subs.map(s => s.projectName).filter(Boolean);
+    masterData.value = {
+      projectNames: [...new Set([...mData.projects.map(p => p.name), ...pendingNames])],
+      systemFunctions: mData.systemFunctions,
+    };
+    quoteSettings.value = mergeQuoteSettings(settings);
 
-            let effectiveLimit = 0;
-            tiers.forEach(tier => {
-              if (tier.startDate && tier.endDate) {
-                const tierStartDate = new Date(tier.startDate);
-                const tierEndDate = new Date(tier.endDate);
-                tierStartDate.setHours(0, 0, 0, 0);
-                tierEndDate.setHours(0, 0, 0, 0);
-
-                if (today >= tierStartDate && today <= tierEndDate) {
-                  effectiveLimit += Number(tier.count) || 0;
-                }
-              }
-            });
-            newSub.currentUserLimit = effectiveLimit;
-          } else {
-            newSub.currentUserLimit = 0;
-          }
-
-          // --- 預先計算排序/篩選用欄位 ---
-          newSub.nextAgreedDate = nextAgreedDateOf(sub.paymentRecords);
-          // 先套用已查得的最早預約日 (重新載入時不閃爍)，未查過則為空字串
-          newSub.earliestAppointmentDate = earliestAppointmentMap.value[sub.projectId] || '';
-          return newSub;
-        });
-
-        projects.value = mData.projects; 
-        masterData.value = {
-            projectNames: mData.projects.map(p => p.name), 
-            systemFunctions: mData.systemFunctions
-        };
-
-        // 背景補查各建案最早有效預約日 (不阻塞表格顯示)
-        loadEarliestAppointments();
-
-    } catch (error) {
-        console.error("載入資料失敗:", error);
-        alert('載入資料失敗: ' + error.message);
-    } finally {
-        loading.value = false;
-    }
+    loadEarliestAppointments();
+  } catch (error) {
+    console.error('載入資料失敗:', error);
+    alert('載入資料失敗: ' + error.message);
+  } finally {
+    loading.value = false;
+  }
 }
-
-// --- 最早有效驗屋預約 ---
-const earliestLoading = ref(false);
-const earliestAppointmentMap = ref({});
 
 async function loadEarliestAppointments() {
   earliestLoading.value = true;
   try {
-    const map = await fetchEarliestValidAppointmentDates(
-      subscriptions.value.map(s => s.projectId)
-    );
-    earliestAppointmentMap.value = map;
-    subscriptions.value = subscriptions.value.map(s => ({
-      ...s,
-      earliestAppointmentDate: map[s.projectId] || '',
-    }));
+    earliestAppointmentMap.value = await fetchEarliestValidAppointmentDates(subscriptions.value.map(s => s.projectId));
   } catch (e) {
     console.warn('載入最早有效預約日失敗:', e);
   } finally {
@@ -1085,327 +651,370 @@ async function loadEarliestAppointments() {
 
 onMounted(loadData);
 
+// --- 訂閱資料 Dialog ---
+const dialog = ref(false);
+const deleteDialog = ref(false);
+const isEditing = ref(false);
+const settingsDialog = ref(false);
+
+const defaultItem = {
+  id: null,
+  projectName: '',
+  projectId: '',
+  iconUrl: '',
+  systemFunction: [],
+  userLimitTiers: [],
+  contactName: '',
+  contactEmail: '',
+  contactPhone: '',
+  billTo: { name: '', taxId: '' },
+  subscriptionType: '',
+  startDate: '',
+  endDate: '',
+  remarks: '',
+  attachments: [],
+};
+const editedItem = ref({ ...defaultItem });
+const itemToDelete = ref({});
+
+const fileToUpload = ref(null);
+const newIconPreview = ref(null);
+const iconPreviewUrl = computed(() => newIconPreview.value || editedItem.value.iconUrl);
+
+watch(fileToUpload, (newFile) => {
+  if (newIconPreview.value) {
+    URL.revokeObjectURL(newIconPreview.value);
+    newIconPreview.value = null;
+  }
+  const file = Array.isArray(newFile) ? newFile[0] : newFile;
+  if (file) newIconPreview.value = URL.createObjectURL(file);
+});
+
+const subscriptionTypeOptions = ['月繳', '年繳', '季繳', '試用', '其他'];
+const subscriptionTypeSelection = ref('');
+const otherSubscriptionType = ref('');
+
+// 已建立的建案，或尚在報價中 (僅存在於訂閱) 的建案
+function knownProjectByName(name) {
+  const project = projects.value.find(p => p.name === name);
+  if (project) return { id: project.id, iconUrl: project.iconUrl || '' };
+  const pending = subscriptions.value.find(s => s.projectName === name && s.projectId);
+  return pending ? { id: pending.projectId, iconUrl: pending.projectIconUrl || '' } : null;
+}
+
+// 新建案的建案 ID 檢核；未啟用前可留空 (required 用於系統啟用時)
+function projectIdError(id, projectName, selfId = null, required = false) {
+  if (!id) return required ? '請填寫建案 ID' : '';
+  if (!/^[a-zA-Z0-9]+$/.test(id)) return '建案 ID 僅能輸入半形英文及數字。';
+  const project = projects.value.find(p => p.id === id);
+  if (project && project.name !== projectName) return `此建案 ID 已被「${project.name}」使用。`;
+  if (subscriptions.value.some(s => s.id !== selfId && s.projectId === id && s.projectName !== projectName)) {
+    return '此建案 ID 已被其他建案使用。';
+  }
+  return '';
+}
+
+// 同建案名稱、尚未啟用且未設定 (或沿用舊暫定) ID 的其他訂閱一起套用
+async function assignProjectId(sub, projectId, oldId = '') {
+  const siblings = subscriptions.value.filter(s => (
+    s.id !== sub.id && s.projectName === sub.projectName && !s.startDate
+    && (!s.projectId || (oldId && s.projectId === oldId))
+  ));
+  await Promise.all(siblings.map(s => saveSubscriptionFields(s.id, { projectId }, adminKey.value)));
+}
+
+const rules = {
+  required: [value => !!value || '此欄位為必填項。'],
+  requiredArray: [value => (value && value.length > 0) || '請至少選擇一個項目。'],
+  email: [value => !value || /.+@.+\..+/.test(value) || 'E-mail 格式不正確。'],
+  projectId: [v => projectIdError(v, editedItem.value.projectName, editedItem.value.id) || true],
+};
+
+// 編輯時：已啟用或建案已建立則鎖定；新增時：既有建案自動帶入並鎖定
+const originalProjectId = ref('');
+const originalActivated = ref(false);
+const isProjectIdDisabled = computed(() => {
+  if (isEditing.value) {
+    return originalActivated.value || (!!originalProjectId.value && projects.value.some(p => p.id === originalProjectId.value));
+  }
+  return !!knownProjectByName(editedItem.value.projectName);
+});
+
+watch(() => editedItem.value.projectName, (newName) => {
+  if (isEditing.value) return;
+  const known = knownProjectByName(newName);
+  editedItem.value.projectId = known ? known.id : '';
+  editedItem.value.iconUrl = known ? known.iconUrl : '';
+});
+
 function openEditDialog(item) {
-    isEditing.value = !!item;
+  isEditing.value = !!item;
+  fileToUpload.value = null;
+  if (newIconPreview.value) {
+    URL.revokeObjectURL(newIconPreview.value);
+    newIconPreview.value = null;
+  }
 
-    fileToUpload.value = null;
-    if (newIconPreview.value) {
-      URL.revokeObjectURL(newIconPreview.value);
-      newIconPreview.value = null;
+  if (item) {
+    editedItem.value = {
+      ...item,
+      billTo: { name: '', taxId: '', ...(item.billTo || {}) },
+      userLimitTiers: (item.userLimitTiers || []).map(t => ({ ...t })),
+      attachments: (item.attachments || []).map(att => ({ ...att })),
+    };
+    if (typeof editedItem.value.systemFunction === 'string') {
+      editedItem.value.systemFunction = [editedItem.value.systemFunction];
     }
+    editedItem.value.iconUrl = knownProjectByName(item.projectName)?.iconUrl || item.projectIconUrl || '';
+    originalProjectId.value = item.projectId || '';
+    originalActivated.value = !!item.startDate;
+  } else {
+    editedItem.value = { ...defaultItem, billTo: { name: '', taxId: '' }, userLimitTiers: [], attachments: [], systemFunction: [] };
+  }
 
-    pendingAttachmentFiles.value = [];
-    attachmentsToDelete.value = [];
-
-    if (item) {
-        editedItem.value = {
-          ...item,
-          userLimitTiers: item.userLimitTiers || [],
-          attachments: (item.attachments || []).map(att => ({ ...att })),
-          paymentRecords: (item.paymentRecords || []).map(rec => ({
-            ...rec,
-            remindersSent: { ...(rec.remindersSent || { d30: null, d14: null, d7: null }) },
-          })),
-        };
-        if (typeof editedItem.value.systemFunction === 'string') {
-            editedItem.value.systemFunction = [editedItem.value.systemFunction];
-        }
-        const project = projects.value.find(p => p.name === item.projectName);
-        editedItem.value.iconUrl = project ? project.iconUrl : '';
-    } else {
-        // 展開時給新的陣列，避免多次開啟 Dialog 共用 defaultItem 的同一個陣列參考
-        editedItem.value = { ...defaultItem, userLimitTiers: [], attachments: [], paymentRecords: [] };
-    }
-    
-    const currentType = item ? item.subscriptionType : '';
-    if (currentType && subscriptionTypeOptions.includes(currentType)) {
-        subscriptionTypeSelection.value = currentType;
-        otherSubscriptionType.value = '';
-    } else if (currentType) {
-        subscriptionTypeSelection.value = '其他';
-        otherSubscriptionType.value = currentType;
-    } else {
-        subscriptionTypeSelection.value = '';
-        otherSubscriptionType.value = '';
-    }
-    
-    dialog.value = true;
+  const currentType = item ? item.subscriptionType : '';
+  if (currentType && subscriptionTypeOptions.includes(currentType)) {
+    subscriptionTypeSelection.value = currentType;
+    otherSubscriptionType.value = '';
+  } else if (currentType) {
+    subscriptionTypeSelection.value = '其他';
+    otherSubscriptionType.value = currentType;
+  } else {
+    subscriptionTypeSelection.value = '';
+    otherSubscriptionType.value = '';
+  }
+  dialog.value = true;
 }
 
 function closeDialog() {
-    dialog.value = false;
+  dialog.value = false;
 }
 
 function openDeleteDialog(item) {
-    itemToDelete.value = { ...item };
-    deleteDialog.value = true;
+  itemToDelete.value = { ...item };
+  deleteDialog.value = true;
 }
 
 function closeDeleteDialog() {
-    deleteDialog.value = false;
-    nextTick(() => {
-        itemToDelete.value = {};
-    });
+  deleteDialog.value = false;
+  nextTick(() => {
+    itemToDelete.value = {};
+  });
 }
 
 function addUserTier() {
-  if (!editedItem.value.userLimitTiers) {
-    editedItem.value.userLimitTiers = [];
-  }
-  const today = new Date().toISOString().split('T')[0];
-  editedItem.value.userLimitTiers.push({
-    count: 1,
-    paymentAmount: 0,       
-    paymentDate: today,     
-    startDate: today,
-    endDate: today,
-  });
+  const today = taiwanToday();
+  editedItem.value.userLimitTiers.push({ count: 1, paymentAmount: 0, paymentDate: today, startDate: today, endDate: today });
 }
 
 function removeUserTier(index) {
   editedItem.value.userLimitTiers.splice(index, 1);
 }
 
-//  3. 新增 fileToBase64 輔助函式 (同 SalesSettings.vue)
 const fileToBase64 = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.readAsDataURL(file);
-  reader.onload = () => {
-    const base64String = reader.result.split(',')[1];
-    resolve(base64String);
-  };
+  reader.onload = () => resolve(reader.result.split(',')[1]);
   reader.onerror = error => reject(error);
 });
 
-//  4. 修改 save 函式以使用 Base64 代理上傳
+// 表格衍生欄位，不寫入 Firestore
+const DERIVED_FIELDS = [
+  'pipeline', 'stageRank', 'nextDate', 'earliestAppointmentDate', 'nextAgreedDate',
+  'status', 'color', 'durationDays', 'currentUserLimit', 'iconUrl', 'cycles',
+];
+
 async function save() {
-    saving.value = true;
-    let uploadedIconUrl = null; 
-
-    try {
-        // ✓ [新增] 儲存前強制驗證建案 ID 格式 (防止用戶忽略錯誤提示硬送出)
-        if (!isProjectIdDisabled.value) {
-             if (!editedItem.value.projectId) {
-                 throw new Error('建案 ID 為必填項。');
-             }
-             if (!/^[a-zA-Z0-9]+$/.test(editedItem.value.projectId)) {
-                 throw new Error('建案 ID 僅能輸入半形英文及數字。');
-             }
-        }
-
-        // --- 步驟 1: 處理圖檔上傳 (使用 Base64 代理) ---
-        if (fileToUpload.value) {
-            const projectId = editedItem.value.projectId;
-            if (!projectId) {
-                throw new Error('必須先指定建案 ID 才能上傳圖檔。');
-            }
-            
-            const fileExtension = fileToUpload.value.name.split('.').pop();
-            const storagePath = `projects/${projectId}/icon.${fileExtension}`;
-            
-            console.log(`正在轉換 Base64 並上傳至: ${storagePath}`);
-
-            const base64 = await fileToBase64(fileToUpload.value);
-
-            // 呼叫 SalesSettings 使用的 API 函式
-            const { downloadURL } = await uploadSalesImage(
-                storagePath,
-                fileToUpload.value.name,
-                base64,
-                projectId
-            );
-            
-            uploadedIconUrl = downloadURL;
-            console.log('圖檔上傳成功, URL:', uploadedIconUrl);
-        }
-
-        // --- 步驟 1.5: 處理附件上傳 (PDF / 圖檔，使用 Base64 代理) ---
-        const filesToAttach = pendingAttachmentFiles.value || [];
-        if (filesToAttach.length > 0) {
-            const projectId = editedItem.value.projectId;
-            if (!projectId) {
-                throw new Error('必須先指定建案 ID 才能上傳附件。');
-            }
-            const oversized = filesToAttach.find(f => f.size > MAX_ATTACHMENT_SIZE);
-            if (oversized) {
-                throw new Error(`附件「${oversized.name}」超過 7MB 上限，請壓縮後再上傳。`);
-            }
-
-            for (const [index, file] of filesToAttach.entries()) {
-                const safeName = file.name.replace(/[^\w.\-]/g, '_');
-                const storagePath = `subscriptions/${projectId}/attachments/${Date.now()}_${index}_${safeName}`;
-                const base64 = await fileToBase64(file);
-                const { downloadURL } = await uploadSalesImage(
-                    storagePath,
-                    file.name,
-                    base64,
-                    projectId,
-                    file.type || 'application/octet-stream'
-                );
-                editedItem.value.attachments.push({
-                    name: file.name,
-                    url: downloadURL,
-                    storagePath: storagePath,
-                    contentType: file.type || '',
-                    size: file.size,
-                    uploadedAt: new Date().toISOString(),
-                });
-            }
-            console.log(`成功上傳 ${filesToAttach.length} 個附件。`);
-            // 上傳完成立即清空待上傳清單，避免儲存失敗重試時重複上傳
-            pendingAttachmentFiles.value = [];
-        }
-
-        // --- 步驟 2: 處理訂閱資料儲存 (既有邏輯) ---
-        // ... (以下邏輯保持不變)
-        const basePayload = { ...editedItem.value };
-        // 剔除表格顯示用的衍生欄位，避免寫入 Firestore
-        delete basePayload.nextAgreedDate;
-        delete basePayload.earliestAppointmentDate;
-        basePayload.attachments = editedItem.value.attachments || [];
-
-        // 正規化繳款紀錄：剔除無約定日期者、金額轉數字、保留 remindersSent、依約定日期排序
-        basePayload.paymentRecords = (editedItem.value.paymentRecords || [])
-          .filter(rec => rec.agreedDate)
-          .map((rec, idx) => ({
-            id: rec.id || `PAY-${Date.now()}-${idx}`,
-            agreedDate: rec.agreedDate,
-            paidDate: rec.paidDate || '',
-            amount: Number(rec.amount) || 0,
-            invoiceIssued: !!rec.invoiceIssued,
-            note: rec.note || '',
-            remindersSent: rec.remindersSent || { d30: null, d14: null, d7: null },
-          }))
-          .sort((a, b) => a.agreedDate.localeCompare(b.agreedDate));
-
-        if (basePayload.userLimitTiers && Array.isArray(basePayload.userLimitTiers)) {
-          basePayload.userLimitTiers = basePayload.userLimitTiers.map(tier => ({
-            ...tier,
-            count: Number(tier.count) || 0,
-            paymentAmount: Number(tier.paymentAmount) || 0,
-            startDate: tier.startDate ? new Date(tier.startDate).toISOString().split('T')[0] : '',
-            endDate: tier.endDate ? new Date(tier.endDate).toISOString().split('T')[0] : '',
-          })).filter(tier => tier.startDate && tier.endDate);
-        }
-
-        if (subscriptionTypeSelection.value === '其他') {
-            basePayload.subscriptionType = otherSubscriptionType.value;
-        } else {
-            basePayload.subscriptionType = subscriptionTypeSelection.value;
-        }
-
-        if (isEditing.value) {
-            const payloadData = { ...basePayload };
-            payloadData.systemFunction = basePayload.systemFunction[0] || ''; 
-            await updateSubscription(payloadData.id, payloadData, adminKey.value);
-            alert('訂閱資料儲存成功！');
-        } else {
-            const selectedSystems = basePayload.systemFunction;
-            if (!selectedSystems || selectedSystems.length === 0) {
-                throw new Error('請至少選擇一個系統功能。');
-            }
-
-            const creationPromises = selectedSystems.map((system, index) => {
-                const payloadData = { ...basePayload, systemFunction: system };
-                const isDuplicate = subscriptions.value.some(sub => 
-                    sub.projectName === payloadData.projectName &&
-                    sub.systemFunction === payloadData.systemFunction &&
-                    (sub.status === '啟用中' || sub.status.startsWith('即將到期'))
-                );
-                if (isDuplicate) {
-                    throw new Error(`錯誤：建案「${payloadData.projectName}」的「${payloadData.systemFunction}」已有一個有效的訂閱。`);
-                }
-                const newId = `SUB-${Date.now()}-${index}`;
-                return addSubscription(newId, payloadData, adminKey.value);
-            });
-            await Promise.all(creationPromises);
-            alert(`成功新增 ${creationPromises.length} 筆訂閱！`);
-        }
-
-        // --- 步驟 2.5: 刪除已標記移除的附件 (Storage 檔案) ---
-        if (attachmentsToDelete.value.length > 0) {
-            for (const att of attachmentsToDelete.value) {
-                try {
-                    // 附件無 salesImages 紀錄，docId 僅為佔位 (後端刪除不存在的文件為 no-op)
-                    await deleteSalesImage(`subAttach_${Date.now()}`, att.storagePath);
-                } catch (delError) {
-                    // 刪除 Storage 檔案失敗不影響訂閱資料儲存結果
-                    console.warn('刪除附件檔案失敗 (不影響儲存):', att.storagePath, delError);
-                }
-            }
-            attachmentsToDelete.value = [];
-        }
-        pendingAttachmentFiles.value = [];
-
-        // --- 步驟 3: 處理建案圖示 URL 更新 (使用 SalesSettings 的 API) ---
-        if (uploadedIconUrl) {
-            const projectId = editedItem.value.projectId;
-            console.log(`正在更新 projects/${projectId} 的 iconUrl...`);
-            
-            // 呼叫 SalesSettings 用來更新專案的 API 函式
-            await updateProjectSalesSettings(projectId, { 
-                iconUrl: uploadedIconUrl 
-            });
-            
-            alert('建案圖示已同步更新！');
-        }
-
-        closeDialog();
-        await loadData(); // 重新載入所有資料
-
-    } catch (error) {
-        console.error("儲存失敗:", error);
-        alert('儲存失敗: ' + error.message);
-    } finally {
-        saving.value = false;
+  saving.value = true;
+  try {
+    if (!editedItem.value.projectName) throw new Error('請填寫建案名稱。');
+    const projectId = (editedItem.value.projectId || '').trim();
+    editedItem.value.projectId = projectId;
+    if (!isProjectIdDisabled.value) {
+      const idError = projectIdError(projectId, editedItem.value.projectName, editedItem.value.id);
+      if (idError) throw new Error(idError);
     }
+    const projectExists = !!projectId && projects.value.some(p => p.id === projectId);
+
+    // 建案圖示：建案已存在 → 更新建案；尚未建立 → 暫存於訂閱，啟用時帶入
+    let uploadedIconUrl = null;
+    const iconFile = Array.isArray(fileToUpload.value) ? fileToUpload.value[0] : fileToUpload.value;
+    if (iconFile) {
+      const ext = iconFile.name.split('.').pop();
+      const iconPath = projectId ? `projects/${projectId}/icon.${ext}` : `subscriptions/pending/icon_${Date.now()}.${ext}`;
+      const { downloadURL } = await uploadSalesImage(iconPath, iconFile.name, await fileToBase64(iconFile), projectId || 'subscription');
+      uploadedIconUrl = downloadURL;
+    }
+
+    const basePayload = { ...editedItem.value };
+    DERIVED_FIELDS.forEach(k => delete basePayload[k]);
+    basePayload.attachments = editedItem.value.attachments || [];
+    basePayload.billTo = { ...(basePayload.billTo || {}) };
+    basePayload.userLimitTiers = (basePayload.userLimitTiers || []).map(tier => ({
+      ...tier,
+      count: Number(tier.count) || 0,
+      paymentAmount: Number(tier.paymentAmount) || 0,
+    })).filter(tier => tier.startDate && tier.endDate);
+    basePayload.subscriptionType = subscriptionTypeSelection.value === '其他' ? otherSubscriptionType.value : subscriptionTypeSelection.value;
+    if (uploadedIconUrl && !projectExists) basePayload.projectIconUrl = uploadedIconUrl;
+
+    let openId = null;
+    if (isEditing.value) {
+      basePayload.systemFunction = basePayload.systemFunction[0] || '';
+      await updateSubscription(basePayload.id, basePayload, adminKey.value);
+      if (projectId && projectId !== originalProjectId.value) {
+        await assignProjectId(basePayload, projectId, originalProjectId.value);
+      }
+    } else {
+      const systems = basePayload.systemFunction || [];
+      if (systems.length === 0) throw new Error('請至少選擇一個系統功能。');
+      const duplicate = systems.find(system => subscriptions.value.some(s =>
+        ((projectId && s.projectId === projectId) || s.projectName === basePayload.projectName) && s.systemFunction === system
+      ));
+      if (duplicate) throw new Error(`「${basePayload.projectName}」的「${duplicate}」已有訂閱，續約請在該筆訂閱「開新一輪」。`);
+
+      const stamp = Date.now();
+      await Promise.all(systems.map((system, index) => {
+        const id = `SUB-${stamp}-${index}`;
+        if (index === 0) openId = id;
+        return addSubscription(id, {
+          ...basePayload,
+          systemFunction: system,
+          startDate: '',
+          endDate: '',
+          userLimitTiers: [],
+          cycles: [createCycle(1)],
+        }, adminKey.value);
+      }));
+      if (projectId) await assignProjectId({ id: null, projectName: basePayload.projectName }, projectId);
+    }
+
+    if (uploadedIconUrl && projectExists) {
+      await updateProjectSalesSettings(projectId, { iconUrl: uploadedIconUrl });
+    }
+
+    closeDialog();
+    await loadData();
+    if (openId) openDrawer({ id: openId });
+  } catch (error) {
+    console.error('儲存失敗:', error);
+    alert('儲存失敗: ' + error.message);
+  } finally {
+    saving.value = false;
+  }
 }
 
 async function confirmDelete() {
-    saving.value = true;
-    try {
-        await deleteSubscription(itemToDelete.value.id, adminKey.value);
-        alert('刪除成功！');
-        closeDeleteDialog();
-        await loadData();
-    } catch (error) {
-        console.error("刪除失敗:", error);
-        alert('刪除失敗: ' + error.message);
-    } finally {
-        saving.value = false;
-    }
+  saving.value = true;
+  try {
+    await deleteSubscription(itemToDelete.value.id, adminKey.value);
+    if (drawerSubId.value === itemToDelete.value.id) drawerOpen.value = false;
+    closeDeleteDialog();
+    await loadData();
+  } catch (error) {
+    console.error('刪除失敗:', error);
+    alert('刪除失敗: ' + error.message);
+  } finally {
+    saving.value = false;
+  }
 }
 </script>
 
 <style scoped>
-/* 表頭固定不換行、加深底色 */
 .subscription-table :deep(thead th) {
   white-space: nowrap;
   background-color: #f5f7fa !important;
   font-weight: 600 !important;
 }
-
-/* 儲存格垂直置中，日期/多行資訊欄位靠上下留白 */
 .subscription-table :deep(tbody td) {
   vertical-align: middle;
   padding-top: 6px !important;
   padding-bottom: 6px !important;
 }
-
-/* 編輯訂閱：附件縮圖/檔名可點擊開啟燈箱預覽 */
-.attachment-clickable {
+.subscription-table :deep(tbody tr) {
   cursor: pointer;
 }
-.attachment-clickable:hover {
-  opacity: 0.8;
-}
-
-/* 備註欄：單行截斷，滑鼠移入顯示完整內容 (tooltip) */
 .remarks-cell {
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: default;
+}
+
+/* 階段卡 */
+.stage-cards {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px 4px;
+  overflow-x: auto;
+}
+.stage-card {
+  flex: 1 0 96px;
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #fff;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.stage-card:hover {
+  border-color: #90a4ae;
+}
+.stage-card.is-active {
+  border-color: #004383;
+  background: #eef4fb;
+}
+.stage-card-label {
+  font-size: 12px;
+  color: #546e7a;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.stage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  display: inline-block;
+}
+.stage-card-count {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.stage-card-sub {
+  font-size: 11px;
+  min-height: 15px;
+}
+
+/* 7 段進度條 */
+.progress-bar {
+  display: flex;
+  gap: 2px;
+  width: 112px;
+}
+.progress-bar span {
+  flex: 1;
+  height: 5px;
+  border-radius: 2px;
+  background: #e0e0e0;
+}
+.progress-bar span.is-on {
+  background: #43a047;
+}
+
+.form-section {
+  font-size: 13px;
+  font-weight: 700;
+  color: #004383;
+  margin-top: 8px;
+}
+
+@media (max-width: 959.98px) {
+  /* 避開全站左上角漢堡鈕 */
+  .sub-page {
+    padding-top: 58px;
+  }
 }
 </style>

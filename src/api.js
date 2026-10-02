@@ -2103,7 +2103,11 @@ export async function fetchAllSubscriptions(adminKey) {
     let status = '狀態不明';
     let color = 'grey';
 
-    if (startDateValue && endDateValue) {
+    if (!startDateValue) {
+      // 跟進流程尚未完成「系統啟用」
+      status = '未啟用';
+      color = 'blue-grey';
+    } else if (startDateValue && endDateValue) {
       if (today < startDateValue) {
         status = '尚未啟用';
         color = 'blue-grey';
@@ -2214,12 +2218,8 @@ export async function addSubscription(subscriptionId, subscriptionData, adminKey
     throw new Error("權限不足。");
   }
 
-  //  新增邏輯：如果提供了 projectId 和 projectName，則在 projects 集合中建立或更新對應文件
-  if (subscriptionData.projectId && subscriptionData.projectName) {
-    const projectDocRef = doc(db, "projects", subscriptionData.projectId);
-    // 使用 setDoc + merge:true 可以同時處理新增和更新，確保資料存在
-    await setDoc(projectDocRef, { name: subscriptionData.projectName }, { merge: true });
-  }
+  // 建案文件於「系統啟用」(有啟用日) 時才建立；既有建案則同步名稱
+  await syncSubscriptionProject(subscriptionData.projectId, subscriptionData.projectName, !!subscriptionData.startDate);
 
   const dataToSave = { ...subscriptionData };
   delete dataToSave.id;
@@ -2249,11 +2249,8 @@ export async function updateSubscription(subscriptionId, subscriptionData, admin
     throw new Error("權限不足。");
   }
 
-  //  新增邏輯：更新時也同步更新 projects 集合中的建案名稱，確保一致性
-  if (subscriptionData.projectId && subscriptionData.projectName) {
-    const projectDocRef = doc(db, "projects", subscriptionData.projectId);
-    await setDoc(projectDocRef, { name: subscriptionData.projectName }, { merge: true });
-  }
+  // 同步 projects 集合中的建案名稱；尚未啟用的新建案不建立文件
+  await syncSubscriptionProject(subscriptionData.projectId, subscriptionData.projectName, !!subscriptionData.startDate);
 
   const dataToUpdate = { ...subscriptionData };
   delete dataToUpdate.id;
@@ -2283,6 +2280,145 @@ export async function deleteSubscription(subscriptionId, adminKey) {
   const docRef = doc(db, "subscriptions", subscriptionId);
   await deleteDoc(docRef);
   return { status: 'success' };
+}
+
+/**
+ * [訂閱管理] 同步建案文件：已存在則更新名稱；不存在且 createIfMissing 才建立
+ */
+async function syncSubscriptionProject(projectId, projectName, createIfMissing, extra = {}) {
+  if (!projectId || !projectName) return;
+  const projectDocRef = doc(db, "projects", projectId);
+  const snap = await getDoc(projectDocRef);
+  if (snap.exists()) {
+    if (snap.data().name !== projectName) await updateDoc(projectDocRef, { name: projectName });
+  } else if (createIfMissing) {
+    await setDoc(projectDocRef, { name: projectName, ...extra }, { merge: true });
+  }
+}
+
+/**
+ * [訂閱管理] 系統啟用時建立建案文件 (含暫存圖示)
+ */
+export async function ensureSubscriptionProject(projectId, projectName, iconUrl = '') {
+  await syncSubscriptionProject(projectId, projectName, true, iconUrl ? { iconUrl } : {});
+}
+
+/**
+ * [訂閱管理] 局部更新訂閱欄位 (跟進流程使用)；startDate / endDate 字串轉 Timestamp
+ */
+export async function saveSubscriptionFields(subscriptionId, fields, adminKey) {
+  if (!await isSuperAdmin(adminKey)) {
+    throw new Error("權限不足。");
+  }
+  const data = { ...fields };
+  ['startDate', 'endDate'].forEach(field => {
+    if (field in data) {
+      data[field] = data[field] ? Timestamp.fromDate(new Date(data[field])) : null;
+    }
+  });
+  await updateDoc(doc(db, "subscriptions", subscriptionId), data);
+  return { status: 'success' };
+}
+
+/**
+ * [訂閱管理] 報價單設定 (subscriptionSettings/quote)
+ */
+export async function fetchSubscriptionQuoteSettings() {
+  const snap = await getDoc(doc(db, "subscriptionSettings", "quote"));
+  return snap.exists() ? snap.data() : null;
+}
+
+export async function saveSubscriptionQuoteSettings(data, adminKey) {
+  if (!await isSuperAdmin(adminKey)) {
+    throw new Error("權限不足。");
+  }
+  await setDoc(doc(db, "subscriptionSettings", "quote"), { ...data, updatedAt: serverTimestamp() });
+  return { status: 'success' };
+}
+
+/**
+ * [訂閱管理] 跟進紀錄 (subscriptions/{id}/followups)
+ */
+export async function fetchSubscriptionFollowups(subscriptionId) {
+  const q = query(collection(db, "subscriptions", subscriptionId, "followups"), orderBy("createdAt", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => {
+    const data = d.data();
+    return { id: d.id, ...data, createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || '') };
+  });
+}
+
+// 以最新一筆「非系統」跟進回寫訂閱的下次跟進日與最後跟進摘要
+async function refreshFollowupSummary(subscriptionId) {
+  const list = await fetchSubscriptionFollowups(subscriptionId);
+  const latest = list.find(f => f.type !== '系統');
+  await updateDoc(doc(db, "subscriptions", subscriptionId), {
+    nextFollowUpDate: latest?.nextFollowUpDate || '',
+    lastFollowUpAt: latest?.createdAt || '',
+    lastFollowUpText: latest ? `${latest.type}：${latest.content || ''}`.slice(0, 120) : '',
+  });
+}
+
+export async function addSubscriptionFollowup(subscriptionId, entry) {
+  await addDoc(collection(db, "subscriptions", subscriptionId, "followups"), {
+    type: entry.type || '其他',
+    content: entry.content || '',
+    attachments: entry.attachments || [],
+    nextFollowUpDate: entry.nextFollowUpDate || '',
+    cycleNo: entry.cycleNo || null,
+    createdBy: entry.createdBy || '',
+    createdByName: entry.createdByName || '',
+    createdAt: serverTimestamp(),
+  });
+  if (entry.type !== '系統') await refreshFollowupSummary(subscriptionId);
+}
+
+export async function deleteSubscriptionFollowup(subscriptionId, followupId) {
+  await deleteDoc(doc(db, "subscriptions", subscriptionId, "followups", followupId));
+  await refreshFollowupSummary(subscriptionId);
+}
+
+/**
+ * [訂閱管理] 報價單圖片庫 (subscriptionQuoteImages)；刪除僅移除紀錄，已插入報價單的檔案保留
+ */
+export async function fetchSubscriptionQuoteImages() {
+  const snap = await getDocs(query(collection(db, "subscriptionQuoteImages"), orderBy("createdAt", "desc")));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function addSubscriptionQuoteImage(data) {
+  const ref = await addDoc(collection(db, "subscriptionQuoteImages"), { ...data, createdAt: serverTimestamp() });
+  return ref.id;
+}
+
+export async function updateSubscriptionQuoteImage(imageId, fields) {
+  await updateDoc(doc(db, "subscriptionQuoteImages", imageId), { ...fields, updatedAt: serverTimestamp() });
+}
+
+export async function deleteSubscriptionQuoteImage(imageId) {
+  await deleteDoc(doc(db, "subscriptionQuoteImages", imageId));
+}
+
+/**
+ * [訂閱管理] 上傳附件 (File/Blob) 至 Storage，回傳附件中繼資料
+ */
+export async function uploadSubscriptionFile(file, fileName, storagePath, projectId) {
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const contentType = file.type || 'application/octet-stream';
+  const { downloadURL } = await uploadSalesImage(storagePath, fileName, base64, projectId || 'subscription', contentType);
+  return {
+    name: fileName,
+    url: downloadURL,
+    storagePath,
+    contentType,
+    size: file.size,
+    uploadedAt: new Date().toISOString(),
+  };
 }
 
 /**
@@ -2319,6 +2455,8 @@ export async function fetchMySubscriptionStatus(userKey) {
 
   subsSnapshot.forEach(doc => {
     const sub = doc.data();
+    // 跟進流程尚未「系統啟用」的訂閱不對客戶顯示
+    if (!sub.startDate) return;
     if (!subscriptionsByProject[sub.projectName]) {
       subscriptionsByProject[sub.projectName] = [];
     }

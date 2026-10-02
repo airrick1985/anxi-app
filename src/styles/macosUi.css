@@ -110,3 +110,169 @@
   .mac-sheet { border-radius: 12px !important; }
   .mac-sheet-foot { padding: 10px 12px; }
 }
+
+/* 表單（系統設定風格）：淡灰底＋白色圓角分組＋左標籤右欄位（訂閱管理報價單設定／編輯器共用）
+   以 mac-form- 為前綴，避免與各頁自訂的 .mac-seg 等樣式互相影響 */
+.mac-form {
+  background: #f5f5f7;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 13px;
+}
+.mac-form-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  margin: 16px 4px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #6e6e73;
+  letter-spacing: 0.02em;
+}
+.mac-form-label .mac-spacer { flex: 1 1 auto; }
+.mac-form-group {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 0.5px 1.5px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+.mac-form-pad { padding: 12px 14px; }
+.mac-form-pad + .mac-form-pad,
+.mac-form-row + .mac-form-pad,
+.mac-form-pad + .mac-form-row { border-top: 1px solid #ececf0; }
+.mac-form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 7px 14px;
+  font-size: 13px;
+}
+.mac-form-row + .mac-form-row { border-top: 1px solid #ececf0; }
+.mac-form-row-label { flex-shrink: 0; width: 110px; }
+.mac-form-row-main { flex: 1; min-width: 0; }
+.mac-form-row-title { font-weight: 500; }
+.mac-form-row-sub { font-size: 12px; color: #6e6e73; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mac-form-empty { color: #8e8e93; }
+.mac-form-link { cursor: pointer; }
+.mac-form-link:hover { background: #f7f7f9; }
+
+.mac-form-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 6px;
+  background: #fff;
+  color: #1d1d1f;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.mac-form-input:focus,
+.mac-form-unit:focus-within,
+.mac-form-textarea:focus {
+  border-color: #0071e3;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.22);
+}
+.mac-form-row > .mac-form-input { max-width: 360px; margin-left: auto; }
+.mac-form-unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #6e6e73;
+}
+.mac-form-unit input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #1d1d1f;
+  font-family: inherit;
+  font-size: 13px;
+}
+.mac-form-row > .mac-form-unit { max-width: 140px; }
+.mac-form-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 26px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='14' viewBox='0 0 10 14'%3E%3Cpath d='M2 5l3-3 3 3M2 9l3 3 3-3' fill='none' stroke='%236e6e73' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+.mac-form-textarea {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 6px;
+  background: #fff;
+  color: #1d1d1f;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+/* 分段切換 */
+.mac-form-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+}
+.mac-form-seg-btn {
+  min-width: 36px;
+  height: 24px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #1d1d1f;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s, box-shadow 0.15s;
+}
+.mac-form-seg-btn.is-active {
+  background: #fff;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  font-weight: 600;
+}
+
+/* 區塊標題列上的小按鈕／純圖示按鈕 */
+.mac-btn--sm { height: 26px; padding: 0 10px; font-size: 12px; }
+.mac-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6e6e73;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+.mac-icon-btn:hover { background: rgba(0, 0, 0, 0.06); color: #1d1d1f; }
+.mac-icon-btn--danger { color: #d62d20; }
+.mac-icon-btn--danger:hover { background: rgba(214, 45, 32, 0.08); color: #d62d20; }
+
+@media (max-width: 600px) {
+  .mac-form-row { flex-wrap: wrap; }
+  .mac-form-row > .mac-form-row-label { width: 100%; }
+  .mac-form-row > .mac-form-input,
+  .mac-form-row > .mac-form-unit { max-width: none; flex-basis: 100%; }
+}
