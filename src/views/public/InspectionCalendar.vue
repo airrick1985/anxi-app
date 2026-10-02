@@ -389,6 +389,7 @@
       </template>
     </v-tooltip>
 
+    <BookingGuideButton v-if="isInternalCalendar" section="calendar" color="black" />
 
   </v-col>
 </v-row>
@@ -1991,6 +1992,14 @@
           title="顯示設定"
           @click="isFilterDialogVisible = true"
         ></v-list-item>
+        <v-list-item
+          v-if="isInternalCalendar"
+          prepend-icon="mdi-help-circle-outline"
+          title="使用說明"
+          :href="calendarGuideHref"
+          target="_blank"
+          rel="noopener"
+        ></v-list-item>
         <v-divider></v-divider>
         <v-list-item
           prepend-icon="mdi-image-area"
@@ -2038,6 +2047,7 @@ import { defineAsyncComponent } from 'vue';
 const AppointmentDetailsDialog = defineAsyncComponent(() => import('@/components/AppointmentDetailsDialog.vue'));
 const AdminAddBookingDialog = defineAsyncComponent(() => import('@/components/AdminAddBookingDialog.vue'));
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
+import BookingGuideButton from '@/components/BookingGuideButton.vue';
 const ScheduleListExportDialog = defineAsyncComponent(() => import('@/components/ScheduleListExportDialog.vue'));
 const InspectorLeaveManagerDialog = defineAsyncComponent(() => import('@/components/InspectorLeaveManagerDialog.vue'));
 const CalendarNoteManagerDialog = defineAsyncComponent(() => import('@/components/CalendarNoteManagerDialog.vue'));
@@ -2092,6 +2102,9 @@ const props = defineProps({
 });
 const route = useRoute();
 const router = useRouter(); // 驗屋預約管理 【新增】獲取 router 實例
+// 後台時間表才顯示使用說明入口（公開時間表不顯示）
+const isInternalCalendar = computed(() => route.name === 'InternalInspectionCalendar');
+const calendarGuideHref = router.resolve({ name: 'BookingGuide', params: { section: 'calendar' } }).href;
 const userStore = useUserStore();
 const pageContextStore = usePageContextStore();
 const projectStore = useProjectStore(); // 驗屋預約管理 2. 建立 store 實例

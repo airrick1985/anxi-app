@@ -532,6 +532,18 @@ const routes = [
     }
   },
 
+  // 預約系統使用說明（公開，可直接分享；:section 為章節，例如 /guide/booking/batches）
+  {
+    path: '/guide/booking/:section?',
+    name: 'BookingGuide',
+    component: () => import('@/views/guide/BookingGuide.vue'),
+    meta: {
+      requiresAuth: false,
+      title: '預約系統使用說明',
+      layout: PublicLayout
+    }
+  },
+
 
   {
     // ✅ 5. 修改「驗屋預約」入口

@@ -42,6 +42,8 @@
     ></v-btn>
   </template>
 </v-tooltip>
+
+<BookingGuideButton section="households" color="black" />
   </div>
 </v-card-title>
 
@@ -1146,6 +1148,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user';
 import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments, cancelAppointment, updateAppointment } from '@/api';
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
+import BookingGuideButton from '@/components/BookingGuideButton.vue';
 import SwitchHeaderRenderer from '@/components/household/SwitchHeaderRenderer.vue';
 import SwitchRenderer from '@/components/household/SwitchRenderer.vue';
 import CustomerMessageRenderer from '@/components/household/CustomerMessageRenderer.vue';

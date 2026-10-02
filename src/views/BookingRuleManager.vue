@@ -10,6 +10,8 @@
           <v-spacer></v-spacer>
 
         </v-card-title>
+        <v-spacer></v-spacer>
+        <BookingGuideButton :section="guideSection" />
       </v-toolbar>
 
       <v-tabs v-model="activeTab" bg-color="primary" :touch="false">
@@ -3751,6 +3753,7 @@ import RichTextEditor from '@/components/RichTextEditor.vue';
 import DynamicFieldEditor from '@/components/DynamicFieldEditor.vue';
 import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue';
 import QrCodeGenerator from '@/components/QrCodeGenerator.vue'; // QR Code 產生器
+import BookingGuideButton from '@/components/BookingGuideButton.vue';
 import InspProjectSettings from '@/views/admin/InspProjectSettings.vue';
 import inspCategoriesItems from '@/views/admin/inspCategoriesItems.vue';
 import PdfTemplateSettings from '@/components/PdfTemplateSettings.vue';
@@ -4161,6 +4164,21 @@ const isLoading = ref(true);
 const isSaving = ref(false);
 const activeTab = ref('batches');
 const settingsSubTab = ref('general');
+
+// 使用說明「?」依目前分頁跳到對應章節
+const GUIDE_SECTION_BY_SUBTAB = {
+  general: 'open',
+  'shared-page-settings': 'page',
+  content: 'page',
+  rules: 'menu',
+  'report-settings': 'reports',
+  'customer-messages': 'feedback',
+};
+const guideSection = computed(() => {
+  if (activeTab.value === 'batches') return 'batches';
+  if (activeTab.value === 'settings') return GUIDE_SECTION_BY_SUBTAB[settingsSubTab.value] || 'start';
+  return 'start';
+});
 const snackbar = reactive({ show: false, text: '', color: 'success' });
 const isBatchLoading = ref(false);
 const showDeletedItems = ref(false); // 控制是否顯示已刪除的預約項目

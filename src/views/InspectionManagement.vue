@@ -144,6 +144,21 @@
             </template>
           </v-tooltip>
         </template>
+
+        <v-divider class="my-2"></v-divider>
+        <v-tooltip location="end" text="使用說明" :disabled="!isRail">
+          <template v-slot:activator="{ props }">
+            <v-list-item
+              v-bind="props"
+              prepend-icon="mdi-help-circle-outline"
+              title="使用說明"
+              :href="guideHref"
+              target="_blank"
+              rel="noopener"
+              rounded="lg"
+            ></v-list-item>
+          </template>
+        </v-tooltip>
       </v-list>
 
     </v-navigation-drawer>
@@ -208,6 +223,8 @@ const projectId = computed(() => route.params.projectId);
 const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '');
 
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管理-修改', projectName.value));
+
+const guideHref = router.resolve({ name: 'BookingGuide' }).href;
 
 const primaryNav = computed(() => {
   const nav = [

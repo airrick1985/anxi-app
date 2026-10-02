@@ -4,6 +4,7 @@
       <v-toolbar color="primary" dark flat>
         <v-toolbar-title class="font-weight-bold">驗屋報告管理</v-toolbar-title>
         <v-spacer></v-spacer>
+        <BookingGuideButton v-if="isInternal" section="reports" />
        <v-btn
           v-if="!isInternal && !isStandalone"
           variant="outlined"
@@ -184,6 +185,7 @@
 import { ref, onMounted, computed, watch, reactive } from 'vue';
 import liff from '@line/liff';
 import { useRouter, useRoute } from 'vue-router';
+import BookingGuideButton from '@/components/BookingGuideButton.vue';
 import { useDriveStore } from '@/store/driveStore';
 import { getProjectSettings, getReportFolderStructure, driveProxyList } from '@/api';
 import { useUserStore } from '@/store/user';
