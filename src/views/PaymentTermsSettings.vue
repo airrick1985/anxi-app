@@ -157,6 +157,20 @@
                       新增母項目
                     </v-btn>
                   </v-card-title>
+                  <div class="trial-bar">
+                    <v-text-field
+                      v-model.number="trialAmount"
+                      :label="trialVariable === '配套金額' ? '試算配套金額' : '試算總價'"
+                      type="number"
+                      min="0"
+                      suffix="萬"
+                      prepend-inner-icon="mdi-calculator-variant-outline"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      clearable
+                    ></v-text-field>
+                  </div>
                   <v-divider></v-divider>
 
                   <draggable
@@ -179,7 +193,13 @@
                               含 {{ getChildren(item.id).length }} 個子項目
                             </div>
                           </div>
-                          <v-chip size="small" color="primary" variant="flat">{{ item.conditionalValue }}%</v-chip>
+                          <div class="item-row-value">
+                            <v-chip size="small" color="primary" variant="flat">{{ item.conditionalValue }}%</v-chip>
+                            <span
+                              v-if="trialResults"
+                              :class="['item-amount', trialResults[item.id]?.error && 'text-error']"
+                            >{{ trialText(item.id) }}</span>
+                          </div>
                           <v-btn
                             icon="mdi-plus"
                             size="x-small"
@@ -214,7 +234,13 @@
                               <div class="item-row-main">
                                 <div class="item-row-name">{{ child.name }}</div>
                               </div>
-                              <v-chip size="small" color="primary" variant="outlined">{{ child.conditionalValue }}%</v-chip>
+                              <div class="item-row-value">
+                                <v-chip size="small" color="primary" variant="outlined">{{ child.conditionalValue }}%</v-chip>
+                                <span
+                                  v-if="trialResults"
+                                  :class="['item-amount', trialResults[child.id]?.error && 'text-error']"
+                                >{{ trialText(child.id) }}</span>
+                              </div>
                               <v-btn
                                 icon="mdi-delete-outline"
                                 size="x-small"
@@ -233,6 +259,18 @@
                   <div v-if="!selectedTemplate.items?.length" class="pa-6 text-center text-grey">
                     尚未建立期款項目
                   </div>
+
+                  <div v-if="trialSum" class="trial-sum">
+                    <span>合計</span>
+                    <v-chip
+                      size="small"
+                      :color="trialSum.isMatch ? 'success' : 'warning'"
+                      variant="tonal"
+                    >
+                      {{ trialSum.isMatch ? '相符' : (trialSum.diff > 0 ? `尚差 ${formatAmount(trialSum.diff)} 萬` : `超過 ${formatAmount(-trialSum.diff)} 萬`) }}
+                    </v-chip>
+                    <span class="trial-sum-value">{{ formatAmount(trialSum.sum) }} 萬</span>
+                  </div>
                 </v-card>
 
                 <!-- 項目編輯區（寬螢幕內嵌；其餘以 dialog 呈現） -->
@@ -241,6 +279,7 @@
                     v-if="editorVisible"
                     :item="editingItem"
                     :existing-items="existingItems"
+                    :trial-base="trialBase"
                     @save="handleItemSave"
                     @cancel="closeEditor"
                   />
@@ -469,6 +508,7 @@
         :fullscreen="!mdAndUp"
         :item="editingItem"
         :existing-items="existingItems"
+        :trial-base="trialBase"
         @save="handleItemSave"
         @cancel="closeEditor"
       />
@@ -610,6 +650,7 @@ import { useDisplay } from 'vuetify';
 import draggable from 'vuedraggable';
 import PaymentItemEditor from '@/components/PaymentItemEditor.vue';
 import CompanyLoanEditor from '@/components/CompanyLoanEditor.vue';
+import { runNewCalculationEngine } from '@/utils/paymentCalculation';
 import {
   listenToPaymentTermTemplates,
   setPaymentTermTemplate,
@@ -813,6 +854,75 @@ const existingItems = computed(() => {
     return true;
   }) || [];
 });
+
+// --- 試算：輸入金額查看範本計算結果 ---
+const TRIAL_STORAGE_KEY = 'paymentTermsTrialAmount';
+const readSavedTrialAmount = () => {
+  try {
+    const saved = Number(localStorage.getItem(TRIAL_STORAGE_KEY));
+    return saved > 0 ? saved : null;
+  } catch {
+    return null;
+  }
+};
+// 試算金額（萬）；切換範本時沿用，並記在這台瀏覽器
+const trialAmount = ref(readSavedTrialAmount());
+watch(trialAmount, (val) => {
+  try {
+    if (Number(val) > 0) localStorage.setItem(TRIAL_STORAGE_KEY, String(val));
+    else localStorage.removeItem(TRIAL_STORAGE_KEY);
+  } catch {
+    // 無法存取瀏覽器儲存空間時，僅本次有效
+  }
+});
+
+// 與報價單相同：配套期款範本以配套金額為基準，其餘以總價
+const trialVariable = computed(() =>
+  selectedTemplate.value?.paymentCategory === '配套期款' ? '配套金額' : '總價'
+);
+
+// 試算基準 { value: 金額(萬), variable }；未輸入回 null
+// 與報價單相同直接以「萬」計算，各項目的進位方式／進位值才會套用在同一個單位上
+const trialBase = computed(() => {
+  const amount = Number(trialAmount.value);
+  if (!(amount > 0)) return null;
+  return { value: amount, variable: trialVariable.value };
+});
+
+// 各項目試算結果 { [itemId]: { value, error } }；未輸入試算金額回 null
+const trialResults = computed(() => {
+  const items = selectedTemplate.value?.items;
+  if (!trialBase.value || !items?.length) return null;
+  const results = runNewCalculationEngine(
+    items.map(i => ({ ...i, formula: i.formula || '' })),
+    trialBase.value.value,
+    trialBase.value.variable
+  );
+  const byId = {};
+  Object.values(results).forEach(r => {
+    byId[r.id] = { value: r.value, error: !!r.error };
+  });
+  return byId;
+});
+
+// 母項目合計與試算金額的差額
+const trialSum = computed(() => {
+  if (!trialResults.value) return null;
+  const sum = selectedTemplate.value.items
+    .filter(i => !i.parentId)
+    .reduce((total, i) => total + (trialResults.value[i.id]?.value || 0), 0);
+  const diff = trialBase.value.value - sum;
+  return { sum, diff, isMatch: Math.abs(diff) < 0.00005 };
+});
+
+// 金額（萬）；保留到 4 位小數（1 元）
+const formatAmount = (value) => Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 4 });
+
+const trialText = (itemId) => {
+  const result = trialResults.value?.[itemId];
+  if (!result) return '—';
+  return result.error ? '公式錯誤' : `${formatAmount(result.value)} 萬`;
+};
 
 // 母項目在清單中的順序（1 起算）
 const parentOrder = (itemId) => {
@@ -1566,6 +1676,56 @@ onUnmounted(() => {
 .item-row-main {
   flex: 1;
   min-width: 0;
+}
+
+/* % 與試算金額上下排列，靠右對齊 */
+.item-row-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.item-amount {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* --- 試算 --- */
+.trial-bar {
+  padding: 4px 12px 12px;
+  max-width: 280px;
+}
+
+/* 隱藏數字欄位的上下調整箭頭 */
+.trial-bar :deep(input[type="number"]) {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.trial-bar :deep(input[type="number"]::-webkit-inner-spin-button),
+.trial-bar :deep(input[type="number"]::-webkit-outer-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.trial-sum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-weight: 700;
+  background: rgba(46, 125, 50, 0.06);
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.trial-sum-value {
+  margin-left: auto;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
 }
 
 .item-row-name {

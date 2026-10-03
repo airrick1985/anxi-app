@@ -144,6 +144,13 @@
           @input="handleFormulaInput"
           @keydown.enter.prevent
         ></v-textarea>
+
+        <div v-if="trialPreview" class="formula-trial">
+          <v-icon size="16" class="mr-1">mdi-calculator-variant-outline</v-icon>
+          試算金額
+          <span v-if="trialPreview.error" class="formula-trial-value text-error">公式錯誤</span>
+          <span v-else class="formula-trial-value">{{ formatTrialAmount(trialPreview.value) }} 萬</span>
+        </div>
       </div>
     </v-card-text>
 
@@ -159,6 +166,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useToast } from 'vue-toastification';
+import { runNewCalculationEngine } from '@/utils/paymentCalculation';
 
 const props = defineProps({
   // 由父層傳入的「工作副本」，編輯過程不會動到範本原始資料
@@ -167,6 +175,8 @@ const props = defineProps({
   existingItems: { type: Array, default: () => [] },
   // 手機全螢幕 dialog：實心背景、頂列避開全站漢堡鈕
   fullscreen: { type: Boolean, default: false },
+  // 試算基準 { value: 金額(萬), variable: '總價' | '配套金額' }；null 表示未輸入試算金額
+  trialBase: { type: Object, default: null },
 });
 
 const emit = defineEmits(['save', 'cancel']);
@@ -286,6 +296,34 @@ const validateFormula = (value) => {
   return true;
 };
 
+// 依目前公式即時試算本項目金額（尚未儲存也能看結果）；未輸入試算金額或公式為空時回 null
+const trialPreview = computed(() => {
+  if (!props.trialBase) return null;
+  const formula = formulaTokens.value.map(t => t.value).join('');
+  if (!formula) return null;
+  if (validateFormula(formula) !== true) return { error: true };
+
+  // 以暫用名稱放入計算，避免與其他項目同名或改名中的名稱互相干擾
+  const EDITING_ID = '__editing__';
+  const items = [
+    ...props.existingItems.map(i => ({ ...i, formula: i.formula || '' })),
+    {
+      id: EDITING_ID,
+      name: EDITING_ID,
+      formula,
+      roundingMethod: local.value.roundingMethod,
+      roundingValue: local.value.roundingValue,
+    },
+  ];
+  const result = Object.values(
+    runNewCalculationEngine(items, props.trialBase.value, props.trialBase.variable)
+  ).find(r => r.id === EDITING_ID);
+  return result && !result.error ? { value: result.value } : { error: true };
+});
+
+// 金額（萬）；保留到 4 位小數（1 元）
+const formatTrialAmount = (value) => Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 4 });
+
 const handleFormulaInput = () => {
   let value = formulaInput.value.trim();
   if (!value) {
@@ -329,6 +367,24 @@ const handleSave = () => {
 /* 長公式自動換行（英數字串沒有空白也能斷行） */
 .formula-input :deep(textarea) {
   word-break: break-all;
+}
+
+.formula-trial {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  background: rgba(46, 125, 50, 0.08);
+  color: #1B5E20;
+}
+
+.formula-trial-value {
+  margin-left: auto;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .item-editor-header {
