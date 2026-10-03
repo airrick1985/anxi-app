@@ -1,5 +1,5 @@
 <template>
-  <v-card class="pa-4" elevation="2">
+  <v-card class="pa-4 pt-root" elevation="2">
     <v-card-title class="text-h5 text-green-darken-2">
       期款方式範本設定
     </v-card-title>
@@ -15,388 +15,315 @@
     </v-tabs>
     <v-divider></v-divider>
 
-    <v-window v-model="activeTab">
+    <v-window v-model="activeTab" class="pt-window">
       <!-- ============ Tab 1：期款範本 ============ -->
       <v-window-item value="payment">
+        <v-skeleton-loader v-if="templatesLoading" type="list-item-two-line@5" class="mt-4"></v-skeleton-loader>
 
-    <div class="d-flex justify-space-between align-center my-4">
-      <span class="text-subtitle-1">已建立的期款範本</span>
-      <v-btn color="green-darken-2" @click="openTemplateDialog()" prepend-icon="mdi-plus">新增範本</v-btn>
-    </div>
-
-    <v-row>
-      <v-col
-        v-for="template in templates"
-        :key="template.id"
-        cols="12"
-        md="6"
-        lg="4"
-      >
-        <v-card
-          :variant="isActiveTemplate(template.id) ? 'elevated' : 'outlined'"
-          :elevation="isActiveTemplate(template.id) ? 8 : 0"
-          :class="['template-card', isActiveTemplate(template.id) ? 'template-card--active' : 'template-card--inactive']"
-          @click="selectedTemplateId = template.id"
-        >
-          <!-- 卡片狀態列：編輯中 / 未編輯 -->
-          <div v-if="isActiveTemplate(template.id)" class="card-status-bar card-status-bar--active">
-            <span class="editing-dot mr-2"></span>
-            <v-icon size="14" class="mr-1">mdi-pencil</v-icon>
-            正在編輯此範本
-          </div>
-          <div v-else class="card-status-bar card-status-bar--idle">
-            <v-icon size="14" class="mr-1">mdi-file-document-outline</v-icon>
-            期款範本
-          </div>
-
-          <v-card-item>
-            <div>
-              <div class="text-h6 mb-2">{{ template.templateName }}</div>
-              <div class="d-flex flex-wrap gap-2 mb-1">
-                <v-chip size="small" :color="getPaymentCategoryColor(template.paymentCategory)" variant="flat">
-                  {{ template.paymentCategory || '一般期款' }}
-                </v-chip>
-
-              <v-chip size="small" color="purple-lighten-2" variant="flat">
-                  {{ template.propertyType || '住家' }}
-                </v-chip>
-
-                <template v-if="template.minPrice || template.maxPrice">
-                  <v-chip size="small" color="primary" variant="flat">
-                    {{ template.minPrice ? `${template.minPrice}萬` : '0' }} ~ 
-                    {{ template.maxPrice ? `${template.maxPrice}萬` : '無上限' }}
-                  </v-chip>
-                </template>
-                <v-chip size="small" :color="template.buyerType === '首購' ? 'success' : 'info'" variant="flat">
-                  {{ template.buyerType || '非首購' }}
-                </v-chip>
-                <!-- 附掛的公司借貸範本 -->
-                <v-chip
-                  v-if="getLoanName(template.companyLoanTemplateId)"
-                  size="small"
-                  color="brown-darken-1"
-                  variant="flat"
-                  prepend-icon="mdi-bank-outline"
-                >
-                  {{ getLoanName(template.companyLoanTemplateId) }}
-                </v-chip>
-              </div>
-              <div class="text-caption text-grey-darken-1">{{ template.items?.length || 0 }} 個期款項目</div>
-            </div>
-          </v-card-item>
-
-          <v-card-actions>
-            <v-chip
-              v-if="isActiveTemplate(template.id)"
-              size="small"
-              color="green-darken-2"
-              variant="flat"
-              prepend-icon="mdi-check-circle"
-            >
-              編輯中
-            </v-chip>
-            <v-btn
-              v-else
-              size="small"
-              variant="tonal"
-              color="green-darken-2"
-              prepend-icon="mdi-pencil-outline"
-              @click.stop="selectedTemplateId = template.id"
-            >
-              切換編輯
-            </v-btn>
-            <v-spacer></v-spacer>
-            <v-btn size="small" icon="mdi-content-copy" @click.stop="copyTemplate(template)" title="複製範本"></v-btn>
-            <v-btn size="small" icon="mdi-pencil" @click.stop="openTemplateDialog(template)" title="修改"></v-btn>
-            <v-btn size="small" icon="mdi-delete-outline" @click.stop="confirmDeleteTemplate(template)" title="刪除"></v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <v-divider class="my-4"></v-divider>
-
-    <v-skeleton-loader v-if="templatesLoading" type="list-item-two-line@5"></v-skeleton-loader>
-    
-    <div v-else-if="selectedTemplate">
-      <!-- 編輯區識別標頭：與上方「編輯中」卡片視覺連貫 -->
-      <div class="editing-header d-flex align-center flex-wrap mb-4">
-        <v-icon class="mr-2" color="green-darken-3">mdi-pencil-box-multiple</v-icon>
-        <span class="text-subtitle-1 font-weight-bold mr-3">
-          正在編輯：{{ selectedTemplate.templateName }}
-        </span>
-        <span class="text-caption text-grey-darken-1">以下期款項目的變更會即時儲存至此範本</span>
-      </div>
-
-      <!-- 期款總覽區域 -->
-      <v-card class="mb-4" variant="outlined">
-        <v-card-title class="text-subtitle-1">
-          期款項目總覽
-          <v-chip
-            :color="paymentOverview.isValid ? 'success' : 'warning'"
-            class="ml-2"
-            size="small"
-          >
-            總計: {{ paymentOverview.total }}%
-          </v-chip>
-        </v-card-title>
-        
-        <v-card-text>
-          <v-alert
-            v-if="!paymentOverview.isValid"
-            density="compact"
-            type="warning"
-            variant="outlined"
-            class="mb-3"
-          >
-            注意：期款項目總和應為 100%，目前差異為 {{ (100 - paymentOverview.total).toFixed(2) }}%
-          </v-alert>
-
-          <div class="d-flex flex-wrap gap-2">
-            <template v-for="item in paymentOverview.items" :key="item.name">
-              <v-chip
-                :color="item.isParent ? 'primary' : 'grey'"
-                :variant="item.isParent ? 'flat' : 'outlined'"
-                size="small"
-                class="ma-1"
-              >
-                {{ item.name }}: {{ item.value }}%
-              </v-chip>
-            </template>
-          </div>
-        </v-card-text>
-      </v-card>
-
-      <v-row>
-        <!-- 左：期款項目排序清單 -->
-        <v-col cols="12" md="5" lg="4">
-          <v-card variant="outlined" class="item-list-panel">
-            <v-card-title class="d-flex align-center text-subtitle-1 py-2">
-              期款項目
+        <div v-else :class="['pt-layout', mdAndUp && 'pt-layout--split']">
+          <!-- 左：範本清單（手機為第一層頁面） -->
+          <aside v-show="mdAndUp || mobileView === 'list'" class="pt-side">
+            <div class="pt-side-head">
+              <span class="text-subtitle-2 font-weight-bold">期款範本</span>
+              <span class="pt-side-total">{{ templates.length }}</span>
               <v-spacer></v-spacer>
-              <v-btn size="small" color="primary" prepend-icon="mdi-plus" @click="openItemEditor(null, null)">
-                新增母項目
-              </v-btn>
-            </v-card-title>
-            <v-divider></v-divider>
-            <div class="text-caption text-grey-darken-1 px-4 py-2 d-flex align-center">
-              <v-icon size="14" class="mr-1">mdi-drag-horizontal-variant</v-icon>
-              拖曳調整順序，點擊項目進行編輯
+              <v-btn size="small" color="green-darken-2" prepend-icon="mdi-plus" @click="openTemplateDialog()">新增</v-btn>
             </div>
-            <v-divider></v-divider>
+            <v-text-field
+              v-if="templates.length"
+              v-model="templateSearch"
+              placeholder="搜尋範本"
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              density="compact"
+              hide-details
+              clearable
+              class="mb-2"
+            ></v-text-field>
 
-            <draggable
-              v-model="selectedTemplate.items"
-              item-key="id"
-              handle=".drag-handle"
-              @end="saveTemplate"
-            >
-              <template #item="{ element: item }">
-                <div v-if="!item.parentId">
-                  <div
-                    :class="['item-row', isEditingItem(item.id) && 'item-row--active']"
-                    @click="openItemEditor(item, null)"
-                  >
-                    <v-icon class="drag-handle" size="18" color="grey">mdi-drag-horizontal-variant</v-icon>
-                    <span class="order-badge">{{ parentOrder(item.id) }}</span>
-                    <div class="item-row-main">
-                      <div class="item-row-name">{{ item.name }}</div>
-                      <div v-if="getChildren(item.id).length" class="text-caption text-grey">
-                        含 {{ getChildren(item.id).length }} 個子項目
-                      </div>
-                    </div>
-                    <v-chip size="small" color="primary" variant="flat">{{ item.conditionalValue }}%</v-chip>
-                    <v-btn
-                      icon="mdi-plus"
-                      size="x-small"
-                      variant="text"
-                      title="新增子項目"
-                      @click.stop="openItemEditor(null, item.id)"
-                    ></v-btn>
-                    <v-btn
-                      icon="mdi-delete-outline"
-                      size="x-small"
-                      variant="text"
-                      color="error"
-                      title="刪除"
-                      @click.stop="deleteItem(item.id)"
-                    ></v-btn>
+            <div class="pt-side-list">
+              <template v-for="group in templateGroups" :key="group.category">
+                <div class="pt-group-head">
+                  <span :class="['pt-group-dot', `bg-${group.color}`]"></span>
+                  {{ group.category }}
+                  <span class="pt-group-count">{{ group.items.length }}</span>
+                </div>
+                <div
+                  v-for="t in group.items"
+                  :key="t.id"
+                  :class="['pt-row', isActiveTemplate(t.id) && 'pt-row--active']"
+                  @click="selectTemplate(t.id)"
+                >
+                  <div class="pt-row-main">
+                    <div class="pt-row-name">{{ t.templateName }}</div>
+                    <div class="pt-row-meta">{{ templateMeta(t) }}</div>
                   </div>
+                  <v-icon
+                    v-if="getLoanName(t.companyLoanTemplateId)"
+                    size="16"
+                    color="brown"
+                    :title="getLoanName(t.companyLoanTemplateId)"
+                  >mdi-bank-outline</v-icon>
+                  <v-icon
+                    v-if="t.items?.length && !isTotalValid(templateTotal(t))"
+                    size="16"
+                    color="warning"
+                    :title="`總計 ${templateTotal(t)}%`"
+                  >mdi-alert-circle</v-icon>
+                  <span class="pt-row-count">{{ t.items?.length || 0 }} 項</span>
+                  <v-icon v-if="!mdAndUp" size="18" color="grey">mdi-chevron-right</v-icon>
+                </div>
+              </template>
+              <div v-if="!templates.length" class="pt-empty">尚未建立範本</div>
+              <div v-else-if="!templateGroups.length" class="pt-empty">找不到符合的範本</div>
+            </div>
+          </aside>
+
+          <!-- 右：選中的範本（手機為第二層頁面） -->
+          <section v-show="mdAndUp || mobileView === 'detail'" ref="detailRef" class="pt-main">
+            <template v-if="selectedTemplate">
+              <div class="pt-detail-head">
+                <v-btn
+                  v-if="!mdAndUp"
+                  icon="mdi-arrow-left"
+                  variant="text"
+                  size="small"
+                  class="mr-1"
+                  title="返回範本清單"
+                  @click="backToList"
+                ></v-btn>
+                <div class="pt-detail-title">
+                  <div class="text-h6 font-weight-bold">{{ selectedTemplate.templateName }}</div>
+                  <div class="d-flex flex-wrap ga-1 mt-1">
+                    <v-chip size="small" :color="getPaymentCategoryColor(selectedTemplate.paymentCategory)" variant="flat">
+                      {{ selectedTemplate.paymentCategory || '一般期款' }}
+                    </v-chip>
+                    <v-chip size="small" color="purple-lighten-2" variant="flat">
+                      {{ selectedTemplate.propertyType || '住家' }}
+                    </v-chip>
+                    <v-chip size="small" :color="selectedTemplate.buyerType === '首購' ? 'success' : 'info'" variant="flat">
+                      {{ selectedTemplate.buyerType || '非首購' }}
+                    </v-chip>
+                    <v-chip v-if="priceRangeText(selectedTemplate)" size="small" color="primary" variant="flat">
+                      {{ priceRangeText(selectedTemplate) }}
+                    </v-chip>
+                    <v-chip
+                      v-if="getLoanName(selectedTemplate.companyLoanTemplateId)"
+                      size="small"
+                      color="brown-darken-1"
+                      variant="flat"
+                      prepend-icon="mdi-bank-outline"
+                    >
+                      {{ getLoanName(selectedTemplate.companyLoanTemplateId) }}
+                    </v-chip>
+                  </div>
+                </div>
+                <div v-if="mdAndUp" class="pt-detail-actions">
+                  <v-btn size="small" variant="text" icon="mdi-pencil" title="修改設定" @click="openTemplateDialog(selectedTemplate)"></v-btn>
+                  <v-btn size="small" variant="text" icon="mdi-content-copy" title="複製範本" @click="copyTemplate(selectedTemplate)"></v-btn>
+                  <v-btn size="small" variant="text" icon="mdi-delete-outline" color="error" title="刪除" @click="confirmDeleteTemplate(selectedTemplate)"></v-btn>
+                </div>
+                <!-- 手機：操作收進選單，標題保留完整寬度 -->
+                <v-menu v-else location="bottom end">
+                  <template #activator="{ props: menuProps }">
+                    <v-btn v-bind="menuProps" icon="mdi-dots-vertical" size="small" variant="text"></v-btn>
+                  </template>
+                  <v-list density="compact">
+                    <v-list-item prepend-icon="mdi-pencil" title="修改設定" @click="openTemplateDialog(selectedTemplate)"></v-list-item>
+                    <v-list-item prepend-icon="mdi-content-copy" title="複製範本" @click="copyTemplate(selectedTemplate)"></v-list-item>
+                    <v-list-item prepend-icon="mdi-delete-outline" title="刪除" base-color="error" @click="confirmDeleteTemplate(selectedTemplate)"></v-list-item>
+                  </v-list>
+                </v-menu>
+              </div>
+
+              <div :class="['pt-items', lgAndUp && 'pt-items--split']">
+                <!-- 期款項目排序清單 -->
+                <v-card variant="outlined" class="item-list-panel">
+                  <v-card-title class="d-flex align-center flex-wrap ga-2 text-subtitle-1 py-2">
+                    期款項目
+                    <v-chip
+                      size="small"
+                      :color="paymentOverview.isValid ? 'success' : 'warning'"
+                      :prepend-icon="paymentOverview.isValid ? 'mdi-check-circle' : 'mdi-alert-circle'"
+                      variant="tonal"
+                    >
+                      總計 {{ paymentOverview.total }}%
+                      <template v-if="!paymentOverview.isValid">
+                        （{{ paymentOverview.diff > 0 ? `尚差 ${paymentOverview.diff}%` : `超過 ${-paymentOverview.diff}%` }}）
+                      </template>
+                    </v-chip>
+                    <v-spacer></v-spacer>
+                    <v-btn size="small" color="primary" prepend-icon="mdi-plus" @click="openItemEditor(null, null)">
+                      新增母項目
+                    </v-btn>
+                  </v-card-title>
+                  <v-divider></v-divider>
 
                   <draggable
-                    v-if="getChildren(item.id).length"
-                    :list="getChildren(item.id)"
+                    v-model="selectedTemplate.items"
                     item-key="id"
                     handle=".drag-handle"
                     @end="saveTemplate"
                   >
-                    <template #item="{ element: child }">
-                      <div
-                        :class="['item-row', 'item-row--child', isEditingItem(child.id) && 'item-row--active']"
-                        @click="openItemEditor(child, item.id)"
-                      >
-                        <v-icon class="drag-handle" size="16" color="grey">mdi-drag-horizontal-variant</v-icon>
-                        <v-icon size="14" color="grey-lighten-1">mdi-subdirectory-arrow-right</v-icon>
-                        <div class="item-row-main">
-                          <div class="item-row-name">{{ child.name }}</div>
+                    <template #item="{ element: item }">
+                      <div v-if="!item.parentId">
+                        <div
+                          :class="['item-row', isEditingItem(item.id) && 'item-row--active']"
+                          @click="openItemEditor(item, null)"
+                        >
+                          <v-icon class="drag-handle" size="18" color="grey" title="拖曳排序">mdi-drag-horizontal-variant</v-icon>
+                          <span class="order-badge">{{ parentOrder(item.id) }}</span>
+                          <div class="item-row-main">
+                            <div class="item-row-name">{{ item.name }}</div>
+                            <div v-if="getChildren(item.id).length" class="text-caption text-grey">
+                              含 {{ getChildren(item.id).length }} 個子項目
+                            </div>
+                          </div>
+                          <v-chip size="small" color="primary" variant="flat">{{ item.conditionalValue }}%</v-chip>
+                          <v-btn
+                            icon="mdi-plus"
+                            size="x-small"
+                            variant="text"
+                            title="新增子項目"
+                            @click.stop="openItemEditor(null, item.id)"
+                          ></v-btn>
+                          <v-btn
+                            icon="mdi-delete-outline"
+                            size="x-small"
+                            variant="text"
+                            color="error"
+                            title="刪除"
+                            @click.stop="deleteItem(item.id)"
+                          ></v-btn>
                         </div>
-                        <v-chip size="small" color="primary" variant="outlined">{{ child.conditionalValue }}%</v-chip>
-                        <v-btn
-                          icon="mdi-delete-outline"
-                          size="x-small"
-                          variant="text"
-                          color="error"
-                          title="刪除"
-                          @click.stop="deleteItem(child.id)"
-                        ></v-btn>
+
+                        <draggable
+                          v-if="getChildren(item.id).length"
+                          :list="getChildren(item.id)"
+                          item-key="id"
+                          handle=".drag-handle"
+                          @end="saveTemplate"
+                        >
+                          <template #item="{ element: child }">
+                            <div
+                              :class="['item-row', 'item-row--child', isEditingItem(child.id) && 'item-row--active']"
+                              @click="openItemEditor(child, item.id)"
+                            >
+                              <v-icon class="drag-handle" size="16" color="grey" title="拖曳排序">mdi-drag-horizontal-variant</v-icon>
+                              <v-icon size="14" color="grey-lighten-1">mdi-subdirectory-arrow-right</v-icon>
+                              <div class="item-row-main">
+                                <div class="item-row-name">{{ child.name }}</div>
+                              </div>
+                              <v-chip size="small" color="primary" variant="outlined">{{ child.conditionalValue }}%</v-chip>
+                              <v-btn
+                                icon="mdi-delete-outline"
+                                size="x-small"
+                                variant="text"
+                                color="error"
+                                title="刪除"
+                                @click.stop="deleteItem(child.id)"
+                              ></v-btn>
+                            </div>
+                          </template>
+                        </draggable>
                       </div>
                     </template>
                   </draggable>
+
+                  <div v-if="!selectedTemplate.items?.length" class="pa-6 text-center text-grey">
+                    尚未建立期款項目
+                  </div>
+                </v-card>
+
+                <!-- 項目編輯區（寬螢幕內嵌；其餘以 dialog 呈現） -->
+                <div v-if="lgAndUp" class="editor-sticky">
+                  <PaymentItemEditor
+                    v-if="editorVisible"
+                    :item="editingItem"
+                    :existing-items="existingItems"
+                    @save="handleItemSave"
+                    @cancel="closeEditor"
+                  />
+                  <v-card v-else variant="outlined" class="editor-placeholder">
+                    <div class="text-center text-grey">
+                      <v-icon size="40" color="grey-lighten-1" class="mb-2">mdi-cursor-default-click-outline</v-icon>
+                      <div>點擊項目進行編輯</div>
+                    </div>
+                  </v-card>
                 </div>
-              </template>
-            </draggable>
+              </div>
+            </template>
 
-            <div v-if="!selectedTemplate.items?.length" class="pa-6 text-center text-grey">
-              尚未建立期款項目<br>
-              <span class="text-caption">點擊上方「新增母項目」開始建立</span>
-            </div>
-          </v-card>
-        </v-col>
-
-        <!-- 右：編輯區（桌機內嵌） -->
-        <v-col v-if="mdAndUp" cols="12" md="7" lg="8">
-          <div class="editor-sticky">
-            <PaymentItemEditor
-              v-if="editorVisible"
-              :item="editingItem"
-              :existing-items="existingItems"
-              @save="handleItemSave"
-              @cancel="closeEditor"
-            />
             <v-card v-else variant="outlined" class="editor-placeholder">
               <div class="text-center text-grey">
-                <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-cursor-default-click-outline</v-icon>
-                <div>點擊左側期款項目進行編輯</div>
-                <div class="text-caption">或點擊「新增母項目」建立新的期款</div>
+                <v-icon size="40" color="grey-lighten-1" class="mb-2">mdi-file-document-outline</v-icon>
+                <div>{{ templates.length ? '請選擇範本' : '請先新增範本' }}</div>
               </div>
             </v-card>
-          </div>
-        </v-col>
-      </v-row>
-    </div>
-    
-    <v-alert v-else-if="!templatesLoading" type="info" variant="tonal" class="mt-4">
-      請先新增或選擇一個範本來進行編輯。
-    </v-alert>
-
+          </section>
+        </div>
       </v-window-item>
 
       <!-- ============ Tab 2：公司借貸範本 ============ -->
       <v-window-item value="loan">
-
-        <div class="d-flex justify-space-between align-center my-4">
-          <span class="text-subtitle-1">已建立的公司借貸範本</span>
-          <v-btn color="brown-darken-1" @click="openLoanEditor()" prepend-icon="mdi-plus">新增借貸範本</v-btn>
-        </div>
-
-        <v-row>
-          <v-col
-            v-for="loan in loanTemplates"
-            :key="loan.id"
-            cols="12"
-            md="6"
-            lg="4"
-          >
-            <v-card
-              :variant="isEditingLoan(loan.id) ? 'elevated' : 'outlined'"
-              :elevation="isEditingLoan(loan.id) ? 8 : 0"
-              :class="['template-card', isEditingLoan(loan.id) ? 'template-card--loan-active' : 'template-card--inactive']"
-              @click="openLoanEditor(loan)"
-            >
-              <div v-if="isEditingLoan(loan.id)" class="card-status-bar card-status-bar--loan-active">
-                <span class="editing-dot mr-2"></span>
-                <v-icon size="14" class="mr-1">mdi-pencil</v-icon>
-                正在編輯此範本
-              </div>
-              <div v-else class="card-status-bar card-status-bar--idle">
-                <v-icon size="14" class="mr-1">mdi-bank-outline</v-icon>
-                借貸範本
-              </div>
-
-              <v-card-item>
-                <div>
-                  <div class="text-h6 mb-2">{{ loan.loanName }}</div>
-                  <div class="d-flex flex-wrap gap-2 mb-1">
-                    <v-chip size="small" color="brown-darken-1" variant="flat">
-                      成數 {{ loan.ratioPercent }}%
-                    </v-chip>
-                    <v-chip size="small" color="brown" variant="outlined">
-                      {{ loan.years }}年 / {{ loan.periods }}期
-                    </v-chip>
-                    <v-chip size="small" color="brown" variant="outlined">
-                      年利率 {{ loan.annualRate }}%
-                    </v-chip>
-                    <v-chip size="small" color="deep-purple-lighten-1" variant="flat">
-                      {{ loan.amortizationType || '本金平均攤還' }}
-                    </v-chip>
-                  </div>
-                  <div class="text-caption text-grey-darken-1">
-                    {{ loanUsageCount(loan.id) > 0 ? `${loanUsageCount(loan.id)} 個期款範本使用中` : '尚未被附掛' }}
-                  </div>
-                </div>
-              </v-card-item>
-
-              <v-card-actions>
-                <v-chip
-                  v-if="isEditingLoan(loan.id)"
-                  size="small"
-                  color="brown-darken-1"
-                  variant="flat"
-                  prepend-icon="mdi-check-circle"
-                >
-                  編輯中
-                </v-chip>
-                <v-btn
-                  v-else
-                  size="small"
-                  variant="tonal"
-                  color="brown-darken-1"
-                  prepend-icon="mdi-pencil-outline"
-                  @click.stop="openLoanEditor(loan)"
-                >
-                  切換編輯
-                </v-btn>
-                <v-spacer></v-spacer>
-                <v-btn size="small" icon="mdi-content-copy" @click.stop="copyLoanTemplate(loan)" title="複製範本"></v-btn>
-                <v-btn size="small" icon="mdi-delete-outline" @click.stop="confirmDeleteLoan(loan)" title="刪除"></v-btn>
-              </v-card-actions>
-            </v-card>
-          </v-col>
-        </v-row>
-
-        <v-alert v-if="!loanTemplates.length" type="info" variant="tonal" class="mt-2">
-          尚未建立公司借貸範本。點擊「新增借貸範本」設定成數、年期與利率後，即可讓期款範本附掛使用。
-        </v-alert>
-
-        <v-divider class="my-4"></v-divider>
-
-        <!-- 借貸範本編輯區（桌機內嵌；手機為全螢幕 dialog） -->
-        <template v-if="mdAndUp">
-          <CompanyLoanEditor
-            v-if="loanEditorVisible"
-            :item="editingLoan"
-            @save="handleLoanSave"
-            @cancel="closeLoanEditor"
-          />
-          <v-card v-else variant="outlined" class="editor-placeholder">
-            <div class="text-center text-grey">
-              <v-icon size="48" color="grey-lighten-1" class="mb-2">mdi-cursor-default-click-outline</v-icon>
-              <div>點擊上方借貸範本卡片進行編輯</div>
-              <div class="text-caption">或點擊「新增借貸範本」建立新的借貸方案</div>
+        <div :class="['pt-layout', mdAndUp && 'pt-layout--split']">
+          <aside class="pt-side">
+            <div class="pt-side-head">
+              <span class="text-subtitle-2 font-weight-bold">借貸範本</span>
+              <span class="pt-side-total">{{ loanTemplates.length }}</span>
+              <v-spacer></v-spacer>
+              <v-btn size="small" color="brown-darken-1" prepend-icon="mdi-plus" @click="openLoanEditor()">新增</v-btn>
             </div>
-          </v-card>
-        </template>
 
+            <div class="pt-side-list">
+              <div
+                v-for="loan in loanTemplates"
+                :key="loan.id"
+                :class="['pt-row', isEditingLoan(loan.id) && 'pt-row--loan-active']"
+                @click="openLoanEditor(loan)"
+              >
+                <div class="pt-row-main">
+                  <div class="pt-row-name">{{ loan.loanName }}</div>
+                  <div class="pt-row-meta">{{ loanMeta(loan) }}</div>
+                </div>
+                <span
+                  v-if="loanUsageCount(loan.id)"
+                  class="pt-row-count"
+                  :title="`${loanUsageCount(loan.id)} 個期款範本使用中`"
+                >
+                  <v-icon size="14">mdi-link-variant</v-icon>{{ loanUsageCount(loan.id) }}
+                </span>
+                <v-menu location="bottom end">
+                  <template #activator="{ props: menuProps }">
+                    <v-btn v-bind="menuProps" icon="mdi-dots-vertical" size="x-small" variant="text" @click.stop></v-btn>
+                  </template>
+                  <v-list density="compact">
+                    <v-list-item prepend-icon="mdi-content-copy" title="複製" @click="copyLoanTemplate(loan)"></v-list-item>
+                    <v-list-item prepend-icon="mdi-delete-outline" title="刪除" base-color="error" @click="confirmDeleteLoan(loan)"></v-list-item>
+                  </v-list>
+                </v-menu>
+              </div>
+              <div v-if="!loanTemplates.length" class="pt-empty">尚未建立借貸範本</div>
+            </div>
+          </aside>
+
+          <!-- 借貸範本編輯區（桌機內嵌；手機為全螢幕 dialog） -->
+          <section v-if="mdAndUp" class="pt-main">
+            <CompanyLoanEditor
+              v-if="loanEditorVisible"
+              :item="editingLoan"
+              :stacked="!lgAndUp"
+              @save="handleLoanSave"
+              @cancel="closeLoanEditor"
+            />
+            <v-card v-else variant="outlined" class="editor-placeholder">
+              <div class="text-center text-grey">
+                <v-icon size="40" color="grey-lighten-1" class="mb-2">mdi-cursor-default-click-outline</v-icon>
+                <div>點擊借貸範本進行編輯</div>
+              </div>
+            </v-card>
+          </section>
+        </div>
       </v-window-item>
     </v-window>
 
@@ -527,15 +454,19 @@
       </v-card>
     </v-dialog>
 
-    <!-- 手機版：由下往上滑出的全螢幕編輯頁 -->
+    <!-- 期款項目編輯：手機全螢幕、平板置中 dialog（寬螢幕內嵌於右側） -->
     <v-dialog
-      :model-value="!mdAndUp && editorVisible"
-      fullscreen
-      transition="dialog-bottom-transition"
+      :model-value="!lgAndUp && editorVisible"
+      :fullscreen="!mdAndUp"
+      :max-width="mdAndUp ? 720 : undefined"
+      :persistent="mdAndUp"
+      scrollable
+      :transition="mdAndUp ? 'dialog-transition' : 'dialog-bottom-transition'"
       @update:model-value="val => !val && closeEditor()"
     >
       <PaymentItemEditor
         v-if="editingItem"
+        :fullscreen="!mdAndUp"
         :item="editingItem"
         :existing-items="existingItems"
         @save="handleItemSave"
@@ -552,6 +483,7 @@
     >
       <CompanyLoanEditor
         v-if="editingLoan"
+        fullscreen
         :item="editingLoan"
         @save="handleLoanSave"
         @cancel="closeLoanEditor"
@@ -671,7 +603,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import { useToast } from 'vue-toastification';
 import { useDisplay } from 'vuetify';
@@ -701,6 +633,11 @@ let unsubscribeTemplates = null;
 
 // --- 分頁：期款範本 / 公司借貸範本 ---
 const activeTab = ref('payment');
+
+// --- 範本清單：搜尋、手機兩層頁面（清單 → 範本內容） ---
+const templateSearch = ref('');
+const mobileView = ref('list');
+const detailRef = ref(null);
 
 // --- 公司借貸範本 State ---
 const loanTemplates = ref([]);
@@ -742,8 +679,8 @@ const copyDialog = ref({
 });
 
 // --- 項目編輯區 State ---
-// 桌機顯示於右側面板；手機以全螢幕 dialog 呈現
-const { mdAndUp } = useDisplay();
+// 寬螢幕顯示於右側面板；平板為置中 dialog、手機為全螢幕 dialog
+const { mdAndUp, lgAndUp } = useDisplay();
 const editorVisible = ref(false);
 const editingItem = ref(null);
 
@@ -763,26 +700,108 @@ const getChildren = (parentId) => {
   return selectedTemplate.value?.items?.filter(i => i.parentId === parentId) || [];
 };
 
-// 計算期款項目總覽
+// 範本所有期款項目（含子項目）的比例總和，取到小數點後兩位
+const templateTotal = (template) => {
+  const total = (template?.items || []).reduce((sum, item) => sum + (Number(item.conditionalValue) || 0), 0);
+  return parseFloat(total.toFixed(2));
+};
+
+// 允許 0.01% 的誤差
+const isTotalValid = (total) => Math.abs(total - 100) < 0.01;
+
+// 計算期款項目總計
 const paymentOverview = computed(() => {
-  if (!selectedTemplate.value?.items) return { items: [], total: 0, isValid: true };
-  
-  // 收集所有項目（包括子項目）
-  const allItems = selectedTemplate.value.items.map(item => ({
-    name: item.name,
-    value: Number(item.conditionalValue) || 0,
-    isParent: !item.parentId
-  }));
-  
-  // 計算總和
-  const total = allItems.reduce((sum, item) => sum + item.value, 0);
-  
+  if (!selectedTemplate.value?.items) return { total: 0, diff: 0, isValid: true };
+  const total = templateTotal(selectedTemplate.value);
   return {
-    items: allItems,
-    total: parseFloat(total.toFixed(2)), // 取到小數點後兩位
-    isValid: Math.abs(total - 100) < 0.01 // 允許 0.01% 的誤差
+    total,
+    diff: parseFloat((100 - total).toFixed(2)),
+    isValid: isTotalValid(total)
   };
 });
+
+// 總價區間文字；未設定回空字串
+const priceRangeText = (template) => {
+  if (!template?.minPrice && !template?.maxPrice) return '';
+  const min = template.minPrice ? `${template.minPrice}萬` : '0';
+  const max = template.maxPrice ? `${template.maxPrice}萬` : '無上限';
+  return `${min}~${max}`;
+};
+
+// 清單列的副標：物件類型・買家類型・總價區間
+const templateMeta = (template) => [
+  template.propertyType || '住家',
+  template.buyerType || '非首購',
+  priceRangeText(template),
+].filter(Boolean).join('・');
+
+// 範本清單：依期款類別分組，組內依物件類型 → 買家類型 → 最低總價 → 名稱排序
+const CATEGORY_ORDER = ['一般期款', '優付期款', '配套期款'];
+const PROPERTY_ORDER = ['住家', '店面'];
+const orderRank = (order, value) => {
+  const index = order.indexOf(value);
+  return index === -1 ? order.length : index;
+};
+const compareText = (a, b) => (a || '').localeCompare(b || '', 'zh-Hant');
+
+const templateGroups = computed(() => {
+  const keyword = (templateSearch.value || '').trim().toLowerCase();
+  const list = keyword
+    ? templates.value.filter(t =>
+        [t.templateName, t.paymentCategory, t.propertyType, t.buyerType, getLoanName(t.companyLoanTemplateId)]
+          .some(v => (v || '').toLowerCase().includes(keyword))
+      )
+    : templates.value;
+
+  const groups = new Map();
+  for (const t of list) {
+    const category = t.paymentCategory || '一般期款';
+    if (!groups.has(category)) groups.set(category, []);
+    groups.get(category).push(t);
+  }
+
+  return [...groups.entries()]
+    .sort(([a], [b]) => orderRank(CATEGORY_ORDER, a) - orderRank(CATEGORY_ORDER, b) || compareText(a, b))
+    .map(([category, items]) => ({
+      category,
+      color: getPaymentCategoryColor(category),
+      items: [...items].sort((a, b) => {
+        const typeA = a.propertyType || '住家';
+        const typeB = b.propertyType || '住家';
+        return orderRank(PROPERTY_ORDER, typeA) - orderRank(PROPERTY_ORDER, typeB)
+          || compareText(typeA, typeB)
+          || ((a.buyerType === '首購') ? 0 : 1) - ((b.buyerType === '首購') ? 0 : 1)
+          || (Number(a.minPrice) || 0) - (Number(b.minPrice) || 0)
+          || compareText(a.templateName, b.templateName);
+      }),
+    }));
+});
+
+// 清單排序後的第一個範本（可排除指定 id）
+const firstTemplateId = (excludeId = null) => {
+  for (const group of templateGroups.value) {
+    const found = group.items.find(t => t.id !== excludeId);
+    if (found) return found.id;
+  }
+  return null;
+};
+
+// 選取範本；手機切換到範本內容頁
+const selectTemplate = async (templateId) => {
+  selectedTemplateId.value = templateId;
+  if (!mdAndUp.value) {
+    mobileView.value = 'detail';
+    await nextTick();
+    detailRef.value?.scrollIntoView({ block: 'start' });
+  }
+};
+
+// 手機：返回範本清單並捲到目前範本
+const backToList = async () => {
+  mobileView.value = 'list';
+  await nextTick();
+  document.querySelector('.pt-row--active')?.scrollIntoView({ block: 'center' });
+};
 
 const existingItems = computed(() => {
   // 獲取當前範本中的所有期款項目，排除正在編輯的項目
@@ -814,6 +833,9 @@ const getLoanName = (loanId) => {
   if (!loanId) return null;
   return loanTemplates.value.find(l => l.id === loanId)?.loanName || null;
 };
+
+// 清單列的副標：成數・年期・利率
+const loanMeta = (loan) => `成數 ${loan.ratioPercent}%・${loan.years}年/${loan.periods}期・年利率 ${loan.annualRate}%`;
 
 // 借貸範本被幾個期款範本附掛
 const loanUsageCount = (loanId) => {
@@ -848,7 +870,7 @@ const setupTemplatesListener = () => {
     templates.value = data;
     if (templatesLoading.value) templatesLoading.value = false;
     if (!selectedTemplateId.value && data.length > 0) {
-      selectedTemplateId.value = data[0].id;
+      selectedTemplateId.value = firstTemplateId();
     }
   });
 };
@@ -948,6 +970,7 @@ const handleCopyConfirm = async () => {
     await setPaymentTermTemplate(docId, newTemplate);
     toast.success("範本複製成功");
     copyDialog.value.show = false;
+    selectTemplate(docId);
   } catch (error) {
     toast.error(`複製範本失敗: ${error.message}`);
   }
@@ -1043,6 +1066,7 @@ const executeTemplateSave = async (templateData) => {
       
       await setPaymentTermTemplate(docId, newTemplate);
       toast.success("已新增範本");
+      selectTemplate(docId);
     }
     
     // 關閉所有相關視窗
@@ -1067,9 +1091,10 @@ const confirmDeleteTemplate = async (template) => {
     try {
       await deletePaymentTermTemplate(template.id);
       toast.info("範本已刪除");
-      // 如果被刪除的是當前選中的範本，則清空選項
+      // 如果被刪除的是當前選中的範本，改選清單第一個範本並回到清單
       if (selectedTemplateId.value === template.id) {
-        selectedTemplateId.value = null;
+        selectedTemplateId.value = firstTemplateId(template.id);
+        mobileView.value = 'list';
       }
     } catch(e) {
       toast.error(`刪除失敗: ${e.message}`);
@@ -1143,6 +1168,11 @@ const deleteItem = async (itemId) => {
 // 切換範本時關閉編輯區，避免編輯到錯誤範本的項目
 watch(selectedTemplateId, () => {
   closeEditor();
+});
+
+// 範本不存在（被刪除）時，手機回到清單
+watch(selectedTemplate, (template) => {
+  if (!template) mobileView.value = 'list';
 });
 
 // --- 公司借貸範本 CRUD ---
@@ -1281,90 +1311,194 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.template-card {
-  cursor: pointer;
-  transition: all 0.2s ease-in-out;
-  overflow: hidden;
+/* 讓左側清單與右側編輯區可 sticky（v-card / v-window 預設 overflow: hidden 會讓 sticky 失效） */
+.pt-root,
+.pt-window {
+  overflow: clip;
 }
 
-/* 編輯中：綠色粗邊框 + 陰影強化 */
-.template-card--active {
-  border: 2px solid #2E7D32;
-  box-shadow: 0 4px 16px rgba(46, 125, 50, 0.25) !important;
+/* --- 左清單右內容 --- */
+.pt-layout {
+  padding-top: 16px;
 }
 
-/* 未編輯：降低不透明度與彩度弱化，hover 時恢復 */
-.template-card--inactive {
-  opacity: 0.6;
-  filter: grayscale(0.35);
+.pt-layout--split {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
 }
 
-.template-card--inactive:hover {
-  opacity: 1;
-  filter: none;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+.pt-layout--split .pt-side {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
 }
 
-/* 卡片頂部狀態列 */
-.card-status-bar {
+.pt-layout--split .pt-side-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pt-side-head {
   display: flex;
   align-items: center;
-  font-size: 11px;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.pt-side-total {
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+}
+
+.pt-side-list {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 6px;
+}
+
+.pt-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 1.5px;
-  padding: 5px 14px;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  background:
+    linear-gradient(rgba(var(--v-theme-on-surface), 0.04), rgba(var(--v-theme-on-surface), 0.04)),
+    rgb(var(--v-theme-surface));
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
-.card-status-bar--active {
-  background: linear-gradient(90deg, #1B5E20, #43A047);
-  color: #fff;
+/* 桌機：清單內捲動時分組標題固定在上方 */
+.pt-layout--split .pt-group-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
-.card-status-bar--idle {
-  background: rgba(0,0,0,0.04);
-  color: rgba(0,0,0,0.45);
-}
-
-/* 公司借貸範本：編輯中改用棕色系識別 */
-.card-status-bar--loan-active {
-  background: linear-gradient(90deg, #4E342E, #795548);
-  color: #fff;
-}
-
-.template-card--loan-active {
-  border: 2px solid #6D4C41;
-  box-shadow: 0 4px 16px rgba(109, 76, 65, 0.25) !important;
-}
-
-/* 編輯中呼吸燈 */
-.editing-dot {
+.pt-group-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #B9F6CA;
   flex-shrink: 0;
-  animation: editing-pulse 1.4s ease-in-out infinite;
 }
 
-@keyframes editing-pulse {
-  0%, 100% {
-    opacity: 1;
-    box-shadow: 0 0 0 0 rgba(185, 246, 202, 0.6);
-  }
-  50% {
-    opacity: 0.6;
-    box-shadow: 0 0 0 5px rgba(185, 246, 202, 0);
-  }
+.pt-group-count {
+  margin-left: auto;
+  font-weight: 400;
+  color: rgba(var(--v-theme-on-surface), 0.5);
 }
 
-/* 下方編輯區識別標頭 */
-.editing-header {
-  background: rgba(46, 125, 50, 0.08);
+.pt-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  transition: background 0.15s ease;
+}
+
+.pt-row:last-child {
+  border-bottom: 0;
+}
+
+.pt-row:hover {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+}
+
+.pt-row--active {
+  background: rgba(46, 125, 50, 0.10);
+  border-left-color: #2E7D32;
+}
+
+.pt-row--active:hover {
+  background: rgba(46, 125, 50, 0.14);
+}
+
+.pt-row--loan-active {
+  background: rgba(121, 85, 72, 0.12);
+  border-left-color: #6D4C41;
+}
+
+.pt-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.pt-row-name {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pt-row--active .pt-row-name {
+  color: #1B5E20;
+}
+
+.pt-row-meta {
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+
+.pt-row-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+}
+
+.pt-empty {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+}
+
+/* --- 右側範本內容 --- */
+.pt-main {
+  min-width: 0;
+  /* 手機切換到範本內容時，避開左上角全站漢堡鈕 */
+  scroll-margin-top: 60px;
+}
+
+.pt-detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px 10px 16px;
+  margin-bottom: 12px;
   border-left: 4px solid #2E7D32;
   border-radius: 4px;
-  padding: 10px 16px;
-  color: #1B5E20;
+  background: rgba(46, 125, 50, 0.06);
+}
+
+.pt-detail-title {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.pt-detail-actions {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.pt-items--split {
+  display: grid;
+  grid-template-columns: minmax(320px, 5fr) minmax(0, 6fr);
+  gap: 16px;
+  align-items: start;
 }
 
 .drag-handle {
@@ -1441,7 +1575,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* --- 右側編輯區（桌機） --- */
+/* --- 項目編輯區（寬螢幕內嵌） --- */
 .editor-sticky {
   position: sticky;
   top: 16px;

@@ -1,5 +1,9 @@
 <template>
-  <v-card variant="outlined" class="loan-editor-card d-flex flex-column">
+  <v-card
+    :variant="fullscreen ? 'flat' : 'outlined'"
+    :rounded="fullscreen ? 0 : undefined"
+    :class="['loan-editor-card d-flex flex-column bg-surface', fullscreen && 'loan-editor-card--fullscreen']"
+  >
     <v-card-title class="loan-editor-header d-flex align-center py-3">
       <v-icon size="20" class="mr-2">{{ local.isNew ? 'mdi-plus-box-outline' : 'mdi-pencil-box-outline' }}</v-icon>
       <span class="text-subtitle-1 font-weight-bold">{{ headerTitle }}</span>
@@ -11,7 +15,7 @@
     <v-card-text class="flex-grow-1 overflow-y-auto pt-4">
       <v-row>
         <!-- 左：參數設定 -->
-        <v-col cols="12" md="5">
+        <v-col cols="12" :md="stacked ? 12 : 5">
           <v-text-field
             v-model="local.loanName"
             label="範本名稱"
@@ -121,7 +125,7 @@
         </v-col>
 
         <!-- 右：即時試算預覽 -->
-        <v-col cols="12" md="7">
+        <v-col cols="12" :md="stacked ? 12 : 7">
           <v-sheet border rounded class="pa-3 loan-preview">
             <div class="d-flex align-center flex-wrap ga-2 mb-2">
               <v-icon size="18" color="brown-darken-1">mdi-calculator</v-icon>
@@ -207,6 +211,10 @@ import { buildCompanyLoanSchedule } from '@/utils/companyLoanCalculation';
 const props = defineProps({
   // 由父層傳入的工作副本，編輯過程不影響原始資料
   item: { type: Object, default: null },
+  // 手機全螢幕 dialog：實心背景、頂列避開全站漢堡鈕
+  fullscreen: { type: Boolean, default: false },
+  // 版面較窄時參數與試算預覽改為上下排列
+  stacked: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['save', 'cancel']);
@@ -285,6 +293,10 @@ const handleSave = () => {
 <style scoped>
 .loan-editor-card {
   height: 100%;
+}
+
+.loan-editor-card--fullscreen .loan-editor-header {
+  padding-left: 58px;
 }
 
 .loan-editor-header {

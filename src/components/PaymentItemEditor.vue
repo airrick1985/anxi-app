@@ -1,5 +1,9 @@
 <template>
-  <v-card variant="outlined" class="item-editor-card d-flex flex-column">
+  <v-card
+    :variant="fullscreen ? 'flat' : 'outlined'"
+    :rounded="fullscreen ? 0 : undefined"
+    :class="['item-editor-card d-flex flex-column bg-surface', fullscreen && 'item-editor-card--fullscreen']"
+  >
     <v-card-title class="item-editor-header d-flex align-center py-3">
       <v-icon size="20" class="mr-2">{{ local.isNew ? 'mdi-plus-box-outline' : 'mdi-pencil-box-outline' }}</v-icon>
       <span class="text-subtitle-1 font-weight-bold">{{ headerTitle }}</span>
@@ -126,16 +130,20 @@
           </v-menu>
         </div>
 
-        <v-text-field
+        <v-textarea
           v-model="formulaInput"
           label="計算公式"
           :rules="[validateFormula]"
           placeholder="可直接輸入數字、%及運算符號 (例如: 總價*10%)"
-          @input="handleFormulaInput"
+          rows="2"
+          auto-grow
           hide-details="auto"
           variant="outlined"
           density="comfortable"
-        ></v-text-field>
+          class="formula-input"
+          @input="handleFormulaInput"
+          @keydown.enter.prevent
+        ></v-textarea>
       </div>
     </v-card-text>
 
@@ -157,6 +165,8 @@ const props = defineProps({
   item: { type: Object, default: null },
   // 可在公式中引用的其他期款項目
   existingItems: { type: Array, default: () => [] },
+  // 手機全螢幕 dialog：實心背景、頂列避開全站漢堡鈕
+  fullscreen: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['save', 'cancel']);
@@ -283,7 +293,8 @@ const handleFormulaInput = () => {
     return;
   }
 
-  value = value.replace(/[+\-*/]{2,}/g, '-');
+  // 公式為單行，貼上的換行一併移除
+  value = value.replace(/[\r\n]+/g, '').replace(/[+\-*/]{2,}/g, '-');
   formulaInput.value = value;
 
   formulaTokens.value = parseFormulaToTokens(value);
@@ -309,6 +320,15 @@ const handleSave = () => {
 <style scoped>
 .item-editor-card {
   height: 100%;
+}
+
+.item-editor-card--fullscreen .item-editor-header {
+  padding-left: 58px;
+}
+
+/* 長公式自動換行（英數字串沒有空白也能斷行） */
+.formula-input :deep(textarea) {
+  word-break: break-all;
 }
 
 .item-editor-header {

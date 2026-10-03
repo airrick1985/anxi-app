@@ -1,8 +1,8 @@
 <template>
-  <v-container>
+  <v-container fluid class="settings-page">
 
       <v-row class="mb-4">
-      <v-col>
+      <v-col class="settings-back">
         <v-btn
           @click="goBackToSalesControl"
           color="grey-darken-1"
@@ -81,7 +81,7 @@
       </v-tab>
     </v-tabs>
 
-    <v-window v-model="tab">
+    <v-window v-model="tab" class="settings-window">
       <v-window-item value="settings">
         <v-card class="pa-4" elevation="2">
           <v-card-title class="text-h5 text-primary">
@@ -3162,6 +3162,21 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 隨視窗寬度延展（瀏覽器放大時不會兩側大量留白），超寬螢幕才設上限 */
+.settings-page {
+  max-width: 1800px;
+}
+
+/* 返回鈕避開左上角全站漢堡鈕 */
+.settings-back {
+  padding-left: 50px;
+}
+
+/* 改用 clip：視覺上一樣裁切，但不會讓子頁面的 position: sticky 失效 */
+.settings-window {
+  overflow: clip;
+}
+
 /* 報價系統顯示欄位（專案預設） */
 .qfd-group { border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 10px; padding: 8px 12px 4px; height: 100%; }
 .qfd-group-title { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; margin-bottom: 2px; }
