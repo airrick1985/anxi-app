@@ -51,6 +51,18 @@ const routes = [
     }
   },
 
+  // 產品簡報（公開，業務對外介紹用；:slide 為頁面 id，例如 /deck/ai 直接開到 AI 助理頁）
+  {
+    path: '/deck/:slide?',
+    name: 'ProductDeck',
+    component: () => import('@/views/ProductDeck.vue'),
+    meta: {
+      requiresAuth: false,
+      layout: PublicLayout,
+      title: 'ANXI 安熙智慧 - 產品簡報'
+    }
+  },
+
   // ✅ 試用留資管理（超級管理員；docs/SPEC_LandingTrialLeadsOnboarding.md §5）
   {
     path: '/admin/trial-leads',

@@ -281,6 +281,7 @@ import { useRouter } from 'vue-router';
 import logoUrl from '@/assets/landing/anxi-logo.webp';        // 黑色 LOGO（白底用）
 import logoWhiteUrl from '@/assets/landing/anxi-logo-white.webp'; // 白色 LOGO（深色底用）
 import heroImage from '@/assets/landing/hero-poster.webp'; // 影片首幀，作為 poster／無影片時的靜態背景
+import { PRODUCT_PLANS } from '@/constants/productPlans';
 
 const router = useRouter();
 
@@ -351,7 +352,7 @@ const ShotCarousel = defineComponent({
 });
 
 // ---------------------------------------------------------------
-// 產品資料（沿用原首頁資料：features / pricing / notes，新增 screens）
+// 產品資料（features / screens；方案價格 pricing / notes 見 constants/productPlans.js，與產品簡報共用）
 // ---------------------------------------------------------------
 const products = ref([
   {
@@ -379,11 +380,7 @@ const products = ref([
       { title: '雲端資料夾', desc: '訂單、合約書、客戶證件資料可上傳雲端共同協作分享' },
       { title: 'AI 銷控助理', desc: '24 小時專屬 AI 助理，透過文字聊天解析成交統計與底價差異' },
     ],
-    pricing: [
-      { name: '彈性月繳方案', subName: '單一帳號費用', price: 'NT$ 2,500', unit: '月', desc: '適合短期專案或小型團隊，資金運用更靈活。', isRecommended: false },
-      { name: '超值年繳優惠', subName: '單一帳號費用', price: 'NT$ 25,000', unit: '年', priceNote: '平均每月僅 NT$ 2,083', desc: '一次訂閱享整年優惠，現省 NT$ 5,000！', badge: '年度首選', isRecommended: true },
-    ],
-    notes: ['訂閱費為一個帳號費用，帳號無法共用。', '公司多人訂閱另有優惠，請聯繫我們。', '以上金額未含稅。'],
+    ...PRODUCT_PLANS.sales,
   },
   {
     id: 'customer',
@@ -406,11 +403,7 @@ const products = ref([
       { title: '客戶賞屋預約', desc: '整合行事曆與線上預約，輕鬆安排賞屋時段' },
       { title: '數據匯出分析', desc: '支援客資資料匯出，利於後續行銷分析使用' },
     ],
-    pricing: [
-      { name: '彈性月繳方案', subName: '單一帳號費用', price: 'NT$ 1,000', unit: '月', desc: '輕鬆入門，適合個人或小型銷售團隊使用。', isRecommended: false },
-      { name: '超值年繳優惠', subName: '單一帳號費用', price: 'NT$ 10,000', unit: '年', priceNote: '平均每月僅 NT$ 833', desc: '長期訂閱更划算，現省 NT$ 2,000！', badge: '超值推薦', isRecommended: true },
-    ],
-    notes: ['訂閱費為一個帳號費用，帳號無法共用。', '如需整合 LINE 官方帳號通知功能，需額外設定。', '以上金額未含稅。'],
+    ...PRODUCT_PLANS.customer,
   },
   {
     id: 'booking',
@@ -433,12 +426,7 @@ const products = ref([
       { title: '客製化預約項目', desc: '支援初驗、複驗、代驗等多種類型' },
       { title: '後台即時監控', desc: '隨時掌握預約狀況與手動排程權限' },
     ],
-    pricing: [
-      { name: '短期彈性方案', subName: '月繳 (Monthly)', price: 'NT$ 100', unit: '戶 / 月', desc: '適合短期專案使用，隨需訂閱。', isRecommended: false },
-      { name: '中期優惠方案', subName: '季繳 (Quarterly)', price: 'NT$ 80', unit: '戶 / 月', desc: '一次繳納 3 個月費用，取得更佳費率。', isRecommended: false },
-      { name: '年度超值方案', subName: '年繳 (Yearly)', price: 'NT$ 50', unit: '戶 / 月', desc: '一次繳納 12 個月費用，省下 50% 成本！', badge: 'CP 值最高', isRecommended: true },
-    ],
-    notes: ['計費說明：以上費用以建案「總戶數」為計算基準。', '大量戶別訂閱另有優惠，請聯繫我們。', '款項付清後，系統將於 1-3 個工作日內完成建置並開通。', '以上金額未含稅。'],
+    ...PRODUCT_PLANS.booking,
   },
   {
     id: 'inspection',
@@ -461,11 +449,7 @@ const products = ref([
       { title: '驗屋預約管理', desc: '智慧行事曆排程，自動防呆避免時段衝突' },
       { title: '電子簽名點交', desc: '支援現場數位簽名確認，無紙化完成交屋手續' },
     ],
-    pricing: [
-      { name: '驗屋系統計價方案', subName: '按戶計費 (Per Unit)', price: 'NT$ 500', unit: '戶', desc: '透明靈活的計價方式，依實際建案總戶數計算，用多少算多少。', badge: '交屋階段', isRecommended: true },
-      { name: '修繕系統計價方案', subName: '售後服務階段', price: '請洽詢報價', unit: '', desc: '依建案規模與服務範圍客製報價。', isRecommended: false },
-    ],
-    notes: ['費用包含完整的驗屋系統功能與無限組數管理帳號。', '住戶端查詢介面不另收費。', '以上金額未含稅。'],
+    ...PRODUCT_PLANS.inspection,
   },
   {
     id: 'website',
@@ -488,11 +472,7 @@ const products = ref([
       { title: '產品規劃展示', desc: '清晰呈現樓層平面圖、家具配置與公設示意' },
       { title: '雲端更新資料', desc: '支援雲端即時更新表版內容，一次更新所有電腦確保資訊同步' },
     ],
-    pricing: [
-      { name: '形象網站方案', subName: '線上行銷首選', price: 'NT$ 50,000', unit: '案', desc: '含一次預告階段以及正式公開階段網站、LINE／Email 預約名單即時通知功能。', isRecommended: false },
-      { name: '電子表板方案', subName: '案場解說利器', price: 'NT$ 150,000', unit: '案', desc: '雲端／離線皆可使用的互動式電子表板，提升案場解說效率與專業形象。', isRecommended: true, badge: '案場人氣' },
-    ],
-    notes: ['網站與表板內容資料（如圖檔、文案）由客戶提供。', '形象網站包含首年伺服器空間與網址費用。', 'LINE 通知功能需搭配建案官方帳號權限。', '以上金額未含稅。'],
+    ...PRODUCT_PLANS.website,
   },
 ]);
 

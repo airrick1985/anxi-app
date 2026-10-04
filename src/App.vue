@@ -90,7 +90,7 @@ const reloadPage = () => {
 };
 
 // 系統問題回報浮動按鈕：不顯示於 Landing Page（首頁）
-const showBugReport = computed(() => !!route.name && route.name !== 'LandingPage');
+const showBugReport = computed(() => !!route.name && !['LandingPage', 'ProductDeck'].includes(route.name));
 
 const layoutComponent = computed(() => route.meta.layout || DefaultLayout);
 const finishStartup = () => window.__anxiStartup?.finish();
