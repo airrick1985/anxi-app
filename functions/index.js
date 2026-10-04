@@ -401,7 +401,7 @@ async function grantSuperAdminsForProject(projectId, projectName) {
   }
 }
 
-exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated({ document: "subscriptions/{subscriptionId}", database: 'anxi-app', region: 'asia-east2' }, async (event) => {
+exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated({ document: "subscriptions/{subscriptionId}", database: 'anxi-app', region: 'asia-east2', memory: "512MiB" }, async (event) => {
   const snap = event.data;
   if (!snap) {
     console.log("事件中沒有文件資料，中止操作。");
@@ -422,7 +422,7 @@ exports.grantSuperAdminPermissionsOnNewSubscription = onDocumentCreated({ docume
 });
 
 // 跟進流程「系統啟用」：startDate 由空變有值時授權
-exports.grantSuperAdminPermissionsOnSubscriptionActivated = onDocumentUpdated({ document: "subscriptions/{subscriptionId}", database: 'anxi-app', region: 'asia-east2' }, async (event) => {
+exports.grantSuperAdminPermissionsOnSubscriptionActivated = onDocumentUpdated({ document: "subscriptions/{subscriptionId}", database: 'anxi-app', region: 'asia-east2', memory: "512MiB" }, async (event) => {
   const before = event.data?.before?.data();
   const after = event.data?.after?.data();
   if (!after || !after.startDate || (before && before.startDate)) return;

@@ -62,6 +62,7 @@ exports.openScheduledBookingItems = onSchedule({
   timeZone: 'Asia/Taipei',
   region: 'asia-east1',
   timeoutSeconds: 300,
+  memory: '512MiB',
 }, async () => {
   const db = new Firestore({ databaseId: 'anxi-app' });
   const now = new Date();
