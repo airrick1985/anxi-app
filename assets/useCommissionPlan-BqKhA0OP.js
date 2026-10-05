@@ -1,1 +1,0 @@
-import{D as l,f_ as t}from"./index-BIfHa3MC.js";import{D as e,g as s}from"./framework-CooEuROf.js";function p(){const n=e("commissionPlan",s(()=>l[0])),o=s(()=>n.value.id);return{plan:n,planId:o,belongsToPlan:a=>t(a)===o.value}}export{p as u};
