@@ -379,6 +379,7 @@ import { useParkingStore } from '@/store/parkingStore';
 import { useUserStore } from '@/store/user';
 import { fetchQuoteRemark, checkQuoteFloor, notifyQuoteApproval, listQuoteSupervisors } from '@/api';
 import { generateQrDataUrl } from '@/utils/quoteQrCode';
+import { PREVIEW_FIT_SCRIPT } from '@/utils/previewFitScript';
 import { normalizeUnitAnnotation, sanitizeAnnotationHtml } from '@/utils/unitAnnotation';
 
 const props = defineProps({
@@ -1507,27 +1508,15 @@ const SHEET_CSS = `
 `;
 
 // ✅ [重構] 組出完整報價單 HTML（列印視窗、預覽 iframe、PDF 截圖共用同一份版面）
-// autoPrint：載入後自動叫出列印；fitZoom：預覽用，頁寬超出視窗時整體縮放至可視大小
+// autoPrint：載入後自動叫出列印；fitZoom：預覽用，整頁縮放到符合視窗寬與高
 function buildSheetsHtml({ autoPrint = false, fitZoom = false } = {}) {
   const items = quoteStore.items.filter(i => selectedIds.value.includes(i.internalId));
   if (items.length === 0) return '';
 
   const sheets = items.map(item => renderSheet(item)).join('\n');
   const printScript = autoPrint ? '\n  window.focus();\n  window.print();' : '';
-  // ✅ [修復] 預覽縮放改用 transform scale：純視覺縮放不觸發重排，
-  // 手機預覽版面與電腦/列印完全一致（zoom 會 reflow 導致期款區移位）
-  const zoomScript = fitZoom ? `
-  (function () {
-    var first = document.querySelector('.sheet');
-    if (!first) return;
-    var w = first.getBoundingClientRect().width + 16;
-    var z = Math.min(1, window.innerWidth / w);
-    if (z < 1) {
-      document.body.style.transformOrigin = 'top left';
-      document.body.style.transform = 'scale(' + z + ')';
-      document.body.style.width = (100 / z) + '%';
-    }
-  })();` : '';
+  // 預覽：transform 等比縮放到符合視窗寬與高（不重排，版面與列印一致），視窗大小改變時重算
+  const zoomScript = fitZoom ? PREVIEW_FIT_SCRIPT : '';
 
   return `<!DOCTYPE html>
 <html lang="zh-Hant">

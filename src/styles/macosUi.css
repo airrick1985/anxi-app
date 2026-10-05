@@ -76,6 +76,10 @@
   font-weight: 600;
 }
 .mac-sheet-head .v-icon { color: #6e6e73; }
+/* 標題列內的彩色按鈕：圖示維持按鈕本身的顏色（避免被上方灰色圖示規則蓋掉，例：預覽視窗的藍底「列印」） */
+.mac-sheet-head .mac-btn--primary .v-icon,
+.mac-sheet-head .mac-btn--danger-fill .v-icon { color: #fff; }
+.mac-sheet-head .mac-btn--danger .v-icon { color: var(--mac-danger); }
 .mac-sheet-close {
   display: inline-flex;
   align-items: center;

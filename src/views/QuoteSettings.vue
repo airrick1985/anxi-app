@@ -66,6 +66,10 @@
         <v-icon size="16">mdi-plus</v-icon><span>新增戶別</span>
       </button>
 
+      <button type="button" class="mac-btn" @click="isLoanQuoteVisible = true">
+        <v-icon size="16">mdi-bank-outline</v-icon><span>公司借貸報價</span>
+      </button>
+
       <button
         v-if="quoteStore.items.length > 0"
         type="button"
@@ -332,6 +336,17 @@
       :personnel-phone="personnelPhone"
     />
 
+    <!-- 公司借貸報價單：任意借款金額／利率／期數＋費用明細，A4 直式列印（所有報價人員可用） -->
+    <CompanyLoanQuoteDialog
+      v-model="isLoanQuoteVisible"
+      :project-id="projectId"
+      :project-name="projectName"
+      :personnel-name="selectedPersonnel?.name || ''"
+      :personnel-phone="personnelPhone"
+      :unit-options="loanQuoteUnitOptions"
+      :can-manage-templates="canEditQuoteRemark"
+    />
+
     <!-- ✅ [新增] 報價單備註富文本編輯器（銷控管理權限） -->
     <QuoteRemarkEditorDialog
       v-model="isRemarkEditorVisible"
@@ -518,6 +533,7 @@ import QuotePackageLimitDialog from '@/components/QuotePackageLimitDialog.vue';
 import QuoteApprovalSettingDialog from '@/components/QuoteApprovalSettingDialog.vue';
 import QuoteIntroUrlDialog from '@/components/QuoteIntroUrlDialog.vue';
 import QuotePlanEditorDialog from '@/components/QuotePlanEditorDialog.vue';
+import CompanyLoanQuoteDialog from '@/components/CompanyLoanQuoteDialog.vue';
 import { useSalesDataStore } from '@/store/salesDataStore';
 import { toQuoteUnitData } from '@/utils/quoteUnitData';
 
@@ -761,6 +777,10 @@ async function handlePackageReminderConfirm(selectedIds) {
 
 // ✅ [新增] 報價單備註編輯器對話框
 const isRemarkEditorVisible = ref(false);
+
+// 公司借貸報價單：戶別選項取自目前報價清單
+const isLoanQuoteVisible = ref(false);
+const loanQuoteUnitOptions = computed(() => [...new Set(quoteStore.items.map(i => i.unitId).filter(Boolean))]);
 
 // ✅ [新增] 配套總價上限設定對話框
 const isPackageLimitDialogVisible = ref(false);

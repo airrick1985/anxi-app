@@ -26623,8 +26623,10 @@ exports.clearProjectLeads = onCall({
 
 
 /**
- * 🤖 AI 優化洽談紀錄 (使用 Gemini 1.5 Flash)
- * 接收：{ text: "原始文本" }
+ * 🤖 AI 優化文本 (Gemini)
+ * 接收：{ text: "原始文本", purpose?: "interactionLog" | "quoteNote" }
+ *   - interactionLog（預設）：洽談紀錄
+ *   - quoteNote：公司借貸報價單備註（對客戶、編號條列）
  * 回傳：{ optimizedText: "優化後的文本" }
  */
 exports.optimizeInteractionLog = onCall({
@@ -26635,7 +26637,7 @@ exports.optimizeInteractionLog = onCall({
   minInstances: 0,
   secrets: ["GEMINI_API_KEY"], // ✅ 啟用 Secret Manager
 }, async (request) => {
-  const { text } = request.data;
+  const { text, purpose } = request.data;
 
   if (!text || typeof text !== 'string' || text.trim().length === 0) {
     throw new HttpsError('invalid-argument', '請提供有效的文本內容');
@@ -26652,7 +26654,23 @@ exports.optimizeInteractionLog = onCall({
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = `
+    const quoteNotePrompt = `
+作為一位房地產銷售專家，請將以下「公司借貸報價單備註」整理成給客戶看的正式備註。
+
+**優化規則 (嚴格執行)**：
+1. **編號條列**：一律整理成「1. 」「2. 」編號條列，每點一行，一點只寫一件事。
+2. **禁止使用星號 (*)** 與任何 Markdown 符號，不要粗體、標題、表格。
+3. **只整理原文內容**：不可自行新增原文沒有的條款、金額、利率、期數、日期或承諾；原文的數字與單位必須原樣保留。
+4. **保留原文用詞**：原文的關鍵名詞與事件（例如：交屋、簽約、撥款、代書）照原文使用，不要替換成其他說法，也不要加括號補充說明。
+5. **語氣**：正式、客觀、精簡，對客戶的書面用語；去除口語贅詞。
+6. **純文字輸出**：不要加「備註」等標題，也不要有任何開場白或結語。
+7. **慣用詞語**：使用台灣慣用繁體中文，請勿使用中國大陸用語，例如：台灣使用「戶別」，請勿使用「單位」。
+
+**原始文本**：
+"${text}"
+    `;
+
+    const prompt = purpose === 'quoteNote' ? quoteNotePrompt : `
 作為一位房地產銷售專家，請優化以下「洽談紀錄」。
 
 **優化規則 (嚴格執行)**：
@@ -26673,7 +26691,16 @@ exports.optimizeInteractionLog = onCall({
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    const optimizedText = response.text();
+    let optimizedText = response.text();
+    // 報價單備註：統一編號格式「1. 內容」、移除星號與空行
+    if (purpose === 'quoteNote') {
+      optimizedText = optimizedText
+        .replace(/\*/g, '')
+        .split('\n')
+        .map(line => line.trim().replace(/^(\d+)[.、．)](?!\d)\s*/, '$1. '))
+        .filter(Boolean)
+        .join('\n');
+    }
 
     return {
       status: "success",
