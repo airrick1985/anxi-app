@@ -39,47 +39,57 @@
 
             <!-- 頁面清單 -->
             <v-card elevation="2" class="mb-4">
-              <v-card-item class="editor-header">
+              <v-card-item class="editor-header cursor-pointer" @click="pagesExpanded = !pagesExpanded">
                 <v-card-title class="text-subtitle-1">
                   <v-icon start size="small">mdi-file-multiple-outline</v-icon>
                   匯出頁面（勾選與排序）
                 </v-card-title>
+                <template #append>
+                  <v-chip v-if="!pagesExpanded" size="small" variant="tonal" class="mr-1">
+                    {{ exportablePages.length }} / {{ localPages.length }} 頁
+                  </v-chip>
+                  <v-icon>{{ pagesExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+                </template>
               </v-card-item>
-              <v-divider />
-              <v-card-text class="pa-2">
-                <draggable v-model="localPages" item-key="id" handle=".drag-handle">
-                  <template #item="{ element: page, index: idx }">
-                    <div class="d-flex align-center page-row px-2">
-                      <v-icon class="drag-handle cursor-move mr-1 text-grey" size="small">mdi-drag</v-icon>
-                      <v-checkbox-btn v-model="page.enabled" density="compact" class="flex-grow-0"
-                        :disabled="pageDisabled(page)" />
-                      <v-icon size="small" class="mr-1">{{ pageTypeIcon(page.type) }}</v-icon>
-                      <span class="text-body-2 mr-1">{{ page.title }}</span>
-                      <v-chip size="x-small" variant="tonal" class="mr-1">
-                        {{ page.paper?.size }}{{ page.paper?.orientation === 'landscape' ? '橫' : '直' }}
-                      </v-chip>
-                      <v-chip v-if="(page.repeatCount || 1) > 1" size="x-small" variant="tonal" color="deep-orange">
-                        ×{{ page.repeatCount }} 份
-                      </v-chip>
-                      <v-chip v-if="(page.pageCopies || 1) > 1" size="x-small" variant="tonal" color="indigo" class="ml-1">
-                        {{ page.pageCopies }} 頁
-                      </v-chip>
-                      <v-tooltip v-if="pageDisabled(page)" location="top" :text="pageDisabledReason(page)">
-                        <template #activator="{ props: tp }">
-                          <v-icon v-bind="tp" size="small" color="warning" class="ml-1">mdi-alert-outline</v-icon>
-                        </template>
-                      </v-tooltip>
-                      <v-spacer />
-                      <v-btn icon size="x-small" variant="text" :disabled="idx === 0" @click="movePage(idx, -1)">
-                        <v-icon>mdi-arrow-up</v-icon>
-                      </v-btn>
-                      <v-btn icon size="x-small" variant="text" :disabled="idx === localPages.length - 1" @click="movePage(idx, 1)">
-                        <v-icon>mdi-arrow-down</v-icon>
-                      </v-btn>
-                    </div>
-                  </template>
-                </draggable>
-              </v-card-text>
+              <v-expand-transition>
+                <div v-show="pagesExpanded">
+                  <v-divider />
+                  <v-card-text class="pa-2">
+                    <draggable v-model="localPages" item-key="id" handle=".drag-handle">
+                      <template #item="{ element: page, index: idx }">
+                        <div class="d-flex align-center page-row px-2">
+                          <v-icon class="drag-handle cursor-move mr-1 text-grey" size="small">mdi-drag</v-icon>
+                          <v-checkbox-btn v-model="page.enabled" density="compact" class="flex-grow-0"
+                            :disabled="pageDisabled(page)" />
+                          <v-icon size="small" class="mr-1">{{ pageTypeIcon(page.type) }}</v-icon>
+                          <span class="text-body-2 mr-1">{{ page.title }}</span>
+                          <v-chip size="x-small" variant="tonal" class="mr-1">
+                            {{ page.paper?.size }}{{ page.paper?.orientation === 'landscape' ? '橫' : '直' }}
+                          </v-chip>
+                          <v-chip v-if="(page.repeatCount || 1) > 1" size="x-small" variant="tonal" color="deep-orange">
+                            ×{{ page.repeatCount }} 份
+                          </v-chip>
+                          <v-chip v-if="(page.pageCopies || 1) > 1" size="x-small" variant="tonal" color="indigo" class="ml-1">
+                            {{ page.pageCopies }} 頁
+                          </v-chip>
+                          <v-tooltip v-if="pageDisabled(page)" location="top" :text="pageDisabledReason(page)">
+                            <template #activator="{ props: tp }">
+                              <v-icon v-bind="tp" size="small" color="warning" class="ml-1">mdi-alert-outline</v-icon>
+                            </template>
+                          </v-tooltip>
+                          <v-spacer />
+                          <v-btn icon size="x-small" variant="text" :disabled="idx === 0" @click="movePage(idx, -1)">
+                            <v-icon>mdi-arrow-up</v-icon>
+                          </v-btn>
+                          <v-btn icon size="x-small" variant="text" :disabled="idx === localPages.length - 1" @click="movePage(idx, 1)">
+                            <v-icon>mdi-arrow-down</v-icon>
+                          </v-btn>
+                        </div>
+                      </template>
+                    </draggable>
+                  </v-card-text>
+                </div>
+              </v-expand-transition>
             </v-card>
 
             <!-- 期款方式 -->
@@ -902,6 +912,7 @@ const state = reactive({
 
 /* ---------- 頁面（config + 本戶 overrides） ---------- */
 const localPages = ref([]);
+const pagesExpanded = ref(false);   // 匯出頁面清單較少調整，預設收合
 
 function pageTypeIcon(type) { return PAGE_TYPE_MAP[type]?.icon || 'mdi-file-outline'; }
 
