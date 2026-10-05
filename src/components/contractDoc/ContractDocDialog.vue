@@ -1232,8 +1232,7 @@ function decoRecalcPercentFromAmount(row) {
 }
 
 // 配套頁僅驗證金額合計（同付款表配套模式，不檢查比例）
-const decoAmountSum = computed(() =>
-  decoEditRows.value.reduce((s, r) => s + (r.type === 'group' ? groupAmount(r) : (Math.round(Number(r.amount)) || 0)), 0));
+const decoAmountSum = computed(() => rowsAmountSum(decoEditRows.value));
 const decoAmountOk = computed(() => decoAmountSum.value === decorationBase.value);
 
 const decoCorrectionOptions = computed(() => decoEditRows.value.map(r => ({ key: r.key, label: r.name })));
@@ -1256,6 +1255,10 @@ function applyDecoCorrection() {
 /* ---------- 雙向連動 / 驗證（單頁版，同付款表邏輯） ---------- */
 function groupAmount(row) {
   return (row.children || []).reduce((s, c) => s + (Math.round(Number(c.amount)) || 0), 0);
+}
+
+function rowsAmountSum(rows) {
+  return rows.reduce((s, r) => s + (r.type === 'group' ? groupAmount(r) : (Math.round(Number(r.amount)) || 0)), 0);
 }
 
 function recalcAmountFromPercent(row) {
@@ -1291,8 +1294,7 @@ function recalcPercentFromAmount(row) {
 const percentSum = computed(() => editRows.value.reduce((s, r) => s + (Number(r.percent) || 0), 0));
 const percentSumText = computed(() => (Math.round(percentSum.value * 100) / 100).toString());
 const percentOk = computed(() => Math.abs(percentSum.value - 100) <= 0.01);
-const amountSum = computed(() =>
-  editRows.value.reduce((s, r) => s + (r.type === 'group' ? groupAmount(r) : (Math.round(Number(r.amount)) || 0)), 0));
+const amountSum = computed(() => rowsAmountSum(editRows.value));
 const amountOk = computed(() => amountSum.value === mainBase.value);
 
 const correctionOptions = computed(() => editRows.value.map(r => ({ key: r.key, label: r.name })));
@@ -1843,7 +1845,12 @@ function restoreDocData(cfg, freshDocData) {
     // 結構相符才還原（名稱逐一比對）
     const currentNames = JSON.stringify(editRows.value.map(r => [r.name, (r.children || []).map(c => c.name)]));
     const savedNames = JSON.stringify(saved.manualRows.map(r => [r.name, (r.children || []).map(c => c.name)]));
-    if (currentNames === savedNames) {
+    // 總價基準相符才還原：舊存檔無 manualRowsBase 時以各期合計推定
+    // （如配套戶改用配套房屋總價前，以成交總價存下的期款）
+    const savedBase = Number(saved.manualRowsBase ?? rowsAmountSum(saved.manualRows));
+    if (currentNames === savedNames && savedBase !== mainBase.value) {
+      toast.info(`期款總價基準已變更（${formatNumber(savedBase)} → ${formatNumber(mainBase.value)} 萬），已重新以範本計算。`);
+    } else if (currentNames === savedNames) {
       restoringRows = true;
       editRows.value = saved.manualRows.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) }));
       correctionTargetKey.value = editRows.value.length ? editRows.value[editRows.value.length - 1].key : null;
@@ -1864,7 +1871,12 @@ function restoreDocData(cfg, freshDocData) {
     && saved.decorationManualRowsTemplateId === (decoActiveTemplate.value?.id || null)) {
     const currentNames = JSON.stringify(decoEditRows.value.map(r => [r.name, (r.children || []).map(c => c.name)]));
     const savedNames = JSON.stringify(saved.decorationManualRows.map(r => [r.name, (r.children || []).map(c => c.name)]));
-    if (currentNames === savedNames) {
+    const savedBase = Number(saved.decorationManualRowsBase ?? rowsAmountSum(saved.decorationManualRows));
+    if (currentNames === savedNames && savedBase !== decorationBase.value) {
+      if (isPackageContract.value) {
+        toast.info(`配套價格已變更（${formatNumber(savedBase)} → ${formatNumber(decorationBase.value)} 萬），裝修期款已重新以範本計算。`);
+      }
+    } else if (currentNames === savedNames) {
       restoringDecoRows = true;
       decoEditRows.value = saved.decorationManualRows.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) }));
       decoCorrectionTargetKey.value = decoEditRows.value.length ? decoEditRows.value[decoEditRows.value.length - 1].key : null;
@@ -1891,9 +1903,11 @@ function buildDocDataPayload() {
     qrUrl: state.qrUrl || '',
     paymentTemplateId: manualTemplateId.value || null,
     manualRowsTemplateId: activeTemplate.value?.id || null,
+    manualRowsBase: mainBase.value,
     manualRows: editRows.value.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) })),
     decorationTemplateId: decoManualTemplateId.value || null,
     decorationManualRowsTemplateId: decoActiveTemplate.value?.id || null,
+    decorationManualRowsBase: decorationBase.value,
     decorationManualRows: decoEditRows.value.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) })),
     pageOverrides: pagesToOverrides(localPages.value, config.value?.pages || []),
     attachmentSelection: state.attachmentSelection.map(a => ({ ...a })),
