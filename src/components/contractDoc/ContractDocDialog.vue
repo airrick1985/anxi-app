@@ -252,8 +252,10 @@
                     </div>
 
                     <div class="d-flex flex-wrap align-center ga-2 mt-2">
-                      <v-chip size="small" :color="percentOk ? 'success' : 'error'" variant="tonal">
+                      <v-chip size="small" :color="percentExact ? 'success' : percentOk ? 'warning' : 'error'" variant="tonal">
                         比例合計 {{ percentSumText }}%
+                        <v-btn v-if="percentOk && !percentExact" size="x-small" variant="text" class="ml-1"
+                          @click="applyCorrection">補正</v-btn>
                       </v-chip>
                       <v-chip size="small" :color="amountOk ? 'success' : 'error'" variant="tonal">
                         金額合計 {{ formatNumber(amountSum) }} / {{ formatNumber(mainBase) }} 萬
@@ -1304,9 +1306,13 @@ function recalcPercentFromAmount(row) {
 
 const percentSum = computed(() => editRows.value.reduce((s, r) => s + (Number(r.percent) || 0), 0));
 const percentSumText = computed(() => (Math.round(percentSum.value * 100) / 100).toString());
-const percentOk = computed(() => Math.abs(percentSum.value - 100) <= 0.01);
+const percentExact = computed(() => Math.abs(percentSum.value - 100) <= 0.01);
 const amountSum = computed(() => rowsAmountSum(editRows.value));
 const amountOk = computed(() => amountSum.value === mainBase.value);
+// 比例僅供顯示：金額合計正確時，手動調整造成的些微比例誤差（±1% 內）不擋下載
+const PERCENT_TOLERANCE = 1;
+const percentOk = computed(() => percentExact.value
+  || (amountOk.value && Math.abs(percentSum.value - 100) <= PERCENT_TOLERANCE));
 
 const correctionOptions = computed(() => editRows.value.map(r => ({ key: r.key, label: r.name })));
 
@@ -2202,13 +2208,13 @@ function formatNumber(value) {
   font-family: 'Noto Serif TC', 'Times New Roman', serif;
   flex-shrink: 0;
 }
-/* 負數異常警示：scrollable dialog 的 flex 版面會壓縮 card-text 以外的子元素，
-   固定不可壓縮、文字可換行，欄位太多時警示內部自行捲動 */
+/* 無法下載警示：v-alert 預設 flex: 1 1（基準高度 0），在 scrollable dialog 的直向 flex 版面中
+   左欄內容一長就被壓到只剩內距；改為依內容高度且不可壓縮，項目太多時警示內部自行捲動 */
 .blockers-list { margin: 4px 0 0; padding-left: 18px; }
 .blockers-list li { margin: 2px 0; }
 .negatives-alert {
-  flex-shrink: 0;
-  max-height: 132px;
+  flex: 0 0 auto;
+  max-height: min(240px, 35vh);
   overflow-y: auto;
   white-space: normal;
   word-break: break-word;
