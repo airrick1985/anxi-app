@@ -156,6 +156,8 @@ import {
   roundingToDisplayString,
   validateFormula,
   evaluateFormulaWithContext,
+  parkingTransactionTotal,
+  transactionTotalOf,
 } from '@/composables/usePriceFormula';
 
 const props = defineProps({
@@ -263,12 +265,9 @@ const roundingSample = computed(() => {
 const computedPreview = computed(() => {
   if (!valid.value.valid) return '—';
   const u = props.previewContext.unitData;
-  const parking = Array.isArray(u?.['持有車位'])
-    ? u['持有車位'].reduce((s, p) => s + (Number(p?.['車位成交價']) || 0), 0)
-    : 0;
   const ctx = {
-    total:      Number(u?.price_transaction_total) || 0,
-    parking,
+    total:      transactionTotalOf(u),
+    parking:    parkingTransactionTotal(u),
     houseRatio: Number(u?.housePriceRatio) || 0,
     landRatio:  Number(u?.landPriceRatio)  || 0,
     // 本公式參照「另一支公式」時，直接用 otherResult（已由 PriceFormulaDialog 依完整 draft 算好）

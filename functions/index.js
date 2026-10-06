@@ -31304,6 +31304,9 @@ const bookingVisibility = require('./bookingVisibility');
 exports.openBookingItemOnBatchWrite = bookingVisibility.openBookingItemOnBatchWrite;
 exports.openScheduledBookingItems = bookingVisibility.openScheduledBookingItems;
 
+// 賞屋預約加入行事曆：Apple 裝置回傳 .ics，其他裝置轉到 Google 日曆。
+exports.viewingReservationCalendar = require('./viewingReservationCalendar').viewingReservationCalendar;
+
 // LINE 名單回報：獨立 callable，免 ANXI 登入但必須驗證 LINE token 與名單權限。
 // 此 entrypoint 會載入共用套件，256 MiB 已發生 OOM；明確設定容量並限制單實例併發。
 exports.lineLeadReport = onCall({ region: 'asia-east1', timeoutSeconds: 45, memory: '512MiB', concurrency: 10 },

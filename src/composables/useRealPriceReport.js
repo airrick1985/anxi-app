@@ -12,7 +12,7 @@ import {
   buildEmptyBuildData,
 } from '@/constants/realPriceReportSchema';
 import { CITIES, getTownsByCity } from '@/constants/landOfficeCodeTable';
-import { computeHouseLandPrices, isSpecialContractType } from './usePriceFormula';
+import { computeHouseLandPrices, isSpecialContractType, transactionTotalOf } from './usePriceFormula';
 
 // ========== Firestore 路徑 ==========
 function projectDocRef(projectId) {
@@ -301,11 +301,11 @@ export function autoMapMainFromUnit(unitData, projectDefaults = {}, extraContext
     const landPrice  = wan(landPriceWan);   // 土地交易總價 = 土地價款（公式結果）
     // 不動產交易總價：
     //   特殊合約（毛胚/配套）→ 採「配套房屋總價」price_package_deal
-    //   一般合約            → 採 price_transaction_total，若無則以 房屋+土地+車位 回推
+    //   一般合約            → 採成交總價（房屋成交價＋車位即時計算），若無則以 房屋+土地+車位 回推
     const isSpecial = isSpecialContractType(unitData?.contractType);
     const totalPriceWan = isSpecial
       ? (Number(unitData?.price_package_deal) || 0)
-      : (Number(unitData?.price_transaction_total) || (housePriceWan + landPriceWan + (parkingPrices / 10000)));
+      : (transactionTotalOf(unitData) || (housePriceWan + landPriceWan + (parkingPrices / 10000)));
     const totalPrice = wan(totalPriceWan);
     if (housePrice) mapped.p1ma_dbidprice = toStr(housePrice);
     if (landPrice)  mapped.p1ma_alidprice = toStr(landPrice);

@@ -99,6 +99,11 @@
                   <v-icon start size="small">mdi-format-list-numbered</v-icon>
                   期款方式（拆款表 / 付款明細表）
                 </v-card-title>
+                <template #append>
+                  <v-switch :model-value="manualMode" label="完全手動" color="warning" density="compact"
+                    hide-details inset :disabled="!editRows.length && !manualMode"
+                    @update:model-value="toggleManualMode" />
+                </template>
               </v-card-item>
               <v-divider />
               <v-card-text>
@@ -120,12 +125,12 @@
                   <v-row dense>
                     <v-col cols="12" sm="5">
                       <v-select v-model="categoryModel" :items="categoryOptions" label="期款類別"
-                        variant="outlined" density="compact" hide-details />
+                        variant="outlined" density="compact" hide-details :disabled="manualMode" />
                     </v-col>
                     <v-col cols="12" sm="7">
                       <v-select v-model="templateIdModel" :items="templateOptions"
                         item-title="templateName" item-value="id" label="期款範本"
-                        variant="outlined" density="compact" hide-details>
+                        variant="outlined" density="compact" hide-details :disabled="manualMode">
                         <template v-slot:item="{ props: itemProps, item }">
                           <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle" />
                         </template>
@@ -139,7 +144,7 @@
                     <v-chip v-else size="small" color="orange" variant="tonal">
                       <v-icon start size="x-small">mdi-hand-back-right-outline</v-icon>手動指定
                     </v-chip>
-                    <v-btn v-if="!isAutoSelected" size="x-small" variant="text" color="primary" class="ml-2"
+                    <v-btn v-if="!isAutoSelected && !manualMode" size="x-small" variant="text" color="primary" class="ml-2"
                       @click="resetToAuto">還原自動判斷</v-btn>
                   </div>
                   <v-alert v-if="!activeTemplate" type="info" variant="tonal" density="compact" class="mt-3">
@@ -187,17 +192,17 @@
                               <td class="text-right">
                                 <v-text-field :model-value="splitFor(row).houseAmount" type="text" inputmode="decimal"
                                   density="compact" variant="outlined" hide-details class="amount-input"
-                                  :class="{ 'split-manual': splitFor(row).manualSplit }"
+                                  :class="splitClass(row)"
                                   @change="setLeafHouseAmount(row, $event)" />
                               </td>
                               <td class="text-right">
                                 <v-text-field :model-value="splitFor(row).landAmount" type="text" inputmode="decimal"
                                   density="compact" variant="outlined" hide-details class="amount-input"
-                                  :class="{ 'split-manual': splitFor(row).manualSplit }"
+                                  :class="splitClass(row)"
                                   @change="setLeafLandAmount(row, $event)" />
                               </td>
                               <td class="text-center">
-                                <v-btn v-if="splitFor(row).manualSplit" icon="mdi-restore" size="x-small" variant="text"
+                                <v-btn v-if="!manualMode && splitFor(row).manualSplit" icon="mdi-restore" size="x-small" variant="text"
                                   color="warning" title="回復公式拆分" @click="resetLeafSplit(row)" />
                               </td>
                             </template>
@@ -215,17 +220,17 @@
                               <td class="text-right">
                                 <v-text-field :model-value="splitFor(child).houseAmount" type="text" inputmode="decimal"
                                   density="compact" variant="outlined" hide-details class="amount-input"
-                                  :class="{ 'split-manual': splitFor(child).manualSplit }"
+                                  :class="splitClass(child)"
                                   @change="setLeafHouseAmount(child, $event)" />
                               </td>
                               <td class="text-right">
                                 <v-text-field :model-value="splitFor(child).landAmount" type="text" inputmode="decimal"
                                   density="compact" variant="outlined" hide-details class="amount-input"
-                                  :class="{ 'split-manual': splitFor(child).manualSplit }"
+                                  :class="splitClass(child)"
                                   @change="setLeafLandAmount(child, $event)" />
                               </td>
                               <td class="text-center">
-                                <v-btn v-if="splitFor(child).manualSplit" icon="mdi-restore" size="x-small" variant="text"
+                                <v-btn v-if="!manualMode && splitFor(child).manualSplit" icon="mdi-restore" size="x-small" variant="text"
                                   color="warning" title="回復公式拆分" @click="resetLeafSplit(child)" />
                               </td>
                             </tr>
@@ -246,7 +251,7 @@
                       </tfoot>
                     </v-table>
                     </div>
-                    <div class="text-caption text-medium-emphasis mt-1">
+                    <div v-if="!manualMode" class="text-caption text-medium-emphasis mt-1">
                       房屋款／土地款預設依「期款拆分規則」自動計算；直接輸入即可個別調整（另一方自動補足該期金額），清空欄位或按
                       <v-icon size="x-small">mdi-restore</v-icon> 回復公式計算。手動指定的土地款在該期金額變動時維持不動，差額由房屋款吸收。
                     </div>
@@ -254,7 +259,7 @@
                     <div class="d-flex flex-wrap align-center ga-2 mt-2">
                       <v-chip size="small" :color="percentExact ? 'success' : percentOk ? 'warning' : 'error'" variant="tonal">
                         比例合計 {{ percentSumText }}%
-                        <v-btn v-if="percentOk && !percentExact" size="x-small" variant="text" class="ml-1"
+                        <v-btn v-if="!manualMode && percentOk && !percentExact" size="x-small" variant="text" class="ml-1"
                           @click="applyCorrection">補正</v-btn>
                       </v-chip>
                       <v-chip size="small" :color="amountOk ? 'success' : 'error'" variant="tonal">
@@ -263,7 +268,7 @@
                       <v-chip size="small" :color="splitModel.landOk ? 'success' : 'error'" variant="tonal">
                         土地款合計 {{ formatNumber(splitModel.landSum) }} / {{ formatNumber(splitModel.landTarget) }} 萬
                       </v-chip>
-                      <v-chip v-if="splitModel.hasManualSplit" size="small" color="warning" variant="tonal">
+                      <v-chip v-if="!manualMode && splitModel.hasManualSplit" size="small" color="warning" variant="tonal">
                         <v-icon start size="x-small">mdi-hand-back-right-outline</v-icon>房/土手動調整
                         <v-btn size="x-small" variant="text" class="ml-1" @click="resetAllSplits">全部回復公式</v-btn>
                       </v-chip>
@@ -274,12 +279,12 @@
                       <div class="font-weight-bold">期款方式數字異常，已停用下載。</div>
                       <div v-if="!amountOk">
                         各期金額合計 {{ formatNumber(amountSum) }} 萬 ≠ {{ mainBaseLabel }} {{ formatNumber(mainBase) }} 萬
-                        （{{ amountSum > mainBase ? '多' : '少' }} {{ formatNumber(Math.abs(mainBase - amountSum)) }} 萬），請調整各期金額或一鍵補正。
+                        （{{ amountSum > mainBase ? '多' : '少' }} {{ formatNumber(Math.abs(mainBase - amountSum)) }} 萬），{{ manualMode ? '請調整各期金額。' : '請調整各期金額或一鍵補正。' }}
                       </div>
                       <div v-if="!percentOk">
-                        各期比例合計 {{ percentSumText }}% ≠ 100%，請調整比例或一鍵補正。
+                        各期比例合計 {{ percentSumText }}% ≠ 100%，{{ manualMode ? '請調整比例。' : '請調整比例或一鍵補正。' }}
                       </div>
-                      <div class="d-flex flex-wrap align-center ga-2 mt-2">
+                      <div v-if="!manualMode" class="d-flex flex-wrap align-center ga-2 mt-2">
                         <v-select v-model="correctionTargetKey" :items="correctionOptions"
                           item-title="label" item-value="key" density="compact" variant="outlined" hide-details
                           label="差額歸入" style="max-width: 220px;" />
@@ -292,8 +297,9 @@
                     <!-- 房/土拆分檢核 -->
                     <v-alert v-if="!splitModel.landOk" type="warning" variant="tonal" density="compact" class="mt-3">
                       各期土地款合計 {{ formatNumber(splitModel.landSum) }} 萬 ≠ 土地價款 {{ formatNumber(splitModel.landTarget) }} 萬
-                      （差 {{ formatNumber(splitModel.landDiff) }} 萬）。可直接在上表調整各期土地款、一鍵補正，或至「合約製作範本 → 期款拆分規則」調整公式並確認戶別房/土比例。
-                      <div class="d-flex flex-wrap align-center ga-2 mt-2">
+                      （差 {{ formatNumber(splitModel.landDiff) }} 萬）。<template v-if="manualMode">請調整各期土地款。</template>
+                      <template v-else>可直接在上表調整各期土地款、一鍵補正，或至「合約製作範本 → 期款拆分規則」調整公式並確認戶別房/土比例。</template>
+                      <div v-if="!manualMode" class="d-flex flex-wrap align-center ga-2 mt-2">
                         <v-select v-model="landCorrectionTargetKey" :items="landCorrectionOptions"
                           item-title="label" item-value="key" density="compact" variant="outlined" hide-details
                           label="土地差額歸入" style="max-width: 260px;" />
@@ -301,6 +307,9 @@
                           一鍵補正土地差額
                         </v-btn>
                       </div>
+                    </v-alert>
+                    <v-alert v-if="splitModel.mismatchRows.length" type="warning" variant="tonal" density="compact" class="mt-3">
+                      房屋款＋土地款 ≠ 該期金額：{{ splitMismatchText }}
                     </v-alert>
                   </template>
                 </template>
@@ -330,7 +339,7 @@
                   </v-alert>
                   <v-select v-model="decoTemplateIdModel" :items="decoTemplateOptions"
                     item-title="templateName" item-value="id" label="裝修期款範本（配套期款）"
-                    variant="outlined" density="compact" hide-details>
+                    variant="outlined" density="compact" hide-details :disabled="manualMode">
                     <template v-slot:item="{ props: itemProps, item }">
                       <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle" />
                     </template>
@@ -342,7 +351,7 @@
                     <v-chip v-else size="small" color="orange" variant="tonal">
                       <v-icon start size="x-small">mdi-hand-back-right-outline</v-icon>手動指定
                     </v-chip>
-                    <v-btn v-if="!decoIsAutoSelected" size="x-small" variant="text" color="primary" class="ml-2"
+                    <v-btn v-if="!decoIsAutoSelected && !manualMode" size="x-small" variant="text" color="primary" class="ml-2"
                       @click="decoResetToAuto">還原自動判斷</v-btn>
                   </div>
                   <v-alert v-if="!decoActiveTemplate" type="info" variant="tonal" density="compact" class="mt-3">
@@ -405,9 +414,9 @@
                       <div class="font-weight-bold">裝修期款數字異常，已停用下載。</div>
                       <div>
                         各期金額合計 {{ formatNumber(decoAmountSum) }} 萬 ≠ 配套價格 {{ formatNumber(decorationBase) }} 萬
-                        （{{ decoAmountSum > decorationBase ? '多' : '少' }} {{ formatNumber(Math.abs(decorationBase - decoAmountSum)) }} 萬），請調整各期金額或一鍵補正。
+                        （{{ decoAmountSum > decorationBase ? '多' : '少' }} {{ formatNumber(Math.abs(decorationBase - decoAmountSum)) }} 萬），{{ manualMode ? '請調整各期金額。' : '請調整各期金額或一鍵補正。' }}
                       </div>
-                      <div class="d-flex flex-wrap align-center ga-2 mt-2">
+                      <div v-if="!manualMode" class="d-flex flex-wrap align-center ga-2 mt-2">
                         <v-select v-model="decoCorrectionTargetKey" :items="decoCorrectionOptions"
                           item-title="label" item-value="key" density="compact" variant="outlined" hide-details
                           label="差額歸入" style="max-width: 220px;" />
@@ -825,7 +834,7 @@ import {
   generateContractDocument, driveProxyList,
   listContractDocFiles, deleteContractDocFile, warmupContractDocument,
 } from '@/api.js';
-import { runNewCalculationEngine } from '@/utils/paymentCalculation';
+import { runNewCalculationEngine, recalcGroupChildren } from '@/utils/paymentCalculation';
 import { buildUnitDocContext, resolveBankSets } from '@/utils/unitDocContext';
 import { PAGE_TYPE_MAP, isPackageOnlyPageType } from '@/utils/contractDocDefaults';
 import {
@@ -1111,6 +1120,8 @@ function resetToAuto() {
 
 /* ---------- 期款編輯列 ---------- */
 const editRows = ref([]);
+// 完全手動：比例／金額／房屋款／土地款各自輸入、互不連動（期款與裝修期款共用），隨戶別合約資料儲存
+const manualMode = ref(false);
 const correctionTargetKey = ref(null);
 let restoringRows = false;   // 還原已存列時避免 rebuild 蓋掉
 let rowsTemplateId = null;   // 目前 editRows 所依據的範本 id（rebuild/還原時記錄）
@@ -1149,7 +1160,7 @@ function rebuildRows() {
 // watcher 為非同步（pre-flush），若在 restoreDocData 還原已存列之後才觸發，會把還原結果蓋掉；
 // 因此只在「範本 id 真正改變」時重建（範本清單重新載入、同 id 不同物件時不重建）
 watch(activeTemplate, (t) => {
-  if ((t?.id || null) === rowsTemplateId) return;
+  if (manualMode.value || (t?.id || null) === rowsTemplateId) return;
   rebuildRows();
 });
 
@@ -1210,11 +1221,12 @@ function rebuildDecoRows() {
 }
 
 watch(decoActiveTemplate, (t) => {
-  if ((t?.id || null) === decoRowsTemplateId) return;   // 同上：避免非同步 watcher 蓋掉已還原的列
+  if (manualMode.value || (t?.id || null) === decoRowsTemplateId) return;   // 同上：避免非同步 watcher 蓋掉已還原的列
   rebuildDecoRows();
 });
 
 function decoRecalcAmountFromPercent(row) {
+  if (manualMode.value) return;
   const base = decorationBase.value;
   const percent = Number(row.percent) || 0;
   const target = Math.round(percent / 100 * base);
@@ -1239,6 +1251,7 @@ function decoRecalcAmountFromPercent(row) {
 }
 
 function decoRecalcPercentFromAmount(row) {
+  if (manualMode.value) return;
   const base = decorationBase.value;
   const sum = row.type === 'group' ? groupAmount(row) : (Math.round(Number(row.amount)) || 0);
   row.percent = base > 0 ? Math.round(sum / base * 10000) / 100 : 0;
@@ -1254,14 +1267,7 @@ function applyDecoCorrection() {
   const row = decoEditRows.value.find(r => r.key === decoCorrectionTargetKey.value);
   if (!row) return;
   const diff = decorationBase.value - decoAmountSum.value;
-  if (row.type === 'group') {
-    const children = row.children || [];
-    if (!children.length) return;
-    const last = children[children.length - 1];
-    last.amount = (Math.round(Number(last.amount)) || 0) + diff;
-  } else {
-    row.amount = (Math.round(Number(row.amount)) || 0) + diff;
-  }
+  if (!correctRowDiff(row, decoEditRows.value, decoActiveTemplate.value, decorationBase.value, '配套金額', diff)) return;
   decoRecalcPercentFromAmount(row);
 }
 
@@ -1274,7 +1280,67 @@ function rowsAmountSum(rows) {
   return rows.reduce((s, r) => s + (r.type === 'group' ? groupAmount(r) : (Math.round(Number(r.amount)) || 0)), 0);
 }
 
+// 依權重分配總額（最大餘數法）：各期先取無條件捨去的比例金額，剩餘的萬依小數大小逐一補上
+// （同小數時比例大者優先、再由後往前）；total ≥ 0 時不會出現負數。權重全為 0 時平均分配。
+function distributeByWeight(children, total, weights) {
+  const w = weights.map(v => Math.max(Number(v) || 0, 0));
+  const ws = w.some(v => v > 0) ? w : w.map(() => 1);
+  const wsum = ws.reduce((s, v) => s + v, 0);
+  const exact = ws.map(v => total * v / wsum);
+  const amounts = exact.map(Math.floor);
+  const left = total - amounts.reduce((s, v) => s + v, 0);
+  const order = exact.map((_, i) => i)
+    .sort((a, b) => (exact[b] - amounts[b]) - (exact[a] - amounts[a]) || ws[b] - ws[a] || b - a);
+  for (let n = 0; n < left; n++) amounts[order[n % order.length]] += 1;
+  children.forEach((c, i) => { c.amount = amounts[i]; });
+}
+
+// 差額歸入母項：母項總額 = 目前合計 + 差額，子項依範本公式重算（尾數落點依範本），其他期別不動。
+// 公式重算後仍有差額（範本餘額項不在此母項）或出現負數時，改依範本各子項比例分配母項總額。
+// 回傳 false = 母項總額會小於 0，無法補正。
+function correctGroupByTemplate(row, rows, template, base, baseVariable, diff) {
+  const children = row.children || [];
+  const target = groupAmount(row) + diff;
+  if (!children.length || target < 0) return false;
+  const fixed = {};
+  rows.forEach(r => {
+    if (r === row) return;
+    if (r.type === 'group') {
+      fixed[r.key] = groupAmount(r);
+      (r.children || []).forEach(c => { fixed[c.key] = Math.round(Number(c.amount)) || 0; });
+    } else {
+      fixed[r.key] = Math.round(Number(r.amount)) || 0;
+    }
+  });
+  const values = recalcGroupChildren(template?.items, row.key, target, fixed, base, baseVariable);
+  const byFormula = children.map(c => values[c.key]);
+  if (byFormula.every(v => Number.isFinite(v) && v >= 0) && byFormula.reduce((s, v) => s + v, 0) === target) {
+    children.forEach((c, i) => { c.amount = byFormula[i]; });
+    return true;
+  }
+  // 範本比例：以範本原始計算結果為權重；找不到範本時用目前金額
+  const templateValues = {};
+  Object.values(template?.items ? runNewCalculationEngine(template.items, base, baseVariable) : {})
+    .forEach(r => { templateValues[r.id] = r.value; });
+  distributeByWeight(children, target,
+    children.map(c => templateValues[c.key] ?? (Math.round(Number(c.amount)) || 0)));
+  return true;
+}
+
+// 差額歸入單一期別或母項；任一期會出現負數時不補正並提示
+function correctRowDiff(row, rows, template, base, baseVariable, diff) {
+  if (row.type === 'group') {
+    if (correctGroupByTemplate(row, rows, template, base, baseVariable, diff)) return true;
+  } else {
+    const next = (Math.round(Number(row.amount)) || 0) + diff;
+    if (next >= 0) { row.amount = next; return true; }
+  }
+  toast.warning(`差額歸入「${row.name}」會出現負數，請改選其他期別。`);
+  return false;
+}
+
 function recalcAmountFromPercent(row) {
+  if (manualMode.value) return;
   const base = mainBase.value;
   const percent = Number(row.percent) || 0;
   const target = Math.round(percent / 100 * base);
@@ -1299,6 +1365,7 @@ function recalcAmountFromPercent(row) {
 }
 
 function recalcPercentFromAmount(row) {
+  if (manualMode.value) return;
   const base = mainBase.value;
   const sum = row.type === 'group' ? groupAmount(row) : (Math.round(Number(row.amount)) || 0);
   row.percent = base > 0 ? Math.round(sum / base * 10000) / 100 : 0;
@@ -1320,17 +1387,10 @@ function applyCorrection() {
   const row = editRows.value.find(r => r.key === correctionTargetKey.value);
   if (!row) return;
   const diff = mainBase.value - amountSum.value;
-  if (row.type === 'group') {
-    const children = row.children || [];
-    if (!children.length) return;
-    const last = children[children.length - 1];
-    last.amount = (Math.round(Number(last.amount)) || 0) + diff;
-  } else {
-    row.amount = (Math.round(Number(row.amount)) || 0) + diff;
-  }
+  if (!correctRowDiff(row, editRows.value, activeTemplate.value, mainBase.value, '總價', diff)) return;
   recalcPercentFromAmount(row);
   const pDiff = Math.round((100 - percentSum.value) * 100) / 100;
-  if (Math.abs(pDiff) > 0.01) {
+  if (Math.abs(pDiff) > 0.01 && Number(row.percent) + pDiff >= 0) {
     row.percent = Math.round((Number(row.percent) + pDiff) * 100) / 100;
   }
 }
@@ -1343,7 +1403,10 @@ const priceModel = computed(() => buildPriceModel(
   { packageTypes: packageTypes.value },
 ));
 
-const splitModel = computed(() => buildSplitModel(editRows.value, config.value, priceModel.value.fullContext));
+const splitModel = computed(() => buildSplitModel(editRows.value, config.value, priceModel.value.fullContext,
+  { manual: manualMode.value }));
+const splitMismatchText = computed(() => splitModel.value.mismatchRows
+  .map(r => (r.groupName ? `${r.groupName}－${r.name}` : r.name)).join('、'));
 
 /* ---------- 期款房/土個別手動調整 ----------
  * 覆寫值存於葉列 row.landOverride（單期列或群組子項），隨 manualRows 一併儲存；
@@ -1356,6 +1419,10 @@ const splitByKey = computed(() => {
 });
 function splitFor(leaf) {
   return splitByKey.value[leaf.key] || EMPTY_SPLIT;
+}
+function splitClass(leaf) {
+  const s = splitFor(leaf);
+  return { 'split-manual': !manualMode.value && s.manualSplit, 'split-error': !!s.splitMismatch };
 }
 function groupSplit(row) {
   return (row.children || []).reduce((acc, c) => {
@@ -1372,10 +1439,12 @@ function readInputNumber(evt) {
   return Number.isFinite(n) ? n : null;
 }
 function setLeafLandAmount(leaf, evt) {
-  leaf.landOverride = normalizeLandOverride(readInputNumber(evt));
+  const land = normalizeLandOverride(readInputNumber(evt));
+  leaf.landOverride = manualMode.value ? (land ?? 0) : land;
 }
 function setLeafHouseAmount(leaf, evt) {
   const house = readInputNumber(evt);
+  if (manualMode.value) { leaf.houseOverride = normalizeLandOverride(house) ?? 0; return; }
   if (house === null) { leaf.landOverride = null; return; }
   const amount = Math.round(Number(leaf.amount)) || 0;
   leaf.landOverride = normalizeLandOverride(amount - house);
@@ -1419,7 +1488,36 @@ function applyLandCorrection() {
   const leaf = findLeafByKey(landCorrectionTargetKey.value);
   if (!leaf) return;
   const current = Number(splitFor(leaf).landAmount) || 0;
-  leaf.landOverride = normalizeLandOverride(current + splitModel.value.landDiff);
+  const land = normalizeLandOverride(current + splitModel.value.landDiff);
+  // 土地款不可為負、也不可超過該期金額（房屋款會變負）
+  if (land < 0 || land > (Math.round(Number(leaf.amount)) || 0)) {
+    toast.warning(`土地差額歸入「${leaf.name}」會出現負數，請改選其他期別。`);
+    return;
+  }
+  leaf.landOverride = land;
+}
+
+/* ---------- 完全手動切換 ---------- */
+function toggleManualMode(on) {
+  if (on) {
+    // 以目前的房屋款／土地款（含公式拆分結果）為起始值
+    const byKey = splitByKey.value;
+    const snapshot = leaf => {
+      const s = byKey[leaf.key] || EMPTY_SPLIT;
+      leaf.landOverride = normalizeLandOverride(s.landAmount) ?? 0;
+      leaf.houseOverride = normalizeLandOverride(s.houseAmount) ?? 0;
+    };
+    editRows.value.forEach(r => {
+      if (r.type === 'group') (r.children || []).forEach(snapshot);
+      else snapshot(r);
+    });
+    manualMode.value = true;
+    return;
+  }
+  if (!window.confirm('切回自動將捨棄手動輸入的期款數字，依範本重新計算，確認？')) return;
+  manualMode.value = false;
+  rebuildRows();
+  rebuildDecoRows();
 }
 
 /* ---------- 合約附圖 ---------- */
@@ -1759,6 +1857,9 @@ const downloadBlockers = computed(() => {
       if (!splitModel.value.landOk) {
         list.push(`期款方式：各期土地款合計 ${formatNumber(splitModel.value.landSum)} 萬 ≠ 土地價款 ${formatNumber(splitModel.value.landTarget)} 萬`);
       }
+      if (splitModel.value.mismatchRows.length) {
+        list.push(`期款方式：${splitMismatchText.value} 房屋款＋土地款 ≠ 該期金額`);
+      }
     }
   }
   if (needsDecoration.value) {
@@ -1856,8 +1957,20 @@ function restoreDocData(cfg, freshDocData) {
   if (saved.paymentTemplateId && templates.value.some(t => t.id === saved.paymentTemplateId)) {
     manualTemplateId.value = saved.paymentTemplateId;
   }
+  manualMode.value = saved.installmentManualMode === true
+    && Array.isArray(saved.manualRows) && saved.manualRows.length > 0;
   rebuildRows();
-  if (Array.isArray(saved.manualRows) && saved.manualRows.length
+  if (manualMode.value) {
+    // 完全手動：不比對範本結構與總價基準，原樣還原（由下載檢核把關）
+    restoringRows = true;
+    editRows.value = saved.manualRows.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) }));
+    rowsTemplateId = activeTemplate.value?.id || null;
+    restoringRows = false;
+    const savedBase = Number(saved.manualRowsBase ?? rowsAmountSum(saved.manualRows));
+    if (savedBase !== mainBase.value) {
+      toast.info(`期款總價基準已變更（${formatNumber(savedBase)} → ${formatNumber(mainBase.value)} 萬），請確認手動期款。`);
+    }
+  } else if (Array.isArray(saved.manualRows) && saved.manualRows.length
     && saved.manualRowsTemplateId === (activeTemplate.value?.id || null)) {
     // 結構相符才還原（名稱逐一比對）
     const currentNames = JSON.stringify(editRows.value.map(r => [r.name, (r.children || []).map(c => c.name)]));
@@ -1884,7 +1997,12 @@ function restoreDocData(cfg, freshDocData) {
     decoManualTemplateId.value = saved.decorationTemplateId;
   }
   rebuildDecoRows();
-  if (Array.isArray(saved.decorationManualRows) && saved.decorationManualRows.length
+  if (manualMode.value && Array.isArray(saved.decorationManualRows) && saved.decorationManualRows.length) {
+    restoringDecoRows = true;
+    decoEditRows.value = saved.decorationManualRows.map(r => ({ ...r, children: (r.children || []).map(c => ({ ...c })) }));
+    decoRowsTemplateId = decoActiveTemplate.value?.id || null;
+    restoringDecoRows = false;
+  } else if (Array.isArray(saved.decorationManualRows) && saved.decorationManualRows.length
     && saved.decorationManualRowsTemplateId === (decoActiveTemplate.value?.id || null)) {
     const currentNames = JSON.stringify(decoEditRows.value.map(r => [r.name, (r.children || []).map(c => c.name)]));
     const savedNames = JSON.stringify(saved.decorationManualRows.map(r => [r.name, (r.children || []).map(c => c.name)]));
@@ -1918,6 +2036,7 @@ function buildDocDataPayload() {
     breakdownRemark: state.breakdownRemark || '',
     decorationRemark: state.decorationRemark || '',
     qrUrl: state.qrUrl || '',
+    installmentManualMode: manualMode.value,
     paymentTemplateId: manualTemplateId.value || null,
     manualRowsTemplateId: activeTemplate.value?.id || null,
     manualRowsBase: mainBase.value,
@@ -2189,6 +2308,8 @@ function formatNumber(value) {
 .amount-input :deep(input) { text-align: right; padding-inline: 6px; }
 .split-manual :deep(.v-field) { background: rgba(255, 193, 7, 0.14); }
 .split-manual :deep(.v-field__outline) { color: rgb(var(--v-theme-warning)); }
+.split-error :deep(.v-field) { background: rgba(var(--v-theme-error), 0.08); }
+.split-error :deep(.v-field__outline) { color: rgb(var(--v-theme-error)); }
 .split-total-row td { border-top: 1px solid rgba(0, 0, 0, 0.18); background: rgba(0, 0, 0, 0.02); }
 .preview-wrapper {
   overflow-x: auto;

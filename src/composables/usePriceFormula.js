@@ -20,6 +20,20 @@ export function isSpecialContractType(contractType, packageTypes) {
   return SPECIAL_CONTRACT_TYPES.has(type);
 }
 
+// ============ 成交總價（含車位） ============
+// 一律以「房屋成交價 + 車位成交價合計」即時計算（同期款基準 unitDocContext、SalesInfoForm 存檔口徑）。
+// 儲存的 price_transaction_total 僅在兩者皆無值時備援：批次匯入等路徑改了房屋成交價不會同步它，可能是舊值。
+export function parkingTransactionTotal(unitData) {
+  const spots = Array.isArray(unitData?.['持有車位']) ? unitData['持有車位'] : [];
+  return spots.reduce((s, p) => s + (Number(p?.['車位成交價'] ?? p?.price_transaction) || 0), 0);
+}
+
+export function transactionTotalOf(unitData) {
+  const house = Number(unitData?.price_transaction_house) || 0;
+  const parking = parkingTransactionTotal(unitData);
+  return house > 0 || parking > 0 ? house + parking : (Number(unitData?.price_transaction_total) || 0);
+}
+
 // ============ 常數：可用參照 ============
 
 export const REF_DEFINITIONS = [
@@ -207,7 +221,7 @@ export function validateFormula(formula) {
 }
 
 // ============ 高階 API：計算戶別的房屋/土地價款（萬） ============
-// unitData: 戶別資料（含 price_transaction_total / price_transaction_house / 持有車位 / housePriceRatio / landPriceRatio）
+// unitData: 戶別資料（含 price_transaction_house / 持有車位 / housePriceRatio / landPriceRatio；成交總價見 transactionTotalOf）
 // formulaSettings: { housePriceFormula, landPriceFormula }（無則採預設）
 //
 // 兩公式可能互相依賴。解法：先在不帶對方結果的情況下計算一次，
@@ -225,10 +239,8 @@ export function computeHouseLandPrices(unitData, formulaSettings, options = {}) 
   // 特殊合約（毛胚/配套）：total 改以「配套房屋總價」(price_package_deal) 作為房土比計算基礎
   const total       = isSpecialContractType(unitData?.contractType, options.packageTypes)
     ? (Number(unitData?.price_package_deal) || 0)
-    : (Number(unitData?.price_transaction_total) || 0);
-  const parking     = Array.isArray(unitData?.['持有車位'])
-    ? unitData['持有車位'].reduce((s, p) => s + (Number(p?.['車位成交價']) || 0), 0)
-    : 0;
+    : transactionTotalOf(unitData);
+  const parking     = parkingTransactionTotal(unitData);
   const houseRatio  = Number(unitData?.housePriceRatio) || 0;
   const landRatio   = Number(unitData?.landPriceRatio)  || 0;
 
@@ -317,12 +329,10 @@ export function refDefinitionsToMap(refDefs) {
 export function buildContractBaseContext(unitData, priceFormulaSettings, options = {}) {
   const { housePrice, landPrice, error } = computeHouseLandPrices(unitData, priceFormulaSettings, options);
   const isPackage = isSpecialContractType(unitData?.contractType, options.packageTypes);
-  const transactionTotal = Number(unitData?.price_transaction_total) || 0;
+  const transactionTotal = transactionTotalOf(unitData);
   const packageDealPrice = Number(unitData?.price_package_deal) || 0;
   const total = isPackage ? packageDealPrice : transactionTotal;
-  const parking = Array.isArray(unitData?.['持有車位'])
-    ? unitData['持有車位'].reduce((s, p) => s + (Number(p?.['車位成交價'] ?? p?.price_transaction) || 0), 0)
-    : 0;
+  const parking = parkingTransactionTotal(unitData);
   const context = {
     total,
     parking,
@@ -397,10 +407,8 @@ export function debugCompute(unitData, formulaSettings) {
   const ctx = {
     total: isSpecialContractType(unitData?.contractType)
       ? (Number(unitData?.price_package_deal) || 0)
-      : (Number(unitData?.price_transaction_total) || 0),
-    parking: Array.isArray(unitData?.['持有車位'])
-      ? unitData['持有車位'].reduce((s, p) => s + (Number(p?.['車位成交價']) || 0), 0)
-      : 0,
+      : transactionTotalOf(unitData),
+    parking: parkingTransactionTotal(unitData),
     houseRatio: Number(unitData?.housePriceRatio) || 0,
     landRatio:  Number(unitData?.landPriceRatio)  || 0,
     isSpecial: isSpecialContractType(unitData?.contractType),

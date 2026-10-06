@@ -2396,7 +2396,7 @@ const showRatioBreakdown = ref(false);
 const isSpecialContract = computed(() => isSpecialContractType(props.unitData?.contractType));
 const packageHouseTotal = computed(() => Number(props.unitData?.price_package_deal) || 0);
 const packagePrice = computed(() => {
-  const total = Number(props.unitData?.price_transaction_total) || grandTotalTransactionPrice.value || 0;
+  const total = grandTotalTransactionPrice.value || Number(props.unitData?.price_transaction_total) || 0;
   return total - packageHouseTotal.value;
 });
 

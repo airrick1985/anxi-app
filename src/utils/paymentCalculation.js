@@ -145,6 +145,31 @@ export function runNewCalculationEngine(templateItems, baseValue, baseVariable) 
 }
 
 /**
+ * 依範本公式重算單一母項的子項金額，其餘期別維持目前金額。
+ * 母項固定為 groupTotal、其他項目固定為 fixedAmounts 的金額，子項依各自公式計算；
+ * 尾數落在哪一期由範本公式決定（如「總價-訂金-…」的餘額項會吸收差額）。
+ * @param {Array} templateItems - 期款範本項目列表
+ * @param {string} groupId - 母項 id
+ * @param {number} groupTotal - 母項目標總額
+ * @param {Object} fixedAmounts - { [itemId]: 金額 } 其他期別（含其他母項與其子項）的目前金額
+ * @param {number} baseValue - 基礎金額（總價或配套價）
+ * @param {string} baseVariable - 基礎變數名稱（"總價" 或 "配套金額"）
+ * @returns {Object} { [childId]: 金額 }（範本找不到該母項時為空物件）
+ */
+export function recalcGroupChildren(templateItems, groupId, groupTotal, fixedAmounts, baseValue, baseVariable) {
+    if (!Array.isArray(templateItems) || !templateItems.some(i => i.id === groupId)) return {};
+    const items = templateItems.map(item => {
+        if (item.parentId === groupId) return item;
+        const value = item.id === groupId ? groupTotal : fixedAmounts[item.id];
+        return { ...item, formula: String(Number(value) || 0), roundingMethod: '', roundingValue: 0 };
+    });
+    const results = runNewCalculationEngine(items, baseValue, baseVariable);
+    return Object.fromEntries(items
+        .filter(i => i.parentId === groupId)
+        .map(i => [i.id, Math.round(Number(results[i.name]?.value) || 0)]));
+}
+
+/**
  * 公式計算函數，支援項目名稱引用
  * @param {string} formula - 公式字串
  * @param {Object} variables - 可用變數 { 變數名: 值 }

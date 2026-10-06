@@ -5143,7 +5143,7 @@ const enrichUnitItem = (unit, parkingMap) => {
 
     // 配套價格：與戶別「成交總覽」同口徑即時計算（成交總價 − 配套房屋總價），不取資料庫舊值；非配套合約留空
     item.price_package = isSpecialContractType(unit.contractType)
-        ? (Number(unit.price_transaction_total) || item.total_transaction) - (Number(unit.price_package_deal) || 0)
+        ? (item.total_transaction || Number(unit.price_transaction_total) || 0) - (Number(unit.price_package_deal) || 0)
         : null;
 
     // 溢差價計算

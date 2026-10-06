@@ -1,6 +1,12 @@
 <template>
   <v-dialog v-model="dialog" max-width="600px" persistent>
-    <v-card>
+    <ViewingReservationSavedCard
+      v-if="savedReservation"
+      :reservation="savedReservation"
+      :is-edit="isEdit"
+      @close="closeDialog"
+    />
+    <v-card v-else>
       <v-card-title class="bg-primary text-white d-flex align-center">
         <div class="flex-grow-1">
           <div class="text-h6">{{ isEdit ? '編輯預約' : '新增賞屋預約' }}</div>
@@ -472,6 +478,7 @@ import { useProjectStore } from '@/store/projectStore'; // 確保引用
 import { useSalesDataStore } from '@/store/salesDataStore'; // 戶別/銷控資料
 import { format } from 'date-fns';
 import { useToast } from 'vue-toastification';
+import ViewingReservationSavedCard from '@/components/ViewingReservationSavedCard.vue';
 
 // ===== 原生 datetime-local 轉換工具 =====
 
@@ -823,6 +830,8 @@ watch(() => formData.value.type, (newType) => {
 
 const conflictInfo = ref(null);
 const conflictDialog = ref(false);
+// 儲存成功後切換為成功畫面（含加入行事曆）
+const savedReservation = ref(null);
 
 const isEdit = computed(() => !!props.initialData?.id);
 const dialog = computed({
@@ -899,6 +908,7 @@ const phoneRules = [
 // ✅ 優化後的初始化監控邏輯
 watch(() => props.modelValue, async (val) => {
   if (val) {
+    savedReservation.value = null;
     pendingInits.value++;
     try {
       initStatus.value = '資料連線中...';
@@ -967,7 +977,9 @@ const resolveConflict = async (action) => {
     conflictDialog.value = false;
     if (action === 'replace') {
         if (conflictInfo.value?.id) {
-            await reservationStore.cancelReservation(conflictInfo.value.id, '系統：電話衝突，使用者選擇覆蓋', userStore.user?.name || '');
+            const result = await reservationStore.cancelReservation(conflictInfo.value.id, '系統：電話衝突，使用者選擇覆蓋', userStore.user?.name || '');
+            if (result?.success) toast.warning('已取消原預約，請記得刪除行事曆中的原行程', { timeout: 8000 });
+            else alert('取消原預約失敗：' + (result?.error || '未知錯誤'));
         }
     }
 };
@@ -1062,18 +1074,38 @@ const save = async () => {
         operatorName: userStore.user.name
     };
 
+    // updateReservation 會把 payload.reservationTime 轉成 Timestamp，先保留 Date 供成功畫面使用
+    const reservationTime = formData.value.reservationTime;
+    const prevRaw = props.initialData?.reservationTime;
+    const previousTime = isEdit.value && prevRaw ? (prevRaw.toDate ? prevRaw.toDate() : new Date(prevRaw)) : null;
+
     try {
+        let reservationId = props.initialData?.id;
         if (isEdit.value) {
-            await reservationStore.updateReservation(props.initialData.id, payload);
+            const result = await reservationStore.updateReservation(reservationId, payload);
+            if (!result?.success) throw new Error(result?.error || '未知錯誤');
         } else {
             const result = await reservationStore.addReservation(payload);
+            if (!result?.success) throw new Error(result?.error || '未知錯誤');
+            reservationId = result.id;
             // ✅ [新客自動建名單] 提醒使用者：新電話已自動建立名單並分配給指定銷售
-            if (result?.autoAssignedLead) {
+            if (result.autoAssignedLead) {
                 toast.success(`已完成預約｜此電話為新客戶，名單已自動分配給 ${result.autoAssignedLead.salesName}`, { timeout: 6000 });
             }
         }
        emit('saved', payload);
-        closeDialog();
+        savedReservation.value = {
+            id: reservationId,
+            projectName: currentProjectName.value,
+            customerName: payload.customerName,
+            customerPhone: payload.customerPhone,
+            reservationTime,
+            previousTime,
+            type: finalType,
+            unitId: finalUnitId,
+            salesName: sName,
+            note: payload.note || ''
+        };
     } catch (e) {
         alert("儲存失敗：" + e.message);
     } finally {
@@ -1083,7 +1115,12 @@ const save = async () => {
 
 const confirmDelete = async () => {
     if (confirm('確定要取消此預約嗎？')) {
-        await reservationStore.cancelReservation(props.initialData.id, '使用者手動取消', userStore.user?.name || '');
+        const result = await reservationStore.cancelReservation(props.initialData.id, '使用者手動取消', userStore.user?.name || '');
+        if (!result?.success) {
+            alert('取消失敗：' + (result?.error || '未知錯誤'));
+            return;
+        }
+        toast.warning('已取消預約，請記得刪除行事曆中的行程', { timeout: 8000 });
         emit('deleted');
         closeDialog();
     }

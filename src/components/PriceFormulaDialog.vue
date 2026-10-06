@@ -87,7 +87,7 @@ const saving = ref(false);
 // 預覽用假資料（讓使用者看到公式計算範例）
 const previewContext = {
   unitData: {
-    price_transaction_total: 1000,  // 成交總價 1000 萬
+    price_transaction_house: 850,   // 房屋成交價 850 萬（成交總價 = 850 + 車位 150 = 1000 萬）
     '持有車位': [{ '車位成交價': 150 }],  // 車位總價 150 萬
     housePriceRatio: 59,
     landPriceRatio: 41,

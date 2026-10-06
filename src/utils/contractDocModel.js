@@ -26,14 +26,14 @@ export function sqmToPing(sqm) {
   return Math.round(n * SQM_TO_PING * 100) / 100;
 }
 
-/** 葉列的土地款手動覆寫值：有效數字才視為覆寫，其餘一律 null（走拆分公式） */
+/** 葉列的土地款／房屋款手動值：有效數字才視為覆寫，其餘一律 null（走拆分公式） */
 export function normalizeLandOverride(value) {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
-/** 期款編輯列（group/single）攤平成葉列 [{ key, name, amount, percent, groupName, landOverride }] */
+/** 期款編輯列（group/single）攤平成葉列 [{ key, name, amount, percent, groupName, landOverride, houseOverride }] */
 export function flattenEditRows(editRows = []) {
   const rows = [];
   for (const r of editRows) {
@@ -47,6 +47,7 @@ export function flattenEditRows(editRows = []) {
         groupName: r.name,
         groupPercent: Number(r.percent) || 0,
         landOverride: normalizeLandOverride(c.landOverride),
+        houseOverride: normalizeLandOverride(c.houseOverride),
       }));
     } else {
       rows.push({
@@ -58,6 +59,7 @@ export function flattenEditRows(editRows = []) {
         groupName: null,
         groupPercent: null,
         landOverride: normalizeLandOverride(r.landOverride),
+        houseOverride: normalizeLandOverride(r.houseOverride),
       });
     }
   }
@@ -84,22 +86,36 @@ export function buildPriceModel(unitData, priceFormulaSettings, config, options 
  * 每葉列先套建案「期款拆分規則」公式；若該列有手動覆寫土地款（landOverride），
  * 則以覆寫值為準：土地款 = 覆寫值、房屋款 = 期款金額 − 土地款（manualSplit=true）。
  * 期款金額（總額）改變時覆寫的土地款維持不動，差額由房屋款吸收。
+ * options.manual（完全手動）：不套公式，房屋款／土地款直接取 houseOverride／landOverride，
+ * 房屋款＋土地款 ≠ 該期金額的列標 splitMismatch。
  */
-export function buildSplitModel(editRows, config, fullContext) {
+export function buildSplitModel(editRows, config, fullContext, options = {}) {
   const leaves = flattenEditRows(editRows);
-  const split = computeInstallmentSplit(leaves, config?.installmentSplitRules || {}, fullContext)
-    .map(r => {
-      const override = normalizeLandOverride(r.landOverride);
-      if (override === null) return { ...r, manualSplit: false };
-      const amount = Number(r.amount) || 0;
+  const round2 = v => Math.round(v * 100) / 100;
+  const split = options.manual
+    ? leaves.map(r => {
+      const landAmount = r.landOverride ?? 0;
+      const houseAmount = r.houseOverride ?? 0;
       return {
         ...r,
-        landAmount: override,
-        houseAmount: Math.round((amount - override) * 100) / 100,
+        landAmount,
+        houseAmount,
         manualSplit: true,
+        splitMismatch: round2(landAmount + houseAmount) !== (Number(r.amount) || 0),
       };
-    });
-  const round2 = v => Math.round(v * 100) / 100;
+    })
+    : computeInstallmentSplit(leaves, config?.installmentSplitRules || {}, fullContext)
+      .map(r => {
+        const override = normalizeLandOverride(r.landOverride);
+        if (override === null) return { ...r, manualSplit: false };
+        const amount = Number(r.amount) || 0;
+        return {
+          ...r,
+          landAmount: override,
+          houseAmount: Math.round((amount - override) * 100) / 100,
+          manualSplit: true,
+        };
+      });
   const landSum = round2(split.reduce((s, r) => s + (r.landAmount || 0), 0));
   const houseSum = round2(split.reduce((s, r) => s + (r.houseAmount || 0), 0));
   const amountSum = split.reduce((s, r) => s + (r.amount || 0), 0);
@@ -111,6 +127,7 @@ export function buildSplitModel(editRows, config, fullContext) {
     landDiff: round2(landTarget - landSum),
     landOk: Math.abs(landSum - landTarget) < 0.05,
     hasManualSplit: split.some(r => r.manualSplit),
+    mismatchRows: split.filter(r => r.splitMismatch),
   };
 }
 
