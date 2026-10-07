@@ -18,14 +18,6 @@ import {
 } from '@/utils/zhNumber';
 import { buildDefaultPageOptions } from '@/utils/contractDocDefaults';
 
-export const SQM_TO_PING = 0.3025;
-
-export function sqmToPing(sqm) {
-  const n = Number(sqm);
-  if (!Number.isFinite(n) || n === 0) return null;
-  return Math.round(n * SQM_TO_PING * 100) / 100;
-}
-
 /** 葉列的土地款／房屋款手動值：有效數字才視為覆寫，其餘一律 null（走拆分公式） */
 export function normalizeLandOverride(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -223,7 +215,7 @@ export function buildBreakdownPageData(page, ctx, priceModel, splitModel, editRo
     areas: {
       ...ctx.areas,
       parkingAreaSqm: ctx.parkingAreaSqm || null,
-      parkingAreaPing: sqmToPing(ctx.parkingAreaSqm),
+      parkingAreaPing: ctx.parkingAreaPing || null,
       mainRatioText: (Number(ctx.areas?.mainSqm) && Number(ctx.areas?.houseTotalSqm))
         ? `${(Number(ctx.areas.mainSqm) / Number(ctx.areas.houseTotalSqm) * 100).toFixed(2)}%`
         : '',
@@ -614,14 +606,16 @@ function prepareCntBase(page, ctx, priceModel, splitModel, unitData, pageType) {
     if (!size) warnings.push(`車位「${p.spotId}」尺寸無法解析（如 550*250），長寬以Ｘ表示`);
     if (!isLegal && !isSelf) warnings.push(`車位「${p.spotId}」類型非 法定/自設，勾選框留空`);
     const areaSqm = Number(p.areaSqm) > 0 ? Number(p.areaSqm) : null;
-    if (!areaSqm) warnings.push(`車位「${p.spotId}」缺少面積資料`);
+    const areaPing = Number(p.areaPing) > 0 ? Number(p.areaPing) : null;
+    if (!areaSqm) warnings.push(`車位「${p.spotId}」缺少面積(㎡)資料`);
+    if (!areaPing) warnings.push(`車位「${p.spotId}」缺少面積(坪)資料`);
     return {
       ...parsed,
       lengthM: size?.lengthM ?? null,
       widthM: size?.widthM ?? null,
       checkText: isLegal ? '■法定 □自設' : isSelf ? '□法定 ■自設' : '□法定 □自設',
       areaSqm,
-      areaPing: areaSqm ? Math.round(areaSqm * SQM_TO_PING * 100) / 100 : null,
+      areaPing,
       priceWan: Number.isFinite(Number(p.price)) ? Number(p.price) : null,
     };
   });

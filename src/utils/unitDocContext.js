@@ -19,6 +19,8 @@ export function toDateSafe(value) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+const round2 = n => Math.round(n * 100) / 100;
+
 /** 該戶持有車位（優先 unitData['持有車位']，備援 allParkings 過濾 buyerUnitId） */
 export function getOwnedParkingSpots(unitData, allParkings = []) {
   if (unitData && Array.isArray(unitData['持有車位'])) return unitData['持有車位'];
@@ -150,11 +152,14 @@ export function buildUnitDocContext(unitData, opts = {}) {
       label: formatParkingSpotLabel(p),
       price: parkingTransactionPrice(p),
       areaSqm: Number(p.area) || 0,
+      areaPing: Number(p.area_ping) || 0,
       type: String(p.type ?? p['車位類型'] ?? '').trim(),   // 法定/自設（合約數字對照表勾選用）
       size: String(p.size ?? p['車位尺寸'] ?? '').trim(),   // 如 550*250（公分）
     })),
     parkingTotal,
-    parkingAreaSqm: parkingSpots.reduce((s, p) => s + (Number(p.area) || 0), 0),
+    // 車位面積合計：㎡、坪各自加總資料庫值（坪不由㎡換算）
+    parkingAreaSqm: round2(parkingSpots.reduce((s, p) => s + (Number(p.area) || 0), 0)),
+    parkingAreaPing: round2(parkingSpots.reduce((s, p) => s + (Number(p.area_ping) || 0), 0)),
 
     areas: {
       houseTotalPing: d.area_house_ping,
