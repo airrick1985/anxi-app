@@ -656,6 +656,20 @@
             </span>
           </template>
 
+          <!-- 加購或保留車位：獨立欄位，不計入成交總價／合計底價 -->
+          <template v-slot:item.held_parking_spots="{ item }">
+            <span v-if="item.held_parking_spots" class="text-amber-darken-4 font-weight-medium">{{ item.held_parking_spots.split(',').join('、') }}</span>
+            <span v-else class="text-grey">-</span>
+          </template>
+          <template v-slot:item.held_parking_floor_total="{ item }">
+            <span v-if="item.held_parking_count" class="text-red">{{ formatNumber(item.held_parking_floor_total, 0) }}</span>
+            <span v-else class="text-grey">-</span>
+          </template>
+          <template v-slot:item.held_parking_trans_total="{ item }">
+            <span v-if="item.held_parking_count" class="text-success">{{ formatNumber(item.held_parking_trans_total, 0) }}</span>
+            <span v-else class="text-grey">-</span>
+          </template>
+
           <template v-slot:item.price_transaction_house="{ item }">
           <span class="font-weight-bold text-success">
          {{ formatNumber(item.price_transaction_house, 0) }}
@@ -753,6 +767,18 @@
                   <span v-if="summaryRow.parkingTransTotal > 0" class="text-success">{{ formatNumber(summaryRow.parkingTransTotal, 0) }}</span>
                   <span v-else>-</span>
                 </template>
+                <template v-else-if="col.key === 'held_parking_spots'">
+                  <span v-if="summaryRow.heldParkingCountTotal > 0">{{ summaryRow.heldParkingCountTotal }} 車位</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'held_parking_floor_total'">
+                  <span v-if="summaryRow.heldParkingFloorTotal > 0" class="text-red">{{ formatNumber(summaryRow.heldParkingFloorTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'held_parking_trans_total'">
+                  <span v-if="summaryRow.heldParkingTransTotal > 0" class="text-success">{{ formatNumber(summaryRow.heldParkingTransTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
                 <template v-else-if="col.key === 'total_transaction'">
                   <span v-if="summaryRow.totalTransactionTotal > 0" class="text-success">{{ formatNumber(summaryRow.totalTransactionTotal, 0) }}</span>
                   <span v-else>-</span>
@@ -824,6 +850,18 @@
                 </template>
                 <template v-else-if="col.key === 'parking_trans_total'">
                   <span v-if="summaryRow.parkingTransTotal > 0" class="text-success">{{ formatNumber(summaryRow.parkingTransTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'held_parking_spots'">
+                  <span v-if="summaryRow.heldParkingCountTotal > 0">{{ summaryRow.heldParkingCountTotal }} 車位</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'held_parking_floor_total'">
+                  <span v-if="summaryRow.heldParkingFloorTotal > 0" class="text-red">{{ formatNumber(summaryRow.heldParkingFloorTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'held_parking_trans_total'">
+                  <span v-if="summaryRow.heldParkingTransTotal > 0" class="text-success">{{ formatNumber(summaryRow.heldParkingTransTotal, 0) }}</span>
                   <span v-else>-</span>
                 </template>
                 <template v-else-if="col.key === 'total_transaction'">
@@ -1346,10 +1384,6 @@
           <span class="text-subtitle-1 font-weight-bold">{{ projectName }} 銷控資料透視</span>
           <v-chip size="small" color="blue-grey" variant="tonal" class="ml-3" prepend-icon="mdi-home-group">
             共 {{ pivotMatrix.itemCount }} 戶
-          </v-chip>
-          <v-chip v-if="pivotHasPersonCount" size="small" color="indigo" variant="tonal" class="ml-1"
-            prepend-icon="mdi-account-multiple" title="一戶有多個值（多位銷售人員、多個車位/方案）時會分別計入，總計為「筆數」而非戶數">
-            合計 {{ pivotMatrix.grand.count }} 筆
           </v-chip>
           <v-spacer></v-spacer>
           <v-btn size="small" variant="tonal" color="grey-darken-1" class="mr-1"
@@ -2148,6 +2182,7 @@ import { useToast, POSITION } from 'vue-toastification';
 import { useSalesDataStore } from '@/store/salesDataStore';
 import { useParkingRatio, PARKING_RATIO_LEVEL_META } from '@/composables/useParkingRatio';
 import { buildCommitmentOverrides, isDealParking } from '@/utils/salesStatusGroups';
+import { unitParkingFields } from '@/utils/unitParkingFields';
 import { useProjectStore } from '@/store/projectStore';
 import { getEffectiveQuoteFields, hasQuoteOverrides, getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
 import { toQuoteUnitData } from '@/utils/quoteUnitData';
@@ -2718,7 +2753,7 @@ const PIVOT_CURATED_DIMENSIONS = [
   { key: 'propertyType', label: '物件類型' },
   { key: 'layout', label: '格局' },
   { key: 'status', label: '銷控狀態' },
-  { key: 'salesperson', label: '銷售人員（每人分計）' },
+  { key: 'salesperson', label: '銷售人員' },
   { key: 'contractType', label: '合約方式' },
   { key: 'isPreferredPayment', label: '優付' },
   { key: 'isFirstTimeBuyer', label: '是否首購' },
@@ -2843,6 +2878,7 @@ const PIVOT_BINNED_DIM_KEYS = new Set([
   'housePriceRatio', 'landPriceRatio', 'price_package_deal', 'price_package',
   'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount',
   'parking_trans_total', 'parking_floor_total', 'parking_count', 'total_transaction', 'total_floor', 'price_diff',
+  'held_parking_count', 'held_parking_list_total', 'held_parking_floor_total', 'held_parking_trans_total',
   'unit_price_list', 'unit_price_floor', 'unit_price_transaction',
   'paid_total', 'payment_ratio',
 ]);
@@ -2979,48 +3015,84 @@ function makePivotDimGetter(items, dimKey) {
 
 // Timestamp/Date → 台灣時區日期字串（fullDate=false 取 'yyyy-MM' 月份）
 const pivotTsToDateStr = (ts, fullDate = true) => {
-  if (!ts) return PIVOT_EMPTY_LABEL;
-  const d = ts instanceof Date ? ts : (typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts));
-  if (isNaN(d.getTime())) return PIVOT_EMPTY_LABEL;
+  const d = toDateOrNull(ts);
+  if (!d) return PIVOT_EMPTY_LABEL;
   const str = d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
   return fullDate ? str : str.slice(0, 7);
 };
+// 出生年月日：新資料存民國物件 { year, month, day }，舊資料為 Timestamp/Date
+const pivotDobToDateStr = (v) => {
+  if (v && typeof v === 'object' && 'year' in v && 'month' in v) {
+    const y = Number(v.year);
+    const m = Number(v.month);
+    const d = Number(v.day);
+    if (!y || !m || !d) return PIVOT_EMPTY_LABEL;
+    return pivotDateStrOf(y < 1000 ? y + 1911 : y, m, d);
+  }
+  return pivotTsToDateStr(v);
+};
 // 日期型欄位（值為 Timestamp/Date，顯示為 yyyy-MM-dd）
 const PIVOT_DATE_KEYS = new Set(['payment_deposit_date', 'payment_supplement_date', 'payment_contract_date', 'buyerDateOfBirth']);
+// 主買方欄位 → 共同買方（coBuyers）對應欄位：主買方與共同買方的值併在同一格
+const PIVOT_CO_BUYER_FIELDS = {
+  buyerName: 'name',
+  buyerPhone: 'phone',
+  buyerIdNumber: 'idNumber',
+  buyerEmail: 'email',
+  buyerDateOfBirth: 'dateOfBirth',
+  buyerMailingAddressCity: 'mailingAddressCity',
+  buyerMailingAddressDistrict: 'mailingAddressDistrict',
+  buyerMailingAddressDetail: 'mailingAddressDetail',
+};
 
-// 取得戶別在某維度下的值（陣列；銷售人員/車位/方案等一戶多值時，各計一次）
-function getPivotValues(item, dimKey) {
+// 取得戶別在某欄位下的個別值（多位銷售人員、多個車位／方案／標籤、主買方＋共同買方各為一個值）
+function getPivotRawValues(item, dimKey) {
+  const coKey = PIVOT_CO_BUYER_FIELDS[dimKey];
+  if (coKey) {
+    const coBuyers = Array.isArray(item.coBuyers) ? item.coBuyers : [];
+    const raws = [item[dimKey], ...coBuyers.map(cb => cb?.[coKey])];
+    return dimKey === 'buyerDateOfBirth' ? raws.map(pivotDobToDateStr) : raws;
+  }
   switch (dimKey) {
-    case 'salesperson': {
-      const list = normalizeSalespersons(item.salesperson);
-      return list.length ? list : [PIVOT_EMPTY_LABEL];
-    }
-    case 'status':
-      return [(item.status === null || item.status === undefined || item.status === '') ? PIVOT_EMPTY_LABEL : String(item.status)];
+    case 'salesperson':
+      return normalizeSalespersons(item.salesperson);
     case 'floor':
-      return [(item.floor === null || item.floor === undefined || item.floor === '') ? PIVOT_EMPTY_LABEL : `${item.floor}F`];
+      return [(item.floor === null || item.floor === undefined || item.floor === '') ? '' : `${item.floor}F`];
     case 'depositMonth':
       return [pivotTsToDateStr(item.payment_deposit_date, false)];
     case 'contractMonth':
       return [pivotTsToDateStr(item.payment_contract_date, false)];
-    case 'parking_spots': {
-      // 車位編號：'A1,A2' → 每個車位各計一次
-      const list = String(item.parking_spots || '').split(',').map(s => s.trim()).filter(Boolean);
-      return list.length ? list : [PIVOT_EMPTY_LABEL];
-    }
+    case 'parking_spots':
+    case 'held_parking_spots':
+    case 'held_parking_reserved_by':
+    case 'held_parking_reserved_until':
+      // 'B6-28(保留),B6-30(主管保留)' → 每個車位／保留人／日期一個值
+      return String(item[dimKey] || '').split(',');
+    case 'unitTags_text':
+      return getUnitTags(item).map(t => t.text);
     default: {
       const v = item[dimKey];
       if (PIVOT_DATE_KEYS.has(dimKey)) return [pivotTsToDateStr(v)];
-      if (Array.isArray(v)) {
-        // 陣列欄位（可選方案名稱、userKey 等）：每個值各計一次
-        const list = v.map(x => String(x).trim()).filter(Boolean);
-        return list.length ? list : [PIVOT_EMPTY_LABEL];
-      }
+      if (Array.isArray(v)) return v; // 陣列欄位（可選方案名稱、userKey 等）
       if (typeof v === 'boolean') return [v ? '是' : '否'];
       if (v !== null && typeof v === 'object' && typeof v.toDate === 'function') return [pivotTsToDateStr(v)];
-      return (v === null || v === undefined || v === '') ? [PIVOT_EMPTY_LABEL] : [String(v)];
+      return [v];
     }
   }
+}
+// 個別值：轉字串、去空白、去空值與重複
+function getPivotValueList(item, dimKey) {
+  const list = [];
+  for (const raw of getPivotRawValues(item, dimKey)) {
+    const v = raw === null || raw === undefined ? '' : String(raw).trim();
+    if (v && v !== PIVOT_EMPTY_LABEL && !list.includes(v)) list.push(v);
+  }
+  return list;
+}
+// 維度取值：一戶一格，多個值以逗號併在同一格（如「B1-05,B1-10」「張三,李四」）
+function getPivotValues(item, dimKey) {
+  const list = getPivotValueList(item, dimKey);
+  return [list.length ? list.join(',') : PIVOT_EMPTY_LABEL];
 }
 
 // 資料透視的狀態篩選：開啟對話框時預設帶入篩選面板目前的狀態勾選（未勾選則全選），可在對話框內獨立調整
@@ -3055,10 +3127,11 @@ const pivotBaseItems = computed(() => {
 // --- 篩選器（類 Google Sheet：任選欄位、勾選要保留的值）---
 const pivotFilters = ref([]); // [{ field, selected: [] }]（selected 空 = 不限）
 const pivotFilterFieldToAdd = ref(null);
+// 篩選器以個別值勾選：一戶有多個值（多位銷售人員、多個車位等）時，含任一勾選值即符合
 function pivotFilterValuesOf(item, field) {
-  return PIVOT_BINNED_DIM_KEYS.has(field)
-    ? makeNumericRawGetter(field).getValues(item)
-    : getPivotValues(item, field);
+  if (PIVOT_BINNED_DIM_KEYS.has(field)) return makeNumericRawGetter(field).getValues(item);
+  const list = getPivotValueList(item, field);
+  return list.length ? list : [PIVOT_EMPTY_LABEL];
 }
 // --- 日期／月份欄位篩選器：起訖範圍（與勾選並存，兩者同時成立）---
 const PIVOT_MONTH_KEYS = new Set(['depositMonth', 'contractMonth']);
@@ -3274,41 +3347,28 @@ const pivotMatrix = computed(() => {
   const rowGetters = rowDims.map(d => makePivotDimGetter(items, d));
   const colGetters = colDims.map(d => makePivotDimGetter(items, d));
 
-  // 多維組合展開（多值維度 → 笛卡兒積，各組合各計一次）
-  const combosOf = (getters, item) => {
-    let combos = [[]];
-    for (const g of getters) {
-      const vals = g.getValues(item);
-      const next = [];
-      for (const base of combos) for (const v of vals) next.push([...base, v]);
-      combos = next;
-    }
-    return combos;
-  };
+  // 各維度一戶一個值（多值已併成一格），每戶只計一次
+  const partsOf = (getters, item) => getters.map(g => g.getValues(item)[0]);
 
   const rowMap = new Map();   // rowKey -> { parts, totalCell, cols: Map(colKey -> cell) }
   const colMap = new Map();   // colKey -> { parts, cell }
   const grandCell = newCell();
 
   for (const item of items) {
-    const rowCombos = rowDims.length ? combosOf(rowGetters, item) : [['全部']];
-    const colCombos = useCol ? combosOf(colGetters, item) : [['']];
-    for (const rParts of rowCombos) {
-      const rKey = rParts.join(PIVOT_SEP);
-      let row = rowMap.get(rKey);
-      if (!row) { row = { parts: rParts, totalCell: newCell(), cols: new Map() }; rowMap.set(rKey, row); }
-      for (const cParts of colCombos) {
-        const cKey = cParts.join(PIVOT_SEP);
-        let col = colMap.get(cKey);
-        if (!col) { col = { parts: cParts, cell: newCell() }; colMap.set(cKey, col); }
-        let cc = row.cols.get(cKey);
-        if (!cc) { cc = newCell(); row.cols.set(cKey, cc); }
-        accumulate(cc, item);
-        accumulate(col.cell, item);
-        accumulate(row.totalCell, item);
-        accumulate(grandCell, item);
-      }
-    }
+    const rParts = rowDims.length ? partsOf(rowGetters, item) : ['全部'];
+    const cParts = useCol ? partsOf(colGetters, item) : [''];
+    const rKey = rParts.join(PIVOT_SEP);
+    let row = rowMap.get(rKey);
+    if (!row) { row = { parts: rParts, totalCell: newCell(), cols: new Map() }; rowMap.set(rKey, row); }
+    const cKey = cParts.join(PIVOT_SEP);
+    let col = colMap.get(cKey);
+    if (!col) { col = { parts: cParts, cell: newCell() }; colMap.set(cKey, col); }
+    let cc = row.cols.get(cKey);
+    if (!cc) { cc = newCell(); row.cols.set(cKey, cc); }
+    accumulate(cc, item);
+    accumulate(col.cell, item);
+    accumulate(row.totalCell, item);
+    accumulate(grandCell, item);
   }
 
   // 階層排序：逐層依各維度的鍵值排序規則（數量權重取該層合計戶數）
@@ -3421,11 +3481,6 @@ const pivotHasValues = computed(() => pivotMatrix.value.valueDefs.length > 0);
 // 總計列：有值，或列維度含可加總的數值欄位時顯示
 const pivotShowTotalRow = computed(() => pivotHasValues.value || pivotMatrix.value.rowDimTotals.some(t => t !== null));
 const pivotHeaderRowCount = computed(() => (pivotMatrix.value.useCol && pivotHasValues.value) ? 2 : 1);
-// 是否有「多值分計」（銷售人員/車位編號/可選方案等一戶多值會分別計入，總計會大於戶數）
-const PIVOT_MULTI_VALUE_KEYS = new Set(['salesperson', 'salespersonUserKey', 'parking_spots', 'availablePlans']);
-const pivotHasPersonCount = computed(() =>
-  [...pivotRowDims.value, ...pivotColDims.value].some(k => PIVOT_MULTI_VALUE_KEYS.has(k))
-);
 // --- 資料透視表欄位排序：點表頭切換 升冪 → 降冪 → 回復預設 ---
 // spec: { type: 'name'|'cell'|'total', li?, cKey?, vi?, dir }
 const pivotSort = ref(null);
@@ -4986,6 +5041,9 @@ const tableHeaders = computed(() => {
         { title: '車位編號', key: 'parking_spots', align: 'start', width: '110px' },
         { title: '車位底價', key: 'parking_floor_total', align: 'end', width: '85px' },
         { title: '車位成交', key: 'parking_trans_total', align: 'end', width: '85px' },
+        { title: '加購／保留車位', key: 'held_parking_spots', align: 'start', width: '130px' },
+        { title: '加購／保留底價', key: 'held_parking_floor_total', align: 'end', width: '100px' },
+        { title: '加購／保留成交', key: 'held_parking_trans_total', align: 'end', width: '100px' },
         { title: '成交總價(含車)', key: 'total_transaction', align: 'end', width: '110px' },
         { title: '繳款比例', key: 'payment_ratio', align: 'center', width: '90px', sort: customPriceSort },
         { title: '合計底價(含車)', key: 'total_floor', align: 'end', width: '110px' },
@@ -5019,6 +5077,9 @@ const tableHeaders = computed(() => {
       { title: '車位編號', key: 'parking_spots', align: 'start' },
       { title: '車位底價', key: 'parking_floor_total', align: 'start' },
       { title: '車位成交', key: 'parking_trans_total', align: 'start' },
+      { title: '加購／保留車位', key: 'held_parking_spots', align: 'start' },
+      { title: '加購／保留底價', key: 'held_parking_floor_total', align: 'start' },
+      { title: '加購／保留成交', key: 'held_parking_trans_total', align: 'start' },
       { title: '成交總價(含車)', key: 'total_transaction', align: 'start' },
       { title: '繳款比例', key: 'payment_ratio', align: 'center', sort: customPriceSort },
       { title: '合計底價(含車)', key: 'total_floor', align: 'start' },
@@ -5112,19 +5173,14 @@ const enrichUnitItem = (unit, parkingMap) => {
     item.status = currentViewMode.value === 'quote' ? unit.salesStatus_quote : unit.salesStatus_backend;
 
     const mySpots = parkingMap[unit.unitId] || [];
-    const parkingTransTotal = mySpots.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
-    const parkingFloorTotal = mySpots.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0);
-
-    // 新增：將車位計算結果存入 item
-    item.parking_trans_total = parkingTransTotal;
-    item.parking_floor_total = parkingFloorTotal;
-    // 車位編號（自然排序、逗號分隔）與車位數量：列表「車位編號」欄、合計列與匯出共用
-    item.parking_spots = mySpots.map(p => p.spotId ?? '').filter(Boolean).sort(naturalSort).join(',');
-    item.parking_count = mySpots.length;
+    // 所有綁定該戶的車位（不分成交／準備購買狀態），避免準備購買的車位被漏掉
+    const boundSpots = (parkingMap.allBound && parkingMap.allBound[String(unit.unitId ?? '').trim()]) || mySpots;
+    // 成交車位（車位編號／數量／成交／底價）與加購或保留車位（held_parking_*）分開計算
+    Object.assign(item, unitParkingFields(mySpots, boundSpots));
+    const parkingTransTotal = item.parking_trans_total;
+    const parkingFloorTotal = item.parking_floor_total;
     // 綁定車位的可搜尋文字：全域搜尋可用車位備註／狀態／形式／保留人等找到戶別
     // 例：B6-28 後台狀態「已售」、備註「C-17 加購 第二車」、購買戶別 C-17 → 搜「第二車」可篩到 C-17
-    // 用「所有綁定該戶的車位」（不分成交／準備購買狀態），避免準備購買的車位被漏掉
-    const boundSpots = (parkingMap.allBound && parkingMap.allBound[String(unit.unitId ?? '').trim()]) || mySpots;
     item.parking_search_text = boundSpots.map(p => [
       p.spotId, p.number, p.floor, p.type, p.type2, p.size,
       p.status_backend, p.status, p.buyerName, formatSalespersons(p.salesperson),
@@ -5232,6 +5288,9 @@ const summaryRow = computed(() => {
   let parkingFloorTotal = 0;     // 車位底價加總
   let parkingTransTotal = 0;     // 車位成交加總
   let parkingCountTotal = 0;     // 車位數量加總
+  let heldParkingCountTotal = 0; // 加購或保留車位數量加總
+  let heldParkingFloorTotal = 0; // 加購或保留車位底價加總
+  let heldParkingTransTotal = 0; // 加購或保留車位成交加總
   let totalTransactionTotal = 0; // 成交總價(含車)加總
   let totalFloorTotal = 0;       // 合計底價(含車)加總
   let priceDiffTotal = 0;        // 溢差價加總（只計算有成交的戶別）
@@ -5247,6 +5306,9 @@ const summaryRow = computed(() => {
     parkingFloorTotal += Number(item.parking_floor_total) || 0;
     parkingTransTotal += Number(item.parking_trans_total) || 0;
     parkingCountTotal += Number(item.parking_count) || 0;
+    heldParkingCountTotal += Number(item.held_parking_count) || 0;
+    heldParkingFloorTotal += Number(item.held_parking_floor_total) || 0;
+    heldParkingTransTotal += Number(item.held_parking_trans_total) || 0;
     totalTransactionTotal += Number(item.total_transaction) || 0;
     totalFloorTotal += Number(item.total_floor) || 0;
     if (item.price_diff !== null && item.price_diff !== undefined) {
@@ -5274,6 +5336,9 @@ const summaryRow = computed(() => {
     parkingFloorTotal,
     parkingTransTotal,
     parkingCountTotal,
+    heldParkingCountTotal,
+    heldParkingFloorTotal,
+    heldParkingTransTotal,
     totalTransactionTotal,
     totalFloorTotal,
     priceDiffTotal,

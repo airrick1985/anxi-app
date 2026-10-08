@@ -9,6 +9,7 @@
 import { COLUMN_DEFINITIONS, UNIT_EXPORT_COMPUTED_COLUMNS, DRAWING_SHORT_LABELS } from '@/constants/householdColumns';
 import { normalizeSalespersons } from '@/utils/salespersonUtils';
 import { isDealParking } from '@/utils/salesStatusGroups';
+import { getUnitBoundParkings, unitParkingFields } from '@/utils/unitParkingFields';
 
 const TITLE_MAP = new Map([...COLUMN_DEFINITIONS, ...UNIT_EXPORT_COMPUTED_COLUMNS].map(c => [c.key, c.title]));
 
@@ -23,8 +24,9 @@ const WAN_PRICE_KEYS = new Set([
   'price_floor_house_only', 'price_floor_terrace', 'price_floor_ancillary', 'price_floor_house_total',
   'price_transaction_house', 'price_package_deal', 'price_package',
   'parking_trans_total', 'parking_floor_total', 'total_transaction', 'total_floor', 'price_diff', 'paid_total',
+  'held_parking_list_total', 'held_parking_floor_total', 'held_parking_trans_total',
 ]);
-const COUNT_KEYS = new Set(['parking_count']);
+const COUNT_KEYS = new Set(['parking_count', 'held_parking_count']);
 
 function fmtNumber(num, decimals = 0) {
   return Number(num).toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -127,13 +129,10 @@ export function formatFieldValue(fieldKey, raw, opts = {}) {
 export function withDerivedFields(unit, parkings = []) {
   const item = { ...unit };
   const mySpots = (parkings || []).filter(p => isDealParking(p, unit.unitId));
-  const parkingTransTotal = mySpots.reduce((s, p) => s + (Number(p.price_transaction) || 0), 0);
-  const parkingFloorTotal = mySpots.reduce((s, p) => s + (Number(p.price_floor) || 0), 0);
-  item.parking_trans_total = parkingTransTotal;
-  item.parking_floor_total = parkingFloorTotal;
-  item.parking_spots = mySpots.map(p => p.spotId ?? '').filter(Boolean)
-    .sort((a, b) => String(a).localeCompare(String(b), 'zh-Hant', { numeric: true })).join(',');
-  item.parking_count = mySpots.length;
+  // 成交車位與加購或保留車位（held_parking_*）分開計算
+  Object.assign(item, unitParkingFields(mySpots, getUnitBoundParkings(unit.unitId, parkings)));
+  const parkingTransTotal = item.parking_trans_total;
+  const parkingFloorTotal = item.parking_floor_total;
 
   const houseTrans = Number(unit.price_transaction_house) || 0;
   const houseFloor = Number(unit.price_floor_house_total) || 0;
