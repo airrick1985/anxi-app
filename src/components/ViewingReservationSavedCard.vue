@@ -1,63 +1,62 @@
 <template>
-  <v-card>
-    <v-card-title class="bg-success text-white d-flex align-center">
-      <v-icon start>mdi-check-circle</v-icon>
-      <span class="text-h6 flex-grow-1">{{ isEdit ? '已更新賞屋預約' : '已新增賞屋預約' }}</span>
-      <v-btn icon="mdi-close" variant="text" @click="emit('close')"></v-btn>
-    </v-card-title>
+  <v-card class="mac-sheet vr-saved">
+    <div class="mac-sheet-head">
+      <v-icon size="20" class="vr-saved-icon">mdi-check-circle</v-icon>
+      <span class="vr-saved-title">{{ isEdit ? '已更新賞屋預約' : '已新增賞屋預約' }}</span>
+      <button type="button" class="mac-sheet-close" title="關閉" @click="emit('close')">
+        <v-icon size="18">mdi-close</v-icon>
+      </button>
+    </div>
 
-    <v-card-text class="pt-4">
-      <div v-for="row in rows" :key="row.label" class="saved-row">
-        <span class="saved-label">{{ row.label }}</span>
-        <span class="saved-value">
-          <template v-if="row.label === '時間'">
-            <span v-if="timeChanged" class="text-grey text-decoration-line-through mr-1">{{ formatTime(reservation.previousTime) }}</span>
-            <v-icon v-if="timeChanged" size="14" class="mr-1">mdi-arrow-right</v-icon>
-            <span class="font-weight-bold">{{ row.value }}</span>
-          </template>
-          <template v-else-if="row.label === '客戶'">
-            {{ reservation.customerName }}
-            <a :href="`tel:${reservation.customerPhone}`" class="ml-2">{{ reservation.customerPhone }}</a>
-          </template>
-          <template v-else>{{ row.value }}</template>
-        </span>
+    <v-card-text class="mac-form vr-saved-body">
+      <div class="mac-form-group">
+        <div v-for="row in rows" :key="row.label" class="saved-row">
+          <span class="saved-label">{{ row.label }}</span>
+          <span class="saved-value">
+            <template v-if="row.label === '時間'">
+              <span v-if="timeChanged" class="saved-old-time">{{ formatTime(reservation.previousTime) }}</span>
+              <v-icon v-if="timeChanged" size="14" class="saved-arrow">mdi-arrow-right</v-icon>
+              <span class="saved-strong">{{ row.value }}</span>
+            </template>
+            <template v-else-if="row.label === '客戶'">
+              {{ reservation.customerName }}
+              <a :href="`tel:${reservation.customerPhone}`" class="saved-tel">{{ reservation.customerPhone }}</a>
+            </template>
+            <template v-else>{{ row.value }}</template>
+          </span>
+        </div>
       </div>
 
-      <div class="calendar-box mt-4">
-        <div v-if="showQr" class="text-center mr-4">
-          <qrcode-vue :value="calendarUrl" :size="128" level="M" />
-          <div class="text-caption text-grey-darken-1">手機掃描</div>
+      <div class="mac-form-label">加入到我的行事曆</div>
+      <div class="mac-form-group calendar-box">
+        <div v-if="showQr" class="calendar-qr">
+          <qrcode-vue :value="calendarUrl" :size="112" level="M" />
+          <div class="calendar-qr-caption">手機掃描</div>
         </div>
-        <div class="flex-grow-1 d-flex flex-column justify-center ga-2">
+        <div class="calendar-actions">
           <!-- Apple 裝置也可能使用 Google 日曆，讓使用者選；其他裝置直接開 Google 日曆 -->
-          <template v-if="IS_APPLE">
-            <div class="text-subtitle-2 font-weight-bold">加入到我的行事曆</div>
-            <div class="d-flex flex-column flex-sm-row ga-2">
-              <v-btn color="primary" variant="flat" size="large" class="flex-1-1" prepend-icon="mdi-apple"
-                @click="openCalendar('apple')">
-                Apple 行事曆
-              </v-btn>
-              <v-btn color="primary" variant="flat" size="large" class="flex-1-1" prepend-icon="mdi-google"
-                @click="openCalendar('google')">
-                Google 日曆
-              </v-btn>
-            </div>
-          </template>
-          <v-btn v-else color="primary" variant="flat" size="large" block prepend-icon="mdi-google"
-            @click="openCalendar()">
-            加入到我的行事曆
-          </v-btn>
-          <v-btn variant="tonal" block prepend-icon="mdi-content-copy" @click="copyText">複製預約文字</v-btn>
+          <div v-if="IS_APPLE" class="calendar-choice">
+            <button type="button" class="mac-btn mac-btn--primary mac-btn--lg mac-btn--wrap" @click="openCalendar('apple')">
+              <v-icon size="18">mdi-apple</v-icon>Apple 行事曆
+            </button>
+            <button type="button" class="mac-btn mac-btn--primary mac-btn--lg mac-btn--wrap" @click="openCalendar('google')">
+              <v-icon size="18">mdi-google</v-icon>Google 日曆
+            </button>
+          </div>
+          <button v-else type="button" class="mac-btn mac-btn--primary mac-btn--lg mac-btn--block" @click="openCalendar()">
+            <v-icon size="18">mdi-google</v-icon>加入 Google 日曆
+          </button>
+          <button type="button" class="mac-btn mac-btn--lg mac-btn--block" @click="copyText">
+            <v-icon size="16">mdi-content-copy</v-icon>複製預約文字
+          </button>
         </div>
       </div>
     </v-card-text>
 
-    <v-divider></v-divider>
-
-    <v-card-actions class="pa-4">
-      <v-spacer></v-spacer>
-      <v-btn color="primary" variant="flat" @click="emit('close')">完成</v-btn>
-    </v-card-actions>
+    <div class="mac-sheet-foot">
+      <span class="mac-spacer"></span>
+      <button type="button" class="mac-btn mac-btn--primary vr-done-btn" @click="emit('close')">完成</button>
+    </div>
   </v-card>
 </template>
 
@@ -155,29 +154,43 @@ const copyText = async () => {
 </script>
 
 <style scoped>
+.vr-saved-icon { color: #34c759 !important; }
+.vr-saved-title { flex: 1 1 auto; min-width: 0; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.vr-saved-body { padding: 14px 16px 16px !important; }
+.vr-saved-body .mac-form-label { margin-top: 16px; }
+
 .saved-row {
   display: flex;
-  padding: 4px 0;
-  font-size: 0.95rem;
+  gap: 12px;
+  padding: 9px 14px;
+  font-size: 14px;
+  line-height: 1.5;
 }
-
-.saved-label {
-  flex: 0 0 72px;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-}
-
+.saved-row + .saved-row { border-top: 1px solid #ececf0; }
+.saved-label { flex: 0 0 auto; min-width: 64px; color: #6e6e73; white-space: nowrap; }
 .saved-value {
   flex: 1;
   min-width: 0;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
+.saved-strong { font-weight: 600; }
+.saved-old-time { margin-right: 4px; color: #8e8e93; text-decoration: line-through; }
+.saved-arrow { margin-right: 4px; color: #8e8e93; }
+.saved-tel { margin-left: 8px; color: #0071e3; text-decoration: none; white-space: nowrap; }
 
-.calendar-box {
-  display: flex;
-  align-items: stretch;
-  padding: 12px;
-  border-radius: 8px;
-  background: rgba(var(--v-theme-primary), 0.06);
+.calendar-box { display: flex; align-items: center; gap: 16px; padding: 14px; }
+.calendar-qr { flex-shrink: 0; text-align: center; }
+.calendar-qr-caption { margin-top: 4px; font-size: 11.5px; color: #6e6e73; }
+.calendar-actions { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.calendar-choice { display: flex; gap: 8px; }
+.calendar-choice .mac-btn { flex: 1 1 0; min-width: 0; }
+.vr-done-btn { min-width: 72px; }
+
+@media (max-width: 600px) {
+  .vr-saved-body { padding: 12px 12px 14px !important; }
+  .saved-row { padding: 9px 12px; font-size: 15px; }
+  .calendar-choice { flex-direction: column; }
+  .vr-done-btn { height: 36px; font-size: 14px; }
 }
 </style>

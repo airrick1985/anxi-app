@@ -1,62 +1,56 @@
 <template>
-  <v-dialog v-model="dialog" max-width="600px" persistent>
+  <v-dialog v-model="dialog" max-width="560px" persistent scrollable content-class="mac-dialog-fit">
     <ViewingReservationSavedCard
       v-if="savedReservation"
       :reservation="savedReservation"
       :is-edit="isEdit"
       @close="closeDialog"
     />
-    <v-card v-else>
-      <v-card-title class="bg-primary text-white d-flex align-center">
-        <div class="flex-grow-1">
-          <div class="text-h6">{{ isEdit ? '編輯預約' : '新增賞屋預約' }}</div>
-          <!-- ✅ 新增：顯示編輯模式下的建立者信息 -->
-          <div v-if="isEdit && formData" class="text-caption opacity-80 mt-1">
-            建立者：{{ formData.operatorName || '不詳' }} |
-            建立時間：{{ formatDate(formData.createdAt) }}
+    <v-card v-else class="mac-sheet vr-dlg">
+      <div class="mac-sheet-head vr-dlg-head">
+        <div class="vr-dlg-titles">
+          <div class="vr-dlg-title">{{ isEdit ? '編輯預約' : '新增賞屋預約' }}</div>
+          <!-- 編輯模式顯示建立者信息 -->
+          <div v-if="isEdit && formData" class="vr-dlg-sub">
+            建立者：{{ formData.operatorName || '不詳' }}｜建立時間：{{ formatDate(formData.createdAt) }}
           </div>
         </div>
-        <v-btn icon="mdi-close" variant="text" @click="closeDialog"></v-btn>
-      </v-card-title>
+        <button type="button" class="mac-sheet-close" title="關閉" @click="closeDialog">
+          <v-icon size="18">mdi-close</v-icon>
+        </button>
+      </div>
 
-      <v-card-text class="pt-4">
+      <v-card-text class="mac-form vr-dlg-body">
         <v-form ref="formRef" v-model="valid" @submit.prevent="save">
-          <v-container>
-            <v-row>
-              <v-col cols="12" sm="6">
-                <label class="native-dt-label">
-                  <v-icon size="18" class="mr-1">mdi-calendar-clock</v-icon>
-                  預約時間(必填)
-                </label>
-
+          <div class="mac-form-group">
+            <div class="vr-field-row">
+              <div class="vr-field-label">預約時間</div>
+              <div class="vr-field-main">
                 <!-- 已確認的時間顯示 -->
-                <div 
-                  v-if="formData.reservationTime && !isEditingTime" 
+                <button
+                  v-if="formData.reservationTime && !isEditingTime"
+                  type="button"
                   class="native-dt-wrapper native-dt-wrapper--filled"
                   @click="startEditTime"
                 >
-                  <span class="native-dt-display">
-                    {{ formatSelectedTime(formData.reservationTime) }}
-                  </span>
-                  <v-icon size="16" color="grey" class="ml-auto">mdi-pencil</v-icon>
-                </div>
+                  <span class="native-dt-display">{{ formatSelectedTime(formData.reservationTime) }}</span>
+                  <v-icon size="16" class="native-dt-icon">mdi-pencil</v-icon>
+                </button>
 
                 <!-- 尚未選擇：顯示可點擊的 placeholder -->
-                <div
+                <button
                   v-else-if="!isEditingTime"
+                  type="button"
                   class="native-dt-wrapper native-dt-wrapper--placeholder"
                   @click="startEditTime"
                 >
                   <span class="native-dt-placeholder">點此選擇日期</span>
-                  <v-icon size="18" color="grey" class="ml-auto">mdi-calendar</v-icon>
-                </div>
+                  <v-icon size="16" class="native-dt-icon">mdi-calendar</v-icon>
+                </button>
 
                 <!-- 編輯模式：原生日期時間選擇器 -->
                 <div v-else>
-                  <div 
-                    class="native-dt-wrapper" 
-                    :class="{ 'native-dt-wrapper--error': !tempDateTime }"
-                  >
+                  <div class="native-dt-wrapper is-editing" :class="{ 'native-dt-wrapper--error': !tempDateTime }">
                     <input
                       ref="dtInputRef"
                       type="datetime-local"
@@ -67,68 +61,68 @@
                       class="native-dt-input"
                     />
                   </div>
-
-                  <!-- 確認 / 取消 按鈕列 -->
-                  <div class="native-dt-actions mt-2">
-                    <v-btn 
-                      size="small" 
-                      variant="text" 
-                      color="grey"
-                      @click="cancelEditTime"
-                    >
-                      取消
-                    </v-btn>
-                    <v-btn 
-                      size="small" 
-                      variant="flat" 
-                      color="primary"
-                      :disabled="!tempDateTime"
-                      @click="confirmDateTime"
-                      prepend-icon="mdi-check"
-                    >
-                      確認選擇
-                    </v-btn>
+                  <div class="native-dt-actions">
+                    <button type="button" class="mac-btn" @click="cancelEditTime">取消</button>
+                    <button type="button" class="mac-btn mac-btn--primary" :disabled="!tempDateTime" @click="confirmDateTime">
+                      <v-icon size="15">mdi-check</v-icon>確認選擇
+                    </button>
                   </div>
                 </div>
 
-                <div v-if="!formData.reservationTime && !isEditingTime" class="text-caption text-error mt-1 ml-1">請選擇預約時間</div>
-              </v-col>
-              
-              <v-col cols="12" sm="6">
-                 <v-select
-                  v-model="formData.type"
-                  label="預約類型"
-                  :items="['新客', '回訪', '簽約', '其他']"
-                  variant="underlined"
-                  density="compact"
-                  :rules="[v => !!v || '請選擇類型']"
-                  prepend-inner-icon="mdi-account-tag"
-                ></v-select>
-              </v-col>
+                <div v-if="!formData.reservationTime && !isEditingTime" class="vr-field-error">請選擇預約時間</div>
+              </div>
+            </div>
 
-              <v-col v-if="formData.type === '其他'" cols="12" sm="6">
+            <div class="vr-field-row">
+              <div class="vr-field-label">預約類型</div>
+              <div class="vr-field-main">
+                <div class="mac-form-seg mac-form-seg--block vr-type-seg">
+                  <button
+                    v-for="t in PREDEFINED_TYPES"
+                    :key="t"
+                    type="button"
+                    class="mac-form-seg-btn"
+                    :class="{ 'is-active': formData.type === t }"
+                    @click="formData.type = t"
+                  >
+                    <span class="vr-type-dot" :style="{ background: TYPE_DOT_COLORS[t] }"></span>{{ t }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="formData.type === '其他'" class="vr-field-row">
+              <div class="vr-field-label">自訂類型</div>
+              <div class="vr-field-main">
                 <v-text-field
                   v-model="customType"
-                  label="請輸入預約類型"
-                  variant="underlined"
-                  density="compact"
                   placeholder="例如：已購客"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  hide-details="auto"
+                  class="mac-vfield"
                   :rules="[v => !!(v && v.trim()) || '請輸入預約類型']"
-                  prepend-inner-icon="mdi-pencil"
                 ></v-text-field>
-              </v-col>
+              </div>
+            </div>
 
-              <v-col v-if="formData.type === '簽約'" cols="12" sm="6">
+            <div v-if="formData.type === '簽約'" class="vr-field-row">
+              <div class="vr-field-label">戶別</div>
+              <div class="vr-field-main">
                 <v-combobox
                   v-model="formData.unitId"
                   :items="unitItems"
-                  label="戶別"
-                  variant="underlined"
-                  density="compact"
                   placeholder="選擇或手動輸入"
-                  prepend-inner-icon="mdi-home-variant"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  hide-details="auto"
+                  class="mac-vfield"
+                  menu-icon="mdi-unfold-more-horizontal"
+                  :menu-props="{ contentClass: 'mac-menu' }"
                   hide-no-data
-                  clearable
+                  :clearable="!!formData.unitId"
                   @update:modelValue="onUnitSelected"
                 >
                   <template v-slot:item="{ props: itemProps, item }">
@@ -139,100 +133,124 @@
                     ></v-list-item>
                   </template>
                 </v-combobox>
-              </v-col>
+              </div>
+            </div>
+          </div>
 
-              <v-col cols="12" sm="6">
+          <div class="mac-form-group vr-group">
+            <div class="vr-field-row">
+              <div class="vr-field-label">客戶姓名</div>
+              <div class="vr-field-main">
                 <v-text-field
                   v-model="formData.customerName"
-                  label="客戶姓名"
-                  variant="underlined"
+                  variant="solo"
+                  flat
                   density="compact"
+                  hide-details="auto"
+                  class="mac-vfield"
                   :rules="[v => !!v || '請輸入姓名']"
-                  prepend-inner-icon="mdi-account"
                 ></v-text-field>
-              </v-col>
+              </div>
+            </div>
 
-              <v-col cols="12" sm="6">
+            <div class="vr-field-row">
+              <div class="vr-field-label">客戶電話</div>
+              <div class="vr-field-main">
                 <v-text-field
                   v-model="formData.customerPhone"
-                  label="客戶電話"
-                  variant="underlined"
-                  density="compact"
                   placeholder="09xxxxxxxx"
+                  type="tel"
+                  inputmode="numeric"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  hide-details="auto"
+                  class="mac-vfield"
                   :rules="phoneRules"
-                  prepend-inner-icon="mdi-phone"
-                  @blur="handlePhoneBlur" 
+                  @blur="handlePhoneBlur"
                 ></v-text-field>
-                <v-alert v-if="conflictInfo" type="warning" variant="tonal"  class="mt-2 text-caption">
-                  注意：該號碼已有預約！<br>時間：{{ formatDate(conflictInfo.reservationTime) }}<br>銷售：{{ conflictInfo.salesName || '未指定' }}
-                </v-alert>
-              </v-col>
-
-              <v-col cols="12">
-                <div class="d-flex align-start">
-                    <v-select
-                      v-model="formData.salesId"
-                      label="指定銷售"
-                      :items="visibleSalesOptions" 
-                      item-title="name"
-                      item-value="id"
-                      variant="underlined"
-                      density="compact"
-                      prepend-inner-icon="mdi-badge-account"
-                      clearable
-                      class="flex-grow-1"
-                    >
-                       <template v-slot:item="{ props, item }">
-                          <v-list-item v-bind="props" :subtitle="item.raw.phone"></v-list-item>
-                       </template>
-                    </v-select>
-                    
-                    <v-btn 
-                        v-if="canManageSales"
-                        icon="mdi-cog" 
-                        variant="text" 
-                        size="small" 
-                        class="ml-2 mt-1"
-                        color="grey-darken-1"
-                        @click="openSettingsDialog"
-                        v-tooltip:bottom="'設定顯示/隱藏人員'"
-                    ></v-btn>
+                <div v-if="conflictInfo" class="mac-callout mac-callout--warning mt-2">
+                  <v-icon size="16">mdi-alert</v-icon>
+                  <div>
+                    注意：該號碼已有預約！<br>時間：{{ formatDate(conflictInfo.reservationTime) }}<br>銷售：{{ conflictInfo.salesName || '未指定' }}
+                  </div>
                 </div>
-              </v-col>
+              </div>
+            </div>
+          </div>
 
-              <v-col cols="12">
+          <div class="mac-form-group vr-group">
+            <div class="vr-field-row">
+              <div class="vr-field-label">指定銷售</div>
+              <div class="vr-field-main vr-field-inline">
+                <v-select
+                  v-model="formData.salesId"
+                  :items="visibleSalesOptions"
+                  item-title="name"
+                  item-value="id"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  hide-details="auto"
+                  class="mac-vfield flex-grow-1"
+                  menu-icon="mdi-unfold-more-horizontal"
+                  :menu-props="{ contentClass: 'mac-menu' }"
+                  :clearable="!!formData.salesId"
+                >
+                  <template v-slot:item="{ props: itemProps, item }">
+                    <v-list-item v-bind="itemProps" :subtitle="item.raw.phone"></v-list-item>
+                  </template>
+                </v-select>
+
+                <button
+                  v-if="canManageSales"
+                  type="button"
+                  class="mac-icon-btn vr-gear"
+                  title="設定顯示/隱藏人員"
+                  @click="openSettingsDialog"
+                >
+                  <v-icon size="18">mdi-cog</v-icon>
+                </button>
+              </div>
+            </div>
+
+            <div class="vr-field-row vr-field-row--top">
+              <div class="vr-field-label">備註事項</div>
+              <div class="vr-field-main">
                 <v-textarea
                   v-model="formData.note"
-                  label="備註事項"
-                  variant="underlined"
+                  variant="solo"
+                  flat
                   density="compact"
+                  hide-details="auto"
+                  class="mac-vfield"
                   rows="2"
                   auto-grow
-                  prepend-inner-icon="mdi-note-text"
                 ></v-textarea>
-              </v-col>
-            </v-row>
-          </v-container>
+              </div>
+            </div>
+          </div>
         </v-form>
       </v-card-text>
 
-      <v-divider></v-divider>
+      <div class="mac-sheet-foot vr-dlg-foot">
+        <button v-if="isEdit" type="button" class="mac-btn mac-btn--danger" @click="confirmDelete">
+          <v-icon size="16">mdi-delete</v-icon>取消預約
+        </button>
+        <span class="mac-spacer"></span>
+        <button type="button" class="mac-btn" @click="closeDialog">關閉</button>
+        <button
+          type="button"
+          class="mac-btn mac-btn--primary vr-save-btn"
+          :disabled="saving || !valid || !formData.reservationTime"
+          @click="save"
+        >
+          <v-progress-circular v-if="saving" indeterminate size="14" width="2"></v-progress-circular>
+          {{ isEdit ? '更新' : '新增' }}
+        </button>
+      </div>
 
-      <v-card-actions class="pa-4">
-        <v-btn v-if="isEdit" color="error" variant="text" prepend-icon="mdi-delete" @click="confirmDelete">取消預約</v-btn>
-        <v-spacer></v-spacer>
-        <v-btn variant="underlined" @click="closeDialog">關閉</v-btn>
-                <v-btn 
-                color="primary" 
-                variant="flat" 
-                @click="save" 
-                :loading="saving" 
-                :disabled="!valid || !formData.reservationTime" 
-                > {{ isEdit ? '更新' : '新增' }}
-                </v-btn>
-      </v-card-actions>
-
-      <!-- ✅ 初始化載入遮罩：讓使用者明確知道正在讀取後端 / 等候 Cloud Function 冷啟動 -->
+      <!-- 初始化載入遮罩：讓使用者明確知道正在讀取後端 / 等候 Cloud Function 冷啟動 -->
       <v-overlay
         :model-value="initializing"
         contained
@@ -241,230 +259,190 @@
         class="align-center justify-center init-overlay"
       >
         <div class="text-center px-6 py-8">
-          <v-progress-circular indeterminate color="primary" size="56" width="5"></v-progress-circular>
-          <div class="text-subtitle-1 font-weight-bold text-primary mt-4">
-            {{ initStatus || '載入中...' }}
-          </div>
-          <div class="text-caption text-grey-darken-1 mt-2">
-            資料處理中，請稍後。
-          </div>
+          <v-progress-circular indeterminate color="#0071e3" size="40" width="3"></v-progress-circular>
+          <div class="vr-init-status">{{ initStatus || '載入中...' }}</div>
+          <div class="vr-init-sub">資料處理中，請稍後。</div>
         </div>
       </v-overlay>
     </v-card>
 
-    <v-dialog v-model="vipConflictDialog" max-width="450" :persistent="isBlockedForSales">
-        <v-card>
-            <v-card-title class="d-flex align-center" :class="isBlockedForSales ? 'text-error' : 'text-primary'">
-                <v-icon start :color="isBlockedForSales ? 'error' : 'primary'">
-                    {{ isBlockedForSales ? 'mdi-account-lock' : 'mdi-database-search' }}
-                </v-icon>
-                {{ isBlockedForSales ? '無法預約：他人客戶' : (vipGuestInfo ? '客資庫比對提醒' : '聯絡名單比對提醒') }}
-            </v-card-title>
-            <v-card-text class="py-4">
-                <!-- 客資庫比對結果 -->
-                <div v-if="vipGuestInfo">
-                    此電話 <span class="font-weight-bold text-error">{{ formData.customerPhone }}</span>
-                    已存在 <span class="font-weight-bold">{{ currentProjectName }}</span> 資料庫，<br>
-                    客資歸屬銷售：<span class="text-subtitle-1 font-weight-bold">{{ vipGuestInfo?.latestSalesName || '未知' }}</span>
-                    <v-chip v-if="!vipOwnerSales" size="x-small" color="warning" variant="flat" class="ml-1">已不在本案銷售名單</v-chip>
-                </div>
+    <v-dialog v-model="vipConflictDialog" max-width="450" :persistent="isBlockedForSales" content-class="mac-dialog-fit">
+      <v-card class="mac-sheet">
+        <div class="mac-sheet-head">
+          <v-icon size="18" :class="isBlockedForSales ? 'vr-icon-danger' : 'vr-icon-accent'">
+            {{ isBlockedForSales ? 'mdi-account-lock' : 'mdi-database-search' }}
+          </v-icon>
+          <span class="vr-sheet-title">{{ isBlockedForSales ? '無法預約：他人客戶' : (vipGuestInfo ? '客資庫比對提醒' : '聯絡名單比對提醒') }}</span>
+        </div>
+        <div class="mac-sheet-section vr-sheet-text">
+          <!-- 客資庫比對結果 -->
+          <div v-if="vipGuestInfo">
+            此電話 <span class="vr-strong vr-text-danger">{{ formData.customerPhone }}</span>
+            已存在 <span class="vr-strong">{{ currentProjectName }}</span> 資料庫，<br>
+            客資歸屬銷售：<span class="vr-strong">{{ vipGuestInfo?.latestSalesName || '未知' }}</span>
+            <span v-if="!vipOwnerSales" class="vr-tag vr-tag--warning">已不在本案銷售名單</span>
+          </div>
 
-                <!-- 聯絡名單比對結果 -->
-                <div v-if="leadInfo" :class="vipGuestInfo ? 'mt-3 pt-3 border-t' : ''">
-                    <template v-if="leadInfo.assigned">
-                        此電話<span v-if="!vipGuestInfo">
-                            <span class="font-weight-bold text-error"> {{ formData.customerPhone }} </span></span>為
-                        <span class="text-subtitle-1 font-weight-bold">{{ leadInfo.name || leadInfo.phone }}</span>
-                        的聯絡名單
-                        <v-chip v-if="!leadAssigneeSales" size="x-small" color="warning" variant="flat" class="ml-1">已不在本案銷售名單</v-chip>
-                    </template>
-                    <template v-else>
-                        此電話<span v-if="!vipGuestInfo">
-                            <span class="font-weight-bold text-error"> {{ formData.customerPhone }} </span></span>已在
-                        <span class="font-weight-bold">{{ currentProjectName }}</span> 聯絡名單中，尚未指派銷售。
-                    </template>
-                </div>
+          <!-- 聯絡名單比對結果 -->
+          <div v-if="leadInfo" :class="vipGuestInfo ? 'vr-split' : ''">
+            <template v-if="leadInfo.assigned">
+              此電話<span v-if="!vipGuestInfo">
+                <span class="vr-strong vr-text-danger"> {{ formData.customerPhone }} </span></span>為
+              <span class="vr-strong">{{ leadInfo.name || leadInfo.phone }}</span>
+              的聯絡名單
+              <span v-if="!leadAssigneeSales" class="vr-tag vr-tag--warning">已不在本案銷售名單</span>
+            </template>
+            <template v-else>
+              此電話<span v-if="!vipGuestInfo">
+                <span class="vr-strong vr-text-danger"> {{ formData.customerPhone }} </span></span>已在
+              <span class="vr-strong">{{ currentProjectName }}</span> 聯絡名單中，尚未指派銷售。
+            </template>
+          </div>
 
-                <!-- ✅ 他人客戶醒目警示（銷售：封鎖；櫃台：提醒） -->
-                <v-alert v-if="otherOwners.length > 0 && !selfIsOwner"
-                    :type="isBlockedForSales ? 'error' : 'warning'" variant="tonal" density="compact"
-                    class="mt-3" prominent>
-                    <div class="font-weight-bold">
-                        {{ isBlockedForSales ? `此為 ${ownerNamesText} 的客戶，無法預約` : `此為 ${ownerNamesText} 的客戶` }}
-                    </div>
-                    <div class="text-body-2">請通知 <span class="font-weight-bold">{{ ownerNamesText }}</span> 聯繫客戶</div>
-                </v-alert>
+          <!-- 他人客戶醒目警示（銷售：封鎖；櫃台：提醒） -->
+          <div
+            v-if="otherOwners.length > 0 && !selfIsOwner"
+            class="mac-callout mt-3"
+            :class="isBlockedForSales ? 'mac-callout--error' : 'mac-callout--warning'"
+          >
+            <v-icon size="18">{{ isBlockedForSales ? 'mdi-alert-octagon' : 'mdi-alert' }}</v-icon>
+            <div>
+              <div class="vr-strong">
+                {{ isBlockedForSales ? `此為 ${ownerNamesText} 的客戶，無法預約` : `此為 ${ownerNamesText} 的客戶` }}
+              </div>
+              <div>請通知 <span class="vr-strong">{{ ownerNamesText }}</span> 聯繫客戶</div>
+            </div>
+          </div>
 
-                <!-- 指定建議（被封鎖時不顯示） -->
-                <div v-if="!isBlockedForSales" class="mt-3">
-                    <template v-if="assignOptions.length === 1">
-                        是否指定為銷售：<span class="text-subtitle-1 font-weight-bold">{{ assignOptions[0].name }}</span>？
-                    </template>
-                    <template v-else-if="assignOptions.length > 1">
-                        客資與名單歸屬不同，請選擇要指定的銷售：
-                    </template>
-                    <div v-else class="text-caption text-grey-darken-1">
-                        請於預約表單中自行選擇銷售人員。
-                    </div>
-                </div>
-            </v-card-text>
-            <v-divider></v-divider>
-            <v-card-actions class="pa-4 flex-wrap">
-                <template v-if="isBlockedForSales">
-                    <v-spacer></v-spacer>
-                    <v-btn color="error" variant="flat" @click="closeBlockedDialog">知道了</v-btn>
-                </template>
-                <template v-else-if="assignOptions.length > 0">
-                    <v-btn variant="text" @click="vipConflictDialog = false">不指定</v-btn>
-                    <v-spacer></v-spacer>
-                    <v-btn v-for="opt in assignOptions" :key="opt.id" color="primary" variant="flat" class="ml-2"
-                        @click="assignSalesFromDialog(opt)">
-                        指定 {{ opt.name }}<span v-if="assignOptions.length > 1" class="text-caption ml-1">({{ opt.sourceLabel }})</span>
-                    </v-btn>
-                </template>
-                <template v-else>
-                    <v-spacer></v-spacer>
-                    <v-btn color="primary" variant="flat" @click="vipConflictDialog = false">知道了</v-btn>
-                </template>
-            </v-card-actions>
-        </v-card>
+          <!-- 指定建議（被封鎖時不顯示） -->
+          <div v-if="!isBlockedForSales" class="mt-3">
+            <template v-if="assignOptions.length === 1">
+              是否指定為銷售：<span class="vr-strong">{{ assignOptions[0].name }}</span>？
+            </template>
+            <template v-else-if="assignOptions.length > 1">
+              客資與名單歸屬不同，請選擇要指定的銷售：
+            </template>
+            <div v-else class="vr-text-secondary">
+              請於預約表單中自行選擇銷售人員。
+            </div>
+          </div>
+        </div>
+        <div class="mac-sheet-foot">
+          <template v-if="isBlockedForSales">
+            <span class="mac-spacer"></span>
+            <button type="button" class="mac-btn mac-btn--danger-fill" @click="closeBlockedDialog">知道了</button>
+          </template>
+          <template v-else-if="assignOptions.length > 0">
+            <button type="button" class="mac-btn" @click="vipConflictDialog = false">不指定</button>
+            <span class="mac-spacer"></span>
+            <button
+              v-for="opt in assignOptions"
+              :key="opt.id"
+              type="button"
+              class="mac-btn mac-btn--primary mac-btn--wrap"
+              @click="assignSalesFromDialog(opt)"
+            >
+              指定 {{ opt.name }}<span v-if="assignOptions.length > 1" class="vr-btn-note">（{{ opt.sourceLabel }}）</span>
+            </button>
+          </template>
+          <template v-else>
+            <span class="mac-spacer"></span>
+            <button type="button" class="mac-btn mac-btn--primary" @click="vipConflictDialog = false">知道了</button>
+          </template>
+        </div>
+      </v-card>
     </v-dialog>
 
-    <v-dialog v-model="conflictDialog" max-width="450">
-        <v-card class="rounded-lg">
-            <v-card-title class="bg-warning text-white d-flex align-center pa-4">
-                <v-icon start size="24">mdi-alert-circle</v-icon>
-                <span class="text-subtitle-1 font-weight-bold">重複預約確認</span>
-            </v-card-title>
+    <v-dialog v-model="conflictDialog" max-width="450" content-class="mac-dialog-fit">
+      <v-card class="mac-sheet">
+        <div class="mac-sheet-head">
+          <v-icon size="18" class="vr-icon-warning">mdi-alert-circle</v-icon>
+          <span class="vr-sheet-title">重複預約確認</span>
+        </div>
 
-            <v-card-text class="pa-6">
-                <div class="text-body-2 mb-4 text-grey-darken-2">
-                    此電話號碼 <span class="font-weight-bold text-error">{{ formData.customerPhone }}</span>
-                    已有預約記錄，請確認處理方式：
-                </div>
+        <div class="mac-form vr-conflict-body">
+          <div class="vr-sheet-text">
+            此電話號碼 <span class="vr-strong vr-text-danger">{{ formData.customerPhone }}</span>
+            已有預約記錄，請確認處理方式：
+          </div>
 
-                <!-- 既有預約信息卡片 -->
-                <v-card variant="flat" class="mb-5 bg-orange-lighten-5 border-l-5" style="border-left-color: #ff9800;">
-                    <v-card-text class="pa-4">
-                        <div class="d-flex align-center mb-3">
-                            <v-icon size="20" color="orange">mdi-calendar-check</v-icon>
-                            <span class="text-caption text-grey-darken-1 ms-2 font-weight-bold">既有預約詳情</span>
-                        </div>
+          <div class="mac-form-label">既有預約詳情</div>
+          <div class="mac-form-group">
+            <div class="mac-form-row">
+              <span class="vr-info-label">預約時間</span>
+              <span class="vr-info-value">{{ formatDate(conflictInfo?.reservationTime) }}</span>
+            </div>
+            <div class="mac-form-row">
+              <span class="vr-info-label">負責銷售</span>
+              <span class="vr-info-value">{{ conflictInfo?.salesName || '未指定' }}</span>
+            </div>
+          </div>
 
-                        <v-row dense class="mt-1">
-                            <v-col cols="12" class="pb-2">
-                                <div class="text-caption text-grey-darken-1">預約時間</div>
-                                <div class="text-body-2 font-weight-bold text-grey-darken-3">
-                                    {{ formatDate(conflictInfo?.reservationTime) }}
-                                </div>
-                            </v-col>
+          <!-- 無刪除權限提示 -->
+          <div v-if="!canDeleteConflictReservation" class="mac-callout mac-callout--warning mt-3">
+            <v-icon size="16">mdi-lock</v-icon>
+            <div>
+              <div class="vr-strong">無法刪除此預約</div>
+              <div>您不是此預約的負責銷售，且無櫃台權限</div>
+            </div>
+          </div>
+        </div>
 
-                            <v-col cols="12" class="pb-2">
-                                <div class="text-caption text-grey-darken-1">負責銷售</div>
-                                <div class="d-flex align-center mt-1">
-                                    <v-icon size="18" color="indigo" class="me-1">mdi-badge-account</v-icon>
-                                    <span class="text-body-2 font-weight-bold text-grey-darken-3">
-                                        {{ conflictInfo?.salesName || '未指定' }}
-                                    </span>
-                                </div>
-                            </v-col>
-                        </v-row>
-                    </v-card-text>
-                </v-card>
-
-                <v-divider class="my-4"></v-divider>
-
-                <div class="text-caption font-weight-bold text-grey-darken-1 mb-3">
-                    請選擇處理方式：
-                </div>
-            </v-card-text>
-
-            <v-card-actions class="pa-4 pt-0 flex-column align-stretch gap-2">
-                <!-- ✅ 優化：添加權限限制和禁用提示 -->
-                <div v-if="!canDeleteConflictReservation" class="mb-2">
-                    <v-alert
-                        type="warning"
-                        variant="tonal"
-                        density="compact"
-                        class="text-caption"
-                        icon="mdi-lock"
-                    >
-                        <div class="font-weight-bold">無法刪除此預約</div>
-                        <div>您不是此預約的負責銷售，且無櫃台權限</div>
-                    </v-alert>
-                </div>
-
-                <v-btn
-                    color="error"
-                    variant="tonal"
-                    prepend-icon="mdi-delete"
-                    @click="resolveConflict('replace')"
-                    :disabled="!canDeleteConflictReservation"
-                    class="font-weight-bold"
-                >
-                    <template v-if="!canDeleteConflictReservation">
-                        <v-icon start>mdi-lock</v-icon>
-                        刪除舊預約，建立新預約 (無權限)
-                    </template>
-                    <template v-else>
-                        刪除舊預約，建立新預約
-                    </template>
-                </v-btn>
-
-                <v-btn
-                    color="primary"
-                    variant="tonal"
-                    prepend-icon="mdi-plus-multiple"
-                    @click="resolveConflict('keep')"
-                    class="font-weight-bold"
-                >
-                    保留舊預約，繼續建立 (重複)
-                </v-btn>
-
-                <v-divider class="my-2"></v-divider>
-
-                <v-btn
-                    variant="text"
-                    color="grey-darken-1"
-                    @click="conflictDialog = false"
-                >
-                    取消操作
-                </v-btn>
-            </v-card-actions>
-        </v-card>
+        <div class="mac-sheet-foot vr-foot-stack">
+          <button
+            type="button"
+            class="mac-btn mac-btn--lg mac-btn--wrap mac-btn--block mac-btn--danger"
+            :disabled="!canDeleteConflictReservation"
+            @click="resolveConflict('replace')"
+          >
+            <v-icon size="16">{{ canDeleteConflictReservation ? 'mdi-delete' : 'mdi-lock' }}</v-icon>
+            刪除舊預約，建立新預約{{ canDeleteConflictReservation ? '' : '（無權限）' }}
+          </button>
+          <button
+            type="button"
+            class="mac-btn mac-btn--lg mac-btn--wrap mac-btn--block mac-btn--primary"
+            @click="resolveConflict('keep')"
+          >
+            <v-icon size="16">mdi-plus-box-multiple</v-icon>
+            保留舊預約，繼續建立（重複）
+          </button>
+          <button type="button" class="mac-btn mac-btn--lg mac-btn--block" @click="conflictDialog = false">取消操作</button>
+        </div>
+      </v-card>
     </v-dialog>
 
-    <v-dialog v-model="settingsDialog" max-width="400" scrollable>
-        <v-card>
-            <v-card-title class="text-subtitle-1 font-weight-bold bg-grey-lighten-4">
-                設定銷售人員顯示
-            </v-card-title>
-            <v-card-text class="pa-0" style="max-height: 400px;">
-                <v-list lines="one" select-strategy="classic">
-                    <v-list-subheader>勾選的人員將顯示於選單中</v-list-subheader>
-                    
-                    <v-list-item
-                        v-for="sales in allSalesList"
-                        :key="sales.id"
-                        :value="sales.id"
-                        @click="toggleVisibility(sales.id)"
-                    >
-                        <template v-slot:prepend>
-                            <v-list-item-action start>
-                                <v-checkbox-btn :model-value="!tempHiddenIds.includes(sales.id)"></v-checkbox-btn>
-                            </v-list-item-action>
-                        </template>
-                        <v-list-item-title>{{ sales.name }}</v-list-item-title>
-                    </v-list-item>
-                </v-list>
-            </v-card-text>
-            <v-divider></v-divider>
-            <v-card-actions>
-                <v-spacer></v-spacer>
-                <v-btn variant="text" @click="settingsDialog = false">取消</v-btn>
-                <v-btn color="primary" @click="saveSettings">儲存設定</v-btn>
-            </v-card-actions>
-        </v-card>
+    <v-dialog v-model="settingsDialog" max-width="400" scrollable content-class="mac-dialog-fit">
+      <v-card class="mac-sheet">
+        <div class="mac-sheet-head">
+          <v-icon size="18">mdi-account-cog</v-icon>
+          <span class="vr-sheet-title">設定銷售人員顯示</span>
+          <button type="button" class="mac-sheet-close" title="關閉" @click="settingsDialog = false">
+            <v-icon size="18">mdi-close</v-icon>
+          </button>
+        </div>
+        <v-card-text class="mac-form vr-settings-body">
+          <div class="mac-form-label">勾選的人員將顯示於選單中</div>
+          <div class="mac-form-group">
+            <label v-for="sales in allSalesList" :key="sales.id" class="mac-form-row vr-check-row">
+              <input
+                type="checkbox"
+                class="mac-check"
+                :checked="!tempHiddenIds.includes(sales.id)"
+                @change="toggleVisibility(sales.id)"
+              >
+              <span class="mac-form-row-main">
+                <span class="mac-form-row-title">{{ sales.name }}</span>
+              </span>
+            </label>
+            <div v-if="allSalesList.length === 0" class="mac-form-row mac-form-empty">尚無銷售人員</div>
+          </div>
+        </v-card-text>
+        <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn" @click="settingsDialog = false">取消</button>
+          <button type="button" class="mac-btn mac-btn--primary" @click="saveSettings">儲存設定</button>
+        </div>
+      </v-card>
     </v-dialog>
 
   </v-dialog>
@@ -488,6 +466,8 @@ const isEditingTime = ref(false); // 是否正在編輯時間
 
 // 預約類型相關
 const PREDEFINED_TYPES = ['新客', '回訪', '簽約', '其他'];
+// 類型分段按鈕上的色點（與行事曆事件顏色一致）
+const TYPE_DOT_COLORS = { '新客': '#007aff', '回訪': '#ff3b30', '簽約': '#34c759', '其他': '#ff9500' };
 const customType = ref(''); // 「其他」類型的自訂輸入值
 
 // ✅ 開啟對話框時的初始化載入狀態（讀取銷售資料 / 等候 Cloud Function 冷啟動做衝突檢查）
@@ -1077,144 +1057,169 @@ const formatDate = (ts) => {
 </script>
 
 <style scoped>
-/* ===== 標籤 ===== */
-.native-dt-label {
-    display: flex;
-    align-items: center;
-    font-size: 12px;
-    color: #757575;
-    margin-bottom: 6px;
-    font-weight: 500;
-    letter-spacing: 0.3px;
-}
+/* macOS 表單視窗：淡灰底＋白色圓角分組，桌機標籤在左、手機標籤在上 */
+.vr-dlg-head { min-height: 52px; align-items: center; }
+.vr-dlg-titles { flex: 1 1 auto; min-width: 0; padding: 6px 0; }
+.vr-dlg-title { font-size: 15px; font-weight: 600; line-height: 1.35; }
+.vr-dlg-sub { font-size: 11.5px; font-weight: 400; color: #6e6e73; line-height: 1.45; overflow-wrap: anywhere; }
+.vr-dlg-body { padding: 14px 16px 16px !important; }
+.vr-group { margin-top: 12px; }
 
-/* ===== 原生日期時間輸入框容器 ===== */
+.vr-field-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 14px;
+}
+.vr-field-row + .vr-field-row { border-top: 1px solid #ececf0; }
+.vr-field-row--top { align-items: flex-start; }
+.vr-field-row--top .vr-field-label { padding-top: 8px; }
+.vr-field-label {
+  flex: 0 0 auto;
+  min-width: 64px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1d1d1f;
+  line-height: 1.35;
+}
+.vr-field-main { flex: 1 1 auto; min-width: 0; }
+.vr-field-inline { display: flex; align-items: flex-start; gap: 6px; }
+.vr-gear { width: 34px; height: 34px; }
+.vr-field-error { margin: 4px 4px 0; font-size: 12px; color: #d62d20; }
+
+.vr-type-seg .mac-form-seg-btn { height: 28px; }
+.vr-type-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; }
+
+.vr-dlg-foot .mac-btn { min-width: 64px; }
+.vr-save-btn .v-progress-circular { color: #fff; }
+
+.vr-init-status { margin-top: 14px; font-size: 14px; font-weight: 600; color: #1d1d1f; }
+.vr-init-sub { margin-top: 4px; font-size: 12px; color: #6e6e73; }
+
+/* 子視窗（比對提醒／重複預約／人員設定） */
+.vr-sheet-title { flex: 1 1 auto; min-width: 0; line-height: 1.35; overflow-wrap: anywhere; }
+.vr-sheet-text { font-size: 13.5px; line-height: 1.65; color: #1d1d1f; overflow-wrap: anywhere; }
+.vr-strong { font-weight: 700; }
+.vr-text-danger { color: #d62d20; }
+.vr-text-secondary { font-size: 12.5px; color: #6e6e73; }
+.vr-split { margin-top: 12px; padding-top: 12px; border-top: 1px solid #ececf0; }
+.vr-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  vertical-align: 1px;
+}
+.vr-tag--warning { background: rgba(255, 159, 10, 0.16); color: #a35f00; }
+.vr-btn-note { font-weight: 400; opacity: 0.9; }
+.mac-sheet-head .v-icon.vr-icon-danger { color: #d62d20; }
+.mac-sheet-head .v-icon.vr-icon-accent { color: #0071e3; }
+.mac-sheet-head .v-icon.vr-icon-warning { color: #ff9500; }
+
+.vr-conflict-body { padding: 14px 16px 16px; }
+.vr-conflict-body .mac-form-label { margin-top: 14px; }
+.vr-info-label { flex: 0 0 auto; min-width: 64px; color: #6e6e73; white-space: nowrap; }
+.vr-info-value { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.vr-foot-stack { flex-direction: column; align-items: stretch; }
+
+.vr-settings-body { padding: 4px 16px 16px !important; }
+.vr-settings-body .mac-form-label { margin-top: 12px; }
+.vr-check-row { cursor: pointer; }
+.vr-check-row:hover { background: #f7f7f9; }
+
+/* ===== 預約時間（原生 datetime-local） ===== */
 .native-dt-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 12px;
-    border: 1.5px solid #bdbdbd;
-    border-radius: 10px;
-    background: #fafafa;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14), 0 0.5px 1px rgba(0, 0, 0, 0.04);
+  color: #1d1d1f;
+  font-family: inherit;
+  text-align: left;
+  transition: box-shadow 0.12s;
 }
-
+button.native-dt-wrapper { cursor: pointer; }
+button.native-dt-wrapper:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24), 0 0.5px 1px rgba(0, 0, 0, 0.04); }
+.native-dt-wrapper:focus-visible,
 .native-dt-wrapper:focus-within {
-    border-color: #1976d2;
-    background: #fff;
-    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.15);
+  outline: none;
+  box-shadow: inset 0 0 0 1px #0071e3, 0 0 0 3px rgba(0, 113, 227, 0.22);
 }
-
 .native-dt-wrapper--error:not(:focus-within) {
-    border-color: #e53935;
-    background: #fff5f5;
+  box-shadow: inset 0 0 0 1px #d62d20, 0 0 0 3px rgba(214, 45, 32, 0.14);
 }
+.native-dt-icon { margin-left: auto; color: #8e8e93; flex-shrink: 0; }
 
-.native-dt-wrapper--filled {
-    border-color: #4caf50;
-    background: #f9fff9;
-}
-
-.native-dt-wrapper--filled:focus-within {
-    border-color: #1976d2;
-    background: #fff;
-}
-
-/* ===== 原生 input 本體 ===== */
 .native-dt-input {
-    flex: 1;
-    border: none;
-    outline: none;
-    background: transparent;
-    font-size: 16px;
-    font-weight: 500;
-    color: #212121;
-    font-family: inherit;
-    letter-spacing: 0.3px;
-    min-width: 0;
-    /* 讓 input 佔滿高度，增加點擊區域 */
-    padding: 8px 0;
-    cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #1d1d1f;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
 }
-
-/* iOS / Safari 移除預設樣式 */
-.native-dt-input::-webkit-inner-spin-button,
 .native-dt-input::-webkit-calendar-picker-indicator {
-    font-size: 20px;
-    cursor: pointer;
-    opacity: 0.6;
-    padding: 4px;
+  cursor: pointer;
+  opacity: 0.55;
+  padding: 2px;
 }
-
-.native-dt-input::-webkit-calendar-picker-indicator:hover {
-    opacity: 1;
-}
-
-/* placeholder 樣式（未選值時） */
-.native-dt-input:invalid {
-    color: #9e9e9e;
-}
-
-/* ===== 清除按鈕 ===== */
-.native-dt-clear {
-    color: #bdbdbd;
-    flex-shrink: 0;
-    cursor: pointer;
-    transition: color 0.2s;
-    padding: 4px;
-}
-
-.native-dt-clear:hover {
-    color: #e53935;
-}
-
-/* ===== 已確認時間顯示 ===== */
-.native-dt-wrapper--filled {
-    cursor: pointer;
-}
-
-.native-dt-wrapper--filled:hover {
-    border-color: #1976d2;
-    background: #f5f9ff;
-}
+.native-dt-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+.native-dt-input:invalid { color: #8e8e93; }
 
 .native-dt-display {
-    flex: 1;
-    font-size: 16px;
-    font-weight: 600;
-    color: #212121;
-    letter-spacing: 0.5px;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
-
-/* ===== 尚未選擇的 placeholder ===== */
-.native-dt-wrapper--placeholder {
-    cursor: pointer;
-}
-
-.native-dt-wrapper--placeholder:hover {
-    border-color: #1976d2;
-    background: #f5f9ff;
-}
-
 .native-dt-placeholder {
-    flex: 1;
-    font-size: 16px;
-    font-weight: 500;
-    color: #9e9e9e;
-    letter-spacing: 0.3px;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: #8e8e93;
 }
-
-/* ===== 確認/取消按鈕列 ===== */
 .native-dt-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 
-/* ===== 初始化載入遮罩：提高白色 scrim 不透明度，蓋住半載入的表單 ===== */
+/* 初始化載入遮罩：提高白色 scrim 不透明度，蓋住半載入的表單 */
 .init-overlay :deep(.v-overlay__scrim) {
-    opacity: 0.94;
+  opacity: 0.94;
+}
+
+/* ===== 手機版：標籤在上、欄位滿寬；輸入字級 16px 避免 iOS 聚焦放大 ===== */
+@media (max-width: 600px) {
+  .vr-dlg-body { padding: 12px 12px 14px !important; }
+  .vr-field-row { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 12px; }
+  .vr-field-row--top .vr-field-label { padding-top: 0; }
+  .vr-field-label { flex: 0 0 auto; font-size: 12px; font-weight: 600; color: #6e6e73; }
+  .vr-gear { width: 40px; height: 40px; }
+  .vr-type-seg .mac-form-seg-btn { height: 32px; font-size: 14px; }
+  .native-dt-wrapper { min-height: 40px; }
+  .native-dt-input, .native-dt-display, .native-dt-placeholder { font-size: 16px; }
+  .vr-dlg-foot .mac-btn { height: 36px; font-size: 14px; }
+  .native-dt-actions .mac-btn { height: 34px; }
 }
 </style>

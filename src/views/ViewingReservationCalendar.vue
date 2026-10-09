@@ -1,200 +1,208 @@
 <template>
-  <v-layout class="fill-height bg-white">
-      <v-navigation-drawer
-          v-model="drawer"
-          :permanent="$vuetify.display.mdAndUp"
-          :temporary="$vuetify.display.smAndDown"
-          width="350" border="right"
-          class="pa-3"
-      >
-      <!-- ✅ 新增：建案切換（有 客資系統-櫃台 或 客資系統-銷售 權限的建案） -->
-      <div v-if="switchableProjects.length > 1">
-        <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">選擇建案</div>
+  <v-layout class="vr-page fill-height">
+    <v-navigation-drawer
+      v-model="drawer"
+      :permanent="mdAndUp"
+      :temporary="smAndDown"
+      width="300"
+      class="vr-sidebar"
+    >
+      <!-- 左側留白避開全站漢堡鈕（fixed 左上 10px＋40px） -->
+      <div class="vr-side-head">
+        <div class="vr-side-title">賞屋預約</div>
+        <div class="vr-side-project">{{ projectName }}</div>
+      </div>
+
+      <!-- 建案切換（有 客資系統-櫃台 或 客資系統-銷售 權限的建案） -->
+      <section v-if="switchableProjects.length > 1" class="vr-side-section">
+        <div class="vr-side-label">建案</div>
         <v-select
           :model-value="props.projectId"
           :items="switchableProjects"
           item-title="name"
           item-value="id"
+          variant="solo"
+          flat
           density="compact"
-          variant="outlined"
           hide-details
-          class="mb-4"
+          class="mac-vfield"
+          menu-icon="mdi-unfold-more-horizontal"
+          :menu-props="{ contentClass: 'mac-menu' }"
           :disabled="isSwitchingProject"
           @update:model-value="switchProject"
         ></v-select>
-        <v-divider class="mb-4"></v-divider>
-      </div>
+      </section>
 
-      <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">視圖切換</div>
-      <v-list density="compact" nav class="pa-0 mb-2">
-        <v-list-item 
-          v-for="(label, view) in viewLabelMap" 
-          :key="view"
-          :active="currentView === view"
-          color="primary"
-          variant="tonal"
-          @click="changeView(view); if($vuetify.display.xs) drawer = false"
-          class="mb-1"
-        >
-          <template v-slot:prepend>
-            <v-icon :icon="getViewIcon(view)" size="small"></v-icon>
-          </template>
-          <v-list-item-title class="font-weight-bold">{{ label }}</v-list-item-title>
-        </v-list-item>
-      </v-list>
+      <section class="vr-side-section">
+        <div class="vr-side-label">
+          銷售人員
+          <button type="button" class="vr-side-link" @click="filters.salesNames = []">清除</button>
+        </div>
+        <div class="vr-check-list vr-check-list--scroll">
+          <label v-for="name in allSalesPeople" :key="name" class="vr-check-row">
+            <input v-model="filters.salesNames" type="checkbox" class="mac-check" :value="name">
+            <span class="vr-check-text">{{ name || '未指派' }}</span>
+          </label>
+          <div v-if="allSalesPeople.length === 0" class="vr-side-empty">尚無預約</div>
+        </div>
+      </section>
 
-      <v-divider class="mb-4"></v-divider>
+      <section class="vr-side-section">
+        <div class="vr-side-label">快速跳轉</div>
+        <v-date-picker
+          v-model="miniCalendarDate"
+          hide-header
+          flat
+          control-variant="modal"
+          color="#0071e3"
+          class="vr-mini-cal"
+          @update:model-value="onMiniCalendarChange"
+        ></v-date-picker>
+      </section>
 
-      <!-- ✅ 優化：銷售人員勾選區域移至最前面 -->
-      <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2 d-flex align-center">
-        銷售人員
-        <v-chip size="x-small" class="ml-2" variant="tonal" @click="filters.salesNames = []">清除</v-chip>
-      </div>
-      <div style="max-height: 200px; overflow-y: auto;">
-        <v-checkbox v-for="name in allSalesPeople" :key="name" v-model="filters.salesNames" :label="name || '未指派'" :value="name" color="primary" density="compact" hide-details></v-checkbox>
-      </div>
+      <section class="vr-side-section">
+        <div class="vr-side-label">預約類型</div>
+        <div class="vr-check-list">
+          <label v-for="t in TYPE_FILTERS" :key="t.value" class="vr-check-row">
+            <input
+              v-model="filters.type"
+              type="checkbox"
+              class="mac-check"
+              :value="t.value"
+              :style="{ '--mac-check-color': TYPE_COLORS[t.value].border }"
+            >
+            <span class="vr-check-text">{{ t.label }}</span>
+          </label>
+        </div>
+      </section>
 
-      <div>
-        <v-divider class="mb-4"></v-divider>
-        <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">快速跳轉</div>
-          <v-date-picker
-              v-model="miniCalendarDate"
-              :hide-header="false" 
-              flat
-              density="compact"
-              color="primary"
-              class="border rounded-lg mb-6 calendar-mini"
-              @update:model-value="onMiniCalendarChange" 
-          > </v-date-picker>
-      </div>
+      <section v-if="canAccessSettings" class="vr-side-section vr-side-actions">
+        <button type="button" class="mac-btn mac-btn--block" @click="smsSettingsDialog = true">
+          <v-icon size="16">mdi-message-cog</v-icon>簡訊提醒設定
+        </button>
+        <button type="button" class="mac-btn mac-btn--block" @click="router.push('/sms-monitor')">
+          <v-icon size="16">mdi-monitor-dashboard</v-icon>簡訊回報監控
+        </button>
+      </section>
+    </v-navigation-drawer>
 
-      <v-divider class="mb-4"></v-divider>
+    <SmsReminderSettingsDialog
+      v-model="smsSettingsDialog"
+      :projectId="projectId"
+    />
 
-      <div class="text-subtitle-2 font-weight-bold mb-2 text-grey-darken-2">預約類型</div>
-      <v-checkbox v-model="filters.type" label="新客預約" value="新客" color="light-blue-darken-1" density="compact" hide-details></v-checkbox>
-      <v-checkbox v-model="filters.type" label="回訪" value="回訪" color="red-darken-1" density="compact" hide-details></v-checkbox>
-      <v-checkbox v-model="filters.type" label="簽約" value="簽約" color="green-darken-1" density="compact" hide-details></v-checkbox>
-      <v-checkbox v-model="filters.type" label="其他" value="__other__" color="amber-darken-2" density="compact" hide-details></v-checkbox>
+    <v-main class="vr-main d-flex flex-column fill-height">
+      <!-- 第一列：標題＋前後切換；側欄未固定時左側留給全站漢堡鈕 -->
+      <header class="vr-bar" :class="{ 'vr-bar--inset': !sidebarDocked }">
+        <button v-if="smAndUp" type="button" class="mac-icon-btn vr-tool-icon" title="側邊欄" @click="drawer = !drawer">
+          <v-icon size="20">mdi-dock-left</v-icon>
+        </button>
+        <div class="vr-title">
+          <div class="vr-title-main">{{ currentTitle }}</div>
+          <div class="vr-title-sub">{{ projectName }}</div>
+        </div>
+        <div class="vr-nav">
+          <button type="button" class="vr-nav-btn" title="上一頁" @click="goPrev"><v-icon size="18">mdi-chevron-left</v-icon></button>
+          <button type="button" class="vr-nav-btn vr-nav-today" @click="goToday">今天</button>
+          <button type="button" class="vr-nav-btn" title="下一頁" @click="goNext"><v-icon size="18">mdi-chevron-right</v-icon></button>
+        </div>
+        <template v-if="smAndUp">
+          <button type="button" class="mac-icon-btn vr-tool-icon" title="重新整理" @click="fetchData">
+            <v-icon size="20">mdi-refresh</v-icon>
+          </button>
+          <button v-if="canAccessSettings && lgAndUp" type="button" class="mac-btn" @click="router.push('/sms-monitor')">
+            <v-icon size="16">mdi-monitor-dashboard</v-icon>簡訊回報監控
+          </button>
+          <button type="button" class="mac-btn mac-btn--primary" @click="openAddDialog">
+            <v-icon size="16">mdi-plus</v-icon>新增預約
+          </button>
+        </template>
+      </header>
 
-      <v-divider v-if="canAccessSettings" class="my-4"></v-divider>
-      <div v-if="canAccessSettings" class="px-2 pb-4">
-          <v-btn 
-            block 
-            color="grey-darken-3" 
-            prepend-icon="mdi-message-cog"
-            variant="flat"
-            class="mb-2"
-            @click="smsSettingsDialog = true"
-          >
-            簡訊提醒設定
-          </v-btn>
-
-          <v-btn 
-            block 
-            color="primary" 
-            prepend-icon="mdi-monitor-dashboard"
-            variant="tonal"
-            @click="router.push('/sms-monitor')"
-          >
-            簡訊回報監控
-          </v-btn>
-      </div>
-      </v-navigation-drawer>
-
-      <SmsReminderSettingsDialog 
-        v-model="smsSettingsDialog" 
-        :projectId="projectId" 
-      />
-
-    <v-main class="d-flex flex-column fill-height">
-      <v-toolbar color="white" border="bottom" density="comfortable">
-        <v-app-bar-nav-icon @click="drawer = !drawer"></v-app-bar-nav-icon>
-        
-        <v-toolbar-title class="pl-0"> 
-          <div class="d-flex flex-column justify-center" style="line-height: 1.2;"> 
-            <span v-if="!$vuetify.display.xs" class="text-caption text-grey-darken-1">{{ projectName }} 賞屋預約</span> 
-            <span class="text-subtitle-1 text-sm-h6 font-weight-bold">{{ currentTitle }}</span> 
-          </div> 
-        </v-toolbar-title> 
-
-        <v-spacer></v-spacer>
-        
-        <v-btn v-if="!$vuetify.display.xs" variant="outlined" class="ml-4" @click="goToday">今天</v-btn>
-        
-        <div class="d-flex align-center ml-2">
-          <v-btn icon="mdi-chevron-left" variant="text" @click="goPrev"></v-btn>
-          <v-btn icon="mdi-chevron-right" variant="text" @click="goNext"></v-btn>
+      <!-- 第二列：視圖切換＋搜尋 -->
+      <div class="vr-subbar">
+        <button v-if="xs" type="button" class="mac-icon-btn vr-tool-icon" title="篩選" @click="drawer = !drawer">
+          <v-icon size="20">mdi-dock-left</v-icon>
+        </button>
+        <div class="mac-form-seg mac-form-seg--block vr-view-seg">
+          <button
+            v-for="(label, view) in viewLabelMap"
+            :key="view"
+            type="button"
+            class="mac-form-seg-btn"
+            :class="{ 'is-active': currentView === view }"
+            @click="changeView(view)"
+          >{{ label }}</button>
         </div>
 
-        <v-btn
-          v-if="canAccessSettings && !$vuetify.display.xs"
-          color="primary"
-          prepend-icon="mdi-monitor-dashboard"
-          variant="elevated"
-          class="ml-2"
-          @click="router.push('/sms-monitor')"
-        >
-          簡訊回報監控
-        </v-btn>
-        
-        <v-btn icon="mdi-refresh" @click="fetchData" class="ml-2"></v-btn>
-      </v-toolbar>
-
-      <v-sheet color="grey-lighten-4" class="pa-2 pa-md-3 border-b">
         <v-autocomplete
-          v-if="!$vuetify.display.xs"
+          v-if="smAndUp"
           v-model="selectedSearchItem"
           :items="searchItems"
           item-title="searchLabel"
-          placeholder="搜尋預約：姓名、電話、戶別、備註、銷售..."
+          placeholder="搜尋姓名、電話、戶別、備註"
           prepend-inner-icon="mdi-magnify"
           variant="solo"
-          density="comfortable"
-          hide-details
           flat
-          rounded="lg"
-          class="w-100"
+          density="compact"
+          hide-details
+          class="mac-vfield mac-vfield--search vr-search"
+          menu-icon=""
+          :menu-props="{ contentClass: 'mac-menu', minWidth: 320 }"
           return-object
           clearable
           :custom-filter="autocompleteFilter"
           @update:model-value="onSearchSelect"
         >
-          <template v-slot:item="{ props, item }">
-            <v-list-item v-bind="props" :subtitle="item.raw.customerPhone + ' | 負責銷售：' + (item.raw.salesName || '未指定')"></v-list-item>
+          <template v-slot:item="{ props: itemProps, item }">
+            <v-list-item v-bind="itemProps" :subtitle="item.raw.customerPhone + '｜負責銷售：' + (item.raw.salesName || '未指定')"></v-list-item>
           </template>
         </v-autocomplete>
+        <template v-else>
+          <button type="button" class="mac-icon-btn vr-tool-icon" :class="{ 'is-on': mobileSearchOpen }" title="搜尋" @click="toggleMobileSearch">
+            <v-icon size="20">mdi-magnify</v-icon>
+          </button>
+          <button type="button" class="mac-icon-btn vr-tool-icon" title="重新整理" @click="fetchData">
+            <v-icon size="20">mdi-refresh</v-icon>
+          </button>
+        </template>
+      </div>
 
-        <v-text-field
-          v-else
-          v-model="searchQuery"
-          placeholder="搜尋姓名、電話、戶別、備註..."
-          prepend-inner-icon="mdi-magnify"
-          append-inner-icon="mdi-close"
-          @click:append-inner="searchQuery = ''"
-          hide-details
-          density="compact"
-          variant="solo"
-          flat
-          rounded="lg"
-          class="w-100"
-        ></v-text-field>
-      </v-sheet>
-
-      <v-expand-transition v-if="$vuetify.display.xs">
-        <v-list v-if="searchQuery" class="bg-white border-b" style="max-height: 300px; overflow-y: auto;">
-          <v-list-item
-            v-for="res in filteredSearchItems"
-            :key="res.id"
-            @click="onSearchSelect(res)"
-            :prepend-icon="res.type === '新客' ? 'mdi-account-plus' : 'mdi-account-arrow-right'"
-          >
-            <v-list-item-title>{{ res.customerName }} ({{ res.customerPhone }})</v-list-item-title>
-            <v-list-item-subtitle>{{ formatDate(res.reservationTime) }} | {{ res.salesName }}</v-list-item-subtitle>
-          </v-list-item>
-          <v-list-item v-if="filteredSearchItems.length === 0">
-            <v-list-item-title class="text-grey text-center">找不到相符的預約</v-list-item-title>
-          </v-list-item>
-        </v-list>
+      <!-- 手機版搜尋 -->
+      <v-expand-transition>
+        <div v-if="xs && mobileSearchOpen" class="vr-msearch">
+          <div class="vr-msearch-row">
+            <v-text-field
+              ref="mobileSearchRef"
+              v-model="searchQuery"
+              placeholder="搜尋姓名、電話、戶別、備註"
+              prepend-inner-icon="mdi-magnify"
+              variant="solo"
+              flat
+              density="compact"
+              hide-details
+              clearable
+              class="mac-vfield mac-vfield--search"
+            ></v-text-field>
+            <button type="button" class="vr-msearch-cancel" @click="closeMobileSearch">取消</button>
+          </div>
+          <div v-if="searchQuery" class="vr-msearch-list">
+            <button
+              v-for="res in filteredSearchItems"
+              :key="res.id"
+              type="button"
+              class="vr-msearch-item"
+              @click="onSearchSelect(res)"
+            >
+              <span class="vr-msearch-dot" :style="{ background: TYPE_COLORS[resolveTypeKey(res.type)].border }"></span>
+              <span class="vr-msearch-main">
+                <span class="vr-msearch-title">{{ res.customerName }}　{{ res.customerPhone }}</span>
+                <span class="vr-msearch-sub">{{ formatDate(res.reservationTime) }}｜{{ res.salesName || '未指定' }}</span>
+              </span>
+            </button>
+            <div v-if="filteredSearchItems.length === 0" class="vr-msearch-empty">找不到相符的預約</div>
+          </div>
+        </div>
       </v-expand-transition>
 
       <div
@@ -206,12 +214,14 @@
       >
         <FullCalendar ref="calendarRef" :options="calendarOptions" class="calendar-container" />
         <v-overlay :model-value="reservationStore.loading" contained class="align-center justify-center">
-          <v-progress-circular indeterminate color="primary"></v-progress-circular>
+          <v-progress-circular indeterminate color="#0071e3" size="32" width="3"></v-progress-circular>
         </v-overlay>
       </div>
     </v-main>
 
-    <v-btn position="fixed" location="bottom right" icon="mdi-plus" color="primary" size="x-large" class="ma-6 elevation-8 fab-btn" @click="openAddDialog"></v-btn>
+    <button v-if="xs" type="button" class="vr-fab" title="新增預約" @click="openAddDialog">
+      <v-icon size="28">mdi-plus</v-icon>
+    </button>
 
     <ViewingReservationDialog
       v-model="showDialog"
@@ -222,42 +232,36 @@
       @deleted="fetchData"
     />
 
-    <!-- ✅ 列表視圖優化：日期統計 modal -->
+    <!-- 列表視圖：日期統計 -->
     <v-dialog v-model="daySummaryDialog" max-width="400">
-      <v-card rounded="xl">
-        <v-card-title class="bg-primary text-white d-flex align-center pa-4">
-          <v-icon start>mdi-account-group</v-icon>
-          {{ daySummaryTitle }}
-        </v-card-title>
-        <v-card-text class="pa-0">
-          <v-list lines="one">
-            <v-list-item
-              v-for="item in daySummaryItems"
-              :key="item.name"
-              :prepend-icon="'mdi-badge-account'"
-            >
-              <v-list-item-title>{{ item.name }}</v-list-item-title>
-              <template v-slot:append>
-                <v-chip color="primary" variant="tonal" size="small">{{ item.count }} 筆</v-chip>
-              </template>
-            </v-list-item>
-            <v-list-item v-if="daySummaryItems.length === 0">
-              <v-list-item-title class="text-grey text-center">當日無預約</v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="daySummaryDialog = false">關閉</v-btn>
-        </v-card-actions>
+      <v-card class="mac-sheet">
+        <div class="mac-sheet-head">
+          <v-icon size="18">mdi-account-group</v-icon>
+          <span class="vr-sheet-title">{{ daySummaryTitle }}</span>
+          <button type="button" class="mac-sheet-close" title="關閉" @click="daySummaryDialog = false">
+            <v-icon size="18">mdi-close</v-icon>
+          </button>
+        </div>
+        <div class="mac-form vr-summary-body">
+          <div class="mac-form-group">
+            <div v-for="item in daySummaryItems" :key="item.name" class="mac-form-row">
+              <span class="mac-form-row-main mac-form-row-title">{{ item.name }}</span>
+              <span class="vr-count-pill">{{ item.count }} 筆</span>
+            </div>
+            <div v-if="daySummaryItems.length === 0" class="mac-form-row mac-form-empty">當日無預約</div>
+          </div>
+        </div>
+        <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn" @click="daySummaryDialog = false">關閉</button>
+        </div>
       </v-card>
     </v-dialog>
   </v-layout>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
@@ -278,12 +282,13 @@ const router = useRouter();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 const reservationStore = useReservationStore();
-const { xs, mdAndUp } = useDisplay();
+const { xs, smAndUp, smAndDown, mdAndUp, lgAndUp } = useDisplay();
 
 const calendarRef = ref(null);
 const drawer = ref(mdAndUp.value);
+// 側欄固定顯示時工具列在側欄右側；否則工具列貼齊左緣，要讓出全站漢堡鈕的位置
+const sidebarDocked = computed(() => mdAndUp.value && drawer.value);
 const showDialog = ref(false);
-const showMobileMiniCalendar = ref(false); 
 const selectedReservation = ref(null);
 const selectedDate = ref(null);
 
@@ -345,19 +350,64 @@ const filters = ref({ type: ['新客', '回訪', '簽約', '__other__'], salesNa
 
 // 預設預約類型；非預設類型（如「已購客」自訂值）統一歸為 '__other__'
 const PREDEFINED_RESERVATION_TYPES = ['新客', '回訪', '簽約'];
+// 色系對齊 macOS 行事曆（系統藍／紅／綠／橘）
 const TYPE_COLORS = {
-    '新客':   { bg: '#e1f5fe', border: '#039be5', text: '#01579b' },
-    '回訪':   { bg: '#ffebee', border: '#e53935', text: '#b71c1c' },
-    '簽約':   { bg: '#e8f5e9', border: '#43a047', text: '#1b5e20' },
-    '__other__': { bg: '#fff8e1', border: '#ffa000', text: '#e65100' },
+    '新客':   { bg: '#e3effd', border: '#007aff', text: '#0a4a8f' },
+    '回訪':   { bg: '#fde7e6', border: '#ff3b30', text: '#a1271d' },
+    '簽約':   { bg: '#e2f5e7', border: '#34c759', text: '#1e6b33' },
+    '__other__': { bg: '#fff1dc', border: '#ff9500', text: '#8f5200' },
 };
+const TYPE_FILTERS = [
+    { value: '新客', label: '新客預約' },
+    { value: '回訪', label: '回訪' },
+    { value: '簽約', label: '簽約' },
+    { value: '__other__', label: '其他' },
+];
 const resolveTypeKey = (type) => PREDEFINED_RESERVATION_TYPES.includes(type) ? type : '__other__';
 const viewLabelMap = { dayGridMonth: '月', timeGridWeek: '週', timeGridDay: '日', listWeek: '列表' };
+const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
 
-const getViewIcon = (view) => {
-    const icons = { dayGridMonth: 'mdi-calendar-month', timeGridWeek: 'mdi-calendar-week', timeGridDay: 'mdi-calendar', listWeek: 'mdi-format-list-bulleted' };
-    return icons[view] || 'mdi-calendar';
-};
+// 事件內容：以 DOM 節點組成（客戶輸入的文字一律 textContent，不拼 HTML），可換行不截斷
+function renderEventContent(arg) {
+    const r = arg.event.extendedProps;
+    const root = document.createElement('div');
+    root.className = 'vr-ev';
+    const add = (cls, text) => {
+        if (!text) return;
+        const el = document.createElement('span');
+        el.className = cls;
+        el.textContent = text;
+        root.appendChild(el);
+    };
+    const who = `${r.unitId ? r.unitId + ' ' : ''}${r.customerName || ''}`;
+    const sales = r.salesName || '未指派';
+    if (arg.view.type === 'dayGridMonth') {
+        // 月視圖格子窄：類型以顏色表示、備註點開再看
+        root.classList.add('vr-ev--month');
+        add('vr-ev-time', arg.timeText);
+        add('vr-ev-name', `${who}（${sales}）`);
+    } else {
+        if (arg.view.type !== 'listWeek') add('vr-ev-time', arg.timeText);
+        add('vr-ev-name', who);
+        add('vr-ev-meta', `${sales}・${r.type}`);
+        add('vr-ev-note', r.note);
+    }
+    return { domNodes: [root] };
+}
+
+// 週／日視圖欄首：星期＋日期數字（今天以紅圈標示）
+function renderTimeGridHeader(arg) {
+    const wrap = document.createElement('div');
+    wrap.className = 'vr-dh';
+    const dow = document.createElement('span');
+    dow.className = 'vr-dh-dow';
+    dow.textContent = `週${WEEKDAY_NAMES[arg.date.getDay()]}`;
+    const num = document.createElement('span');
+    num.className = 'vr-dh-num';
+    num.textContent = String(arg.date.getDate());
+    wrap.append(dow, num);
+    return { domNodes: [wrap] };
+}
 
 const projectName = computed(() => projectStore.idToNameMap[props.projectId] || props.projectId);
 
@@ -436,8 +486,15 @@ const calendarOptions = ref({
     allDaySlot: false,
     dayMaxEvents: true,
     stickyHeaderDates: true,
-    eventClassNames: 'google-style-event',
+    eventClassNames: 'vr-event',
+    eventDisplay: 'block',
+    eventContent: renderEventContent,
+    // 滑鼠停留顯示完整內容（桌機）
+    eventDidMount: (info) => { info.el.title = info.event.title; },
+    moreLinkContent: (arg) => `+${arg.num}`,
+    noEventsContent: '這段期間沒有預約',
     displayEventTime: true,
+    displayEventEnd: false,
     eventTimeFormat: {
         hour: '2-digit',
         minute: '2-digit',
@@ -445,13 +502,18 @@ const calendarOptions = ref({
     },
     firstDay: 1, // ✅ 列表視圖優化：週一開始
     views: {
+        dayGridMonth: {
+            dayCellContent: (arg) => String(arg.date.getDate())
+        },
+        // 同時段預約並排顯示，避免後一筆蓋住前一筆的文字
+        timeGridWeek: { dayHeaderContent: renderTimeGridHeader, slotEventOverlap: false },
+        timeGridDay: { dayHeaderContent: renderTimeGridHeader, slotEventOverlap: false },
         listWeek: {
             dayHeaderContent: (arg) => {
                 const date = arg.date;
                 const mm = String(date.getMonth() + 1).padStart(2, '0');
                 const dd = String(date.getDate()).padStart(2, '0');
-                const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
-                const dayOfWeek = dayNames[date.getDay()];
+                const dayOfWeek = WEEKDAY_NAMES[date.getDay()];
                 const dateStr = `${date.getFullYear()}-${mm}-${dd}`;
                 const count = calendarEvents.value.filter(e => {
                     const d = new Date(e.start);
@@ -460,7 +522,7 @@ const calendarOptions = ref({
                            d.getDate() === date.getDate();
                 }).length;
                 return {
-                    html: `<span class="list-header-content">${mm}/${dd} 星期${dayOfWeek}<span class="list-day-count-badge" data-date="${dateStr}">(${count})</span></span>`
+                    html: `<span class="list-header-content">${mm}/${dd} 星期${dayOfWeek}<span class="list-day-count-badge" data-date="${dateStr}">${count} 筆</span></span>`
                 };
             }
         }
@@ -513,11 +575,6 @@ const onMiniCalendarChange = (date) => {
     }
 };
 
-const onMobileDateSelect = (date) => {
-    syncCalendarDate(date);
-    showMobileMiniCalendar.value = false;
-};
-
 const goToday = () => calendarRef.value.getApi().today();
 const goPrev = () => calendarRef.value.getApi().prev();
 const goNext = () => calendarRef.value.getApi().next();
@@ -546,6 +603,19 @@ watch(() => props.projectId, async (newId, oldId) => {
 
 const searchQuery = ref('');
 const selectedSearchItem = ref(null);
+const mobileSearchOpen = ref(false);
+const mobileSearchRef = ref(null);
+
+function toggleMobileSearch() {
+    if (mobileSearchOpen.value) return closeMobileSearch();
+    mobileSearchOpen.value = true;
+    nextTick(() => mobileSearchRef.value?.focus());
+}
+
+function closeMobileSearch() {
+    mobileSearchOpen.value = false;
+    searchQuery.value = '';
+}
 
 const searchItems = computed(() => {
     return reservationStore.activeReservations.map(res => ({
@@ -599,7 +669,7 @@ function onSearchSelect(res) {
     const dateObj = res.reservationTime.toDate ? res.reservationTime.toDate() : new Date(res.reservationTime);
     syncCalendarDate(dateObj);
     if (xs.value) {
-        searchQuery.value = '';
+        closeMobileSearch();
     } else {
         selectedSearchItem.value = null;
     }
@@ -667,41 +737,312 @@ function handleCalendarAreaClick(e) {
 </script>
 
 <style lang="scss" scoped>
-:deep(.fc.calendar-container) {
-  font-family: 'Roboto', sans-serif;
-  border: none;
-  .fc-view-harness { background-color: #ffffff; }
-  .fc-timegrid-slot, .fc-daygrid-day { border-color: #f1f3f4 !important; }
-  .fc-timegrid-now-indicator-line { border-color: #ea4335; border-width: 2px; }
-  .google-style-event {
-    border-left-width: 4px !important;
-    border-radius: 4px !important;
-    padding: 1px 4px !important;
-    font-size: 0.85rem !important;
-    font-weight: 500 !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-    cursor: pointer;
-    transition: transform 0.1s;
-    &:hover { filter: brightness(0.95); transform: scale(1.02); }
-  }
-  @media (max-width: 600px) {
-    .fc-daygrid-body, .fc-view-dayGridMonth {
-      .fc-event-time { display: none !important; }
-      .fc-event-title {
-        display: inline-block !important;
-        font-size: 10px !important;
-        transform: scale(0.85);
-        transform-origin: left center;
-        line-height: 1.2 !important;
-        white-space: nowrap !important;
-        width: 118%;
-        padding: 0 !important;
-      }
-      .fc-daygrid-event { margin: 1px 0 !important; min-height: 14px !important; padding: 0 2px !important; }
-      .fc-event-main { padding: 0 !important; }
-    }
-  }
+/* macOS 行事曆風格：淡灰側欄、白色內容區、細分隔線、系統字型 */
+$mac-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+$mac-text: #1d1d1f;
+$mac-secondary: #6e6e73;
+$mac-hairline: rgba(0, 0, 0, 0.08);
+$mac-accent: #0071e3;
+$mac-red: #ff3b30;
+
+.vr-page {
+  background: #fff;
+  color: $mac-text;
+  font-family: $mac-font;
 }
+
+/* ===== 側欄 ===== */
+.vr-sidebar {
+  background: #f3f3f5 !important;
+  border-right: 1px solid $mac-hairline !important;
+  font-family: $mac-font;
+  color: $mac-text;
+}
+.vr-side-head {
+  min-height: 60px;
+  padding: 12px 16px 10px 58px;
+}
+.vr-side-title { font-size: 15px; font-weight: 700; line-height: 1.3; }
+.vr-side-project { font-size: 12px; color: $mac-secondary; line-height: 1.4; overflow-wrap: anywhere; }
+.vr-side-section { padding: 6px 14px 12px; }
+.vr-side-section + .vr-side-section { border-top: 1px solid $mac-hairline; padding-top: 12px; }
+.vr-side-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 2px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: $mac-secondary;
+  letter-spacing: 0.02em;
+}
+.vr-side-link {
+  margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: $mac-accent;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  &:hover { text-decoration: underline; }
+}
+.vr-check-list { display: flex; flex-direction: column; }
+.vr-check-list--scroll { max-height: 220px; overflow-y: auto; }
+.vr-check-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 30px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  cursor: pointer;
+  &:hover { background: rgba(0, 0, 0, 0.05); }
+}
+.vr-check-text { min-width: 0; line-height: 1.35; overflow-wrap: anywhere; }
+.vr-side-empty { padding: 4px 6px; font-size: 12.5px; color: #8e8e93; }
+.vr-side-actions { display: flex; flex-direction: column; gap: 8px; }
+
+/* 迷你月曆 */
+.vr-mini-cal {
+  width: 100% !important;
+  max-width: 100% !important;
+  background: transparent !important;
+  font-family: $mac-font;
+  :deep(.v-picker__body) { width: 100% !important; margin: 0 !important; }
+  :deep(.v-date-picker-controls) { --v-date-picker-controls-height: 36px; padding: 0 0 4px 2px; font-size: 13px; }
+  :deep(.v-date-picker-controls .v-btn) { font-size: 13px; font-weight: 600; }
+  :deep(.v-date-picker-month) { width: 100%; min-width: 0; padding: 0 !important; }
+  :deep(.v-date-picker-month__days) { padding: 0 !important; column-gap: 0; justify-content: space-between !important; }
+  :deep(.v-date-picker-month__day) { width: 34px; height: 30px; }
+  :deep(.v-date-picker-month__weekday) { font-size: 11px; color: $mac-secondary; }
+  :deep(.v-date-picker-month__day-btn) { --v-btn-height: 26px; font-size: 12.5px; }
+  :deep(.v-date-picker-month__day-btn.v-btn--variant-outlined) { border: 0; color: $mac-red; font-weight: 700; }
+}
+
+/* ===== 工具列 ===== */
+.vr-main { font-family: $mac-font; }
+.vr-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 8px 16px;
+  background: #fff;
+}
+.vr-bar--inset { padding-left: 58px; }
+.vr-title { flex: 1 1 auto; min-width: 0; }
+.vr-title-main { font-size: 20px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.vr-title-sub { font-size: 12px; color: $mac-secondary; line-height: 1.35; overflow-wrap: anywhere; }
+.vr-tool-icon { width: 32px; height: 32px; }
+.vr-tool-icon.is-on { background: rgba(0, 113, 227, 0.12); color: $mac-accent; }
+
+/* 上一頁／今天／下一頁：一組相連按鈕 */
+.vr-nav {
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 30px;
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+.vr-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: $mac-text;
+  font: 500 13px $mac-font;
+  white-space: nowrap;
+  cursor: pointer;
+  &:hover { background: rgba(0, 0, 0, 0.04); }
+  &:active { background: rgba(0, 0, 0, 0.08); }
+  & + & { border-left: 1px solid rgba(0, 0, 0, 0.08); }
+}
+.vr-nav-today { padding: 0 12px; }
+
+.vr-subbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid $mac-hairline;
+}
+.vr-view-seg { flex: 0 0 auto; width: 240px; }
+.vr-view-seg .mac-form-seg-btn { height: 26px; }
+.vr-search { flex: 0 1 300px; margin-left: auto; }
+
+/* 手機版搜尋 */
+.vr-msearch { border-bottom: 1px solid $mac-hairline; background: #fff; }
+.vr-msearch-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
+.vr-msearch-row .mac-vfield { flex: 1 1 auto; }
+.vr-msearch-cancel {
+  flex-shrink: 0;
+  border: 0;
+  background: none;
+  color: $mac-accent;
+  font: 500 15px $mac-font;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vr-msearch-list { max-height: 300px; overflow-y: auto; padding: 0 8px 8px; }
+.vr-msearch-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: $mac-text;
+  font-family: $mac-font;
+  text-align: left;
+  cursor: pointer;
+  &:active { background: rgba(0, 0, 0, 0.06); }
+  & + & { border-top: 1px solid #ececf0; border-radius: 0; }
+}
+.vr-msearch-dot { flex-shrink: 0; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; }
+.vr-msearch-main { display: flex; flex-direction: column; min-width: 0; }
+.vr-msearch-title { font-size: 15px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.vr-msearch-sub { font-size: 12.5px; color: $mac-secondary; line-height: 1.4; overflow-wrap: anywhere; }
+.vr-msearch-empty { padding: 12px; text-align: center; font-size: 13px; color: #8e8e93; }
+
+/* 新增按鈕（手機） */
+.vr-fab {
+  position: fixed;
+  right: 18px;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #2b8cf2, #0a6fdc);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(0, 113, 227, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  &:active { transform: scale(0.95); }
+}
+
+/* ===== FullCalendar ===== */
+:deep(.fc.calendar-container) {
+  --fc-border-color: #e5e5ea;
+  --fc-page-bg-color: #fff;
+  --fc-neutral-bg-color: #f5f5f7;
+  --fc-today-bg-color: transparent;
+  --fc-now-indicator-color: #{$mac-red};
+  --fc-list-event-hover-bg-color: #f5f5f7;
+  --fc-small-font-size: 12px;
+  font-family: $mac-font;
+  font-size: 13px;
+  color: $mac-text;
+
+  .fc-scrollgrid { border-left: 0; border-right: 0; }
+  .fc-col-header-cell { border-left-color: transparent; border-right-color: transparent; }
+  .fc-col-header-cell-cushion { padding: 6px 4px; font-size: 11.5px; font-weight: 600; color: $mac-secondary; text-decoration: none; }
+
+  /* 月視圖：日期在右上、今天紅圈 */
+  .fc-daygrid-day-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    margin: 3px 3px 1px;
+    padding: 0 5px;
+    border-radius: 11px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: $mac-text;
+    text-decoration: none;
+  }
+  .fc-day-today .fc-daygrid-day-number { background: $mac-red; color: #fff; font-weight: 700; }
+  .fc-day-other .fc-daygrid-day-top { opacity: 0.35; }
+  .fc-day-sat, .fc-day-sun { background: #fbfbfc; }
+  .fc-daygrid-event { white-space: normal; }
+  .fc-daygrid-more-link { margin: 1px 2px 0; padding: 1px 5px; border-radius: 5px; font-size: 11.5px; font-weight: 600; color: $mac-secondary; }
+
+  /* 週／日視圖 */
+  .vr-dh { display: flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.2; }
+  .vr-dh-dow { font-size: 11px; font-weight: 600; color: $mac-secondary; }
+  .vr-dh-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 4px;
+    border-radius: 13px;
+    font-size: 15px;
+    font-weight: 500;
+    color: $mac-text;
+  }
+  .fc-day-today .vr-dh-num { background: $mac-red; color: #fff; font-weight: 700; }
+  .fc-timegrid-slot { height: 2.4em; }
+  .fc-timegrid-slot-minor { border-top-style: dotted; border-top-color: #efeff2; }
+  .fc-timegrid-slot-label-cushion { font-size: 11px; color: #8e8e93; font-variant-numeric: tabular-nums; }
+  .fc-timegrid-axis-cushion { font-size: 11px; color: #8e8e93; }
+  .fc-timegrid-now-indicator-line { border-width: 1.5px 0 0; }
+
+  /* 事件：淡色底＋左側色條，文字可換行 */
+  .vr-event {
+    border-width: 0 0 0 3px !important;
+    border-style: solid;
+    border-radius: 5px !important;
+    box-shadow: none;
+    cursor: pointer;
+    transition: filter 0.12s;
+    &:hover { filter: brightness(0.96); }
+  }
+  .fc-timegrid-event-harness-inset .vr-event { box-shadow: 0 0 0 1px #fff; }
+  .fc-timegrid-event .fc-event-main { overflow: hidden; }
+  .vr-ev {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    padding: 2px 4px;
+    line-height: 1.3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .vr-ev-time { font-size: 11px; font-weight: 600; opacity: 0.8; font-variant-numeric: tabular-nums; }
+  .vr-ev-name { font-size: 12px; font-weight: 600; }
+  .vr-ev-meta, .vr-ev-note { font-size: 11px; opacity: 0.85; }
+  .vr-ev--month { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 4px; padding: 1px 4px; }
+  .vr-ev--month .vr-ev-name { font-size: 11.5px; }
+
+  /* 列表視圖 */
+  .fc-list { border: 0; }
+  .fc-list-day-cushion { padding: 7px 16px; background: #f5f5f7; text-align: left; }
+  .fc-list-event td { padding: 9px 12px; border-color: #ececf0; }
+  .fc-list-event-time { width: 1%; font-variant-numeric: tabular-nums; color: $mac-secondary; white-space: nowrap; }
+  .fc-list-event-dot { border-width: 5px; border-radius: 5px; }
+  .fc-list-event .vr-ev { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 8px; padding: 0; }
+  .fc-list-event .vr-ev-name { font-size: 14px; color: $mac-text; }
+  .fc-list-event .vr-ev-meta, .fc-list-event .vr-ev-note { font-size: 12.5px; color: $mac-secondary; opacity: 1; }
+  .fc-list-empty { background: #fff; color: #8e8e93; }
+
+  /* 「+N」彈出清單 */
+  .fc-popover {
+    border: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  }
+  .fc-popover-header { padding: 7px 10px; background: #f6f6f8; font-size: 12.5px; font-weight: 600; }
+  .fc-more-popover .fc-popover-body { min-width: 200px; max-width: 280px; padding: 8px; }
+}
+
 .calendar-wrapper {
   transition: transform 0.3s ease-out, opacity 0.3s ease-out;
   &.slide-next { animation: slideNext 0.3s ease-out; }
@@ -709,34 +1050,75 @@ function handleCalendarAreaClick(e) {
 }
 @keyframes slideNext { 0% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(-20px); opacity: 0.6; } 100% { transform: translateX(0); opacity: 1; } }
 @keyframes slidePrev { 0% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(20px); opacity: 0.6; } 100% { transform: translateX(0); opacity: 1; } }
-.calendar-mini {
-  width: 100% !important;
-  max-width: 100% !important;
-  :deep(.v-picker__body) { width: 100% !important; margin: 0 !important; }
-  :deep(.v-date-picker-month) { padding: 0 4px !important; }
-  :deep(.v-date-picker-month__days) { padding: 0 !important; justify-content: space-around !important; }
-}
-.fab-btn { z-index: 1000; transition: transform 0.2s; &:hover { transform: rotate(90deg); } }
 
-// ✅ 列表視圖優化：日期統計樣式
+/* 列表視圖：日期標題與當日筆數（點筆數看各銷售分佈） */
 :deep(.list-header-content) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   font-weight: 600;
-  font-size: 0.95rem;
+  color: $mac-text;
 }
 :deep(.list-day-count-badge) {
-  margin-left: 6px;
-  cursor: pointer;
-  background-color: #e3f2fd;
-  color: #1565c0;
   padding: 1px 8px;
-  border-radius: 12px;
-  font-size: 0.8em;
-  font-weight: 700;
-  transition: background-color 0.2s, color 0.2s;
+  border-radius: 10px;
+  background: rgba(0, 113, 227, 0.1);
+  color: $mac-accent;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
   user-select: none;
-  &:hover {
-    background-color: #1976d2;
-    color: white;
+  transition: background-color 0.15s, color 0.15s;
+  &:hover { background: $mac-accent; color: #fff; }
+}
+
+/* 日期統計視窗 */
+.vr-sheet-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.vr-summary-body { padding: 12px 16px 16px; max-height: 60vh; overflow-y: auto; }
+.vr-count-pill {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: rgba(0, 113, 227, 0.1);
+  color: $mac-accent;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ===== 手機版 ===== */
+@media (max-width: 599.98px) {
+  .vr-bar { min-height: 56px; padding: 8px 12px 6px 58px; }
+  .vr-title-main { font-size: 17px; }
+  .vr-title-sub { font-size: 11.5px; }
+  .vr-nav { height: 32px; }
+  .vr-nav-btn { min-width: 32px; font-size: 14px; }
+  .vr-nav-today { padding: 0 10px; }
+  .vr-subbar { padding: 0 12px 8px; gap: 6px; }
+  .vr-view-seg { flex: 1 1 auto; width: auto; }
+  .vr-view-seg .mac-form-seg-btn { height: 30px; font-size: 14px; }
+
+  :deep(.fc.calendar-container) {
+    font-size: 12px;
+    .fc-daygrid-day-number { min-width: 20px; height: 20px; margin: 2px 1px 0; padding: 0 3px; font-size: 11.5px; }
+    .fc-daygrid-event { margin-left: 1px !important; margin-right: 1px !important; }
+    .vr-ev--month { padding: 1px 2px; }
+    .vr-ev--month .vr-ev-time { display: none; }
+    .vr-ev--month .vr-ev-name { font-size: 10.5px; font-weight: 500; line-height: 1.25; }
+    .fc-timegrid-axis-cushion, .fc-timegrid-slot-label-cushion { font-size: 10px; }
+    .vr-dh-dow { font-size: 10.5px; }
+    .vr-dh-num { min-width: 24px; height: 24px; font-size: 14px; }
+    .vr-ev { padding: 2px 3px; }
+    .vr-ev-name { font-size: 11.5px; }
+    .vr-ev-meta, .vr-ev-note, .vr-ev-time { font-size: 10.5px; }
+    /* 手機週視圖一欄約 40px：只留姓名，時間看位置、其餘點開看 */
+    .fc-timeGridWeek-view .vr-ev { padding: 2px; }
+    .fc-timeGridWeek-view .vr-ev-time,
+    .fc-timeGridWeek-view .vr-ev-meta,
+    .fc-timeGridWeek-view .vr-ev-note { display: none; }
+    .fc-timeGridWeek-view .vr-ev-name { font-size: 10.5px; font-weight: 500; line-height: 1.25; }
+    .fc-list-event td { padding: 9px 8px; }
+    .fc-list-event .vr-ev-name { font-size: 14.5px; }
   }
 }
 </style>

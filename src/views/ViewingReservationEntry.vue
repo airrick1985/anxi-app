@@ -1,54 +1,39 @@
 <template>
-  <v-container fluid class="fill-height bg-grey-lighten-4">
-    <v-row justify="center" align="center">
-      <v-col cols="12" sm="8" md="6" lg="4">
-        
-        <div v-if="isLoading" class="text-center">
-          <v-progress-circular
-            indeterminate
-            color="primary"
-            size="64"
-          ></v-progress-circular>
-          <p class="mt-4 text-grey-darken-1 font-weight-medium">{{ statusMessage }}</p>
+  <div class="vre-page">
+    <div class="vre-wrap">
+      <div v-if="isLoading" class="vre-loading">
+        <v-progress-circular indeterminate color="#0071e3" size="36" width="3"></v-progress-circular>
+        <p class="vre-status">{{ statusMessage }}</p>
+      </div>
+
+      <div v-else-if="errorMessage" class="mac-sheet vre-card vre-error">
+        <v-icon size="40" class="vre-error-icon">mdi-alert-circle</v-icon>
+        <div class="vre-error-title">驗證失敗</div>
+        <div class="vre-error-msg">{{ errorMessage }}</div>
+        <button type="button" class="mac-btn mac-btn--primary mac-btn--lg mac-btn--block" @click="retryLogin">重試</button>
+      </div>
+
+      <div v-else class="vre-select">
+        <div class="vre-heading">
+          <div class="vre-title">賞屋預約</div>
+          <div class="vre-sub">請選擇建案</div>
         </div>
-
-        <v-card v-else-if="errorMessage" color="error" variant="tonal" class="mx-auto">
-          <v-card-title class="d-flex align-center">
-            <v-icon icon="mdi-alert-circle" start></v-icon>
-            驗證失敗
-          </v-card-title>
-          <v-card-text>
-            {{ errorMessage }}
-          </v-card-text>
-          <v-card-actions>
-            <v-btn block variant="outlined" @click="retryLogin">重試</v-btn>
-          </v-card-actions>
-        </v-card>
-
-        <v-card v-else class="elevation-2 rounded-lg">
-          <v-toolbar color="primary" density="compact">
-            <v-toolbar-title class="text-subtitle-1 font-weight-bold">
-              請選擇建案
-            </v-toolbar-title>
-          </v-toolbar>
-          
-          <v-list lines="two">
-            <v-list-item
-              v-for="project in availableProjects"
-              :key="project.id"
-              @click="selectProject(project.id)"
-              prepend-icon="mdi-calendar-check"
-              :title="project.name"
-              subtitle="點擊進入預約系統"
-              append-icon="mdi-chevron-right"
-              class="py-3"
-            ></v-list-item>
-          </v-list>
-        </v-card>
-
-      </v-col>
-    </v-row>
-  </v-container>
+        <div class="mac-form-group vre-list">
+          <button
+            v-for="project in availableProjects"
+            :key="project.id"
+            type="button"
+            class="vre-item"
+            @click="selectProject(project.id)"
+          >
+            <span class="vre-item-icon"><v-icon size="18">mdi-calendar-check</v-icon></span>
+            <span class="vre-item-name">{{ project.name }}</span>
+            <v-icon size="18" class="vre-item-chevron">mdi-chevron-right</v-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -201,3 +186,67 @@ const retryLogin = () => {
 
 
 </script>
+
+<style scoped>
+.vre-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  background: #f5f5f7;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+}
+.vre-wrap { width: 100%; max-width: 420px; }
+
+.vre-loading { text-align: center; }
+.vre-status { margin-top: 14px; font-size: 14px; color: #6e6e73; }
+
+.vre-card {
+  padding: 28px 22px 20px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+.vre-error-icon { color: #ff3b30 !important; }
+.vre-error-title { margin-top: 10px; font-size: 17px; font-weight: 700; }
+.vre-error-msg { margin: 6px 0 20px; font-size: 14px; line-height: 1.6; color: #3a3a3c; overflow-wrap: anywhere; }
+
+.vre-heading { margin: 0 4px 12px; }
+.vre-title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.vre-sub { margin-top: 2px; font-size: 13px; color: #6e6e73; }
+
+.vre-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 0;
+  background: #fff;
+  color: #1d1d1f;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+.vre-item + .vre-item { border-top: 1px solid #ececf0; }
+.vre-item:hover { background: #f7f7f9; }
+.vre-item:active { background: #ececf0; }
+.vre-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #2b8cf2, #0a6fdc);
+  color: #fff;
+}
+.vre-item-name { flex: 1 1 auto; min-width: 0; font-size: 15px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
+.vre-item-chevron { flex-shrink: 0; color: #c7c7cc; }
+</style>

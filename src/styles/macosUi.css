@@ -280,3 +280,128 @@
   .mac-form-row > .mac-form-input,
   .mac-form-row > .mac-form-unit { max-width: none; flex-basis: 100%; }
 }
+
+/* 分段切換：撐滿寬度、各段等寬（賞屋預約視圖切換／預約類型） */
+.mac-form-seg--block { display: flex; width: 100%; }
+.mac-form-seg--block .mac-form-seg-btn { flex: 1 1 0; min-width: 0; padding: 0 6px; }
+.mac-form-seg-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
+
+/* 按鈕文字過長時換行，不截斷（手機版長按鈕用） */
+.mac-btn--wrap { height: auto; min-height: 30px; padding-top: 6px; padding-bottom: 6px; white-space: normal; line-height: 1.35; text-align: center; }
+.mac-btn--lg.mac-btn--wrap { min-height: 36px; }
+
+/* 勾選框：圓角方框，勾選後填滿 --mac-check-color（預設系統藍） */
+.mac-check {
+  --mac-check-color: #0071e3;
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.mac-check:checked { background: var(--mac-check-color); border-color: var(--mac-check-color); }
+.mac-check:checked::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border: solid #fff;
+  border-width: 0 0 2px 2px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+.mac-check:focus-visible { outline: 2px solid rgba(0, 113, 227, 0.4); outline-offset: 1px; }
+
+/* 提示框：淡色底＋圖示，文字可換行 */
+.mac-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(0, 113, 227, 0.08);
+  color: #1d1d1f;
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.mac-callout > .v-icon { flex-shrink: 0; margin-top: 1px; color: #0071e3; }
+.mac-callout--warning { background: rgba(255, 159, 10, 0.13); }
+.mac-callout--warning > .v-icon { color: #c27400; }
+.mac-callout--error { background: rgba(214, 45, 32, 0.09); }
+.mac-callout--error > .v-icon { color: #d62d20; }
+
+/* Vuetify 輸入元件（v-text-field／v-select／v-autocomplete／v-combobox／v-textarea）套 macOS 外觀
+   用法：variant="solo" flat density="compact" class="mac-vfield"，不用浮動 label（標籤放欄位旁），避免標籤被截斷 */
+.mac-vfield.v-input { --v-input-padding-top: 0px; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif; }
+.mac-vfield.v-input .v-field {
+  --v-input-control-height: 34px;
+  --v-field-padding-top: 0px;
+  --v-field-padding-bottom: 0px;
+  --v-field-padding-start: 10px;
+  --v-field-padding-end: 8px;
+  border-radius: 7px;
+  background: #fff;
+  color: #1d1d1f;
+  font-size: 14px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14), 0 0.5px 1px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.12s;
+}
+.mac-vfield.v-input .v-field--focused { box-shadow: inset 0 0 0 1px #0071e3, 0 0 0 3px rgba(0, 113, 227, 0.22); }
+.mac-vfield.v-input .v-field--error:not(.v-field--disabled) { box-shadow: inset 0 0 0 1px #d62d20, 0 0 0 3px rgba(214, 45, 32, 0.14); }
+.mac-vfield.v-input .v-field__input { letter-spacing: 0; }
+.mac-vfield.v-input .v-field__prepend-inner > .v-icon,
+.mac-vfield.v-input .v-field__append-inner > .v-icon,
+.mac-vfield.v-input .v-field__clearable > .v-icon { font-size: 18px; color: #8e8e93; opacity: 1; }
+.mac-vfield.v-input .v-input__details { padding-inline: 4px; min-height: 18px; }
+.mac-vfield.v-input .v-messages { font-size: 12px; }
+.mac-vfield.v-textarea .v-field { --v-field-padding-top: 7px; --v-field-padding-bottom: 7px; }
+.mac-vfield.v-textarea .v-field__input { -webkit-mask-image: none; mask-image: none; line-height: 1.55; }
+/* 搜尋框：灰底圓角（工具列用） */
+.mac-vfield--search.v-input .v-field { background: rgba(0, 0, 0, 0.05); box-shadow: none; }
+.mac-vfield--search.v-input .v-field--focused { background: #fff; box-shadow: inset 0 0 0 1px #0071e3, 0 0 0 3px rgba(0, 113, 227, 0.22); }
+
+/* v-select／v-autocomplete 下拉選單：搭配 :menu-props="{ contentClass: 'mac-menu' }"；選項文字可換行 */
+.mac-menu > .v-list,
+.mac-menu > .v-card > .v-list {
+  padding: 5px !important;
+  border-radius: 10px !important;
+  background: rgba(248, 248, 250, 0.97) !important;
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.12) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+}
+.mac-menu .v-list-item { min-height: 32px !important; padding: 5px 10px !important; border-radius: 6px !important; color: #1d1d1f; }
+.mac-menu .v-list-item__overlay { display: none; }
+.mac-menu .v-list-item:hover,
+.mac-menu .v-list-item:focus-visible { background: #0071e3; color: #fff; }
+.mac-menu .v-list-item:hover .v-list-item-subtitle,
+.mac-menu .v-list-item:focus-visible .v-list-item-subtitle { color: rgba(255, 255, 255, 0.85); }
+.mac-menu .v-list-item--active:not(:hover) { color: #0071e3; }
+.mac-menu .v-list-item-title { font-size: 13.5px; font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
+.mac-menu .v-list-item-subtitle { display: block; -webkit-line-clamp: unset; font-size: 12px; color: #6e6e73; opacity: 1; white-space: normal; overflow-wrap: anywhere; }
+
+@media (max-width: 600px) {
+  /* iOS 輸入框字級小於 16px 會在聚焦時自動放大畫面 */
+  .mac-vfield.v-input .v-field { --v-input-control-height: 40px; font-size: 16px; }
+  .mac-form-seg--block .mac-form-seg-btn { height: 30px; }
+  .mac-menu .v-list-item { min-height: 40px !important; }
+  .mac-menu .v-list-item-title { font-size: 15px; }
+}
+
+/* v-dialog 手機版放寬：content-class="mac-dialog-fit"，左右只留 12px，內容不被擠窄 */
+@media (max-width: 600px) {
+  .v-dialog > .v-overlay__content.mac-dialog-fit {
+    width: calc(100% - 24px);
+    max-height: calc(100% - 24px);
+    margin: 12px;
+  }
+}
