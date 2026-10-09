@@ -25,6 +25,15 @@ const { DEFAULT_PLANS, planIdOf, planDocumentId, commissionLedgerId, computePlan
 function noteOf_(value) {
   return String(value ?? '').trim().slice(0, 200);
 }
+// 戶別介紹費／贈品逐筆帶入介紹費 A／B 的選擇（{ 明細 id: 'A'|'B' }），供拉回編輯與下期沿用
+function feePicksOf_(value) {
+  const out = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return out;
+  Object.entries(value).slice(0, 100).forEach(([id, v]) => {
+    if (typeof id === 'string' && id.length <= 64 && (v === 'A' || v === 'B')) out[id] = v;
+  });
+  return out;
+}
 function requestPlanId_(request) {
   const id = request.data?.planId ?? 'general';
   if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(id)) {
@@ -659,6 +668,7 @@ exports.submitCommissionEntries = onCall({
         claimBasisMethod: input.claimBasisMethod,
         bonusBasisMethod: input.bonusBasisMethod,
         partyBFeeTiming: input.partyBFeeTiming,
+        feePicks: feePicksOf_(entry.feePicks),
         teamSiteKeys: Array.isArray(entry.teamSiteKeys) ? entry.teamSiteKeys : [],
         note: noteOf_(entry.note),
         snapshot: {

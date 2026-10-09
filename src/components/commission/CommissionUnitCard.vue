@@ -158,6 +158,25 @@
               </v-row>
             </v-expand-transition>
 
+            <div v-if="feeGiftEntries.length" class="fee-gift-box mt-2">
+              <div class="fee-gift-title">介紹費／贈品</div>
+              <div v-for="g in feeGiftEntries" :key="g.id" class="fee-gift-row">
+                <v-chip size="x-small" label variant="tonal" :color="FEE_GIFT_KINDS[g.kind].color">{{ FEE_GIFT_KINDS[g.kind].label }}</v-chip>
+                <span class="fee-gift-name">{{ g.title }}</span>
+                <span class="fee-gift-amt">{{ money(g.amount) }} 元</span>
+                <span v-if="g.remark" class="fee-gift-remark">{{ g.remark }}</span>
+                <a v-for="att in feeGiftAttachments(g)" :key="att.id" :href="att.webViewLink" target="_blank" rel="noopener noreferrer"
+                  class="fee-gift-att" :title="att.fileName"><v-icon size="15">{{ fileIconForDocument(att.mimeType, att.fileName).icon }}</v-icon></a>
+                <v-spacer></v-spacer>
+                <v-btn-toggle :model-value="feePickOf(g)" mandatory divided density="compact" variant="outlined" color="primary"
+                  class="fee-gift-pick" @update:model-value="v => setFeePick(g, v)">
+                  <v-btn value="none" size="x-small">—</v-btn>
+                  <v-btn value="A" size="x-small" :title="settings.partyALabel">A</v-btn>
+                  <v-btn value="B" size="x-small" :title="settings.partyBLabel" :disabled="isBonus">B</v-btn>
+                </v-btn-toggle>
+              </div>
+            </div>
+
             <v-alert v-if="hasNote" :type="feeHint ? 'warning' : undefined" variant="tonal" density="compact" class="mt-2 mb-0 note-alert">
               <div class="font-weight-bold mb-1">{{ feeHint ? '銷控備註提到介紹費/贈品，請確認「其他設定」' : '銷控備註' }}</div>
               <div class="note-list">
@@ -203,6 +222,7 @@
                   <div class="ro-field"><label>小訂日期</label><div>{{ depositDateText || '—' }}</div></div>
                   <div class="ro-field"><label>持有車位</label><div>{{ entry.finance.parkingSpots || '—' }}</div></div>
                   <div class="ro-field"><label>溢差價</label><div :class="{ 'text-error': entry.finance.spread < 0 }">{{ money(entry.finance.spread * 10000) }} 元</div></div>
+                  <div v-if="netSpreadDeduct > 0 && netSpread !== null" class="ro-field"><label>淨溢差價</label><div :class="{ 'text-error': netSpread < 0 }">{{ money(netSpread * 10000) }} 元</div></div>
                   <div class="ro-field"><label>繳款比例</label><div >{{ paymentRatio === null ? '—' : paymentRatio + '%' }}</div></div>
                   <div class="ro-field"><label>銷控銷售人員</label><div>{{ unitSalesText || '—' }}</div></div>
                 </div>
@@ -352,6 +372,8 @@ import {
 } from '@/utils/commissionCalculation';
 import { bonusSegments, segmentForDate, segmentLabel } from '@/utils/bonusSegments';
 import { resolveDisplayNotes, formatNoteTime, categoryMeta } from '@/utils/remarkNotes';
+import { FEE_GIFT_KINDS, listFeeGiftEntries, netPriceDiff, netPremiumDeductYuan } from '@/utils/unitFeeGifts';
+import { fileIconForDocument } from '@/utils/unitDocuments';
 
 const props = defineProps({
   mode: { type: String, default: 'claim' },
@@ -395,7 +417,26 @@ const handoverCategories = computed(() => enabledCategories.value.filter(isHando
 
 const noteText = computed(() => String(props.entry.unit.remarks || ''));
 const hasNote = computed(() => noteText.value.trim() !== '');
-const feeHint = computed(() => hasNote.value && /介紹|贈品/.test(noteText.value));
+// 戶別的介紹費／贈品明細：逐筆選擇帶入介紹費 A／B（選擇隨請佣紀錄儲存）
+const feeGiftEntries = computed(() => listFeeGiftEntries(props.entry.unit));
+const unitDocMap = computed(() => new Map((props.entry.unit?.unitDocuments || []).map(d => [d.id, d])));
+const feeGiftAttachments = (g) => (g.attachmentIds || []).map(id => unitDocMap.value.get(id)).filter(Boolean);
+const feePickOf = (g) => props.entry.feePicks?.[g.id] || 'none';
+function setFeePick(g, value) {
+  if (!props.entry.feePicks) props.entry.feePicks = {};
+  const picks = props.entry.feePicks;
+  const prev = picks[g.id] || '';
+  const next = value === 'A' || value === 'B' ? value : '';
+  if (prev === next) return;
+  if (next) picks[g.id] = next;
+  else delete picks[g.id];
+  const sumOf = party => feeGiftEntries.value.filter(e => picks[e.id] === party).reduce((s, e) => s + e.amount, 0);
+  if (prev === 'A' || next === 'A') props.entry.partyAFee = sumOf('A');
+  if (prev === 'B' || next === 'B') props.entry.partyBFee = sumOf('B');
+}
+const netSpreadDeduct = computed(() => netPremiumDeductYuan(props.entry.unit));
+const netSpread = computed(() => netPriceDiff(props.entry.finance.spread, props.entry.unit));
+const feeHint = computed(() => (hasNote.value && /介紹|贈品/.test(noteText.value)) || feeGiftEntries.value.length > 0);
 /** 備註提到介紹費／贈品但介紹費 A 尚未填：欄位以紅色醒目樣式提醒輸入；填入後恢復一般樣式 */
 const feeAttention = computed(() => feeHint.value && toNum(props.entry.partyAFee) === 0);
 /** 獎金編輯：該戶請佣不足 100% 但本次獎金比例填 100% → 比例欄位紅色醒目提醒 */
@@ -788,6 +829,15 @@ function onPickPerson(person) {
 .rmk-input { width: 100%; min-width: 130px; border: 1px solid #cdd8ec; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
 /* 銷控備註：一則一段 */
 .note-alert :deep(.v-alert__content) { min-width: 0; }
+.fee-gift-box { border: 1px solid #ffe0b2; background: #fffaf3; border-radius: 8px; padding: 6px 8px; }
+.fee-gift-title { font-size: 0.78rem; font-weight: 700; color: #e65100; margin-bottom: 2px; }
+.fee-gift-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 3px 0; font-size: 0.82rem; }
+.fee-gift-row + .fee-gift-row { border-top: 1px dashed #ffe0b2; }
+.fee-gift-name { font-weight: 600; }
+.fee-gift-amt { font-variant-numeric: tabular-nums; }
+.fee-gift-remark { color: #78909c; font-size: 0.75rem; }
+.fee-gift-att { color: #1976d2; display: inline-flex; }
+.fee-gift-pick :deep(.v-btn) { min-width: 30px; padding: 0 6px; }
 .note-list { display: flex; flex-direction: column; gap: 6px; }
 .note-item { background: rgba(255, 255, 255, .7); border-radius: 6px; padding: 5px 10px; }
 .note-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; opacity: .8; margin-bottom: 2px; }

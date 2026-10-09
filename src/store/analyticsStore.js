@@ -206,6 +206,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         soldCount: p.soldCount,
         totalAmount: p.totalAmount,
         premiumAmount: p.premiumAmount,
+        netPremiumAmount: p.netPremiumAmount,
         byStatus: p.byStatus,
         byStatusAmount: p.byStatusAmount,
       })),

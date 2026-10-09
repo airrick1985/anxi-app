@@ -70,6 +70,14 @@
         </div>
       </template>
 
+      <template v-slot:item.netPremiumAmount="{ item }">
+        <div class="premium-cell" :class="{ 'positive': item.netPremiumAmount >= 0 }">
+          <span :class="item.netPremiumAmount >= 0 ? 'text-success' : 'text-error'">
+            {{ formatCurrency(item.netPremiumAmount) }}
+          </span>
+        </div>
+      </template>
+
       <!-- 退戶戶數列 -->
       <template v-slot:item.cancelledCount="{ item }">
         <div class="count-cell text-error">
@@ -107,6 +115,7 @@ const headers = [
   // 銷售金額不設固定寬度：讓內容最多的此欄吸收多餘空間，其餘欄位保持緊湊
   { title: '銷售金額', key: 'totalAmount', align: 'end' },
   { title: '溢差價', key: 'premiumAmount', width: '100px', align: 'end' },
+  { title: '淨溢差價', key: 'netPremiumAmount', width: '100px', align: 'end' },
 ]
 
 

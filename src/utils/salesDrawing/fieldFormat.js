@@ -10,6 +10,7 @@ import { COLUMN_DEFINITIONS, UNIT_EXPORT_COMPUTED_COLUMNS, DRAWING_SHORT_LABELS 
 import { normalizeSalespersons } from '@/utils/salespersonUtils';
 import { isDealParking } from '@/utils/salesStatusGroups';
 import { getUnitBoundParkings, unitParkingFields } from '@/utils/unitParkingFields';
+import { feeGiftFields } from '@/utils/unitFeeGifts';
 
 const TITLE_MAP = new Map([...COLUMN_DEFINITIONS, ...UNIT_EXPORT_COMPUTED_COLUMNS].map(c => [c.key, c.title]));
 
@@ -18,13 +19,13 @@ const DATE_KEYS = new Set(['payment_deposit_date', 'payment_supplement_date', 'p
 const RATIO_DECIMAL_KEYS = new Set(['common_area_ratio', 'land_share_ratio']);       // 儲存 0~1
 const RATIO_PERCENT_KEYS = new Set(['housePriceRatio', 'landPriceRatio', 'payment_ratio']); // 已是百分數
 const UNIT_PRICE_KEYS = new Set(['unit_price_list', 'unit_price_floor', 'unit_price_transaction']);
-const YUAN_AMOUNT_KEYS = new Set(['payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount']);
+const YUAN_AMOUNT_KEYS = new Set(['payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount', 'referral_fee_total', 'gift_total']);
 const WAN_PRICE_KEYS = new Set([
   'price_list_house_only', 'price_list_terrace', 'price_list_terrace_unit', 'price_list_ancillary', 'price_list_house_total',
   'price_floor_house_only', 'price_floor_terrace', 'price_floor_ancillary', 'price_floor_house_total',
   'price_transaction_house', 'price_package_deal', 'price_package',
   'parking_trans_total', 'parking_floor_total', 'total_transaction', 'total_floor', 'price_diff', 'paid_total',
-  'held_parking_list_total', 'held_parking_floor_total', 'held_parking_trans_total',
+  'held_parking_list_total', 'held_parking_floor_total', 'held_parking_trans_total', 'net_price_diff',
 ]);
 const COUNT_KEYS = new Set(['parking_count', 'held_parking_count']);
 
@@ -139,6 +140,7 @@ export function withDerivedFields(unit, parkings = []) {
   item.total_transaction = houseTrans + parkingTransTotal;
   item.total_floor = houseFloor + parkingFloorTotal;
   item.price_diff = houseTrans > 0 ? item.total_transaction - item.total_floor : null;
+  Object.assign(item, feeGiftFields(unit, item.price_diff));
 
   const paymentRecords = Array.isArray(unit.paymentRecords) ? unit.paymentRecords : [];
   const paidYuan = paymentRecords.reduce((s, r) => s + (Number(r?.amount) || 0), 0);

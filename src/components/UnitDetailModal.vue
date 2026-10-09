@@ -711,6 +711,17 @@
                             <span class="dl-total">{{ pricePremiumText }}</span>
                             <span class="dl-unit">{{ premiumUnitPriceText }}</span>
                           </div>
+                          <!-- 淨溢差：扣除勾選「併入淨溢差價」的介紹費／贈品（元 → 萬） -->
+                          <template v-if="viewMode === 'sales' && netPremiumDeductWan > 0">
+                            <div class="deal-ledger-row premium" :class="netPricePremium >= 0 ? 'text-success' : 'text-error'">
+                              <span class="dl-label">淨溢差</span>
+                              <span class="dl-total">{{ signedWan(netPricePremium) }}</span>
+                              <span class="dl-unit"></span>
+                            </div>
+                            <div class="deal-ledger-sub">
+                              <span class="dls-total">溢差 {{ pricePremiumText }} − 介紹費／贈品 {{ formatNumber(netPremiumDeductWan, 2) }}</span>
+                            </div>
+                          </template>
 
                           <!-- 實價登錄單價（客戶端口徑：車位以成交價扣除、不扣露臺） -->
                           <div v-if="registeredUnitPrice !== null" class="deal-ledger-row registered">
@@ -925,6 +936,23 @@
                             </div>
                           </div>
                         </div>
+
+                        <!-- 介紹費／贈品：檢視模式即可 CRUD，附件存戶別 Drive 資料夾；報價模式不顯示 -->
+                        <template v-if="viewMode === 'sales'">
+                          <v-divider class="my-2"></v-divider>
+                          <UnitFeeGiftPanel
+                            :referral-fees="viewReferralFees"
+                            :gifts="viewGifts"
+                            :unit-documents="viewUnitDocuments"
+                            :project-id="projectId"
+                            :unit-id="unitData.unitId"
+                            :drive-folder-url="unitData.driveFolderUrl || ''"
+                            :legacy-referrer="{ name: unitData.referrerName || '', phone: unitData.referrerPhone || '' }"
+                            :operator="feeGiftOperator"
+                            :persist-handler="persistFeeGifts"
+                            :upload-handler="handleUploadUnitDocument"
+                          />
+                        </template>
 
                         <!-- ✅ 備註（留言式）：檢視模式即可 CRUD，不必進「修改銷控」 -->
                         <v-divider class="my-2"></v-divider>
@@ -1445,6 +1473,8 @@ import LandParcelsPanel from './LandParcelsPanel.vue';
 import PaymentRecordsPanel from './PaymentRecordsPanel.vue';
 import UnitDocumentsPanel from './UnitDocumentsPanel.vue';
 import RemarkNotesPanel from './RemarkNotesPanel.vue';
+import UnitFeeGiftPanel from './UnitFeeGiftPanel.vue';
+import { referrerSyncFields, netPriceDiff, netPremiumDeductYuan } from '@/utils/unitFeeGifts';
 import UnitCancelledHistoryPanel from '@/components/UnitCancelledHistoryPanel.vue';
 import { db } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -2457,12 +2487,20 @@ const pricePremium = computed(() => {
   return 0;
 });
 // 溢差總價帶正負號（與溢差單價一致），一眼看出高於或低於底價
-const pricePremiumText = computed(() => {
-  const text = formatNumber(Math.abs(pricePremium.value), 0);
-  if (pricePremium.value > 0) return `+${text}`;
-  if (pricePremium.value < 0) return `-${text}`;
+function signedWan(v, digits = 0) {
+  const text = formatNumber(Math.abs(v), digits);
+  if (v > 0) return `+${text}`;
+  if (v < 0) return `-${text}`;
   return text;
-});
+}
+const pricePremiumText = computed(() => signedWan(pricePremium.value));
+// 淨溢差（萬）：扣除勾選併入淨溢差價的介紹費／贈品
+const netPremiumDeductWan = computed(() =>
+  netPremiumDeductYuan({ referralFees: viewReferralFees.value, gifts: viewGifts.value }) / 10000
+);
+const netPricePremium = computed(() =>
+  netPriceDiff(pricePremium.value, { referralFees: viewReferralFees.value, gifts: viewGifts.value }) ?? 0
+);
 
 // ── 單價分析（萬/坪）：除以房屋總面積，四捨五入至小數 2 位 ──
 // 內部單價：車位以「底價」扣除，有露臺時再扣露臺底價（成交/底價兩側同基準，溢差價才不失真）
@@ -2904,6 +2942,7 @@ function currentUploaderInfo() {
   const u = userStore.user || {};
   return { userKey: u.key || '', name: u.name || '' };
 }
+const feeGiftOperator = computed(() => currentUploaderInfo());
 
 /** [上傳文件] Storage 暫存檔轉存至戶別 Drive 資料夾並寫入紀錄（由面板在 Storage 上傳完成後呼叫） */
 async function handleUploadUnitDocument(payload) {
@@ -2960,6 +2999,31 @@ async function handleDeleteUnitDocument({ docId, trashDriveFile }) {
   if (props.unitData) props.unitData.unitDocuments = viewUnitDocuments.value.slice();
   if (res.trashWarning) toast.warning('紀錄已刪除，但 Drive 檔案移至垃圾桶失敗');
   else toast.success(trashDriveFile ? '文件已刪除並移至 Drive 垃圾桶' : '文件紀錄已刪除（Drive 檔案保留）');
+  emit('data-updated');
+}
+
+// 介紹費／贈品：檢視模式本地列表，直寫 Firestore 後即時反映
+const viewReferralFees = ref([]);
+const viewGifts = ref([]);
+watch(() => props.unitData, (val) => {
+  viewReferralFees.value = Array.isArray(val?.referralFees) ? JSON.parse(JSON.stringify(val.referralFees)) : [];
+  viewGifts.value = Array.isArray(val?.gifts) ? JSON.parse(JSON.stringify(val.gifts)) : [];
+}, { immediate: true });
+
+/** 介紹費／贈品持久化（局部 updateDoc）；介紹費異動時同步「介紹人姓名／電話」 */
+async function persistFeeGifts(changes) {
+  const updates = {};
+  if (Array.isArray(changes.referralFees)) {
+    updates.referralFees = changes.referralFees;
+    Object.assign(updates, referrerSyncFields(changes.referralFees));
+  }
+  if (Array.isArray(changes.gifts)) updates.gifts = changes.gifts;
+  const docId = `${props.projectId}_${props.unitData.unitId}`;
+  await updateDoc(doc(db, 'salesHouseholds', docId), { ...updates, updatedAt: serverTimestamp() });
+  if (updates.referralFees) viewReferralFees.value = updates.referralFees.slice();
+  if (updates.gifts) viewGifts.value = updates.gifts.slice();
+  // 同步父層傳入的物件快照，修改銷控整包儲存時才不會寫回舊值（store 即時監聽亦會更新）
+  if (props.unitData) Object.assign(props.unitData, updates);
   emit('data-updated');
 }
 
@@ -3827,6 +3891,7 @@ const downloadExcel = async () => {
     '成交總價(萬)': formatNumber(grandTotalTransactionPrice.value),
     '總底價(萬)': formatNumber(totalFloorPrice.value),
     '溢差價(萬)': formatNumber(pricePremium.value),
+    '淨溢差價(萬)': formatNumber(netPricePremium.value, 2),
     '銷控後台狀態': sourceData.salesStatus_backend || '',
     '銷售人員': formatSalespersons(sourceData.salesperson, ',', ''),
     '銷售人員userKey': formatSalespersons(sourceData.salespersonUserKey, ',', ''),
@@ -3860,7 +3925,7 @@ const downloadExcel = async () => {
 
     '合約方式', '是否首購',
     '房屋成交價(萬)', '房屋單價(萬/坪)', '房屋底價(萬)', '房屋底價單價(萬/坪)',
-    '車位總成交價(萬)', '車位總底價(萬)', '成交總價(萬)', '總底價(萬)', '溢差價(萬)',
+    '車位總成交價(萬)', '車位總底價(萬)', '成交總價(萬)', '總底價(萬)', '溢差價(萬)', '淨溢差價(萬)',
     '銷控後台狀態', '銷售人員',
     '小訂日期', '補足日期', '簽約日期',
     '買方姓名', '身分證字號', '聯絡電話', 'EMAIL',

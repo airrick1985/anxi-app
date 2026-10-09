@@ -116,6 +116,10 @@ export const UNIT_EXPORT_COMPUTED_COLUMNS = [
     { key: 'total_transaction', title: '成交總價(含車位)' },
     { key: 'total_floor', title: '合計底價(含車位)' },
     { key: 'price_diff', title: '溢差價' },
+    { key: 'net_price_diff', title: '淨溢差價' },
+    { key: 'referral_fee_total', title: '介紹費合計(元)' },
+    { key: 'gift_total', title: '贈品合計(元)' },
+    { key: 'gift_items', title: '贈品品項' },
     { key: 'unit_price_list', title: '表價單價' },
     { key: 'unit_price_floor', title: '底價單價' },
     { key: 'unit_price_transaction', title: '成交單價' },
@@ -158,6 +162,7 @@ export const DRAWING_FIELD_GROUPS = [
     'total_transaction', 'total_floor', 'price_diff',
     'held_parking_spots', 'held_parking_count', 'held_parking_list_total', 'held_parking_floor_total',
     'held_parking_trans_total', 'held_parking_reserved_by', 'held_parking_reserved_until',
+    'net_price_diff', 'referral_fee_total', 'gift_total', 'gift_items',
   ] },
   { key: 'buyer', title: '內部：買方資料', expanded: false, internal: true, keys: [
     'buyerName', 'buyerPhone', 'buyerIdNumber', 'buyerDateOfBirth', 'buyerEmail',

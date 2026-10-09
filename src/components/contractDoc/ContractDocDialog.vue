@@ -836,6 +836,8 @@ import {
 } from '@/api.js';
 import { runNewCalculationEngine, recalcGroupChildren } from '@/utils/paymentCalculation';
 import { buildUnitDocContext, resolveBankSets } from '@/utils/unitDocContext';
+import { getUnitDealParkings } from '@/utils/salesStatusGroups';
+import { normalizeReferralFees, normalizeGifts } from '@/utils/unitFeeGifts';
 import { PAGE_TYPE_MAP, isPackageOnlyPageType } from '@/utils/contractDocDefaults';
 import {
   buildPriceModel, buildSplitModel, normalizeLandOverride, defaultSelectedClauseIds,
@@ -1910,6 +1912,28 @@ watch(() => props.show, async (val) => {
   }
 }, { immediate: true });
 
+// 會辦單自由欄位自動帶入：贈品＝品項、介紹費＝介紹費合計（萬）、溢差價＝成交總價 − 合計底價（萬）；存檔已有值者不覆蓋
+function autoFreeFieldValue(f) {
+  const key = String(f?.key || '');
+  const label = String(f?.label || '');
+  const u = props.unitData || {};
+  if (key === 'gift' || label.includes('贈品')) {
+    return normalizeGifts(u.gifts).map(g => g.item).filter(Boolean).join('、');
+  }
+  if (key === 'referralFee' || label.includes('介紹費')) {
+    const total = normalizeReferralFees(u.referralFees).reduce((s, r) => s + r.amount, 0);
+    return total > 0 ? total / 10000 : '';
+  }
+  if (key === 'priceDiff' || label.includes('溢差')) {
+    if (!(Number(u.price_transaction_house) > 0)) return '';
+    const parkFloor = getUnitDealParkings(u.unitId, props.allData?.['車位'] || [])
+      .reduce((s, p) => s + (Number(p.price_floor) || 0), 0);
+    const floorTotal = (Number(u.price_floor_house_total) || 0) + parkFloor;
+    return Math.round((unitCtx.value.totalPrice - floorTotal) * 10000) / 10000;
+  }
+  return '';
+}
+
 function restoreDocData(cfg, freshDocData) {
   // freshDocData === undefined 代表讀取失敗 → 退回父層快照；null 代表該戶尚無資料
   const saved = (freshDocData !== undefined ? freshDocData : props.unitData?.contractDocData) || {};
@@ -1920,7 +1944,10 @@ function restoreDocData(cfg, freshDocData) {
   // 拆款表欄位預設值
   const bd = (cfg.pages || []).find(p => p.type === 'breakdown');
   const freeDefaults = {};
-  (bd?.options?.freeFields || []).forEach(f => { freeDefaults[f.key] = f.default ?? ''; });
+  (bd?.options?.freeFields || []).forEach(f => {
+    const auto = autoFreeFieldValue(f);
+    freeDefaults[f.key] = auto !== '' ? auto : (f.default ?? '');
+  });
   const signDefaults = {};
   (bd?.options?.signFields || []).filter(f => f.source !== 'salesperson')
     .forEach(f => { signDefaults[f.label] = f.default ?? ''; });

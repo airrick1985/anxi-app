@@ -406,6 +406,7 @@ import {
   basisMethodOf, feeTimingOf,
 } from '@/utils/commissionCalculation';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
+import { listFeeGiftEntries } from '@/utils/unitFeeGifts';
 import { bonusSegments, segmentForDate, segmentId, segmentLabel } from '@/utils/bonusSegments';
 
 const props = defineProps({
@@ -872,6 +873,8 @@ function addUnit(unitId, fromRecord = null, bonusRows = []) {
     keepPct: basis?.keepPct != null ? toNum(basis.keepPct) : toNum(props.settings.defaultKeepPct),
     partyAFee: toNum(basis?.partyAFee),
     partyBFee: toNum(basis?.partyBFee),
+    // 介紹費／贈品逐筆帶入 A／B 的選擇（沿用基準紀錄；已刪除的明細不保留）
+    feePicks: sanitizeFeePicks(basis?.feePicks, unit),
     // 基準法：請佣基準／介紹費 B 時機隨請佣紀錄（獎金模式唯讀）；獎金基準可於獎金編輯依當期改選；無紀錄採方案設定預設
     claimBasisMethod: basisMethodOf(basis?.claimBasisMethod) || basisMethodOf(props.settings.claimBasisMethod) || 'lower',
     partyBFeeTiming: feeTimingOf(basis?.partyBFeeTiming) || feeTimingOf(props.settings.partyBFeeTiming) || 'before',
@@ -952,7 +955,7 @@ const listRows = computed(() => {
       commPct: toNum(e.commPct), ratioPct: toNum(e.ratioPct), ratioLabel: isBonus.value ? '獎金' : '請佣',
       paymentRatio: paymentRatioPct(e.unit, e.finance?.transactionTotal),
       // 獎金編輯：銷控備註提到介紹費／贈品 → 清單卡片紅色驚嘆號提醒（介紹費會影響獎金折數）
-      feeHint: isBonus.value && /介紹|贈品/.test(String(e.unit?.remarks || '')),
+      feeHint: isBonus.value && (/介紹|贈品/.test(String(e.unit?.remarks || '')) || listFeeGiftEntries(e.unit).length > 0),
       // 請佣比例不足 100% → 紅字提醒。獎金編輯的 ratioPct 是獎金比例，改看該戶請佣紀錄的已請合計
       claimPct: isBonus.value ? unitClaimedPct(e.unitId) : toNum(e.ratioPct),
       partialRatio: isBonus.value ? unitClaimedPct(e.unitId) < 100 : (toNum(e.ratioPct) > 0 && toNum(e.ratioPct) < 100),
@@ -1018,6 +1021,16 @@ function gotoFirstIssue() {
 function gotoCard(e) {
   if (listFilter.value === 'issue' && !(entryIssueCount(e) || refundIssueCount(e))) listFilter.value = 'all';
   selectCard(e.id);
+}
+
+/** 介紹費／贈品帶入選擇：只保留該戶現有明細、值為 A 或 B */
+function sanitizeFeePicks(picks, unit) {
+  const ids = new Set(listFeeGiftEntries(unit).map(g => g.id));
+  const out = {};
+  Object.entries(picks || {}).forEach(([id, v]) => {
+    if (ids.has(id) && (v === 'A' || v === 'B')) out[id] = v;
+  });
+  return out;
 }
 
 // ---------- 計算 ----------
@@ -1141,8 +1154,10 @@ function collectIssues() {
 
     const note = String(e.unit.remarks || '');
     // 以下兩項為紅底白字提醒（不擋流程）；帶 entry 與欄位名，確認對話框可直接輸入
-    if (/介紹|贈品/.test(note) && toNum(e.partyAFee) === 0 && toNum(e.partyBFee) === 0) {
-      feeMiss.push({ text: `${e.unitId}：${note}`, entry: e, field: 'partyAFee', label: `${props.settings.partyALabel}(元)` });
+    const feeGifts = listFeeGiftEntries(e.unit);
+    if ((/介紹|贈品/.test(note) || feeGifts.length) && toNum(e.partyAFee) === 0 && toNum(e.partyBFee) === 0) {
+      const giftText = feeGifts.map(g => `${g.title} ${g.amount.toLocaleString('zh-TW')}元`).join('、');
+      feeMiss.push({ text: `${e.unitId}：${[giftText, note].filter(Boolean).join('；')}`, entry: e, field: 'partyAFee', label: `${props.settings.partyALabel}(元)` });
     }
     if (isBonus.value) {
       const claimTotal = unitClaimedPct(e.unitId);
@@ -1375,7 +1390,7 @@ function buildSections({ warnings, feeMiss, ratioMismatch, refundNotes }) {
   if (refundNotes.length) sections.push({ title: `↩ ${refundLabel.value}戶別`, subtitle: isBonus.value ? '送出後原獎金紀錄標記「已退獎金」、已送比例回溯，可於本期已送出獎金清單作廢退獎金紀錄還原：' : '送出後原紀錄標記「已退佣」、已請比例回溯，可於歷期總覽作廢退佣紀錄還原：', items: refundNotes });
   // confirm：進預覽前先以 dialog 確認（可直接處理或略過）；critical：紅底白字
   if (warnings.length) sections.push({ title: '⚠ 有項目尚未勾選人員', subtitle: '可直接點選人員加入，或刻意留空繼續：', items: warnings, confirm: true });
-  if (feeMiss.length) sections.push({ title: '🎁 介紹費/贈品尚未填寫', subtitle: '備註提到介紹/贈品但金額為 0，可直接填入或略過：', items: feeMiss, confirm: true, critical: true });
+  if (feeMiss.length) sections.push({ title: '🎁 介紹費/贈品尚未填寫', subtitle: '有介紹費/贈品但金額為 0，可直接填入或略過：', items: feeMiss, confirm: true, critical: true });
   if (ratioMismatch.length) sections.push({ title: '⚠ 請佣不足 100% 但獎金比例 100%', subtitle: '可直接改比例或維持 100% 繼續：', items: ratioMismatch, confirm: true, critical: true });
   return sections;
 }
@@ -1469,6 +1484,7 @@ async function doSubmit() {
         keepPct: toNum(e.keepPct),
         partyAFee: toNum(e.partyAFee),
         partyBFee: toNum(e.partyBFee),
+        feePicks: sanitizeFeePicks(e.feePicks, e.unit),
         claimBasisMethod: e.claimBasisMethod,
         bonusBasisMethod: e.bonusBasisMethod,
         partyBFeeTiming: e.partyBFeeTiming,

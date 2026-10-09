@@ -15,6 +15,7 @@
 
 import { normalizeSalespersons, salespersonsInclude, salespersonShare } from './salespersonUtils'
 import { isDealParking } from './salesStatusGroups'
+import { netPremiumDeductYuan } from './unitFeeGifts'
 
 /**
  * 將各種日期格式轉換為 Date 對象
@@ -238,6 +239,9 @@ const getHousePremium = (household) => {
   return getHouseTransactionPrice(household) - getHouseFloorPrice(household)
 }
 
+/** 單戶勾選併入淨溢差價的介紹費／贈品（萬） */
+const getFeeGiftDeduct = (household) => netPremiumDeductYuan(household) / 10000
+
 /**
  * 計算單戶溢差價
  */
@@ -357,11 +361,13 @@ export const calculateHouseholdStats = (households, dateRange = null) => {
   const cumulativeSold = cumulativeSoldSet.size
   const cumulativeSoldAmount = sumBy(cumulativeSoldSet, getHouseTransactionPrice)
   const cumulativeSoldPremium = sumBy(cumulativeSoldSet, getHousePremium)
+  const cumulativeSoldFeeGiftDeduct = sumBy(cumulativeSoldSet, getFeeGiftDeduct)
 
   // 計算該時間段內的新銷售
   const periodSold = periodSoldSet.size
   const periodSoldAmount = sumBy(periodSoldSet, getHouseTransactionPrice)
   const periodSoldPremium = sumBy(periodSoldSet, getHousePremium)
+  const periodSoldFeeGiftDeduct = sumBy(periodSoldSet, getFeeGiftDeduct)
 
   // 計算未售（總數 - 累計已售）
   const unsold = totalUnfiltered - cumulativeSold
@@ -376,11 +382,13 @@ export const calculateHouseholdStats = (households, dateRange = null) => {
     sold: cumulativeSold,
     soldAmount: cumulativeSoldAmount,
     soldPremium: cumulativeSoldPremium, // 累計已售溢差價（房屋成交價 − 底價）
+    soldFeeGiftDeduct: cumulativeSoldFeeGiftDeduct, // 累計已售併入淨溢差價的介紹費／贈品（萬）
 
     // 該時間段內的新銷售
     periodSold,
     periodSoldAmount,
     periodSoldPremium, // 期間銷售溢差價
+    periodSoldFeeGiftDeduct, // 期間銷售併入淨溢差價的介紹費／贈品（萬）
 
     // 未售（總數 - 累計已售）
     unsold,
@@ -596,12 +604,19 @@ export const calculatePersonnelStats = (households, parkings, personnel, dateRan
       0
     )
 
+    // 淨溢差價 = 溢差價 − 勾選併入淨溢差價的介紹費／贈品（同樣依人數分攤）
+    const netPremiumAmount = premiumAmount - personHouseholds.reduce(
+      (sum, h) => sum + getFeeGiftDeduct(h) * salespersonShare(h.salesperson),
+      0
+    )
+
     return {
       name,
       inSystem: systemNames.has(name),
       soldCount,
       totalAmount,
       premiumAmount,
+      netPremiumAmount,
       householdCount: soldCount,
       byStatus,
       byStatusAmount,

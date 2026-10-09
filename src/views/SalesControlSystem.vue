@@ -709,6 +709,20 @@
               {{ item.price_diff > 0 ? '+' : '' }}{{ formatNumber(item.price_diff, 0) }}
             </span>
           </template>
+          <template v-slot:item.net_price_diff="{ item }">
+            <span v-if="item.net_price_diff === null" class="text-grey">-</span>
+            <span v-else :class="item.net_price_diff >= 0 ? 'text-success font-weight-bold' : 'text-error font-weight-bold'">
+              {{ item.net_price_diff > 0 ? '+' : '' }}{{ formatWan(item.net_price_diff) }}
+            </span>
+          </template>
+          <template v-slot:item.referral_fee_total="{ item }">
+            <span v-if="item.referral_fee_total">{{ formatNumber(item.referral_fee_total, 0) }}</span>
+            <span v-else class="text-grey">-</span>
+          </template>
+          <template v-slot:item.gift_total="{ item }">
+            <span v-if="item.gift_total || item.gift_items" :title="item.gift_items">{{ formatNumber(item.gift_total, 0) }}</span>
+            <span v-else class="text-grey">-</span>
+          </template>
 
           <template v-slot:item.payment_deposit_date="{ item }">{{ formatDate(item.payment_deposit_date) }}</template>
           <template v-slot:item.payment_complete_date="{ item }">{{ formatDate(item.payment_complete_date) }}</template>
@@ -795,6 +809,19 @@
                     {{ summaryRow.priceDiffTotal > 0 ? '+' : '' }}{{ formatNumber(summaryRow.priceDiffTotal, 0) }}
                   </span>
                 </template>
+                <template v-else-if="col.key === 'net_price_diff'">
+                  <span :class="summaryRow.netPriceDiffTotal >= 0 ? 'text-success' : 'text-error'">
+                    {{ summaryRow.netPriceDiffTotal > 0 ? '+' : '' }}{{ formatWan(summaryRow.netPriceDiffTotal) }}
+                  </span>
+                </template>
+                <template v-else-if="col.key === 'referral_fee_total'">
+                  <span v-if="summaryRow.referralFeeTotal > 0">{{ formatNumber(summaryRow.referralFeeTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'gift_total'">
+                  <span v-if="summaryRow.giftTotal > 0">{{ formatNumber(summaryRow.giftTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
               </td>
             </tr>
           </template>
@@ -879,6 +906,19 @@
                   <span :class="summaryRow.priceDiffTotal >= 0 ? 'text-success' : 'text-error'">
                     {{ summaryRow.priceDiffTotal > 0 ? '+' : '' }}{{ formatNumber(summaryRow.priceDiffTotal, 0) }}
                   </span>
+                </template>
+                <template v-else-if="col.key === 'net_price_diff'">
+                  <span :class="summaryRow.netPriceDiffTotal >= 0 ? 'text-success' : 'text-error'">
+                    {{ summaryRow.netPriceDiffTotal > 0 ? '+' : '' }}{{ formatWan(summaryRow.netPriceDiffTotal) }}
+                  </span>
+                </template>
+                <template v-else-if="col.key === 'referral_fee_total'">
+                  <span v-if="summaryRow.referralFeeTotal > 0">{{ formatNumber(summaryRow.referralFeeTotal, 0) }}</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'gift_total'">
+                  <span v-if="summaryRow.giftTotal > 0">{{ formatNumber(summaryRow.giftTotal, 0) }}</span>
+                  <span v-else>-</span>
                 </template>
               </td>
             </tr>
@@ -2183,6 +2223,7 @@ import { useSalesDataStore } from '@/store/salesDataStore';
 import { useParkingRatio, PARKING_RATIO_LEVEL_META } from '@/composables/useParkingRatio';
 import { buildCommitmentOverrides, isDealParking } from '@/utils/salesStatusGroups';
 import { unitParkingFields } from '@/utils/unitParkingFields';
+import { feeGiftFields } from '@/utils/unitFeeGifts';
 import { useProjectStore } from '@/store/projectStore';
 import { getEffectiveQuoteFields, hasQuoteOverrides, getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
 import { toQuoteUnitData } from '@/utils/quoteUnitData';
@@ -2586,6 +2627,7 @@ const buildSearchBlob = (item) => {
   pushVal(item.status);
   pushVal(item.parking_spots);
   pushVal(item.parking_search_text);
+  pushVal(item.gift_items);
   // ✅ [新增] 文字標籤：標籤文字納入搜尋
   for (const tag of getUnitTags(item)) parts.push(tag.text);
   return parts.join(' ').toLowerCase();
@@ -2879,6 +2921,7 @@ const PIVOT_BINNED_DIM_KEYS = new Set([
   'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount',
   'parking_trans_total', 'parking_floor_total', 'parking_count', 'total_transaction', 'total_floor', 'price_diff',
   'held_parking_count', 'held_parking_list_total', 'held_parking_floor_total', 'held_parking_trans_total',
+  'net_price_diff', 'referral_fee_total', 'gift_total',
   'unit_price_list', 'unit_price_floor', 'unit_price_transaction',
   'paid_total', 'payment_ratio',
 ]);
@@ -2887,7 +2930,7 @@ const pivotValueFieldOptions = computed(() => {
   const all = [...COLUMN_DEFINITIONS, ...UNIT_EXPORT_COMPUTED_COLUMNS];
   const priority = [
     'total_transaction', 'price_transaction_house', 'total_floor', 'price_floor_house_total', 'price_list_house_total',
-    'parking_trans_total', 'parking_floor_total', 'price_diff',
+    'parking_trans_total', 'parking_floor_total', 'price_diff', 'net_price_diff', 'referral_fee_total', 'gift_total',
     'paid_total', 'payment_ratio',
     'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount',
     'area_house_ping', 'area_terrace_ping',
@@ -3066,7 +3109,8 @@ function getPivotRawValues(item, dimKey) {
     case 'held_parking_spots':
     case 'held_parking_reserved_by':
     case 'held_parking_reserved_until':
-      // 'B6-28(保留),B6-30(主管保留)' → 每個車位／保留人／日期一個值
+    case 'gift_items':
+      // 'B6-28(保留),B6-30(主管保留)' → 每個車位／保留人／日期／贈品一個值
       return String(item[dimKey] || '').split(',');
     case 'unitTags_text':
       return getUnitTags(item).map(t => t.text);
@@ -5048,6 +5092,9 @@ const tableHeaders = computed(() => {
         { title: '繳款比例', key: 'payment_ratio', align: 'center', width: '90px', sort: customPriceSort },
         { title: '合計底價(含車)', key: 'total_floor', align: 'end', width: '110px' },
         { title: '溢差價', key: 'price_diff', align: 'end', width: '80px' },
+        { title: '淨溢差價', key: 'net_price_diff', align: 'end', width: '90px' },
+        { title: '介紹費(元)', key: 'referral_fee_total', align: 'end', width: '95px' },
+        { title: '贈品(元)', key: 'gift_total', align: 'end', width: '90px' },
         { title: '銷售人員', key: 'salesperson', align: 'start', width: '95px' },
         { title: '買方姓名', key: 'buyerName', align: 'start', width: '90px' },
         { title: '小訂日期', key: 'payment_deposit_date', align: 'center', width: '100px' },
@@ -5084,6 +5131,9 @@ const tableHeaders = computed(() => {
       { title: '繳款比例', key: 'payment_ratio', align: 'center', sort: customPriceSort },
       { title: '合計底價(含車)', key: 'total_floor', align: 'start' },
       { title: '溢差價', key: 'price_diff', align: 'start' },
+      { title: '淨溢差價', key: 'net_price_diff', align: 'start' },
+      { title: '介紹費(元)', key: 'referral_fee_total', align: 'start' },
+      { title: '贈品(元)', key: 'gift_total', align: 'start' },
       { title: '銷售人員', key: 'salesperson', align: 'start' },
       { title: '買方姓名', key: 'buyerName', align: 'start' },
       { title: '小訂日期', key: 'payment_deposit_date', align: 'center' },
@@ -5208,6 +5258,8 @@ const enrichUnitItem = (unit, parkingMap) => {
     } else {
         item.price_diff = null;
     }
+    // 介紹費／贈品合計（元）、贈品品項、淨溢差價（萬，扣除勾選併入的金額）
+    Object.assign(item, feeGiftFields(unit, item.price_diff));
 
     // ✅ [繳款紀錄] 已繳款金額(萬) 與 繳款比例(%)：已繳合計(元) ÷ 成交總價(含車位, 萬)×10000
     const paymentRecords = Array.isArray(unit.paymentRecords) ? unit.paymentRecords : [];
@@ -5294,6 +5346,9 @@ const summaryRow = computed(() => {
   let totalTransactionTotal = 0; // 成交總價(含車)加總
   let totalFloorTotal = 0;       // 合計底價(含車)加總
   let priceDiffTotal = 0;        // 溢差價加總（只計算有成交的戶別）
+  let netPriceDiffTotal = 0;     // 淨溢差價加總（只計算有成交的戶別）
+  let referralFeeTotal = 0;      // 介紹費合計（元）
+  let giftTotal = 0;             // 贈品合計（元）
   let paidWanTotal = 0;          // 已繳款金額(萬)加總
 
   items.forEach((item) => {
@@ -5314,6 +5369,11 @@ const summaryRow = computed(() => {
     if (item.price_diff !== null && item.price_diff !== undefined) {
       priceDiffTotal += Number(item.price_diff) || 0;
     }
+    if (item.net_price_diff !== null && item.net_price_diff !== undefined) {
+      netPriceDiffTotal += Number(item.net_price_diff) || 0;
+    }
+    referralFeeTotal += Number(item.referral_fee_total) || 0;
+    giftTotal += Number(item.gift_total) || 0;
   });
 
   // 加權平均單價 = 對應總價加總 / 面積加總
@@ -5342,6 +5402,9 @@ const summaryRow = computed(() => {
     totalTransactionTotal,
     totalFloorTotal,
     priceDiffTotal,
+    netPriceDiffTotal,
+    referralFeeTotal,
+    giftTotal,
     paidWanTotal,
     paymentRatioTotal,
     unitPriceList,
@@ -5478,6 +5541,13 @@ const formatNumber = (val, precision = 0) => {
   if (val === undefined || val === null || val === '') return '-';
   const num = Number(val);
   return isNaN(num) ? '-' : num.toLocaleString('zh-TW', { minimumFractionDigits: precision, maximumFractionDigits: precision });
+};
+// 萬元金額：整數不顯示小數，其餘最多 2 位（淨溢差價扣除以元計的介紹費／贈品後可能有小數）
+const formatWan = (val) => {
+  if (val === undefined || val === null || val === '') return '-';
+  const num = Number(val);
+  if (isNaN(num)) return '-';
+  return num.toLocaleString('zh-TW', { maximumFractionDigits: 2 });
 };
 
 function handleScroll(event) {
@@ -5744,6 +5814,7 @@ async function copyUnitSummary(unit) {
         const signed = (v, digits) => `${v > 0 ? '+' : v < 0 ? '-' : ''}${formatNumber(Math.abs(v), digits)}`;
         const unitDiff = area > 0 ? `（${signed(diff / area, 2)} 萬/坪）` : '';
         lines.push(`溢差價：${signed(diff, 0)}${unitDiff}`);
+        if (e.net_price_diff !== null && e.net_price_diff !== diff) lines.push(`淨溢差價：${signed(e.net_price_diff, 2)}`);
       }
       // 小訂／簽約日期
       const dateText = (v) => { const d = toDateOrNull(v); return d ? d.toLocaleDateString('zh-TW') : ''; };

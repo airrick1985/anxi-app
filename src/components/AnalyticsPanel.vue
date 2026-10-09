@@ -162,6 +162,11 @@
                     <div class="item-amount" :class="premiumClass(combinedStats.soldPremium)">{{ formatPremium(combinedStats.soldPremium) }}</div>
                     <div class="item-meta">戶別 {{ formatPremium(statistics.households.soldPremium) }}・車位 {{ formatPremium(statistics.parkings.soldPremium) }}</div>
                   </div>
+                  <div class="overview-item overview-item--premium">
+                    <div class="item-label">已售淨溢差價</div>
+                    <div class="item-amount" :class="premiumClass(combinedStats.soldNetPremium)">{{ formatPremium(combinedStats.soldNetPremium) }}</div>
+                    <div class="item-meta">介紹費／贈品 {{ formatPremium(-(statistics.households.soldFeeGiftDeduct || 0)) }}</div>
+                  </div>
                 </div>
               </div>
 
@@ -173,6 +178,7 @@
                   <div class="stat-cell">車位</div>
                   <div class="stat-cell">總銷</div>
                   <div class="stat-cell">溢差價</div>
+                  <div class="stat-cell">淨溢差價</div>
                 </div>
                 <div
                   v-for="row in salesRows"
@@ -222,10 +228,16 @@
                     </template>
                     <span v-else class="cell-empty">—</span>
                   </div>
+
+                  <!-- 淨溢差價 -->
+                  <div class="stat-cell" data-label="淨溢差價">
+                    <span v-if="row.netPremium != null" class="cell-main cell-main--premium" :class="premiumClass(row.netPremium)">{{ formatPremium(row.netPremium) }}</span>
+                    <span v-else class="cell-empty">—</span>
+                  </div>
                 </div>
               </div>
               <div class="stat-note">
-                溢差價＝成交價－底價（含戶別與車位，已售戶別計入）；金額單位為萬元，百分比為占總銷比例
+                溢差價＝成交價－底價（含戶別與車位，已售戶別計入）；淨溢差價再扣除勾選併入的介紹費／贈品；金額單位為萬元，百分比為占總銷比例
               </div>
             </section>
 
@@ -816,6 +828,9 @@ const combinedStats = computed(() => {
     periodSoldAmount,
     soldPremium,
     periodSoldPremium,
+    // 淨溢差價：扣除勾選併入淨溢差價的介紹費／贈品
+    soldNetPremium: soldPremium - (h.soldFeeGiftDeduct || 0),
+    periodSoldNetPremium: periodSoldPremium - (h.periodSoldFeeGiftDeduct || 0),
     soldPct: calculatePercentage(soldAmount, totalAmount),
     unsoldPct: calculatePercentage(unsoldAmount, totalAmount),
     periodPct: calculatePercentage(periodSoldAmount, totalAmount),
@@ -884,6 +899,7 @@ const salesRows = computed(() => {
       total: { amount: c.periodSoldAmount, pct: c.periodPct },
       premium: c.periodSoldPremium,
       premiumSub: premiumSub(h.periodSoldPremium, p.periodSoldPremium),
+      netPremium: c.periodSoldNetPremium,
     })
     const cs = cancelledStats.value
     rows.push({
@@ -898,6 +914,7 @@ const salesRows = computed(() => {
       parking: null,
       total: null,
       premium: null,
+      netPremium: null,
     })
   }
 
@@ -912,6 +929,7 @@ const salesRows = computed(() => {
     total: { amount: c.soldAmount, pct: c.soldPct },
     premium: c.soldPremium,
     premiumSub: premiumSub(h.soldPremium, p.soldPremium),
+    netPremium: c.soldNetPremium,
   })
   rows.push({
     key: 'unsold',
@@ -2241,7 +2259,7 @@ watch(
 
 .overview-split {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 
@@ -2301,7 +2319,7 @@ watch(
 
 .stat-row {
   display: grid;
-  grid-template-columns: 150px repeat(4, minmax(0, 1fr));
+  grid-template-columns: 150px repeat(5, minmax(0, 1fr));
   align-items: center;
   border-bottom: 1px solid #eef1f5;
   border-left: 4px solid transparent;
@@ -2677,7 +2695,7 @@ watch(
   }
 
   .stat-row {
-    grid-template-columns: 120px repeat(4, minmax(0, 1fr));
+    grid-template-columns: 120px repeat(5, minmax(0, 1fr));
   }
 
   .stat-cell {
