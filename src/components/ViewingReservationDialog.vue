@@ -49,24 +49,27 @@
                 </button>
 
                 <!-- 編輯模式：原生日期時間選擇器 -->
-                <div v-else>
-                  <div class="native-dt-wrapper is-editing" :class="{ 'native-dt-wrapper--error': !tempDateTime }">
-                    <input
-                      ref="dtInputRef"
-                      type="datetime-local"
-                      lang="en-GB"
-                      v-model="tempDateTime"
-                      :min="minDateTimeLocal"
-                      step="300"
-                      class="native-dt-input"
-                    />
-                  </div>
-                  <div class="native-dt-actions">
-                    <button type="button" class="mac-btn" @click="cancelEditTime">取消</button>
-                    <button type="button" class="mac-btn mac-btn--primary" :disabled="!tempDateTime" @click="confirmDateTime">
-                      <v-icon size="15">mdi-check</v-icon>確認選擇
-                    </button>
-                  </div>
+                <div v-else class="native-dt-wrapper is-editing" :class="{ 'native-dt-wrapper--error': !tempDateTime }">
+                  <input
+                    ref="dtInputRef"
+                    type="datetime-local"
+                    lang="en-GB"
+                    v-model="tempDateTime"
+                    :min="minDateTimeLocal"
+                    step="300"
+                    class="native-dt-input"
+                  />
+                </div>
+
+                <div v-if="holidayName" class="vr-holiday-tag">
+                  <v-icon size="14">mdi-flag-variant</v-icon>國定假日・{{ holidayName }}
+                </div>
+
+                <div v-if="isEditingTime" class="native-dt-actions">
+                  <button type="button" class="mac-btn" @click="cancelEditTime">取消</button>
+                  <button type="button" class="mac-btn mac-btn--primary" :disabled="!tempDateTime" @click="confirmDateTime">
+                    <v-icon size="15">mdi-check</v-icon>確認選擇
+                  </button>
                 </div>
 
                 <div v-if="!formData.reservationTime && !isEditingTime" class="vr-field-error">請選擇預約時間</div>
@@ -457,6 +460,7 @@ import { useSalesDataStore } from '@/store/salesDataStore'; // 戶別/銷控資�
 import { format } from 'date-fns';
 import { useToast } from 'vue-toastification';
 import ViewingReservationSavedCard from '@/components/ViewingReservationSavedCard.vue';
+import { getTaiwanHoliday } from '@/utils/taiwanHolidays';
 
 // ===== 原生 datetime-local 轉換工具 =====
 
@@ -518,6 +522,12 @@ const cancelEditTime = () => {
   tempDateTime.value = '';
   isEditingTime.value = false;
 };
+
+// 選到的日期是國定假日時顯示名稱（選擇中即時反映）
+const holidayName = computed(() => {
+  const value = isEditingTime.value ? tempDateTime.value : formData.value.reservationTime;
+  return value ? getTaiwanHoliday(value) : '';
+});
 
 
 
@@ -1195,6 +1205,20 @@ button.native-dt-wrapper:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24)
   min-width: 0;
   font-size: 14px;
   color: #8e8e93;
+}
+.vr-holiday-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: rgba(255, 59, 48, 0.1);
+  color: #d62d20;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .native-dt-actions {
   display: flex;

@@ -275,6 +275,7 @@ import listPlugin from '@fullcalendar/list';
 import zhTwLocale from '@fullcalendar/core/locales/zh-tw';
 import ViewingReservationDialog from '@/components/ViewingReservationDialog.vue';
 import SmsReminderSettingsDialog from '@/components/SmsReminderSettingsDialog.vue';
+import { getTaiwanHoliday, holidaysRevision } from '@/utils/taiwanHolidays';
 
 
 const props = defineProps({ projectId: { type: String, required: true } });
@@ -395,7 +396,26 @@ function renderEventContent(arg) {
     return { domNodes: [root] };
 }
 
-// 週／日視圖欄首：星期＋日期數字（今天以紅圈標示）
+function holidayLabel(name) {
+    const el = document.createElement('span');
+    el.className = 'vr-holiday-name';
+    el.textContent = name;
+    return el;
+}
+
+// 國定假日：日期格／欄加 class（淡紅底、日期紅字）。假日資料非同步載入，載入後換一個新函式讓 FullCalendar 重繪
+const buildHolidayClassNames = () => (arg) => (getTaiwanHoliday(arg.date) ? ['vr-holiday'] : []);
+
+// 月視圖日期格：左側假日名稱、右側日期數字（今天以紅圈標示）
+function renderMonthDayCell(arg) {
+    const num = document.createElement('span');
+    num.className = 'vr-dn-num';
+    num.textContent = String(arg.date.getDate());
+    const holiday = getTaiwanHoliday(arg.date);
+    return { domNodes: holiday ? [holidayLabel(holiday), num] : [num] };
+}
+
+// 週／日視圖欄首：星期＋日期數字（今天以紅圈標示）＋假日名稱
 function renderTimeGridHeader(arg) {
     const wrap = document.createElement('div');
     wrap.className = 'vr-dh';
@@ -406,6 +426,35 @@ function renderTimeGridHeader(arg) {
     num.className = 'vr-dh-num';
     num.textContent = String(arg.date.getDate());
     wrap.append(dow, num);
+    const holiday = getTaiwanHoliday(arg.date);
+    if (holiday) {
+        wrap.classList.add('vr-dh--holiday');
+        wrap.appendChild(holidayLabel(holiday));
+    }
+    return { domNodes: [wrap] };
+}
+
+// 列表視圖日期標題：日期＋假日名稱＋當日筆數（點筆數看各銷售分佈）
+function renderListDayHeader(arg) {
+    const date = arg.date;
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const count = calendarEvents.value.filter(e => {
+        const d = new Date(e.start);
+        return d.getFullYear() === date.getFullYear() &&
+               d.getMonth() === date.getMonth() &&
+               d.getDate() === date.getDate();
+    }).length;
+    const wrap = document.createElement('span');
+    wrap.className = 'list-header-content';
+    wrap.append(`${mm}/${dd} 星期${WEEKDAY_NAMES[date.getDay()]}`);
+    const holiday = getTaiwanHoliday(date);
+    if (holiday) wrap.appendChild(holidayLabel(holiday));
+    const badge = document.createElement('span');
+    badge.className = 'list-day-count-badge';
+    badge.dataset.date = `${date.getFullYear()}-${mm}-${dd}`;
+    badge.textContent = `${count} 筆`;
+    wrap.appendChild(badge);
     return { domNodes: [wrap] };
 }
 
@@ -487,6 +536,7 @@ const calendarOptions = ref({
     dayMaxEvents: true,
     stickyHeaderDates: true,
     eventClassNames: 'vr-event',
+    dayCellClassNames: buildHolidayClassNames(),
     eventDisplay: 'block',
     eventContent: renderEventContent,
     // 滑鼠停留顯示完整內容（桌機）
@@ -502,35 +552,20 @@ const calendarOptions = ref({
     },
     firstDay: 1, // ✅ 列表視圖優化：週一開始
     views: {
-        dayGridMonth: {
-            dayCellContent: (arg) => String(arg.date.getDate())
-        },
+        dayGridMonth: { dayCellContent: renderMonthDayCell },
         // 同時段預約並排顯示，避免後一筆蓋住前一筆的文字
         timeGridWeek: { dayHeaderContent: renderTimeGridHeader, slotEventOverlap: false },
         timeGridDay: { dayHeaderContent: renderTimeGridHeader, slotEventOverlap: false },
-        listWeek: {
-            dayHeaderContent: (arg) => {
-                const date = arg.date;
-                const mm = String(date.getMonth() + 1).padStart(2, '0');
-                const dd = String(date.getDate()).padStart(2, '0');
-                const dayOfWeek = WEEKDAY_NAMES[date.getDay()];
-                const dateStr = `${date.getFullYear()}-${mm}-${dd}`;
-                const count = calendarEvents.value.filter(e => {
-                    const d = new Date(e.start);
-                    return d.getFullYear() === date.getFullYear() &&
-                           d.getMonth() === date.getMonth() &&
-                           d.getDate() === date.getDate();
-                }).length;
-                return {
-                    html: `<span class="list-header-content">${mm}/${dd} 星期${dayOfWeek}<span class="list-day-count-badge" data-date="${dateStr}">${count} 筆</span></span>`
-                };
-            }
-        }
+        listWeek: { dayHeaderContent: renderListDayHeader }
     },
     datesSet: (info) => {
         currentTitle.value = info.view.title;
         currentView.value = info.view.type;
     }
+});
+
+watch(holidaysRevision, () => {
+    calendarOptions.value.dayCellClassNames = buildHolidayClassNames();
 });
 
 const handleTouchStart = (e) => {
@@ -950,24 +985,40 @@ $mac-red: #ff3b30;
   .fc-col-header-cell { border-left-color: transparent; border-right-color: transparent; }
   .fc-col-header-cell-cushion { padding: 6px 4px; font-size: 11.5px; font-weight: 600; color: $mac-secondary; text-decoration: none; }
 
-  /* 月視圖：日期在右上、今天紅圈 */
+  /* 月視圖：假日名稱在左、日期在右上、今天紅圈 */
   .fc-daygrid-day-number {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 4px;
+    min-width: 0;
+    margin: 3px 3px 1px;
+    padding: 0;
+    color: $mac-text;
+    text-decoration: none;
+  }
+  .vr-dn-num {
     display: inline-flex;
+    flex: none;
     align-items: center;
     justify-content: center;
     min-width: 22px;
     height: 22px;
-    margin: 3px 3px 1px;
     padding: 0 5px;
     border-radius: 11px;
     font-size: 12.5px;
     font-weight: 500;
-    color: $mac-text;
-    text-decoration: none;
   }
-  .fc-day-today .fc-daygrid-day-number { background: $mac-red; color: #fff; font-weight: 700; }
+  .fc-daygrid-day-number .vr-holiday-name { flex: 1 1 auto; padding: 4px 0 0 2px; text-align: left; }
   .fc-day-other .fc-daygrid-day-top { opacity: 0.35; }
   .fc-day-sat, .fc-day-sun { background: #fbfbfc; }
+
+  /* 國定假日：淡紅底、日期與名稱紅字 */
+  .fc-day.vr-holiday { background: #fff6f5; }
+  .vr-holiday-name { min-width: 0; font-size: 11px; font-weight: 600; line-height: 1.3; color: $mac-red; white-space: normal; overflow-wrap: anywhere; }
+  .vr-holiday .vr-dn-num { color: $mac-red; }
+  .fc-day-today .vr-dn-num { background: $mac-red; color: #fff; font-weight: 700; }
   .fc-daygrid-event { white-space: normal; }
   .fc-daygrid-more-link { margin: 1px 2px 0; padding: 1px 5px; border-radius: 5px; font-size: 11.5px; font-weight: 600; color: $mac-secondary; }
 
@@ -986,7 +1037,9 @@ $mac-red: #ff3b30;
     font-weight: 500;
     color: $mac-text;
   }
+  .vr-dh--holiday .vr-dh-num { color: $mac-red; }
   .fc-day-today .vr-dh-num { background: $mac-red; color: #fff; font-weight: 700; }
+  .vr-dh .vr-holiday-name { font-size: 10.5px; text-align: center; }
   .fc-timegrid-slot { height: 2.4em; }
   .fc-timegrid-slot-minor { border-top-style: dotted; border-top-color: #efeff2; }
   .fc-timegrid-slot-label-cushion { font-size: 11px; color: #8e8e93; font-variant-numeric: tabular-nums; }
@@ -1054,8 +1107,9 @@ $mac-red: #ff3b30;
 /* 列表視圖：日期標題與當日筆數（點筆數看各銷售分佈） */
 :deep(.list-header-content) {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   font-size: 13px;
   font-weight: 600;
   color: $mac-text;
@@ -1100,7 +1154,11 @@ $mac-red: #ff3b30;
 
   :deep(.fc.calendar-container) {
     font-size: 12px;
-    .fc-daygrid-day-number { min-width: 20px; height: 20px; margin: 2px 1px 0; padding: 0 3px; font-size: 11.5px; }
+    .fc-daygrid-day-number { flex-wrap: wrap; margin: 2px 1px 0; }
+    .vr-dn-num { min-width: 20px; height: 20px; padding: 0 3px; font-size: 11.5px; }
+    /* 手機格子窄：假日名稱移到日期下方、整行可換行 */
+    .fc-daygrid-day-number .vr-holiday-name { order: 2; flex-basis: 100%; padding: 1px 1px 0; font-size: 9.5px; line-height: 1.2; text-align: center; }
+    .vr-dh .vr-holiday-name { font-size: 9.5px; line-height: 1.2; }
     .fc-daygrid-event { margin-left: 1px !important; margin-right: 1px !important; }
     .vr-ev--month { padding: 1px 2px; }
     .vr-ev--month .vr-ev-time { display: none; }
