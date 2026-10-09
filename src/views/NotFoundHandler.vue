@@ -20,11 +20,14 @@ import { fetchLatestVersion, forceReloadToLatest } from '@/composables/useVersio
 import { appVersion } from '@/version';
 
 const router = useRouter();
+// 版本檢查等待期間可能已被導到其他頁（例如 LIFF 入口頁），此時不可再拉回首頁／登入頁
+const stillHere = () => router.currentRoute.value.name === 'NotFound';
 
 onMounted(async () => {
   try {
     if (!import.meta.env.DEV) {
       const latest = await fetchLatestVersion();
+      if (!stillHere()) return;
       if (latest && latest !== appVersion) {
         // sessionStorage 保險絲：同一版本只自動更新一次，杜絕 reload 循環
         const guardKey = `anxi-notfound-reloaded-${latest}`;
@@ -38,6 +41,6 @@ onMounted(async () => {
   } catch (e) {
     console.warn('[NotFound] 版本檢查失敗:', e);
   }
-  router.replace({ name: 'Home' });
+  if (stillHere()) router.replace({ name: 'Home' });
 });
 </script>

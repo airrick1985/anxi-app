@@ -88,10 +88,10 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import liff from '@line/liff';
+import { initializeLiff as initSharedLiff } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 import { getLiffUserData } from '@/api';
 
-// ✅ [打勾] 請在此填入第一步取得的 LIFF ID
-const LIFF_ID = '2008257338-REkEX9xD'; 
 
 const router = useRouter();
 
@@ -113,7 +113,7 @@ const initializeLiff = async () => {
   errorState.value = false;
 
   try {
-    await liff.init({ liffId: LIFF_ID });
+    await initSharedLiff(LIFF_IDS.vipLogin);
 
     // 1. 檢查是否在 LINE 環境或已登入
     if (!liff.isLoggedIn()) {

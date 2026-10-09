@@ -184,6 +184,8 @@
 <script setup>
 import { ref, onMounted, computed, watch, reactive } from 'vue';
 import liff from '@line/liff';
+import { initializeLiff } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 import { useRouter, useRoute } from 'vue-router';
 import BookingGuideButton from '@/components/BookingGuideButton.vue';
 import { useDriveStore } from '@/store/driveStore';
@@ -279,7 +281,7 @@ onMounted(async () => {
     }
 
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-gYnbKlpR' });  //正式 2008257338-gYnbKlpR      測試 2008257338-6N3jwqxA
+    await initializeLiff(LIFF_IDS.reportFolder);
     if (!liff.isLoggedIn()) {
       liff.login();
       return;

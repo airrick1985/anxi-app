@@ -74,6 +74,8 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useStorage } from '@vueuse/core';
 import liff from '@line/liff';
+import { initializeLiff } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 import { useUserStore } from '@/store/user';
 import InspectionCalendar from '@/views/public/InspectionCalendar.vue';
 
@@ -106,13 +108,8 @@ watch(selectedProject, (v) => {
 onMounted(async () => {
   try {
     loadingText.value = '正在與 LINE 連接...';
-    // 根據環境選擇 LIFF ID
-    const isDev = import.meta.env.DEV;
-    const liffId = isDev
-      ? import.meta.env.VITE_LIFF_ID_DEV    // 測試用: 2008257338-6N3jwqxA
-      : import.meta.env.VITE_LIFF_ID_PROD;  // 正式用: 2008257338-o8grV0ZD
-
-    await liff.init({ liffId });
+    // 依環境選擇 LIFF ID（測試 2008257338-6N3jwqxA／正式 2008257338-o8grV0ZD）
+    await initializeLiff(LIFF_IDS.inspectionCalendar);
 
     if (!liff.isLoggedIn()) {
       liff.login();

@@ -57,6 +57,8 @@ import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import liff from '@line/liff';
+import { initializeLiff } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -81,8 +83,8 @@ const initializeAuth = async () => {
 
   try {
     statusMessage.value = '連接 LINE 服務中...';
-    // 注意：請確保此 LIFF ID 已在 LINE Developers 後台正確設定 Endpoint URL
-    await liff.init({ liffId: '2008257338-n5Gp6pT3' }); //2008257338-n5Gp6pT3 正式 2008257338-6N3jwqxA 
+    // 與 bootstrap 共用同一次初始化（LINE 內的登入憑證須在路由改寫網址前取得）
+    await initializeLiff(LIFF_IDS.customerManagement);
 
     if (!liff.isLoggedIn()) {
       statusMessage.value = '正在導向 LINE 登入...';

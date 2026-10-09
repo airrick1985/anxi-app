@@ -5,7 +5,7 @@ export function leadReportLiffUrl(id) {
 }
 
 // 逐層解析已解碼的參數值，不能一次 decode 整段網址：ID 裡的 & / % 必須保留。
-function leadLinkLayers(href) {
+export function liffLinkLayers(href) {
   const origin = new URL(href).origin;
   const queue = [href];
   const seen = new Set();
@@ -28,7 +28,7 @@ function leadLinkLayers(href) {
 }
 
 export function readLeadReportId(href) {
-  for (const url of leadLinkLayers(href)) {
+  for (const url of liffLinkLayers(href)) {
     const id = url.searchParams.get('leadReportId') || url.searchParams.get('id');
     if (id && id.length <= 200 && !id.includes('/')) return id;
   }
@@ -36,7 +36,7 @@ export function readLeadReportId(href) {
 }
 
 export function isLeadLiffLaunch(href) {
-  return leadLinkLayers(href).some(url => url.searchParams.has('leadReportId') ||
+  return liffLinkLayers(href).some(url => url.searchParams.has('leadReportId') ||
     /^\/(?:contact|lead-distribution-entry)\/?$/.test(url.pathname));
 }
 

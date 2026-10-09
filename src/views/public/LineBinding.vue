@@ -92,6 +92,8 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import liff from '@line/liff';
+import { initializeLiff } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 // ✓ 匯入新的 API 函式
 import { verifyUserByPhone, initiateLineBindingVerification, checkLineBindingStatus } from '@/api'; 
 
@@ -112,7 +114,7 @@ onMounted(async () => {
     loadingText.value = '正在與 LINE 連接...';
     
     // ✓ START: 修改 LIFF 初始化邏輯，攔截 token revoked 錯誤
-    await liff.init({ liffId: '2008257338-vZNMxJr0' }).catch((err) => {
+    await initializeLiff(LIFF_IDS.lineBinding).catch((err) => {
       // 如果錯誤是因為 token 失效，強制重新登入
       if (err.message && err.message.includes('access token revoked')) {
         console.warn('Token 失效，嘗試重新登入...');

@@ -13,7 +13,10 @@ let initializedId;
 export function initializeLiff(liffId) {
   if (!initialization || initializedId !== liffId) {
     initializedId = liffId;
-    initialization = withLiffTimeout(liff.init({ liffId }));
+    const attempt = withLiffTimeout(liff.init({ liffId }));
+    initialization = attempt;
+    // 失敗不留快取，頁面「重試」才會真的重新初始化
+    attempt.catch(() => { if (initialization === attempt) initialization = null; });
   }
   return initialization;
 }

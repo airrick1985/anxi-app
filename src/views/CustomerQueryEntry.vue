@@ -90,9 +90,9 @@ import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user'; // ✅ 引入 userStore
 import { useProjectStore } from '@/store/projectStore'; // ✅ 引入 projectStore 用於顯示建案名稱
 import liff from '@line/liff';
+import { initializeLiff as initSharedLiff } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 
-// LIFF ID
-const LIFF_ID = '2008257338-G2EJPAda'; 
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -118,7 +118,7 @@ const initializeLiff = async () => {
   statusMessage.value = '正在連接 LINE...';
 
   try {
-    await liff.init({ liffId: LIFF_ID });
+    await initSharedLiff(LIFF_IDS.customerQuery);
 
     if (!liff.isLoggedIn()) {
       liff.login();

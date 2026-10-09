@@ -493,14 +493,14 @@ import {
   getLiffUserData // ✅ 引入 LIFF 驗證 API
 } from '@/api';
 import liff from '@line/liff'; // ✅ 引入 LIFF SDK
+import { initializeLiff as initSharedLiff } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 import QrCode from 'qrcode.vue';
 import twCitiesData from '@/assets/TwCities.json';
 import { VCombobox, VSelect, VTextField } from 'vuetify/components';
 import ChoiceChipField from '@/components/form/ChoiceChipField.vue';
 import CustomerFormReceived from '@/components/CustomerFormReceived.vue';
 
-// ✅ [打勾] 請在此填入您的 LIFF ID
-const LIFF_ID = '2008257338-8AWzYeNQ'; //2008257338-6N3jwqxA 測試用    2008257338-8AWzYeNQ 正式
 
 const { mobile: isMobile } = useDisplay();
 
@@ -904,7 +904,7 @@ async function initializeLiff() {
   showBindButton.value = false;
 
   try {
-    await liff.init({ liffId: LIFF_ID });
+    await initSharedLiff(LIFF_IDS.customerDataSheet);
 
     if (!liff.isLoggedIn()) {
       liff.login();

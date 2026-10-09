@@ -48,6 +48,8 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import liff from '@line/liff';
+import { initializeLiff } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -85,7 +87,7 @@ const initializeAuth = async () => {
   try {
     statusMessage.value = '連接 LINE 服務中...';
     // 共用客資系統入口的 LIFF ID
-    await liff.init({ liffId: '2008257338-n5Gp6pT3' });
+    await initializeLiff(LIFF_IDS.customerManagement);
 
     // ✅ LIFF 自動登入僅限 LINE 內建瀏覽器（isInClient）：
     //    外部瀏覽器（電腦/一般手機瀏覽器）的 liff.login 跳轉回跳會遺失 hash 路徑，

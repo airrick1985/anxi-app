@@ -220,6 +220,8 @@ import TwCities from '@/assets/TwCities.json';
 import FormRenderItem from '@/components/FormRenderItem.vue';
 import { formatSalespersons } from '@/utils/salespersonUtils';
 import liff from '@line/liff';
+import { initializeLiff } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 
 const route = useRoute();
 const token = route.params.token as string;
@@ -265,12 +267,12 @@ const initLineLogin = async (): Promise<boolean> => {
   }
 
   try {
-    const liffId = env.VITE_LIFF_ID_FORM;
+    const liffId = LIFF_IDS.form;
     if (!liffId) {
       error.value = 'LIFF 設定缺失，無法繼續';
       return false;
     }
-    await liff.init({ liffId });
+    await initializeLiff(liffId);
 
     if (!liff.isLoggedIn()) {
       // 跳到 LINE 授權，授權完成後 redirect 回當前頁

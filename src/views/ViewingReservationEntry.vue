@@ -56,7 +56,8 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
-import liff from '@line/liff';
+import { initLiffAndEnsureLogin, getLiffProfileOrRelogin } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -80,17 +81,16 @@ const initializeAuth = async () => {
   try {
     // 1. 初始化 LIFF (先做這步，確保能拿到 lineId)
     statusMessage.value = '連接 LINE 服務中...';
-    await liff.init({ liffId: '2008257338-FCbKJ8bB' }); //2008257338-6N3jwqxA 測試 2008257338-FCbKJ8bB 正式
-
-    if (!liff.isLoggedIn()) {
-      console.log('[Entry] LIFF not logged in, redirecting...');
-      statusMessage.value = '正在導向 LINE 登入...';
-      liff.login({ redirectUri: window.location.href });
-      return; 
-    }
+    // 與 bootstrap 共用同一次初始化（含逾時）；未登入或 token 失效時轉址登入一次
+    const loginOptions = {
+      redirectUri: window.location.href,
+      onBeforeLogin: () => { statusMessage.value = '正在導向 LINE 登入...'; },
+    };
+    if (!(await initLiffAndEnsureLogin(LIFF_IDS.viewingReservation, loginOptions))) return;
 
     // 2. 取得 LINE ID
-    const profile = await liff.getProfile();
+    const profile = await getLiffProfileOrRelogin(loginOptions);
+    if (!profile) return;
     const lineId = profile.userId;
     console.log('[Entry] LIFF Profile fetched. User ID:', lineId);
 

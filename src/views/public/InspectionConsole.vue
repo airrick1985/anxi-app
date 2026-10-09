@@ -989,6 +989,8 @@
 import { ref, onMounted, computed, reactive, watch, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import liff from '@line/liff';
+import { initializeLiff } from '@/utils/liffAuth';
+import { LIFF_IDS } from '@/utils/liffApps';
 // PDF 檢視器（含 pdf.js 約 2.6MB）改為開啟預覽時才載入
 const VuePdfEmbed = defineAsyncComponent(() => import('vue-pdf-embed'));
 import { useUserStore } from '@/store/user';
@@ -1583,7 +1585,7 @@ onMounted(async () => {
     }
 
     loadingText.value = '正在與 LINE 連接...';
-    await liff.init({ liffId: '2008257338-QV34v0pb' }); //測試 2008257338-6N3jwqxA //正式 2008257338-QV34v0pb
+    await initializeLiff(LIFF_IDS.inspectionConsole);
 
     if (!liff.isLoggedIn()) {
       liff.login();

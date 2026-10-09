@@ -44,3 +44,11 @@ test('hash 名單 query 在 LINE 登入回跳 URL 中完整保留', () => {
   assert.equal(url.hash, '');
   assert.equal(url.searchParams.get('liff_path'), 'contact?id=a%26b');
 });
+test('初始化失敗不留快取，重試會重新呼叫 SDK；成功後共用同一次', async () => {
+  let calls = 0;
+  const { context } = setup({ init: async () => { calls++; if (calls === 1) throw new Error('network'); } });
+  await assert.rejects(context.initializeLiff('id'), /network/);
+  await context.initializeLiff('id');
+  await context.initializeLiff('id');
+  assert.equal(calls, 2);
+});

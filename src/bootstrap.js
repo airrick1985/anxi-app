@@ -1,4 +1,5 @@
 import { isLeadLiffLaunch, readLeadReportId, legacyLeadReportRedirect, pendingLeadReportCallback, LEAD_REPORT_LIFF_ID } from './utils/leadReportLink';
+import { findLiffLaunch, liffLaunchUrl } from './utils/liffApps';
 
 async function bootstrap() {
   const legacyRedirect = legacyLeadReportRedirect(window.location.href);
@@ -25,6 +26,19 @@ async function bootstrap() {
       url.hash = `/contact?id=${encodeURIComponent(leadId)}`;
       for (const key of ['liff_path', 'liff.state', 'leadReportId']) url.searchParams.delete(key);
       window.history.replaceState(window.history.state, '', url);
+    }
+  } else {
+    // 其他 LIFF 頁：LINE 內開啟時登入憑證在 #access_token=…，hash 路由會把它當成未知頁並改寫，必須先交給 SDK。
+    const launch = findLiffLaunch(window.location.href);
+    if (launch) {
+      const { initializeLiff } = await import('./utils/liffAuth');
+      try {
+        await initializeLiff(launch.liffId);
+      } catch {
+        // 頁面會再初始化一次或顯示可重試錯誤。
+      }
+      const url = liffLaunchUrl(window.location.href, launch.route);
+      if (url) window.history.replaceState(window.history.state, '', url);
     }
   }
   await import('./main');
