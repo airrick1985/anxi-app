@@ -3,6 +3,7 @@ import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useQuoteStore } from '@/store/quoteStore';
 import { isChunkLoadError, recoverFromChunkError } from '@/utils/chunkReload';
+import { prefersMyViewingReservations } from '@/utils/viewingReservationAccess';
 
 
 
@@ -12,6 +13,7 @@ import { DefaultLayout, PublicLayout } from '@/layouts';
 const InspectionManagement = () => import('@/views/InspectionManagement.vue');
 const InspectionConsole = () => import('@/views/public/InspectionConsole.vue');
 const ProjectSelector = () => import('@/views/ProjectSelector.vue');
+const ViewingReservationCalendar = () => import('@/views/ViewingReservationCalendar.vue');
 const MessageCenter = () => import('@/views/MessageCenter.vue');
 const SendMessage = () => import('@/views/SendMessage.vue');
 const MessageDetail = () => import('@/views/MessageDetail.vue');
@@ -913,15 +915,31 @@ const routes = [
       targetRouteName: 'ViewingReservationCalendar',
       // 傳遞的參數名稱
       paramKey: 'projectId'
+    },
+    // 有銷售權限者直接進「我的賞屋預約」；只有櫃台權限者留在建案選擇
+    beforeEnter: () => {
+      if (prefersMyViewingReservations(useUserStore())) return { name: 'MyViewingReservations' };
     }
   },
 
+  // 我的賞屋預約：彙整所有建案中指定銷售為自己的預約
+  {
+    path: '/my-viewing-reservations',
+    name: 'MyViewingReservations',
+    component: ViewingReservationCalendar,
+    props: { personal: true },
+    meta: {
+      requiresAuth: false, // 與行事曆主頁相同：由組件內部檢查登入（LINE 入口登入後導入）
+      layout: DefaultLayout,
+      title: '我的賞屋預約'
+    }
+  },
 
   // ✅ [修改] 賞屋預約系統 - 行事曆主頁
   {
     path: '/viewing-reservation/:projectId',
     name: 'ViewingReservationCalendar',
-    component: () => import('@/views/ViewingReservationCalendar.vue'),
+    component: ViewingReservationCalendar,
     props: true,
     meta: {
       requiresAuth: false, // ⚠️ 關鍵：設為 false，由組件內部檢查狀態

@@ -10,15 +10,15 @@
       <!-- 左側留白避開全站漢堡鈕（fixed 左上 10px＋40px） -->
       <div class="vr-side-head">
         <div class="vr-side-title">賞屋預約</div>
-        <div class="vr-side-project">{{ projectName }}</div>
+        <div class="vr-side-project">{{ scopeLabel }}</div>
       </div>
 
-      <!-- 建案切換（有 客資系統-櫃台 或 客資系統-銷售 權限的建案） -->
-      <section v-if="switchableProjects.length > 1" class="vr-side-section">
-        <div class="vr-side-label">建案</div>
+      <!-- 切換：我的預約（全部建案）／各建案（有 客資系統-櫃台 或 客資系統-銷售 權限的建案） -->
+      <section class="vr-side-section">
+        <div class="vr-side-label">檢視</div>
         <v-select
-          :model-value="props.projectId"
-          :items="switchableProjects"
+          :model-value="scopeValue"
+          :items="scopeOptions"
           item-title="name"
           item-value="id"
           variant="solo"
@@ -29,11 +29,31 @@
           menu-icon="mdi-unfold-more-horizontal"
           :menu-props="{ contentClass: 'mac-menu' }"
           :disabled="isSwitchingProject"
-          @update:model-value="switchProject"
+          @update:model-value="switchScope"
         ></v-select>
       </section>
 
-      <section class="vr-side-section">
+      <!-- 我的預約：依建案篩選 -->
+      <section v-if="isPersonal" class="vr-side-section">
+        <div class="vr-side-label">
+          建案
+          <button type="button" class="vr-side-link" @click="filters.hiddenProjectIds = []">全選</button>
+        </div>
+        <div class="vr-check-list vr-check-list--scroll">
+          <label v-for="p in projectsInData" :key="p.id" class="vr-check-row">
+            <input
+              type="checkbox"
+              class="mac-check"
+              :checked="!filters.hiddenProjectIds.includes(p.id)"
+              @change="toggleProjectFilter(p.id)"
+            >
+            <span class="vr-check-text">{{ p.name }}</span>
+          </label>
+          <div v-if="projectsInData.length === 0" class="vr-side-empty">尚無預約</div>
+        </div>
+      </section>
+
+      <section v-else class="vr-side-section">
         <div class="vr-side-label">
           銷售人員
           <button type="button" class="vr-side-link" @click="filters.salesNames = []">清除</button>
@@ -77,7 +97,7 @@
       </section>
 
       <section v-if="canAccessSettings" class="vr-side-section vr-side-actions">
-        <button type="button" class="mac-btn mac-btn--block" @click="smsSettingsDialog = true">
+        <button v-if="!isPersonal" type="button" class="mac-btn mac-btn--block" @click="smsSettingsDialog = true">
           <v-icon size="16">mdi-message-cog</v-icon>簡訊提醒設定
         </button>
         <button type="button" class="mac-btn mac-btn--block" @click="router.push('/sms-monitor')">
@@ -87,6 +107,7 @@
     </v-navigation-drawer>
 
     <SmsReminderSettingsDialog
+      v-if="!isPersonal"
       v-model="smsSettingsDialog"
       :projectId="projectId"
     />
@@ -99,7 +120,25 @@
         </button>
         <div class="vr-title">
           <div class="vr-title-main">{{ currentTitle }}</div>
-          <div class="vr-title-sub">{{ projectName }}</div>
+          <v-menu location="bottom start" content-class="mac-menu">
+            <template v-slot:activator="{ props: menuProps }">
+              <button type="button" class="vr-scope-btn" :class="{ 'is-mine': isPersonal }" v-bind="menuProps" :disabled="isSwitchingProject">
+                <v-icon size="14">{{ isPersonal ? 'mdi-account-clock' : 'mdi-office-building' }}</v-icon>
+                <span class="vr-scope-text">{{ scopeLabel }}</span>
+                <v-icon size="14">mdi-chevron-down</v-icon>
+              </button>
+            </template>
+            <v-list density="compact">
+              <v-list-item
+                v-for="opt in scopeOptions"
+                :key="opt.id"
+                :title="opt.name"
+                :prepend-icon="opt.id === MINE ? 'mdi-account-clock' : 'mdi-office-building'"
+                :active="opt.id === scopeValue"
+                @click="switchScope(opt.id)"
+              ></v-list-item>
+            </v-list>
+          </v-menu>
         </div>
         <div class="vr-nav">
           <button type="button" class="vr-nav-btn" title="上一頁" @click="goPrev"><v-icon size="18">mdi-chevron-left</v-icon></button>
@@ -155,7 +194,7 @@
           @update:model-value="onSearchSelect"
         >
           <template v-slot:item="{ props: itemProps, item }">
-            <v-list-item v-bind="itemProps" :subtitle="item.raw.customerPhone + '｜負責銷售：' + (item.raw.salesName || '未指定')"></v-list-item>
+            <v-list-item v-bind="itemProps" :subtitle="item.raw.customerPhone + (isPersonal ? '｜' + projectNameOf(item.raw.projectId) : '｜負責銷售：' + (item.raw.salesName || '未指定'))"></v-list-item>
           </template>
         </v-autocomplete>
         <template v-else>
@@ -197,7 +236,7 @@
               <span class="vr-msearch-dot" :style="{ background: TYPE_COLORS[resolveTypeKey(res.type)].border }"></span>
               <span class="vr-msearch-main">
                 <span class="vr-msearch-title">{{ res.customerName }}　{{ res.customerPhone }}</span>
-                <span class="vr-msearch-sub">{{ formatDate(res.reservationTime) }}｜{{ res.salesName || '未指定' }}</span>
+                <span class="vr-msearch-sub">{{ formatDate(res.reservationTime) }}｜{{ isPersonal ? projectNameOf(res.projectId) : (res.salesName || '未指定') }}</span>
               </span>
             </button>
             <div v-if="filteredSearchItems.length === 0" class="vr-msearch-empty">找不到相符的預約</div>
@@ -226,6 +265,7 @@
     <ViewingReservationDialog
       v-model="showDialog"
       :projectId="projectId"
+      :project-selectable="isPersonal"
       :initialData="selectedReservation"
       :initialDate="selectedDate"
       @saved="fetchData"
@@ -276,9 +316,15 @@ import zhTwLocale from '@fullcalendar/core/locales/zh-tw';
 import ViewingReservationDialog from '@/components/ViewingReservationDialog.vue';
 import SmsReminderSettingsDialog from '@/components/SmsReminderSettingsDialog.vue';
 import { getTaiwanHoliday, holidaysRevision } from '@/utils/taiwanHolidays';
+import { getViewingProjects } from '@/utils/viewingReservationAccess';
 
 
-const props = defineProps({ projectId: { type: String, required: true } });
+// personal：我的賞屋預約（彙整所有建案中指定銷售為自己的預約）
+const props = defineProps({
+    projectId: { type: String, default: null },
+    personal: { type: Boolean, default: false }
+});
+const isPersonal = computed(() => props.personal);
 const router = useRouter();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
@@ -347,7 +393,8 @@ const defaultSalesNames = computed(() => {
   return currentUserName ? [currentUserName] : [];
 });
 
-const filters = ref({ type: ['新客', '回訪', '簽約', '__other__'], salesNames: [] });
+// hiddenProjectIds 用排除法：重新載入後新出現的建案預設顯示
+const filters = ref({ type: ['新客', '回訪', '簽約', '__other__'], salesNames: [], hiddenProjectIds: [] });
 
 // 預設預約類型；非預設類型（如「已購客」自訂值）統一歸為 '__other__'
 const PREDEFINED_RESERVATION_TYPES = ['新客', '回訪', '簽約'];
@@ -382,15 +429,17 @@ function renderEventContent(arg) {
     };
     const who = `${r.unitId ? r.unitId + ' ' : ''}${r.customerName || ''}`;
     const sales = r.salesName || '未指派';
+    // 我的預約：銷售都是自己，改標示建案
+    const prefix = isPersonal.value ? `【${projectNameOf(r.projectId)}】` : '';
     if (arg.view.type === 'dayGridMonth') {
         // 月視圖格子窄：類型以顏色表示、備註點開再看
         root.classList.add('vr-ev--month');
         add('vr-ev-time', arg.timeText);
-        add('vr-ev-name', `${who}（${sales}）`);
+        add('vr-ev-name', isPersonal.value ? `${prefix}${who}` : `${who}（${sales}）`);
     } else {
         if (arg.view.type !== 'listWeek') add('vr-ev-time', arg.timeText);
-        add('vr-ev-name', who);
-        add('vr-ev-meta', `${sales}・${r.type}`);
+        add('vr-ev-name', `${prefix}${who}`);
+        add('vr-ev-meta', isPersonal.value ? r.type : `${sales}・${r.type}`);
         add('vr-ev-note', r.note);
     }
     return { domNodes: [root] };
@@ -458,29 +507,43 @@ function renderListDayHeader(arg) {
     return { domNodes: [wrap] };
 }
 
-const projectName = computed(() => projectStore.idToNameMap[props.projectId] || props.projectId);
+const projectNameOf = (id) => projectStore.idToNameMap[id] || id || '';
+const projectName = computed(() => (isPersonal.value ? '' : projectNameOf(props.projectId)));
 
-// ✅ 可切換建案：使用者具備「客資系統-櫃台」或「客資系統-銷售」權限的建案
-const switchableProjects = computed(() => {
-    return projectStore.projectsList.filter(project =>
-        userStore.hasProjectPermission('客資系統-櫃台', project.name) ||
-        userStore.hasProjectPermission('客資系統-銷售', project.name)
-    );
-});
+// ✅ 檢視切換：我的預約（全部建案）＋具「客資系統-櫃台」或「客資系統-銷售」權限的建案
+const MINE = '__mine__';
+const scopeValue = computed(() => (isPersonal.value ? MINE : props.projectId));
+const scopeLabel = computed(() => (isPersonal.value ? '我的預約・全部建案' : projectName.value));
+const scopeOptions = computed(() => [
+    { id: MINE, name: '我的預約（全部建案）' },
+    ...getViewingProjects(userStore, projectStore)
+]);
 
 const isSwitchingProject = ref(false);
-async function switchProject(newProjectId) {
-    if (!newProjectId || newProjectId === props.projectId) return;
+async function switchScope(value) {
+    if (!value || value === scopeValue.value) return;
     isSwitchingProject.value = true;
     try {
-        await router.push({
-            name: 'ViewingReservationCalendar',
-            params: { projectId: newProjectId }
-        });
+        await router.push(value === MINE
+            ? { name: 'MyViewingReservations' }
+            : { name: 'ViewingReservationCalendar', params: { projectId: value } });
         if (xs.value) drawer.value = false;
     } finally {
         isSwitchingProject.value = false;
     }
+}
+
+// 我的預約：資料中出現的建案（側欄篩選用）
+const projectsInData = computed(() => {
+    const ids = [...new Set(reservationStore.activeReservations.map(r => r.projectId).filter(Boolean))];
+    return ids
+        .map(id => ({ id, name: projectNameOf(id) }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+});
+
+function toggleProjectFilter(id) {
+    const hidden = filters.value.hiddenProjectIds;
+    filters.value.hiddenProjectIds = hidden.includes(id) ? hidden.filter(x => x !== id) : [...hidden, id];
 }
 const allSalesPeople = computed(() => {
     const names = reservationStore.activeReservations.map(res => res.salesName);
@@ -492,15 +555,18 @@ const calendarEvents = computed(() => {
         .filter(res => {
             const typeKey = resolveTypeKey(res.type);
             const typeMatch = filters.value.type.includes(typeKey);
+            if (isPersonal.value) return typeMatch && !filters.value.hiddenProjectIds.includes(res.projectId);
             const salesMatch = filters.value.salesNames.length === 0 || filters.value.salesNames.includes(res.salesName);
             return typeMatch && salesMatch;
         })
         .map(res => {
             const start = res.reservationTime.toDate();
             const colors = TYPE_COLORS[resolveTypeKey(res.type)] || TYPE_COLORS['__other__'];
+            const who = `${res.unitId ? res.unitId + ' ' : ''}${res.customerName}`;
+            const head = isPersonal.value ? `【${projectNameOf(res.projectId)}】${who}` : `${who}(${res.salesName || '未指派'})`;
             return {
                 id: res.id,
-                title: `${res.unitId ? res.unitId + ' ' : ''}${res.customerName}(${res.salesName || '未指派'})-${res.type}${res.note ? ' ' + res.note : ''}`,
+                title: `${head}-${res.type}${res.note ? ' ' + res.note : ''}`,
                 start: start,
                 end: new Date(start.getTime() + 90 * 60000),
                 backgroundColor: colors.bg,
@@ -614,7 +680,17 @@ const goToday = () => calendarRef.value.getApi().today();
 const goPrev = () => calendarRef.value.getApi().prev();
 const goNext = () => calendarRef.value.getApi().next();
 const changeView = (view) => calendarRef.value.getApi().changeView(view);
-const fetchData = () => reservationStore.fetchReservations(props.projectId);
+const fetchData = () => (isPersonal.value
+    ? reservationStore.fetchMyReservations(userStore.user?.key)
+    : reservationStore.fetchReservations(props.projectId));
+
+// 載入資料並重設篩選（銷售人員依權限預設；建案全部顯示）
+async function loadScope() {
+    reservationStore.reservations = []; // 避免短暫顯示上一個建案的預約
+    await fetchData();
+    filters.value.salesNames = isPersonal.value ? [] : defaultSalesNames.value;
+    filters.value.hiddenProjectIds = [];
+}
 
 onMounted(async () => {
     if (!userStore.isLoggedIn) {
@@ -623,17 +699,13 @@ onMounted(async () => {
     }
     // ✅ 確保建案清單已載入（供建案切換下拉使用）
     await projectStore.fetchProjects();
-    await fetchData();
-
-    // ✅ 新增：根據權限初始化銷售人員篩選
-    filters.value.salesNames = defaultSalesNames.value;
+    await loadScope();
 });
 
-// ✅ 切換建案時：重新載入預約資料並重設銷售人員篩選
-watch(() => props.projectId, async (newId, oldId) => {
-    if (!newId || newId === oldId) return;
-    await fetchData();
-    filters.value.salesNames = defaultSalesNames.value;
+// ✅ 切換建案／我的預約時（同一個頁面元件會被重用）：重新載入預約資料並重設篩選
+watch(scopeValue, async (newVal, oldVal) => {
+    if (!newVal || newVal === oldVal || !userStore.isLoggedIn) return;
+    await loadScope();
 });
 
 const searchQuery = ref('');
@@ -655,6 +727,7 @@ function closeMobileSearch() {
 const searchItems = computed(() => {
     return reservationStore.activeReservations.map(res => ({
         ...res,
+        ...(isPersonal.value ? { projectName: projectNameOf(res.projectId) } : {}),
         searchLabel: `${res.customerName} (${res.customerPhone})`
     }));
 });
@@ -699,7 +772,8 @@ const filteredSearchItems = computed(() => {
 
 function onSearchSelect(res) {
     if (!res) return;
-    selectedReservation.value = { ...res };
+    // 用原始預約資料開啟（不帶 searchLabel 等搜尋用欄位，避免寫回資料庫）
+    selectedReservation.value = { ...(reservationStore.reservations.find(r => r.id === res.id) || res) };
     showDialog.value = true;
     const dateObj = res.reservationTime.toDate ? res.reservationTime.toDate() : new Date(res.reservationTime);
     syncCalendarDate(dateObj);
@@ -752,7 +826,9 @@ function showDaySummary(dateStr) {
     });
     const breakdown = {};
     events.forEach(e => {
-        const name = e.extendedProps.salesName || '未指派';
+        const name = isPersonal.value
+            ? projectNameOf(e.extendedProps.projectId)
+            : (e.extendedProps.salesName || '未指派');
         breakdown[name] = (breakdown[name] || 0) + 1;
     });
     daySummaryTitle.value = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')} 預約分佈`;
@@ -869,7 +945,27 @@ $mac-red: #ff3b30;
 .vr-bar--inset { padding-left: 58px; }
 .vr-title { flex: 1 1 auto; min-width: 0; }
 .vr-title-main { font-size: 20px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-.vr-title-sub { font-size: 12px; color: $mac-secondary; line-height: 1.35; overflow-wrap: anywhere; }
+/* 標題下方：檢視切換（我的預約／各建案） */
+.vr-scope-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  margin: 2px 0 0 -6px;
+  padding: 2px 8px 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: $mac-accent;
+  font: 500 12.5px $mac-font;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  &:hover { background: rgba(0, 113, 227, 0.08); }
+  &:disabled { opacity: 0.5; cursor: default; }
+  &.is-mine { background: rgba(0, 113, 227, 0.1); font-weight: 600; }
+}
+.vr-scope-text { min-width: 0; overflow-wrap: anywhere; }
 .vr-tool-icon { width: 32px; height: 32px; }
 .vr-tool-icon.is-on { background: rgba(0, 113, 227, 0.12); color: $mac-accent; }
 
@@ -1144,7 +1240,7 @@ $mac-red: #ff3b30;
 @media (max-width: 599.98px) {
   .vr-bar { min-height: 56px; padding: 8px 12px 6px 58px; }
   .vr-title-main { font-size: 17px; }
-  .vr-title-sub { font-size: 11.5px; }
+  .vr-scope-btn { font-size: 12px; }
   .vr-nav { height: 32px; }
   .vr-nav-btn { min-width: 32px; font-size: 14px; }
   .vr-nav-today { padding: 0 10px; }

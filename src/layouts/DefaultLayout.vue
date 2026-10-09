@@ -37,7 +37,7 @@
             :to="entry.nav"
             class="drawer-feature-entry"
             color="primary"
-            @click="drawerOpen = false"
+            @click="drawerOpen = false; dismissHighlight(entry)"
           >
             <template #prepend>
               <v-badge
@@ -234,6 +234,7 @@ import { appVersion as versionString } from '@/version';
 import anxiLogo from '@/assets/images/anxi-logo-full.webp';
 import { useAutoLogout } from '../composables/useAutoLogout';
 import { useHomeFeatures } from '@/composables/useHomeFeatures';
+import { useNewFeatureHighlight } from '@/composables/useNewFeatureHighlight';
 
 // 引入我們的新元件
 const AiAssistant = defineAsyncComponent(() => import('../components/AiAssistant.vue'));
@@ -245,6 +246,7 @@ const userStore = useUserStore();
 const uiStore = useUiStore();
 const { user, unreadCount } = storeToRefs(userStore);
 const { navigationEntries } = useHomeFeatures();
+const { dismiss: dismissHighlight } = useNewFeatureHighlight();
 const isTrialUser = computed(() => userStore.isTrialUser);
 
 // 試用提示條（sessionStorage 記住已關閉）

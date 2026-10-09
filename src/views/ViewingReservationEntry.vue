@@ -16,8 +16,16 @@
       <div v-else class="vre-select">
         <div class="vre-heading">
           <div class="vre-title">賞屋預約</div>
-          <div class="vre-sub">請選擇建案</div>
         </div>
+        <button type="button" class="vre-mine" @click="goMine">
+          <span class="vre-mine-icon"><v-icon size="22">mdi-account-clock</v-icon></span>
+          <span class="vre-mine-main">
+            <span class="vre-mine-title">我的預約</span>
+            <span class="vre-mine-sub">所有建案</span>
+          </span>
+          <v-icon size="20" class="vre-mine-chevron">mdi-chevron-right</v-icon>
+        </button>
+        <div class="vre-sub vre-sub--list">或選擇建案</div>
         <div class="mac-form-group vre-list">
           <button
             v-for="project in availableProjects"
@@ -43,6 +51,7 @@ import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { initLiffAndEnsureLogin, getLiffProfileOrRelogin } from '@/utils/liffAuth';
 import { LIFF_IDS } from '@/utils/liffApps';
+import { getViewingProjects, prefersMyViewingReservations } from '@/utils/viewingReservationAccess';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -115,49 +124,23 @@ const processPermissions = async () => {
   }
   console.log('[Entry] Project list loaded. Count:', projectStore.projectsList.length);
 
-  const allowedProjects = [];
-  const targetSystems = ['客資系統-櫃台', '客資系統-銷售'];  
-  const userPermissions = userStore.user?.permissions || {}; // 取得使用者權限物件
-
-  console.log('[Entry] Target Systems:', targetSystems);
-  console.log('[Entry] User Permissions Object:', userPermissions); 
-
-  // 2. 直接遍歷使用者的權限表
-  Object.keys(userPermissions).forEach(projectId => {
-      const projectPerm = userPermissions[projectId];
-      const systems = projectPerm.systems || [];
-      
-      console.log(`--- Checking Project: ${projectId} ---`);
-      console.log(`    Systems:`, systems);
-
-      // 檢查此建案下是否有目標權限
-      const hasAccess = targetSystems.some(sys => systems.includes(sys));
-      console.log(`    Has Access?`, hasAccess);
-
-      if (hasAccess) {
-          // 嘗試從 projectStore 取得最新名稱，若無則使用權限檔中的備份名稱
-          const fullProjectData = projectStore.projectsList.find(p => p.id === projectId);
-          const name = fullProjectData ? fullProjectData.name : (projectPerm.projectName || projectId);
-
-          allowedProjects.push({
-              id: projectId,
-              name: name
-          });
-      }
-  });
-
+  // 2. 具「客資系統-櫃台」或「客資系統-銷售」權限的建案
+  const allowedProjects = getViewingProjects(userStore, projectStore);
   console.log('[Entry] Final Allowed Projects:', allowedProjects);
 
   // 3. 判斷結果
   if (allowedProjects.length === 0) {
     console.warn('[Entry] No allowed projects found. Showing error.');
-    errorMessage.value = '您目前沒有任何建案的「報價系統」或「銷控系統」權限。';
+    errorMessage.value = '您目前沒有任何建案的「客資系統-櫃台」或「客資系統-銷售」權限。';
     isLoading.value = false;
     return;
   }
 
-  // 分流邏輯
-  if (allowedProjects.length === 1) {
+  // 分流邏輯：有銷售權限 → 我的賞屋預約；只有櫃台權限 → 單一建案直接進入，多個建案顯示選單
+  if (prefersMyViewingReservations(userStore)) {
+    statusMessage.value = '正在進入我的預約...';
+    goMine();
+  } else if (allowedProjects.length === 1) {
     console.log('[Entry] Only 1 project found. Auto-redirecting to:', allowedProjects[0].name);
     // 只有一個建案 -> 自動跳轉
     statusMessage.value = `正在進入 ${allowedProjects[0].name}...`;
@@ -169,6 +152,10 @@ const processPermissions = async () => {
     isLoading.value = false; // 停止 Loading，顯示選單 UI
   }
   console.log('>>> [Entry] processPermissions END <<<');
+};
+
+const goMine = () => {
+  router.replace({ name: 'MyViewingReservations' });
 };
 
 const selectProject = (projectId) => {
@@ -217,6 +204,42 @@ const retryLogin = () => {
 .vre-heading { margin: 0 4px 12px; }
 .vre-title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .vre-sub { margin-top: 2px; font-size: 13px; color: #6e6e73; }
+.vre-sub--list { margin: 18px 4px 8px; }
+
+/* 我的預約：建案清單上方的醒目入口 */
+.vre-mine {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 72px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2b8cf2, #0a6fdc);
+  color: #fff;
+  font-family: inherit;
+  text-align: left;
+  box-shadow: 0 8px 22px rgba(0, 113, 227, 0.28);
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.vre-mine:hover { box-shadow: 0 10px 26px rgba(0, 113, 227, 0.36); }
+.vre-mine:active { transform: scale(0.98); }
+.vre-mine-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.2);
+}
+.vre-mine-main { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
+.vre-mine-title { font-size: 17px; font-weight: 700; line-height: 1.3; }
+.vre-mine-sub { font-size: 13px; opacity: 0.88; line-height: 1.4; }
+.vre-mine-chevron { flex-shrink: 0; opacity: 0.85; }
 
 .vre-item {
   display: flex;

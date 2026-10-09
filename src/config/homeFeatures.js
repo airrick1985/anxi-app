@@ -12,6 +12,7 @@ import customerIcon from '@/assets/icons/customer.png';
 import blueprintIcon from '@/assets/icons/blueprint.png';
 import inspectionCalenderIcon from '@/assets/icons/inspection-calender .png';
 import reservationCalenderIcon from '@/assets/icons/reservation-calender.png';
+import scheduleIcon from '@/assets/icons/schedule.png';
 import profileIcon from '@/assets/icons/profile.png';
 import SMSIcon from '@/assets/icons/SMS.png';
 import fileIcon from '@/assets/icons/file.png';
@@ -76,7 +77,16 @@ export const homeFeatures = [
     icon: reservationCalenderIcon, 
     permissionType: 'anySystem', // 使用 'anySystem'
     permissionArgs: ['客資系統-櫃台', '客資系統-銷售'], // 檢查這兩個權限
-    nav: { name: 'ViewingReservationCalendarEntry' } // 導向新的路由入口
+    nav: { name: 'ViewingReservationCalendarEntry' } // 導向新的路由入口（有銷售權限者由路由轉往「我的賞屋預約」）
+  },
+  {
+    id: 'myViewingReservation',
+    text: '我的賞屋',
+    icon: scheduleIcon,
+    permissionType: 'anySystem',
+    permissionArgs: ['客資系統-銷售'],
+    nav: { name: 'MyViewingReservations' }, // 彙整所有建案中指定銷售為自己的預約
+    newForDays: 14 // 新功能高亮：每人首次看到起 14 天，點過即取消
   },
 
   {

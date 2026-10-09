@@ -23,6 +23,28 @@
       <v-card-text class="mac-form vr-dlg-body">
         <v-form ref="formRef" v-model="valid" @submit.prevent="save">
           <div class="mac-form-group">
+            <div v-if="projectSelectable" class="vr-field-row">
+              <div class="vr-field-label">建案</div>
+              <div class="vr-field-main">
+                <v-select
+                  :model-value="selectedProjectId"
+                  :items="projectOptions"
+                  item-title="name"
+                  item-value="id"
+                  placeholder="請選擇建案"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  hide-details="auto"
+                  class="mac-vfield"
+                  menu-icon="mdi-unfold-more-horizontal"
+                  :menu-props="{ contentClass: 'mac-menu' }"
+                  :rules="[v => !!v || '請選擇建案']"
+                  @update:model-value="onProjectChange"
+                ></v-select>
+              </div>
+            </div>
+
             <div class="vr-field-row">
               <div class="vr-field-label">預約時間</div>
               <div class="vr-field-main">
@@ -63,6 +85,17 @@
 
                 <div v-if="holidayName" class="vr-holiday-tag">
                   <v-icon size="14">mdi-flag-variant</v-icon>國定假日・{{ holidayName }}
+                </div>
+
+                <!-- 撞期提醒：指定銷售在所有建案前後 1 小時內的預約 -->
+                <div v-if="timeConflicts.length" class="mac-callout mac-callout--warning vr-clash">
+                  <v-icon size="16">mdi-calendar-alert</v-icon>
+                  <div class="vr-clash-main">
+                    <div class="vr-strong">{{ conflictSalesName }} 此時段已有預約</div>
+                    <div v-for="c in timeConflicts" :key="c.id" class="vr-clash-row">
+                      {{ formatShortDate(c.reservationTime) }}｜{{ projectNameOf(c.projectId) }}｜{{ c.customerName }}・{{ c.type }}
+                    </div>
+                  </div>
                 </div>
 
                 <div v-if="isEditingTime" class="native-dt-actions">
@@ -245,7 +278,7 @@
         <button
           type="button"
           class="mac-btn mac-btn--primary vr-save-btn"
-          :disabled="saving || !valid || !formData.reservationTime"
+          :disabled="saving || !valid || !formData.reservationTime || !activeProjectId"
           @click="save"
         >
           <v-progress-circular v-if="saving" indeterminate size="14" width="2"></v-progress-circular>
@@ -461,6 +494,7 @@ import { format } from 'date-fns';
 import { useToast } from 'vue-toastification';
 import ViewingReservationSavedCard from '@/components/ViewingReservationSavedCard.vue';
 import { getTaiwanHoliday } from '@/utils/taiwanHolidays';
+import { getViewingProjects } from '@/utils/viewingReservationAccess';
 
 // ===== 原生 datetime-local 轉換工具 =====
 
@@ -535,7 +569,8 @@ const props = defineProps({
   modelValue: Boolean,
   projectId: String,
   initialData: { type: Object, default: () => ({}) },
-  initialDate: Date // ✅ [新增] 接收外部傳入的預設時間
+  initialDate: Date, // ✅ [新增] 接收外部傳入的預設時間
+  projectSelectable: Boolean // 個人賞屋預約：新增／編輯時可選建案
 });
 
 
@@ -547,10 +582,28 @@ const userStore = useUserStore();
 const projectStore = useProjectStore(); // 用於查找建案名稱以驗證權限
 const salesDataStore = useSalesDataStore(); // 戶別/銷控資料
 
+// ===== 建案（個人賞屋預約可選）=====
+const selectedProjectId = ref(null);
+const activeProjectId = computed(() => (props.projectSelectable ? selectedProjectId.value : props.projectId) || null);
+const originalProjectId = computed(() => props.initialData?.projectId || null);
+// 編輯時改到其他建案：比照新增預約重新檢查電話與客戶歸屬
+const projectChanged = computed(() => isEdit.value && !!originalProjectId.value && activeProjectId.value !== originalProjectId.value);
+
+const projectOptions = computed(() => {
+    const list = getViewingProjects(userStore, projectStore);
+    const current = originalProjectId.value;
+    if (current && !list.some(p => p.id === current)) {
+        list.push({ id: current, name: projectStore.idToNameMap[current] || current });
+    }
+    return list;
+});
+
+const projectNameOf = (id) => projectStore.idToNameMap[id] || id || '';
+
 // ===== 戶別（簽約用）=====
 const projectHouseholds = computed(() => {
-    if (!props.projectId) return [];
-    const data = salesDataStore.getProjectData(props.projectId);
+    if (!activeProjectId.value) return [];
+    const data = salesDataStore.getProjectData(activeProjectId.value);
     return data?.households || [];
 });
 
@@ -587,8 +640,8 @@ const onUnitSelected = (newUnitId) => {
 
 // 簽約時預載戶別資料（store 內建快取，重複呼叫不會重複拉資料）
 const ensureHouseholdsLoaded = () => {
-    if (!props.projectId) return;
-    salesDataStore.loadProjectData(props.projectId);
+    if (!activeProjectId.value) return;
+    salesDataStore.loadProjectData(activeProjectId.value);
 };
 
 // --- 新增與調整的狀態 ---
@@ -599,18 +652,18 @@ const leadInfo = ref(null);          // ✅ 儲存匹配到的聯絡名單歸屬
 
 // 取得當前建案名稱
 const currentProjectName = computed(() => {
-    return projectStore.idToNameMap[props.projectId] || '本建案';
+    return projectStore.idToNameMap[activeProjectId.value] || '本建案';
 });
 
 // --- 核心邏輯：失去焦點檢查 ---
 const handlePhoneBlur = async () => {
   const phone = formData.value.customerPhone;
 
-  // 1. 基本校驗：10碼且非編輯模式
-  if (phone && /^09\d{8}$/.test(phone) && !isEdit.value) {
+  // 1. 基本校驗：10碼且為新增（或編輯時改到其他建案）
+  if (activeProjectId.value && phone && /^09\d{8}$/.test(phone) && (!isEdit.value || projectChanged.value)) {
 
      // A. 檢查是否已有「現有預約」 (原有機制)
-     const resResult = await reservationStore.checkPhoneConflict(props.projectId, phone);
+     const resResult = await reservationStore.checkPhoneConflict(activeProjectId.value, phone);
      if (resResult) {
          conflictInfo.value = resResult; // ✅ 確保資料先賦值
          await nextTick(); // ✅ 確保 DOM 更新完成
@@ -620,8 +673,8 @@ const handlePhoneBlur = async () => {
 
      // B. 檢查「客資資料庫」與「聯絡名單」歸屬（並行查詢）
      const [vipResult, leadResult] = await Promise.all([
-         reservationStore.checkVipGuestPhone(props.projectId, phone),
-         reservationStore.checkLeadAssignee(props.projectId, phone)
+         reservationStore.checkVipGuestPhone(activeProjectId.value, phone),
+         reservationStore.checkLeadAssignee(activeProjectId.value, phone)
      ]);
      vipGuestInfo.value = vipResult;
      leadInfo.value = leadResult;
@@ -680,7 +733,7 @@ const isRestrictedSalesUser = computed(() => {
     if (!userStore.user) return false;
     const roles = userStore.user?.roles || [];
     if (roles.includes('系統管理員') || roles.includes('超級管理員')) return false;
-    const systems = userStore.user?.permissions?.[props.projectId]?.systems || [];
+    const systems = userStore.user?.permissions?.[activeProjectId.value]?.systems || [];
     if (systems.includes('客資系統-櫃台')) return false;
     return systems.includes('客資系統-銷售');
 });
@@ -780,7 +833,7 @@ const tempHiddenIds = ref([]); // 暫存編輯中的隱藏名單
 // 判斷是否擁有「銷控系統」權限
 const canManageSales = computed(() => {
     // 透過 projectId 查找完整建案名稱 (Store 中 idToNameMap)
-    const fullProjectName = projectStore.idToNameMap[props.projectId] || props.projectId;
+    const fullProjectName = projectStore.idToNameMap[activeProjectId.value] || activeProjectId.value;
     return userStore.hasProjectPermission('銷控系統', fullProjectName);
 });
 
@@ -788,7 +841,7 @@ const canManageSales = computed(() => {
 const canDeleteConflictReservation = computed(() => {
     if (!conflictInfo.value || !userStore.user) return false;
 
-    const fullProjectName = projectStore.idToNameMap[props.projectId] || props.projectId;
+    const fullProjectName = projectStore.idToNameMap[activeProjectId.value] || activeProjectId.value;
     const currentUserId = userStore.user.key; // 當前用戶 ID
     const reservationSalesId = conflictInfo.value.salesId; // 既有預約的銷售人員 ID
 
@@ -803,6 +856,11 @@ const canDeleteConflictReservation = computed(() => {
 
 // 下拉選單使用 "可見" 的名單
 const visibleSalesOptions = computed(() => {
+    // 尚未選建案（或名單仍是其他建案的）時只能「不指定」
+    if (!activeProjectId.value || reservationStore.currentSalesListProjectId !== activeProjectId.value) {
+        return [{ id: null, name: '不指定', phone: '' }];
+    }
+
     // 1. 取得目前「未被隱藏」的業務員
     let list = reservationStore.visibleSalesList.map(s => ({
         id: s.id,
@@ -837,17 +895,73 @@ const phoneRules = [
   v => /^09\d{8}$/.test(v) || '格式錯誤 (需為09開頭10碼)'
 ];
 
-// ... (watch, handlePhoneBlur, resolveConflict, confirmDelete, closeDialog, formatDate 保持不變) ...
+// 目前用戶在本案可見銷售名單中 → 回傳自己的 ID，否則 null（對應「不指定」）
+const selfSalesId = () => {
+    const currentUserId = userStore.user?.key;
+    if (!currentUserId || !activeProjectId.value) return null;
+    return reservationStore.visibleSalesList.some(s => s.id === currentUserId) ? currentUserId : null;
+};
+
+// 切換建案：重新載入該案銷售名單；原指定銷售不在新建案就改回自己，戶別清空，並依新建案重新檢查電話
+const onProjectChange = async (newId) => {
+    if (!newId || newId === selectedProjectId.value) return;
+    selectedProjectId.value = newId;
+    formData.value.unitId = '';
+    conflictInfo.value = null;
+    vipGuestInfo.value = null;
+    leadInfo.value = null;
+    pendingInits.value++;
+    try {
+        initStatus.value = '載入銷售名單...';
+        await reservationStore.fetchProjectSales(newId);
+        if (selectedProjectId.value !== newId) return;
+        const keep = formData.value.salesId && reservationStore.salesList.some(s => s.id === formData.value.salesId);
+        if (!keep) formData.value.salesId = selfSalesId();
+        if (formData.value.type === '簽約') ensureHouseholdsLoaded();
+    } finally {
+        pendingInits.value--;
+    }
+    if (selectedProjectId.value === newId) await handlePhoneBlur();
+};
+
+// ===== 撞期提醒：指定銷售在所有建案前後 1 小時內的其他預約 =====
+const timeConflicts = ref([]);
+let timeConflictSeq = 0;
+watch(
+    () => [props.modelValue, formData.value.reservationTime, formData.value.salesId],
+    async ([open, time, salesId]) => {
+        const seq = ++timeConflictSeq;
+        if (!open || !time || !salesId) {
+            timeConflicts.value = [];
+            return;
+        }
+        const list = await reservationStore.findSalesTimeConflicts(salesId, time, props.initialData?.id || null);
+        if (seq === timeConflictSeq) timeConflicts.value = list;
+    }
+);
+
+const conflictSalesName = computed(() => {
+    const s = reservationStore.salesList.find(x => x.id === formData.value.salesId);
+    return s?.name || timeConflicts.value[0]?.salesName || '指定銷售';
+});
 
 // ✅ 優化後的初始化監控邏輯
 watch(() => props.modelValue, async (val) => {
   if (val) {
     savedReservation.value = null;
     conflictInfo.value = null; // 清除上次開啟殘留的重複預約提示
+    timeConflicts.value = [];
     pendingInits.value++;
     try {
+      if (props.projectSelectable) {
+        // 編輯帶原建案；新增時只有一個建案就直接選好，否則請使用者自己選，避免約錯建案
+        const options = projectOptions.value;
+        selectedProjectId.value = isEdit.value
+          ? originalProjectId.value
+          : (options.length === 1 ? options[0].id : null);
+      }
       initStatus.value = '資料連線中...';
-      await reservationStore.fetchProjectSales(props.projectId);
+      await reservationStore.fetchProjectSales(activeProjectId.value);
 
       if (isEdit.value) {
         const d = props.initialData;
@@ -863,28 +977,13 @@ watch(() => props.modelValue, async (val) => {
           customType.value = '';
         }
       } else {
-        // ✅ 新增模式：優化指定銷售欄位預設值
-        let defaultSalesId = null;
-
-        // 取得當前用戶的 ID
-        const currentUserId = userStore.user?.key;
-
-        // 從可見銷售列表中查找當前用戶
-        if (currentUserId) {
-          const currentUserInSales = reservationStore.visibleSalesList.find(s => s.id === currentUserId);
-          if (currentUserInSales) {
-            defaultSalesId = currentUserId; // 若用戶在列表中，設為當前用戶
-          }
-          // 若不在列表中，defaultSalesId 保持 null（對應"不指定"）
-        }
-
         formData.value = {
           customerName: props.initialData?.customerName || '',
           customerPhone: props.initialData?.customerPhone || '',
           note: props.initialData?.note || '',
           reservationTime: props.initialDate || null,
           type: '新客',
-          salesId: defaultSalesId,
+          salesId: selfSalesId(), // ✅ 新增模式：指定銷售預設為自己
           unitId: ''
         };
         customType.value = '';
@@ -937,7 +1036,7 @@ const toggleVisibility = (id) => {
 };
 
 const saveSettings = async () => {
-    await reservationStore.updateSalesVisibility(props.projectId, tempHiddenIds.value);
+    await reservationStore.updateSalesVisibility(activeProjectId.value, tempHiddenIds.value);
     settingsDialog.value = false;
 };
 
@@ -950,13 +1049,13 @@ const save = async () => {
         return;
     }
 
-    // ✅ [搶客防護] 受限銷售新增預約時，儲存前強制重查歸屬（防止略過失焦提醒直接送出）
-    if (!isEdit.value && isRestrictedSalesUser.value) {
+    // ✅ [搶客防護] 受限銷售新增預約（或改到其他建案）時，儲存前強制重查歸屬（防止略過失焦提醒直接送出）
+    if ((!isEdit.value || projectChanged.value) && isRestrictedSalesUser.value) {
         const phone = formData.value.customerPhone;
         if (phone && /^09\d{8}$/.test(phone)) {
             const [vipResult, leadResult] = await Promise.all([
-                reservationStore.checkVipGuestPhone(props.projectId, phone),
-                reservationStore.checkLeadAssignee(props.projectId, phone)
+                reservationStore.checkVipGuestPhone(activeProjectId.value, phone),
+                reservationStore.checkLeadAssignee(activeProjectId.value, phone)
             ]);
             vipGuestInfo.value = vipResult;
             leadInfo.value = leadResult;
@@ -993,8 +1092,8 @@ const save = async () => {
         : '';
 
     const payload = {
-        projectId: props.projectId,
         ...formData.value,
+        projectId: activeProjectId.value, // 放在展開之後：編輯改建案時覆蓋原建案
         type: finalType,
         unitId: finalUnitId,
         salesName: sName,
@@ -1010,17 +1109,14 @@ const save = async () => {
 
     try {
         let reservationId = props.initialData?.id;
-        if (isEdit.value) {
-            const result = await reservationStore.updateReservation(reservationId, payload);
-            if (!result?.success) throw new Error(result?.error || '未知錯誤');
-        } else {
-            const result = await reservationStore.addReservation(payload);
-            if (!result?.success) throw new Error(result?.error || '未知錯誤');
-            reservationId = result.id;
-            // ✅ [新客自動建名單] 提醒使用者：新電話已自動建立名單並分配給指定銷售
-            if (result.autoAssignedLead) {
-                toast.success(`已完成預約｜此電話為新客戶，名單已自動分配給 ${result.autoAssignedLead.salesName}`, { timeout: 6000 });
-            }
+        const result = isEdit.value
+            ? await reservationStore.updateReservation(reservationId, payload)
+            : await reservationStore.addReservation(payload);
+        if (!result?.success) throw new Error(result?.error || '未知錯誤');
+        if (!isEdit.value) reservationId = result.id;
+        // ✅ [新客自動建名單] 提醒使用者：新電話已自動建立名單並分配給指定銷售（改到其他建案時亦同）
+        if (result.autoAssignedLead) {
+            toast.success(`已完成預約｜此電話為新客戶，名單已自動分配給 ${result.autoAssignedLead.salesName}`, { timeout: 6000 });
         }
        emit('saved', payload);
         savedReservation.value = {
@@ -1063,6 +1159,12 @@ const formatDate = (ts) => {
     if (!ts) return '';
     const date = ts.toDate ? ts.toDate() : new Date(ts);
     return format(date, 'yyyy/MM/dd HH:mm');
+};
+
+const formatShortDate = (ts) => {
+    if (!ts) return '';
+    const date = ts.toDate ? ts.toDate() : new Date(ts);
+    return format(date, 'MM/dd HH:mm');
 };
 </script>
 
@@ -1220,6 +1322,9 @@ button.native-dt-wrapper:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24)
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+.vr-clash { margin-top: 8px; }
+.vr-clash-main { min-width: 0; }
+.vr-clash-row { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .native-dt-actions {
   display: flex;
   justify-content: flex-end;

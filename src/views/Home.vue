@@ -21,6 +21,7 @@
           :scale="iconScale"
           :tour-id="'home-' + button.id"
           :badge="button.id === 'prospecting' ? prospectDueCount : 0"
+          :highlight="isHighlighted(button)"
           @click="handleNavigation(button)"
         />
       </template>
@@ -55,6 +56,7 @@ import { useOnboardingTour } from '@/composables/useOnboardingTour';
 import { trackTrialEvent } from '@/utils/trialTracking';
 import { useProspectStore } from '@/store/prospectStore';
 import { useHomeFeatures } from '@/composables/useHomeFeatures';
+import { useNewFeatureHighlight } from '@/composables/useNewFeatureHighlight';
 
 // ✓ 導入新元件
 import IconButton from '@/components/IconButton.vue';
@@ -85,6 +87,7 @@ const containerStyle = computed(() => ({
 }));
 
 const { visibleButtons, saveButtonOrder } = useHomeFeatures();
+const { isHighlighted, dismiss: dismissHighlight } = useNewFeatureHighlight();
 
 // ✅ Home 導覽文案（僅試用帳號；步驟由 visibleButtons 產生，沒權限的功能自然不出現）
 const TOUR_COPY = {
@@ -92,6 +95,7 @@ const TOUR_COPY = {
   quoteSystem: { title: '報價系統', text: '選戶別、選車位、套用付款方案，自動算出各期款項並列印報價單。' },
   customerSystem: { title: '客資系統', text: '客戶建檔、洽談紀錄、撞客比對，掃 QR Code 讓客戶自己填貴賓資料表。' },
   ViewingReservation: { title: '賞屋預約', text: '行事曆安排客戶賞屋時段，整合客資系統自動帶入資料。' },
+  myViewingReservation: { title: '我的賞屋', text: '彙整你在所有建案的賞屋預約，排時間前先確認不撞期。' },
   inspectionTimetable: { title: '驗屋預約', text: '設定開放批次與時段名額，客戶線上自助預約、修改與取消。' },
   inspectionSystem: { title: '驗屋系統', text: '手機拍照標記缺失、追蹤廠商修繕進度、一鍵產出 PDF 驗屋報告。' },
   inspectionReportManager: { title: '驗屋報告', text: '集中管理各戶驗屋報告檔案，住戶可掃碼查詢。' },
@@ -183,6 +187,7 @@ onBeforeUnmount(() => {
 });
 
 const handleNavigation = (button) => {
+  dismissHighlight(button);
   if (button.nav) {
     // ✅ 修改：判斷 nav 是字串 (外部連結) 還是物件 (內部路由)
     if (typeof button.nav === 'string') {

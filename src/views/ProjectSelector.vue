@@ -11,6 +11,21 @@
       <div class="selector__sys">{{ pageTitle }}</div>
       <h1 class="selector__title">要進入哪個建案？</h1>
 
+      <!-- 賞屋預約：所有建案的個人預約入口 -->
+      <button
+        v-if="isViewingReservation"
+        type="button"
+        class="selector__mine"
+        @click="router.push({ name: 'MyViewingReservations' })"
+      >
+        <span class="selector__mine-icon"><v-icon size="22">mdi-account-clock</v-icon></span>
+        <span class="selector__mine-main">
+          <b>我的預約</b>
+          <small>所有建案</small>
+        </span>
+        <v-icon size="20" class="selector__mine-chev">mdi-chevron-right</v-icon>
+      </button>
+
       <!-- 搜尋框 -->
       <label class="selector__search" :class="{ 'is-focus': searchFocused }">
         <v-icon size="22" color="#111827">mdi-magnify</v-icon>
@@ -219,9 +234,12 @@ const requiredAnySystem = computed(() => route.meta.requiredAnySystem);
 const targetRouteName = computed(() => route.meta.targetRouteName);
 const targetRouteParamKey = computed(() => route.meta.paramKey || 'projectId');
 
+const isViewingReservation = computed(() => targetRouteName.value === 'ViewingReservationCalendar');
+
 // 動態決定標題
 const pageTitle = computed(() => {
   if (currentViewMode.value === 'quote') return '報價系統';
+  if (isViewingReservation.value) return '賞屋預約';
   if (requiredSystem.value === '銷控系統') return '銷控系統';
   if (requiredAnySystem.value?.includes('驗屋預約管理-修改')) return '驗屋預約管理';
   return '選擇建案';
@@ -453,6 +471,65 @@ const goToLogin = () => router.push({ name: 'Login' });
   letter-spacing: -0.01em;
   line-height: 1.3;
   text-align: center;
+}
+
+/* 賞屋預約：我的預約（所有建案）入口 */
+.selector__mine {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin: -8px 0 18px;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #2b8cf2, #0a6fdc);
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  box-shadow: 0 10px 26px rgba(0, 113, 227, 0.28);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.selector__mine:hover {
+  box-shadow: 0 12px 30px rgba(0, 113, 227, 0.36);
+}
+
+.selector__mine:active {
+  transform: scale(0.98);
+}
+
+.selector__mine-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.selector__mine-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.selector__mine-main b {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.selector__mine-main small {
+  font-size: 13px;
+  opacity: 0.88;
+}
+
+.selector__mine-chev {
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 .selector__search {

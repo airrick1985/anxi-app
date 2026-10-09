@@ -1,6 +1,7 @@
 <template>
   <button 
     class="icon-button-group" 
+    :class="{ 'is-new': highlight }"
     :style="groupStyle"
     :data-tour="tourId || null"
     @click="$emit('click')"
@@ -8,6 +9,7 @@
     <img :src="icon" :alt="`${text}圖標`" class="icon" />
     <span class="text">{{ text }}</span>
     <span v-if="badge > 0" class="badge">{{ badge > 99 ? '99+' : badge }}</span>
+    <span v-else-if="highlight" class="new-tag">NEW</span>
   </button>
 </template>
 
@@ -38,6 +40,11 @@ const props = defineProps({
   badge: {
     type: Number,
     default: 0,
+  },
+  // 新功能高亮：光暈脈動＋右上角 NEW 標籤
+  highlight: {
+    type: Boolean,
+    default: false,
   }
 });
 
@@ -118,6 +125,44 @@ const groupStyle = computed(() => ({
   font-weight: 600;
   line-height: 20px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* 新功能高亮：藍色光暈一明一暗 */
+.icon-button-group.is-new {
+  border-color: rgba(0, 113, 227, 0.55);
+  animation: new-glow 2s ease-in-out infinite;
+}
+
+.icon-button-group.is-new .icon {
+  opacity: 1;
+}
+
+@keyframes new-glow {
+  0%, 100% { box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15), 0 0 0 0 rgba(0, 113, 227, 0.45); }
+  50% { box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15), 0 0 18px 6px rgba(0, 113, 227, 0.55); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-button-group.is-new {
+    animation: none;
+    box-shadow: 0 0 14px 4px rgba(0, 113, 227, 0.45);
+  }
+}
+
+.new-tag {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: #E53935;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 18px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
 }
 
 .text {

@@ -89,6 +89,60 @@ export const useReservationStore = defineStore('reservation', {
       }
     },
 
+    /**
+     * 讀取指定銷售在所有建案的有效預約（個人賞屋預約頁）
+     * 只用等值條件，不需複合索引；排序在前端處理
+     */
+    async fetchMyReservations(salesId) {
+      if (!salesId) return;
+
+      this.loading = true;
+      this.error = null;
+
+      try {
+        const snap = await getDocs(query(
+          collection(db, "viewing_reservations"),
+          where("salesId", "==", salesId),
+          where("status", "==", "active")
+        ));
+        this.reservations = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.reservationTime?.seconds || 0) - (b.reservationTime?.seconds || 0));
+      } catch (err) {
+        console.error("fetchMyReservations Error:", err);
+        this.error = "載入預約資料失敗";
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    /**
+     * 撞期檢查：該銷售在所有建案中，與指定時間相差 windowMinutes 分鐘以內的有效預約
+     */
+    async findSalesTimeConflicts(salesId, time, excludeId = null, windowMinutes = 60) {
+      if (!salesId || !(time instanceof Date) || isNaN(time.getTime())) return [];
+
+      try {
+        const snap = await getDocs(query(
+          collection(db, "viewing_reservations"),
+          where("salesId", "==", salesId),
+          where("status", "==", "active")
+        ));
+        const target = time.getTime();
+        return snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(r => {
+            if (r.id === excludeId) return false;
+            const t = r.reservationTime?.toDate?.().getTime();
+            return t != null && Math.abs(t - target) / 60000 < windowMinutes;
+          })
+          .sort((a, b) => a.reservationTime.seconds - b.reservationTime.seconds);
+      } catch (err) {
+        console.error("findSalesTimeConflicts Error:", err);
+        return [];
+      }
+    },
+
 /**
      * ✅ [修改] 取得該建案符合權限的銷售人員
      * 加入 currentSalesListProjectId 檢查，避免跨建案資料殘留
@@ -292,6 +346,27 @@ export const useReservationStore = defineStore('reservation', {
     },
 
     /**
+     * ✅ [新客自動建名單] 有指定銷售、且該電話在該建案既無客資也無名單時，
+     * 自動建立一筆聯絡名單並分配給該銷售（需在 sync 之前呼叫，讓 sync 一併補上「已約賞屋」＋回報日誌）
+     * 回傳 { salesName } 表示已建立，否則 null
+     */
+    async autoCreateLeadIfNew(payload) {
+      if (!payload.salesId || !payload.salesName || payload.salesName === '不指定') return null;
+      try {
+        const [vipResult, leadResult] = await Promise.all([
+          this.checkVipGuestPhone(payload.projectId, payload.customerPhone),
+          this.checkLeadAssignee(payload.projectId, payload.customerPhone)
+        ]);
+        if (vipResult || leadResult) return null;
+        await this.createLeadFromReservation(payload);
+        return { salesName: payload.salesName };
+      } catch (e) {
+        console.warn('自動建立名單失敗（不影響預約本身）:', e);
+        return null;
+      }
+    },
+
+    /**
      * 新增預約
      */
     async addReservation(payload) {
@@ -321,7 +396,7 @@ export const useReservationStore = defineStore('reservation', {
         };
 
         const docRef = await addDoc(collection(db, "viewing_reservations"), docData);
-        
+
         // 更新本地 State
         this.reservations.push({
           id: docRef.id,
@@ -329,23 +404,7 @@ export const useReservationStore = defineStore('reservation', {
           reservationTime: docData.reservationTime
         });
 
-        // ✅ [新客自動建名單] 有指定銷售、且該電話在本案既無客資也無名單時，
-        // 自動建立一筆聯絡名單並分配給該銷售（在 sync 之前建立，讓下方 sync 一併補上「已約賞屋」＋回報日誌）
-        let autoAssignedLead = null;
-        if (payload.salesId && payload.salesName && payload.salesName !== '不指定') {
-          try {
-            const [vipResult, leadResult] = await Promise.all([
-              this.checkVipGuestPhone(payload.projectId, payload.customerPhone),
-              this.checkLeadAssignee(payload.projectId, payload.customerPhone)
-            ]);
-            if (!vipResult && !leadResult) {
-              await this.createLeadFromReservation(payload);
-              autoAssignedLead = { salesName: payload.salesName };
-            }
-          } catch (e) {
-            console.warn('自動建立名單失敗（不影響預約本身）:', e);
-          }
-        }
+        const autoAssignedLead = await this.autoCreateLeadIfNew(payload);
 
         // ✅ 同步到聯絡名單：狀態改「已約賞屋」+ 寫入回報日誌
         await this.syncReservationToLeads('add', docData);
@@ -367,10 +426,18 @@ export const useReservationStore = defineStore('reservation', {
       this.loading = true;
       try {
         const docRef = doc(db, "viewing_reservations", id);
-        
+
         if (updateData.reservationTime instanceof Date) {
             updateData.reservationTime = Timestamp.fromDate(updateData.reservationTime);
         }
+
+        // 改到其他建案時，需要原建案資料補寫取消日誌
+        let before = null;
+        if (updateData.projectId) {
+            const beforeSnap = await getDoc(docRef);
+            if (beforeSnap.exists()) before = beforeSnap.data();
+        }
+        const projectChanged = !!before?.projectId && before.projectId !== updateData.projectId;
 
         const finalUpdateData = {
             ...updateData,
@@ -385,12 +452,21 @@ export const useReservationStore = defineStore('reservation', {
         }
 
         // ✅ 同步到聯絡名單：以更新後的完整文件為準，寫入「預約異動」日誌
+        // 改建案：原建案名單補「預約取消」，新建案比照新增預約（必要時自動建名單＋「已約賞屋」）
+        let autoAssignedLead = null;
         const updatedSnap = await getDoc(docRef);
         if (updatedSnap.exists()) {
-            await this.syncReservationToLeads('update', updatedSnap.data());
+            const updated = updatedSnap.data();
+            if (projectChanged) {
+                await this.syncReservationToLeads('cancel', { ...before, cancelReason: '預約改到其他建案' }, updated.operatorName);
+                autoAssignedLead = await this.autoCreateLeadIfNew(updated);
+                await this.syncReservationToLeads('add', updated);
+            } else {
+                await this.syncReservationToLeads('update', updated);
+            }
         }
 
-        return { success: true };
+        return { success: true, autoAssignedLead };
       } catch (err) {
         console.error("updateReservation Error:", err);
         return { success: false, error: err.message };
