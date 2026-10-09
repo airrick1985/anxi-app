@@ -471,7 +471,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useReservationStore } from '@/store/reservationStore';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore'; // 確保引用
@@ -491,7 +491,6 @@ const PREDEFINED_TYPES = ['新客', '回訪', '簽約', '其他'];
 const customType = ref(''); // 「其他」類型的自訂輸入值
 
 // ✅ 開啟對話框時的初始化載入狀態（讀取銷售資料 / 等候 Cloud Function 冷啟動做衝突檢查）
-// 用計數器處理 watch(immediate) 與 onMounted 兩條初始化路徑可能同時進行的情況
 const pendingInits = ref(0);
 const initStatus = ref('');
 const initializing = computed(() => pendingInits.value > 0);
@@ -549,61 +548,6 @@ const props = defineProps({
   initialDate: Date // ✅ [新增] 接收外部傳入的預設時間
 });
 
-
-// 2. 修改 initDialogData (處理新增模式)
-const initDialogData = async () => {
-  pendingInits.value++;
-  try {
-    initStatus.value = '資料連線中...';
-    await reservationStore.fetchProjectSales(props.projectId);
-
-    if (isEdit.value) {
-        const d = props.initialData;
-        formData.value = {
-            ...d,
-            reservationTime: d.reservationTime?.toDate ? d.reservationTime.toDate() : new Date(d.reservationTime),
-        };
-        // 編輯模式：若 type 不在預設清單，視為「其他」並還原自訂值
-        if (d.type && !PREDEFINED_TYPES.includes(d.type)) {
-            customType.value = d.type;
-            formData.value.type = '其他';
-        } else {
-            customType.value = '';
-        }
-    } else {
-        // ✅ 新增模式：優化指定銷售欄位預設值
-        let defaultSalesId = null;
-
-        // 取得當前用戶的 ID
-        const currentUserId = userStore.user?.key;
-
-        // 從可見銷售列表中查找當前用戶
-        if (currentUserId) {
-          const currentUserInSales = reservationStore.visibleSalesList.find(s => s.id === currentUserId);
-          if (currentUserInSales) {
-            defaultSalesId = currentUserId; // 若用戶在列表中，設為當前用戶
-          }
-          // 若不在列表中，defaultSalesId 保持 null（對應"不指定"）
-        }
-
-        formData.value = {
-            customerName: props.initialData?.customerName || '',
-            customerPhone: props.initialData?.customerPhone || '',
-            reservationTime: props.initialDate || null, // ✅ 若無傳入則預設 null
-            type: '新客',
-            salesId: defaultSalesId,
-            note: props.initialData?.note || '',
-            unitId: ''
-        };
-        customType.value = '';
-    }
-    // 編輯模式若為「簽約」則預載戶別資料供下拉使用
-    if (formData.value.type === '簽約') ensureHouseholdsLoaded();
-    conflictInfo.value = null;
-  } finally {
-    pendingInits.value--;
-  }
-};
 
 const emit = defineEmits(['update:modelValue', 'saved', 'deleted']);
 
@@ -909,6 +853,7 @@ const phoneRules = [
 watch(() => props.modelValue, async (val) => {
   if (val) {
     savedReservation.value = null;
+    conflictInfo.value = null; // 清除上次開啟殘留的重複預約提示
     pendingInits.value++;
     try {
       initStatus.value = '資料連線中...';
@@ -957,7 +902,6 @@ watch(() => props.modelValue, async (val) => {
         // ✅ 優化：從聯絡名單打開時，先重置再檢查，確保 conflictInfo 第一時間顯示
         if (formData.value.customerPhone) {
           initStatus.value = '檢查此號碼是否已有預約...';
-          conflictInfo.value = null; // 先清除舊的 conflictInfo
           await nextTick(); // 確保表單已更新
           await handlePhoneBlur(); // 自動觸發檢查並等待完成
           await nextTick(); // 確保 conflictInfo 已更新
@@ -1006,11 +950,6 @@ const saveSettings = async () => {
     await reservationStore.updateSalesVisibility(props.projectId, tempHiddenIds.value);
     settingsDialog.value = false;
 };
-
-// 3. 在掛載時執行 (解決 v-if 開啟問題)
-onMounted(() => {
-    if (props.modelValue) initDialogData();
-});
 
 // ... (save 函式保持不變) ...
 const save = async () => {

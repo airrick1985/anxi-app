@@ -97,36 +97,40 @@ export const useReservationStore = defineStore('reservation', {
         if (!projectId) return;
         
         try {
-            // 1. 讀取隱藏設定 (這部分每次都讀取，確保設定最新)
-            const projectRef = doc(db, "projects", projectId);
-            const projectSnap = await getDoc(projectRef);
-            if (projectSnap.exists()) {
-                const data = projectSnap.data();
-                this.hiddenSalesIds = data.viewingSettings?.hiddenSalesIds || [];
-            } else {
-                this.hiddenSalesIds = [];
+            // ✅ 檢查快取：只有當「列表有資料」且「目前快取的建案 ID == 請求的建案 ID」時，才不重抓名單
+            const useCache = this.salesList.length > 0 && this.currentSalesListProjectId === projectId;
+            if (!useCache) {
+                this.salesList = [];
+                this.currentSalesListProjectId = projectId;
             }
 
-            // ✅ [關鍵修改] 檢查快取：
-            // 只有當「列表有資料」且「目前快取的建案 ID == 請求的建案 ID」時，才直接返回
-            if (this.salesList.length > 0 && this.currentSalesListProjectId === projectId) {
-                // console.log('使用快取銷售名單');
-                return;
-            }
+            // ✅ 建案設定、使用者、權限三個查詢並行（不逐人讀權限，避免數百次往返）
+            // 隱藏設定每次都讀取，確保設定最新
+            const [projectSnap, usersSnap, permsSnap] = await Promise.all([
+                getDoc(doc(db, "projects", projectId)),
+                useCache ? null : getDocs(collection(db, "users")),
+                useCache ? null : getDocs(collection(db, "userPermissions"))
+            ]);
 
-            // console.log('重新撈取銷售名單...');
-            
-            // 2. 清空舊資料並更新 ID 標記
-            this.salesList = [];
-            this.currentSalesListProjectId = projectId;
+            // 等待期間已切換到其他建案 → 丟棄本次結果
+            if (this.currentSalesListProjectId !== projectId) return;
 
-            // 3. 撈取所有使用者
-            const usersRef = collection(db, "users");
-            const snapshot = await getDocs(usersRef);
-            
+            this.hiddenSalesIds = projectSnap.exists()
+                ? (projectSnap.data().viewingSettings?.hiddenSalesIds || [])
+                : [];
+
+            if (useCache) return;
+
+            // 每位使用者在本建案的系統權限
+            const projectSystemsByUser = new Map();
+            permsSnap.forEach(permDoc => {
+                const systems = permDoc.data().permissions?.[projectId]?.systems;
+                if (Array.isArray(systems)) projectSystemsByUser.set(permDoc.id, systems);
+            });
+
             const qualifiedSales = [];
 
-            for (const userDoc of snapshot.docs) {
+            for (const userDoc of usersSnap.docs) {
                 const userData = userDoc.data();
                 const userKey = userDoc.id;
 
@@ -135,38 +139,26 @@ export const useReservationStore = defineStore('reservation', {
                 // 檢查黑名單
                 const roles = userData.roles || [];
                 if (roles.includes('超級管理員')) {
-                    continue; 
+                    continue;
                 }
 
-                // 檢查權限
-                const permRef = doc(db, "userPermissions", userKey);
-                const permSnap = await getDoc(permRef);
-                
-                if (permSnap.exists()) {
-                    const perms = permSnap.data().permissions || {};
-                    const projectPerms = perms[projectId];
+                // 檢查權限（客資系統-銷售／客資系統-櫃台，及舊命名向後相容）
+                const systems = projectSystemsByUser.get(userKey) || [];
+                const hasAuth = systems.some(sys =>
+                    sys === '報價系統' ||
+                    sys === '銷控系統' ||
+                    sys.includes('客資系統')
+                );
 
-                    if (projectPerms && projectPerms.systems) {
-                      // ✅ 優化：支持新的權限命名規則（客資系統-銷售 或 客資系統-櫃台）
-                      const hasAuth = projectPerms.systems.some(sys =>
-                          sys === '報價系統' ||
-                          sys === '銷控系統' ||
-                          sys === '客資系統-銷售' ||
-                          sys === '客資系統-櫃台' ||
-                          sys.includes('客資系統') // 向後相容
-                      );
-                         
-                         if (hasAuth) {
-                             qualifiedSales.push({
-                                 id: userKey,
-                                 name: userData.name,
-                                 phone: userData.phone || ''
-                             });
-                         }
-                    }
+                if (hasAuth) {
+                    qualifiedSales.push({
+                        id: userKey,
+                        name: userData.name,
+                        phone: userData.phone || ''
+                    });
                 }
             }
-            
+
             this.salesList = qualifiedSales;
             
         } catch (err) {
