@@ -9402,20 +9402,22 @@ export const processAndAssignLeadAPI = async (data) => {
 };
 
 // 定義名單查重的路由函式 (強制指定 asia-east1)
-export const checkLeadDuplicatesApi = httpsCallable(getFunctions(undefined, 'asia-east1'), 'checkLeadDuplicates');
+export const checkLeadDuplicatesApi = httpsCallable(getFunctions(undefined, 'asia-east1'), 'checkLeadDuplicates', { timeout: 120000 });
 
 /**
  * [API] 執行名單查重比對
  * @param {string} projectId - 建案 ID
  * @param {string[]} phones - 待檢查的電話陣列
+ * @param {string[]} [crossProjectIds] - 一併比對的他案 ID（命中結果在 results[phone].crossHits）
  */
-export const checkLeadDuplicates = async (projectId, phones) => {
+export const checkLeadDuplicates = async (projectId, phones, crossProjectIds = []) => {
   if (!projectId || !phones.length) return { results: {} };
 
   try {
     const result = await checkLeadDuplicatesApi({
       projectId,
-      phones
+      phones,
+      crossProjectIds
     });
     return result.data;
   } catch (error) {

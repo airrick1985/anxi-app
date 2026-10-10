@@ -363,6 +363,8 @@
 .mac-vfield.v-input .v-input__details { padding-inline: 4px; min-height: 18px; }
 .mac-vfield.v-input .v-messages { font-size: 12px; }
 .mac-vfield.v-textarea .v-field { --v-field-padding-top: 7px; --v-field-padding-bottom: 7px; }
+/* v-select 未選值時的 placeholder（Vuetify 以絕對定位 input 貼齊頂端）改為撐滿高度垂直置中 */
+.mac-vfield.v-select .v-field__input > input { top: 0; height: 100%; }
 .mac-vfield.v-textarea .v-field__input { -webkit-mask-image: none; mask-image: none; line-height: 1.55; }
 /* 搜尋框：灰底圓角（工具列用） */
 .mac-vfield--search.v-input .v-field { background: rgba(0, 0, 0, 0.05); box-shadow: none; }

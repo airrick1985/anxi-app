@@ -899,17 +899,18 @@
       @settings-updated="onSettingsUpdated"
     />
 
-    <v-dialog v-model="showUploadDialog" max-width="1200" persistent scrollable>
-      <v-card class="rounded-xl overflow-hidden">
-        <v-toolbar color="primary" density="compact" class="px-4">
-          <v-icon start>mdi-auto-fix</v-icon>
-          <v-toolbar-title class="text-subtitle-1 font-weight-bold">
-            {{ uploadStep === 1 ? '第一步：貼入名單文本' : '第二步：解析與預約分配' }}
-          </v-toolbar-title>
-          <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" variant="text" @click="closeUploadDialog"></v-btn>
-        </v-toolbar>
-
+    <v-dialog v-model="showUploadDialog" max-width="1200" persistent scrollable content-class="mac-dialog-fit">
+      <v-card class="mac-sheet ld-sheet">
+        <div class="mac-sheet-head">
+          <div class="ld-steps">
+            <span class="ld-step" :class="{ 'is-active': uploadStep === 1 }"><b>1</b>貼入名單</span>
+            <v-icon size="16" class="ld-step-sep">mdi-chevron-right</v-icon>
+            <span class="ld-step" :class="{ 'is-active': uploadStep === 2 }"><b>2</b>解析與分配</span>
+          </div>
+          <button type="button" class="mac-sheet-close" title="關閉" @click="closeUploadDialog">
+            <v-icon size="18">mdi-close</v-icon>
+          </button>
+        </div>
 <v-card-text v-if="uploadStep === 1" class="pa-6 bg-grey-lighten-4">
 <v-tabs v-model="uploadMode" color="primary" class="mb-4" grow density="compact">
   <v-tab value="text">文本模式</v-tab>
@@ -1150,534 +1151,182 @@
   </v-window>
 </v-card-text>
 
-        <v-card-text v-if="uploadStep === 2" class="pa-0">
-<div class="bg-primary-lighten-5 pa-3 d-flex align-center gap-4 border-bottom flex-wrap">
-  <span class="text-caption font-weight-bold text-primary">解析摘要：</span>
-  <v-chip size="x-small" color="primary" variant="flat">總計 {{ previewLeads.length }} 筆</v-chip>
-  
-<v-chip size="x-small" color="success" variant="flat">✨ 全新名單 {{ summaryCount.new }} 筆</v-chip>
-  
-  <v-chip size="x-small" color="error" variant="elevated" class="font-weight-bold" v-if="summaryCount.unassigned">
-    ⚠️ 待指派銷售 {{ summaryCount.unassigned }} 筆
-  </v-chip>
+        <template v-if="uploadStep === 2">
+          <!-- 解析摘要（固定在列表上方） -->
+          <div class="ld-summary">
+            <span class="ld-stat ld-stat--total">共 <b>{{ previewLeads.length }}</b> 筆</span>
+            <span v-if="summaryCount.unassigned" class="ld-stat ld-stat--red">待指派 <b>{{ summaryCount.unassigned }}</b></span>
+            <span v-if="summaryCount.reservationPending" class="ld-stat ld-stat--purple">預約待裁決 <b>{{ summaryCount.reservationPending }}</b></span>
+            <span v-if="summaryCount.new" class="ld-stat ld-stat--green">全新 <b>{{ summaryCount.new }}</b></span>
+            <span v-if="summaryCount.vip" class="ld-stat ld-stat--orange">既有客資 <b>{{ summaryCount.vip }}</b></span>
+            <span v-if="summaryCount.lead" class="ld-stat ld-stat--slate">重複名單 <b>{{ summaryCount.lead }}</b></span>
+            <span v-if="summaryCount.reservation" class="ld-stat ld-stat--purple">賞屋預約 <b>{{ summaryCount.reservation }}</b></span>
+            <span v-if="summaryCount.purchased" class="ld-stat ld-stat--green">本案已購 <b>{{ summaryCount.purchased }}</b></span>
+            <span v-if="summaryCount.internalDup" class="ld-stat ld-stat--yellow">本次重複 <b>{{ summaryCount.internalDup }}</b></span>
+            <span v-if="summaryCount.crossHit" class="ld-stat ld-stat--indigo">他案命中 <b>{{ summaryCount.crossHit }}</b></span>
+            <span v-if="pendingOverwrites.length" class="ld-stat ld-stat--slate">待覆蓋 <b>{{ pendingOverwrites.length }}</b></span>
+            <span v-if="isCheckingDuplicates" class="ld-stat ld-stat--plain">
+              <v-progress-circular indeterminate size="12" width="2" color="#0071e3"></v-progress-circular>查重中
+            </span>
+          </div>
 
-  <v-chip size="x-small" color="green-darken-3" variant="elevated" class="font-weight-bold" v-if="summaryCount.purchased">
-    ✅ 本案已購戶 {{ summaryCount.purchased }} 筆
-  </v-chip>
-
-  <v-chip size="x-small" color="orange-darken-2" variant="flat" v-if="summaryCount.vip">🚩 既有客資 {{ summaryCount.vip }} 筆</v-chip>
-  
-  <v-chip size="x-small" color="yellow-darken-3" variant="flat" v-if="summaryCount.internalDup">
-    🔄 本次名單重複 {{ summaryCount.internalDup }} 筆
-  </v-chip>
-
-  <v-chip size="x-small" color="blue-grey-darken-1" variant="flat" v-if="summaryCount.lead">⚠️ 重複名單 {{ summaryCount.lead }} 筆</v-chip>
-
-  <v-chip size="x-small" color="purple-darken-1" variant="flat" v-if="summaryCount.reservation">📅 賞屋預約 {{ summaryCount.reservation }} 筆</v-chip>
-
-  <v-chip size="x-small" color="purple-darken-3" variant="elevated" class="font-weight-bold" v-if="summaryCount.reservationPending">
-    🛑 預約待現場裁決 {{ summaryCount.reservationPending }} 筆（不分配）
-  </v-chip>
-
-  <v-chip size="x-small" color="deep-orange-darken-1" variant="flat" v-if="pendingOverwrites.length">♻️ 待覆蓋更新 {{ pendingOverwrites.length }} 筆</v-chip>
-
-  <v-spacer></v-spacer>
-  <v-progress-circular v-if="isCheckingDuplicates" indeterminate size="16" width="2" color="primary" class="me-2"></v-progress-circular>
-</div>
-
-<!-- ✅ 有賞屋預約但預約未指定銷售：鎖定不分配，執行時改 LINE 通知櫃台 -->
-<v-alert
-  v-if="summaryCount.reservationPending"
-  type="warning"
-  variant="tonal"
-  density="compact"
-  color="purple-darken-3"
-  icon="mdi-calendar-alert"
-  class="ma-3 text-caption"
->
-  有 <b>{{ summaryCount.reservationPending }}</b> 筆名單的電話已有賞屋預約，但預約<b>未指定銷售</b>。
-  這些名單已鎖定不可指派銷售，執行分配時<b>不會寫入名單</b>，系統會改以 LINE 通知本建案櫃台人員，請依現場專案人員指示處理。
-</v-alert>
-
-          <!-- Desktop View: Table -->
-          <v-table v-if="!mobile" density="comfortable" fixed-header height="500px" class="preview-table">
-                <thead>
-                  <tr class="bg-grey-lighten-4">
-                    <th class="text-left" width="15%">客戶資訊</th>
-                    <th class="text-left font-weight-bold" width="15%">檢查狀態與日期</th>
-                    <th class="text-left" width="25%">指派銷售人員</th> 
-                    <th class="text-left" width="40%">名單屬性</th>
-                    <th class="text-center" width="50px">操作</th>
-                  </tr>
-                </thead>
-            <tbody>
-              <tr 
-                  v-for="(lead, idx) in previewLeads" 
-                  :key="idx" 
-                  :class="[isReservationPending(lead) ? 'bg-purple-lighten-5' : (!lead.assignedTo ? 'bg-red-lighten-5' : getRowClass(lead.phone))]"
-                >
-                <td class="pa-4">
-                  <v-text-field
-                    v-model="lead.name"
-                    variant="underlined"
-                    density="compact"
-                    hide-details
-                    prepend-inner-icon="mdi-account"
-                    class="font-weight-bold mb-1"
-                  ></v-text-field>
-                  <v-text-field
-                    v-model="lead.phone"
-                    variant="underlined"
-                    density="compact"
-                    hide-details
-                    prepend-inner-icon="mdi-phone"
-                    :color="lead.phone.length !== 10 ? 'error' : ''"
-                    :hint="lead.phone.length !== 10 ? '電話長度異常' : ''"
-                    persistent-hint
-                  ></v-text-field>
-                </td>
-
-                <td class="text-center pa-2">
-                  <div v-if="internalDuplicateMap[lead.phone]?.length > 1" class="mb-2">
-                    <v-chip color="warning" size="x-small" variant="flat" class="font-weight-bold w-100">⚠️ 本次名單重複</v-chip>
-                  </div>
-
-                  <div v-if="lead.status" class="mb-2">
-                    <v-chip color="teal" size="x-small" variant="tonal" class="font-weight-bold w-100">
-                      📋 歷史回報：{{ lead.status }}{{ lead.status === '不考慮' && lead.reason ? `（${lead.reason}）` : '' }}
-                    </v-chip>
-                  </div>
-
-                  <div v-if="duplicateResults[lead.phone]">
-                    <!-- 預約未指定銷售：待現場裁決（可附掛於任一類型） -->
-                    <div v-if="getReservationPending(lead.phone)" class="mb-2">
-                        <v-chip color="purple-darken-3" class="font-weight-bold w-100" size="small" label variant="elevated">
-                            <v-icon start icon="mdi-calendar-alert" size="x-small"></v-icon> 預約未指定銷售・待現場裁決
-                        </v-chip>
-                        <div class="text-caption text-purple-darken-3 mt-1 text-left">
-                            📅 {{ getReservationPending(lead.phone).reservationTime || '預約時間未填' }}{{ getReservationPending(lead.phone).reservationType ? `（${getReservationPending(lead.phone).reservationType}）` : '' }}
-                            <div v-if="getReservationPending(lead.phone).note" class="text-grey-darken-1">預約備註：{{ getReservationPending(lead.phone).note }}</div>
-                        </div>
-                    </div>
-
-                    <!-- VIP: Existing Customer (Compact Mode) -->
-                    <div v-if="duplicateResults[lead.phone].type === 'vip'">
-                        <v-chip color="orange-lighten-4" class="text-orange-darken-4 font-weight-bold mb-1" size="small" label>
-                            <v-icon start icon="mdi-crown" size="x-small"></v-icon> 既有客資
-                        </v-chip>
-                        <div class="text-caption text-grey-darken-1 mb-1 d-flex align-center">
-                            <span class="font-weight-bold me-2">{{ duplicateResults[lead.phone].data.latestSalesName }}</span>
-                            <span class="text-grey">{{ duplicateResults[lead.phone].data.date || '--' }}</span>
-                        </div>
-                        <v-btn
-                            size="x-small"
-                            variant="tonal"
-                            color="orange-darken-2"
-                            class="px-2"
-                            prepend-icon="mdi-magnify"
-                            @click="openDetail(lead.phone, duplicateResults[lead.phone], 'vip')"
-                        >
-                            詳情
-                        </v-btn>
-
-                        <!-- 同一電話在聯絡名單也有分配紀錄 -->
-                        <template v-if="duplicateResults[lead.phone].data.leadDup">
-                            <v-divider class="my-2"></v-divider>
-                            <v-chip color="blue-grey-lighten-4" class="text-blue-grey-darken-3 font-weight-bold mb-1" size="small" label>
-                                <v-icon start icon="mdi-alert-circle" size="x-small"></v-icon> 重複名單
-                            </v-chip>
-                            <div class="text-caption text-grey-darken-1 mb-1 d-flex align-center">
-                                <span class="font-weight-bold me-2">{{ duplicateResults[lead.phone].data.leadDup.assignedName }}</span>
-                                <span class="text-grey">{{ duplicateResults[lead.phone].data.leadDup.assignedAt || '--' }}</span>
-                            </div>
-                            <v-btn
-                                size="x-small"
-                                variant="tonal"
-                                color="blue-grey-darken-2"
-                                class="px-2"
-                                prepend-icon="mdi-magnify"
-                                @click="openDetail(lead.phone, { data: duplicateResults[lead.phone].data.leadDup }, 'lead')"
-                            >
-                                詳情
-                            </v-btn>
-                        </template>
-                    </div>
-
-                    <!-- Lead: Duplicate (Compact Mode) -->
-                    <div v-else-if="duplicateResults[lead.phone].type === 'lead'">
-                        <v-chip color="blue-grey-lighten-4" class="text-blue-grey-darken-3 font-weight-bold mb-1" size="small" label>
-                            <v-icon start icon="mdi-alert-circle" size="x-small"></v-icon> 重複名單
-                        </v-chip>
-                        <div class="text-caption text-grey-darken-1 mb-1 d-flex align-center">
-                            <span class="font-weight-bold me-2">{{ duplicateResults[lead.phone].data.assignedName }}</span>
-                            <span class="text-grey">{{ duplicateResults[lead.phone].data.date || '--' }}</span>
-                        </div>
-                        <v-btn 
-                            size="x-small" 
-                            variant="tonal" 
-                            color="blue-grey-darken-2" 
-                            class="px-2"
-                            prepend-icon="mdi-magnify"
-                            @click="openDetail(lead.phone, duplicateResults[lead.phone], 'lead')"
-                        >
-                            詳情
-                        </v-btn>
-                    </div> <!-- Added missing closing div for 'lead' -->
-
-                    <!-- Reservation: Viewing Reservation (Compact Mode) -->
-                    <div v-else-if="duplicateResults[lead.phone].type === 'reservation'">
-                        <v-chip color="purple-lighten-4" class="text-purple-darken-3 font-weight-bold mb-1" size="small" label>
-                            <v-icon start icon="mdi-calendar-check" size="x-small"></v-icon> 已有賞屋預約
-                        </v-chip>
-                        <div class="text-caption text-grey-darken-1 mb-1 d-flex align-center text-left flex-wrap">
-                            <span class="font-weight-bold me-2">{{ duplicateResults[lead.phone].data.assignedName }}</span>
-                            <span class="text-grey">{{ duplicateResults[lead.phone].data.date || '--' }}</span>
-                        </div>
-                        <v-btn
-                            size="x-small"
-                            variant="tonal"
-                            color="purple-darken-2"
-                            class="px-2"
-                            prepend-icon="mdi-magnify"
-                            @click="openDetail(lead.phone, duplicateResults[lead.phone], 'reservation')"
-                        >
-                            詳情
-                        </v-btn>
-                    </div>
-
-                    <!-- Purchased: Existing Household (Compact Mode) -->
-                    <div v-else-if="duplicateResults[lead.phone].type === 'purchased'">
-                        <v-chip color="green-lighten-4" class="text-green-darken-4 font-weight-bold mb-1" size="small" label>
-                            <v-icon start icon="mdi-check-bold" size="x-small"></v-icon> 本案已購戶
-                        </v-chip>
-                        <div class="text-caption text-grey-darken-1 mb-1 d-flex align-center text-left flex-wrap">
-                            <span class="font-weight-bold me-1">{{ duplicateResults[lead.phone].data.name }}</span>
-                            <span class="text-grey me-1">({{ duplicateResults[lead.phone].data.unitId || '--' }})</span>
-                            <span class="mx-1 text-grey">|</span>
-                            <span class="text-grey">銷售: {{ duplicateResults[lead.phone].data.assignedName }}</span>
-                        </div>
-                    </div>
-
-                    <!-- New Lead -->
-                    <div v-else class="text-center pt-2">
-                        <v-chip color="success" size="small" variant="elevated" prepend-icon="mdi-check-circle">✨ 全新名單</v-chip>
-                    </div>
-                  </div>
-
-                  <div v-else class="text-center pt-2">
-                     <v-progress-circular indeterminate size="20" width="2" color="primary"></v-progress-circular>
-                  </div>
-                </td>
-
-                  <td>
-                <v-select
-                      v-model="lead.assignedTo"
-                      :items="salesStaffWithCounts"
-                      item-title="displayName"
-                      item-value="id"
-                      :label="isReservationPending(lead) ? '🛑 預約待現場裁決（不分配）' : (!lead.assignedTo ? '⚠️ 尚未選擇銷售' : '選擇銷售')"
-                      :error="!lead.assignedTo && !isReservationPending(lead)"
-                      :disabled="isReservationPending(lead)"
-                      density="compact"
-                      hide-details="auto"
-                      variant="outlined"
-                      class="mt-1 font-weight-bold"
-                      style="max-width: 320px;"
-                      :menu-props="{ maxHeight: 400 }"
-                      @update:model-value="(val) => { updateAssignedInfo(lead, val); lead.autoAssignInfo = null; applySorting(); }"
-                    >
-                      <template v-slot:item="{ props: itemProps, item }">
-                        <v-list-item v-bind="itemProps" title="" class="sales-select-item">
-                          <template v-slot:title>
-                            <div class="d-flex align-center flex-wrap">
-                              <span class="font-weight-bold me-2">{{ item.raw.name }}</span>
-                              <v-chip size="x-small" color="primary" variant="tonal" label class="me-1">共 {{ item.raw.totalCount }} 筆</v-chip>
-                              <v-chip size="x-small" color="teal" variant="tonal" label class="me-1">本週 {{ item.raw.weekCount }} 筆</v-chip>
-                              <v-chip size="x-small" color="blue-grey" variant="tonal" label class="me-1">上週 {{ item.raw.lastWeekCount }} 筆</v-chip>
-                              <v-chip size="x-small" color="deep-purple" variant="tonal" label>本月 {{ item.raw.monthCount }} 筆</v-chip>
-                            </div>
-                          </template>
-                          <template v-slot:subtitle>
-                            <span class="text-caption">
-                              <v-icon size="x-small" class="me-1">mdi-clock-outline</v-icon>最後分配：{{ item.raw.lastAssignedText }}
-                            </span>
-                          </template>
-                        </v-list-item>
-                      </template>
-                      <template v-slot:selection="{ item }">
-                        <span class="text-truncate">{{ item.raw.name }}（共 {{ item.raw.totalCount }}．週 {{ item.raw.weekCount }}．月 {{ item.raw.monthCount }}）</span>
-                      </template>
-                    </v-select>
-                    <div
-                      v-if="lead.assignedTo && lead.autoAssignInfo"
-                      class="text-caption mt-1"
-                      :class="AUTO_SOURCE_META[lead.autoAssignInfo.source]?.color"
-                      style="max-width: 260px;"
-                    >
-                      <v-icon size="x-small" icon="mdi-auto-fix" class="me-1"></v-icon>自動帶入「{{ AUTO_SOURCE_META[lead.autoAssignInfo.source]?.label }}」銷售
-                      <div class="text-grey" v-if="lead.autoAssignInfo.basisDate">依據：{{ lead.autoAssignInfo.basisLabel }} {{ lead.autoAssignInfo.basisDate }}</div>
-                    </div>
-                  </td>
-
-            <td class="pa-4">
-              <v-row dense>
-                <v-col cols="6">
-                  <v-text-field v-model="lead.source" label="來源" variant="underlined" density="compact" hide-details></v-text-field>
-                </v-col>
-                <v-col cols="6">
-                  <v-text-field v-model="lead.budget" label="預算" variant="underlined" density="compact" hide-details></v-text-field>
-                </v-col>
-                <v-col cols="12">
-                  <v-text-field v-model="lead.date" label="提交日期" variant="underlined" density="compact" hide-details prepend-inner-icon="mdi-calendar-clock"></v-text-field>
-                </v-col>
-                <v-col cols="12">
-                  <v-text-field 
-                    v-model="lead.note" 
-                    label="備註" 
-                    variant="underlined" 
-                    density="compact" 
-                    hide-details 
-                    prepend-inner-icon="mdi-note-text-outline"
-                    color="primary"
-                  ></v-text-field>
-                </v-col>
-              </v-row>
-            </td>
-
-                            <td class="text-center">
-                              <v-btn icon="mdi-trash-can-outline" variant="text" color="grey-lighten-1" size="small" @click="previewLeads.splice(idx, 1)"></v-btn>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </v-table>
-
-                      <!-- Mobile View: Card List -->
-                      <div v-else class="preview-mobile-list" style="max-height: 500px; overflow-y: auto;">
-                        <v-card 
-                           v-for="(lead, idx) in previewLeads" 
-                           :key="idx" 
-                           class="mb-3 mx-1"
-                           elevation="1"
-                           border
-                           :class="[isReservationPending(lead) ? 'bg-purple-lighten-5' : (!lead.assignedTo ? 'bg-red-lighten-5' : '')]"
-                        >
-                            <v-card-text class="pa-3">
-                                <!-- 1. Header: Name & Phone & Delete -->
-                                <div class="d-flex justify-space-between align-center mb-2">
-                                    <div class="d-flex align-center gap-2">
-                                        <v-icon size="small" color="primary">mdi-account</v-icon>
-                                        <span class="font-weight-bold text-subtitle-1">{{ lead.name }}</span>
-                                        <span class="text-caption text-grey ml-2">{{ lead.phone }}</span>
-                                    </div>
-                                    <v-btn icon="mdi-trash-can-outline" variant="text" color="grey" density="compact" @click="previewLeads.splice(idx, 1)"></v-btn>
-                                </div>
-
-                                <!-- 2. Status Chips -->
-                                <div class="mb-3 d-flex flex-wrap gap-2">
-                                     <v-chip v-if="internalDuplicateMap[lead.phone]?.length > 1" color="warning" size="x-small" variant="flat" label>
-                                        ⚠️ 本次重複
-                                     </v-chip>
-                                     <v-chip v-if="lead.status" color="teal" size="x-small" variant="tonal" label>
-                                        📋 歷史回報：{{ lead.status }}
-                                     </v-chip>
-                                     <template v-if="duplicateResults[lead.phone]">
-                                        <v-chip
-                                            v-if="getReservationPending(lead.phone)"
-                                            color="purple-darken-3"
-                                            class="font-weight-bold"
-                                            size="x-small"
-                                            label
-                                            variant="elevated"
-                                        >
-                                            <v-icon start icon="mdi-calendar-alert" size="x-small"></v-icon>
-                                            預約未指定銷售・待現場裁決 {{ getReservationPending(lead.phone).reservationTime ? `（${getReservationPending(lead.phone).reservationTime}）` : '' }}
-                                        </v-chip>
-                                        <template v-if="duplicateResults[lead.phone].type === 'vip'">
-                                            <v-chip
-                                                color="orange-lighten-4"
-                                                class="text-orange-darken-4 font-weight-bold"
-                                                size="x-small"
-                                                label
-                                                @click="openDetail(lead.phone, duplicateResults[lead.phone], 'vip')"
-                                            >
-                                                <v-icon start icon="mdi-crown" size="x-small"></v-icon> 既有客資 ({{ duplicateResults[lead.phone].data.latestSalesName }}) 詳情 >
-                                            </v-chip>
-                                            <v-chip
-                                                v-if="duplicateResults[lead.phone].data.leadDup"
-                                                color="blue-grey-lighten-4"
-                                                class="text-blue-grey-darken-3 font-weight-bold"
-                                                size="x-small"
-                                                label
-                                                @click="openDetail(lead.phone, { data: duplicateResults[lead.phone].data.leadDup }, 'lead')"
-                                            >
-                                                <v-icon start icon="mdi-alert-circle" size="x-small"></v-icon> 重複名單 ({{ duplicateResults[lead.phone].data.leadDup.assignedName }}) 詳情 >
-                                            </v-chip>
-                                        </template>
-
-                                        <v-chip
-                                            v-else-if="duplicateResults[lead.phone].type === 'lead'" 
-                                            color="blue-grey-lighten-4" 
-                                            class="text-blue-grey-darken-3 font-weight-bold" 
-                                            size="x-small" 
-                                            label
-                                            @click="openDetail(lead.phone, duplicateResults[lead.phone], 'lead')"
-                                        >
-                                            <v-icon start icon="mdi-alert-circle" size="x-small"></v-icon> 重複名單 ({{ duplicateResults[lead.phone].data.assignedName }}) 詳情 >
-                                        </v-chip>
-
-                                        <v-chip
-                                            v-else-if="duplicateResults[lead.phone].type === 'reservation'"
-                                            color="purple-lighten-4"
-                                            class="text-purple-darken-3 font-weight-bold"
-                                            size="x-small"
-                                            label
-                                            @click="openDetail(lead.phone, duplicateResults[lead.phone], 'reservation')"
-                                        >
-                                            <v-icon start icon="mdi-calendar-check" size="x-small"></v-icon> 已有賞屋預約 ({{ duplicateResults[lead.phone].data.assignedName }}) 詳情 >
-                                        </v-chip>
-
-                                        <v-chip
-                                            v-else-if="duplicateResults[lead.phone].type === 'purchased'"
-                                            color="green-lighten-4"
-                                            class="text-green-darken-4 font-weight-bold"
-                                            size="x-small"
-                                            label
-                                        >
-                                            <v-icon start icon="mdi-home-heart" size="x-small"></v-icon> 本案已購戶 ({{ duplicateResults[lead.phone].data.name }} | {{ duplicateResults[lead.phone].data.unitId || '未知戶別' }} | 銷售: {{ duplicateResults[lead.phone].data.assignedName }})
-                                        </v-chip>
-                                         <v-chip v-else color="success" size="x-small" variant="elevated" prepend-icon="mdi-check-circle">✨ 全新名單</v-chip>
-                                     </template>
-                                      <v-progress-circular v-else indeterminate size="16" width="2" color="primary"></v-progress-circular>
-                                </div>
-
-                                <!-- 3. Assign -->
-                                <v-select
-                                  v-model="lead.assignedTo"
-                                  :items="salesStaffWithCounts"
-                                  item-title="displayName"
-                                  item-value="id"
-                                  :label="isReservationPending(lead) ? '🛑 預約待現場裁決（不分配）' : (!lead.assignedTo ? '⚠️ 尚未選擇銷售' : '選擇銷售')"
-                                  :error="!lead.assignedTo && !isReservationPending(lead)"
-                                  :disabled="isReservationPending(lead)"
-                                  density="compact"
-                                  hide-details="auto"
-                                  variant="outlined"
-                                  class="mb-1 font-weight-bold"
-                                  bg-color="white"
-                                  :menu-props="{ maxHeight: 380 }"
-                                  @update:model-value="(val) => { updateAssignedInfo(lead, val); lead.autoAssignInfo = null; applySorting(); }"
-                                >
-                                  <template v-slot:item="{ props: itemProps, item }">
-                                    <v-list-item v-bind="itemProps" title="" class="sales-select-item">
-                                      <template v-slot:title>
-                                        <div class="d-flex align-center flex-wrap">
-                                          <span class="font-weight-bold me-2">{{ item.raw.name }}</span>
-                                          <v-chip size="x-small" color="primary" variant="tonal" label class="me-1">共 {{ item.raw.totalCount }} 筆</v-chip>
-                                          <v-chip size="x-small" color="teal" variant="tonal" label class="me-1">本週 {{ item.raw.weekCount }} 筆</v-chip>
-                                          <v-chip size="x-small" color="blue-grey" variant="tonal" label class="me-1">上週 {{ item.raw.lastWeekCount }} 筆</v-chip>
-                                          <v-chip size="x-small" color="deep-purple" variant="tonal" label>本月 {{ item.raw.monthCount }} 筆</v-chip>
-                                        </div>
-                                      </template>
-                                      <template v-slot:subtitle>
-                                        <span class="text-caption">
-                                          <v-icon size="x-small" class="me-1">mdi-clock-outline</v-icon>最後分配：{{ item.raw.lastAssignedText }}
-                                        </span>
-                                      </template>
-                                    </v-list-item>
-                                  </template>
-                                  <template v-slot:selection="{ item }">
-                                    <span class="text-truncate">{{ item.raw.name }}（共 {{ item.raw.totalCount }}．週 {{ item.raw.weekCount }}．月 {{ item.raw.monthCount }}）</span>
-                                  </template>
-                                </v-select>
-                                <div
-                                  v-if="lead.assignedTo && lead.autoAssignInfo"
-                                  class="text-caption mb-3"
-                                  :class="AUTO_SOURCE_META[lead.autoAssignInfo.source]?.color"
-                                >
-                                  <v-icon size="x-small" icon="mdi-auto-fix" class="me-1"></v-icon>自動帶入「{{ AUTO_SOURCE_META[lead.autoAssignInfo.source]?.label }}」銷售
-                                  <span class="text-grey" v-if="lead.autoAssignInfo.basisDate">（{{ lead.autoAssignInfo.basisLabel }} {{ lead.autoAssignInfo.basisDate }}）</span>
-                                </div>
-                                <div v-else class="mb-2"></div>
-
-                                <!-- 4. Fields -->
-                                <v-row dense>
-                                    <v-col cols="6">
-                                        <v-text-field v-model="lead.source" label="來源" density="compact" variant="underlined" hide-details></v-text-field>
-                                    </v-col>
-                                    <v-col cols="6">
-                                         <v-text-field v-model="lead.budget" label="預算" density="compact" variant="underlined" hide-details></v-text-field>
-                                    </v-col>
-                                    <v-col cols="12">
-                                         <v-text-field v-model="lead.date" label="提交日期" density="compact" variant="underlined" hide-details></v-text-field>
-                                    </v-col>
-                                     <v-col cols="12">
-                                         <v-text-field v-model="lead.note" label="備註" density="compact" variant="underlined" hide-details></v-text-field>
-                                    </v-col>
-                                </v-row>
-                            </v-card-text>
-                        </v-card>
-                      </div>
-                    </v-card-text>
-
-        <v-divider></v-divider>
-        <v-card-actions class="pa-4 bg-white flex-wrap">
-        <v-btn v-if="uploadStep === 2" variant="text" color="grey-darken-1" prepend-icon="mdi-arrow-left" @click="uploadStep = 1">返回修改文本</v-btn>
-        
-        <v-btn
-          v-if="isAdmin && uploadStep === 1"
-          color="info"
-          variant="tonal"
-          prepend-icon="mdi-robot-outline"
-          class="mr-2"
-          @click="showAITemplateDialog = true"
-        >
-          AI 解析範本管理
-        </v-btn>
-
-          <v-spacer></v-spacer>
-
-          <!-- ✅ LINE 通知開關（僅在 Step 2 預覽階段顯示） -->
-          <div v-if="uploadStep === 2" class="d-flex align-center me-4">
-            <v-switch
-              v-model="sendLineNotify"
-              color="green"
-              density="compact"
-              hide-details
-              inset
-              class="me-1"
-            ></v-switch>
-            <div class="d-flex flex-column">
-              <span class="text-caption font-weight-bold" :class="sendLineNotify ? 'text-green-darken-2' : 'text-grey'">
-                <v-icon size="14" class="me-1">{{ sendLineNotify ? 'mdi-bell-ring' : 'mdi-bell-off' }}</v-icon>
-                {{ sendLineNotify ? '分配後發送 LINE 通知' : 'LINE 通知已關閉' }}
-              </span>
-              <span class="text-caption text-grey-darken-1" style="font-size: 10px;">
-                {{ sendLineNotify ? '銷售人員將收到名單推播' : '僅寫入資料庫，不推播通知' }}
-              </span>
+          <!-- 有賞屋預約但預約未指定銷售：鎖定不分配，執行時改 LINE 通知櫃台 -->
+          <div v-if="summaryCount.reservationPending" class="ld-callout-wrap">
+            <div class="mac-callout mac-callout--warning">
+              <v-icon size="16">mdi-calendar-alert</v-icon>
+              <span><b>{{ summaryCount.reservationPending }}</b> 筆已有賞屋預約但未指定銷售：不寫入名單，執行時改 LINE 通知櫃台</span>
             </div>
           </div>
 
-          <v-btn 
-            v-if="uploadStep === 1" 
-            color="primary" 
-            variant="elevated" 
-            min-width="150" 
-            rounded="lg"
-            @click="handleParsing"
-          >開始解析文本</v-btn>
-           <v-btn
-          v-if="uploadStep === 2"
-          :color="summaryCount.unassigned > 0 ? 'grey' : 'success'"
-          variant="elevated"
-          min-width="250"
-          rounded="lg"
-          :disabled="isCheckingDuplicates || summaryCount.unassigned > 0 || (previewLeads.length + pendingOverwrites.length === 0)"
-          :loading="isImporting"
-          @click="executeBatchImportAndAssign"
-        >
-          {{ executeButtonLabel }}
-        </v-btn>
-        </v-card-actions>
+          <div class="ld-list-head">
+            <span>客戶</span>
+            <span>查重結果</span>
+            <span>指派銷售</span>
+            <span>名單資料</span>
+            <span></span>
+          </div>
+
+          <v-card-text class="ld-list-body">
+            <div
+              v-for="(lead, idx) in previewLeads"
+              :key="idx"
+              class="ld-row"
+              :class="leadRowTone(lead) && `ld-row--${leadRowTone(lead)}`"
+            >
+              <!-- 客戶 -->
+              <div class="ld-cell ld-cell--who">
+                <v-text-field
+                  v-model="lead.name"
+                  placeholder="姓名"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  hide-details
+                  prepend-inner-icon="mdi-account-outline"
+                  class="mac-vfield ld-name"
+                ></v-text-field>
+                <v-text-field
+                  v-model="lead.phone"
+                  placeholder="電話"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  hide-details="auto"
+                  prepend-inner-icon="mdi-phone-outline"
+                  class="mac-vfield"
+                  :error-messages="lead.phone?.length !== 10 ? '電話長度異常' : ''"
+                ></v-text-field>
+              </div>
+
+              <!-- 查重結果 -->
+              <div class="ld-cell ld-cell--check">
+                <div v-for="item in leadCheckItems(lead)" :key="item.key" class="ld-hit">
+                  <span class="ld-tag" :class="`ld-tag--${item.tone}`">
+                    <v-icon size="13">{{ item.icon }}</v-icon>{{ item.label }}
+                  </span>
+                  <span v-if="item.meta" class="ld-hit-meta">{{ item.meta }}</span>
+                  <button v-if="item.open" type="button" class="ld-link" @click="item.open()">詳情</button>
+                </div>
+                <div v-if="!duplicateResults[lead.phone]" class="ld-hit ld-hit-meta">
+                  <v-progress-circular indeterminate size="12" width="2" color="#0071e3"></v-progress-circular>查重中
+                </div>
+
+                <!-- 他案命中（僅標示） -->
+                <div v-if="getCrossHits(lead.phone).length" class="ld-cross">
+                  <div class="ld-cross-title"><v-icon size="14">mdi-swap-horizontal</v-icon>他案命中</div>
+                  <div v-for="hit in getCrossHits(lead.phone)" :key="hit.projectId" class="ld-hit">
+                    <span class="ld-tag ld-tag--indigo">{{ crossProjectName(hit.projectId) }}・{{ crossHitType(hit) }}</span>
+                    <span v-if="crossHitSales(hit)" class="ld-hit-meta">{{ crossHitSales(hit) }}</span>
+                    <button type="button" class="ld-link" @click="openCrossDetail(lead.phone, hit)">詳情</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 指派銷售 -->
+              <div class="ld-cell ld-cell--assign">
+                <v-select
+                  :model-value="lead.assignedTo || null"
+                  :items="salesStaffWithCounts"
+                  item-title="displayName"
+                  item-value="id"
+                  :placeholder="isReservationPending(lead) ? '預約待裁決，不分配' : '選擇銷售'"
+                  persistent-placeholder
+                  :error="!lead.assignedTo && !isReservationPending(lead)"
+                  :disabled="isReservationPending(lead)"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  hide-details
+                  class="mac-vfield"
+                  menu-icon="mdi-unfold-more-horizontal"
+                  :menu-props="{ contentClass: 'mac-menu', maxHeight: 400 }"
+                  @update:model-value="(val) => { lead.assignedTo = val; updateAssignedInfo(lead, val); lead.autoAssignInfo = null; applySorting(); }"
+                >
+                  <template v-slot:item="{ props: itemProps, item }">
+                    <v-list-item
+                      v-bind="itemProps"
+                      :title="item.raw.name"
+                      :subtitle="`共 ${item.raw.totalCount}・本週 ${item.raw.weekCount}・上週 ${item.raw.lastWeekCount}・本月 ${item.raw.monthCount}｜最後分配 ${item.raw.lastAssignedText}`"
+                    ></v-list-item>
+                  </template>
+                  <template v-slot:selection="{ item }">{{ item.raw.name }}</template>
+                </v-select>
+                <div v-if="assignedStaffStats(lead)" class="ld-assign-meta">
+                  共 {{ assignedStaffStats(lead).totalCount }}・本週 {{ assignedStaffStats(lead).weekCount }}・本月 {{ assignedStaffStats(lead).monthCount }}
+                </div>
+                <div
+                  v-if="lead.assignedTo && lead.autoAssignInfo"
+                  class="ld-assign-auto"
+                  :class="AUTO_SOURCE_META[lead.autoAssignInfo.source]?.color"
+                >
+                  <v-icon size="13">mdi-auto-fix</v-icon>
+                  <span>自動帶入{{ AUTO_SOURCE_META[lead.autoAssignInfo.source]?.label }}銷售<template v-if="lead.autoAssignInfo.basisDate">（{{ lead.autoAssignInfo.basisLabel }} {{ lead.autoAssignInfo.basisDate }}）</template></span>
+                </div>
+              </div>
+
+              <!-- 名單資料 -->
+              <div class="ld-cell ld-cell--attrs">
+                <v-text-field v-model="lead.source" prefix="來源" variant="solo" flat density="compact" hide-details class="mac-vfield"></v-text-field>
+                <v-text-field v-model="lead.budget" prefix="預算" variant="solo" flat density="compact" hide-details class="mac-vfield"></v-text-field>
+                <v-text-field v-model="lead.date" prefix="日期" variant="solo" flat density="compact" hide-details class="mac-vfield"></v-text-field>
+                <v-textarea v-model="lead.note" prefix="備註" variant="solo" flat density="compact" hide-details auto-grow rows="1" class="mac-vfield"></v-textarea>
+              </div>
+
+              <button type="button" class="mac-icon-btn ld-del" title="移除" @click="previewLeads.splice(idx, 1)">
+                <v-icon size="18">mdi-trash-can-outline</v-icon>
+              </button>
+            </div>
+          </v-card-text>
+        </template>
+
+        <div class="mac-sheet-foot">
+          <template v-if="uploadStep === 1">
+            <button v-if="isAdmin" type="button" class="mac-btn" @click="showAITemplateDialog = true">
+              <v-icon size="16">mdi-robot-outline</v-icon>AI 解析範本管理
+            </button>
+            <span class="mac-spacer"></span>
+            <button type="button" class="mac-btn mac-btn--primary mac-btn--lg" @click="handleParsing">開始解析文本</button>
+          </template>
+          <template v-else>
+            <button type="button" class="mac-btn" @click="uploadStep = 1">
+              <v-icon size="16">mdi-chevron-left</v-icon>返回修改
+            </button>
+            <span class="mac-spacer"></span>
+            <div class="ld-notify" :class="{ 'is-off': !sendLineNotify }">
+              <v-switch v-model="sendLineNotify" color="#34c759" density="compact" hide-details inset></v-switch>
+              <span @click="sendLineNotify = !sendLineNotify">{{ sendLineNotify ? 'LINE 通知銷售' : '不發 LINE 通知' }}</span>
+            </div>
+            <button
+              type="button"
+              class="mac-btn mac-btn--primary mac-btn--lg mac-btn--wrap ld-exec"
+              :disabled="isImporting || isCheckingDuplicates || summaryCount.unassigned > 0 || (previewLeads.length + pendingOverwrites.length === 0)"
+              @click="executeBatchImportAndAssign"
+            >
+              <v-progress-circular v-if="isImporting" indeterminate size="14" width="2" color="#fff"></v-progress-circular>
+              {{ executeButtonLabel }}
+            </button>
+          </template>
+        </div>
       </v-card>
     </v-dialog>
 
@@ -2203,8 +1852,44 @@
         v-model="detailDialog.visible"
         :lead-data="detailDialog.data"
         :type="detailDialog.type"
+        :project-name="detailDialog.projectName"
         @assign="handleQuickAssignFromDialog"
     />
+
+    <!-- 跨建案比對：選擇一併比對的建案 -->
+    <v-dialog v-model="crossProjectPicker.show" max-width="420" persistent scrollable content-class="mac-dialog-fit">
+      <v-card class="mac-sheet">
+        <div class="mac-sheet-head">
+          <v-icon size="18">mdi-swap-horizontal</v-icon>選擇比對建案
+          <button type="button" class="mac-sheet-close" title="取消" @click="closeCrossProjectPicker(false)">
+            <v-icon size="18">mdi-close</v-icon>
+          </button>
+        </div>
+        <v-card-text class="mac-form pa-3">
+          <div class="mac-form-group">
+            <label class="mac-form-row ld-pick-row is-locked">
+              <input type="checkbox" class="mac-check" checked disabled>
+              <span class="mac-form-row-main">{{ projectName }}</span>
+              <span class="ld-pick-note">本案</span>
+            </label>
+            <label v-for="p in crossProjectOptions" :key="p.id" class="mac-form-row ld-pick-row">
+              <input v-model="crossProjectPicker.selected" type="checkbox" class="mac-check" :value="p.id">
+              <span class="mac-form-row-main">{{ p.name }}</span>
+            </label>
+          </div>
+        </v-card-text>
+        <div class="mac-sheet-foot">
+          <button
+            type="button"
+            class="mac-btn"
+            @click="crossProjectPicker.selected = crossProjectPicker.selected.length === crossProjectOptions.length ? [] : crossProjectOptions.map(p => p.id)"
+          >{{ crossProjectPicker.selected.length === crossProjectOptions.length ? '取消全選' : '全選' }}</button>
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn" @click="closeCrossProjectPicker(false)">取消</button>
+          <button type="button" class="mac-btn mac-btn--primary" @click="closeCrossProjectPicker(true)">開始解析</button>
+        </div>
+      </v-card>
+    </v-dialog>
 
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000">
       {{ snackbar.text }}
@@ -2218,6 +1903,8 @@ import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useUiStore } from '@/store/uiStore';
+import { useProjectStore } from '@/store/projectStore';
+import { getViewingProjects } from '@/utils/viewingReservationAccess';
 import { db } from '@/firebase';
 import {
   getFirestore,
@@ -2259,7 +1946,8 @@ ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale,
 const detailDialog = reactive({
     visible: false,
     type: 'vip',
-    data: {}
+    data: {},
+    projectName: '' // 他案命中時為該建案名稱（唯讀，不提供指派）
 });
 
 const currentDetailPhone = ref('');
@@ -2269,7 +1957,13 @@ const openDetail = (phone, result, type) => {
     currentDetailPhone.value = phone;
     detailDialog.type = type;
     detailDialog.data = result.data;
+    detailDialog.projectName = '';
     detailDialog.visible = true;
+};
+
+const openCrossDetail = (phone, hit) => {
+    openDetail(phone, hit, hit.type);
+    detailDialog.projectName = crossProjectName(hit.projectId);
 };
 
 const executeDialogAssign = (salesId) => {
@@ -2327,6 +2021,7 @@ const props = defineProps({
 });
 const router = useRouter();
 const userStore = useUserStore();
+const projectStore = useProjectStore();
 const uiStore = useUiStore();
 // 2. 定義儲存所有日誌的變數
 const allProjectLogs = ref([]);
@@ -2557,6 +2252,42 @@ const deleteAITemplate = async (id) => {
 const previewLeads = ref([]);   
 const duplicateResults = ref({}); 
 const isCheckingDuplicates = ref(false);
+
+// --- 跨建案比對：解析時一併比對使用者有客資系統權限的他案（客資／聯絡名單／賞屋預約），僅標示不影響指派 ---
+const crossProjectIds = ref([]); // 本次解析一併比對的他案 ID
+const crossProjectPicker = reactive({ show: false, selected: [] });
+let crossPickerResolve = null;
+const crossProjectOptions = computed(() =>
+  getViewingProjects(userStore, projectStore).filter(p => p.id !== props.projectId)
+);
+const crossProjectName = (id) => crossProjectOptions.value.find(p => p.id === id)?.name || id;
+// 選擇他案：只有本案時略過；回傳他案 ID 陣列，取消回傳 null。他案預設全不勾
+const pickCrossProjects = async () => {
+  if (projectStore.projectsList.length === 0) {
+    try { await projectStore.fetchProjects(); } catch (err) { console.warn('載入建案清單失敗，改用權限內建案名稱', err); }
+  }
+  if (crossProjectOptions.value.length === 0) return [];
+
+  crossProjectPicker.selected = [];
+  crossProjectPicker.show = true;
+  return new Promise(resolve => { crossPickerResolve = resolve; });
+};
+
+const closeCrossProjectPicker = (confirmed) => {
+  crossProjectPicker.show = false;
+  const ids = confirmed ? [...crossProjectPicker.selected] : null;
+  crossPickerResolve?.(ids);
+  crossPickerResolve = null;
+};
+
+const CROSS_HIT_TYPE_LABELS = { vip: '客資', lead: '名單', reservation: '預約' };
+const crossHitType = (hit) => CROSS_HIT_TYPE_LABELS[hit.type] + (hit.type === 'vip' && hit.data?.leadDup ? '＋名單' : '');
+const crossHitSales = (hit) => (hit.type === 'vip' ? hit.data?.latestSalesName : hit.data?.assignedName) || '';
+const crossHitText = (hit) => {
+  const sales = crossHitSales(hit);
+  return `${crossProjectName(hit.projectId)} ${crossHitType(hit)}${sales ? `（銷售 ${sales}）` : ''}`;
+};
+const getCrossHits = (phone) => duplicateResults.value[phone]?.crossHits || [];
 const sendLineNotify = ref(true); // ✅ LINE 通知開關（預設開啟）
 
 // --- Excel 匯入重複比對 ---
@@ -3446,7 +3177,7 @@ const runCheck = async (phones) => {
   if (phones.length === 0) return;
   isCheckingDuplicates.value = true;
   try {
-    const res = await checkLeadDuplicates(props.projectId, phones);
+    const res = await checkLeadDuplicates(props.projectId, phones, crossProjectIds.value);
     duplicateResults.value = { ...duplicateResults.value, ...res.results };
   } catch (err) {
     console.error("查重 API 異常:", err);
@@ -3534,9 +3265,11 @@ const updateAssignedInfo = (lead, salesId) => {
 };
 
 const summaryCount = computed(() => {
-  const counts = { vip: 0, lead: 0, reservation: 0, new: 0, internalDup: 0, unassigned: 0, purchased: 0, reservationPending: 0 };
+  const counts = { vip: 0, lead: 0, reservation: 0, new: 0, internalDup: 0, unassigned: 0, purchased: 0, reservationPending: 0, crossHit: 0 };
 
   previewLeads.value.forEach(l => {
+    if (getCrossHits(l.phone).length) counts.crossHit++;
+
     // 0. 預約未指定銷售（待現場裁決）：獨立計數，不計入待指派
     const res = duplicateResults.value[l.phone];
     if (res?.data?.reservationPending) {
@@ -3584,19 +3317,58 @@ const internalDuplicateMap = computed(() => {
   return map;
 });
 
-const getRowClass = (phone) => {
-  // 🚩 優先檢查本次名單內部重複
+// 預覽列左側色條：預約待裁決 > 待指派 > 本次名單重複
+const leadRowTone = (lead) => {
+  if (isReservationPending(lead)) return 'pending';
+  if (!lead.assignedTo) return 'unassigned';
+  if (internalDuplicateMap.value[lead.phone]?.length > 1) return 'dup';
+  return '';
+};
+
+const joinMeta = (...parts) => parts.filter(Boolean).join(' · ');
+
+// 預覽列「查重結果」：本案各類命中整理成統一的標籤列 { key, tone, icon, label, meta, open }
+const leadCheckItems = (lead) => {
+  const phone = lead.phone;
+  const items = [];
   if (internalDuplicateMap.value[phone]?.length > 1) {
-    return 'bg-yellow-lighten-5';
+    items.push({ key: 'internal', tone: 'yellow', icon: 'mdi-content-duplicate', label: '本次名單重複' });
+  }
+  if (lead.status) {
+    const reason = lead.status === '不考慮' && lead.reason ? `（${lead.reason}）` : '';
+    items.push({ key: 'history', tone: 'teal', icon: 'mdi-clipboard-text-outline', label: `歷史回報：${lead.status}${reason}` });
   }
 
   const res = duplicateResults.value[phone];
-  if (res?.type === 'purchased') return 'bg-green-lighten-5';
-  if (res?.type === 'vip') return 'bg-orange-lighten-5';
-  if (res?.type === 'lead') return 'bg-blue-grey-lighten-5';
-  if (res?.type === 'reservation') return 'bg-purple-lighten-5';
-  return '';
+  if (!res) return items;
+  const d = res.data || {};
+
+  if (d.reservationPending) {
+    const p = d.reservationPending;
+    items.push({
+      key: 'pending', tone: 'purple', icon: 'mdi-calendar-alert', label: '預約待現場裁決',
+      meta: joinMeta(p.reservationTime || '預約時間未填', p.reservationType, p.note && `備註：${p.note}`)
+    });
+  }
+
+  if (res.type === 'vip') {
+    items.push({ key: 'vip', tone: 'orange', icon: 'mdi-crown-outline', label: '既有客資', meta: joinMeta(d.latestSalesName, d.date), open: () => openDetail(phone, res, 'vip') });
+    if (d.leadDup) {
+      items.push({ key: 'leadDup', tone: 'slate', icon: 'mdi-account-multiple-outline', label: '重複名單', meta: joinMeta(d.leadDup.assignedName, d.leadDup.assignedAt), open: () => openDetail(phone, { data: d.leadDup }, 'lead') });
+    }
+  } else if (res.type === 'lead') {
+    items.push({ key: 'lead', tone: 'slate', icon: 'mdi-account-multiple-outline', label: '重複名單', meta: joinMeta(d.assignedName, d.date), open: () => openDetail(phone, res, 'lead') });
+  } else if (res.type === 'reservation') {
+    items.push({ key: 'reservation', tone: 'purple', icon: 'mdi-calendar-check-outline', label: '已有賞屋預約', meta: joinMeta(d.assignedName, d.date), open: () => openDetail(phone, res, 'reservation') });
+  } else if (res.type === 'purchased') {
+    items.push({ key: 'purchased', tone: 'green', icon: 'mdi-home-heart', label: '本案已購戶', meta: joinMeta(`${d.name || ''}（${d.unitId || '未知戶別'}）`, d.assignedName && `銷售 ${d.assignedName}`) });
+  } else {
+    items.push({ key: 'new', tone: 'green', icon: 'mdi-check-circle-outline', label: '全新名單' });
+  }
+  return items;
 };
+
+const assignedStaffStats = (lead) => lead.assignedTo ? salesStaffWithCounts.value.find(s => s.id === lead.assignedTo) : null;
 
 const normalizePhone = (p) => {
   if (!p) return '';
@@ -3869,7 +3641,11 @@ const handleParsing = async () => {
     showMsg('請先輸入名單資料', 'warning');
     return;
   }
-  
+
+  const crossIds = await pickCrossProjects();
+  if (crossIds === null) return;
+  crossProjectIds.value = crossIds;
+
   previewLeads.value = leads;
   uploadStep.value = 2;
   await runCheck(leads.map(l => l.phone).filter(p => p));
@@ -3939,6 +3715,11 @@ const buildLeadsWithStatus = (list = previewLeads.value.filter(l => !isReservati
       statusText = `📅 已有賞屋預約 (業務: ${salesName} | 預約時間: ${res.data?.date || '--'})`;
     } else if (res?.type === 'lead') {
       statusText = `⚠️ 重複名單 (共 ${res.data?.count || 0} 筆)`;
+    }
+
+    const crossHits = getCrossHits(l.phone);
+    if (crossHits.length) {
+      statusText += ` ＋ 🔁 他案：${crossHits.map(crossHitText).join('、')}`;
     }
 
     return {
@@ -4223,6 +4004,7 @@ const closeUploadDialog = () => {
   excelFile.value = null;
   sendLineNotify.value = true; // ✅ 重置 LINE 通知開關
   selectedTemplateId.value = 'auto'; // ✅ 重置範本選擇
+  crossProjectIds.value = [];
   resetExcelImportState(); // ✅ 重置 EXCEL V2 匯入狀態
   // ✅ 清空所有偵測結果
   Object.keys(detectedTemplateInfoMap).forEach(k => delete detectedTemplateInfoMap[k]);
@@ -5271,6 +5053,18 @@ const handleExcelFileSelect = async (input) => {
   const file = Array.isArray(input) ? input[0] : input;
   if (!file) return;
 
+  // 預覽模式才做交叉查重，才需選擇他案
+  if (excelFastMode.value) {
+    crossProjectIds.value = [];
+  } else {
+    const crossIds = await pickCrossProjects();
+    if (crossIds === null) {
+      excelFile.value = null;
+      return;
+    }
+    crossProjectIds.value = crossIds;
+  }
+
   const reader = new FileReader();
   reader.onload = async (e) => {
     try {
@@ -5421,19 +5215,6 @@ const handleExcelFileSelect = async (input) => {
 
 </script>
 
-<style>
-/* 選擇銷售下拉選單項目 (v-menu teleport 至 body，scoped CSS 吃不到，故放非 scoped 區塊) */
-.sales-select-item {
-  padding-top: 6px !important;
-  padding-bottom: 6px !important;
-  border-bottom: 1px solid #f0f0f0;
-}
-.sales-select-item .v-list-item-subtitle {
-  margin-top: 2px;
-  opacity: 0.85;
-}
-</style>
-
 <style scoped>
 /* ✅ 標題列自適應：標題區可被壓縮（min-width:0 才能讓 text-truncate 生效），
    右側 icon 工具列不縮小、空間不足時整組換行，避免被容器裁切 */
@@ -5444,6 +5225,130 @@ const handleExcelFileSelect = async (input) => {
   min-width: 0;
   overflow: hidden;
 }
+/* ===== 名單解析與分配視窗（macOS 風格，共用樣式見 src/styles/macosUi.css） ===== */
+.ld-steps { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 13px; }
+.ld-step { display: inline-flex; align-items: center; gap: 6px; color: #8e8e93; font-weight: 500; }
+.ld-step b {
+  display: inline-grid; place-content: center; width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08); color: #6e6e73; font-size: 11px; font-weight: 700;
+}
+.ld-step.is-active { color: #1d1d1f; font-weight: 600; }
+.ld-step.is-active b { background: #0071e3; color: #fff; }
+.ld-steps .ld-step-sep { color: #c7c7cc; }
+
+/* 狀態色（Apple 系統色）：--ld-c 圓點／色條、--ld-t 文字、--ld-bg 淡底 */
+.ld-stat--red, .ld-tag--red { --ld-c: #ff3b30; --ld-t: #d70015; --ld-bg: rgba(255, 59, 48, 0.11); }
+.ld-stat--orange, .ld-tag--orange { --ld-c: #ff9500; --ld-t: #c93400; --ld-bg: rgba(255, 149, 0, 0.13); }
+.ld-stat--yellow, .ld-tag--yellow { --ld-c: #ffcc00; --ld-t: #a05a00; --ld-bg: rgba(255, 204, 0, 0.18); }
+.ld-stat--green, .ld-tag--green { --ld-c: #34c759; --ld-t: #248a3d; --ld-bg: rgba(52, 199, 89, 0.13); }
+.ld-stat--teal, .ld-tag--teal { --ld-c: #30b0c7; --ld-t: #0e7c86; --ld-bg: rgba(48, 176, 199, 0.13); }
+.ld-stat--indigo, .ld-tag--indigo { --ld-c: #5856d6; --ld-t: #3634a3; --ld-bg: rgba(88, 86, 214, 0.12); }
+.ld-stat--purple, .ld-tag--purple { --ld-c: #af52de; --ld-t: #8944ab; --ld-bg: rgba(175, 82, 222, 0.12); }
+.ld-stat--slate, .ld-tag--slate { --ld-c: #8e8e93; --ld-t: #48484a; --ld-bg: rgba(142, 142, 147, 0.15); }
+
+.ld-summary {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 10px 16px; background: #fff; border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.ld-stat {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px;
+  border-radius: 12px; background: #f2f2f5; color: #3a3a3c; font-size: 12px; white-space: nowrap;
+}
+.ld-stat::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--ld-c, #8e8e93); }
+.ld-stat b { color: #1d1d1f; font-weight: 700; }
+.ld-stat--total { background: #1d1d1f; color: #fff; }
+.ld-stat--total b { color: #fff; }
+.ld-stat--total::before, .ld-stat--plain::before { display: none; }
+.ld-stat--red { background: var(--ld-bg); color: var(--ld-t); font-weight: 600; }
+.ld-stat--red b { color: var(--ld-t); }
+
+.ld-callout-wrap { padding: 8px 16px; background: #fff; border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
+
+.ld-list-head, .ld-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 180px) minmax(0, 1fr) minmax(200px, 240px) minmax(0, 1.3fr) 28px;
+  gap: 12px;
+}
+.ld-list-head {
+  padding: 7px 24px 7px 27px; background: #f6f6f8; border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  color: #6e6e73; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em;
+}
+.ld-list-body { padding: 12px !important; background: #f5f5f7; }
+.ld-row {
+  position: relative; align-items: start; padding: 12px 12px 12px 15px;
+  background: #fff; border-radius: 10px; overflow: hidden;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 0.5px 1.5px rgba(0, 0, 0, 0.05);
+}
+.ld-row + .ld-row { margin-top: 8px; }
+.ld-row::before { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 3px; background: transparent; }
+.ld-row--unassigned::before { background: #ff3b30; }
+.ld-row--pending::before { background: #af52de; }
+.ld-row--dup::before { background: #ffcc00; }
+
+.ld-cell { min-width: 0; }
+.ld-cell--who { display: grid; gap: 6px; }
+.ld-cell--attrs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 6px; }
+.ld-cell--attrs :deep(.v-text-field__prefix) { opacity: 1; color: #8e8e93; font-size: 12px; }
+.ld-cell--attrs :deep(.v-textarea .v-text-field__prefix) { align-items: flex-start; min-height: 0; padding-top: 9px; }
+.ld-name :deep(input) { font-weight: 600; }
+.ld-del { margin-top: 4px; }
+.ld-del:hover { background: rgba(214, 45, 32, 0.08); color: #d62d20; }
+
+.ld-hit { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 12px; }
+.ld-hit + .ld-hit { margin-top: 6px; }
+.ld-tag {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 2px 7px;
+  border-radius: 5px; background: var(--ld-bg); color: var(--ld-t);
+  font-size: 12px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere;
+}
+.ld-tag .v-icon { color: inherit; }
+.ld-hit-meta { display: inline-flex; align-items: center; gap: 6px; color: #6e6e73; font-size: 12px; overflow-wrap: anywhere; }
+.ld-link { padding: 0 2px; border: 0; background: none; color: #0071e3; font-size: 12px; font-weight: 500; cursor: pointer; }
+.ld-link:hover { text-decoration: underline; }
+.ld-cross {
+  margin-top: 8px; padding: 7px 9px; border-radius: 8px;
+  background: rgba(88, 86, 214, 0.07); box-shadow: inset 3px 0 0 #5856d6;
+}
+.ld-cross-title { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; color: #3634a3; font-size: 12px; font-weight: 700; }
+.ld-cross-title .v-icon { color: #5856d6; }
+
+.ld-assign-meta { margin-top: 5px; color: #6e6e73; font-size: 12px; }
+.ld-assign-auto { display: flex; align-items: flex-start; gap: 4px; margin-top: 3px; font-size: 12px; line-height: 1.45; }
+.ld-assign-auto .v-icon { margin-top: 1px; color: inherit; }
+
+.ld-notify { display: inline-flex; align-items: center; gap: 2px; color: #1d1d1f; font-size: 13px; }
+.ld-notify > span { cursor: pointer; white-space: nowrap; }
+.ld-notify.is-off { color: #8e8e93; }
+.ld-exec { min-width: 220px; }
+
+.ld-pick-row { cursor: pointer; }
+.ld-pick-row.is-locked { cursor: default; }
+.ld-pick-note { flex-shrink: 0; color: #8e8e93; font-size: 12px; }
+
+@media (max-width: 959px) {
+  .ld-list-head { display: none; }
+  .ld-row {
+    grid-template-columns: minmax(0, 1fr) 28px;
+    grid-template-areas: "who del" "check check" "assign assign" "attrs attrs";
+    gap: 10px;
+  }
+  .ld-cell--who { grid-area: who; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+  .ld-cell--check { grid-area: check; }
+  .ld-cell--assign { grid-area: assign; }
+  .ld-cell--attrs { grid-area: attrs; }
+  .ld-del { grid-area: del; }
+}
+@media (max-width: 600px) {
+  /* 摘要單行橫向捲動，避免固定區塊佔掉手機畫面 */
+  .ld-summary { flex-wrap: nowrap; overflow-x: auto; padding: 8px 12px; scrollbar-width: none; }
+  .ld-summary::-webkit-scrollbar { display: none; }
+  .ld-stat { flex-shrink: 0; }
+  .ld-callout-wrap { padding: 8px 12px; }
+  .ld-list-body { padding: 8px !important; }
+  .ld-cell--who, .ld-cell--attrs { grid-template-columns: minmax(0, 1fr); }
+  .ld-exec { flex: 1 1 100%; min-width: 0; }
+}
+
 .chart-center-label {
   position: absolute;
   top: 50%; /* 修改：精準置中 */
@@ -5501,16 +5406,6 @@ const handleExcelFileSelect = async (input) => {
 .v-btn--variant-dashed {
   border: 2px dashed rgba(var(--v-theme-primary), 0.3);
   background: transparent;
-}
-
-.preview-table :deep(table) {
-  border-spacing: 0;
-}
-.preview-table :deep(tbody tr) {
-  transition: background-color 0.2s;
-}
-.preview-table :deep(tbody tr:hover) {
-  background-color: #f5f5f5 !important;
 }
 
 .border-bottom {

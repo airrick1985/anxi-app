@@ -25606,20 +25606,299 @@ async function _sendReminderText(token, to, name, items, projectName) {
 
 
 /**
+ * 單一建案查重：依序比對 vipGuests（客資）、leads（聯絡名單）、viewing_reservations（賞屋預約）
+ * 回傳 { [phone]: { type: "none"|"vip"|"lead"|"reservation", data } }
+ */
+async function _checkLeadDuplicatesInProject(db, projectId, cleanPhones) {
+  const results = {};
+
+  // 預設所有電話為無重複狀態
+  cleanPhones.forEach(p => { results[p] = { type: "none", data: null }; });
+
+  // 2. 第一階段：比對 vipGuests (成交客戶/已有客資)
+  // array-contains-any 限制一次 10 筆
+  for (let i = 0; i < cleanPhones.length; i += 10) {
+    const chunk = cleanPhones.slice(i, i + 10);
+    const vipSnap = await db.collection("vipGuests")
+      .where("projectId", "==", projectId)
+      .where("searchablePhones", "array-contains-any", chunk)
+      .get();
+
+    vipSnap.forEach(doc => {
+      const guest = doc.data();
+      const matchedPhone = chunk.find(p => guest.searchablePhones?.includes(p));
+
+      if (matchedPhone) {
+        // ✅ 提取完整互動紀錄 (倒序排列，最新的在前)
+        const rawLogs = guest.interactionLogs || [];
+        const sortedLogs = rawLogs.sort((a, b) => {
+          const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (new Date(a.date || 0).getTime());
+          const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (new Date(b.date || 0).getTime());
+          return timeB - timeA;
+        });
+
+        // ✅ 提取基本資料 (Profile)
+        const profile = guest.profile || {};
+        // 嘗試從多個欄位來源獲取關鍵資訊
+        const source = profile['從何得知本建案'] || profile.source || guest.source || '未知';
+        const budget = profile['購屋預算'] || profile.budget || guest.budget || '未填寫';
+
+        // 客資最近互動時間（millis），供與聯絡名單最後分配時間比較，決定預設指派銷售
+        const latestActivityMillis = sortedLogs.length
+          ? (sortedLogs[0].createdAt?.toMillis ? sortedLogs[0].createdAt.toMillis() : (new Date(sortedLogs[0].date || 0).getTime() || 0))
+          : (new Date(guest.submissions?.[0]?.拜訪日期 || 0).getTime() || 0);
+
+        results[matchedPhone] = {
+          type: "vip",
+          data: {
+            latestName: guest.latestName || "未知",
+            latestSalesName: guest.latestSalesName || "未指派",
+            latestSalesPhone: guest.latestSalesPhone || "", // 分配的 KEY
+            latestActivityMillis,
+            visitDate: guest.submissions?.[0]?.拜訪日期 || "",
+
+            // 擴充欄位供詳情對話框使用
+            profile: {
+              ...profile,
+              source: source,
+              budget: budget
+            },
+            interactionLogs: _stripLogCounterNotes(sortedLogs),
+
+            // 預覽用簡化欄位
+            source: source,
+            budget: budget,
+            date: sortedLogs[0]?.date || guest.submissions?.[0]?.拜訪日期 || "",
+            status: sortedLogs.length > 0
+              ? `最近洽談: ${sortedLogs[0].content?.substring(0, 10)}${sortedLogs[0].content?.length > 10 ? '...' : ''}`
+              : "尚無洽談紀錄"
+          }
+        };
+      }
+    });
+  }
+
+  // 3. 第二階段：比對 leads (既有名單)
+  // "none" 與 "vip" 都要檢查：vip 命中者仍需知道聯絡名單是否也有重複分配紀錄
+  const remainingPhones = cleanPhones.filter(p => results[p].type === "none" || results[p].type === "vip");
+
+  for (let i = 0; i < remainingPhones.length; i += 30) {
+    const chunk = remainingPhones.slice(i, i + 30);
+    const leadsSnap = await db.collection("leads")
+      .where("projectId", "==", projectId)
+      .where("phone", "in", chunk)
+      .get();
+
+    const leadGroups = {};
+    leadsSnap.forEach(doc => {
+      const lead = doc.data();
+      lead.id = doc.id; // 保存 doc id 以便查詢 sub-collection
+      if (!leadGroups[lead.phone]) leadGroups[lead.phone] = [];
+      leadGroups[lead.phone].push(lead);
+    });
+
+    // 使用 Promise.all 處理並行查詢
+    await Promise.all(Object.keys(leadGroups).map(async (phone) => {
+      const group = leadGroups[phone];
+
+      // 找出最晚分配的一筆 (作為主要顯示資料)
+      const sortedMap = group.sort((a, b) =>
+        (b.assignedAt?.toMillis() || 0) - (a.assignedAt?.toMillis() || 0)
+      );
+      const latest = sortedMap[0];
+
+      // 查詢該電話所有相關名單的 contactLogs
+      // 因為名單可能會有多筆 (多次重複進線)，我們嘗試撈取所有相關的聯絡紀錄
+      // 為了效能，限制只撈取最新的幾筆名單的 logs
+      const targetLeads = sortedMap.slice(0, 5); // 取最新的 5 筆名單 doc
+      let allLogs = [];
+
+      try {
+        const logsPromises = targetLeads.map(async (leadDoc) => {
+          const logsSnap = await db.collection("leads").doc(leadDoc.id).collection("contactLogs")
+            .orderBy("createdAt", "desc")
+            .limit(5) // 每筆名單只取最近 5 筆紀錄
+            .get();
+
+          return logsSnap.docs.map(logDoc => {
+            const log = logDoc.data();
+            // ✅ 預先格式化日期，避免前端解析 Timestamp 出錯
+            let dateStr = "";
+            if (log.createdAt && log.createdAt.toDate) {
+              try {
+                dateStr = log.createdAt.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+              } catch (e) { dateStr = "日期格式錯誤"; }
+            }
+
+            return {
+              ...log,
+              // 因為是 sub-collection，補上 parent lead 的資訊以便前端顯示上下文
+              parentLeadDate: leadDoc.assignedAt ? leadDoc.assignedAt.toDate().toISOString() : null,
+              parentLeadSource: leadDoc.source || '未知',
+              logId: logDoc.id,
+              date: dateStr // ✅ 提供給前端使用的格式化字串
+            };
+          });
+        });
+
+        const logsResults = await Promise.all(logsPromises);
+        allLogs = logsResults.flat().sort((a, b) => {
+          const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+          const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+          return timeB - timeA;
+        });
+
+      } catch (err) {
+        console.error(`[checkLeadDuplicates] Error fetching contactLogs for phone ${phone}:`, err);
+        // 錯誤不阻斷主流程，僅 log
+      }
+
+      const leadData = {
+        count: group.length,
+        name: latest.name || "未知",
+        assignedName: latest.assignedName || "未指派",
+        assignedTo: latest.assignedTo || "", // 業務手機
+        assignedAt: latest.assignedAt ? latest.assignedAt.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) : "",
+        assignedAtMillis: latest.assignedAt?.toMillis() || 0,
+
+        // 擴充欄位
+        source: latest.source || "未知",
+        budget: latest.budget || "未填寫",
+        date: latest.date || "",
+        status: latest.statusText || latest.status || "重複名單",
+        note: latest.note || "",
+
+        // 新增: 互動紀錄
+        interactionLogs: allLogs
+      };
+
+      if (results[phone].type === "vip") {
+        // 既有客資同時也有重複名單：附掛名單資訊，並比較兩邊「最後一筆」時間決定預設指派銷售
+        const vipData = results[phone].data;
+        vipData.leadDup = leadData;
+
+        const vipHasSales = !!vipData.latestSalesPhone;
+        const leadHasSales = !!leadData.assignedTo;
+
+        if (leadHasSales && (!vipHasSales || leadData.assignedAtMillis > (vipData.latestActivityMillis || 0))) {
+          vipData.autoAssign = {
+            source: "lead",
+            salesId: leadData.assignedTo,
+            salesName: leadData.assignedName,
+            basisLabel: "名單最後分配",
+            basisDate: leadData.assignedAt || ""
+          };
+        } else if (vipHasSales) {
+          vipData.autoAssign = {
+            source: "customer",
+            salesId: vipData.latestSalesPhone,
+            salesName: vipData.latestSalesName,
+            basisLabel: "客資最近互動",
+            basisDate: vipData.date || ""
+          };
+        }
+      } else {
+        results[phone] = { type: "lead", data: leadData };
+      }
+    }));
+  }
+
+  // 4. 第三階段：比對 viewing_reservations (已有賞屋預約)
+  //    ✅ 改為對「所有電話」比對（含已命中客資/名單者），才能偵測「有預約但未指定銷售」的情況
+  //    - 尚未命中任何類型的電話：維持原行為，標為 reservation 類型
+  //    - 任一類型：若該電話所有 active 預約皆未指定銷售 → 附掛 reservationPending，前端鎖定不分配並通知櫃檯
+  const reservationGroups = {};
+  for (let i = 0; i < cleanPhones.length; i += 30) {
+    const chunk = cleanPhones.slice(i, i + 30);
+    const reservSnap = await db.collection("viewing_reservations")
+      .where("projectId", "==", projectId)
+      .where("customerPhone", "in", chunk)
+      .where("status", "==", "active")
+      .get();
+
+    reservSnap.forEach(doc => {
+      const r = doc.data();
+      const phone = r.customerPhone;
+      if (!phone || !results[phone]) return;
+      if (!reservationGroups[phone]) reservationGroups[phone] = [];
+      reservationGroups[phone].push({ id: doc.id, ...r });
+    });
+  }
+
+  const formatReservationTime = (r) => {
+    if (r.reservationTime && r.reservationTime.toDate) {
+      try {
+        return r.reservationTime.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+      } catch (e) { return ""; }
+    }
+    return "";
+  };
+  const reservationMillis = (r) => (r.reservationTime?.toMillis ? r.reservationTime.toMillis() : 0);
+
+  Object.keys(reservationGroups).forEach(phone => {
+    const group = reservationGroups[phone];
+    // 主要顯示的預約：優先取有指定銷售者，其次取預約時間最近者
+    const primary = [...group].sort((a, b) => {
+      const aHas = a.salesId ? 0 : 1;
+      const bHas = b.salesId ? 0 : 1;
+      if (aHas !== bHas) return aHas - bHas;
+      return reservationMillis(b) - reservationMillis(a);
+    })[0];
+    const primaryTimeStr = formatReservationTime(primary);
+
+    if (results[phone].type === "none") {
+      results[phone] = {
+        type: "reservation",
+        data: {
+          name: primary.customerName || "未知",
+          assignedName: primary.salesName || "不指定",
+          assignedTo: primary.salesId || "",
+          salesPhone: primary.salesPhone || "",
+          reservationTime: primaryTimeStr,
+          reservationType: primary.type || "",           // 預約類型（新客/複訪等）
+          note: primary.note || "",
+          source: "賞屋預約",
+          date: primaryTimeStr,
+          interactionLogs: []
+        }
+      };
+    }
+
+    // 所有 active 預約皆未指定銷售 → 標記「預約待現場裁決」
+    const anyHasSales = group.some(r => !!r.salesId);
+    if (!anyHasSales) {
+      if (!results[phone].data) results[phone].data = {};
+      results[phone].data.reservationPending = {
+        reservationId: primary.id,
+        name: primary.customerName || "未知",
+        reservationTime: primaryTimeStr,
+        reservationType: primary.type || "",
+        note: primary.note || "",
+        count: group.length
+      };
+    }
+  });
+
+  return results;
+}
+
+/**
  * [V3 - 優化版] 名單重複檢查系統
  * 邏輯：解析名單後，比對電話是否存在於 vipGuests (成交) 或 leads (既有) 集合
+ * crossProjectIds：另外比對的他案（同一套比對），命中結果附掛於 results[phone].crossHits，
+ *   僅供標示，不影響本案類型、自動指派與預約鎖定
  */
 exports.checkLeadDuplicates = onCall({
   region: "asia-east1",
   cors: true,
   memory: "512MiB",
-  timeoutSeconds: 60
+  timeoutSeconds: 120
 }, async (request) => {
   const functionName = "checkLeadDuplicates";
   const db = new Firestore({ databaseId: "anxi-app" });
 
   try {
-    const { projectId, phones } = request.data;
+    const { projectId, phones, crossProjectIds } = request.data;
 
     if (!projectId || !phones || !Array.isArray(phones)) {
       throw new HttpsError("invalid-argument", "缺少必要參數。");
@@ -25627,275 +25906,29 @@ exports.checkLeadDuplicates = onCall({
 
     // 1. 電話正規化 (只留數字) 並去除重複，確保比對準確
     const cleanPhones = [...new Set(phones.map(p => p.replace(/\D/g, "")))];
-    const results = {};
 
-    // 預設所有電話為無重複狀態
-    cleanPhones.forEach(p => { results[p] = { type: "none", data: null }; });
+    // 他案：去重、排除本案
+    const crossIds = Array.isArray(crossProjectIds)
+      ? [...new Set(crossProjectIds.filter(id => typeof id === "string" && id && id !== projectId))].slice(0, 20)
+      : [];
 
-    console.log(`[${functionName}] 專案: ${projectId}, 檢查數量: ${cleanPhones.length}`);
+    console.log(`[${functionName}] 專案: ${projectId}, 他案: ${crossIds.length}, 檢查數量: ${cleanPhones.length}`);
 
-    // 2. 第一階段：比對 vipGuests (成交客戶/已有客資)
-    // array-contains-any 限制一次 10 筆
-    for (let i = 0; i < cleanPhones.length; i += 10) {
-      const chunk = cleanPhones.slice(i, i + 10);
-      const vipSnap = await db.collection("vipGuests")
-        .where("projectId", "==", projectId)
-        .where("searchablePhones", "array-contains-any", chunk)
-        .get();
+    const [results, ...crossResults] = await Promise.all([
+      _checkLeadDuplicatesInProject(db, projectId, cleanPhones),
+      ...crossIds.map(id => _checkLeadDuplicatesInProject(db, id, cleanPhones))
+    ]);
 
-      vipSnap.forEach(doc => {
-        const guest = doc.data();
-        const matchedPhone = chunk.find(p => guest.searchablePhones?.includes(p));
-
-        if (matchedPhone) {
-          // ✅ 提取完整互動紀錄 (倒序排列，最新的在前)
-          const rawLogs = guest.interactionLogs || [];
-          const sortedLogs = rawLogs.sort((a, b) => {
-            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (new Date(a.date || 0).getTime());
-            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (new Date(b.date || 0).getTime());
-            return timeB - timeA;
-          });
-
-          // ✅ 提取基本資料 (Profile)
-          const profile = guest.profile || {};
-          // 嘗試從多個欄位來源獲取關鍵資訊
-          const source = profile['從何得知本建案'] || profile.source || guest.source || '未知';
-          const budget = profile['購屋預算'] || profile.budget || guest.budget || '未填寫';
-
-          // 客資最近互動時間（millis），供與聯絡名單最後分配時間比較，決定預設指派銷售
-          const latestActivityMillis = sortedLogs.length
-            ? (sortedLogs[0].createdAt?.toMillis ? sortedLogs[0].createdAt.toMillis() : (new Date(sortedLogs[0].date || 0).getTime() || 0))
-            : (new Date(guest.submissions?.[0]?.拜訪日期 || 0).getTime() || 0);
-
-          results[matchedPhone] = {
-            type: "vip",
-            data: {
-              latestName: guest.latestName || "未知",
-              latestSalesName: guest.latestSalesName || "未指派",
-              latestSalesPhone: guest.latestSalesPhone || "", // 分配的 KEY
-              latestActivityMillis,
-              visitDate: guest.submissions?.[0]?.拜訪日期 || "",
-
-              // 擴充欄位供詳情對話框使用
-              profile: {
-                ...profile,
-                source: source,
-                budget: budget
-              },
-              interactionLogs: _stripLogCounterNotes(sortedLogs),
-
-              // 預覽用簡化欄位
-              source: source,
-              budget: budget,
-              date: sortedLogs[0]?.date || guest.submissions?.[0]?.拜訪日期 || "",
-              status: sortedLogs.length > 0
-                ? `最近洽談: ${sortedLogs[0].content?.substring(0, 10)}${sortedLogs[0].content?.length > 10 ? '...' : ''}`
-                : "尚無洽談紀錄"
-            }
-          };
-        }
+    // 5. 他案命中：依勾選順序附掛，去除本案專用的自動指派／預約鎖定欄位
+    crossIds.forEach((id, i) => {
+      cleanPhones.forEach(phone => {
+        const hit = crossResults[i][phone];
+        if (!hit || hit.type === "none") return;
+        // eslint-disable-next-line no-unused-vars
+        const { autoAssign, reservationPending, ...data } = hit.data || {};
+        if (!results[phone].crossHits) results[phone].crossHits = [];
+        results[phone].crossHits.push({ projectId: id, type: hit.type, data });
       });
-    }
-
-    // 3. 第二階段：比對 leads (既有名單)
-    // "none" 與 "vip" 都要檢查：vip 命中者仍需知道聯絡名單是否也有重複分配紀錄
-    const remainingPhones = cleanPhones.filter(p => results[p].type === "none" || results[p].type === "vip");
-
-    for (let i = 0; i < remainingPhones.length; i += 30) {
-      const chunk = remainingPhones.slice(i, i + 30);
-      const leadsSnap = await db.collection("leads")
-        .where("projectId", "==", projectId)
-        .where("phone", "in", chunk)
-        .get();
-
-      const leadGroups = {};
-      leadsSnap.forEach(doc => {
-        const lead = doc.data();
-        lead.id = doc.id; // 保存 doc id 以便查詢 sub-collection
-        if (!leadGroups[lead.phone]) leadGroups[lead.phone] = [];
-        leadGroups[lead.phone].push(lead);
-      });
-
-      // 使用 Promise.all 處理並行查詢
-      await Promise.all(Object.keys(leadGroups).map(async (phone) => {
-        const group = leadGroups[phone];
-
-        // 找出最晚分配的一筆 (作為主要顯示資料)
-        const sortedMap = group.sort((a, b) =>
-          (b.assignedAt?.toMillis() || 0) - (a.assignedAt?.toMillis() || 0)
-        );
-        const latest = sortedMap[0];
-
-        // 查詢該電話所有相關名單的 contactLogs
-        // 因為名單可能會有多筆 (多次重複進線)，我們嘗試撈取所有相關的聯絡紀錄
-        // 為了效能，限制只撈取最新的幾筆名單的 logs
-        const targetLeads = sortedMap.slice(0, 5); // 取最新的 5 筆名單 doc
-        let allLogs = [];
-
-        try {
-          const logsPromises = targetLeads.map(async (leadDoc) => {
-            const logsSnap = await db.collection("leads").doc(leadDoc.id).collection("contactLogs")
-              .orderBy("createdAt", "desc")
-              .limit(5) // 每筆名單只取最近 5 筆紀錄
-              .get();
-
-            return logsSnap.docs.map(logDoc => {
-              const log = logDoc.data();
-              // ✅ 預先格式化日期，避免前端解析 Timestamp 出錯
-              let dateStr = "";
-              if (log.createdAt && log.createdAt.toDate) {
-                try {
-                  dateStr = log.createdAt.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-                } catch (e) { dateStr = "日期格式錯誤"; }
-              }
-
-              return {
-                ...log,
-                // 因為是 sub-collection，補上 parent lead 的資訊以便前端顯示上下文
-                parentLeadDate: leadDoc.assignedAt ? leadDoc.assignedAt.toDate().toISOString() : null,
-                parentLeadSource: leadDoc.source || '未知',
-                logId: logDoc.id,
-                date: dateStr // ✅ 提供給前端使用的格式化字串
-              };
-            });
-          });
-
-          const logsResults = await Promise.all(logsPromises);
-          allLogs = logsResults.flat().sort((a, b) => {
-            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-            return timeB - timeA;
-          });
-
-        } catch (err) {
-          console.error(`[checkLeadDuplicates] Error fetching contactLogs for phone ${phone}:`, err);
-          // 錯誤不阻斷主流程，僅 log
-        }
-
-        const leadData = {
-          count: group.length,
-          name: latest.name || "未知",
-          assignedName: latest.assignedName || "未指派",
-          assignedTo: latest.assignedTo || "", // 業務手機
-          assignedAt: latest.assignedAt ? latest.assignedAt.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) : "",
-          assignedAtMillis: latest.assignedAt?.toMillis() || 0,
-
-          // 擴充欄位
-          source: latest.source || "未知",
-          budget: latest.budget || "未填寫",
-          date: latest.date || "",
-          status: latest.statusText || latest.status || "重複名單",
-          note: latest.note || "",
-
-          // 新增: 互動紀錄
-          interactionLogs: allLogs
-        };
-
-        if (results[phone].type === "vip") {
-          // 既有客資同時也有重複名單：附掛名單資訊，並比較兩邊「最後一筆」時間決定預設指派銷售
-          const vipData = results[phone].data;
-          vipData.leadDup = leadData;
-
-          const vipHasSales = !!vipData.latestSalesPhone;
-          const leadHasSales = !!leadData.assignedTo;
-
-          if (leadHasSales && (!vipHasSales || leadData.assignedAtMillis > (vipData.latestActivityMillis || 0))) {
-            vipData.autoAssign = {
-              source: "lead",
-              salesId: leadData.assignedTo,
-              salesName: leadData.assignedName,
-              basisLabel: "名單最後分配",
-              basisDate: leadData.assignedAt || ""
-            };
-          } else if (vipHasSales) {
-            vipData.autoAssign = {
-              source: "customer",
-              salesId: vipData.latestSalesPhone,
-              salesName: vipData.latestSalesName,
-              basisLabel: "客資最近互動",
-              basisDate: vipData.date || ""
-            };
-          }
-        } else {
-          results[phone] = { type: "lead", data: leadData };
-        }
-      }));
-    }
-
-    // 4. 第三階段：比對 viewing_reservations (已有賞屋預約)
-    //    ✅ 改為對「所有電話」比對（含已命中客資/名單者），才能偵測「有預約但未指定銷售」的情況
-    //    - 尚未命中任何類型的電話：維持原行為，標為 reservation 類型
-    //    - 任一類型：若該電話所有 active 預約皆未指定銷售 → 附掛 reservationPending，前端鎖定不分配並通知櫃檯
-    const reservationGroups = {};
-    for (let i = 0; i < cleanPhones.length; i += 30) {
-      const chunk = cleanPhones.slice(i, i + 30);
-      const reservSnap = await db.collection("viewing_reservations")
-        .where("projectId", "==", projectId)
-        .where("customerPhone", "in", chunk)
-        .where("status", "==", "active")
-        .get();
-
-      reservSnap.forEach(doc => {
-        const r = doc.data();
-        const phone = r.customerPhone;
-        if (!phone || !results[phone]) return;
-        if (!reservationGroups[phone]) reservationGroups[phone] = [];
-        reservationGroups[phone].push({ id: doc.id, ...r });
-      });
-    }
-
-    const formatReservationTime = (r) => {
-      if (r.reservationTime && r.reservationTime.toDate) {
-        try {
-          return r.reservationTime.toDate().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-        } catch (e) { return ""; }
-      }
-      return "";
-    };
-    const reservationMillis = (r) => (r.reservationTime?.toMillis ? r.reservationTime.toMillis() : 0);
-
-    Object.keys(reservationGroups).forEach(phone => {
-      const group = reservationGroups[phone];
-      // 主要顯示的預約：優先取有指定銷售者，其次取預約時間最近者
-      const primary = [...group].sort((a, b) => {
-        const aHas = a.salesId ? 0 : 1;
-        const bHas = b.salesId ? 0 : 1;
-        if (aHas !== bHas) return aHas - bHas;
-        return reservationMillis(b) - reservationMillis(a);
-      })[0];
-      const primaryTimeStr = formatReservationTime(primary);
-
-      if (results[phone].type === "none") {
-        results[phone] = {
-          type: "reservation",
-          data: {
-            name: primary.customerName || "未知",
-            assignedName: primary.salesName || "不指定",
-            assignedTo: primary.salesId || "",
-            salesPhone: primary.salesPhone || "",
-            reservationTime: primaryTimeStr,
-            reservationType: primary.type || "",           // 預約類型（新客/複訪等）
-            note: primary.note || "",
-            source: "賞屋預約",
-            date: primaryTimeStr,
-            interactionLogs: []
-          }
-        };
-      }
-
-      // 所有 active 預約皆未指定銷售 → 標記「預約待現場裁決」
-      const anyHasSales = group.some(r => !!r.salesId);
-      if (!anyHasSales) {
-        if (!results[phone].data) results[phone].data = {};
-        results[phone].data.reservationPending = {
-          reservationId: primary.id,
-          name: primary.customerName || "未知",
-          reservationTime: primaryTimeStr,
-          reservationType: primary.type || "",
-          note: primary.note || "",
-          count: group.length
-        };
-      }
     });
 
     return { status: "success", results };
