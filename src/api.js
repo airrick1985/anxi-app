@@ -994,7 +994,9 @@ export const listGoogleSheets = async (spreadsheetInput) => {
     return result.data;
   } catch (error) {
     console.error("API Error in listGoogleSheets:", error);
-    throw new Error(error.message || '無法讀取 Google Sheet');
+    const err = new Error(error.message || '無法讀取 Google Sheet');
+    err.details = error.details; // { agentEmail }：提示要共用給哪個系統帳號
+    throw err;
   }
 };
 
@@ -1011,6 +1013,23 @@ export const exportToGoogleSheet = async (payload) => {
   } catch (error) {
     console.error("API Error in exportToGoogleSheet:", error);
     throw new Error(error.message || '資料寫入失敗');
+  }
+};
+
+/**
+ * [API] 立即全量同步到建案已綁定的工作表（與自動同步相同內容）
+ * @param {string} projectId
+ * @param {'customers'|'leads'} target
+ * @returns {Promise<{ count: number }>}
+ */
+export const syncBoundSheetNow = async (projectId, target) => {
+  try {
+    const func = httpsCallable(functions, 'syncBoundSheetNow');
+    const result = await func({ projectId, target });
+    return result.data;
+  } catch (error) {
+    console.error("API Error in syncBoundSheetNow:", error);
+    throw new Error(error.message || '同步失敗');
   }
 };
 

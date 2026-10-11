@@ -21601,6 +21601,7 @@ async function _handleFetchFullCustomersForExport(data, db) {
 
       // 格式化時間輔助工具
       const toIso = (ts) => (ts && ts.toDate) ? ts.toDate().toISOString() : ts;
+      const activeSales = _resolveActiveSalesName(docData);
 
       exportList.push({
         id: doc.id,
@@ -21609,6 +21610,9 @@ async function _handleFetchFullCustomersForExport(data, db) {
         latestName: docData.latestName || "",
         latestSalesName: docData.latestSalesName || "",
         latestSalesPhone: docData.latestSalesPhone || "", // ✅ 確保根目錄電話
+        // ✅ 排除冷刪除後的有效銷售（客資報表／Sheet 同步用）
+        activeSalesName: activeSales.name,
+        isAllSalesDeleted: activeSales.allDeleted,
         profile: docData.profile || {},
         interactionLogs: _stripLogCounterNotes(docData.interactionLogs || []),
         submissions: docData.submissions || [], // ✅ 用於關聯「記錄人員電話」
@@ -27337,11 +27341,23 @@ exports.listGoogleSheets = onCall({
     const credentials = await auth.getCredentials();
     const agentEmail = credentials.client_email;
 
-    // ✅ 回傳解析後的 spreadsheetId，供前端儲存自動同步綁定（避免存到完整 URL）
-    return { status: 'success', sheetNames, agentEmail, spreadsheetId };
+    // ✅ 回傳解析後的 spreadsheetId，供前端儲存自動同步綁定（避免存到完整 URL）；title 供同步視窗顯示
+    return { status: 'success', sheetNames, agentEmail, spreadsheetId, title: response.data.properties?.title || '' };
   } catch (error) {
     console.error('[listGoogleSheets] Error:', error);
-    throw new HttpsError('internal', `無法讀取 Sheet: ${error.message}`);
+    // 讀取失敗多半是尚未共用給系統帳號：附上帳號 Email，前端可直接提示要共用給誰
+    let agentEmail = '';
+    try {
+      const credentials = await new google.auth.GoogleAuth().getCredentials();
+      agentEmail = credentials.client_email || '';
+    } catch (e) { /* 取不到就不附 */ }
+    if (error.code === 403 || error.code === 401) {
+      throw new HttpsError('permission-denied', '系統無權限讀取此試算表，請先共用給系統帳號', { agentEmail });
+    }
+    if (error.code === 404) {
+      throw new HttpsError('not-found', '找不到此試算表，請確認網址', { agentEmail });
+    }
+    throw new HttpsError('internal', `無法讀取 Sheet: ${error.message}`, { agentEmail });
   }
 });
 
@@ -28853,13 +28869,45 @@ exports.onCancelledPurchasesWrite = onDocumentWritten({
 // [Feature] 聯絡名單 (leads) / 客資資料 (vipGuests) 自動全量同步到 Google Sheet
 // 模式：資料異動 → 觸發器防抖 → 全量覆蓋寫入綁定的工作表
 // 綁定設定存在 projects/{projectId}：
-//   聯絡名單：leadsSheetId + leadsSheetTabName
-//   客資資料：customerSheetId + customerSheetTabName
-// （由前端同步對話框勾選「啟用自動同步」時寫入）
+//   聯絡名單：leadsSheetId + leadsSheetTabName（leadsSheetAutoSync === false 時暫停自動同步）
+//   客資資料：customerSheetId + customerSheetTabName（customerSheetAutoSync === false 時暫停自動同步）
+// 每次同步（自動或「立即同步」）後回寫 {prefix}SheetLastSyncAt / {prefix}SheetLastError 供前端顯示
 // =================================================================
 
 // 防抖（debounce）等待時間：批次匯入等連續寫入時，只由「最後一筆異動」執行全量同步
 const SHEET_AUTOSYNC_DEBOUNCE_MS = 8000;
+
+// 同步目標：綁定欄位與全量同步函式（觸發器與 syncBoundSheetNow 共用）
+const SHEET_SYNC_TARGETS = {
+  customers: {
+    idField: 'customerSheetId',
+    tabField: 'customerSheetTabName',
+    autoField: 'customerSheetAutoSync',
+    lastSyncField: 'customerSheetLastSyncAt',
+    errorField: 'customerSheetLastError',
+    sync: (...args) => _syncVipCustomersToSheetFull(...args)
+  },
+  leads: {
+    idField: 'leadsSheetId',
+    tabField: 'leadsSheetTabName',
+    autoField: 'leadsSheetAutoSync',
+    lastSyncField: 'leadsSheetLastSyncAt',
+    errorField: 'leadsSheetLastError',
+    sync: (...args) => _syncLeadsToSheetFull(...args)
+  }
+};
+
+/**
+ * [Helper] 同步結果回寫建案文件（上次同步時間／錯誤訊息），前端同步視窗直接讀建案文件顯示
+ */
+async function _recordSheetSyncResult(db, projectId, target, error) {
+  const cfg = SHEET_SYNC_TARGETS[target];
+  const update = error
+    ? { [cfg.errorField]: String(error.message || error).slice(0, 300) }
+    : { [cfg.lastSyncField]: FieldValue.serverTimestamp(), [cfg.errorField]: FieldValue.delete() };
+  await db.collection('projects').doc(projectId).update(update)
+    .catch(e => console.error(`[_recordSheetSyncResult] ${projectId}/${target} 回寫失敗:`, e));
+}
 
 /**
  * [Helper] 防抖後執行全量同步
@@ -28992,6 +29040,34 @@ function _calcInteractionLogDuration(startTime, endTime) {
 }
 
 /**
+ * [Helper] 客資的有效銷售人員：排除已冷刪除 (deletedSales) 的銷售
+ * Why: 冷刪除只把銷售加入 deletedSales、不改 latestSalesName，
+ *      主歸屬被冷刪除後若仍取 latestSalesName，報表會出現已移出名單的銷售。
+ * 順序：主歸屬 → 最近一次提交的存活銷售 → profile.銷售人員 最後一位存活者
+ * @returns {{ name: string, allDeleted: boolean }} allDeleted = 所有銷售皆已冷刪除（客資列表預設隱藏）
+ */
+function _resolveActiveSalesName(guest) {
+  const deleted = new Set(Array.isArray(guest.deletedSales) ? guest.deletedSales : []);
+  const alive = (n) => !!n && !deleted.has(n);
+  if (alive(guest.latestSalesName)) return { name: guest.latestSalesName, allDeleted: false };
+
+  const toMs = (ts) => (ts && ts.toMillis) ? ts.toMillis() : (new Date(ts || 0).getTime() || 0);
+  const latestSub = (Array.isArray(guest.submissions) ? guest.submissions : [])
+    .filter(s => s && alive(s['銷售人員']))
+    .sort((a, b) => toMs(b.submittedAt) - toMs(a.submittedAt))[0];
+  if (latestSub) return { name: latestSub['銷售人員'], allDeleted: false };
+
+  const raw = guest.profile?.['銷售人員'];
+  const profileNames = Array.isArray(raw)
+    ? raw
+    : (typeof raw === 'string' ? raw.split(/[、,/;；]/).map(s => s.trim()) : []);
+  const lastAlive = profileNames.filter(alive).pop();
+  if (lastAlive) return { name: lastAlive, allDeleted: false };
+
+  return { name: '', allDeleted: deleted.size > 0 };
+}
+
+/**
  * [Helper] 客資資料全量同步：每筆「現場介紹」洽談紀錄展平為一列
  * Why: 自動同步為「全量」——不套用前端手動匯出的日期區間與銷售人員篩選，
  *      展平邏輯（新客/回訪判定、profile 取值、排序）與前端 getSimpleExportData 一致。
@@ -29005,6 +29081,10 @@ async function _syncVipCustomersToSheetFull(db, projectId, spreadsheetId, sheetN
   const rows = [];
   snap.forEach(doc => {
     const item = doc.data();
+    // 所有銷售皆已冷刪除 → 與客資列表一致不列入
+    const sales = _resolveActiveSalesName(item);
+    if (sales.allDeleted) return;
+
     const logs = Array.isArray(item.interactionLogs) ? item.interactionLogs : [];
     const p = item.profile || {};
     const getP = (key) => Array.isArray(p[key]) ? p[key][p[key].length - 1] : (p[key] || '');
@@ -29019,7 +29099,7 @@ async function _syncVipCustomersToSheetFull(db, projectId, spreadsheetId, sheetN
         'UID': doc.id || '',
         '日期': log.date ? log.date.replace(/-/g, '/') : '',
         '新客/回訪': idx === 0 ? '新客' : '回訪',
-        '銷售人員': item.latestSalesName || '',
+        '銷售人員': sales.name,
         '客戶姓名': item.latestName || '',
         '來人（位）': log.tags?.visitors || '',
         '年齡': getP('年齡'),
@@ -29077,15 +29157,17 @@ exports.onLeadWriteSheetSync = onDocumentWritten({
     const projectDoc = await db.collection('projects').doc(projectId).get();
     if (!projectDoc.exists) return;
 
-    const { leadsSheetId, leadsSheetTabName } = projectDoc.data();
-    if (!leadsSheetId || !leadsSheetTabName) return; // 未啟用自動同步
+    const { leadsSheetId, leadsSheetTabName, leadsSheetAutoSync } = projectDoc.data();
+    if (!leadsSheetId || !leadsSheetTabName || leadsSheetAutoSync === false) return; // 未綁定或已暫停自動同步
 
     const synced = await _debounceThenSyncSheet(db, `leads_${projectId}`, async () => {
       const count = await _syncLeadsToSheetFull(db, projectId, leadsSheetId, leadsSheetTabName);
       console.log(`[${functionName}] 全量同步完成: ${projectId} → ${count} 筆`);
     });
 
-    if (!synced) {
+    if (synced) {
+      await _recordSheetSyncResult(db, projectId, 'leads');
+    } else {
       console.log(`[${functionName}] 偵測到後續異動，本次略過（由較晚的觸發統一同步）`);
     }
   } catch (error) {
@@ -29094,6 +29176,7 @@ exports.onLeadWriteSheetSync = onDocumentWritten({
       lastError: String(error.message || error),
       lastErrorAt: FieldValue.serverTimestamp()
     }, { merge: true }).catch(() => {});
+    await _recordSheetSyncResult(db, projectId, 'leads', error);
   }
 });
 
@@ -29197,15 +29280,17 @@ exports.onVipGuestWriteSheetSync = onDocumentWritten({
       const projectDoc = await db.collection('projects').doc(projectId).get();
       if (!projectDoc.exists) return;
 
-      const { customerSheetId, customerSheetTabName } = projectDoc.data();
-      if (!customerSheetId || !customerSheetTabName) return; // 未啟用自動同步
+      const { customerSheetId, customerSheetTabName, customerSheetAutoSync } = projectDoc.data();
+      if (!customerSheetId || !customerSheetTabName || customerSheetAutoSync === false) return; // 未綁定或已暫停自動同步
 
       const synced = await _debounceThenSyncSheet(db, `customers_${projectId}`, async () => {
         const count = await _syncVipCustomersToSheetFull(db, projectId, customerSheetId, customerSheetTabName);
         console.log(`[${functionName}] 全量同步完成: ${projectId} → ${count} 筆`);
       });
 
-      if (!synced) {
+      if (synced) {
+        await _recordSheetSyncResult(db, projectId, 'customers');
+      } else {
         console.log(`[${functionName}] ${projectId} 偵測到後續異動，本次略過`);
       }
     } catch (error) {
@@ -29214,8 +29299,58 @@ exports.onVipGuestWriteSheetSync = onDocumentWritten({
         lastError: String(error.message || error),
         lastErrorAt: FieldValue.serverTimestamp()
       }, { merge: true }).catch(() => {});
+      await _recordSheetSyncResult(db, projectId, 'customers', error);
     }
   }));
+});
+/**
+ * [Callable] 立即全量同步到已綁定的工作表（客資／聯絡名單同步視窗的「立即同步」）
+ * Why: 與自動同步共用同一支全量函式，手動與自動寫出的內容一致，不受畫面篩選影響；
+ *      只寫入建案文件上已綁定的工作表，不接受任意 spreadsheetId。
+ * @param {{ projectId: string, target: 'customers'|'leads' }} request.data
+ * @returns {{ count: number }}
+ */
+exports.syncBoundSheetNow = onCall({
+  region: 'asia-east1',
+  memory: '512MiB',
+  timeoutSeconds: 180,
+  invoker: 'public',
+}, async (request) => {
+  const { projectId, target } = request.data || {};
+  const cfg = SHEET_SYNC_TARGETS[target];
+  if (!projectId || !cfg) {
+    throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, target)');
+  }
+
+  const db = new Firestore({ databaseId: 'anxi-app' });
+  const projectDoc = await db.collection('projects').doc(projectId).get();
+  if (!projectDoc.exists) throw new HttpsError('not-found', '找不到建案');
+
+  const project = projectDoc.data();
+  const spreadsheetId = project[cfg.idField];
+  const sheetName = project[cfg.tabField];
+  if (!spreadsheetId || !sheetName) {
+    throw new HttpsError('failed-precondition', '尚未綁定工作表');
+  }
+
+  try {
+    const count = await cfg.sync(db, projectId, spreadsheetId, sheetName);
+    await _recordSheetSyncResult(db, projectId, target);
+    return { count };
+  } catch (error) {
+    console.error(`[syncBoundSheetNow] ${projectId}/${target} 失敗:`, error);
+    await _recordSheetSyncResult(db, projectId, target, error);
+    if (error.code === 403 || error.code === 401) {
+      throw new HttpsError('permission-denied', '系統無權限寫入此工作表，請以「編輯者」共用給系統帳號');
+    }
+    if (error.code === 404) {
+      throw new HttpsError('not-found', '找不到此工作表，請重新設定');
+    }
+    if (error.code === 400) {
+      throw new HttpsError('failed-precondition', `找不到工作表「${sheetName}」，請重新設定`);
+    }
+    throw new HttpsError('internal', `同步失敗: ${error.message}`);
+  }
 });
 // ✅ END: 聯絡名單 / 客資資料 自動全量同步
 

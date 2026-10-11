@@ -1,149 +1,172 @@
 <template>
-  <v-container>
-    <!-- ✅ 全局專案切換器（影響所有 Tab/Window） -->
-    <v-card flat class="mb-2 pa-2 d-flex align-center bg-grey-lighten-5 rounded-lg">
-      <v-icon color="primary" class="me-2">mdi-domain</v-icon>
-      <v-menu v-if="availableProjects.length > 1">
-        <template v-slot:activator="{ props: menuProps }">
-          <v-btn
-            v-bind="menuProps"
-            variant="tonal"
-            color="primary"
-            class="font-weight-bold text-none"
-            append-icon="mdi-chevron-down"
-            :size="isMobile ? 'small' : 'default'"
-          >
-            <span class="text-truncate" :style="{ maxWidth: isMobile ? '50vw' : '320px' }">
-              {{ projectName }}
-            </span>
-          </v-btn>
-        </template>
-        <v-list density="compact">
-          <v-list-item
-            v-for="proj in availableProjects"
-            :key="proj.id"
-            :value="proj.id"
-            @click="switchProject(proj.id)"
-            :active="proj.id === props.projectId"
-            color="primary"
-          >
-            <v-list-item-title>{{ proj.name }}</v-list-item-title>
-          </v-list-item>
-        </v-list>
-      </v-menu>
-      <span v-else class="font-weight-bold text-grey-darken-3 text-truncate" :style="{ maxWidth: isMobile ? '50vw' : '320px' }">
-        {{ projectName }}
-      </span>
-      <v-spacer></v-spacer>
-      <span v-if="!isMobile" class="text-caption text-grey-darken-1">切換專案後所有頁籤同步更新</span>
-    </v-card>
+  <div class="cm-root">
+    <!-- 頂列：建案切換＋頁籤（分段切換）＋系統設定（超管）；左側留白避開全站漢堡鈕 -->
+    <header class="cm-top">
+      <div class="cm-top-side">
+        <v-menu v-if="availableProjects.length > 1" location="bottom start" content-class="mac-menu">
+          <template v-slot:activator="{ props: menuProps }">
+            <button type="button" class="cm-project-btn" v-bind="menuProps">
+              <v-icon size="16">mdi-office-building</v-icon>
+              <span class="cm-project-name">{{ projectName }}</span>
+              <v-icon size="16">mdi-chevron-down</v-icon>
+            </button>
+          </template>
+          <v-list density="compact">
+            <v-list-item
+              v-for="proj in availableProjects"
+              :key="proj.id"
+              :title="proj.name"
+              :active="proj.id === props.projectId"
+              @click="switchProject(proj.id)"
+            ></v-list-item>
+          </v-list>
+        </v-menu>
+        <span v-else class="cm-project-btn is-static">
+          <v-icon size="16">mdi-office-building</v-icon>
+          <span class="cm-project-name">{{ projectName }}</span>
+        </span>
+      </div>
 
-    <v-tabs v-model="tab" color="primary" grow :touch="false">
-      <v-tab value="management">客戶資料管理</v-tab>
-      <v-tab value="leadDistribution" >聯絡名單</v-tab>
-      <v-tab value="viewingReservation">賞屋預約</v-tab>
-      <v-tab value="downloadLeads" v-if="canManageSettings">下載客資</v-tab>
-      <v-tab value="settings" v-if="isSuperAdmin" class="admin-tab">
-        <v-icon start size="small">mdi-shield-crown</v-icon>客資系統設定
-      </v-tab>
-      <v-tab value="vipSettings" v-if="isSuperAdmin" class="admin-tab">
-        <v-icon start size="small">mdi-shield-crown</v-icon>貴賓資料設定
-      </v-tab>
-      <v-tab value="otherSettings" v-if="isSuperAdmin" class="admin-tab">
-        <v-icon start size="small">mdi-shield-crown</v-icon>其他設定
-      </v-tab>
-      <v-tab value="batchUpdate" v-if="isSuperAdmin" class="admin-tab">
-        <v-icon start size="small">mdi-shield-crown</v-icon>客資批次更新
-      </v-tab>
-      <v-tab value="anxiSettings" v-if="isSuperAdmin" class="admin-tab">
-        <v-icon start size="small">mdi-shield-crown</v-icon>ANXI系統設定
-      </v-tab>
-      </v-tabs>
+      <div class="mac-form-seg cm-tabs" role="tablist">
+        <button
+          v-for="t in mainTabs"
+          :key="t.value"
+          type="button"
+          role="tab"
+          class="mac-form-seg-btn"
+          :class="{ 'is-active': tab === t.value }"
+          :aria-selected="tab === t.value"
+          @click="tab = t.value"
+        >
+          <v-icon size="15">{{ t.icon }}</v-icon><span>{{ t.label }}</span>
+        </button>
+      </div>
 
-    <v-window v-model="tab" :touch="false">
+      <div class="cm-top-side cm-top-side--end">
+        <v-menu v-if="isSuperAdmin" location="bottom end" content-class="mac-menu">
+          <template v-slot:activator="{ props: menuProps }">
+            <button type="button" class="mac-btn cm-admin-btn" :class="{ 'is-active': isAdminTab }" title="系統設定" v-bind="menuProps">
+              <v-icon size="16">mdi-shield-crown</v-icon>
+              <span class="cm-admin-label">{{ isAdminTab ? currentAdminTabLabel : '系統設定' }}</span>
+              <v-icon size="14" class="mac-btn-chevron">mdi-chevron-down</v-icon>
+            </button>
+          </template>
+          <v-list density="compact">
+            <v-list-item
+              v-for="t in adminTabs"
+              :key="t.value"
+              :title="t.label"
+              :prepend-icon="t.icon"
+              :active="tab === t.value"
+              @click="tab = t.value"
+            ></v-list-item>
+          </v-list>
+        </v-menu>
+      </div>
+    </header>
+
+    <v-window v-model="tab" :touch="false" class="cm-window">
       <v-window-item value="management">
-        <v-card class="bg-grey-lighten-5 h-100">
-          <v-toolbar color="white" elevation="1" density="compact">
-            <v-toolbar-title class="text-subtitle-1 font-weight-bold text-grey-darken-3" style="min-width: 0;">
-              <span class="text-truncate d-inline-block" style="max-width: 45vw; vertical-align: middle;">
-                客戶資料列表
-              </span>
-            </v-toolbar-title>
-            <v-spacer></v-spacer>
-            <!-- ✅ 重新整理按鈕 -->
-            <v-tooltip text="重新整理" location="bottom">
-              <template v-slot:activator="{ props: tipProps }">
-                <v-btn
-                  v-bind="tipProps"
-                  color="primary"
-                  variant="text"
-                  :size="isMobile ? 'small' : 'default'"
-                  :icon="isMobile"
-                  :prepend-icon="isMobile ? undefined : 'mdi-refresh'"
-                  @click="loadCustomerList"
-                  class="mr-1"
-                  :loading="isLoadingCustomerList"
-                >
-                  <v-icon v-if="isMobile">mdi-refresh</v-icon>
-                  <template v-if="!isMobile">重新整理</template>
-                </v-btn>
-              </template>
-            </v-tooltip>
-            <!-- ✅ 新增客戶按鈕 -->
-            <v-tooltip text="新增客戶" location="bottom">
-              <template v-slot:activator="{ props: tipProps }">
-                <v-btn
-                  v-bind="tipProps"
-                  color="teal"
-                  variant="flat"
-                  :size="isMobile ? 'small' : 'default'"
-                  :icon="isMobile"
-                  :prepend-icon="isMobile ? undefined : 'mdi-account-plus'"
-                  @click="openAddCustomerDialog"
-                  class="mr-1"
-                >
-                  <v-icon v-if="isMobile">mdi-account-plus</v-icon>
-                  <template v-if="!isMobile">新增客戶</template>
-                </v-btn>
-              </template>
-            </v-tooltip>
-            <!-- ✅ AI 客資分析按鈕（限櫃台權限） -->
-            <v-tooltip v-if="isCurrentUserCounter" text="AI 客資分析" location="bottom">
-              <template v-slot:activator="{ props: tipProps }">
-                <v-btn
-                  v-bind="tipProps"
-                  color="deep-purple"
-                  variant="flat"
-                  :size="isMobile ? 'small' : 'default'"
-                  :icon="isMobile"
-                  :prepend-icon="isMobile ? undefined : 'mdi-robot'"
-                  @click="openAiAnalysisDialog"
-                  class="mr-1"
-                >
-                  <v-icon v-if="isMobile">mdi-robot</v-icon>
-                  <template v-if="!isMobile">AI客資分析</template>
-                </v-btn>
-              </template>
-            </v-tooltip>
-            <!-- ✅ 銷售專屬表單連結按鈕（限櫃台權限） -->
-            <v-tooltip v-if="isCurrentUserCounter" text="銷售專屬表單連結" location="bottom">
-              <template v-slot:activator="{ props: tipProps }">
-                <v-btn
-                  v-bind="tipProps"
-                  color="indigo"
-                  variant="flat"
-                  :size="isMobile ? 'small' : 'default'"
-                  :icon="isMobile"
-                  :prepend-icon="isMobile ? undefined : 'mdi-qrcode-plus'"
-                  @click="openVipFormLinkDialog"
-                  class="mr-1"
-                >
-                  <v-icon v-if="isMobile">mdi-qrcode-plus</v-icon>
-                  <template v-if="!isMobile">專屬連結</template>
-                </v-btn>
-              </template>
-            </v-tooltip>
-          </v-toolbar>
+        <section class="mac-page cm-list">
+          <div class="mac-page-bar">
+            <div class="mac-page-title">
+              <span class="mac-page-title-main">客戶資料</span>
+              <span v-if="!isLoadingCustomerList" class="mac-page-count">{{ filteredCustomerList.length }} 筆</span>
+            </div>
+            <div class="mac-page-actions">
+              <button type="button" class="mac-icon-btn" title="重新整理" :disabled="isLoadingCustomerList" @click="loadCustomerList">
+                <v-icon size="19" :class="{ 'cm-spin': isLoadingCustomerList }">mdi-refresh</v-icon>
+              </button>
+              <button v-if="canManageSettings" type="button" class="mac-btn" title="匯出" @click="exportDialog = true">
+                <v-icon size="16">mdi-tray-arrow-down</v-icon><span class="mac-hide-xs">匯出</span>
+              </button>
+              <button type="button" class="mac-btn mac-btn--primary" @click="openAddCustomerDialog">
+                <v-icon size="16">mdi-account-plus</v-icon>新增客戶
+              </button>
+              <v-menu v-if="isCurrentUserCounter" location="bottom end" content-class="mac-menu">
+                <template v-slot:activator="{ props: menuProps }">
+                  <button type="button" class="mac-icon-btn" title="更多" v-bind="menuProps">
+                    <v-icon size="20">mdi-dots-horizontal-circle-outline</v-icon>
+                  </button>
+                </template>
+                <v-list density="compact">
+                  <v-list-item prepend-icon="mdi-robot" title="AI 客資分析" @click="openAiAnalysisDialog"></v-list-item>
+                  <v-list-item prepend-icon="mdi-qrcode-plus" title="銷售專屬連結" @click="openVipFormLinkDialog"></v-list-item>
+                </v-list>
+              </v-menu>
+            </div>
+          </div>
+
+          <div class="mac-searchbar">
+            <v-text-field
+              v-model="customerListSearch"
+              placeholder="搜尋姓名、電話、洽談內容"
+              prepend-inner-icon="mdi-magnify"
+              variant="solo"
+              flat
+              density="compact"
+              hide-details
+              clearable
+              class="mac-vfield mac-vfield--search"
+            ></v-text-field>
+            <MacFilterPopover
+              :sheet="smAndDown"
+              :count="customerFilterTokens.length"
+              :result-count="filteredCustomerList.length"
+              @clear="resetAdvFilters"
+            >
+              <div class="mac-filter-field mac-filter-field--wide">
+                <div class="mac-sheet-label">拜訪日期</div>
+                <div class="mac-filter-range">
+                  <v-text-field v-model="advFilter.startDate" type="date" v-bind="macFieldProps"></v-text-field>
+                  <span class="mac-filter-range-sep">～</span>
+                  <v-text-field v-model="advFilter.endDate" type="date" :min="advFilter.startDate || undefined" v-bind="macFieldProps"></v-text-field>
+                </div>
+              </div>
+              <div class="mac-filter-field">
+                <div class="mac-sheet-label">銷售人員</div>
+                <v-select v-model="advFilter.sales" :items="availableSalesNames" multiple placeholder="全部" v-bind="macFieldProps"></v-select>
+              </div>
+              <div class="mac-filter-field">
+                <div class="mac-sheet-label">等級</div>
+                <v-select v-model="advFilter.ratings" :items="RATING_OPTIONS" multiple placeholder="全部" v-bind="macFieldProps"></v-select>
+              </div>
+              <div class="mac-filter-field">
+                <div class="mac-sheet-label">新客／回訪</div>
+                <v-select v-model="advFilter.visitStatus" :items="['新客', '回訪']" multiple placeholder="全部" v-bind="macFieldProps"></v-select>
+              </div>
+              <div class="mac-filter-field">
+                <div class="mac-sheet-label">未買原因</div>
+                <v-select v-model="advFilter.reasons" :items="[...new Set(settings.fields.noPurchaseReason?.options || [])]" multiple placeholder="全部" v-bind="macFieldProps"></v-select>
+              </div>
+              <!-- ✅ 動態生成 VIP 欄位篩選器 -->
+              <div v-for="field in sortedVipFields" :key="field.key" class="mac-filter-field">
+                <div class="mac-sheet-label">{{ field.label }}</div>
+                <v-select
+                  v-model="advFilter.vipFilters[field.label]"
+                  :items="field.options || []"
+                  :multiple="field.selectionMode === 'multiple'"
+                  placeholder="全部"
+                  clearable
+                  v-bind="macFieldProps"
+                ></v-select>
+              </div>
+              <label v-if="isCurrentUserCounter" class="mac-filter-field mac-filter-field--wide cm-switch-row">
+                <span>顯示已刪除</span>
+                <input v-model="advFilter.showDeleted" type="checkbox" class="mac-switch">
+              </label>
+            </MacFilterPopover>
+          </div>
+
+          <div v-if="customerFilterTokens.length" class="mac-tokens">
+            <span v-for="t in customerFilterTokens" :key="t.key" class="mac-token">
+              {{ t.label }}
+              <button type="button" class="mac-token-x" :title="`移除 ${t.label}`" @click="removeCustomerFilter(t.key)">
+                <v-icon size="13">mdi-close</v-icon>
+              </button>
+            </span>
+            <button type="button" class="mac-link-btn" @click="resetAdvFilters">清除全部</button>
+          </div>
 
           <!-- ✅ 銷售專屬表單連結 Dialog -->
           <VipFormSalesLinkDialog
@@ -154,381 +177,172 @@
             :loading="isLoadingProjectStaff"
           />
 
-<v-card-text>
-  <v-row dense align="center" class="mb-2">
-    <v-col cols="12" sm="8" md="9">
-      <v-text-field
-        v-model="customerListSearch"
-        label="關鍵字搜尋 (姓名、電話、其他聯絡人、洽談紀錄內容、備註...)"
-        prepend-inner-icon="mdi-magnify"
-        variant="outlined"
-        density="comfortable"
-        clearable
-        hide-details
-        class="bg-white rounded-lg"
-      ></v-text-field>
-    </v-col>
-    <v-col cols="12" sm="4" md="3">
-      <v-btn
-        block
-        :color="showFilters ? 'primary' : 'grey-darken-1'"
-        variant="tonal"
-        size="large"
-        rounded="lg"
-        @click="showFilters = !showFilters"
-        :prepend-icon="showFilters ? 'mdi-filter-variant-remove' : 'mdi-filter-variant'"
-      >
-        {{ showFilters ? '隱藏進階篩選' : '進階篩選' }}
-      </v-btn>
-    </v-col>
-  </v-row>
-
-  <v-expand-transition>
-    <v-card v-show="showFilters" variant="outlined" class="mb-4 pa-4 rounded-xl border-dashed bg-white">
-      <v-row dense>
-        <v-col cols="6" md="3">
-          <v-text-field
-            v-model="advFilter.startDate"
-            label="拜訪日期(起)"
-            type="date"
-            variant="outlined"
-            density="compact"
-            hide-details
-            rounded="lg"
-          ></v-text-field>
-        </v-col>
-        <v-col cols="6" md="3">
-          <v-text-field
-            v-model="advFilter.endDate"
-            label="拜訪日期(迄)"
-            type="date"
-            variant="outlined"
-            density="compact"
-            hide-details
-            rounded="lg"
-            :min="advFilter.startDate"
-            :disabled="!advFilter.startDate"
-          ></v-text-field>
-        </v-col>
-
-        <v-col cols="12" sm="6" md="3">
-          <v-select
-            v-model="advFilter.sales"
-            :items="availableSalesNames"
-            label="銷售人員"
-            multiple
-            chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            rounded="lg"
-          ></v-select>
-        </v-col>
-        <v-col cols="12" sm="6" md="3">
-          <v-select
-            v-model="advFilter.ratings"
-            :items="['A意願高', 'B有機會', 'C需考慮', 'D無希望']"
-            label="等級"
-            multiple
-            chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            rounded="lg"
-          ></v-select>
-        </v-col>
-
-        <v-col cols="12" sm="6" md="3">
-          <v-select
-            v-model="advFilter.visitStatus"
-            :items="['新客', '回訪']"
-            label="新客/回訪"
-            multiple
-            chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            rounded="lg"
-          ></v-select>
-        </v-col>
-
-        <v-col cols="12" sm="6" md="3">
-                  <v-select
-            v-model="advFilter.reasons"
-            :items="[...new Set(settings.fields.noPurchaseReason?.options || [])]"
-            label="未買原因"
-            multiple
-            chips
-            variant="outlined"
-            density="compact"
-            hide-details
-            rounded="lg"
-          ></v-select>
-                  </v-col>
-        <!-- ✅ 動態生成 VIP 欄位篩選器 -->
-        <v-col v-for="field in sortedVipFields" :key="field.key" cols="12" sm="6" md="3">
-          <v-select
-            v-model="advFilter.vipFilters[field.label]"
-            :items="field.options || []"
-            :label="field.label"
-            :multiple="field.selectionMode === 'multiple'"
-            :chips="field.selectionMode === 'multiple'"
-            variant="outlined"
-            density="compact"
-            hide-details
-            rounded="lg"
-            clearable
-          ></v-select>
-        </v-col>
-        <v-col cols="12" sm="6" md="3" v-if="isCurrentUserCounter">
-          <v-switch
-            v-model="advFilter.showDeleted"
-            label="顯示已刪除"
-            color="red"
-            hide-details
-            density="compact"
-            class="mt-1"
-          ></v-switch>
-        </v-col>
-      </v-row>
-
-      <v-card-actions class="justify-end pa-0 mt-2">
-        <v-btn variant="text" color="grey" @click="resetAdvFilters">清除條件</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-expand-transition>
-
-            <div v-if="isLoadingCustomerList" class="text-center pa-10">
-              <v-progress-circular indeterminate color="primary" size="50"></v-progress-circular>
-              <p class="mt-3 text-grey">正在獲取客戶資料...</p>
-            </div>
-
-            <template v-else>
-              <v-data-iterator
-                v-if="isMobile"
-                :items="filteredCustomerList"
-                :sort-by="[{ key: 'updatedAt', order: 'desc' }]"
-                item-value="docId"
-                v-model:page="mobilePage"
-                :items-per-page="10"
-              >
-              <template v-slot:default="{ items }">
-    <v-row dense>
-      <v-col v-for="item in items" :key="item.raw.docId || item.raw.phone" cols="12">
-        <v-card 
-          variant="flat" 
-          class="mb-2 border-s-lg" 
-          :style="{ borderLeftColor: getRatingColorHex(item.raw['等級研判']) + ' !important' }"
-          @click="openInteractionLog(null, { item: item.raw })"
-        >
-          <v-card-text class="pa-3">
-            <div class="d-flex justify-space-between align-center mb-1">
-              <span class="text-subtitle-1 font-weight-bold" :class="{'text-decoration-line-through text-grey': item.raw.isDeleted}">
-                {{ item.raw['姓名'] || '未知姓名' }}<span v-if="getOtherContactNames(item.raw)" class="text-caption text-grey-darken-1 font-weight-regular">({{ getOtherContactNames(item.raw) }})</span>
-                <v-chip v-if="item.raw.isDeleted" color="red" size="x-small" label class="ml-1">已刪除</v-chip>
-              </span>
-
-              
-              <v-chip :color="getRatingColor(item.raw['等級研判'])" size="x-small" label variant="flat">
-                {{ item.raw['等級研判'] || '未定級' }}
-              </v-chip>
-            </div>
-            
-            <div class="d-flex align-center text-caption text-grey-darken-1 mb-1">
-              <v-icon size="14" start>mdi-phone</v-icon>
-              {{ item.raw['電話'] }}
-              <v-spacer></v-spacer>
-              <v-icon size="14" start>mdi-account-tie</v-icon>
-              {{ item.raw['銷售人員'] || '未指派' }}
-            </div>
-
-            <div class="d-flex align-center text-caption text-grey">
-            <v-icon size="14" start>mdi-calendar-clock</v-icon>
-            拜訪：{{ formatDisplayDate(item.raw['拜訪日期']) }}
-            <v-spacer></v-spacer>
-            <span v-if="item.raw.updatedAt" class="text-blue-grey-lighten-2">
-              更新：{{ formatFullDateTime(item.raw.updatedAt) }}
-            </span>
+          <div v-if="isLoadingCustomerList" class="mac-list-loading">
+            <v-progress-circular indeterminate color="primary" size="28" width="3"></v-progress-circular>
+            <div class="mt-2">正在讀取客戶資料…</div>
           </div>
 
-          <!-- 最新洽談內容（2 行 line-clamp 預覽） -->
-          <div v-if="item.raw.latestContent" class="mt-2 pa-2 rounded bg-blue-grey-lighten-5">
-            <div class="d-flex align-center text-caption text-blue-grey-darken-1 mb-1" style="gap: 4px;">
-              <v-icon size="12">mdi-comment-text-outline</v-icon>
-              <span>{{ formatDisplayDate(item.raw.latestLogDate) }} 最新洽談</span>
-              <span v-if="item.raw.latestInteractionType" class="text-grey">· {{ item.raw.latestInteractionType }}</span>
-            </div>
-            <div class="text-body-2 text-grey-darken-3 line-clamp-2">
-              {{ item.raw.latestContent }}
-            </div>
-          </div>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <div v-if="items.length > 0" class="d-flex align-center justify-center pa-4">
-      <v-pagination
-        v-model="mobilePage"
-        :length="Math.ceil(filteredCustomerList.length / 10)"
-        density="compact"
-        total-visible="5"
-        color="primary"
-      ></v-pagination>
-    </div>
-  </template>
-
-  <template v-slot:no-data>
-    <div class="text-center text-grey pa-10">
-      <v-icon size="64" color="grey-lighten-2">mdi-account-search-outline</v-icon>
-      <p class="mt-2">找不到符合的客資資料</p>
-    </div>
-  </template>
-                </v-data-iterator>
-
-              <v-data-table
-                v-else
-                :headers="customerTableHeaders"
-                :items="filteredCustomerList"
-                :sort-by="[{ key: 'updatedAt', order: 'desc' }]"
-                item-value="docId"
-                class="elevation-1 cursor-pointer-row"
-                @click:row="openInteractionLog"
-                hover
-              >
-              <template v-slot:item.姓名="{ item }">
-                <span :class="{'text-decoration-line-through text-grey': item.isDeleted}">{{ item['姓名'] }}</span>
-                <span v-if="getOtherContactNames(item)" class="text-caption text-grey-darken-1">({{ getOtherContactNames(item) }})</span>
-              </template>
-
-              <template v-slot:item.updatedAt="{ item }">
-                  <div class="text-caption text-grey-darken-1 d-flex flex-column">
-                    <span>{{ formatFullDateTime(item.updatedAt) }}</span>
-                    <v-chip v-if="item.isDeleted" color="red" size="x-small" label class="align-self-start mt-1">已刪除</v-chip>
-                    <v-chip v-if="item.isLinked" color="indigo" size="x-small" label variant="tonal" class="align-self-start mt-1" prepend-icon="mdi-link-variant">
-                      {{ projectStore.idToNameMap[item.sourceProjectId] || '關聯' }}
-                    </v-chip>
-                  </div>
-                </template>
-
-              <template v-slot:item.拜訪日期="{ item }">
-                {{ formatDisplayDate(item['拜訪日期']) }}
-              </template>
-
-              <template v-slot:item.visitStatus="{ item }">
-                <v-chip
-                  v-if="item.visitStatus === '新客'"
-                  color="green"
-                  size="small"
-                  label
-                  variant="flat"
-                  class="font-weight-bold"
-                >新客</v-chip>
-                <v-chip
-                  v-else-if="item.visitStatus === '回訪'"
-                  color="red"
-                  size="small"
-                  label
-                  variant="flat"
-                  class="font-weight-bold"
-                >回訪</v-chip>
-                <span v-else class="text-caption text-grey">—</span>
-              </template>
-
-              <template v-slot:item.等級研判="{ item }">
-                <v-chip
-                  v-if="item['等級研判']"
-                  :color="getRatingColor(item['等級研判'])"
-                  size="small"
-                  label
-                  variant="flat"
-                  class="font-weight-bold"
-                >
-                  {{ item['等級研判'] }}
-                </v-chip>
-              </template>
-
-              <template v-slot:item.未買原因="{ item }">
-                <div v-if="Array.isArray(item['未買原因']) && item['未買原因'].length > 0" class="text-caption text-grey-darken-2 text-truncate" style="max-width: 150px;">
-                  {{ item['未買原因'].join(', ') }}
-                </div>
-              </template>
-
-              <!-- 最新洽談內容：單行截斷 + hover tooltip 顯示完整內容 -->
-              <template v-slot:item.latestContent="{ item }">
-                <div v-if="item.latestContent" class="d-flex flex-column" style="max-width: 240px;">
-                  <div class="text-caption text-blue-grey-darken-1 d-flex align-center" style="gap: 4px;">
-                    <v-icon size="12">mdi-comment-text-outline</v-icon>
-                    <span>{{ formatDisplayDate(item.latestLogDate) }}</span>
-                    <span v-if="item.latestInteractionType" class="text-grey">· {{ item.latestInteractionType }}</span>
-                  </div>
-                  <span class="text-body-2 text-truncate d-inline-block" style="max-width: 240px;">
-                    {{ item.latestContent }}
-                    <v-tooltip activator="parent" location="top" max-width="360">
-                      <div style="white-space: pre-wrap;">{{ item.latestContent }}</div>
-                    </v-tooltip>
+          <!-- 📱 手機：精簡清單列（等級色條／姓名＋等級／電話・銷售・拜訪日／最新洽談），分批載入 -->
+          <div v-else-if="smAndDown" class="mac-list">
+            <button
+              v-for="item in mobileCustomerList"
+              :key="item.docId || item['電話']"
+              type="button"
+              class="mac-list-row"
+              :style="{ '--mac-row-accent': getRatingColorHex(item['等級研判']) }"
+              @click="openInteractionLog(null, { item })"
+            >
+              <div class="mac-list-main">
+                <div class="mac-list-line1">
+                  <span class="mac-list-title" :class="{ 'cm-deleted': item.isDeleted }">
+                    {{ item['姓名'] || '未知姓名' }}<small v-if="getOtherContactNames(item)">（{{ getOtherContactNames(item) }}）</small>
                   </span>
+                  <span v-if="item.isDeleted" class="mac-tag cm-tag-deleted">已刪除</span>
+                  <span class="mac-tag" :style="ratingTagStyle(item['等級研判'])">{{ item['等級研判'] || '未定級' }}</span>
                 </div>
-                <span v-else class="text-caption text-grey">—</span>
-              </template>
+                <div class="mac-list-meta">
+                  {{ item['電話'] }}・{{ item['銷售人員'] || '未指派' }}・{{ formatDisplayDate(item['拜訪日期']) }}<template v-if="item.visitStatus">・{{ item.visitStatus }}</template>
+                </div>
+                <div v-if="item.latestContent" class="mac-list-preview">{{ item.latestContent }}</div>
+                <div v-if="item.isLinked" class="mac-list-meta cm-linked">
+                  <v-icon size="13">mdi-link-variant</v-icon>{{ projectStore.idToNameMap[item.sourceProjectId] || '關聯建案' }}
+                </div>
+              </div>
+            </button>
+            <div v-if="!mobileCustomerList.length" class="mac-list-empty">找不到符合的客戶</div>
+            <div v-if="sortedCustomerList.length > mobileVisibleCount" class="mac-list-more">
+              <button type="button" class="mac-btn mac-btn--lg mac-btn--block" @click="mobileVisibleCount += MOBILE_PAGE_SIZE">
+                載入更多（還有 {{ sortedCustomerList.length - mobileVisibleCount }} 筆）
+              </button>
+            </div>
+          </div>
 
-              <!-- ✅ 動態 VIP 欄位模板 -->
-              <template v-for="field in sortedVipFields" :key="field.key" v-slot:[`item.${field.label}`]="{ item }">
-                <template v-if="field.selectionMode === 'multiple'">
-                  <!-- 多選欄位：每個值獨立顯示為 chip -->
-                  <div class="d-flex flex-wrap ga-1">
-                    <v-chip
-                      v-for="(v, idx) in normalizeMultiValues(item[field.label])"
-                      :key="idx"
-                      :color="getChipColor(v)"
-                      size="small"
-                      label
-                      variant="tonal"
-                    >
-                      {{ v }}
-                    </v-chip>
-                    <span v-if="!normalizeMultiValues(item[field.label]).length" class="text-caption text-grey">—</span>
-                  </div>
-                </template>
-                <template v-else>
-                  <!-- 單選欄位：顯示為 chip -->
-                  <v-chip
-                    v-if="normalizeMultiValues(item[field.label])[0]"
-                    :color="getChipColor(normalizeMultiValues(item[field.label])[0])"
-                    size="small"
-                    label
-                    variant="tonal"
-                  >
-                    {{ normalizeMultiValues(item[field.label])[0] }}
-                  </v-chip>
-                  <span v-else class="text-caption text-grey">—</span>
-                </template>
-              </template>
-            </v-data-table>
+          <!-- 💻 桌機：表格 -->
+          <v-data-table
+            v-else
+            :headers="customerTableHeaders"
+            :items="filteredCustomerList"
+            :sort-by="[{ key: 'updatedAt', order: 'desc' }]"
+            :items-per-page="25"
+            item-value="docId"
+            class="mac-table cursor-pointer-row"
+            no-data-text="找不到符合的客戶"
+            @click:row="openInteractionLog"
+            hover
+          >
+            <template v-slot:item.姓名="{ item }">
+              <span class="cm-name" :class="{ 'cm-deleted': item.isDeleted }">{{ item['姓名'] }}</span>
+              <span v-if="getOtherContactNames(item)" class="cm-muted">（{{ getOtherContactNames(item) }}）</span>
             </template>
-          <CustomerInteractionLog
-    v-if="isInteractionDialogVisible"
-    v-model:show="isInteractionDialogVisible"
-    :project-id="projectId"
-    :project-name="projectName"
-    :doc-id="selectedCustomerDocId"
-    :sales-name="selectedCustomerSalesName"
-    :settings="settings"
-    :is-deleted="selectedCustomerIsDeleted"
-    @data-updated="loadCustomerList"
-/>
 
-          </v-card-text>
-        </v-card>
+            <template v-slot:item.updatedAt="{ item }">
+              <div class="cm-cell-stack">
+                <span class="cm-muted">{{ formatFullDateTime(item.updatedAt) }}</span>
+                <span v-if="item.isDeleted" class="mac-tag cm-tag-deleted">已刪除</span>
+                <span v-if="item.isLinked" class="mac-tag cm-tag-linked">
+                  <v-icon size="12">mdi-link-variant</v-icon>{{ projectStore.idToNameMap[item.sourceProjectId] || '關聯' }}
+                </span>
+              </div>
+            </template>
+
+            <template v-slot:item.拜訪日期="{ item }">
+              {{ formatDisplayDate(item['拜訪日期']) }}
+            </template>
+
+            <template v-slot:item.visitStatus="{ item }">
+              <span v-if="item.visitStatus" class="mac-tag" :class="item.visitStatus === '新客' ? 'cm-tag-new' : 'cm-tag-return'">{{ item.visitStatus }}</span>
+              <span v-else class="cm-muted">—</span>
+            </template>
+
+            <template v-slot:item.等級研判="{ item }">
+              <span v-if="item['等級研判']" class="mac-tag" :style="ratingTagStyle(item['等級研判'])">{{ item['等級研判'] }}</span>
+            </template>
+
+            <template v-slot:item.未買原因="{ item }">
+              <div v-if="Array.isArray(item['未買原因']) && item['未買原因'].length > 0" class="cm-muted text-truncate" style="max-width: 150px;">
+                {{ item['未買原因'].join(', ') }}
+              </div>
+            </template>
+
+            <!-- 最新洽談內容：單行截斷 + hover tooltip 顯示完整內容 -->
+            <template v-slot:item.latestContent="{ item }">
+              <div v-if="item.latestContent" class="d-flex flex-column" style="max-width: 240px;">
+                <div class="cm-muted d-flex align-center" style="gap: 4px; font-size: 12px;">
+                  <span>{{ formatDisplayDate(item.latestLogDate) }}</span>
+                  <span v-if="item.latestInteractionType">· {{ item.latestInteractionType }}</span>
+                </div>
+                <span class="text-truncate d-inline-block" style="max-width: 240px;">
+                  {{ item.latestContent }}
+                  <v-tooltip activator="parent" location="top" max-width="360">
+                    <div style="white-space: pre-wrap;">{{ item.latestContent }}</div>
+                  </v-tooltip>
+                </span>
+              </div>
+              <span v-else class="cm-muted">—</span>
+            </template>
+
+            <!-- ✅ 動態 VIP 欄位模板 -->
+            <template v-for="field in sortedVipFields" :key="field.key" v-slot:[`item.${field.label}`]="{ item }">
+              <div v-if="normalizeMultiValues(item[field.label]).length" class="d-flex flex-wrap ga-1">
+                <v-chip
+                  v-for="(v, idx) in (field.selectionMode === 'multiple' ? normalizeMultiValues(item[field.label]) : normalizeMultiValues(item[field.label]).slice(0, 1))"
+                  :key="idx"
+                  :color="getChipColor(v)"
+                  size="small"
+                  label
+                  variant="tonal"
+                >
+                  {{ v }}
+                </v-chip>
+              </div>
+              <span v-else class="cm-muted">—</span>
+            </template>
+          </v-data-table>
+
+          <CustomerInteractionLog
+            v-if="isInteractionDialogVisible"
+            v-model:show="isInteractionDialogVisible"
+            :project-id="projectId"
+            :project-name="projectName"
+            :doc-id="selectedCustomerDocId"
+            :sales-name="selectedCustomerSalesName"
+            :settings="settings"
+            :is-deleted="selectedCustomerIsDeleted"
+            @data-updated="loadCustomerList"
+          />
+        </section>
+
+        <!-- 匯出視窗：與「下載客資」頁籤共用同一元件，日期與銷售預帶列表目前的篩選 -->
+        <v-dialog v-model="exportDialog" max-width="640" scrollable content-class="mac-dialog-fit">
+          <v-card class="mac-sheet">
+            <div class="mac-sheet-head">
+              <v-icon size="18">mdi-tray-arrow-down</v-icon>匯出客資
+              <button type="button" class="mac-sheet-close" title="關閉" @click="exportDialog = false">
+                <v-icon size="18">mdi-close</v-icon>
+              </button>
+            </div>
+            <v-card-text class="pa-0 cm-export-body">
+              <CustomerExportPanel
+                v-if="exportDialog"
+                :project-id="props.projectId"
+                :project-name="projectName"
+                :sales-names="availableSalesNames"
+                :initial-start-date="advFilter.startDate"
+                :initial-end-date="advFilter.endDate"
+                :initial-sales="advFilter.sales"
+              />
+            </v-card-text>
+          </v-card>
+        </v-dialog>
       </v-window-item>
 
       <v-window-item value="leadDistribution">
-    <LeadDistribution
-      :key="props.projectId"
-      :projectId="props.projectId"
-      :hide-back="true"
-    />
-  </v-window-item>
+        <LeadDistribution
+          :key="props.projectId"
+          :projectId="props.projectId"
+          :hide-back="true"
+        />
+      </v-window-item>
 
       <v-window-item value="viewingReservation" class="pa-0">
         <div style="height: 100vh; overflow: hidden;">
@@ -537,216 +351,22 @@
       </v-window-item>
 
       <v-window-item value="downloadLeads" v-if="canManageSettings">
-  <v-container fluid class="bg-grey-lighten-5 pa-4">
-    <v-card elevation="2" class="rounded-xl">
-      <v-card-item>
-        <v-card-title class="text-h6 font-weight-bold text-primary">
-         客資報表下載
-        </v-card-title>
-        
-      </v-card-item>
-
-      <v-card-text>
-        <v-row>
-          <v-col cols="12" md="3">
-  <v-text-field
-    v-model="exportFilters.startDate"
-    label="開始日期"
-    type="date"
-    variant="outlined"
-    density="compact"
-  ></v-text-field>
-</v-col>
-
-<v-col cols="12" md="3">
-  <v-text-field
-    v-model="exportFilters.endDate"
-    label="結束日期"
-    type="date"
-    variant="outlined"
-    density="compact"
-    :min="exportFilters.startDate" 
-  ></v-text-field> </v-col>
-
-          <v-col cols="12">
-  <div class="text-subtitle-2 mb-2 d-flex align-center">
-    銷售人員篩選：
-    <v-checkbox
-      v-model="isAllSalesSelected"
-      label="全選"
-      density="compact"
-      hide-details
-      color="secondary"
-      class="ml-4 font-weight-bold"
-      :indeterminate="isSalesIndeterminate"
-    ></v-checkbox>
-  </div>
-  
-  <div class="d-flex flex-wrap gap-2">
-    <v-checkbox
-      v-for="sales in availableSalesNames"
-      :key="sales"
-      v-model="exportFilters.selectedSales"
-      :label="sales"
-      :value="sales"
-      density="compact"
-      hide-details
-      color="primary"
-      class="mr-4"
-    ></v-checkbox>
-  </div>
-</v-col>
-        </v-row>
-
-        <v-divider class="my-4"></v-divider>
-
-        <!-- ✅ 日期未選擇時預設下載/同步全部資料，按鈕不再 disabled -->
-        <div class="text-caption text-grey-darken-1 mb-2">
-          未選擇日期時，預設下載 / 同步<strong>全部資料</strong>。
+        <div class="cm-export-page">
+          <div class="cm-export-wrap">
+            <div class="mac-page-bar">
+              <div class="mac-page-title"><span class="mac-page-title-main">下載客資</span></div>
+            </div>
+            <CustomerExportPanel
+              :key="props.projectId"
+              :project-id="props.projectId"
+              :project-name="projectName"
+              :sales-names="availableSalesNames"
+            />
+          </div>
         </div>
-        <div class="d-flex align-center mt-2">
-          <v-btn
-            color="success"
-            size="large"
-            prepend-icon="mdi-download"
-            :loading="isSimpleExporting"
-            @click="executeSimpleExport"
-            class="mr-4"
-          >
-            下載客資報表
-          </v-btn>
+      </v-window-item>
 
-          <v-btn
-            color="blue-grey"
-            size="large"
-            prepend-icon="mdi-google-spreadsheet"
-            :loading="isSyncingToGoogle || googleSheetForm.isLoadingSheets"
-            @click="openSyncDialog"
-          >
-            同步到 Google Sheet
-          </v-btn>
-        </div>
-      </v-card-text>
-    </v-card>
-
-    <!-- Google Sheet Sync Dialog -->
-    <v-dialog v-model="googleSheetDialog" max-width="500px">
-      <v-card>
-        <v-card-title class="bg-blue-grey text-white">
-          <v-icon start>mdi-google-spreadsheet</v-icon>
-          同步資料到 Google Sheet
-        </v-card-title>
-        
-        <v-card-text class="pt-6">
-          <v-window v-model="googleSheetForm.step">
-            <!-- Step 1: Input URL and Fetch Sheets -->
-            <v-window-item :value="1">
-              <p class="mb-4 text-body-2 text-grey-darken-1">
-                請輸入目標 Google Sheet 的完整網址或是 ID。
-                <br>
-                <span class="text-caption text-red">* 請注意：您需要擁有該試算表的編輯權限。</span>
-              </p>
-              
-              <v-text-field
-                v-model="googleSheetForm.url"
-                label="Google Sheet 網址 / ID"
-                variant="outlined"
-                placeholder="https://docs.google.com/spreadsheets/d/..."
-                prepend-inner-icon="mdi-link"
-                :error="!googleSheetForm.url && googleSheetForm.step === 1"
-              ></v-text-field>
-              
-            </v-window-item>
-
-            <!-- Step 2: Select Sheet and Confirm -->
-            <v-window-item :value="2">
-              <v-alert
-                type="info"
-                variant="tonal"
-                class="mb-4 text-caption"
-                icon="mdi-information"
-              >
-                為了讓系統能寫入資料，請將您的 Google Sheet 共用給以下 Email (編輯者權限)：
-                <div class="font-weight-bold mt-1 text-selectable select-all">
-                  {{ googleSheetForm.agentEmail || '讀取中...' }}
-                </div>
-              </v-alert>
-
-               <v-select
-                v-model="googleSheetForm.sheetName"
-                :items="googleSheetForm.sheetNames"
-                label="選擇要寫入的工作表 (Sheet)"
-                variant="outlined"
-                prepend-inner-icon="mdi-table"
-                required
-              ></v-select>
-
-              <v-alert
-                type="warning"
-                variant="tonal"
-                class="mt-2"
-                icon="mdi-alert"
-              >
-                <strong>警告：</strong> 點擊同步後，該工作表 ({{ googleSheetForm.sheetName || '未選擇' }}) 的現有資料將被<strong>清除並覆蓋</strong>。
-              </v-alert>
-
-              <v-checkbox
-                v-model="googleSheetForm.rememberUrl"
-                label="將此網址設為本專案預設 (所有管理員共享)"
-                density="compact"
-                hide-details
-                color="primary"
-                class="mt-2"
-              ></v-checkbox>
-
-              <v-checkbox
-                v-model="googleSheetForm.enableAutoSync"
-                label="啟用自動同步 (客資異動後自動全量更新此工作表)"
-                density="compact"
-                hide-details
-                color="success"
-                class="mt-1"
-              ></v-checkbox>
-              <div v-if="googleSheetForm.enableAutoSync" class="text-caption text-grey-darken-1 ml-10">
-                自動同步為「全量資料」，不套用上方的日期區間與銷售人員篩選。
-              </div>
-            </v-window-item>
-          </v-window>
-        </v-card-text>
-
-        <v-card-actions class="pa-4">
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="googleSheetDialog = false">取消</v-btn>
-          
-          <v-btn
-            v-if="googleSheetForm.step === 1"
-            color="primary"
-            variant="flat"
-            @click="fetchSheetNames"
-            :loading="googleSheetForm.isLoadingSheets"
-            :disabled="!googleSheetForm.url"
-          >
-            下一步
-          </v-btn>
-          
-          <v-btn
-            v-if="googleSheetForm.step === 2"
-            color="success"
-            variant="flat"
-            @click="executeGoogleSync"
-            :loading="isSyncingToGoogle"
-            :disabled="!googleSheetForm.sheetName"
-          >
-            確認同步
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-  </v-container>
-</v-window-item>
-
-      <v-window-item value="settings" v-if="isSuperAdmin">
+      <v-window-item value="settings" v-if="isSuperAdmin" class="cm-admin-pane">
         <v-card class="admin-section-card">
           <v-banner
             icon="mdi-shield-lock"
@@ -866,7 +486,7 @@
         </v-card>
       </v-window-item>
 
-      <v-window-item value="vipSettings" v-if="isSuperAdmin">
+      <v-window-item value="vipSettings" v-if="isSuperAdmin" class="cm-admin-pane">
         <v-card class="admin-section-card">
           <v-banner
             icon="mdi-shield-lock"
@@ -1078,7 +698,7 @@
         </v-card>
       </v-window-item>
 
-      <v-window-item value="otherSettings" v-if="isSuperAdmin">
+      <v-window-item value="otherSettings" v-if="isSuperAdmin" class="cm-admin-pane">
         <v-card class="admin-section-card">
           <v-banner
             icon="mdi-shield-lock"
@@ -1157,7 +777,7 @@
         </v-card>
       </v-window-item>
 
-      <v-window-item value="anxiSettings" v-if="isSuperAdmin">
+      <v-window-item value="anxiSettings" v-if="isSuperAdmin" class="cm-admin-pane">
         <v-card>
           <v-toolbar color="red-lighten-5" >
             <v-toolbar-title class="text-subtitle-1 text-red-darken-2">
@@ -1202,7 +822,7 @@
         </v-card>
       </v-window-item>
 
-      <v-window-item value="batchUpdate">
+      <v-window-item value="batchUpdate" class="cm-admin-pane">
         <v-banner
           icon="mdi-shield-lock"
           color="amber-darken-2"
@@ -1744,7 +1364,7 @@
       </v-overlay>
     </Teleport>
 
-  </v-container>
+  </div>
 </template>
 
 <script setup>
@@ -1759,8 +1379,7 @@ const LeadDistribution = defineAsyncComponent(() => import('@/views/LeadDistribu
 const ViewingReservationCalendar = defineAsyncComponent(() => import('@/views/ViewingReservationCalendar.vue'));
 import {
   collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc,
-  serverTimestamp, orderBy, limit, startAfter, getDoc, // ✅ 新增 doc, updateDoc, getDoc
-  deleteField // ✅ 自動同步綁定解除用
+  serverTimestamp, orderBy, limit, startAfter, getDoc // ✅ 新增 doc, updateDoc, getDoc
 } from "firebase/firestore";
 import { 
   getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject 
@@ -1778,8 +1397,6 @@ import {
   fetchCustomersForExport,
   fetchFullCustomersForExport,
   batchImportCustomers,
-  listGoogleSheets,
-  exportToGoogleSheet,
   submitCustomerSheet,
   fetchVipGuests,
   analyzeCustomerStatus
@@ -1792,6 +1409,9 @@ import { merge } from 'lodash-es';
 import draggable from 'vuedraggable';
 import CustomerInteractionLog from '@/components/CustomerInteractionLog.vue'; // 引入組件
 import VipFormSalesLinkDialog from '@/components/VipFormSalesLinkDialog.vue'; // ✅ 銷售專屬表單連結
+import MacFilterPopover from '@/components/MacFilterPopover.vue';
+import CustomerExportPanel from '@/components/CustomerExportPanel.vue'; // ✅ 下載客資頁籤與匯出視窗共用
+import { hexToRgba } from '@/utils/leadStatusColors';
 
 const props = defineProps({
   projectId: {
@@ -1835,13 +1455,25 @@ const switchProject = (pid) => {
   }
 };
 
-// ✅ [新增] 取得手機模式狀態
-const { mobile: isMobile } = useDisplay();
-const mobilePage = ref(1); // ✅ [新增] 用於控制手機版的當前頁碼
-const itemsPerPage = ref(5);
-const loadMore = () => {
-  itemsPerPage.value += 5; // 每次點擊多顯示 5 筆
-};
+// ✅ 手機（<960px）改用精簡清單列，桌機用表格
+const { smAndDown } = useDisplay();
+
+// --- 頂列頁籤：一般頁籤為分段切換，超管設定頁收進「系統設定」選單 ---
+const mainTabs = computed(() => [
+  { value: 'management', label: '客戶資料', icon: 'mdi-account-details-outline' },
+  { value: 'leadDistribution', label: '聯絡名單', icon: 'mdi-card-account-phone-outline' },
+  { value: 'viewingReservation', label: '賞屋預約', icon: 'mdi-calendar-clock-outline' },
+  ...(canManageSettings.value ? [{ value: 'downloadLeads', label: '下載客資', icon: 'mdi-tray-arrow-down' }] : []),
+]);
+const adminTabs = [
+  { value: 'settings', label: '客資系統設定', icon: 'mdi-form-select' },
+  { value: 'vipSettings', label: '貴賓資料設定', icon: 'mdi-account-star-outline' },
+  { value: 'otherSettings', label: '其他設定', icon: 'mdi-cog-outline' },
+  { value: 'batchUpdate', label: '客資批次更新', icon: 'mdi-database-sync-outline' },
+  { value: 'anxiSettings', label: 'ANXI系統設定', icon: 'mdi-tune-variant' },
+];
+const isAdminTab = computed(() => adminTabs.some(t => t.value === tab.value));
+const currentAdminTabLabel = computed(() => adminTabs.find(t => t.value === tab.value)?.label || '系統設定');
 
 // --- 權限 ---
 const projectName = computed(() => projectStore.idToNameMap[props.projectId] || props.projectId);
@@ -3107,14 +2739,6 @@ function formatDisplayDate(dateString) {
   }
 }
 
-// ✓ [打勾] 新增篩選與下載狀態
-const isSimpleExporting = ref(false);
-const exportFilters = ref({
-  startDate: '',
-  endDate: '',
-  selectedSales: []
-});
-
 // ✓ [打勾] 從現有列表提取銷售人員名單供勾選
 const availableSalesNames = computed(() => {
   const names = customerList.value
@@ -3123,282 +2747,8 @@ const availableSalesNames = computed(() => {
   return [...new Set(names)].sort();
 });
 
-// ✓ [打勾] 洽談時間計算函數 (最後一筆 log 的持續分鐘數)
-const calculateLogDuration = (startTime, endTime) => {
-  if (!startTime || !endTime) return '';
-  try {
-    const [sH, sM] = startTime.split(':').map(Number);
-    const [eH, eM] = endTime.split(':').map(Number);
-    const diff = (eH * 60 + eM) - (sH * 60 + sM);
-    return diff > 0 ? `${diff} 分鐘` : '';
-  } catch (e) { return ''; }
-};
-
-// ✓ [打勾] 簡易版 Excel 匯出執行函數
-// 以「現場介紹」每筆 log 各為一列，並依序標示 新客/回訪
-const getSimpleExportData = async (filterFunc, sortFunc) => {
-  // 獲取完整資料以便讀取 interactionLogs 與 profile
-  const allData = await fetchFullCustomersForExport(
-    props.projectId,
-    userStore.user.key,
-    userStore.user?.permissions?.[props.projectId]?.systems || []
-  );
-
-  // 預設客戶層級篩選 (僅依銷售人員；日期與現場介紹改於逐列判斷)
-  const defaultFilter = (item) => {
-    const logs = item.interactionLogs || [];
-    if (logs.length === 0) return false;
-    const hasOnSite = logs.some(l => l && l.tags && l.tags.interactionType === '現場介紹' && l.date);
-    if (!hasOnSite) return false;
-    const isSalesMatch = exportFilters.value.selectedSales.length === 0 ||
-                         exportFilters.value.selectedSales.includes(item.latestSalesName);
-    return isSalesMatch;
-  };
-
-  const filtered = allData.filter(filterFunc || defaultFilter);
-
-  // 展平為「每筆現場介紹一列」
-  const { startDate, endDate } = exportFilters.value;
-  const rows = [];
-
-  filtered.forEach(item => {
-    const logs = item.interactionLogs || [];
-    const p = item.profile || {};
-    const getP = (key) => Array.isArray(p[key]) ? p[key][p[key].length - 1] : (p[key] || '');
-
-    // 依日期升冪排序，用以判定新客/回訪順序
-    const onSiteLogs = logs
-      .filter(l => l && l.tags && l.tags.interactionType === '現場介紹' && l.date)
-      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-
-    onSiteLogs.forEach((log, idx) => {
-      // 依該列日期做區間篩選
-      if (startDate && log.date < startDate) return;
-      if (endDate && log.date > endDate) return;
-
-      rows.push({
-        'UID': item.id || '',
-        '日期': log.date ? log.date.replace(/-/g, '/') : '',
-        '新客/回訪': idx === 0 ? '新客' : '回訪',
-        '銷售人員': item.latestSalesName || '',
-        '客戶姓名': item.latestName || '',
-        '來人（位）': log.tags?.visitors || '',
-        '年齡': getP('年齡'),
-        '性別': getP('性別'),
-        '職業': getP('職業'),
-        '動機': Array.isArray(p['購屋動機']) ? p['購屋動機'].join(',') : '',
-        '媒體': Array.isArray(p['從何得知本建案']) ? p['從何得知本建案'].join(',') : '',
-        '區域': getP('居住城市'),
-        '洽談時間': calculateLogDuration(log.startTime, log.endTime),
-        '行動電話': item.phone || '',
-        '未買原因': Array.isArray(log.tags?.noPurchaseReason)
-                   ? log.tags.noPurchaseReason.join(',')
-                   : (log.tags?.noPurchaseReason || ''),
-        '洽談紀錄': log.content || ''
-      });
-    });
-  });
-
-  // 依日期遞減排序 (最新在上)
-  const defaultSort = (a, b) => (b['日期'] || '').localeCompare(a['日期'] || '');
-  rows.sort(sortFunc || defaultSort);
-
-  // 編入順序
-  return rows.map((r, index) => ({ 'UID': r['UID'] || '', '順序': index + 1, ...r }));
-};
-
-const executeSimpleExport = async () => {
-  // ✓ [新增] 即使按鈕被隱藏，函數層級也要攔截
-  if (!canManageSettings.value) {
-    alert('您沒有權限執行此操作');
-    return;
-  }
-  
-  isSimpleExporting.value = true;
-  try {
-    const exportRows = await getSimpleExportData();
-
-    // 建立並下載 Excel
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(exportRows);
-    XLSX.utils.book_append_sheet(wb, ws, "客資資料");
-    // ✅ 未選日期時檔名標示「全部」
-    const dateTag = (exportFilters.value.startDate && exportFilters.value.endDate)
-      ? `${exportFilters.value.startDate}_${exportFilters.value.endDate}`
-      : (exportFilters.value.startDate || exportFilters.value.endDate || '全部');
-    const fileName = `${projectName.value}_客資資料_${dateTag}.xlsx`;
-    XLSX.writeFile(wb, fileName);
-
-  } catch (err) {
-    console.error("匯出失敗:", err);
-    alert('下載發生錯誤: ' + err.message);
-  } finally {
-    isSimpleExporting.value = false;
-  }
-};
-
-// --- Google Sheet Sync Logic ---
-const googleSheetDialog = ref(false);
-const isSyncingToGoogle = ref(false);
-const googleSheetForm = reactive({
-  url: '',
-  sheetName: '',
-  sheetNames: [],
-  isLoadingSheets: false,
-  agentEmail: '',
-  spreadsheetId: '',
-  step: 1,
-  rememberUrl: true, // ✅ 新增：控制是否記住網址
-  enableAutoSync: true // ✅ 新增：客資異動後自動全量同步
-});
-
-// ✅ 從網址/ID 解析出純 spreadsheetId（後端綁定需存 ID，不能存完整 URL）
-const parseSpreadsheetId = (input) => {
-  const m = String(input || '').match(/\/d\/([a-zA-Z0-9-_]+)/);
-  return m ? m[1] : String(input || '').trim();
-};
-
-const openSyncDialog = async () => {
-  // ✅ 日期未選擇時預設同步全部資料，不再強制起訖日期
-  googleSheetForm.url = '';
-  
-  // 嘗試從專案設定 (Firestore) 讀取上次使用的 URL
-  try {
-    const projectRef = doc(db, 'projects', props.projectId);
-    const projectSnap = await getDoc(projectRef);
-    if (projectSnap.exists()) {
-      const data = projectSnap.data();
-      // ✅ 使用獨立欄位 customerExportSheetUrl
-      if (data.customerExportSheetUrl) {
-        googleSheetForm.url = data.customerExportSheetUrl;
-      }
-    }
-  } catch (err) {
-    console.error('讀取專案設定失敗:', err);
-  }
-
-  googleSheetForm.sheetName = '';
-  googleSheetForm.sheetNames = [];
-  googleSheetForm.step = 1;
-  googleSheetDialog.value = true;
-};
-
-const fetchSheetNames = async () => {
-  if (!googleSheetForm.url) return;
-  googleSheetForm.isLoadingSheets = true;
-  try {
-    const res = await listGoogleSheets(googleSheetForm.url);
-    googleSheetForm.sheetNames = res.sheetNames || [];
-    googleSheetForm.agentEmail = res.agentEmail || '';
-    googleSheetForm.spreadsheetId = res.spreadsheetId; // Store the ID
-    googleSheetForm.step = 2; // Move to select sheet step
-  } catch (error) {
-    alert('讀取失敗: ' + error.message);
-  } finally {
-    googleSheetForm.isLoadingSheets = false;
-  }
-};
-
-const executeGoogleSync = async () => {
-  if (!googleSheetForm.sheetName) return;
-  
-  isSyncingToGoogle.value = true;
-  try {
-    // 1. 準備資料
-    const exportRows = await getSimpleExportData();
-    
-    // ✅ 新增：檢查是否有資料
-    if (exportRows.length === 0) {
-      alert('沒有符合條件的資料可同步 (但網址設定已保留)');
-    }
-
-    // ✅ 新增：檢查是否要儲存網址設定 (存入 customerExportSheetUrl)
-    if (googleSheetForm.rememberUrl && googleSheetForm.url) {
-       updateDoc(doc(db, 'projects', props.projectId), {
-        customerExportSheetUrl: googleSheetForm.url
-      }).catch(e => console.error('更新專案設定失敗:', e));
-    }
-
-    // 若無資料，存完設定後就中止
-    if (exportRows.length === 0) {
-        isSyncingToGoogle.value = false;
-        return;
-    }
-
-    // 2. 轉換為二維陣列 (Header + Data)
-    const headers = [
-      'UID', '順序', '日期', '新客/回訪', '銷售人員', '客戶姓名', '來人（位）',
-      '年齡', '性別', '職業', '動機', '媒體', '區域',
-      '洽談時間', '行動電話', '未買原因', '洽談紀錄'
-    ];
-
-    const values = [headers];
-    exportRows.forEach(row => {
-      values.push([
-        row['UID'], row['順序'], row['日期'], row['新客/回訪'], row['銷售人員'], row['客戶姓名'], row['來人（位）'],
-        row['年齡'], row['性別'], row['職業'], row['動機'], row['媒體'], row['區域'],
-        row['洽談時間'], row['行動電話'], row['未買原因'], row['洽談紀錄']
-      ]);
-    });
-
-    // 3. 呼叫後端同步
-    await exportToGoogleSheet({
-      spreadsheetId: googleSheetForm.spreadsheetId || googleSheetForm.url, // Use stored ID or fallback to URL (which backend might fail if not handled)
-      sheetName: googleSheetForm.sheetName,
-      values: values
-    });
-
-    // ✅ 4. 儲存/解除自動同步綁定（成功同步後才綁定，確保工作表可寫入）
-    //    綁定後 Cloud Functions (onVipGuestWriteSheetSync) 會在客資異動時自動「全量」同步
-    //    （自動同步不套用日期區間與銷售人員篩選）
-    try {
-      const binding = googleSheetForm.enableAutoSync
-        ? {
-            customerSheetId: parseSpreadsheetId(googleSheetForm.spreadsheetId || googleSheetForm.url),
-            customerSheetTabName: googleSheetForm.sheetName
-          }
-        : { customerSheetId: deleteField(), customerSheetTabName: deleteField() };
-      await updateDoc(doc(db, 'projects', props.projectId), binding);
-    } catch (e) {
-      console.error('儲存自動同步設定失敗:', e);
-    }
-
-    alert(`同步成功！${googleSheetForm.enableAutoSync ? '\n已啟用自動同步：之後客資異動將以「全量資料」自動更新此工作表（不受日期篩選影響）' : ''}`);
-    googleSheetDialog.value = false;
-
-  } catch (error) {
-    console.error(error);
-    alert('同步失敗: ' + error.message);
-  } finally {
-    isSyncingToGoogle.value = false;
-  }
-};
-
-// ✓ [打勾] 新增：全選邏輯的計算屬性
-const isAllSalesSelected = computed({
-  // 檢查是否所有人員都被選中
-  get: () => {
-    return availableSalesNames.value.length > 0 && 
-           exportFilters.value.selectedSales.length === availableSalesNames.value.length;
-  },
-  // 處理點擊全選的動作
-  set: (val) => {
-    if (val) {
-      // 全選：將所有可選人員名稱放入陣列
-      exportFilters.value.selectedSales = [...availableSalesNames.value];
-    } else {
-      // 取消全選：清空陣列
-      exportFilters.value.selectedSales = [];
-    }
-  }
-});
-
-// ✓ [打勾] 新增：處理「部分選中」的視覺狀態 (Indeterminate)
-const isSalesIndeterminate = computed(() => {
-  const selectedCount = exportFilters.value.selectedSales.length;
-  const totalCount = availableSalesNames.value.length;
-  return selectedCount > 0 && selectedCount < totalCount;
-});
+// 匯出視窗（下載 EXCEL／同步 Google Sheet，內容見 CustomerExportPanel）
+const exportDialog = ref(false);
 
 // ✓ START: 新增：Chip 顏色輔助函式 (範例)
 function getChipColor(motive) {
@@ -3692,7 +3042,6 @@ const openInteractionLog = (event, { item }) => {
 };
 
 // --- 進階篩選狀態 ---
-const showFilters = ref(false);
 const advFilter = reactive({
   startDate: '',
   endDate: '',
@@ -3713,6 +3062,67 @@ const resetAdvFilters = () => {
   advFilter.visitStatus = [];
   advFilter.vipFilters = {};
   advFilter.showDeleted = false;
+};
+
+// 篩選面板欄位共用外觀（macOS 輸入框＋選單）
+const macFieldProps = {
+  variant: 'solo',
+  flat: true,
+  density: 'compact',
+  hideDetails: true,
+  class: 'mac-vfield',
+  menuProps: { contentClass: 'mac-menu' },
+};
+const RATING_OPTIONS = ['A意願高', 'B有機會', 'C需考慮', 'D無希望'];
+
+// 已套用條件標籤：多選值最多列 2 項，其餘以 +N 表示
+const summarizeValues = (arr, max = 2) =>
+  arr.length <= max ? arr.join('、') : `${arr.slice(0, max).join('、')} +${arr.length - max}`;
+const summarizeRange = (from, to) => {
+  const f = from ? from.replace(/-/g, '/') : '';
+  const t = to ? to.replace(/-/g, '/') : '';
+  if (f && t) return `${f}～${t}`;
+  return f ? `${f} 起` : `${t} 止`;
+};
+const toFilterArray = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
+
+const customerFilterTokens = computed(() => {
+  const tokens = [];
+  if (advFilter.startDate || advFilter.endDate) tokens.push({ key: 'date', label: `拜訪：${summarizeRange(advFilter.startDate, advFilter.endDate)}` });
+  if (advFilter.sales.length) tokens.push({ key: 'sales', label: `銷售：${summarizeValues(advFilter.sales)}` });
+  if (advFilter.ratings.length) tokens.push({ key: 'ratings', label: `等級：${summarizeValues(advFilter.ratings)}` });
+  if (advFilter.visitStatus.length) tokens.push({ key: 'visitStatus', label: summarizeValues(advFilter.visitStatus) });
+  if (advFilter.reasons.length) tokens.push({ key: 'reasons', label: `未買原因：${summarizeValues(advFilter.reasons)}` });
+  sortedVipFields.value.forEach(field => {
+    const values = toFilterArray(advFilter.vipFilters[field.label]);
+    if (values.length) tokens.push({ key: `vip:${field.label}`, label: `${field.label}：${summarizeValues(values)}` });
+  });
+  if (advFilter.showDeleted) tokens.push({ key: 'showDeleted', label: '含已刪除' });
+  return tokens;
+});
+
+const removeCustomerFilter = (key) => {
+  if (key.startsWith('vip:')) {
+    const label = key.slice(4);
+    const field = sortedVipFields.value.find(f => f.label === label);
+    advFilter.vipFilters[label] = field?.selectionMode === 'multiple' ? [] : null;
+    return;
+  }
+  switch (key) {
+    case 'date': advFilter.startDate = ''; advFilter.endDate = ''; break;
+    case 'sales': advFilter.sales = []; break;
+    case 'ratings': advFilter.ratings = []; break;
+    case 'visitStatus': advFilter.visitStatus = []; break;
+    case 'reasons': advFilter.reasons = []; break;
+    case 'showDeleted': advFilter.showDeleted = false; break;
+  }
+};
+
+// 等級標籤顏色（與手機清單列色條同色）
+const ratingTagStyle = (rating) => {
+  if (!rating) return {};
+  const hex = getRatingColorHex(rating);
+  return { '--mac-tag-color': hex, '--mac-tag-bg': hexToRgba(hex, 0.12) };
 };
 
 // --- VIP 欄位動態排序（與 CustomerInteractionLog.vue 同步） ---
@@ -3814,9 +3224,114 @@ const filteredCustomerList = computed(() => {
   return list;
 });
 
+// 📱 手機清單：依最後更新排序（與桌機表格預設排序一致），分批渲染
+const MOBILE_PAGE_SIZE = 30;
+const mobileVisibleCount = ref(MOBILE_PAGE_SIZE);
+const sortedCustomerList = computed(() =>
+  [...filteredCustomerList.value].sort((a, b) => getSeconds(b.updatedAt) - getSeconds(a.updatedAt))
+);
+const mobileCustomerList = computed(() => sortedCustomerList.value.slice(0, mobileVisibleCount.value));
+watch([customerListSearch, advFilter], () => { mobileVisibleCount.value = MOBILE_PAGE_SIZE; }, { deep: true });
+
 </script>
 
 <style scoped>
+/* ===== macOS 風格外框：頂列（建案＋分段頁籤＋系統設定）、列表頁、匯出頁；共用樣式見 src/styles/macosUi.css ===== */
+.cm-root {
+  min-height: 100%;
+  background: #fff;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+}
+.cm-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 16px 8px 58px; /* 左側避開全站漢堡鈕 */
+  background: #f6f6f8;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.cm-top-side { display: flex; align-items: center; flex: 1 1 0; min-width: 0; }
+.cm-top-side--end { justify-content: flex-end; }
+.cm-project-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #1d1d1f;
+  font: 600 14px/1.3 inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cm-project-btn:hover { background: rgba(0, 0, 0, 0.05); }
+.cm-project-btn.is-static { cursor: default; }
+.cm-project-btn.is-static:hover { background: transparent; }
+.cm-project-btn .v-icon { flex-shrink: 0; color: #6e6e73; }
+.cm-project-name { min-width: 0; overflow-wrap: anywhere; }
+.cm-tabs { flex: 0 0 auto; }
+.cm-tabs .mac-form-seg-btn { height: 28px; padding: 0 14px; }
+.cm-tabs .mac-form-seg-btn .v-icon { color: #6e6e73; }
+.cm-tabs .mac-form-seg-btn.is-active .v-icon { color: #0071e3; }
+.cm-admin-btn.is-active { background: rgba(255, 160, 0, 0.14); color: #a05a00; }
+.cm-admin-btn.is-active .v-icon { color: #a05a00; }
+.cm-admin-btn .v-icon:first-child { color: #c27400; }
+
+.cm-window { background: #fff; }
+.cm-admin-pane { padding: 16px; background: #f5f5f7; }
+
+.cm-list { min-height: calc(100vh - 57px); }
+.cm-spin { animation: cm-spin 0.9s linear infinite; }
+@keyframes cm-spin { to { transform: rotate(360deg); } }
+.cm-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+  padding: 4px 2px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.cm-muted { color: #6e6e73; font-size: 12.5px; }
+.cm-name { font-weight: 600; }
+.cm-list :deep(.mac-table td:nth-child(1)),
+.cm-list :deep(.mac-table td:nth-child(7)) { white-space: nowrap; }
+.cm-deleted { text-decoration: line-through; color: #8e8e93; }
+.cm-cell-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 4px 0; }
+.cm-tag-deleted { --mac-tag-bg: rgba(255, 59, 48, 0.12); --mac-tag-color: #d70015; }
+.cm-tag-linked { --mac-tag-bg: rgba(88, 86, 214, 0.12); --mac-tag-color: #3634a3; }
+.cm-tag-new { --mac-tag-bg: rgba(52, 199, 89, 0.14); --mac-tag-color: #248a3d; }
+.cm-tag-return { --mac-tag-bg: rgba(255, 59, 48, 0.12); --mac-tag-color: #d70015; }
+.cm-linked { display: inline-flex; align-items: center; gap: 3px; color: #3634a3; font-size: 12px; }
+
+.cm-export-page { min-height: calc(100vh - 57px); background: #f5f5f7; }
+.cm-export-wrap { max-width: 720px; margin: 0 auto; }
+.cm-export-wrap > .mac-page-bar { background: transparent; }
+.cm-export-body { background: #f5f5f7; }
+
+@media (max-width: 1180px) {
+  .cm-tabs .mac-form-seg-btn .v-icon { display: none; }
+}
+@media (max-width: 760px) {
+  .cm-top { flex-wrap: wrap; row-gap: 8px; padding: 8px 12px 10px 58px; }
+  .cm-top-side { flex: 1 1 auto; min-height: 40px; } /* 第一列撐到漢堡鈕底部，分段切換從其下方開始 */
+  .cm-tabs { order: 3; flex: 0 0 calc(100% + 46px); display: flex; margin-left: -46px; } /* 第二列已在漢堡鈕下方，往左延伸滿版 */
+  .cm-tabs .mac-form-seg-btn { flex: 1 1 0; min-width: 0; height: 30px; padding: 0 4px; font-size: 13.5px; }
+  .cm-admin-label { display: none; }
+  .cm-admin-btn { width: 34px; padding: 0; }
+  .cm-admin-btn .mac-btn-chevron { display: none; }
+}
+@media (max-width: 600px) {
+  .cm-admin-pane { padding: 8px; }
+}
+
 /* 加入滑鼠手勢樣式 */
 :deep(.cursor-pointer-row tbody tr) {
     cursor: pointer !important;

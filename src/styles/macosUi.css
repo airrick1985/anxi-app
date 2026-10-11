@@ -26,6 +26,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 .mac-btn .v-icon { color: var(--mac-secondary); }
+a.mac-btn { text-decoration: none; }
 .mac-btn:hover:not(:disabled) { filter: brightness(0.97); }
 .mac-btn:active:not(:disabled), .mac-btn.is-open { filter: brightness(0.93); transform: translateY(0.5px); }
 .mac-btn:focus-visible { outline: 2px solid rgba(0, 113, 227, 0.4); outline-offset: 2px; }
@@ -406,4 +407,253 @@
     max-height: calc(100% - 24px);
     margin: 12px;
   }
+}
+
+/* ===== 列表頁共用（客戶資料／聯絡名單）：標題列＋搜尋列＋條件標籤＋表格／手機清單列 ===== */
+.mac-page {
+  background: #fff;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+}
+.mac-page-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  min-height: 52px;
+  padding: 10px 16px 6px;
+}
+.mac-page-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-right: auto; }
+.mac-page-title-main { font-size: 20px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; white-space: nowrap; }
+.mac-page-count { font-size: 12.5px; font-weight: 500; color: #6e6e73; white-space: nowrap; }
+.mac-page-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
+.mac-page-actions .mac-icon-btn { width: 30px; height: 30px; }
+
+.mac-searchbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 10px;
+}
+.mac-searchbar > .mac-vfield { flex: 1 1 auto; max-width: 520px; }
+.mac-filter-count {
+  display: inline-grid;
+  place-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #0071e3;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.mac-btn.is-active { color: #0071e3; }
+.mac-btn.is-active .v-icon { color: #0071e3; }
+
+/* 已套用條件標籤：點 × 單獨移除 */
+.mac-tokens {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 10px;
+}
+.mac-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 3px 2px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(0, 113, 227, 0.1);
+  color: #0058b0;
+  font: 500 12.5px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Noto Sans TC", sans-serif;
+  overflow-wrap: anywhere;
+}
+.mac-token-x {
+  display: inline-grid;
+  place-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.mac-token-x:hover { background: rgba(0, 88, 176, 0.14); }
+.mac-link-btn {
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: #0071e3;
+  font: 500 12.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Noto Sans TC", sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mac-link-btn:hover { text-decoration: underline; }
+.mac-link-btn:disabled { color: #8e8e93; text-decoration: none; cursor: default; }
+
+/* 篩選彈出面板（桌機 v-menu 內容） */
+.mac-filter-pop {
+  width: min(600px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+}
+.mac-filter-body { flex: 1 1 auto; overflow-y: auto; padding: 12px 16px 14px; }
+.mac-filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
+.mac-filter-field { min-width: 0; }
+.mac-filter-field--wide { grid-column: 1 / -1; }
+.mac-filter-field > .mac-sheet-label { margin-bottom: 5px; }
+.mac-filter-range { display: flex; align-items: center; gap: 6px; }
+.mac-filter-range > .mac-vfield { flex: 1 1 0; min-width: 0; }
+.mac-filter-range-sep { flex-shrink: 0; color: #8e8e93; font-size: 12px; }
+.mac-filter-foot { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 600px) {
+  .mac-filter-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* v-data-table macOS 外觀：淡灰表頭、細分隔線 */
+.mac-table.v-table {
+  background: #fff;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 13px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.mac-table.v-table > .v-table__wrapper > table > thead > tr > th {
+  height: 34px !important;
+  background: #f6f6f8 !important;
+  color: #6e6e73;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+.mac-table.v-table > .v-table__wrapper > table > thead > tr > th,
+.mac-table.v-table > .v-table__wrapper > table > tbody > tr > td { padding: 0 12px !important; }
+.mac-table.v-table > .v-table__wrapper > table > tbody > tr > td {
+  height: 46px !important;
+  border-bottom: 1px solid #f0f0f3 !important;
+  font-size: 13px;
+}
+.mac-table.v-table > .v-table__wrapper > table > tbody > tr:hover > td { background-color: rgba(0, 113, 227, 0.05); }
+.mac-table.v-table .v-data-table-footer { font-size: 12.5px; color: #6e6e73; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+.mac-table.v-table .v-data-table-footer .v-field { font-size: 12.5px; }
+
+/* 小標籤（等級、狀態、新客／回訪） */
+.mac-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 20px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--mac-tag-bg, rgba(142, 142, 147, 0.15));
+  color: var(--mac-tag-color, #48484a);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.mac-tag .v-icon { color: inherit; }
+
+/* 手機清單列：左側色條（--mac-row-accent）＋三行資訊 */
+.mac-list { border-top: 1px solid rgba(0, 0, 0, 0.08); }
+.mac-list-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 12px 11px 19px;
+  border: 0;
+  border-bottom: 1px solid #ececf0;
+  background: var(--mac-row-bg, #fff);
+  color: #1d1d1f;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mac-list-row::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--mac-row-accent, transparent);
+}
+.mac-list-row:active { background: #f2f2f5; }
+.mac-list-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mac-list-line1 { display: flex; align-items: flex-start; gap: 8px; }
+.mac-list-title { flex: 1 1 auto; min-width: 0; font-size: 15.5px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.mac-list-title small { font-size: 12.5px; font-weight: 400; color: #6e6e73; }
+.mac-list-meta { font-size: 13px; color: #6e6e73; line-height: 1.4; overflow-wrap: anywhere; }
+.mac-list-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  color: #3a3a3c;
+  line-height: 1.45;
+  word-break: break-all;
+}
+.mac-list-more { padding: 12px 16px 20px; }
+.mac-list-empty { padding: 48px 16px; text-align: center; color: #8e8e93; font-size: 14px; }
+.mac-list-loading { padding: 48px 16px; text-align: center; color: #8e8e93; font-size: 13px; }
+
+/* 開關（macOS 綠色 toggle）：<input type="checkbox" class="mac-switch"> */
+.mac-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: background-color 0.18s;
+}
+.mac-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  transition: transform 0.18s;
+}
+.mac-switch:checked { background: #34c759; }
+.mac-switch:checked::after { transform: translateX(16px); }
+.mac-switch:disabled { opacity: 0.5; cursor: default; }
+.mac-switch:focus-visible { outline: 2px solid rgba(0, 113, 227, 0.4); outline-offset: 2px; }
+
+/* 手機隱藏（圖示按鈕旁的文字） */
+@media (max-width: 600px) {
+  .mac-hide-xs { display: none !important; }
+}
+
+@media (max-width: 600px) {
+  .mac-page-bar { padding: 10px 12px 6px; }
+  .mac-page-title-main { font-size: 19px; }
+  .mac-searchbar { padding: 0 12px 8px; }
+  .mac-searchbar > .mac-vfield { max-width: none; }
+  .mac-tokens { padding: 0 12px 8px; }
 }
