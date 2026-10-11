@@ -21594,10 +21594,19 @@ async function _handleFetchFullCustomersForExport(data, db) {
 
     if (snapshot.empty) return [];
 
+    // 銷售（非櫃台／超級管理員）只取自己負責的客戶（與 _handleFetchCustomerList 一致：有自己的提交即算）
+    const systems = Array.isArray(userProjectSystems) ? userProjectSystems : [];
+    const canSeeAll = systems.includes('客資系統-櫃台') || systems.includes('超級管理員');
+
     const exportList = [];
 
     snapshot.forEach(doc => {
       const docData = doc.data();
+      if (!canSeeAll) {
+        const isMine = docData.latestSalesPhone === userPhone ||
+          (docData.submissions || []).some(s => s && s['銷售人員電話'] === userPhone);
+        if (!userPhone || !isMine) return;
+      }
 
       // 格式化時間輔助工具
       const toIso = (ts) => (ts && ts.toDate) ? ts.toDate().toISOString() : ts;

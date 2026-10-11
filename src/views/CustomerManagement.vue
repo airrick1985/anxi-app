@@ -71,10 +71,14 @@
           <div class="mac-page-bar">
             <div class="mac-page-title">
               <span class="mac-page-title-main">客戶資料</span>
-              <span v-if="!isLoadingCustomerList" class="mac-page-count">{{ filteredCustomerList.length }} 筆</span>
+              <span v-if="customerView === 'list' && !isLoadingCustomerList" class="mac-page-count">{{ filteredCustomerList.length }} 筆</span>
+            </div>
+            <div class="mac-form-seg cm-view-seg" role="tablist">
+              <button type="button" role="tab" class="mac-form-seg-btn" :class="{ 'is-active': customerView === 'list' }" @click="customerView = 'list'">列表</button>
+              <button type="button" role="tab" class="mac-form-seg-btn" :class="{ 'is-active': customerView === 'dashboard' }" @click="openDashboard">儀表板</button>
             </div>
             <div class="mac-page-actions">
-              <button type="button" class="mac-icon-btn" title="重新整理" :disabled="isLoadingCustomerList" @click="loadCustomerList">
+              <button type="button" class="mac-icon-btn" title="重新整理" :disabled="isLoadingCustomerList" @click="refreshCustomerView">
                 <v-icon size="19" :class="{ 'cm-spin': isLoadingCustomerList }">mdi-refresh</v-icon>
               </button>
               <button v-if="canManageSettings" type="button" class="mac-btn" title="匯出" @click="exportDialog = true">
@@ -97,6 +101,7 @@
             </div>
           </div>
 
+          <template v-if="customerView === 'list'">
           <div class="mac-searchbar">
             <v-text-field
               v-model="customerListSearch"
@@ -167,15 +172,6 @@
             </span>
             <button type="button" class="mac-link-btn" @click="resetAdvFilters">清除全部</button>
           </div>
-
-          <!-- ✅ 銷售專屬表單連結 Dialog -->
-          <VipFormSalesLinkDialog
-            v-model="vipFormLinkDialog"
-            :project-id="props.projectId"
-            :project-name="projectName"
-            :staff-list="projectStaffList"
-            :loading="isLoadingProjectStaff"
-          />
 
           <div v-if="isLoadingCustomerList" class="mac-list-loading">
             <v-progress-circular indeterminate color="primary" size="28" width="3"></v-progress-circular>
@@ -298,6 +294,28 @@
               <span v-else class="cm-muted">—</span>
             </template>
           </v-data-table>
+          </template>
+
+          <!-- 儀表板：第一次切換才載入，之後切回列表保留統計結果 -->
+          <CustomerDashboard
+            v-if="dashboardOpened"
+            v-show="customerView === 'dashboard'"
+            ref="dashboardRef"
+            :project-id="props.projectId"
+            :settings="settings"
+            :can-see-all="isCurrentUserCounter"
+            :systems="fullDataSystems"
+            @open-customer="openCustomerFromDashboard"
+          />
+
+          <!-- ✅ 銷售專屬表單連結 Dialog -->
+          <VipFormSalesLinkDialog
+            v-model="vipFormLinkDialog"
+            :project-id="props.projectId"
+            :project-name="projectName"
+            :staff-list="projectStaffList"
+            :loading="isLoadingProjectStaff"
+          />
 
           <CustomerInteractionLog
             v-if="isInteractionDialogVisible"
@@ -1377,6 +1395,7 @@ import * as XLSX from 'xlsx-js-style';
 import { format } from 'date-fns';
 const LeadDistribution = defineAsyncComponent(() => import('@/views/LeadDistribution.vue'));
 const ViewingReservationCalendar = defineAsyncComponent(() => import('@/views/ViewingReservationCalendar.vue'));
+const CustomerDashboard = defineAsyncComponent(() => import('@/components/CustomerDashboard.vue'));
 import {
   collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc,
   serverTimestamp, orderBy, limit, startAfter, getDoc // ✅ 新增 doc, updateDoc, getDoc
@@ -1667,6 +1686,30 @@ const isSuperAdmin = computed(() =>
 // ✓ 獲取當前用戶的資料 (用於 API 呼叫)
 const currentUserPhone = computed(() => userStore.user?.key);
 const currentUserProjectSystems = computed(() => userStore.user?.permissions?.[props.projectId]?.systems || []);
+// 呼叫完整客資 API 用的權限：超級管理員附上角色，後端才會回傳全案（否則只回傳自己負責的客戶）
+const fullDataSystems = computed(() =>
+  isSuperAdmin.value ? [...currentUserProjectSystems.value, '超級管理員'] : currentUserProjectSystems.value
+);
+
+// --- 客戶資料：列表／儀表板 ---
+const customerView = ref('list');
+const dashboardOpened = ref(false);
+const dashboardRef = ref(null);
+const openDashboard = () => {
+  dashboardOpened.value = true;
+  customerView.value = 'dashboard';
+};
+const refreshCustomerView = () => {
+  if (customerView.value === 'dashboard') dashboardRef.value?.reload();
+  else loadCustomerList();
+};
+// 儀表板「待追蹤」點客戶：直接開洽談紀錄
+const openCustomerFromDashboard = ({ docId, salesName }) => {
+  selectedCustomerDocId.value = docId;
+  selectedCustomerSalesName.value = salesName || '';
+  selectedCustomerIsDeleted.value = false;
+  isInteractionDialogVisible.value = true;
+};
 
 // --- 新增客戶資料功能 ---
 const addCustomerDialog = ref(false);
@@ -2365,9 +2408,9 @@ const executeBatchExport = async () => {
   
   try {
     const customers = await fetchFullCustomersForExport(
-      props.projectId, 
-      currentUserPhone.value, 
-      currentUserProjectSystems.value
+      props.projectId,
+      currentUserPhone.value,
+      fullDataSystems.value // 超級管理員附上角色，後端才會回傳全案
     );
 
     const profileRows = []; 
@@ -3287,6 +3330,8 @@ watch([customerListSearch, advFilter], () => { mobileVisibleCount.value = MOBILE
 .cm-admin-pane { padding: 16px; background: #f5f5f7; }
 
 .cm-list { min-height: calc(100vh - 57px); }
+.cm-view-seg { flex: 0 0 auto; }
+.cm-view-seg .mac-form-seg-btn { height: 26px; padding: 0 14px; }
 .cm-spin { animation: cm-spin 0.9s linear infinite; }
 @keyframes cm-spin { to { transform: rotate(360deg); } }
 .cm-switch-row {
@@ -3327,6 +3372,10 @@ watch([customerListSearch, advFilter], () => { mobileVisibleCount.value = MOBILE
   .cm-admin-label { display: none; }
   .cm-admin-btn { width: 34px; padding: 0; }
   .cm-admin-btn .mac-btn-chevron { display: none; }
+}
+@media (max-width: 760px) {
+  .cm-view-seg { order: 3; flex: 1 1 100%; display: flex; }
+  .cm-view-seg .mac-form-seg-btn { flex: 1 1 0; height: 30px; }
 }
 @media (max-width: 600px) {
   .cm-admin-pane { padding: 8px; }
