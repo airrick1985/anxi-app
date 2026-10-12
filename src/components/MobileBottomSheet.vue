@@ -15,7 +15,10 @@
         <v-icon size="22">mdi-close</v-icon>
       </button>
       <div class="mobile-sheet-title">
-        <v-icon v-if="icon" size="20" color="primary">{{ icon }}</v-icon>{{ title }}
+        <button v-if="back" type="button" class="mobile-sheet-back" aria-label="返回" @click="emit('back')">
+          <v-icon size="22">mdi-chevron-left</v-icon>
+        </button>
+        <v-icon v-else-if="icon" size="20" color="primary">{{ icon }}</v-icon>{{ title }}
       </div>
       <slot />
     </v-card>
@@ -31,10 +34,18 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   title: { type: String, default: '' },
   icon: { type: String, default: '' },
+  back: { type: Boolean, default: false }, // 面板內換頁：標題左側顯示返回鈕（取代圖示），點擊發出 back
 });
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'back']);
 
 function setOpen(val) { emit('update:modelValue', val); }
+
+// 面板內換頁時捲回頂端（內容共用同一個捲動容器）
+function scrollToTop() {
+  const el = sheetEl();
+  if (el) el.scrollTop = 0;
+}
+defineExpose({ scrollToTop });
 
 /* ---------- 下滑關閉手勢 ---------- */
 const cardRef = ref(null);
@@ -132,6 +143,20 @@ const cardStyle = computed(() => ({
   cursor: pointer;
 }
 .mobile-sheet-close:active { background: #e0e6ef; }
+.mobile-sheet-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px 0 -6px -6px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  color: #1a3a6e;
+  cursor: pointer;
+}
+.mobile-sheet-back:active { background: #e0e6ef; }
 .mobile-sheet-title {
   display: flex;
   align-items: center;

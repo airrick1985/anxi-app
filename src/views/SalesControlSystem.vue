@@ -415,17 +415,17 @@
       </div>
 
       <div v-else ref="listViewRef" class="list-view-container">
-        <v-data-table
+        <!-- 效能：虛擬捲動只渲染可視範圍內的列；全部戶別一次渲染時，手機切到列表會卡住 1 秒以上 -->
+        <v-data-table-virtual
           :headers="tableHeaders"
           :items="filteredTableItems"
           :row-props="({ item }) => ({ class: (Number(item.area_terrace_ping) > 0) ? 'row-has-terrace' : '' })"
           :loading="loading"
+          :item-height="isMobile ? 38 : 40"
           fixed-header
           hover
           density="compact"
           class="elevation-1 row-pointer compact-table"
-          items-per-page="-1"
-          hide-default-footer
           @click:row="handleRowClick"
         >
           <template v-slot:item.status="{ item }">
@@ -459,7 +459,7 @@
                 :class="unitEffectClass(item.unitEffect)"
                 :style="unitEffectStyle(item.unitEffect)"
               >
-                <v-tooltip activator="parent" location="top">邊框特效：{{ unitEffectLabel(item.unitEffect) }}</v-tooltip>
+                <v-tooltip v-if="!isMobile" activator="parent" location="top">邊框特效：{{ unitEffectLabel(item.unitEffect) }}</v-tooltip>
               </span>
               <span
                 v-for="(tag, ti) in getUnitTags(item)"
@@ -499,7 +499,7 @@
               <template v-else>
                 <v-icon size="small" color="grey-lighten-1">mdi-comment-plus-outline</v-icon>
               </template>
-              <v-tooltip activator="parent" location="top">點擊檢視／新增備註留言</v-tooltip>
+              <v-tooltip v-if="!isMobile" activator="parent" location="top">點擊檢視／新增備註留言</v-tooltip>
             </div>
           </template>
 
@@ -523,16 +523,20 @@
           <template v-slot:item.isPreferredPayment="{ item }">
             <span v-if="item._qv && item._qv.preferredPayment === false" class="text-grey d-block text-center">—</span>
             <div v-else class="d-flex justify-center" @click.stop>
-              <v-switch
-                :model-value="item.isPreferredPayment"
-                :readonly="currentViewMode === 'quote'"
-                :color="item.isPreferredPayment ? 'success' : 'grey'"
-                density="compact"
-                hide-details
-                
-                class="ma-0 pa-0"
-                @update:model-value="(val) => handleSwitchChange(item, val)"
-              ></v-switch>
+              <!-- 效能：每列一個 v-switch 元件太重，改用外觀相同的輕量開關 -->
+              <button
+                type="button"
+                role="switch"
+                aria-label="優付"
+                class="pref-pay-switch"
+                :class="{ 'is-on': item.isPreferredPayment, 'is-readonly': currentViewMode === 'quote' }"
+                :aria-checked="!!item.isPreferredPayment"
+                :aria-readonly="currentViewMode === 'quote'"
+                @click="handleSwitchChange(item, !item.isPreferredPayment)"
+              >
+                <span class="pref-pay-switch__track"></span>
+                <span class="pref-pay-switch__thumb"></span>
+              </button>
             </div>
           </template>
 
@@ -923,7 +927,7 @@
               </td>
             </tr>
           </template>
-        </v-data-table>
+        </v-data-table-virtual>
       </div>
 
     </div> 
@@ -1009,20 +1013,37 @@
     </MobileBottomSheet>
 
     <!-- 📱 全部功能面板：分群圖示磚，所有進階功能一覽可及（可下滑或按 X 關閉） -->
-    <MobileBottomSheet v-model="isMoreMenuOpen" icon="mdi-apps" title="全部功能">
+    <!-- 切換建案在面板內換頁，不用下拉選單：面板上再疊浮動選單，iPhone 滑清單時會變成捲動下層畫面 -->
+    <MobileBottomSheet
+      ref="moreSheetRef"
+      v-model="isMoreMenuOpen"
+      :icon="moreSheetPage === 'projects' ? '' : 'mdi-apps'"
+      :title="moreSheetPage === 'projects' ? '切換建案' : '全部功能'"
+      :back="moreSheetPage === 'projects'"
+      @back="showMoreSheetPage('main')"
+    >
+      <div v-if="moreSheetPage === 'projects'" class="mobile-project-list">
+        <button
+          v-for="p in availableProjects"
+          :key="p.id"
+          type="button"
+          class="mobile-project-item"
+          :class="{ 'is-current': p.id === projectId }"
+          @click="onSwitchProjectFromMenu(p.id)"
+        >
+          <span class="mobile-project-item__name">{{ p.name }}</span>
+          <v-icon v-if="p.id === projectId" size="20" color="primary">mdi-check</v-icon>
+        </button>
+      </div>
+
+      <template v-else>
         <div class="mobile-sheet-section">
-          <v-select
-            :model-value="projectId"
-            @update:model-value="onSwitchProjectFromMenu"
-            :items="availableProjects"
-            item-title="name"
-            item-value="id"
-            label="切換建案"
-            variant="outlined"
-            density="compact"
-            hide-details
-            prepend-inner-icon="mdi-home-city"
-          ></v-select>
+          <button type="button" class="mobile-project-row" @click="showMoreSheetPage('projects')">
+            <v-icon size="20" class="mobile-project-row__icon">mdi-home-city</v-icon>
+            <span class="mobile-project-row__label">切換建案</span>
+            <span class="mobile-project-row__value">{{ projectName }}</span>
+            <v-icon size="20" class="mobile-project-row__chevron">mdi-chevron-right</v-icon>
+          </button>
         </div>
 
         <div v-for="group in moreToolGroups" :key="group.title" class="mobile-sheet-section">
@@ -1040,6 +1061,7 @@
             </button>
           </div>
         </div>
+      </template>
     </MobileBottomSheet>
 
    <!-- 效能：第一次開啟才建立，之後換戶別只更新資料、不再整個重建（切換建案時才卸載） -->
@@ -2315,6 +2337,14 @@ const summaryCellStyle = (col) => (col.fixed ? { left: `${col.fixedOffset || 0}p
 const isCancelledPurchaseDialogVisible = ref(false);
 // 手機版「全部功能」底部面板的展開狀態（供選完項目後主動關閉用）
 const isMoreMenuOpen = ref(false);
+// 面板內頁面：main 功能磚 / projects 切換建案清單；每次開啟回到功能磚
+const moreSheetRef = ref(null);
+const moreSheetPage = ref('main');
+function showMoreSheetPage(page) {
+  moreSheetPage.value = page;
+  nextTick(() => moreSheetRef.value?.scrollToTop());
+}
+watch(isMoreMenuOpen, (open) => { if (open) moreSheetPage.value = 'main'; });
 // 📱 [新增] 手機版「顯示設定」底部面板（價格顯示／網格內容切換）
 const isDisplaySheetOpen = ref(false);
 
@@ -5006,14 +5036,17 @@ const naturalSort = (a, b) => {
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
 };
 
-// 2. 日期格式化輔助函式
+// 2. 日期格式化輔助函式（格式器只建一次，與 toLocaleDateString('zh-TW') 輸出相同）
+const dateFormatter = new Intl.DateTimeFormat('zh-TW');
+// Intl 遇到無效日期會丟例外（toLocaleDateString 只回傳 "Invalid Date"），先擋掉
+const formatValidDate = (d) => (isNaN(d.getTime()) ? '' : dateFormatter.format(d));
 const formatDate = (val) => {
   if (!val) return '';
-  if (val instanceof Date) return val.toLocaleDateString('zh-TW');
-  if (val && typeof val.toDate === 'function') return val.toDate().toLocaleDateString('zh-TW');
+  if (val instanceof Date) return formatValidDate(val);
+  if (val && typeof val.toDate === 'function') return formatValidDate(val.toDate());
   // 嘗試解析字串
   const d = new Date(val);
-  if (!isNaN(d.getTime())) return d.toLocaleDateString('zh-TW');
+  if (!isNaN(d.getTime())) return dateFormatter.format(d);
   return val;
 };
 
@@ -5070,8 +5103,9 @@ const tableHeaders = computed(() => {
     // 手機版：欄位與電腦版完全相同（不減少欄位），凍結狀態/戶別欄 + 橫向滑動，適合直式操作
     if (isMobile.value) {
       return [
-        { title: '狀態', key: 'status', align: 'center', width: '60px', fixed: true },
-        { title: '戶別', key: 'unitId', align: 'start', width: '70px', fixed: true },
+        // 多個凍結欄的寬度必須是數字：Vuetify 以 Number(width) 判斷，'60px' 字串會報錯且不套最小寬度
+        { title: '狀態', key: 'status', align: 'center', width: 60, fixed: true },
+        { title: '戶別', key: 'unitId', align: 'start', width: 70, fixed: true },
         { title: '標籤', key: 'unitTags', align: 'start', width: '120px', sort: unitTagsColumnSort }, // ✅ [新增] 文字標籤
         { title: '優付', key: 'isPreferredPayment', align: 'center', width: '70px' },
         { title: '面積(坪)', key: 'area_house_ping', align: 'end', width: '80px' },
@@ -5537,17 +5571,28 @@ const getContractDateDisplay = (itemData) => {
   return d || '-';
 };
 
+// 效能：toLocaleString 帶 options 每次都會重建格式器，列表每格都要格式化，改為依小數位數快取 Intl.NumberFormat
+const numberFormatters = new Map();
+const getNumberFormatter = (precision) => {
+  let f = numberFormatters.get(precision);
+  if (!f) {
+    f = new Intl.NumberFormat('zh-TW', { minimumFractionDigits: precision, maximumFractionDigits: precision });
+    numberFormatters.set(precision, f);
+  }
+  return f;
+};
 const formatNumber = (val, precision = 0) => {
   if (val === undefined || val === null || val === '') return '-';
   const num = Number(val);
-  return isNaN(num) ? '-' : num.toLocaleString('zh-TW', { minimumFractionDigits: precision, maximumFractionDigits: precision });
+  return isNaN(num) ? '-' : getNumberFormatter(precision).format(num);
 };
 // 萬元金額：整數不顯示小數，其餘最多 2 位（淨溢差價扣除以元計的介紹費／贈品後可能有小數）
+const wanFormatter = new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 2 });
 const formatWan = (val) => {
   if (val === undefined || val === null || val === '') return '-';
   const num = Number(val);
   if (isNaN(num)) return '-';
-  return num.toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+  return wanFormatter.format(num);
 };
 
 function handleScroll(event) {
@@ -7805,6 +7850,88 @@ overflow: hidden;
   line-height: 1.25;
   text-align: center;
 }
+/* 切換建案：入口列（目前建案 + ›）與面板內建案清單，名稱過長換行不截斷 */
+.mobile-project-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  background: #f7f9fc;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  color: #44546a;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mobile-project-row:active {
+  background: #e8eef7;
+  border-color: #c9d7ec;
+}
+.mobile-project-row__icon {
+  color: #1a3a6e;
+  flex-shrink: 0;
+}
+.mobile-project-row__label {
+  font-size: .9rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.mobile-project-row__value {
+  flex: 1;
+  min-width: 0;
+  font-size: .85rem;
+  color: #1a3a6e;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.mobile-project-row__chevron {
+  color: #8493a8;
+  flex-shrink: 0;
+}
+.mobile-project-list {
+  display: flex;
+  flex-direction: column;
+  /* 面板卡片是 flex 直排：overflow hidden 會讓清單被壓縮、裁掉下方建案，卡片就沒有內容可捲 */
+  flex-shrink: 0;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.mobile-project-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: none;
+  border-bottom: 1px solid #eef1f6;
+  color: #263445;
+  font: inherit;
+  font-size: .95rem;
+  text-align: left;
+  cursor: pointer;
+}
+.mobile-project-item:last-child {
+  border-bottom: none;
+}
+.mobile-project-item:active {
+  background: #eef3fa;
+}
+.mobile-project-item.is-current {
+  color: #1a3a6e;
+  font-weight: 700;
+  background: #f5f8fd;
+}
+.mobile-project-item__name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
 /* 🖥️ [改版] 桌面版工具列「功能」下拉選單：分群磚格（樣式對齊手機版全部功能面板） */
 .desktop-tools-menu {
@@ -8067,7 +8194,8 @@ overflow: hidden;
     height: var(--list-header-height) !important;
   }
 
-  .list-view-container :deep(tbody tr td) {
+  .list-view-container :deep(tbody tr.v-data-table__tr > td),
+  .list-view-container :deep(tbody tr.summary-row > td) {
     height: 38px !important;
   }
 
@@ -8125,10 +8253,60 @@ overflow: hidden;
   /* 移除 text-align: left !important，讓 JS 的 align: 'start' 生效 */
 }
 
-/* 內容行樣式微調 */
-.list-view-container :deep(tbody tr td) {
+/* 內容行樣式微調：只套資料列與合計列，虛擬捲動的上下佔位列要維持 Vuetify 給的高度，否則會多出空白 */
+.list-view-container :deep(tbody tr.v-data-table__tr > td),
+.list-view-container :deep(tbody tr.summary-row > td) {
   height: 40px !important;
   /* 移除 text-align: left !important */
+}
+
+/* 優付輕量開關：外觀比照 Vuetify compact v-switch（軌道 36×14、圓鈕 20） */
+.pref-pay-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 40px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pref-pay-switch.is-readonly {
+  cursor: default;
+}
+.pref-pay-switch:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+  border-radius: 14px;
+}
+.pref-pay-switch__track {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 14px;
+  border-radius: 9999px;
+  background-color: rgb(var(--v-theme-surface-variant));
+  opacity: 0.6;
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.pref-pay-switch__thumb {
+  position: absolute;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: rgb(var(--v-theme-surface-bright));
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.2), 0 4px 5px 0 rgba(0, 0, 0, 0.14), 0 1px 10px 0 rgba(0, 0, 0, 0.12);
+  transition: transform 0.15s cubic-bezier(0, 0, 0.2, 1), background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.pref-pay-switch.is-on .pref-pay-switch__track,
+.pref-pay-switch.is-on .pref-pay-switch__thumb {
+  background-color: rgb(var(--v-theme-success));
+}
+.pref-pay-switch.is-on .pref-pay-switch__thumb {
+  transform: translateX(20px);
 }
 
 /* 數字欄位字體優化 (可選) */
