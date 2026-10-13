@@ -51,6 +51,18 @@
           </button>
         </div>
       </div>
+
+      <div class="mac-form-group saved-remind">
+        <ViewingReminderPicker
+          :model-value="reminder"
+          :custom-offsets="customOffsets"
+          :reservation-time="reservation.reservationTime"
+          :recipient-name="reservation.reminderRecipient?.name || ''"
+          :recipient-has-line="reservation.reminderRecipient?.hasLine ?? null"
+          @update:model-value="onReminderChange"
+          @update:custom-offsets="onCustomOffsetsChange"
+        />
+      </div>
     </v-card-text>
 
     <div class="mac-sheet-foot">
@@ -61,20 +73,57 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { format } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import liff from '@line/liff';
 import QrcodeVue from 'qrcode.vue';
 import { useToast } from 'vue-toastification';
+import ViewingReminderPicker from '@/components/ViewingReminderPicker.vue';
+import { useReservationStore } from '@/store/reservationStore';
+import { useUserStore } from '@/store/user';
+import { normalizeReminder } from '@/utils/viewingReminder';
 
 const props = defineProps({
-  // { id, projectName, customerName, customerPhone, reservationTime, previousTime, type, unitId, salesName, note }
+  // { id, projectName, customerName, customerPhone, reservationTime, previousTime, type, unitId, salesName, note,
+  //   lineReminder, customOffsets, reminderRecipient: { name, hasLine } }
   reservation: { type: Object, required: true },
   isEdit: { type: Boolean, default: false },
 });
 const emit = defineEmits(['close']);
 const toast = useToast();
+const reservationStore = useReservationStore();
+const userStore = useUserStore();
+
+// LINE 預約前提醒：就地調整即存（依序寫入避免先後顛倒），並記為個人偏好
+const reminder = ref(normalizeReminder(props.reservation.lineReminder));
+const customOffsets = ref([...(props.reservation.customOffsets || [])]);
+let reminderSaving = Promise.resolve();
+let prefsTimer = null;
+
+const saveReminderPrefs = () => {
+  clearTimeout(prefsTimer);
+  prefsTimer = setTimeout(() => {
+    userStore.updateUserPreferences({
+      viewingReminder: { ...normalizeReminder(reminder.value), customOffsets: customOffsets.value },
+    });
+  }, 800);
+};
+
+const onReminderChange = (value) => {
+  reminder.value = value;
+  const { id } = props.reservation;
+  reminderSaving = reminderSaving.then(async () => {
+    const result = await reservationStore.updateReservationReminder(id, value);
+    if (!result.success) toast.error(`LINE 提醒儲存失敗：${result.error}`);
+  });
+  saveReminderPrefs();
+};
+
+const onCustomOffsetsChange = (value) => {
+  customOffsets.value = value;
+  saveReminderPrefs();
+};
 
 // 同一網址供一鍵加入與 QR Code：Apple 裝置回傳 .ics，其他裝置轉 Google 日曆（functions/viewingReservationCalendar.js）
 const CALENDAR_ENDPOINT = 'https://asia-east1-apps-script-api-443402.cloudfunctions.net/viewingReservationCalendar';
@@ -158,6 +207,7 @@ const copyText = async () => {
 .vr-saved-title { flex: 1 1 auto; min-width: 0; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
 .vr-saved-body { padding: 14px 16px 16px !important; }
 .vr-saved-body .mac-form-label { margin-top: 16px; }
+.saved-remind { margin-top: 16px; }
 
 .saved-row {
   display: flex;

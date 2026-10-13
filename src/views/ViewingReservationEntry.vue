@@ -52,6 +52,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { initLiffAndEnsureLogin, getLiffProfileOrRelogin } from '@/utils/liffAuth';
 import { LIFF_IDS } from '@/utils/liffApps';
 import { getViewingProjects, prefersMyViewingReservations } from '@/utils/viewingReservationAccess';
+import { readViewingReservationLink, viewingReservationLinkQuery } from '@/utils/viewingReservationLink';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -134,6 +135,22 @@ const processPermissions = async () => {
     errorMessage.value = '您目前沒有任何建案的「客資系統-櫃台」或「客資系統-銷售」權限。';
     isLoading.value = false;
     return;
+  }
+
+  // 從 LINE 訊息「查看預約／取消預約」進入：帶到該筆預約（行事曆負責開啟與權限檢查）
+  const link = readViewingReservationLink(window.location.href);
+  if (link) {
+    const query = viewingReservationLinkQuery(link);
+    if (prefersMyViewingReservations(userStore)) {
+      statusMessage.value = '正在開啟預約...';
+      router.replace({ name: 'MyViewingReservations', query });
+      return;
+    }
+    if (allowedProjects.some(p => p.id === link.projectId)) {
+      statusMessage.value = '正在開啟預約...';
+      router.replace({ name: 'ViewingReservationCalendar', params: { projectId: link.projectId }, query });
+      return;
+    }
   }
 
   // 分流邏輯：有銷售權限 → 我的賞屋預約；只有櫃台權限 → 單一建案直接進入，多個建案顯示選單

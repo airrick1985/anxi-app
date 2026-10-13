@@ -24868,10 +24868,13 @@ exports.onAppointmentChange = onDocumentWritten({
 // /  【新增】賞屋預約系統 (Viewing Reservation) Cloud Functions
 // =================================================================
 
+const { syncReminderSchedule, reservationActionFooter } = require('./viewingReservationReminder');
+
 /**
  * [Trigger] 監聽賞屋預約的寫入 (新增/修改/刪除)
  * 負責：
- * 發送 LINE 廣播通知 (新增/取消/指派)
+ * 1. 重算 LINE 預約前提醒的下次發送時間
+ * 2. 發送 LINE 廣播通知 (新增/取消/改時間)
  */
 exports.onViewingReservationChange = onDocumentWritten({
   document: "viewing_reservations/{docId}",
@@ -24892,14 +24895,24 @@ exports.onViewingReservationChange = onDocumentWritten({
   const projectId = afterData.projectId;
   const docId = event.params.docId;
 
+  try {
+    await syncReminderSchedule(event.data.after.ref, afterData);
+  } catch (err) {
+    console.error(`[${functionName}] 更新 LINE 提醒排程失敗:`, err);
+  }
+
   // 識別狀態變化
   const isNew = !beforeData; // 新增
   const isCancelled = beforeData?.status === 'active' && afterData.status === 'deleted'; // 取消
+  const beforeTimeMs = beforeData?.reservationTime?.toMillis?.();
+  const afterTimeMs = afterData.reservationTime?.toMillis?.();
+  const isTimeChanged = beforeData?.status === 'active' && afterData.status === 'active'
+    && !!beforeTimeMs && !!afterTimeMs && beforeTimeMs !== afterTimeMs; // 改時間
 
-  console.log(`[${functionName}] Doc: ${docId}, Project: ${projectId}, IsNew: ${isNew}, IsCancelled: ${isCancelled}`);
+  console.log(`[${functionName}] Doc: ${docId}, Project: ${projectId}, IsNew: ${isNew}, IsCancelled: ${isCancelled}, IsTimeChanged: ${isTimeChanged}`);
 
   try {
-    if (isNew || isCancelled) {
+    if (isNew || isCancelled || isTimeChanged) {
 
       // ✅ [新增] 查詢建案名稱
       let projectName = projectId; // 預設使用 ID
@@ -24920,18 +24933,24 @@ exports.onViewingReservationChange = onDocumentWritten({
       if (isCancelled) {
         title = "❌ 賞屋預約 - 已取消";
         color = "#FF3333"; // 紅色
+      } else if (isTimeChanged) {
+        title = "🕑 賞屋預約 - 時間變更";
+        color = "#FF9500"; // 橘色
       } else {
         title = "🏠 賞屋預約 - 新增";
         color = "#1DB446"; // LINE 綠
       }
 
-      // 轉換時間格式
-      let timeStr = "";
-      if (afterData.reservationTime && afterData.reservationTime.toDate) {
-        timeStr = afterData.reservationTime.toDate().toLocaleString('zh-TW', {
+      // 轉換時間格式（改時間顯示「舊 → 新」）
+      const formatReservationTime = (ts) => (ts && ts.toDate)
+        ? ts.toDate().toLocaleString('zh-TW', {
           timeZone: 'Asia/Taipei',
           month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
-        });
+        })
+        : "";
+      let timeStr = formatReservationTime(afterData.reservationTime);
+      if (isTimeChanged) {
+        timeStr = `${formatReservationTime(beforeData.reservationTime)} → ${timeStr}`;
       }
 
       const flexMessage = {
@@ -25007,6 +25026,20 @@ exports.onViewingReservationChange = onDocumentWritten({
           ]
         });
       }
+
+      if (isCancelled && afterData.cancelReason) {
+        flexMessage.body.contents[2].contents.push({
+          type: "box",
+          layout: "baseline",
+          contents: [
+            { type: "text", text: "原因", color: "#aaaaaa", size: "sm", flex: 2 },
+            { type: "text", text: afterData.cancelReason, wrap: true, color: "#666666", size: "sm", flex: 5 }
+          ]
+        });
+      }
+
+      // 新增／改時間：可直接開啟該筆預約查看或取消
+      if (!isCancelled) flexMessage.footer = reservationActionFooter(docId, projectId);
 
       // 2. 獲取發送對象 (根據銷售人員指派狀態分流)
       // - 有指定銷售：通知該銷售本人 + 客資系統-櫃台
@@ -31483,6 +31516,7 @@ exports.openScheduledBookingItems = bookingVisibility.openScheduledBookingItems;
 
 // 賞屋預約加入行事曆：Apple 裝置回傳 .ics，其他裝置轉到 Google 日曆。
 exports.viewingReservationCalendar = require('./viewingReservationCalendar').viewingReservationCalendar;
+exports.viewingReservationReminder = require('./viewingReservationReminder').viewingReservationReminder;
 
 // LINE 名單回報：獨立 callable，免 ANXI 登入但必須驗證 LINE token 與名單權限。
 // 此 entrypoint 會載入共用套件，256 MiB 已發生 OOM；明確設定容量並限制單實例併發。

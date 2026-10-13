@@ -14,6 +14,11 @@ import {
   serverTimestamp, 
   orderBy 
 } from "firebase/firestore";
+import { normalizeReminder } from '@/utils/viewingReminder';
+
+// 使用者是否綁定 LINE（提醒對象顯示「未綁定 LINE」用）
+const hasLineId = (userData) => String(userData?.lineId || '').trim().startsWith('U');
+const lineStatusCache = new Map();
 
 export const useReservationStore = defineStore('reservation', {
   state: () => ({
@@ -208,7 +213,8 @@ export const useReservationStore = defineStore('reservation', {
                     qualifiedSales.push({
                         id: userKey,
                         name: userData.name,
-                        phone: userData.phone || ''
+                        phone: userData.phone || '',
+                        hasLine: hasLineId(userData)
                     });
                 }
             }
@@ -389,6 +395,11 @@ export const useReservationStore = defineStore('reservation', {
 
           operatorId: payload.operatorId,
           operatorName: payload.operatorName,
+          // operator 會在編輯時改成最後操作者；建立者另存，供「不指定銷售」時的 LINE 提醒對象
+          creatorId: payload.operatorId,
+          creatorName: payload.operatorName,
+
+          lineReminder: normalizeReminder(payload.lineReminder),
 
           status: 'active',
           createdAt: serverTimestamp(),
@@ -439,8 +450,11 @@ export const useReservationStore = defineStore('reservation', {
         }
         const projectChanged = !!before?.projectId && before.projectId !== updateData.projectId;
 
+        // 提醒排程欄位由後端維護，不以表單開啟時的舊值覆蓋
+        const { lineReminderNextAt, lineReminderSent, ...formFields } = updateData;
         const finalUpdateData = {
-            ...updateData,
+            ...formFields,
+            ...(formFields.lineReminder && { lineReminder: normalizeReminder(formFields.lineReminder) }),
             updatedAt: serverTimestamp()
         };
 
@@ -473,6 +487,54 @@ export const useReservationStore = defineStore('reservation', {
       } finally {
         this.loading = false;
       }
+    },
+
+    /**
+     * 讀取單筆預約（LINE 訊息「查看／取消預約」開啟用）
+     */
+    async fetchReservationById(id) {
+      try {
+        const snap = await getDoc(doc(db, "viewing_reservations", id));
+        return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+      } catch (err) {
+        console.error("fetchReservationById Error:", err);
+        return null;
+      }
+    },
+
+    /**
+     * 更新 LINE 預約前提醒（完成畫面就地調整，不寫預約異動日誌）
+     */
+    async updateReservationReminder(id, lineReminder) {
+      try {
+        const data = { lineReminder: normalizeReminder(lineReminder), updatedAt: serverTimestamp() };
+        await updateDoc(doc(db, "viewing_reservations", id), data);
+        const index = this.reservations.findIndex(r => r.id === id);
+        if (index !== -1) this.reservations[index] = { ...this.reservations[index], ...data };
+        return { success: true };
+      } catch (err) {
+        console.error("updateReservationReminder Error:", err);
+        return { success: false, error: err.message };
+      }
+    },
+
+    /**
+     * 使用者是否綁定 LINE：先查本案銷售名單，不在名單內才讀使用者資料
+     */
+    async getUserLineStatus(userKey) {
+      if (!userKey) return null;
+      const sales = this.salesList.find(s => s.id === userKey);
+      if (sales) return sales.hasLine;
+      if (!lineStatusCache.has(userKey)) {
+        try {
+          const snap = await getDoc(doc(db, "users", userKey));
+          lineStatusCache.set(userKey, hasLineId(snap.data()));
+        } catch (err) {
+          console.warn("getUserLineStatus Error:", err);
+          return null;
+        }
+      }
+      return lineStatusCache.get(userKey);
     },
 
     /**

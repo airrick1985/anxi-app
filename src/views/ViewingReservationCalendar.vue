@@ -268,6 +268,7 @@
       :project-selectable="isPersonal"
       :initialData="selectedReservation"
       :initialDate="selectedDate"
+      :cancel-on-open="cancelOnOpen"
       @saved="fetchData"
       @deleted="fetchData"
     />
@@ -302,7 +303,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { useReservationStore } from '@/store/reservationStore';
@@ -325,7 +327,9 @@ const props = defineProps({
     personal: { type: Boolean, default: false }
 });
 const isPersonal = computed(() => props.personal);
+const route = useRoute();
 const router = useRouter();
+const toast = useToast();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 const reservationStore = useReservationStore();
@@ -338,6 +342,8 @@ const sidebarDocked = computed(() => mdAndUp.value && drawer.value);
 const showDialog = ref(false);
 const selectedReservation = ref(null);
 const selectedDate = ref(null);
+const cancelOnOpen = ref(false);
+watch(showDialog, (open) => { if (!open) cancelOnOpen.value = false; });
 
 // ✅ 列表視圖優化：日期統計 modal
 const daySummaryDialog = ref(false);
@@ -692,6 +698,32 @@ async function loadScope() {
     filters.value.hiddenProjectIds = [];
 }
 
+// 從 LINE 訊息「查看預約／取消預約」開啟（?reservationId=…&action=cancel）：直接打開該筆預約
+async function openLinkedReservation() {
+    const { reservationId, action } = route.query;
+    if (!reservationId) return;
+    router.replace({ query: {} });
+    const res = await reservationStore.fetchReservationById(String(reservationId));
+    if (!res || res.status !== 'active') {
+        toast.warning('此預約已取消或不存在');
+        return;
+    }
+    if (!getViewingProjects(userStore, projectStore).some(p => p.id === res.projectId)) {
+        toast.error('沒有此建案的賞屋預約權限');
+        return;
+    }
+    if (!isPersonal.value && res.projectId !== props.projectId) {
+        toast.warning('此預約已改到其他建案');
+        return;
+    }
+    const time = res.reservationTime?.toDate?.();
+    if (time && calendarRef.value) syncCalendarDate(time);
+    selectedReservation.value = res;
+    selectedDate.value = null;
+    cancelOnOpen.value = action === 'cancel';
+    showDialog.value = true;
+}
+
 onMounted(async () => {
     if (!userStore.isLoggedIn) {
         router.replace({ name: 'ViewingReservationEntry' });
@@ -700,6 +732,11 @@ onMounted(async () => {
     // ✅ 確保建案清單已載入（供建案切換下拉使用）
     await projectStore.fetchProjects();
     await loadScope();
+    await openLinkedReservation();
+});
+
+watch(() => route.query.reservationId, (id) => {
+    if (id && userStore.isLoggedIn) openLinkedReservation();
 });
 
 // ✅ 切換建案／我的預約時（同一個頁面元件會被重用）：重新載入預約資料並重設篩選

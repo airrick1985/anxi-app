@@ -266,11 +266,21 @@
               </div>
             </div>
           </div>
+
+          <div class="mac-form-group vr-group">
+            <ViewingReminderPicker
+              v-model="formData.lineReminder"
+              v-model:custom-offsets="reminderCustomOffsets"
+              :reservation-time="formData.reservationTime"
+              :recipient-name="reminderRecipientName"
+              :recipient-has-line="reminderRecipientHasLine"
+            />
+          </div>
         </v-form>
       </v-card-text>
 
       <div class="mac-sheet-foot vr-dlg-foot">
-        <button v-if="isEdit" type="button" class="mac-btn mac-btn--danger" @click="confirmDelete">
+        <button v-if="isEdit" type="button" class="mac-btn mac-btn--danger" @click="openCancelConfirm">
           <v-icon size="16">mdi-delete</v-icon>取消預約
         </button>
         <span class="mac-spacer"></span>
@@ -447,6 +457,49 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="cancelConfirmDialog" max-width="420" content-class="mac-dialog-fit">
+      <v-card class="mac-sheet">
+        <div class="mac-sheet-head">
+          <v-icon size="18" class="vr-icon-danger">mdi-calendar-remove</v-icon>
+          <span class="vr-sheet-title">取消此預約？</span>
+        </div>
+        <div class="mac-form vr-conflict-body">
+          <div class="mac-form-group">
+            <div class="mac-form-row">
+              <span class="vr-info-label">預約時間</span>
+              <span class="vr-info-value">{{ formatDate(initialData?.reservationTime) }}</span>
+            </div>
+            <div class="mac-form-row">
+              <span class="vr-info-label">客戶</span>
+              <span class="vr-info-value">{{ initialData?.customerName }}・{{ initialData?.type }}</span>
+            </div>
+            <div class="mac-form-row">
+              <span class="vr-info-label">負責銷售</span>
+              <span class="vr-info-value">{{ initialData?.salesName || '不指定' }}</span>
+            </div>
+          </div>
+          <div class="mac-form-label">取消原因</div>
+          <v-text-field
+            v-model="cancelReason"
+            placeholder="選填"
+            variant="solo"
+            flat
+            density="compact"
+            hide-details
+            class="mac-vfield"
+          ></v-text-field>
+        </div>
+        <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn" @click="cancelConfirmDialog = false">返回</button>
+          <button type="button" class="mac-btn mac-btn--danger-fill" :disabled="cancelling" @click="confirmDelete">
+            <v-progress-circular v-if="cancelling" indeterminate size="14" width="2"></v-progress-circular>
+            確定取消
+          </button>
+        </div>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="settingsDialog" max-width="400" scrollable content-class="mac-dialog-fit">
       <v-card class="mac-sheet">
         <div class="mac-sheet-head">
@@ -493,6 +546,8 @@ import { useSalesDataStore } from '@/store/salesDataStore'; // 戶別/銷控資�
 import { format } from 'date-fns';
 import { useToast } from 'vue-toastification';
 import ViewingReservationSavedCard from '@/components/ViewingReservationSavedCard.vue';
+import ViewingReminderPicker from '@/components/ViewingReminderPicker.vue';
+import { MAX_OFFSET_MINUTES, normalizeReminder, reminderFromPrefs } from '@/utils/viewingReminder';
 import { getTaiwanHoliday } from '@/utils/taiwanHolidays';
 import { getViewingProjects } from '@/utils/viewingReservationAccess';
 
@@ -570,7 +625,8 @@ const props = defineProps({
   projectId: String,
   initialData: { type: Object, default: () => ({}) },
   initialDate: Date, // ✅ [新增] 接收外部傳入的預設時間
-  projectSelectable: Boolean // 個人賞屋預約：新增／編輯時可選建案
+  projectSelectable: Boolean, // 個人賞屋預約：新增／編輯時可選建案
+  cancelOnOpen: Boolean // 從 LINE 訊息「取消預約」開啟：載入後直接跳取消確認
 });
 
 
@@ -806,7 +862,8 @@ const formData = ref({
   note: '',
   unitId: '',       // ✅ 新增：簽約戶別
   operatorName: '', // ✅ 新增：記錄建立者名稱
-  createdAt: null   // ✅ 新增：記錄建立時間
+  createdAt: null,  // ✅ 新增：記錄建立時間
+  lineReminder: { enabled: false, offsets: [60] } // LINE 預約前提醒
 });
 
 // 監聽 type → 切到「簽約」時自動載入該建案戶別資料
@@ -945,6 +1002,56 @@ const conflictSalesName = computed(() => {
     return s?.name || timeConflicts.value[0]?.salesName || '指定銷售';
 });
 
+// ===== LINE 預約前提醒：發給負責銷售，不指定時發給建立者；設定記在個人偏好 =====
+const reminderPrefs = () => userStore.user?.preferences?.viewingReminder || {};
+const reminderCustomOffsets = ref([]);
+let initialReminderKey = '';
+const reminderKey = () => JSON.stringify([normalizeReminder(formData.value.lineReminder), reminderCustomOffsets.value]);
+
+const loadReminderSettings = () => {
+    const prefs = reminderPrefs();
+    const saved = props.initialData?.lineReminder;
+    // 編輯舊預約（尚無提醒設定）時預設關閉，開啟後帶入個人常用時間點
+    formData.value.lineReminder = isEdit.value
+        ? (saved ? normalizeReminder(saved) : { ...reminderFromPrefs(prefs), enabled: false })
+        : reminderFromPrefs(prefs);
+    reminderCustomOffsets.value = (Array.isArray(prefs.customOffsets) ? prefs.customOffsets : [])
+        .filter(n => Number.isInteger(n) && n > 0 && n <= MAX_OFFSET_MINUTES);
+    initialReminderKey = reminderKey();
+};
+
+// 新增時一律記住；編輯時只有動過提醒設定才更新偏好
+const saveReminderPrefs = () => {
+    if (isEdit.value && reminderKey() === initialReminderKey) return;
+    userStore.updateUserPreferences({
+        viewingReminder: { ...normalizeReminder(formData.value.lineReminder), customOffsets: reminderCustomOffsets.value }
+    });
+};
+
+const reminderRecipientId = computed(() => formData.value.salesId
+    || (isEdit.value ? (props.initialData?.creatorId || props.initialData?.operatorId) : userStore.user?.key)
+    || null);
+const reminderRecipientName = computed(() => {
+    const id = reminderRecipientId.value;
+    const sales = reservationStore.salesList.find(s => s.id === id);
+    if (sales) return sales.name;
+    if (id && id === userStore.user?.key) return userStore.user?.name || '';
+    return isEdit.value ? (props.initialData?.creatorName || props.initialData?.operatorName || '') : '';
+});
+const reminderRecipientHasLine = ref(null);
+let lineStatusSeq = 0;
+watch(
+    () => [props.modelValue, reminderRecipientId.value, reservationStore.salesList.length],
+    async ([open, id]) => {
+        const seq = ++lineStatusSeq;
+        reminderRecipientHasLine.value = null;
+        if (!open || !id) return;
+        const status = await reservationStore.getUserLineStatus(id);
+        if (seq === lineStatusSeq) reminderRecipientHasLine.value = status;
+    },
+    { immediate: true }
+);
+
 // ✅ 優化後的初始化監控邏輯
 watch(() => props.modelValue, async (val) => {
   if (val) {
@@ -976,6 +1083,7 @@ watch(() => props.modelValue, async (val) => {
         } else {
           customType.value = '';
         }
+        loadReminderSettings();
       } else {
         formData.value = {
           customerName: props.initialData?.customerName || '',
@@ -987,6 +1095,7 @@ watch(() => props.modelValue, async (val) => {
           unitId: ''
         };
         customType.value = '';
+        loadReminderSettings();
 
         // ✅ 優化：從聯絡名單打開時，先重置再檢查，確保 conflictInfo 第一時間顯示
         if (formData.value.customerPhone) {
@@ -998,6 +1107,7 @@ watch(() => props.modelValue, async (val) => {
       }
       // 編輯/新增模式皆檢查：若 type 為「簽約」則預載該建案戶別資料
       if (formData.value.type === '簽約') ensureHouseholdsLoaded();
+      if (isEdit.value && props.cancelOnOpen) openCancelConfirm();
     } finally {
       pendingInits.value--;
     }
@@ -1114,6 +1224,7 @@ const save = async () => {
             : await reservationStore.addReservation(payload);
         if (!result?.success) throw new Error(result?.error || '未知錯誤');
         if (!isEdit.value) reservationId = result.id;
+        saveReminderPrefs();
         // ✅ [新客自動建名單] 提醒使用者：新電話已自動建立名單並分配給指定銷售（改到其他建案時亦同）
         if (result.autoAssignedLead) {
             toast.success(`已完成預約｜此電話為新客戶，名單已自動分配給 ${result.autoAssignedLead.salesName}`, { timeout: 6000 });
@@ -1129,7 +1240,10 @@ const save = async () => {
             type: finalType,
             unitId: finalUnitId,
             salesName: sName,
-            note: payload.note || ''
+            note: payload.note || '',
+            lineReminder: normalizeReminder(formData.value.lineReminder),
+            customOffsets: [...reminderCustomOffsets.value],
+            reminderRecipient: { name: reminderRecipientName.value, hasLine: reminderRecipientHasLine.value }
         };
     } catch (e) {
         alert("儲存失敗：" + e.message);
@@ -1138,16 +1252,30 @@ const save = async () => {
     }
 };
 
+const cancelConfirmDialog = ref(false);
+const cancelReason = ref('');
+const cancelling = ref(false);
+
+const openCancelConfirm = () => {
+    cancelReason.value = '';
+    cancelConfirmDialog.value = true;
+};
+
 const confirmDelete = async () => {
-    if (confirm('確定要取消此預約嗎？')) {
-        const result = await reservationStore.cancelReservation(props.initialData.id, '使用者手動取消', userStore.user?.name || '');
+    cancelling.value = true;
+    try {
+        const reason = cancelReason.value.trim() || '使用者手動取消';
+        const result = await reservationStore.cancelReservation(props.initialData.id, reason, userStore.user?.name || '');
         if (!result?.success) {
             alert('取消失敗：' + (result?.error || '未知錯誤'));
             return;
         }
+        cancelConfirmDialog.value = false;
         toast.warning('已取消預約，請記得刪除行事曆中的行程', { timeout: 8000 });
         emit('deleted');
         closeDialog();
+    } finally {
+        cancelling.value = false;
     }
 };
 
