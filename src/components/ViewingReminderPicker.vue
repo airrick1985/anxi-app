@@ -11,11 +11,11 @@
         type="checkbox"
         class="mac-switch"
         :checked="modelValue.enabled"
-        @change="emitReminder({ enabled: $event.target.checked })"
+        @change="onToggle"
       >
     </label>
 
-    <div v-if="modelValue.enabled" class="rm-body">
+    <div v-if="modelValue.enabled" ref="bodyRef" class="rm-body">
       <div class="rm-chips">
         <span
           v-for="o in options"
@@ -57,7 +57,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { REMINDER_PRESETS, MAX_REMINDERS, MAX_OFFSET_MINUTES, REMINDER_UNITS, formatOffset } from '@/utils/viewingReminder';
 
 const props = defineProps({
@@ -90,6 +90,14 @@ const isCustom = (o) => props.customOffsets.includes(o) && !REMINDER_PRESETS.inc
 const isPast = (o) => !!props.reservationTime && props.reservationTime.getTime() - o * 60 * 1000 <= now.value;
 
 const emitReminder = (patch) => emit('update:modelValue', { ...props.modelValue, ...patch });
+
+// 打開時把時段選項捲進畫面：手機上開關常在畫面底部，展開的選項會落在畫面外而被忽略
+const bodyRef = ref(null);
+const onToggle = (event) => {
+  const enabled = event.target.checked;
+  emitReminder({ enabled });
+  if (enabled) nextTick(() => bodyRef.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+};
 
 const toggle = (o) => {
   const offsets = isOn(o) ? selected.value.filter(x => x !== o) : [...selected.value, o];

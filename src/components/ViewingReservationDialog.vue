@@ -80,7 +80,14 @@
                     :min="minDateTimeLocal"
                     step="300"
                     class="native-dt-input"
+                    @blur="finishEditTime"
                   />
+                </div>
+
+                <!-- 編輯預約改了時間：顯示原時間，可還原 -->
+                <div v-if="originalTimeChanged" class="vr-time-orig">
+                  原 {{ formatSelectedTime(originalTime) }}
+                  <button type="button" class="mac-link-btn" @click="restoreOriginalTime">還原</button>
                 </div>
 
                 <div v-if="holidayName" class="vr-holiday-tag">
@@ -96,13 +103,6 @@
                       {{ formatShortDate(c.reservationTime) }}｜{{ projectNameOf(c.projectId) }}｜{{ c.customerName }}・{{ c.type }}
                     </div>
                   </div>
-                </div>
-
-                <div v-if="isEditingTime" class="native-dt-actions">
-                  <button type="button" class="mac-btn" @click="cancelEditTime">取消</button>
-                  <button type="button" class="mac-btn mac-btn--primary" :disabled="!tempDateTime" @click="confirmDateTime">
-                    <v-icon size="15">mdi-check</v-icon>確認選擇
-                  </button>
                 </div>
 
                 <div v-if="!formData.reservationTime && !isEditingTime" class="vr-field-error">請選擇預約時間</div>
@@ -250,6 +250,19 @@
               </div>
             </div>
 
+            <!-- LINE 提醒緊接指定銷售（提醒對象），手機上不必捲到最底才看得到 -->
+            <div ref="reminderRef" class="vr-remind-wrap" :class="{ 'is-flash': reminderFlash }">
+              <ViewingReminderPicker
+                v-model="formData.lineReminder"
+                v-model:custom-offsets="reminderCustomOffsets"
+                :reservation-time="formData.reservationTime"
+                :recipient-name="reminderRecipientName"
+                :recipient-has-line="reminderRecipientHasLine"
+              />
+            </div>
+          </div>
+
+          <div class="mac-form-group vr-group">
             <div class="vr-field-row vr-field-row--top">
               <div class="vr-field-label">備註事項</div>
               <div class="vr-field-main">
@@ -266,22 +279,22 @@
               </div>
             </div>
           </div>
-
-          <div class="mac-form-group vr-group">
-            <ViewingReminderPicker
-              v-model="formData.lineReminder"
-              v-model:custom-offsets="reminderCustomOffsets"
-              :reservation-time="formData.reservationTime"
-              :recipient-name="reminderRecipientName"
-              :recipient-has-line="reminderRecipientHasLine"
-            />
-          </div>
         </v-form>
       </v-card-text>
 
       <div class="mac-sheet-foot vr-dlg-foot">
         <button v-if="isEdit" type="button" class="mac-btn mac-btn--danger" @click="openCancelConfirm">
           <v-icon size="16">mdi-delete</v-icon>取消預約
+        </button>
+        <button
+          type="button"
+          class="vr-remind-sum"
+          :class="{ 'is-off': !formData.lineReminder?.enabled, 'is-warn': reminderSummary.warn }"
+          @click="revealReminder"
+        >
+          <v-icon size="15">{{ formData.lineReminder?.enabled ? 'mdi-bell-ring-outline' : 'mdi-bell-off-outline' }}</v-icon>
+          <span class="vr-remind-sum-text">{{ reminderSummary.text }}</span>
+          <v-icon size="15" class="vr-remind-sum-go">mdi-chevron-right</v-icon>
         </button>
         <span class="mac-spacer"></span>
         <button type="button" class="mac-btn" @click="closeDialog">關閉</button>
@@ -547,7 +560,7 @@ import { format } from 'date-fns';
 import { useToast } from 'vue-toastification';
 import ViewingReservationSavedCard from '@/components/ViewingReservationSavedCard.vue';
 import ViewingReminderPicker from '@/components/ViewingReminderPicker.vue';
-import { MAX_OFFSET_MINUTES, normalizeReminder, reminderFromPrefs } from '@/utils/viewingReminder';
+import { MAX_OFFSET_MINUTES, formatOffset, normalizeReminder, reminderFromPrefs } from '@/utils/viewingReminder';
 import { getTaiwanHoliday } from '@/utils/taiwanHolidays';
 import { getViewingProjects } from '@/utils/viewingReservationAccess';
 
@@ -590,31 +603,36 @@ const formatSelectedTime = (date) => {
 };
 
 // 開始編輯時間
+let editStartValue = '';
 const startEditTime = () => {
   tempDateTime.value = toDateTimeLocalString(formData.value.reservationTime);
+  editStartValue = tempDateTime.value;
   isEditingTime.value = true;
   nextTick(() => {
     dtInputRef.value?.focus();
   });
 };
 
-// 確認選擇
-const confirmDateTime = () => {
-  if (tempDateTime.value) {
-    formData.value.reservationTime = new Date(tempDateTime.value);
-  }
-  isEditingTime.value = false;
-};
+const isValidLocalDateTime = (value) => !!value && !Number.isNaN(new Date(value).getTime());
 
-// 取消編輯
-const cancelEditTime = () => {
-  tempDateTime.value = '';
-  isEditingTime.value = false;
+// 選完即套用（不需再按確認）：選擇器產生有效值就寫入表單；已離開欄位時直接收回成顯示文字
+watch(tempDateTime, (value) => {
+  if (!isEditingTime.value || !isValidLocalDateTime(value)) return;
+  const date = new Date(value);
+  if (formData.value.reservationTime?.getTime?.() !== date.getTime()) formData.value.reservationTime = date;
+  if (value !== editStartValue && document.activeElement !== dtInputRef.value) isEditingTime.value = false;
+});
+
+// 離開欄位：改過時間才收回（部分手機開啟選擇器時會先 blur，未選值時保留輸入框以免選擇器被關掉）
+const finishEditTime = () => {
+  if (isValidLocalDateTime(tempDateTime.value) && tempDateTime.value !== editStartValue) {
+    isEditingTime.value = false;
+  }
 };
 
 // 選到的日期是國定假日時顯示名稱（選擇中即時反映）
 const holidayName = computed(() => {
-  const value = isEditingTime.value ? tempDateTime.value : formData.value.reservationTime;
+  const value = formData.value.reservationTime;
   return value ? getTaiwanHoliday(value) : '';
 });
 
@@ -863,7 +881,7 @@ const formData = ref({
   unitId: '',       // ✅ 新增：簽約戶別
   operatorName: '', // ✅ 新增：記錄建立者名稱
   createdAt: null,  // ✅ 新增：記錄建立時間
-  lineReminder: { enabled: false, offsets: [60] } // LINE 預約前提醒
+  lineReminder: { enabled: false, offsets: [30] } // LINE 預約前提醒
 });
 
 // 監聽 type → 切到「簽約」時自動載入該建案戶別資料
@@ -878,6 +896,18 @@ const conflictDialog = ref(false);
 const savedReservation = ref(null);
 
 const isEdit = computed(() => !!props.initialData?.id);
+
+// 編輯時改了預約時間：顯示原時間並可還原
+const originalTime = computed(() => {
+    const t = isEdit.value ? props.initialData?.reservationTime : null;
+    return t ? (t.toDate ? t.toDate() : new Date(t)) : null;
+});
+const originalTimeChanged = computed(() => !!originalTime.value && formData.value.reservationTime instanceof Date
+    && formData.value.reservationTime.getTime() !== originalTime.value.getTime());
+const restoreOriginalTime = () => {
+    formData.value.reservationTime = new Date(originalTime.value);
+    isEditingTime.value = false;
+};
 const dialog = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val)
@@ -1038,6 +1068,27 @@ const reminderRecipientName = computed(() => {
     if (id && id === userStore.user?.key) return userStore.user?.name || '';
     return isEdit.value ? (props.initialData?.creatorName || props.initialData?.operatorName || '') : '';
 });
+// 底部固定列的提醒摘要：手機上提醒區可能在畫面外，按新增前仍看得到目前設定
+const reminderSummary = computed(() => {
+    const { enabled, offsets = [] } = formData.value.lineReminder || {};
+    if (!enabled) return { text: 'LINE 不提醒', warn: false };
+    if (!offsets.length) return { text: 'LINE 提醒 未選時段', warn: true };
+    return { text: `LINE 提醒 ${offsets.map(o => `${formatOffset(o)}前`).join('、')}`, warn: false };
+});
+
+const reminderRef = ref(null);
+const reminderFlash = ref(false);
+let reminderFlashTimer = null;
+const revealReminder = () => {
+    reminderRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    reminderFlash.value = false;
+    clearTimeout(reminderFlashTimer);
+    nextTick(() => {
+        reminderFlash.value = true;
+        reminderFlashTimer = setTimeout(() => { reminderFlash.value = false; }, 1400);
+    });
+};
+
 const reminderRecipientHasLine = ref(null);
 let lineStatusSeq = 0;
 watch(
@@ -1056,6 +1107,7 @@ watch(
 watch(() => props.modelValue, async (val) => {
   if (val) {
     savedReservation.value = null;
+    isEditingTime.value = false;
     conflictInfo.value = null; // 清除上次開啟殘留的重複預約提示
     timeConflicts.value = [];
     pendingInits.value++;
@@ -1297,7 +1349,7 @@ const formatShortDate = (ts) => {
 </script>
 
 <style scoped>
-/* macOS 表單視窗：淡灰底＋白色圓角分組，桌機標籤在左、手機標籤在上 */
+/* macOS 表單視窗：淡灰底＋白色圓角分組，標籤在左（極窄螢幕標籤在上） */
 .vr-dlg-head { min-height: 52px; align-items: center; }
 .vr-dlg-titles { flex: 1 1 auto; min-width: 0; padding: 6px 0; }
 .vr-dlg-title { font-size: 15px; font-weight: 600; line-height: 1.35; }
@@ -1333,6 +1385,35 @@ const formatShortDate = (ts) => {
 .vr-type-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; }
 
 .vr-dlg-foot .mac-btn { min-width: 64px; }
+
+.vr-remind-wrap { border-top: 1px solid #ececf0; }
+.vr-remind-wrap.is-flash { animation: vr-remind-flash 1.4s ease-out; }
+@keyframes vr-remind-flash {
+  0%, 35% { background: rgba(0, 113, 227, 0.12); }
+  100% { background: transparent; }
+}
+.vr-remind-sum {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 3px 6px 3px 10px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(0, 113, 227, 0.1);
+  color: #0058b0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.vr-remind-sum .v-icon { color: inherit; }
+.vr-remind-sum.is-off { background: rgba(0, 0, 0, 0.05); color: #6e6e73; }
+.vr-remind-sum.is-warn { background: rgba(255, 149, 0, 0.15); color: #c25e00; }
+.vr-remind-sum-text { min-width: 0; overflow-wrap: anywhere; }
 .vr-save-btn .v-progress-circular { color: #fff; }
 
 .vr-init-status { margin-top: 14px; font-size: 14px; font-weight: 600; color: #1d1d1f; }
@@ -1453,12 +1534,15 @@ button.native-dt-wrapper:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24)
 .vr-clash { margin-top: 8px; }
 .vr-clash-main { min-width: 0; }
 .vr-clash-row { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.native-dt-actions {
+.vr-time-orig {
   display: flex;
-  justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
+  align-items: center;
+  gap: 2px 6px;
+  margin: 6px 2px 0;
+  font-size: 12.5px;
+  color: #6e6e73;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 初始化載入遮罩：提高白色 scrim 不透明度，蓋住半載入的表單 */
@@ -1466,17 +1550,26 @@ button.native-dt-wrapper:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24)
   opacity: 0.94;
 }
 
-/* ===== 手機版：標籤在上、欄位滿寬；輸入字級 16px 避免 iOS 聚焦放大 ===== */
+/* ===== 手機版：標籤在左、欄位在右（實機扣掉瀏覽器網址列後高度有限，縮短表單）；輸入字級 16px 避免 iOS 聚焦放大 ===== */
 @media (max-width: 600px) {
   .vr-dlg-body { padding: 12px 12px 14px !important; }
-  .vr-field-row { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 12px; }
-  .vr-field-row--top .vr-field-label { padding-top: 0; }
-  .vr-field-label { flex: 0 0 auto; font-size: 12px; font-weight: 600; color: #6e6e73; }
+  .vr-group { margin-top: 10px; }
+  .vr-field-row { gap: 10px; min-height: 52px; padding: 6px 12px; }
+  .vr-field-row--top .vr-field-label { padding-top: 10px; }
+  .vr-field-label { min-width: 56px; }
+  .vr-remind-sum { order: -1; flex: 1 1 100%; min-height: 32px; padding: 4px 8px 4px 12px; font-size: 13px; }
+  .vr-remind-sum-text { flex: 1 1 auto; }
   .vr-gear { width: 40px; height: 40px; }
   .vr-type-seg .mac-form-seg-btn { height: 32px; font-size: 14px; }
   .native-dt-wrapper { min-height: 40px; }
   .native-dt-input, .native-dt-display, .native-dt-placeholder { font-size: 16px; }
   .vr-dlg-foot .mac-btn { height: 36px; font-size: 14px; }
-  .native-dt-actions .mac-btn { height: 34px; }
+}
+
+/* 極窄螢幕：欄位空間不足時改回標籤在上 */
+@media (max-width: 359px) {
+  .vr-field-row { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 12px; }
+  .vr-field-row--top .vr-field-label { padding-top: 0; }
+  .vr-field-label { font-size: 12px; font-weight: 600; color: #6e6e73; }
 }
 </style>

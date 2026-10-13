@@ -1,5 +1,5 @@
 // 賞屋預約 LINE 預約前提醒：offsets 為提前分鐘數（規則同 functions/viewingReservationReminder.js）
-export const REMINDER_PRESETS = [1440, 180, 60, 30, 15];
+export const REMINDER_PRESETS = [1440, 180, 60, 30];
 export const MAX_REMINDERS = 3;
 export const MAX_OFFSET_MINUTES = 30 * 24 * 60;
 export const REMINDER_UNITS = [
@@ -22,10 +22,10 @@ export function normalizeOffsets(offsets) {
     .slice(0, MAX_REMINDERS);
 }
 
-// 個人偏好（users/{key}.preferences.viewingReminder）→ 預約上的 lineReminder；沒有偏好時預設關閉、勾 1 小時前
+// 個人偏好（users/{key}.preferences.viewingReminder）→ 預約上的 lineReminder；沒有偏好時預設關閉、勾 30 分鐘前
 export function reminderFromPrefs(prefs) {
   const offsets = normalizeOffsets(prefs?.offsets);
-  return { enabled: prefs?.enabled === true, offsets: offsets.length ? offsets : [60] };
+  return { enabled: prefs?.enabled === true, offsets: offsets.length ? offsets : [30] };
 }
 
 export function normalizeReminder(reminder) {
