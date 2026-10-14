@@ -27,6 +27,10 @@
               <v-text-field v-model="form.date" type="date" :label="dateLabel" variant="outlined" density="compact" hide-details="auto"></v-text-field>
             </v-col>
 
+            <v-col v-if="stepKey === 'submitted'" cols="6">
+              <v-text-field v-model="form.expectedPayDate" type="date" label="預計撥款日" variant="outlined" density="compact" hide-details="auto"></v-text-field>
+            </v-col>
+
             <template v-if="stepKey === 'invoice'">
               <v-col cols="6"><v-text-field v-model="form.invoiceNo" label="發票號碼" variant="outlined" density="compact" hide-details="auto"></v-text-field></v-col>
               <v-col cols="6"><v-text-field v-model.number="form.invoiceAmount" type="number" prefix="$" label="發票金額" variant="outlined" density="compact" hide-details="auto"></v-text-field></v-col>

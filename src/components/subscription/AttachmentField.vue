@@ -1,6 +1,6 @@
 <template>
   <div class="attachment-field">
-    <div class="d-flex flex-wrap align-center ga-2">
+    <div class="d-flex flex-wrap align-start ga-2">
       <div
         v-for="(att, i) in modelValue"
         :key="att.storagePath || att.url || i"
@@ -13,7 +13,7 @@
             {{ isPdf(att) ? 'mdi-file-pdf-box' : 'mdi-file-document-outline' }}
           </v-icon>
         </div>
-        <div class="att-name text-caption text-truncate">{{ att.name }}</div>
+        <div class="att-name text-caption">{{ att.name }}</div>
         <v-btn
           v-if="!readonly"
           class="att-remove"
@@ -26,42 +26,50 @@
         ></v-btn>
       </div>
 
-      <div v-if="uploading" class="att-item d-flex align-center justify-center">
-        <v-progress-circular indeterminate size="24" width="2" color="primary"></v-progress-circular>
+      <div
+        v-for="p in pending"
+        :key="`p${p.id}`"
+        class="att-item"
+        :title="p.error ? `${p.name}：${p.error}` : p.name"
+      >
+        <div
+          class="att-thumb att-pending"
+          :class="{ 'is-failed': p.status === 'failed', 'is-retryable': p.status === 'failed' && p.retryable }"
+          @click="retry(p)"
+        >
+          <img v-if="p.previewUrl" :src="p.previewUrl" alt="" />
+          <v-icon v-else size="30" color="blue-grey-lighten-2">mdi-file-outline</v-icon>
+          <div class="att-pending-mask">
+            <v-progress-circular v-if="p.status === 'uploading'" indeterminate size="22" width="2" color="white"></v-progress-circular>
+            <v-icon v-else-if="p.status === 'waiting'" size="20" color="white">mdi-clock-outline</v-icon>
+            <v-icon v-else size="22" color="white">{{ p.retryable ? 'mdi-refresh' : 'mdi-alert-circle-outline' }}</v-icon>
+          </div>
+        </div>
+        <div class="att-name text-caption">{{ p.name }}</div>
+        <div v-if="p.status === 'failed'" class="att-name text-caption text-error">{{ p.error }}</div>
+        <v-btn
+          v-if="p.status !== 'uploading'"
+          class="att-remove"
+          icon="mdi-close"
+          size="x-small"
+          density="comfortable"
+          variant="flat"
+          color="grey-darken-3"
+          @click="discard(p)"
+        ></v-btn>
       </div>
 
-      <template v-if="!readonly">
-        <button v-if="mac" type="button" class="mac-btn" :disabled="uploading" @click="fileInput?.click()">
-          <v-icon size="15">mdi-upload</v-icon><span>{{ label }}</span>
-        </button>
-        <v-btn
-          v-else
-          variant="tonal"
-          size="small"
-          prepend-icon="mdi-paperclip"
-          :disabled="uploading"
-          @click="fileInput?.click()"
-        >{{ label }}</v-btn>
-      </template>
+      <UploadDropZone v-if="!readonly" :accept="accept" :mac="mac" @files="enqueue" />
       <span v-if="readonly && modelValue.length === 0" class="text-caption text-grey">—</span>
     </div>
-    <input
-      ref="fileInput"
-      type="file"
-      multiple
-      :accept="accept"
-      class="d-none"
-      @change="onPick"
-    />
 
     <v-dialog v-model="previewOpen" max-width="960px">
       <v-card>
-        <v-toolbar density="compact" color="#004383">
-          <v-toolbar-title class="text-body-1">{{ current?.name }}</v-toolbar-title>
-          <v-spacer></v-spacer>
-          <v-btn icon="mdi-open-in-new" variant="text" @click="openTab(current?.url)"></v-btn>
-          <v-btn icon="mdi-close" variant="text" @click="previewOpen = false"></v-btn>
-        </v-toolbar>
+        <div class="att-preview-head">
+          <span class="att-preview-name">{{ current?.name }}</span>
+          <v-btn icon="mdi-open-in-new" variant="text" color="white" @click="openTab(current?.url)"></v-btn>
+          <v-btn icon="mdi-close" variant="text" color="white" @click="previewOpen = false"></v-btn>
+        </div>
         <v-card-text class="pa-0 bg-grey-lighten-3" style="height: 75vh;">
           <v-img v-if="current && isImage(current)" :src="current.url" height="100%" contain></v-img>
           <iframe
@@ -77,25 +85,32 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, nextTick } from 'vue';
 import { uploadSubscriptionFile } from '@/api.js';
+import { useUploadQueue } from '@/composables/useUploadQueue';
+import UploadDropZone from './UploadDropZone.vue';
 
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   pathPrefix: { type: String, required: true },
   projectId: { type: String, default: '' },
   readonly: { type: Boolean, default: false },
-  label: { type: String, default: '附件' },
   accept: { type: String, default: 'image/*,application/pdf,.doc,.docx,.xls,.xlsx' },
   mac: { type: Boolean, default: false }, // macOS 風格按鈕
 });
 const emit = defineEmits(['update:modelValue']);
 
-const MAX_SIZE = 7 * 1024 * 1024;
-const fileInput = ref(null);
-const uploading = ref(false);
 const previewOpen = ref(false);
 const current = ref(null);
+
+// 逐檔上傳：每完成一個就寫回 modelValue，等父層更新後再傳下一個，避免覆蓋
+const { pending, enqueue, retry, discard } = useUploadQueue(async (file, id) => {
+  const safeName = file.name.replace(/[^\w.\-]/g, '_');
+  const path = `${props.pathPrefix}/${Date.now()}_${id}_${safeName}`;
+  const att = await uploadSubscriptionFile(file, file.name, path, props.projectId);
+  emit('update:modelValue', [...props.modelValue, att]);
+  await nextTick();
+});
 
 function isImage(att) {
   if (att?.contentType) return att.contentType.startsWith('image/');
@@ -122,37 +137,12 @@ function openTab(url) {
 function remove(index) {
   emit('update:modelValue', props.modelValue.filter((_, i) => i !== index));
 }
-
-async function onPick(e) {
-  const files = Array.from(e.target.files || []);
-  e.target.value = '';
-  if (files.length === 0) return;
-  const oversized = files.find(f => f.size > MAX_SIZE);
-  if (oversized) {
-    alert(`「${oversized.name}」超過 7MB 上限`);
-    return;
-  }
-  uploading.value = true;
-  const added = [];
-  try {
-    for (const [i, file] of files.entries()) {
-      const safeName = file.name.replace(/[^\w.\-]/g, '_');
-      const path = `${props.pathPrefix}/${Date.now()}_${i}_${safeName}`;
-      added.push(await uploadSubscriptionFile(file, file.name, path, props.projectId));
-    }
-  } catch (err) {
-    alert('上傳失敗：' + err.message);
-  } finally {
-    uploading.value = false;
-    if (added.length) emit('update:modelValue', [...props.modelValue, ...added]);
-  }
-}
 </script>
 
 <style scoped>
 .att-item {
   position: relative;
-  width: 72px;
+  width: 96px;
 }
 .att-thumb {
   width: 56px;
@@ -170,13 +160,58 @@ async function onPick(e) {
 .att-thumb:hover {
   opacity: 0.85;
 }
+/* 完整顯示檔名：自動換行，不截斷 */
 .att-name {
+  margin-top: 3px;
   text-align: center;
-  max-width: 72px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.att-pending {
+  position: relative;
+  cursor: default;
+}
+.att-pending img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.att-pending-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.38);
+}
+.att-pending.is-failed {
+  border-color: rgb(var(--v-theme-error));
+}
+.att-pending.is-failed .att-pending-mask {
+  background: rgba(176, 0, 32, 0.45);
+}
+.att-pending.is-retryable {
+  cursor: pointer;
 }
 .att-remove {
   position: absolute;
   top: -6px;
-  right: 2px;
+  right: calc(50% - 36px);
+}
+.att-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 48px;
+  padding: 4px 4px 4px 16px;
+  background: #004383;
+  color: #fff;
+}
+.att-preview-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 </style>

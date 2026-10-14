@@ -241,7 +241,7 @@ async function handleChat(ctx, data, { dryRun = false } = {}) {
       return { status: 'success', reply: usedFallback ? `${reply}\n\n（備援模型）` : reply, uiActions, usage: usageSum, quota: quota(), toolTrace: dryRun ? toolTrace : undefined };
     }
 
-    messages.push({ role: 'assistant', content: res.text || undefined, toolCalls: res.toolCalls, rawParts: res.rawParts });
+    messages.push({ role: 'assistant', content: res.text || undefined, toolCalls: res.toolCalls, rawParts: res.rawParts, rawContent: res.rawContent });
     for (const call of res.toolCalls) {
       const tool = TOOL_MAP[call.name];
       let result;

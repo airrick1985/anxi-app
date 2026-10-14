@@ -6,7 +6,7 @@
         <div class="qs-company-en">{{ quote.company?.nameEn }}</div>
       </div>
       <div class="qs-title-block">
-        <div class="qs-title">報 價 單</div>
+        <div class="qs-title">{{ spacedTitle }}</div>
         <div class="qs-date">Date: {{ slashDate(quote.date) }}</div>
         <div v-if="validUntil" class="qs-date">有效期限: {{ slashDate(validUntil) }}</div>
       </div>
@@ -116,6 +116,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { quoteTotals, addDays } from '@/utils/subscriptionPipeline';
+import { quoteTitle } from './quoteDefaults';
 
 const props = defineProps({
   quote: { type: Object, required: true },
@@ -127,7 +128,10 @@ const emit = defineEmits(['update:images']);
 
 const totals = computed(() => quoteTotals(props.quote));
 const taxPercent = computed(() => Math.round((props.quote.taxRate ?? 0.05) * 100));
+const spacedTitle = computed(() => quoteTitle(props.quote).split('').join(' '));
+// 請款單不顯示有效期限
 const validUntil = computed(() => {
+  if (quoteTitle(props.quote) === '請款單') return '';
   const days = Number(props.quote.validDays) || 0;
   return days > 0 && props.quote.date ? addDays(props.quote.date, days) : '';
 });

@@ -60,7 +60,7 @@
 
           <div class="mac-form-label">大小章</div>
           <div class="mac-form-group mac-form-pad">
-            <AttachmentField v-model="form.seals" path-prefix="subscriptionSettings/seals" project-id="subscription" accept="image/*" label="上傳" mac />
+            <AttachmentField v-model="form.seals" path-prefix="subscriptionSettings/seals" project-id="subscription" accept="image/*" mac />
           </div>
 
           <div class="mac-form-label">

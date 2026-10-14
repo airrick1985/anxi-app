@@ -5,12 +5,29 @@ const { ProviderError, errorFromAxios, clampNumber } = require('./base');
 const API = 'https://api.anthropic.com/v1';
 const VERSION = '2023-06-01';
 
+/**
+ * 模型世代：claude-{family}-{major}[-{minor}]
+ * - legacy（4.5 以前，如 haiku-4-5）：固定思考預算 budget_tokens、可設 temperature
+ * - 4.6：自適應思考＋effort，仍可設 temperature
+ * - 4.7 以後（含 5.x）：自適應思考＋effort；budget_tokens、temperature 會被拒絕（400）
+ */
+function generation(model) {
+  const m = /^claude-(?:opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d{1,2}))?(?!\d)/.exec(String(model || ''));
+  if (!m) return 'legacy';
+  const v = Number(m[1]) + (m[2] ? Number(m[2]) / 10 : 0);
+  if (v >= 4.7) return 'modern';
+  if (v >= 4.6) return 'adaptive';
+  return 'legacy';
+}
+
 function toMessages(messages) {
   const out = [];
   for (const m of messages) {
     if (m.role === 'user') {
       out.push({ role: 'user', content: [{ type: 'text', text: m.content || '(空白)' }] });
     } else if (m.role === 'assistant') {
+      // 開啟思考時，帶工具呼叫的回合要把原始內容（含 thinking 區塊）原封不動送回
+      if (Array.isArray(m.rawContent) && m.rawContent.length) { out.push({ role: 'assistant', content: m.rawContent }); continue; }
       const content = [];
       if (m.content) content.push({ type: 'text', text: m.content });
       for (const tc of m.toolCalls || []) content.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.args || {} });
@@ -36,14 +53,26 @@ async function chat({ system, messages, tools, profile, apiKey }) {
     messages: toMessages(messages),
   };
   if (system) body.system = system;
-  const thinking = profile.thinking || 'off';
-  if (thinking !== 'off') {
-    const budget = { low: 1024, medium: 4096, high: 16000 }[thinking] || 1024;
-    body.thinking = { type: 'enabled', budget_tokens: Math.min(budget, Math.max(1024, maxTokens - 512)) };
-    if (body.max_tokens <= body.thinking.budget_tokens) body.max_tokens = body.thinking.budget_tokens + 1024;
-    // 開啟 thinking 時不可設 temperature
+  const thinking = ['low', 'medium', 'high'].includes(profile.thinking) ? profile.thinking : 'off';
+  const gen = generation(profile.model);
+  if (gen === 'legacy') {
+    if (thinking !== 'off') {
+      const budget = { low: 1024, medium: 4096, high: 16000 }[thinking];
+      body.thinking = { type: 'enabled', budget_tokens: Math.min(budget, Math.max(1024, maxTokens - 512)) };
+      if (body.max_tokens <= body.thinking.budget_tokens) body.max_tokens = body.thinking.budget_tokens + 1024;
+      // 開啟 thinking 時不可設 temperature
+    } else {
+      body.temperature = clampNumber(profile.temperature, 0, 1, 0.2);
+    }
   } else {
-    body.temperature = clampNumber(profile.temperature, 0, 1, 0.2);
+    // 「關」：不送 thinking、effort 用 low（Opus 5.5／Sonnet 5.5 等新模型無法完全關閉思考）
+    if (thinking !== 'off') {
+      body.thinking = { type: 'adaptive' };
+      // 思考 token 也算在 max_tokens 內，留足空間避免回覆被截斷
+      body.max_tokens = Math.max(maxTokens, 16000);
+    }
+    body.output_config = { effort: thinking === 'off' ? 'low' : thinking };
+    if (gen === 'adaptive' && thinking === 'off') body.temperature = clampNumber(profile.temperature, 0, 1, 0.2);
   }
   if (tools && tools.length) {
     body.tools = tools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters || { type: 'object', properties: {} } }));
@@ -73,6 +102,7 @@ async function chat({ system, messages, tools, profile, apiKey }) {
   return {
     text: textParts.join('\n').trim() || null,
     toolCalls,
+    rawContent: toolCalls.length ? blocks : undefined,
     usage: {
       inputTokens: usage.input_tokens || 0,
       outputTokens: usage.output_tokens || 0,
@@ -92,4 +122,4 @@ async function validateKey(apiKey) {
   }
 }
 
-module.exports = { chat, validateKey };
+module.exports = { chat, validateKey, generation };

@@ -266,6 +266,27 @@
                     </div>
                   </template>
 
+                  <!-- LINE AI 助理 -->
+                  <template v-else-if="slide.id === 'lineAi'">
+                    <div class="mk-chat v-line__chat">
+                      <div class="mk-chat__head dk-in" style="--d: 2">
+                        <span class="mk-chat__avatar"><v-icon size="20">mdi-account-group</v-icon></span>
+                        <strong>王先生購屋群組</strong><span class="mk-chip mk-chip--green">LINE</span>
+                      </div>
+                      <div class="mk-chat__body">
+                        <div class="mk-msg mk-msg--ai dk-in" style="--d: 3"><small class="v-line__name">王先生</small>車位可以再算一次嗎？工程款怎麼分期？</div>
+                        <div class="mk-msg mk-msg--ai dk-in" style="--d: 4"><small class="v-line__name">王太太</small>週末才有空看屋喔</div>
+                      </div>
+                    </div>
+                    <div class="mk-card v-line__suggest dk-in" style="--d: 6">
+                      <div class="mk-card__title"><span><v-icon size="18">mdi-creation</v-icon> AI 建議回覆</span><span class="mk-chip">親切</span></div>
+                      <p class="v-line__text">王先生您好！B2 平面車位 220 萬，與 12F 三房一起成交約 1,980 萬。工程款依進度分 12 期，這週六方便來看屋嗎？</p>
+                      <div class="v-line__cite"><v-icon size="16">mdi-google-drive</v-icon>引用：A 棟價目表.pdf</div>
+                      <div class="mk-diff__actions"><span class="mk-btn">複製</span><span class="mk-btn mk-btn--primary">官方帳號送出</span></div>
+                    </div>
+                    <span class="mk-pill v-line__memory dk-in" style="--d: 8"><v-icon size="18">mdi-brain</v-icon>記得：預算 2,000 萬、偏好高樓層</span>
+                  </template>
+
                   <!-- 合約製作 -->
                   <template v-else-if="slide.id === 'contract'">
                     <div class="mk-doc v-doc--3 dk-in" style="--d: 2"><div class="mk-doc__title">拆款表</div><i v-for="n in 7" :key="n"></i></div>
@@ -600,6 +621,18 @@ const slides = [
     },
   },
   {
+    id: 'lineAi', nav: 'LINE AI 助理',
+    feature: {
+      eyebrow: 'LINE AI 助理', icon: 'mdi-chat-processing-outline', title: '客戶在 LINE 問，AI 幫你想怎麼回',
+      points: [
+        ['群組、官方帳號都記得', '官方帳號加入公司群、客戶群，對話自動整理成摘要與重點'],
+        ['一鍵建議回覆、潤稿', '參考對話、客資與雲端資料撰稿，風格隨選：親切、正式、促成交'],
+        ['人確認後才送出', '自己複製分享，或由官方帳號代發'],
+        ['客戶私訊即時通知', 'LINE 通知負責業務，附上 AI 草稿'],
+      ],
+    },
+  },
+  {
     id: 'contract', nav: '合約製作', theme: 'soft',
     feature: {
       eyebrow: '合約製作', icon: 'mdi-file-sign', title: '成交後的文件，一鍵產出',
@@ -738,7 +771,7 @@ const pains = [
 
 const stages = [
   { icon: 'mdi-web', name: '預售行銷', items: ['形象網站', '電子表板', '留資通知'] },
-  { icon: 'mdi-account-search-outline', name: '客戶開發', items: ['客資建檔', '名單分配', '賞屋預約'] },
+  { icon: 'mdi-account-search-outline', name: '客戶開發', items: ['客資建檔', '名單分配', '賞屋預約', 'LINE AI'] },
   { icon: 'mdi-handshake-outline', name: '銷售成交', items: ['銷控', '報價', '車位', 'AI 助理'] },
   { icon: 'mdi-file-document-multiple-outline', name: '成交管理', items: ['合約製作', '繳款紀錄', '請佣獎金'] },
   { icon: 'mdi-key-variant', name: '交屋售後', items: ['線上預約', '驗屋修繕', '住戶專區'] },
@@ -1393,6 +1426,16 @@ onBeforeUnmount(() => {
 .mk-diff__row b { color: var(--dk-primary); }
 .mk-diff__actions { display: flex; gap: 8px; margin-top: 12px; }
 .mk-chat__input { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-top: 1px solid var(--dk-border); font-size: 15px; color: #94A3B8; }
+
+/* LINE AI 助理 */
+.v-line__chat { left: 0; width: 470px; }
+.v-line__chat .mk-chat__avatar { background: #06C755; }
+.v-line__name { display: block; margin-bottom: 2px; font-size: 13px; color: var(--dk-muted); }
+.v-line__suggest { left: 230px; top: 250px; width: 470px; }
+.v-line__suggest .mk-card__title > span:first-child { display: inline-flex; align-items: center; gap: 6px; color: var(--dk-primary); }
+.v-line__text { margin: 12px 0 10px; font-size: 17px; line-height: 1.6; color: var(--dk-text); }
+.v-line__cite { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--dk-muted); }
+.v-line__memory { left: 20px; top: 510px; }
 
 /* 合約製作 */
 .mk-doc { position: absolute; width: 420px; height: 540px; padding: 28px 30px; border-radius: 8px; background: #fff; border: 1px solid var(--dk-border); box-shadow: 0 24px 60px rgba(15,23,42,.14); }

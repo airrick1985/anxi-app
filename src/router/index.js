@@ -89,6 +89,38 @@ const routes = [
       title: 'AI 助理管理'
     }
   },
+  // ✅ LINE AI 助理：工作台（網頁）、LINE 內入口（LIFF 驗證）、超級管理員後台
+  {
+    path: '/line-ai',
+    name: 'LineAiWorkspace',
+    component: () => import('@/views/LineAiWorkspace.vue'),
+    meta: {
+      requiresAuth: true,
+      layout: DefaultLayout,
+      title: 'LINE AI 助理'
+    }
+  },
+  {
+    path: '/line-ai-entry',
+    name: 'LineAiEntry',
+    component: () => import('@/views/LineAiEntry.vue'),
+    meta: {
+      requiresAuth: false, // 由頁面內 LIFF 驗證
+      layout: PublicLayout,
+      title: 'LINE AI 助理'
+    }
+  },
+  {
+    path: '/admin/line-ai',
+    name: 'LineAiAdmin',
+    component: () => import('@/views/admin/LineAiAdmin.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredRoles: ['超級管理員'],
+      layout: DefaultLayout,
+      title: 'LINE AI 助理管理'
+    }
+  },
   // ✅ 客戶開發（超級管理員；docs/SPEC_CustomerProspecting.md §3.2）
   {
     path: '/admin/prospects',

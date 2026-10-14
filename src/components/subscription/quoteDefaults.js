@@ -30,6 +30,9 @@ export const DEFAULT_QUOTE_SETTINGS = {
   ],
 };
 
+export const QUOTE_TITLES = ['報價單', '請款單'];
+export const quoteTitle = (quote) => quote?.title || QUOTE_TITLES[0];
+
 export const DEFAULT_PLAN = [
   { label: '第1期', mode: 'percent', value: 100, base: 'activated', offset: 0, offsetUnit: 'day', fixedDate: '' },
 ];
@@ -49,12 +52,13 @@ export function mergeQuoteSettings(saved) {
   };
 }
 
-// 新報價：續約時沿用上一輪的品項、備註、付款條件
+// 新報價：續約時沿用上一輪的標題、品項、備註、付款條件
 export function newQuote(sub, settings, prevQuote = null) {
   const billTo = sub.billTo || {};
   const base = {
     version: 1,
     pdfVersion: 0,
+    title: prevQuote ? quoteTitle(prevQuote) : QUOTE_TITLES[0],
     date: taiwanToday(),
     validDays: settings.validDays,
     company: { name: settings.companyName, nameEn: settings.companyNameEn },
@@ -90,9 +94,9 @@ export function newQuote(sub, settings, prevQuote = null) {
   };
 }
 
-// 檔名：{買受人}-{第一品項}-報價單-{日期}
+// 檔名：{買受人}-{第一品項}-{報價單|請款單}-{日期}
 export function quoteFileBase(quote, sub) {
   const who = quote.billTo?.name || sub.projectName || '報價';
   const what = quote.items?.[0]?.name || `${sub.systemFunction}(${sub.projectName})`;
-  return `${who}-${what}-報價單-${quote.date}`.replace(/[\\/:*?"<>|]/g, '_');
+  return `${who}-${what}-${quoteTitle(quote)}-${quote.date}`.replace(/[\\/:*?"<>|]/g, '_');
 }

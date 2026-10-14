@@ -9,7 +9,16 @@ let printFrame = null;
  * @param {string} url 圖片網址
  * @param {object} [options] { title: 列印工作名稱, onError: 圖片載入失敗時呼叫 }
  */
-export function printImageA3(url, { title = '', onError } = {}) {
+export function printImageA3(url, options = {}) {
+  printImage(url, { ...options, page: 'A3 landscape', area: PRINT_AREA_MM, padding: 10, align: 'center' });
+}
+
+/**
+ * 以隱藏 iframe 列印單張圖片（可指定紙張）
+ * @param {string} url 圖片網址
+ * @param {object} options { page: @page size, area: 內容區 {w,h} mm, padding: 留白 mm, align: 垂直對齊 center|top, title, onError }
+ */
+export function printImage(url, { page, area, padding = 0, align = 'center', title = '', onError } = {}) {
   if (!url) return;
   if (printFrame?.parentNode) printFrame.parentNode.removeChild(printFrame);
   const iframe = document.createElement('iframe');
@@ -18,16 +27,16 @@ export function printImageA3(url, { title = '', onError } = {}) {
   document.body.appendChild(iframe);
   printFrame = iframe;
 
-  const { w, h } = PRINT_AREA_MM;
+  const { w, h } = area;
   const win = iframe.contentWindow;
   const doc = win.document;
   doc.open();
   doc.write(`<!doctype html><html><head><meta charset="utf-8">
     <title>${title}</title>
     <style>
-      @page { size: A3 landscape; margin: 0; }
+      @page { size: ${page}; margin: 0; }
       html, body { margin: 0; background: #fff; }
-      body { box-sizing: content-box; padding: 10mm; width: ${w}mm; height: ${h}mm; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+      body { box-sizing: content-box; padding: ${padding}mm; width: ${w}mm; height: ${h}mm; display: flex; justify-content: center; align-items: ${align === 'top' ? 'flex-start' : 'center'}; overflow: hidden; }
       img { width: ${w}mm; height: auto; max-height: ${h}mm; object-fit: contain; }
     </style></head>
     <body><img src="${url}"></body></html>`);

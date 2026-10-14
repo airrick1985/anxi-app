@@ -1,20 +1,38 @@
 <template>
   <div>
-    <div class="d-flex align-center mb-2">
-      <span v-if="images.length" class="text-caption text-grey">{{ images.length }} 張</span>
-      <v-spacer></v-spacer>
-      <button v-if="mac" type="button" class="mac-btn" :disabled="uploading" @click="pick(null)">
-        <v-progress-circular v-if="uploading" indeterminate size="14" width="2"></v-progress-circular>
-        <v-icon v-else size="15">mdi-upload</v-icon><span>上傳</span>
-      </button>
-      <v-btn v-else size="small" variant="tonal" color="primary" prepend-icon="mdi-upload" :loading="uploading" @click="pick(null)">上傳</v-btn>
-    </div>
+    <UploadDropZone :accept="ACCEPT" :mac="mac" block class="mb-2" @files="enqueue" />
+    <div v-if="images.length" class="text-caption text-grey mb-1">{{ images.length }} 張</div>
 
     <div v-if="loading" class="text-center py-6">
       <v-progress-circular indeterminate size="28" color="primary"></v-progress-circular>
     </div>
-    <div v-else-if="images.length === 0" class="lib-empty text-center text-grey py-6">尚無圖片</div>
+    <div v-else-if="images.length === 0 && pending.length === 0" class="text-center text-caption text-grey py-3">尚無圖片</div>
     <div v-else class="lib-grid">
+      <div
+        v-for="p in pending"
+        :key="`p${p.id}`"
+        class="lib-item"
+        :title="p.error ? `${p.name}：${p.error}` : p.name"
+      >
+        <div
+          class="lib-thumb lib-pending"
+          :class="{ 'is-failed': p.status === 'failed', 'is-retryable': p.status === 'failed' && p.retryable }"
+          @click="retry(p)"
+        >
+          <img v-if="p.previewUrl" :src="p.previewUrl" alt="" />
+          <div class="lib-mask">
+            <v-progress-circular v-if="p.status === 'uploading'" indeterminate size="24" width="2" color="white"></v-progress-circular>
+            <v-icon v-else-if="p.status === 'waiting'" size="22" color="white">mdi-clock-outline</v-icon>
+            <v-icon v-else size="24" color="white">{{ p.retryable ? 'mdi-refresh' : 'mdi-alert-circle-outline' }}</v-icon>
+          </div>
+        </div>
+        <div class="d-flex align-center lib-meta">
+          <span class="text-caption text-truncate flex-grow-1" :class="{ 'text-error': p.status === 'failed' }">
+            {{ p.status === 'failed' ? p.error : p.name }}
+          </span>
+          <v-btn v-if="p.status !== 'uploading'" icon="mdi-close" size="x-small" variant="text" @click="discard(p)"></v-btn>
+        </div>
+      </div>
       <div
         v-for="img in images"
         :key="img.id"
@@ -22,8 +40,13 @@
         :class="{ 'is-selectable': selectable }"
         @click="selectable && emit('select', img)"
       >
-        <div class="lib-thumb"><img :src="img.url" :alt="img.name" /></div>
-        <div class="d-flex align-center">
+        <div class="lib-thumb">
+          <img :src="img.url" :alt="img.name" />
+          <div v-if="replacingId === img.id" class="lib-mask">
+            <v-progress-circular indeterminate size="24" width="2" color="white"></v-progress-circular>
+          </div>
+        </div>
+        <div class="d-flex align-center lib-meta">
           <span class="text-caption text-truncate flex-grow-1" :title="img.name">{{ img.name }}</span>
           <v-menu>
             <template v-slot:activator="{ props: menuProps }">
@@ -31,7 +54,7 @@
             </template>
             <v-list density="compact">
               <v-list-item title="改名" prepend-icon="mdi-rename-outline" @click="openRename(img)"></v-list-item>
-              <v-list-item title="替換圖檔" prepend-icon="mdi-image-refresh-outline" @click="pick(img)"></v-list-item>
+              <v-list-item title="替換圖檔" prepend-icon="mdi-image-refresh-outline" :disabled="!!replacingId" @click="pickReplace(img)"></v-list-item>
               <v-list-item title="刪除" prepend-icon="mdi-delete-outline" @click="remove(img)"></v-list-item>
             </v-list>
           </v-menu>
@@ -39,14 +62,7 @@
       </div>
     </div>
 
-    <input
-      ref="fileInput"
-      type="file"
-      accept="image/png,image/jpeg,image/webp,image/gif"
-      :multiple="!replaceTarget"
-      class="d-none"
-      @change="onPick"
-    />
+    <input ref="replaceInput" type="file" :accept="ACCEPT" class="d-none" @change="onReplace" />
 
     <v-dialog v-model="renameDialog.open" max-width="360">
       <v-card title="改名">
@@ -72,6 +88,9 @@ import {
   deleteSubscriptionQuoteImage,
   uploadSubscriptionFile,
 } from '@/api.js';
+import { useUploadQueue } from '@/composables/useUploadQueue';
+import { prepareImageForUpload } from '@/utils/canvasCompress';
+import UploadDropZone from './UploadDropZone.vue';
 
 defineProps({
   selectable: { type: Boolean, default: false },
@@ -79,12 +98,13 @@ defineProps({
 });
 const emit = defineEmits(['select']);
 
+const ACCEPT = 'image/png,image/jpeg,image/webp,image/gif';
 const MAX_SIZE = 7 * 1024 * 1024;
 const images = ref([]);
 const loading = ref(false);
-const uploading = ref(false);
-const fileInput = ref(null);
+const replaceInput = ref(null);
 const replaceTarget = ref(null);
+const replacingId = ref(null);
 const renameDialog = ref({ open: false, id: null, name: '' });
 
 async function load() {
@@ -98,12 +118,6 @@ async function load() {
   }
 }
 onMounted(load);
-
-function pick(target) {
-  replaceTarget.value = target;
-  // 等 multiple 屬性更新後再開檔案選擇
-  setTimeout(() => fileInput.value?.click(), 0);
-}
 
 function readImageSize(file) {
   return new Promise((resolve) => {
@@ -131,32 +145,36 @@ async function uploadOne(file, index) {
   return { url: att.url, storagePath: att.storagePath, contentType: att.contentType, ...size };
 }
 
-async function onPick(e) {
-  const files = Array.from(e.target.files || []);
+// 新增：逐檔上傳，完成一張就放到最前面（圖片庫依建立時間新到舊）
+const { pending, enqueue, retry, discard } = useUploadQueue(async (file, id) => {
+  const data = await uploadOne(file, id);
+  const name = file.name.replace(/\.[^.]+$/, '');
+  const docId = await addSubscriptionQuoteImage({ ...data, name });
+  images.value = [{ id: docId, ...data, name }, ...images.value];
+});
+
+function pickReplace(img) {
+  replaceTarget.value = img;
+  replaceInput.value?.click();
+}
+
+async function onReplace(e) {
+  const picked = e.target.files?.[0];
   e.target.value = '';
-  if (files.length === 0) return;
-  const oversized = files.find(f => f.size > MAX_SIZE);
-  if (oversized) {
-    alert(`「${oversized.name}」超過 7MB 上限`);
-    return;
-  }
-  uploading.value = true;
+  const target = replaceTarget.value;
+  replaceTarget.value = null;
+  if (!picked || !target) return;
+  replacingId.value = target.id;
   try {
-    if (replaceTarget.value) {
-      // 替換只更新圖片庫；已插入報價單的圖片維持原檔
-      await updateSubscriptionQuoteImage(replaceTarget.value.id, await uploadOne(files[0], 0));
-    } else {
-      for (const [i, file] of files.entries()) {
-        const data = await uploadOne(file, i);
-        await addSubscriptionQuoteImage({ ...data, name: file.name.replace(/\.[^.]+$/, '') });
-      }
-    }
+    const file = await prepareImageForUpload(picked);
+    if (file.size > MAX_SIZE) throw new Error('超過 7MB');
+    // 替換只更新圖片庫；已插入報價單的圖片維持原檔
+    await updateSubscriptionQuoteImage(target.id, await uploadOne(file, 0));
     await load();
   } catch (err) {
-    alert('上傳失敗：' + err.message);
+    alert('替換失敗：' + err.message);
   } finally {
-    uploading.value = false;
-    replaceTarget.value = null;
+    replacingId.value = null;
   }
 }
 
@@ -205,6 +223,7 @@ async function remove(img) {
   box-shadow: 0 0 0 1px #004383;
 }
 .lib-thumb {
+  position: relative;
   height: 84px;
   display: flex;
   align-items: center;
@@ -218,8 +237,29 @@ async function remove(img) {
   max-height: 100%;
   object-fit: contain;
 }
-.lib-empty {
-  border: 2px dashed #e0e0e0;
-  border-radius: 8px;
+.lib-meta {
+  min-height: 28px;
+}
+.lib-pending img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.lib-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.38);
+}
+.lib-pending.is-failed {
+  box-shadow: inset 0 0 0 2px rgb(var(--v-theme-error));
+}
+.lib-pending.is-failed .lib-mask {
+  background: rgba(176, 0, 32, 0.45);
+}
+.lib-pending.is-retryable {
+  cursor: pointer;
 }
 </style>

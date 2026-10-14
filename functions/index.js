@@ -31124,7 +31124,7 @@ exports.notifyOnFormSubmission = onDocumentCreated({
 });
 
 // =================================================================
-// 【訂閱管理】每日跟進提醒 (繳款到期 / 逾期未兌現 / 報價未回簽 / 續約 / 待跟進)
+// 【訂閱管理】每日跟進提醒 (即將請款 / 已過請款日未送件 / 逾期未兌現 / 報價未回簽 / 續約 / 待跟進)
 // 規格：docs/SPEC_SubscriptionPipeline.md §6（取代 SPEC_SubscriptionPaymentRecords.md §4）
 // =================================================================
 
@@ -31149,7 +31149,7 @@ function subscriptionReminderTable(columns, rows) {
 
 /**
  * 核心邏輯：掃描所有訂閱的跟進流程 (cycles；舊資料以 legacyToCycles 即時轉換)，
- * 彙整五類提醒成一封 Email (BCC) 寄給超級管理員/系統管理員，寄送成功後回寫去重紀錄。
+ * 彙整六類提醒成一封 Email (BCC) 寄給超級管理員/系統管理員，寄送成功後回寫去重紀錄。
  */
 async function executeSubscriptionPaymentReminderLogic() {
   const functionName = "subscriptionPaymentReminder";
@@ -31157,9 +31157,7 @@ async function executeSubscriptionPaymentReminderLogic() {
   const pipeline = require("./utils/subscriptionPipeline");
 
   const todayStr = pipeline.taiwanToday();
-  const sentAtIso = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).replace(' ', 'T') + '+08:00';
-  const TIER_LABELS = { d30: '30天前', d14: '14天前', d7: '7天內' };
-  const STAGE_TEXT = { invoice: '待開票', submitted: '待送件', cashed: '待兌現' };
+  const STAGE_TEXT = { request: '待請款', invoice: '待開票', submitted: '待送件', cashed: '待兌現' };
   const tsToYmd = (v) => (v && typeof v.toDate === 'function' ? v.toDate().toISOString().split('T')[0] : (v || ''));
 
   // 「首次有效預約後 N」基準：查各建案最早有效預約日 (快取)
@@ -31187,7 +31185,7 @@ async function executeSubscriptionPaymentReminderLogic() {
     return earliest;
   }
 
-  const sections = { due: [], overdue: [], unsigned: [], renewal: [], followup: [] };
+  const sections = { request: [], late: [], overdue: [], unsigned: [], renewal: [], followup: [] };
   const updatesBySub = new Map(); // subId -> 更新後的 cycles
 
   const subsSnapshot = await anxiDb.collection("subscriptions").get();
@@ -31254,35 +31252,47 @@ async function executeSubscriptionPaymentReminderLogic() {
 
       // 款項：客戶已回簽才提醒
       if (!pipeline.isClosed(c.steps.signed)) return c;
+      // 送件前對照請款日、送件後對照撥款日／票期（與前端「下一步」同一套判斷）
       c.installments = c.installments.map(inst => {
-        const due = pipeline.effectiveDueDate(inst);
-        if (pipeline.isClosed(inst.steps.cashed) || !due) return inst;
-        const diff = pipeline.diffDays(due, todayStr);
-        if (diff === null || diff > 30) return inst;
-        const sent = inst.remindersSent || {};
+        const t = pipeline.installmentTiming(inst, c, ctx, todayStr);
+        if (!t.date || t.days === null) return inst;
+        const sent = { ...(inst.remindersSent || {}) };
         const item = {
           ...base,
           label: inst.label,
-          dueDate: due,
-          diffDays: diff,
+          kind: t.kind,
+          date: t.date,
+          days: t.days,
           amount: Number(inst.amount) || 0,
-          stage: STAGE_TEXT[pipeline.installmentStage(inst)] || '',
+          stage: STAGE_TEXT[t.stage] || '',
         };
-        if (diff >= 0) {
-          let tier = null;
-          if (diff <= 7) { if (!sent.d7) tier = 'd7'; }
-          else if (diff <= 14) { if (!sent.d14) tier = 'd14'; }
-          else if (!sent.d30) tier = 'd30';
-          if (!tier) return inst;
-          sections.due.push({ ...item, tierLabel: TIER_LABELS[tier] });
-          changed = true;
-          return { ...inst, remindersSent: { ...sent, [tier]: sentAtIso } };
+        if (t.stage === 'cashed') {
+          // 逾期未兌現：撥款日／票期當天起，每 7 天一次；日期改了重新計算
+          if (t.days > 0) return inst;
+          if (sent.overdueFor === t.date && sent.overdue && pipeline.diffDays(todayStr, sent.overdue) < 7) return inst;
+          sections.overdue.push(item);
+          sent.overdue = todayStr;
+          sent.overdueFor = t.date;
+        } else if (t.days < 0) {
+          // 已過請款日未送件：每 7 天一次
+          if (sent.late && pipeline.diffDays(todayStr, sent.late) < 7) return inst;
+          sections.late.push(item);
+          sent.late = todayStr;
+        } else {
+          // 即將請款：前 7 天內一次、當天一次；請款日改了重新計算
+          if (t.days > 7) return inst;
+          if (sent.requestFor !== t.date) {
+            sent.request7 = '';
+            sent.request0 = '';
+          }
+          const tier = t.days === 0 ? 'request0' : 'request7';
+          if (sent[tier]) return inst;
+          sections.request.push(item);
+          sent[tier] = todayStr;
+          sent.requestFor = t.date;
         }
-        // 逾期未兌現：每 7 天提醒一次
-        if (sent.overdue && pipeline.diffDays(todayStr, sent.overdue) < 7) return inst;
-        sections.overdue.push(item);
         changed = true;
-        return { ...inst, remindersSent: { ...sent, overdue: todayStr } };
+        return { ...inst, remindersSent: sent };
       });
       return c;
     });
@@ -31324,13 +31334,25 @@ async function executeSubscriptionPaymentReminderLogic() {
     blocks.push(`<h3 style="margin: 18px 0 4px; font-size: 16px; color: ${color};">${title}（${list.length}）</h3>${subscriptionReminderTable(columns, list)}`);
   };
 
-  sections.due.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  sections.overdue.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  pushBlock('繳款即將到期', '#e65100', sections.due, [
+  const byDate = (a, b) => a.date.localeCompare(b.date);
+  const nowrap = () => ' white-space: nowrap;';
+  sections.request.sort(byDate);
+  sections.late.sort(byDate);
+  sections.overdue.sort(byDate);
+  pushBlock('即將請款', '#00838f', sections.request, [
     ...projectCols,
     { title: '期別', key: 'label' },
-    { title: '到期日', key: 'dueDate', style: () => ' white-space: nowrap;' },
-    { title: '剩餘', align: 'center', html: r => `${r.diffDays} 天`, style: r => ` font-weight: bold; color: ${r.diffDays <= 7 ? '#d32f2f' : '#e65100'};` },
+    { title: '請款日', key: 'date', style: nowrap },
+    { title: '剩餘', align: 'center', html: r => (r.days === 0 ? '今天' : `${r.days} 天`), style: r => ` font-weight: bold; color: ${r.days === 0 ? '#e65100' : '#00838f'};` },
+    { title: '金額', align: 'right', html: r => money(r.amount) },
+    { title: '進度', key: 'stage' },
+    { title: '聯絡人', key: 'contactName' },
+  ]);
+  pushBlock('已過請款日未送件', '#e65100', sections.late, [
+    ...projectCols,
+    { title: '期別', key: 'label' },
+    { title: '請款日', key: 'date', style: nowrap },
+    { title: '已過', align: 'center', html: r => `${-r.days} 天`, style: () => ' font-weight: bold; color: #e65100;' },
     { title: '金額', align: 'right', html: r => money(r.amount) },
     { title: '進度', key: 'stage' },
     { title: '聯絡人', key: 'contactName' },
@@ -31338,10 +31360,9 @@ async function executeSubscriptionPaymentReminderLogic() {
   pushBlock('逾期未兌現', '#d32f2f', sections.overdue, [
     ...projectCols,
     { title: '期別', key: 'label' },
-    { title: '到期日', key: 'dueDate', style: () => ' white-space: nowrap;' },
-    { title: '逾期', align: 'center', html: r => `${-r.diffDays} 天`, style: () => ' font-weight: bold; color: #d32f2f;' },
+    { title: '撥款日／票期', html: r => `${escapeSubHtml(r.kind)} ${escapeSubHtml(r.date)}`, style: nowrap },
+    { title: '逾期', align: 'center', html: r => (r.days === 0 ? '今天' : `${-r.days} 天`), style: () => ' font-weight: bold; color: #d32f2f;' },
     { title: '金額', align: 'right', html: r => money(r.amount) },
-    { title: '進度', key: 'stage' },
     { title: '聯絡人', key: 'contactName' },
   ]);
   pushBlock('報價未回簽', '#3949ab', sections.unsigned, [
@@ -31399,7 +31420,7 @@ async function executeSubscriptionPaymentReminderLogic() {
   });
   console.log(`[${functionName}] 已寄送提醒信：${total} 項，收件人 ${recipientEmails.size} 位。`);
 
-  // 寄送成功後回寫去重紀錄 (同時保存舊資料轉換與已解析的預計繳款日)
+  // 寄送成功後回寫去重紀錄 (同時保存舊資料轉換與已解析的預計請款日)
   const batch = anxiDb.batch();
   updatesBySub.forEach((cycles, subId) => {
     batch.update(anxiDb.collection("subscriptions").doc(subId), { cycles: JSON.parse(JSON.stringify(cycles)) });
@@ -31508,6 +31529,19 @@ const salesAi = require("./salesAi");
 salesAi.init({ performCancelPurchase, buildRemarksSummary: buildRemarksSummaryFromNotes, recordSalesStatusChange });
 exports.salesAiAgent = salesAi.salesAiAgent;
 exports.salesAiAdmin = salesAi.salesAiAdmin;
+
+// =================================================================
+// ✅ LINE AI 助理：官方帳號群組／一對一對話記憶、建議回覆、潤稿、來訊通知
+// =================================================================
+const lineAi = require("./lineAi");
+exports.lineAiWebhook = lineAi.lineAiWebhook;
+exports.lineAiProcessEvent = lineAi.lineAiProcessEvent;
+exports.lineAiApi = lineAi.lineAiApi;
+exports.lineAiAdmin = lineAi.lineAiAdmin;
+exports.lineAiNotify = lineAi.lineAiNotify;
+exports.lineAiHourly = lineAi.lineAiHourly;
+exports.lineAiDaily = lineAi.lineAiDaily;
+exports.lineAiDropboxCallback = lineAi.lineAiDropboxCallback;
 
 // 批次開放時同步開啟預約項目的客戶可見性。
 const bookingVisibility = require('./bookingVisibility');

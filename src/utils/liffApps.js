@@ -16,6 +16,7 @@ export const LIFF_IDS = {
   inspectionConsole: '2008257338-QV34v0pb', // 測試 2008257338-6N3jwqxA
   inspectionCalendar: env.DEV ? env.VITE_LIFF_ID_DEV : env.VITE_LIFF_ID_PROD,
   form: env.VITE_LIFF_ID_FORM,
+  lineAi: env.VITE_LIFF_ID_LINE_AI, // Endpoint：https://anxismart.com/?liff_path=line-ai-entry
 };
 
 // 依 LINE Developers 各 LIFF 的 Endpoint（?liff_path=…）；表單 Endpoint 為根目錄，只在登入回跳的 liff.state 出現 /s/…
@@ -29,6 +30,7 @@ const LIFF_ROUTES = [
   [/^\/report-folder-manager(?:\/[^/]+)?$/, 'reportFolder'],
   [/^\/inspection-console(?:\/[^/]+)?$/, 'inspectionConsole'],
   [/^\/liffinspection-calendar$/, 'inspectionCalendar'],
+  [/^\/line-ai-entry$/, 'lineAi'],
   [/^\/s\/[^/]+$/, 'form'],
 ];
 

@@ -64,7 +64,7 @@ const STEP_EXTRAS = {
   signed: {},
   activated: { startDate: '', endDate: '', userCount: 0 },
   invoice: { invoiceNo: '', invoiceAmount: 0 },
-  submitted: {},
+  submitted: { expectedPayDate: '' },
   cashed: { method: '', chequeNo: '', chequeDueDate: '', receivedAmount: 0 },
 };
 
@@ -73,13 +73,18 @@ export const STAGES = [
   { key: 'quote', label: '報價中', color: 'blue-grey' },
   { key: 'signed', label: '待回簽', color: 'indigo' },
   { key: 'activated', label: '待啟用', color: 'purple' },
+  { key: 'request', label: '待請款', color: 'cyan-darken-2' },
   { key: 'invoice', label: '待開票', color: 'orange-darken-2' },
   { key: 'submitted', label: '待送件', color: 'deep-orange' },
   { key: 'cashed', label: '待兌現', color: 'teal' },
   { key: 'done', label: '已結清', color: 'green' },
 ];
 
-export const PROGRESS_LABELS = ['報價', '回簽', '啟用', '繳款日', '發票', '送件', '兌現'];
+// 款項階段：待請款（未到請款日）→ 待開票 → 待送件 → 待兌現 → 已結清
+export const INSTALLMENT_STAGE_KEYS = ['request', 'invoice', 'submitted', 'cashed', 'done'];
+
+// 進度條 7 格；「請款日」於到達請款日（或已提早開票）時亮起
+export const PROGRESS_LABELS = ['報價', '回簽', '啟用', '請款日', '開票', '送件', '兌現'];
 
 export const PAYMENT_METHODS = ['匯款', '支票', '現金'];
 
@@ -139,8 +144,14 @@ export function createInstallment(index, fields = {}) {
     note: '',
     ...fields,
     steps: { invoice: newStep('invoice'), submitted: newStep('submitted'), cashed: newStep('cashed') },
-    remindersSent: { d30: null, d14: null, d7: null, overdue: '' },
+    remindersSent: newRemindersSent(),
   };
+}
+
+// 提醒去重：request7／request0 即將請款（前 7 天內／當天）、late 已過請款日未送件、
+// overdue 逾期未兌現；requestFor／overdueFor 記錄當時的請款日／撥款日（票期），日期改了重新計算
+function newRemindersSent() {
+  return { request7: '', request0: '', requestFor: '', late: '', overdue: '', overdueFor: '' };
 }
 
 function normalizeInstallment(inst, index) {
@@ -153,7 +164,7 @@ function normalizeInstallment(inst, index) {
       submitted: normalizeStep('submitted', steps.submitted),
       cashed: normalizeStep('cashed', steps.cashed),
     },
-    remindersSent: { d30: null, d14: null, d7: null, overdue: '', ...(inst.remindersSent || {}) },
+    remindersSent: { ...newRemindersSent(), ...(inst.remindersSent || {}) },
   };
 }
 
@@ -214,8 +225,6 @@ export function legacyToCycles(sub) {
         inst.steps.submitted = doneStep('submitted', '');
         inst.steps.cashed = doneStep('cashed', r.paidDate, { receivedAmount: amount });
       }
-      const sent = r.remindersSent || {};
-      inst.remindersSent = { d30: sent.d30 || null, d14: sent.d14 || null, d7: sent.d7 || null, overdue: '' };
       return inst;
     });
   return [cycle];
@@ -267,7 +276,7 @@ export function planText(inst) {
   return `${base} ${n} ${inst.offsetUnit === 'month' ? '個月' : '天'}`;
 }
 
-// --- 預計繳款日 ---
+// --- 預計請款日 ---
 // ctx: { firstAppointmentDate: 'YYYY-MM-DD' }
 export function baseDateOf(inst, cycle, ctx = {}) {
   const steps = cycle.steps;
@@ -293,7 +302,7 @@ export function computeDueDate(inst, cycle, ctx = {}) {
   return inst.offsetUnit === 'month' ? addMonths(base, n) : addDays(base, n);
 }
 
-// 補上「基準日已知但尚未帶入」的預計繳款日
+// 補上「基準日已知但尚未帶入」的預計請款日
 export function resolveDueDates(cycle, ctx = {}) {
   let changed = false;
   const installments = cycle.installments.map(inst => {
@@ -306,61 +315,98 @@ export function resolveDueDates(cycle, ctx = {}) {
   return { cycle: changed ? { ...cycle, installments } : cycle, changed };
 }
 
-// 已收支票者以票期為準，其餘為預計繳款日
-export function effectiveDueDate(inst) {
-  return (inst.steps && inst.steps.cashed && inst.steps.cashed.chequeDueDate) || inst.dueDate || '';
-}
-
-export function installmentStage(inst) {
-  for (const key of INSTALLMENT_STEP_KEYS) {
-    if (!isClosed(inst.steps[key])) return key;
-  }
+// 款項目前階段（due 傳入已推算的預計請款日）；發票可提早開，開了就往下走
+export function installmentStage(inst, due = inst.dueDate, today = taiwanToday()) {
+  const s = inst.steps;
+  if (!isClosed(s.invoice)) return due && diffDays(today, due) >= 0 ? 'invoice' : 'request';
+  if (!isClosed(s.submitted)) return 'submitted';
+  if (!isClosed(s.cashed)) return 'cashed';
   return 'done';
 }
 
+// 款項目前要對照的日期與天數：
+// 送件前看預計請款日（到了／過了 → late）；送件後看票期（已收支票）或預計撥款日（過了 → overdue），
+// 兩者皆無則顯示已送件天數
+// 回傳 { stage, kind, date, days, text, tone: 'grey'|'orange'|'red', late, overdue }
+export function installmentTiming(inst, cycle, ctx = {}, today = taiwanToday()) {
+  const due = inst.dueDate || computeDueDate(inst, cycle, ctx);
+  const stage = installmentStage(inst, due, today);
+  const t = { stage, kind: '', date: '', days: null, text: '', tone: 'grey', late: false, overdue: false };
+  if (stage === 'done') return t;
+
+  if (stage === 'cashed') {
+    const { cashed, submitted } = inst.steps;
+    t.date = cashed.chequeDueDate || submitted.expectedPayDate || '';
+    if (!t.date) {
+      const sentDays = diffDays(today, submitted.date);
+      t.text = sentDays !== null ? `已送件 ${sentDays} 天` : '撥款日待定';
+      return t;
+    }
+    t.kind = cashed.chequeDueDate ? '票期' : '預計撥款';
+    t.days = diffDays(t.date, today);
+    t.text = t.days < 0 ? `逾期 ${-t.days} 天` : (t.days === 0 ? '今天' : `${t.days} 天後`);
+    t.overdue = t.days < 0;
+    t.tone = t.overdue ? 'red' : (t.days === 0 ? 'orange' : 'grey');
+    return t;
+  }
+
+  if (!due) {
+    t.text = `請款日待定（${planText(inst)}）`;
+    return t;
+  }
+  t.kind = '請款日';
+  t.date = due;
+  t.days = diffDays(due, today);
+  t.text = t.days < 0 ? `已過 ${-t.days} 天` : (t.days === 0 ? '今天' : `${t.days} 天後`);
+  t.late = t.days <= 0;
+  t.tone = t.late ? 'orange' : 'grey';
+  return t;
+}
+
+export function timingLabel(t) {
+  return t.date ? `${t.kind} ${t.date} · ${t.text}` : t.text;
+}
+
 // --- 列表摘要 ---
-// 回傳 { stage, progress(0-7), action, installment, date, hint, overdue }
+// 回傳 { stage, progress(0-7), action, installment, installmentNo, installmentCount, date, hint, tone, overdue }
 export function cycleSummary(cycle, ctx = {}, today = taiwanToday()) {
+  const base = { installment: null, installmentNo: 0, installmentCount: 0, date: '', tone: 'grey', overdue: false };
   if (!cycle) {
-    return { stage: 'quote', progress: 0, action: '製作報價', installment: null, date: '', hint: '尚未開始', overdue: false };
+    return { ...base, stage: 'quote', progress: 0, action: '製作報價', hint: '尚未開始' };
   }
   const s = cycle.steps;
   if (!isClosed(s.quote)) {
-    return { stage: 'quote', progress: 0, action: '製作報價', installment: null, date: '', hint: cycle.quote ? '報價單草稿' : '尚未報價', overdue: false };
+    return { ...base, stage: 'quote', progress: 0, action: '製作報價', hint: cycle.quote ? '報價單草稿' : '尚未報價' };
   }
   if (!isClosed(s.signed)) {
     const d = s.quote.date ? diffDays(today, s.quote.date) : null;
+    const overdue = d !== null && d >= 7;
     return {
-      stage: 'signed', progress: 1, action: '客戶回簽', installment: null, date: '',
-      hint: d !== null ? `已報價 ${d} 天` : '', overdue: d !== null && d >= 7,
+      ...base, stage: 'signed', progress: 1, action: '客戶回簽',
+      hint: d !== null ? `已報價 ${d} 天` : '', tone: overdue ? 'red' : 'grey', overdue,
     };
   }
   if (!isClosed(s.activated)) {
     const d = s.signed.date ? diffDays(today, s.signed.date) : null;
-    return {
-      stage: 'activated', progress: 2, action: '系統啟用', installment: null, date: '',
-      hint: d !== null ? `已回簽 ${d} 天` : '', overdue: false,
-    };
+    return { ...base, stage: 'activated', progress: 2, action: '系統啟用', hint: d !== null ? `已回簽 ${d} 天` : '' };
   }
-  const current = cycle.installments.find(i => !isClosed(i.steps.cashed));
+  const list = cycle.installments;
+  const current = list.find(i => !isClosed(i.steps.cashed));
   if (!current) {
-    const n = cycle.installments.length;
-    return { stage: 'done', progress: 7, action: '', installment: null, date: '', hint: n ? `${n} 期已結清` : '無款項紀錄', overdue: false };
+    return { ...base, stage: 'done', progress: 7, action: '', hint: list.length ? `${list.length} 期已結清` : '無款項紀錄' };
   }
-  const stage = installmentStage(current);
-  const due = current.dueDate || computeDueDate(current, cycle, ctx);
-  const progress = 3 + (due ? 1 : 0)
-    + (isClosed(current.steps.invoice) ? 1 : 0)
-    + (isClosed(current.steps.submitted) ? 1 : 0);
-  const cheque = stage === 'cashed' ? current.steps.cashed.chequeDueDate : '';
+  const t = installmentTiming(current, cycle, ctx, today);
   return {
-    stage,
-    progress,
-    action: STEP_LABELS[stage],
+    stage: t.stage,
+    progress: 3 + INSTALLMENT_STAGE_KEYS.indexOf(t.stage),
+    action: STEP_LABELS[t.stage === 'request' ? 'invoice' : t.stage],
     installment: current,
-    date: cheque || due,
-    hint: cheque ? '支票到期' : (due ? '' : `繳款日待定（${planText(current)}）`),
-    overdue: !!(cheque || due) && diffDays(cheque || due, today) < 0,
+    installmentNo: list.indexOf(current) + 1,
+    installmentCount: list.length,
+    date: t.date,
+    hint: timingLabel(t),
+    tone: t.tone,
+    overdue: t.overdue,
   };
 }
 

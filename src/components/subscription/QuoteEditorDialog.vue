@@ -5,7 +5,7 @@
       <div class="qe-toolbar">
         <v-icon size="18" class="qe-toolbar-icon">mdi-file-document-edit-outline</v-icon>
         <div class="qe-title">
-          <span class="qe-title-main">報價單</span>
+          <span class="qe-title-main">{{ quoteTitle(draft) }}</span>
           <span class="qe-title-sub">{{ subscription.projectName }} · {{ subscription.systemFunction }}</span>
           <span class="qe-badge">v{{ draft.version }}</span>
         </div>
@@ -19,6 +19,11 @@
           <v-progress-circular v-if="busy === 'pdf'" indeterminate size="14" width="2"></v-progress-circular>
           <v-icon v-else size="16">mdi-file-pdf-box</v-icon>
           <span class="qe-btn-text">PDF</span>
+        </button>
+        <button type="button" class="mac-btn" title="列印" :disabled="!!busy" @click="print">
+          <v-progress-circular v-if="busy === 'print'" indeterminate size="14" width="2"></v-progress-circular>
+          <v-icon v-else size="16">mdi-printer-outline</v-icon>
+          <span class="qe-btn-text">列印</span>
         </button>
         <button type="button" class="mac-btn mac-btn--primary" :disabled="!!busy" @click="save">
           <v-progress-circular v-if="busy === 'save'" indeterminate size="14" width="2"></v-progress-circular>
@@ -51,11 +56,24 @@
 
           <div class="mac-form-label">基本</div>
           <div class="mac-form-group">
+            <div class="mac-form-row">
+              <span class="mac-form-row-label">標題</span>
+              <div class="mac-form-seg mac-form-seg--block" role="tablist">
+                <button
+                  v-for="t in QUOTE_TITLES"
+                  :key="t"
+                  type="button"
+                  class="mac-form-seg-btn"
+                  :class="{ 'is-active': quoteTitle(draft) === t }"
+                  @click="draft.title = t"
+                >{{ t }}</button>
+              </div>
+            </div>
             <label class="mac-form-row">
-              <span class="mac-form-row-label">報價日期</span>
+              <span class="mac-form-row-label">日期</span>
               <input v-model="draft.date" type="date" class="mac-form-input" />
             </label>
-            <label class="mac-form-row">
+            <label v-if="!isInvoice" class="mac-form-row">
               <span class="mac-form-row-label">有效天數</span>
               <span class="mac-form-input mac-form-unit"><input v-model.number="draft.validDays" type="number" min="0" /><span>天</span></span>
             </label>
@@ -63,7 +81,11 @@
 
           <div class="mac-form-label">買受人</div>
           <div class="mac-form-group">
-            <label class="mac-form-row"><span class="mac-form-row-label">公司名稱</span><input v-model="draft.billTo.name" class="mac-form-input" /></label>
+            <label class="mac-form-row">
+              <span class="mac-form-row-label">公司名稱</span>
+              <input v-model="draft.billTo.name" class="mac-form-input" autocomplete="off" />
+              <BillToSuggest :query="draft.billTo.name" :history="billToHistory" @select="applyBillTo" />
+            </label>
             <label class="mac-form-row"><span class="mac-form-row-label">統編</span><input v-model="draft.billTo.taxId" class="mac-form-input" /></label>
             <label class="mac-form-row"><span class="mac-form-row-label">聯絡人</span><input v-model="draft.billTo.contactName" class="mac-form-input" /></label>
             <label class="mac-form-row"><span class="mac-form-row-label">電話</span><input v-model="draft.billTo.phone" class="mac-form-input" /></label>
@@ -237,16 +259,29 @@
         </div>
         <div class="mac-form qe-dialog-body">
           <div class="mac-form-group">
-            <label class="mac-form-row">
+            <div v-if="existingTemplates.length" class="mac-form-row">
+              <span class="mac-form-row-label">存成</span>
+              <div class="mac-form-seg mac-form-seg--block" role="tablist">
+                <button type="button" class="mac-form-seg-btn" :class="{ 'is-active': templateMode === 'new' }" @click="templateMode = 'new'">新範本</button>
+                <button type="button" class="mac-form-seg-btn" :class="{ 'is-active': templateMode === 'overwrite' }" @click="templateMode = 'overwrite'">覆蓋已存</button>
+              </div>
+            </div>
+            <label v-if="templateMode === 'new'" class="mac-form-row">
               <span class="mac-form-row-label">範本名稱</span>
-              <input v-model="templateName" class="mac-form-input" autofocus @keydown.enter="templateName.trim() && saveTemplate()" />
+              <input v-model="templateName" class="mac-form-input" autofocus @keydown.enter="templateSaveName && saveTemplate()" />
+            </label>
+            <label v-else class="mac-form-row">
+              <span class="mac-form-row-label">範本</span>
+              <select v-model="templateTarget" class="mac-form-input mac-form-select">
+                <option v-for="t in existingTemplates" :key="t.name" :value="t.name">{{ t.name }}</option>
+              </select>
             </label>
           </div>
         </div>
         <div class="mac-sheet-foot">
           <button type="button" class="mac-btn" @click="templateDialog = false">取消</button>
           <span class="mac-spacer"></span>
-          <button type="button" class="mac-btn mac-btn--primary" :disabled="!templateName.trim()" @click="saveTemplate">儲存</button>
+          <button type="button" class="mac-btn mac-btn--primary" :disabled="!templateSaveName" @click="saveTemplate">儲存</button>
         </div>
       </v-card>
     </v-dialog>
@@ -260,8 +295,10 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import QuoteSheet from './QuoteSheet.vue';
 import QuoteImageLibrary from './QuoteImageLibrary.vue';
+import BillToSuggest from './BillToSuggest.vue';
 import { quoteTotals, buildInstallments, PLAN_BASES } from '@/utils/subscriptionPipeline';
-import { quoteFileBase } from './quoteDefaults';
+import { printImage } from '@/utils/printImageA3';
+import { quoteFileBase, quoteTitle, QUOTE_TITLES } from './quoteDefaults';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -269,6 +306,7 @@ const props = defineProps({
   quote: { type: Object, default: null },
   settings: { type: Object, required: true },
   copySources: { type: Array, default: () => [] },
+  billToHistory: { type: Array, default: () => [] },
   onSave: { type: Function, required: true },          // async (quote)
   onAttachPdf: { type: Function, required: true },     // async (blob, fileName, quote)
   onSaveTemplate: { type: Function, required: true },  // async (kind: 'plan'|'notes', name, value)
@@ -284,6 +322,9 @@ const OFFSET_UNITS = [{ value: 'day', title: '天' }, { value: 'month', title: '
 const templateDialog = ref(false);
 const templateKind = ref('plan');
 const templateName = ref('');
+const templateMode = ref('new');       // new | overwrite
+const templateTarget = ref('');
+const appliedTemplate = ref({ notes: '', plan: '' });  // 最近套用的範本，存範本時預設覆蓋它
 const imagePicker = ref(false);
 const previewSheet = ref(null);
 const previewPane = ref(null);
@@ -305,12 +346,14 @@ watch(() => props.modelValue, (open) => {
   if (!open) return;
   draft.value = clone(props.quote);
   if (!Array.isArray(draft.value.images)) draft.value.images = [];
+  appliedTemplate.value = { notes: '', plan: '' };
   savedSnapshot.value = contentOf(draft.value);
   mobileTab.value = 'edit';
   nextTick(() => setTimeout(observePreview, 50));
 }, { immediate: true });
 
 const totals = computed(() => quoteTotals(draft.value));
+const isInvoice = computed(() => quoteTitle(draft.value) === '請款單');
 // 拆期試算（金額為 0 的列不產生款項，對應回原列）
 const planPreview = computed(() => {
   const plan = draft.value?.plan || [];
@@ -332,6 +375,10 @@ function money(n) {
   return `$${(Number(n) || 0).toLocaleString()}`;
 }
 
+function applyBillTo(b) {
+  draft.value.billTo = { name: b.name, taxId: b.taxId, contactName: b.contactName, phone: b.phone };
+}
+
 function addItem() {
   draft.value.items.push({ name: '', desc: '', amount: 0 });
 }
@@ -348,6 +395,7 @@ function addPlanRow() {
 
 function applyTemplate(t) {
   draft.value.plan = clone(t.plan || []);
+  appliedTemplate.value.plan = t.name;
 }
 
 function applyCopy(src) {
@@ -370,18 +418,33 @@ function applyNoteTemplate(t) {
   const current = (draft.value.notes || '').trim();
   if (current && current !== t.content.trim() && !confirm(`以「${t.name}」取代目前的備註說明？`)) return;
   draft.value.notes = t.content;
+  appliedTemplate.value.notes = t.name;
 }
+
+const existingTemplates = computed(() => (
+  (templateKind.value === 'notes' ? props.settings.noteTemplates : props.settings.planTemplates) || []
+));
+const templateSaveName = computed(() => (
+  templateMode.value === 'new' ? templateName.value.trim() : templateTarget.value
+));
 
 function openTemplateDialog(kind) {
   templateKind.value = kind;
   templateName.value = '';
+  const applied = appliedTemplate.value[kind];
+  const hasApplied = existingTemplates.value.some(t => t.name === applied);
+  templateMode.value = hasApplied ? 'overwrite' : 'new';
+  templateTarget.value = hasApplied ? applied : (existingTemplates.value[0]?.name || '');
   templateDialog.value = true;
 }
 
 async function saveTemplate() {
+  const name = templateSaveName.value;
+  if (templateMode.value === 'new' && existingTemplates.value.some(t => t.name === name) && !confirm(`「${name}」已存在，要覆蓋嗎？`)) return;
   const value = templateKind.value === 'notes' ? draft.value.notes : clone(draft.value.plan);
   try {
-    await props.onSaveTemplate(templateKind.value, templateName.value.trim(), value);
+    await props.onSaveTemplate(templateKind.value, name, value);
+    appliedTemplate.value[templateKind.value] = name;
     templateDialog.value = false;
   } catch (e) {
     alert('儲存範本失敗：' + e.message);
@@ -522,8 +585,29 @@ async function downloadPng() {
   }
 }
 
+async function print() {
+  busy.value = 'print';
+  try {
+    await persistIfDirty();
+    const canvas = await renderCanvas();
+    // A4 直式滿版，與 PDF 相同：寬度貼齊、過高時以高度為限
+    printImage(canvas.toDataURL('image/png'), {
+      page: 'A4 portrait',
+      area: { w: 210, h: 296 },
+      align: 'top',
+      title: quoteFileBase(draft.value, props.subscription),
+      onError: () => alert('列印失敗'),
+    });
+  } catch (e) {
+    console.error('報價單列印失敗:', e);
+    alert('列印失敗：' + e.message);
+  } finally {
+    busy.value = '';
+  }
+}
+
 function close() {
-  if (contentOf(draft.value) !== savedSnapshot.value && !confirm('報價單尚未儲存，確定關閉？')) return;
+  if (contentOf(draft.value) !== savedSnapshot.value && !confirm(`${quoteTitle(draft.value)}尚未儲存，確定關閉？`)) return;
   emit('update:modelValue', false);
 }
 </script>
@@ -748,6 +832,10 @@ function close() {
   .qe-toolbar {
     padding-left: 52px;
   }
+  .qe-toolbar .mac-btn {
+    padding: 0 8px;
+  }
+  .qe-toolbar-icon,
   .qe-btn-text,
   .qe-title-sub {
     display: none;

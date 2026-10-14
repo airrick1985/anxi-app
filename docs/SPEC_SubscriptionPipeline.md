@@ -1,8 +1,8 @@
 # SPEC：訂閱管理 — 跟進流程（報價 → 兌現）
 
-> 版本：v1.0
-> 日期：2026-10-02（台北時間）
-> 狀態：已確認（2026-10-02 與需求方逐輪確認）
+> 版本：v1.1
+> 日期：2026-10-14（台北時間）
+> 狀態：已確認（2026-10-02 與需求方逐輪確認；2026-10-14 重新釐清款項階段、下一步與天數計算）
 > 取代：`SPEC_SubscriptionPaymentRecords.md` 的 `paymentRecords`（舊資料經 §8 轉換後改走本規格）
 
 ---
@@ -16,15 +16,31 @@
 | 輪次 | `quote` | 報價 | 系統內報價單（§4）；下載 PDF 自動存為本步附件 |
 | 輪次 | `signed` | 客戶回簽 | — |
 | 輪次 | `activated` | 系統啟用 | `startDate`、`endDate`、`userCount` → 寫回訂閱期間與人數方案 |
-| 每期款 | （欄位）`dueDate` | 預計繳款日 | 依付款條件自動計算，可手動改 |
+| 每期款 | （欄位）`dueDate` | 預計請款日 | 依付款條件自動計算，可手動改 |
 | 每期款 | `invoice` | 開立發票 | `invoiceNo`、`invoiceAmount` |
-| 每期款 | `submitted` | 請款送件 | — |
+| 每期款 | `submitted` | 請款送件 | `expectedPayDate`（預計撥款日，選填） |
 | 每期款 | `cashed` | 款項兌現 | `method`（匯款／支票／現金）、`chequeNo`、`chequeDueDate`、`receivedAmount` |
 
 - 每步共通：`date`、`note`、`attachments[]`、`by`／`byName`／`at`（操作人與時間）。
 - 依序完成；可「略過」（必填原因，`status: 'skipped'`）；可撤銷「其後步驟皆未完成」的步驟。
 - 款項步驟需本輪「系統啟用」已完成或略過。
 - 完成／略過／撤銷皆自動寫一筆系統跟進紀錄。
+
+### 1.1 款項階段與天數（`installmentTiming`，前端列表／抽屜與後端提醒共用）
+
+流程：新增款項 → 預計請款日 → 開立發票 → 請款送件 → 款項兌現。
+
+| 階段 | 條件 | 下一步 | 對照日期 | 顯示 |
+|---|---|---|---|---|
+| 待請款 | 未開票，且請款日未到或未定 | 開立發票 | 預計請款日 | 灰「N 天後」；未定顯示「請款日待定（付款條件）」 |
+| 待開票 | 未開票，今天 ≥ 請款日 | 開立發票 | 預計請款日 | 橘「今天」／「已過 N 天」（該請款） |
+| 待送件 | 已開票（可提早開） | 請款送件 | 預計請款日 | 未到灰、到了或過了橘 |
+| 待兌現 | 已送件 | 款項兌現 | 票期（已收支票）＞預計撥款日 | 未到灰、當天橘、過了紅「逾期 N 天」；皆未填顯示「已送件 N 天」 |
+| 已結清 | 各期皆兌現 | — | — | — |
+
+- 逾期（紅字、計入階段卡逾期數）只有「待兌現且已過撥款日／票期」；過請款日未送件為橘字「該請款」，不算逾期。
+- 待回簽：報價滿 7 天未回簽仍標逾期（不變）。
+- 進度條 7 格：報價／回簽／啟用／請款日／開票／送件／兌現；「請款日」於到達請款日或已提早開票時亮起。多期時顯示「2/3 期」。
 
 ## 2. 資料模型（Firestore `anxi-app`）
 
@@ -57,7 +73,7 @@
   "base": "signed|activated|firstAppointment|date", "offset": 0, "offsetUnit": "day|month", "fixedDate": "",
   "dueDate": "",
   "steps": { "invoice": Step, "submitted": Step, "cashed": Step },
-  "remindersSent": { "d30": null, "d14": null, "d7": null, "overdue": "" } }
+  "remindersSent": { "request7": "", "request0": "", "requestFor": "", "late": "", "overdue": "", "overdueFor": "" } }
 ```
 
 - 報價儲存時，若本輪所有款項皆無進度 → 依付款條件重建 `installments`。
@@ -73,8 +89,8 @@
 
 ## 3. 列表
 
-- 階段卡：全部／報價中／待回簽／待啟用／待開票／待送件／待兌現／已結清；顯示數量與逾期數，點選即篩選。
-- 新欄位：進度（7 段進度條＋階段）、下一步（文字＋日期，逾期紅字）、下次跟進。
+- 階段卡：全部／報價中／待回簽／待啟用／待請款／待開票／待送件／待兌現／已結清；顯示數量與逾期數，點選即篩選。
+- 新欄位：進度（7 段進度條＋階段＋多期時「N/M 期」）、下一步（動作＋期別金額，第二行依 §1.1 顯示對照日期與天數）、下次跟進。
 - 點列開右側抽屜（手機全寬）：「流程」「跟進紀錄」兩頁籤，頂部可開「訂閱資料」編輯。
 
 ## 4. 報價單
@@ -105,8 +121,9 @@
 
 | 區塊 | 條件 | 去重 |
 |---|---|---|
-| 繳款即將到期 | 未兌現、`0 ≤ dueDate − today ≤ 30`，級距 30/14/7 | `remindersSent.d30/d14/d7` |
-| 逾期未兌現 | 未兌現、`dueDate < today` | `remindersSent.overdue` 距今 ≥ 7 天才再寄 |
+| 即將請款 | 未送件、`0 ≤ 請款日 − today ≤ 7` | 7 天內一次（`request7`）、當天一次（`request0`）；`requestFor` 與目前請款日不同時重新計算 |
+| 已過請款日未送件 | 未送件、`請款日 < today` | `remindersSent.late` 距今 ≥ 7 天才再寄 |
+| 逾期未兌現 | 已送件未兌現、`票期／預計撥款日 ≤ today` | `remindersSent.overdue` 距今 ≥ 7 天才再寄；`overdueFor` 與目前日期不同時重新提醒 |
 | 報價未回簽 | 報價完成 ≥ 7 天、未回簽 | `reminders.unsigned` 距今 ≥ 7 天才再寄 |
 | 續約提醒 | 目前輪已啟用、`endDate − today` 於 (30,60] / [0,30] | `reminders.renewal.d60/d30` |
 | 今日待跟進 | `nextFollowUpDate ≤ today` | 不去重（新增跟進後自動消失） |
@@ -115,9 +132,11 @@
 
 沿用 `超級管理員`、`系統管理員`。附件單檔上限 7MB。
 
+附件上傳統一用 `UploadDropZone`：拍照（手機開系統相機、桌機開視訊鏡頭）／圖片／檔案、拖曳、滑鼠停在框上按 Ctrl/⌘+V 貼上截圖；逐檔上傳顯示進度，失敗可重試。JPEG 超過 1.5MB 或長邊 > 2400px 先縮到 2400px，HEIC 轉 JPEG，PNG／WebP 保留透明、僅超過 7MB 才縮小。
+
 ## 8. 舊資料轉換
 
 `scripts/migrateSubscriptionPipeline.mjs`（dry-run 預設，`--apply` 寫入）：
 - 無 `cycles` 的訂閱 → 第 1 輪；報價／回簽／啟用標 `done`（日期 = 啟用日，備註「舊資料轉換」）。
-- `paymentRecords` → 各期款：`agreedDate` → `dueDate`（base `date`）；`invoiceIssued` → 發票 done；`paidDate` → 兌現 done（發票、送件未記錄者標 done 無日期）；`remindersSent` 沿用。
+- `paymentRecords` → 各期款：`agreedDate` → `dueDate`（base `date`）；`invoiceIssued` → 發票 done；`paidDate` → 兌現 done（發票、送件未記錄者標 done 無日期）；提醒去重紀錄重新開始。
 - 前後端另有相同的即時轉換（`legacyToCycles`），未跑腳本也能正確顯示與提醒。

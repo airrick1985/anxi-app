@@ -120,6 +120,7 @@
               {{ stageMeta(item.pipeline.stage).label }}
             </v-chip>
             <span v-if="item.cycles.length > 1" class="text-caption text-grey">第{{ item.cycles[item.cycles.length - 1].no }}輪</span>
+            <span v-if="item.pipeline.installmentCount > 1" class="text-caption text-grey">{{ item.pipeline.installmentNo }}/{{ item.pipeline.installmentCount }} 期</span>
           </div>
           <div class="progress-bar mt-1" :title="PROGRESS_LABELS.join(' → ')">
             <span
@@ -138,7 +139,7 @@
                 {{ item.pipeline.installment.label }} · ${{ (Number(item.pipeline.installment.amount) || 0).toLocaleString() }}
               </span>
             </div>
-            <div class="text-caption text-no-wrap" :class="nextHint(item).class">{{ nextHint(item).text }}</div>
+            <div class="text-caption text-no-wrap" :class="TONE_CLASS[item.pipeline.tone]">{{ item.pipeline.hint }}</div>
           </template>
           <span v-else class="text-caption text-grey">{{ item.pipeline.hint }}</span>
         </template>
@@ -254,24 +255,19 @@
               ></v-select>
             </v-col>
             <v-col cols="12" sm="6">
-              <v-file-input
-                v-model="fileToUpload"
-                label="建案圖示"
-                accept="image/png, image/jpeg, image/gif"
-                prepend-icon=""
-                prepend-inner-icon="mdi-image-area"
-                variant="outlined"
-                density="compact"
-                clearable
-              >
-                <template v-if="iconPreviewUrl" v-slot:append>
-                  <v-avatar size="40" rounded><v-img :src="iconPreviewUrl" cover></v-img></v-avatar>
-                </template>
-              </v-file-input>
+              <div class="text-caption text-medium-emphasis mb-1">建案圖示</div>
+              <div class="d-flex align-center flex-wrap ga-2">
+                <v-avatar v-if="iconPreviewUrl" size="56" rounded><v-img :src="iconPreviewUrl" cover></v-img></v-avatar>
+                <UploadDropZone accept="image/png,image/jpeg,image/gif" :multiple="false" @files="onIconFiles" />
+                <v-btn v-if="fileToUpload" icon="mdi-close" size="small" variant="text" @click="fileToUpload = null"></v-btn>
+              </div>
             </v-col>
 
             <v-col cols="12"><div class="form-section">買受人</div></v-col>
-            <v-col cols="12" sm="8"><v-text-field v-model="editedItem.billTo.name" label="公司名稱" variant="outlined" density="compact" hide-details></v-text-field></v-col>
+            <v-col cols="12" sm="8">
+              <v-text-field v-model="editedItem.billTo.name" label="公司名稱" variant="outlined" density="compact" hide-details autocomplete="off"></v-text-field>
+              <BillToSuggest :query="editedItem.billTo.name" :history="billToHistory" @select="applyBillTo" />
+            </v-col>
             <v-col cols="12" sm="4"><v-text-field v-model="editedItem.billTo.taxId" label="統編" variant="outlined" density="compact" hide-details></v-text-field></v-col>
             <v-col cols="12" sm="4"><v-text-field v-model="editedItem.contactName" label="聯絡人" variant="outlined" density="compact" hide-details></v-text-field></v-col>
             <v-col cols="12" sm="4"><v-text-field v-model="editedItem.contactPhone" label="聯絡人手機" variant="outlined" density="compact" hide-details></v-text-field></v-col>
@@ -366,6 +362,7 @@
       :first-appointment-date="drawerSub ? earliestAppointmentMap[drawerSub.projectId] || '' : ''"
       :settings="quoteSettings"
       :copy-sources="copySources"
+      :bill-to-history="billToHistory"
       :user="currentUser"
       :admin-key="adminKey"
       :project-id-validator="(id, s) => projectIdError(id, s.projectName, s.id, true)"
@@ -407,7 +404,10 @@ import {
 import PipelineDrawer from '@/components/subscription/PipelineDrawer.vue';
 import QuoteSettingsDialog from '@/components/subscription/QuoteSettingsDialog.vue';
 import AttachmentField from '@/components/subscription/AttachmentField.vue';
+import UploadDropZone from '@/components/subscription/UploadDropZone.vue';
+import BillToSuggest from '@/components/subscription/BillToSuggest.vue';
 import { mergeQuoteSettings } from '@/components/subscription/quoteDefaults';
+import { prepareImageForUpload } from '@/utils/canvasCompress';
 
 const userStore = useUserStore();
 const adminKey = computed(() => userStore.user?.key);
@@ -535,14 +535,8 @@ function relativeText(dateStr) {
   return { text: `${d} 天後`, class: d <= 30 ? 'text-orange' : 'text-grey' };
 }
 
-function nextHint(item) {
-  const p = item.pipeline;
-  if (p.date) {
-    const rel = relativeText(p.date);
-    return { text: `${p.hint ? `${p.hint} ` : ''}${p.date} · ${rel.text}`, class: rel.class };
-  }
-  return { text: p.hint, class: p.overdue ? 'text-red' : 'text-grey' };
-}
+// 下一步提示色：灰＝尚未到、橘＝該請款／今天、紅＝逾期
+const TONE_CLASS = { grey: 'text-grey', orange: 'text-orange-darken-2', red: 'text-red' };
 
 function followUpHint(item) {
   return relativeText(item.nextFollowUpDate);
@@ -555,13 +549,13 @@ function earliestElapsedText(item) {
   return `已過 ${-diff} 天`;
 }
 
-// 「最早有效預約」與目前款項預計繳款日的差異
+// 「最早有效預約」與目前款項預計請款日的差異
 function earliestVsDueText(item) {
   const due = item.pipeline.installment?.dueDate;
   if (!due || !item.earliestAppointmentDate) return '';
   const diff = diffDays(due, item.earliestAppointmentDate);
-  if (diff === 0) return '與繳款日同日';
-  return diff > 0 ? `繳款日晚 ${diff} 天` : `繳款日早 ${-diff} 天`;
+  if (diff === 0) return '與請款日同日';
+  return diff > 0 ? `請款日晚 ${diff} 天` : `請款日早 ${-diff} 天`;
 }
 
 // --- 抽屜 ---
@@ -586,6 +580,32 @@ const copySources = computed(() => {
   });
   return list.sort((a, b) => (b.quote.date || '').localeCompare(a.quote.date || ''));
 });
+
+// 歷史買受人：同公司名稱＋統編合併為一筆
+const billToHistory = computed(() => {
+  const map = new Map();
+  subscriptions.value.forEach(s => {
+    const name = (s.billTo?.name || '').trim();
+    if (!name) return;
+    const taxId = (s.billTo.taxId || '').trim();
+    const key = `${name}|${taxId}`;
+    const prev = map.get(key);
+    map.set(key, {
+      key,
+      name,
+      taxId,
+      contactName: prev?.contactName || s.billTo.contactName || s.contactName || '',
+      phone: prev?.phone || s.billTo.phone || s.contactPhone || '',
+    });
+  });
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+});
+
+function applyBillTo(b) {
+  editedItem.value.billTo = { ...editedItem.value.billTo, name: b.name, taxId: b.taxId };
+  editedItem.value.contactName = b.contactName;
+  editedItem.value.contactPhone = b.phone;
+}
 
 // --- 資料載入 ---
 function userLimitOf(tiers) {
@@ -689,6 +709,10 @@ watch(fileToUpload, (newFile) => {
   const file = Array.isArray(newFile) ? newFile[0] : newFile;
   if (file) newIconPreview.value = URL.createObjectURL(file);
 });
+
+async function onIconFiles(files) {
+  fileToUpload.value = await prepareImageForUpload(files[0]);
+}
 
 const subscriptionTypeOptions = ['月繳', '年繳', '季繳', '試用', '其他'];
 const subscriptionTypeSelection = ref('');

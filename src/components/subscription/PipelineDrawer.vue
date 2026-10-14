@@ -89,7 +89,7 @@
                   color="primary"
                   prepend-icon="mdi-file-document-edit-outline"
                   @click="openQuote"
-                >報價單</v-btn>
+                >{{ quoteTitle(cycle.quote) }}</v-btn>
                 <v-btn
                   v-if="cycleStepState(key) === 'current'"
                   size="small"
@@ -131,11 +131,14 @@
                     <span class="font-weight-bold">{{ inst.label }}</span>
                     <span class="text-body-2">{{ money(inst.amount) }}</span>
                     <v-spacer></v-spacer>
-                    <template v-if="inst.dueDate">
-                      <span class="text-body-2">預計 {{ inst.dueDate }}</span>
-                      <v-chip v-if="dueChip(inst)" :color="dueChip(inst).color" size="x-small" label>{{ dueChip(inst).text }}</v-chip>
-                    </template>
-                    <span v-else class="text-caption text-grey">繳款日待定</span>
+                    <span v-if="inst.dueDate" class="text-body-2">請款日 {{ inst.dueDate }}</span>
+                    <span v-else class="text-caption text-grey">請款日待定</span>
+                    <v-chip
+                      v-if="timings[inst.id].kind === '請款日'"
+                      :color="CHIP_COLORS[timings[inst.id].tone]"
+                      size="x-small"
+                      label
+                    >{{ timings[inst.id].text }}</v-chip>
                   </div>
                   <v-menu>
                     <template v-slot:activator="{ props: menuProps }">
@@ -184,6 +187,10 @@
                   </v-menu>
                 </div>
 
+                <div v-if="timings[inst.id].stage === 'cashed'" class="d-flex align-center ga-2 mt-2">
+                  <span v-if="timings[inst.id].date" class="text-body-2">{{ timings[inst.id].kind }} {{ timings[inst.id].date }}</span>
+                  <v-chip :color="CHIP_COLORS[timings[inst.id].tone]" size="x-small" label>{{ timings[inst.id].text }}</v-chip>
+                </div>
                 <div v-for="(line, i) in instLines(inst)" :key="i" class="text-caption text-grey-darken-2 mt-1">{{ line }}</div>
                 <template v-for="key in INSTALLMENT_STEP_KEYS" :key="`att-${key}`">
                   <AttachmentField
@@ -236,6 +243,7 @@
       :quote="quoteEditor.quote"
       :settings="settings"
       :copy-sources="copySources"
+      :bill-to-history="billToHistory"
       :on-save="onSaveQuote"
       :on-attach-pdf="onAttachPdf"
       :on-save-template="onSaveTemplate"
@@ -247,7 +255,7 @@
           <v-row dense>
             <v-col cols="6"><v-text-field v-model="instDialog.inst.label" label="期別" variant="outlined" density="compact" hide-details></v-text-field></v-col>
             <v-col cols="6"><v-text-field v-model.number="instDialog.inst.amount" type="number" prefix="$" label="金額" variant="outlined" density="compact" hide-details></v-text-field></v-col>
-            <v-col cols="12"><v-text-field v-model="instDialog.inst.dueDate" type="date" label="預計繳款日" variant="outlined" density="compact" hide-details clearable></v-text-field></v-col>
+            <v-col cols="12"><v-text-field v-model="instDialog.inst.dueDate" type="date" label="預計請款日" variant="outlined" density="compact" hide-details clearable></v-text-field></v-col>
             <v-col cols="12"><v-text-field v-model="instDialog.inst.note" label="備註" variant="outlined" density="compact" hide-details></v-text-field></v-col>
           </v-row>
         </v-card-text>
@@ -268,7 +276,7 @@ import AttachmentField from './AttachmentField.vue';
 import StepDialog from './StepDialog.vue';
 import QuoteEditorDialog from './QuoteEditorDialog.vue';
 import FollowupTimeline from './FollowupTimeline.vue';
-import { newQuote } from './quoteDefaults';
+import { newQuote, quoteTitle } from './quoteDefaults';
 import {
   saveSubscriptionFields,
   addSubscriptionFollowup,
@@ -280,7 +288,7 @@ import {
   STAGES, STEP_LABELS, CYCLE_STEP_KEYS, INSTALLMENT_STEP_KEYS,
   isClosed, canOperate, canUndo, cycleSummary, createCycle, createInstallment,
   quoteTotals, buildInstallments, hasInstallmentProgress, computeDueDate, resolveDueDates,
-  subscriptionPeriodFromCycles, planText, diffDays, taiwanToday, effectiveDueDate,
+  subscriptionPeriodFromCycles, planText, installmentTiming,
 } from '@/utils/subscriptionPipeline';
 
 const props = defineProps({
@@ -289,6 +297,7 @@ const props = defineProps({
   firstAppointmentDate: { type: String, default: '' },
   settings: { type: Object, required: true },
   copySources: { type: Array, default: () => [] },
+  billToHistory: { type: Array, default: () => [] },
   user: { type: Object, default: () => ({}) },
   adminKey: { type: String, default: '' },
   projectIdValidator: { type: Function, default: () => '' },  // (id, sub) => 錯誤訊息
@@ -297,6 +306,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'updated', 'edit', 'settings-saved']);
 
 const STEP_BTN_COLORS = { done: 'green', skipped: 'grey', current: 'primary', future: 'grey' };
+// 款項日期提示：灰＝尚未到、橘＝該請款／今天、紅＝逾期
+const CHIP_COLORS = { grey: 'blue-grey', orange: 'orange-darken-2', red: 'red' };
 
 const { mobile, width } = useDisplay();
 const drawerWidth = computed(() => (mobile.value ? width.value : Math.min(760, width.value)));
@@ -315,6 +326,10 @@ const cycle = computed(() => cycles.value.find(c => c.no === selectedNo.value) |
 const ctx = computed(() => ({ firstAppointmentDate: props.firstAppointmentDate }));
 const currentSummary = computed(() => cycleSummary(cycles.value[cycles.value.length - 1], ctx.value));
 const pathPrefix = computed(() => `subscriptions/${sub.value?.projectId || 'misc'}/${sub.value?.id}/c${cycle.value?.no || 1}`);
+// 各期目前對照的日期與天數（送件前看請款日、送件後看撥款日／票期）
+const timings = computed(() => Object.fromEntries(
+  (cycle.value?.installments || []).map(i => [i.id, installmentTiming(i, cycle.value, ctx.value)]),
+));
 const installmentTotal = computed(() => (cycle.value?.installments || []).reduce((s, i) => s + (Number(i.amount) || 0), 0));
 const canStartNewCycle = computed(() => {
   const last = cycles.value[cycles.value.length - 1];
@@ -400,18 +415,6 @@ function instLines(inst) {
   return lines;
 }
 
-function dueChip(inst) {
-  if (isClosed(inst.steps.cashed)) return null;
-  const cheque = inst.steps.cashed.chequeDueDate;
-  const d = diffDays(effectiveDueDate(inst), taiwanToday());
-  if (d === null) return null;
-  if (cheque) return { text: d < 0 ? `票期已過 ${-d} 天` : `票期 ${d} 天後`, color: d < 0 ? 'red' : 'teal' };
-  if (d < 0) return { text: `逾期 ${-d} 天`, color: 'red' };
-  if (d === 0) return { text: '今天', color: 'red' };
-  if (d <= 30) return { text: `${d} 天後`, color: 'orange' };
-  return null;
-}
-
 // --- 寫入 ---
 async function persist(newCycles, extraFields = {}, logText = '') {
   saving.value = true;
@@ -439,7 +442,7 @@ function withCycle(cycleId, fn) {
   return cycles.value.map(c => (c.id === cycleId ? fn(clone(c)) : c));
 }
 
-// 回簽／啟用日期變動：重算以該步驟為基準、尚無進度、未手動指定的預計繳款日
+// 回簽／啟用日期變動：重算以該步驟為基準、尚無進度、未手動指定的預計請款日
 function recomputeDueDates(c, baseKey, clear = false) {
   c.installments = c.installments.map(inst => {
     if (inst.base !== baseKey || inst.dueDateManual || INSTALLMENT_STEP_KEYS.some(k => isClosed(inst.steps[k]))) return inst;
@@ -593,7 +596,7 @@ async function onSaveQuote(quote) {
   const before = cycles.value.find(c => c.id === cycleId)?.quote;
   const newCycles = withCycle(cycleId, c => applyQuote(c, quote));
   const isNewVersion = !before || before.version !== quote.version;
-  const logText = isNewVersion ? `報價單 v${quote.version}（${money(quoteTotals(quote).finalAmount)}）` : '';
+  const logText = isNewVersion ? `${quoteTitle(quote)} v${quote.version}（${money(quoteTotals(quote).finalAmount)}）` : '';
   await persist(newCycles, { billTo: { ...quote.billTo } }, logText);
 }
 
@@ -613,7 +616,12 @@ async function onSaveTemplate(kind, name, value) {
   const next = clone(props.settings);
   const key = kind === 'notes' ? 'noteTemplates' : 'planTemplates';
   const entry = kind === 'notes' ? { name, content: value } : { name, plan: value };
-  next[key] = [...(next[key] || []).filter(t => t.name !== name), entry];
+  // 同名覆蓋時保留原本順序
+  const list = [...(next[key] || [])];
+  const i = list.findIndex(t => t.name === name);
+  if (i >= 0) list.splice(i, 1, entry);
+  else list.push(entry);
+  next[key] = list;
   await saveSubscriptionQuoteSettings(next, props.adminKey);
   emit('settings-saved', next);
 }

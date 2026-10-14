@@ -128,6 +128,25 @@ export const homeFeatures = [
     nav: { name: 'AiAssistantAdmin' }
   },
 
+  // ✅ LINE AI 助理：可看的對話由後端依群組成員／負責業務決定
+  {
+    id: 'lineAi',
+    text: 'LINE AI 助理',
+    icon: emailIcon,
+    permissionType: 'loggedIn',
+    nav: { name: 'LineAiWorkspace' }
+  },
+
+  // ✅ LINE AI 助理管理（僅超級管理員）
+  {
+    id: 'lineAiAdmin',
+    text: 'LINE AI 管理',
+    icon: userManagementIcon,
+    permissionType: 'system',
+    permissionArgs: ['超級管理員'],
+    nav: { name: 'LineAiAdmin' }
+  },
+
   // ✅ 客戶開發（僅超級管理員；docs/SPEC_CustomerProspecting.md §3.1）
   {
     id: 'prospecting',
@@ -153,6 +172,7 @@ export const homeFeatures = [
 const HIDE_FOR_TRIAL = new Set([
   'backupManagement', 'subscriptionManagement', 'UserManagement', 'subscriptionStatus',
   'sendMessage', 'smsMonitor', 'adminToolsCenter', 'bookingTest', 'trialLeads', 'prospecting',
+  'lineAi', 'lineAiAdmin',
 ]);
 
 // Home 與全站選單共用權限規則，功能入口本身仍由路由守衛驗證。

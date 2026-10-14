@@ -9609,6 +9609,18 @@ export async function salesAiAdminApi(payload) {
   return result.data;
 }
 
+// ✅ [LINE AI 助理] payload 需含 action，以及 userKey＋sessionId 或 liffAccessToken（由 useLineAi 自動附加）
+export async function lineAiApi(payload) {
+  const fn = httpsCallable(functions, 'lineAiApi', { timeout: 120000 });
+  const result = await fn(payload);
+  return result.data;
+}
+export async function lineAiAdminApi(payload) {
+  const fn = httpsCallable(functions, 'lineAiAdmin', { timeout: 120000 });
+  const result = await fn(payload);
+  return result.data;
+}
+
 // =================================================================
 // /  ✅ [新增] 請佣獎金系統 API（docs/請佣獎金系統-spec.md）
 // =================================================================

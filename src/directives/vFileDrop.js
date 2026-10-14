@@ -83,14 +83,14 @@ function resolveConfig(el, value) {
   return cfg;
 }
 
-function parseAccept(accept) {
+export function parseAccept(accept) {
   return String(accept || '')
     .split(',')
     .map(t => t.trim().toLowerCase())
     .filter(Boolean);
 }
 
-function fileMatches(file, tokens) {
+export function fileMatches(file, tokens) {
   if (tokens.length === 0) return true;
   const name = (file.name || '').toLowerCase();
   const type = (file.type || '').toLowerCase();
