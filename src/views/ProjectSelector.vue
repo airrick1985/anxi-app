@@ -137,7 +137,7 @@
           <span>建案</span><strong>{{ projectToEnterName }}</strong>
         </div>
         <div class="project-entry-card__icon" aria-hidden="true">
-          <span class="project-entry-card__orbit"></span>
+          <span class="project-entry-card__glow"></span>
           <v-icon size="30">mdi-domain</v-icon>
         </div>
         <h2 class="project-entry-card__title">正在進入建案</h2>
@@ -843,13 +843,17 @@ const goToLogin = () => router.push({ name: 'Login' });
   color: #fff;
 }
 
-.project-entry-card__orbit {
+/* 藍白呼吸光暈：白色內圈 + 藍色外暈，只動 opacity / transform */
+.project-entry-card__glow {
   position: absolute;
-  inset: -7px;
-  border: 1.5px solid rgba(59, 131, 204, 0.1);
-  border-top-color: #5396e5;
-  border-radius: 25px;
-  animation: project-entry-orbit 2.4s linear infinite;
+  inset: 0;
+  z-index: -1;
+  border-radius: 20px;
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.95),
+    0 0 14px 6px rgba(56, 146, 255, 0.5),
+    0 0 30px 14px rgba(150, 202, 255, 0.35);
+  animation: project-entry-breathe 2.6s ease-in-out infinite;
 }
 
 .project-entry-card__title {
@@ -900,8 +904,9 @@ const goToLogin = () => router.push({ name: 'Login' });
   line-height: 1.6;
 }
 
-@keyframes project-entry-orbit {
-  to { transform: rotate(360deg); }
+@keyframes project-entry-breathe {
+  0%, 100% { opacity: 0.35; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.06); }
 }
 
 @keyframes project-entry-pulse {
@@ -910,7 +915,7 @@ const goToLogin = () => router.push({ name: 'Login' });
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .project-entry-card__orbit,
+  .project-entry-card__glow,
   .project-entry-card__activity i {
     animation: none;
   }
