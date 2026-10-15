@@ -14,6 +14,14 @@
             <div class="text-subtitle-1 font-weight-bold text-truncate">{{ sub.projectName }}</div>
             <div class="text-caption text-grey-darken-1">{{ sub.systemFunction }}</div>
           </div>
+          <v-btn
+            v-if="sub.projectId"
+            icon="mdi-chart-box-outline"
+            variant="text"
+            size="small"
+            title="使用報表"
+            :to="{ name: 'SubscriptionUsageReport', query: { projectId: sub.projectId, system: [].concat(sub.systemFunction || [])[0] } }"
+          ></v-btn>
           <v-btn icon="mdi-pencil-outline" variant="text" size="small" title="訂閱資料" @click="emit('edit', sub)"></v-btn>
           <v-btn icon="mdi-close" variant="text" size="small" @click="emit('update:modelValue', false)"></v-btn>
         </div>

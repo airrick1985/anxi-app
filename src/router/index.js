@@ -20,6 +20,7 @@ const MessageDetail = () => import('@/views/MessageDetail.vue');
 const UserManagement = () => import('@/views/UserManagement.vue');
 const SubscriptionManagement = () => import('@/views/SubscriptionManagement.vue');
 const SubscriptionStatus = () => import('@/views/SubscriptionStatus.vue');
+const SubscriptionUsageReport = () => import('@/views/SubscriptionUsageReport.vue');
 const BookingRuleManager = () => import('@/views/BookingRuleManager.vue');
 const InspectionCalendar = () => import('@/views/public/InspectionCalendar.vue');
 const InspectionAdmin = () => import('@/views/admin/InspectionAdmin.vue');
@@ -363,6 +364,16 @@ const routes = [
     path: '/subscription-management',
     name: 'SubscriptionManagement',
     component: SubscriptionManagement, // (保持延遲載入)
+    meta: {
+      requiresAuth: true,
+      requiredRoles: ['超級管理員', '系統管理員'],
+      layout: DefaultLayout // ✅
+    }
+  },
+  {
+    path: '/subscription-management/usage-report',
+    name: 'SubscriptionUsageReport',
+    component: SubscriptionUsageReport, // (保持延遲載入)
     meta: {
       requiresAuth: true,
       requiredRoles: ['超級管理員', '系統管理員'],

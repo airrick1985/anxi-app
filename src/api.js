@@ -2197,6 +2197,94 @@ export async function fetchEarliestValidAppointmentDates(projectIds) {
 }
 
 /**
+ * [訂閱管理] 預約驗屋系統使用狀況報表的原始資料
+ * 測試預約 (isTest) 不回傳；名額摘要另以 fetchQuotaSummaryForReport 取得。
+ * @param {string} projectId
+ * @returns {Promise<{ project: object, batches: object[], appointments: object[], householdCount: number }>}
+ */
+export async function fetchBookingUsageReportData(projectId) {
+  if (!projectId) throw new Error('缺少建案 ID');
+  const byProject = (name) => getDocs(query(collection(db, name), where('projectId', '==', projectId)));
+  const [projectSnap, batchSnap, apptSnap, householdSnap] = await Promise.all([
+    getDoc(doc(db, 'projects', projectId)),
+    byProject('bookingBatches'),
+    byProject('appointments'),
+    byProject('households'),
+  ]);
+
+  const toDateStr = (ts) => (ts && typeof ts.toDate === 'function'
+    ? ts.toDate().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }) : '');
+  const toMillis = (ts) => (ts && typeof ts.toMillis === 'function' ? ts.toMillis() : null);
+
+  const projectData = projectSnap.exists() ? projectSnap.data() : {};
+  const batches = [];
+  batchSnap.forEach((d) => {
+    const b = d.data();
+    if (b.isDeleted === true) return;
+    batches.push({
+      bookingType: b.bookingType || '',
+      batchCode: b.batchCode || '',
+      bookingStart: b.bookingStart || '',
+      bookingEnd: b.bookingEnd || '',
+    });
+  });
+
+  const appointments = [];
+  apptSnap.forEach((d) => {
+    const a = d.data();
+    if (a.isTest === true) return;
+    appointments.push({
+      id: d.id,
+      unitId: a.unitId || '',
+      bookingType: a.bookingType || '',
+      status: a.status || '',
+      appointmentDate: toDateStr(a.appointmentDate),
+      timeSlot: a.appointmentTimeSlot || '',
+      method: a.inspectionMethod || '',
+      companyName: a.inspectionCompanyName || '',
+      source: a.source || '',
+      bookerName: a.bookerName || '',
+      createdAt: toMillis(a.createdAt),
+      cancelledAt: toMillis(a.cancelledAt),
+      reportUploaded: a.reportUploaded === true,
+      reminderCount: Array.isArray(a.reminderSentAt) ? a.reminderSentAt.length : 0,
+    });
+  });
+
+  let householdCount = 0;
+  householdSnap.forEach((d) => { if (d.data().unitId) householdCount += 1; });
+
+  const menu = (projectData.bookingMenu || []).filter(i => !i.deleted);
+  return {
+    project: {
+      id: projectId,
+      name: projectData.name || '',
+      bookingItems: menu.map(i => i.title),
+      // 各預約項目設定的預約方式（依設定順序）
+      bookingMethods: Object.fromEntries(menu.map(i => [
+        i.title,
+        (i.methods || []).filter(m => !m?.deleted).map(m => (typeof m === 'object' ? m.title : m)).filter(Boolean),
+      ])),
+    },
+    batches,
+    appointments,
+    householdCount,
+  };
+}
+
+/**
+ * [訂閱管理] 指定區間的每日名額摘要（沿用時間表的 fetchDailyQuotaSummary）
+ * @returns {Promise<Object<string, Array<{capacity: number, booked: number}>>>} { 'YYYY-MM-DD': rows }
+ */
+export async function fetchQuotaSummaryForReport(projectId, startDate, endDate) {
+  const result = await inspectionCalendarApiRouter({
+    action: 'fetchDailyQuotaSummary',
+    data: { projectId, startDate, endDate },
+  });
+  return result.data?.data || {};
+}
+
+/**
  * [Firestore 版] 獲取用於訂閱表單的下拉選單資料 (建案、系統列表)
  * @param {string} adminKey - 超級管理員的手機號碼
  */

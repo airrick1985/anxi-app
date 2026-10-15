@@ -7,6 +7,10 @@
           訂閱管理
         </v-toolbar-title>
         <v-spacer></v-spacer>
+        <v-btn variant="text" :icon="mobile" :to="{ name: 'SubscriptionUsageReport' }">
+          <v-icon :start="!mobile">mdi-chart-box-outline</v-icon>
+          <span v-if="!mobile">使用報表</span>
+        </v-btn>
         <v-btn variant="text" :icon="mobile" @click="settingsDialog = true">
           <v-icon :start="!mobile">mdi-cog-outline</v-icon>
           <span v-if="!mobile">報價單設定</span>
@@ -41,7 +45,7 @@
           <v-col cols="12" md="4">
             <v-text-field
               v-model="search"
-              label="搜尋建案、系統、買受人或聯絡人..."
+              label="搜尋建案、系統、買受人、聯絡人或發票號碼..."
               prepend-inner-icon="mdi-magnify"
               variant="outlined"
               density="compact"
@@ -142,6 +146,26 @@
             <div class="text-caption text-no-wrap" :class="TONE_CLASS[item.pipeline.tone]">{{ item.pipeline.hint }}</div>
           </template>
           <span v-else class="text-caption text-grey">{{ item.pipeline.hint }}</span>
+        </template>
+
+        <template v-slot:item.invoices="{ item }">
+          <template v-if="item.invoices.length">
+            <div
+              v-for="inv in shownInvoices(item)"
+              :key="inv.key"
+              class="text-no-wrap"
+              :class="{ 'text-primary font-weight-medium': invoiceMatched(inv) }"
+            >
+              {{ inv.no }} <span class="text-caption text-grey">{{ inv.label }}</span>
+            </div>
+            <v-tooltip v-if="item.invoices.length > INVOICE_SHOWN" location="top">
+              <template v-slot:activator="{ props }">
+                <span v-bind="props" class="text-caption text-primary" @click.stop>+{{ item.invoices.length - INVOICE_SHOWN }} 筆</span>
+              </template>
+              <div v-for="inv in item.invoices" :key="inv.key" class="text-no-wrap">{{ inv.no }}　{{ inv.label }}</div>
+            </v-tooltip>
+          </template>
+          <span v-else class="text-grey">—</span>
         </template>
 
         <template v-slot:item.nextFollowUpDate="{ item }">
@@ -447,6 +471,40 @@ function stageMeta(key) {
 const earliestLoading = ref(false);
 const earliestAppointmentMap = ref({});
 
+// --- 發票號碼 ---
+const INVOICE_SHOWN = 2;
+
+// 比對時忽略大小寫、連字號與空白（AB-12345678 ＝ ab12345678）
+function normalizeInvoiceNo(s) {
+  return String(s || '').toLowerCase().replace(/[^0-9a-z]/g, '');
+}
+
+// 各輪各期的發票號碼，新→舊；同一期填多張時以逗號／頓號／空白分隔
+function invoicesOf(cycles) {
+  const multiCycle = cycles.length > 1;
+  const list = [];
+  cycles.forEach(c => c.installments.forEach(inst => {
+    String(inst.steps.invoice.invoiceNo || '').split(/[\s,，、;；]+/).filter(Boolean).forEach((no, i) => {
+      list.push({ key: `${c.id}-${inst.id}-${i}`, no, norm: normalizeInvoiceNo(no), label: `${multiCycle ? `第${c.no}輪 ` : ''}${inst.label}` });
+    });
+  }));
+  return list.reverse();
+}
+
+const invoiceKeyword = computed(() => normalizeInvoiceNo(search.value));
+
+function invoiceMatched(inv) {
+  return !!invoiceKeyword.value && inv.norm.includes(invoiceKeyword.value);
+}
+
+// 搜尋到的發票排到前面顯示
+function shownInvoices(item) {
+  const list = invoiceKeyword.value
+    ? [...item.invoices].sort((a, b) => Number(invoiceMatched(b)) - Number(invoiceMatched(a)))
+    : item.invoices;
+  return list.slice(0, INVOICE_SHOWN);
+}
+
 const rows = computed(() => subscriptions.value.map(sub => {
   const pipeline = cycleSummary(currentCycleOf(sub.cycles), { firstAppointmentDate: earliestAppointmentMap.value[sub.projectId] || '' });
   return {
@@ -455,6 +513,7 @@ const rows = computed(() => subscriptions.value.map(sub => {
     stageRank: STAGES.findIndex(s => s.key === pipeline.stage),
     nextDate: pipeline.date,
     earliestAppointmentDate: earliestAppointmentMap.value[sub.projectId] || '',
+    invoices: invoicesOf(sub.cycles),
   };
 }));
 
@@ -464,7 +523,7 @@ const baseFilteredRows = computed(() => {
     if (keyword) {
       const text = [item.projectName, item.systemFunction, item.contactName, item.contactPhone, item.billTo?.name, item.remarks]
         .filter(Boolean).join(' ').toLowerCase();
-      if (!text.includes(keyword)) return false;
+      if (!text.includes(keyword) && !item.invoices.some(invoiceMatched)) return false;
     }
     if (statusFilter.value.length > 0) {
       const matched = statusFilter.value.some(f =>
@@ -518,6 +577,7 @@ const headers = [
   { title: '系統功能', key: 'systemFunction', minWidth: 100 },
   { title: '進度', key: 'stageRank', minWidth: 150, sortRaw: (a, b) => (a.stageRank - b.stageRank) || compareDatesEmptyLast(a.nextDate, b.nextDate) },
   { title: '下一步', key: 'nextDate', minWidth: 170, sort: compareDatesEmptyLast },
+  { title: '發票號碼', key: 'invoices', minWidth: 150, sortable: false },
   { title: '下次跟進', key: 'nextFollowUpDate', minWidth: 110, sort: compareDatesEmptyLast },
   { title: '使用者上限', key: 'currentUserLimit', align: 'center', width: 100 },
   { title: '訂閱期間', key: 'endDate', minWidth: 190, sort: compareDatesEmptyLast },
@@ -845,7 +905,7 @@ const fileToBase64 = (file) => new Promise((resolve, reject) => {
 // 表格衍生欄位，不寫入 Firestore
 const DERIVED_FIELDS = [
   'pipeline', 'stageRank', 'nextDate', 'earliestAppointmentDate', 'nextAgreedDate',
-  'status', 'color', 'durationDays', 'currentUserLimit', 'iconUrl', 'cycles',
+  'status', 'color', 'durationDays', 'currentUserLimit', 'iconUrl', 'cycles', 'invoices',
 ];
 
 async function save() {
