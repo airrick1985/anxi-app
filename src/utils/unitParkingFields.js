@@ -1,6 +1,6 @@
 // 戶別車位加算欄位（銷控列表、匯出、資料透視、銷售圖面共用）
 // - 成交車位：綁定本戶且後台狀態為小訂／補足／簽約（或空白），計入成交總價／合計底價
-// - 加購或保留車位：綁定本戶但後台狀態為保留等準備購買狀態，獨立成 held_parking_* 欄位，不計入成交金額
+// - 加購或保留車位：綁定本戶但後台狀態為保留等準備購買狀態（且不在成交車位內），獨立成 held_parking_* 欄位，不計入成交金額
 import { isPreparatoryParkingStatus } from '@/utils/salesStatusGroups';
 import { toDateKey } from '@/composables/useParkingRatio';
 
@@ -22,8 +22,10 @@ export function getUnitBoundParkings(unitId, parkings) {
  */
 export function unitParkingFields(dealSpots, boundSpots) {
   const deal = Array.isArray(dealSpots) ? dealSpots : [];
+  // 狀態與戶別相同的車位已算成交車位，不重複列入加購或保留
+  const dealIds = new Set(deal.map(spotIdOf));
   const held = (Array.isArray(boundSpots) ? boundSpots : [])
-    .filter(p => p && isPreparatoryParkingStatus(p.status_backend))
+    .filter(p => p && isPreparatoryParkingStatus(p.status_backend) && !dealIds.has(spotIdOf(p)))
     .sort((a, b) => naturalCompare(spotIdOf(a), spotIdOf(b)));
   return {
     parking_spots: deal.map(spotIdOf).filter(Boolean).sort(naturalCompare).join(','),

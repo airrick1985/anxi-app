@@ -14,7 +14,7 @@
  */
 
 import { normalizeSalespersons, salespersonsInclude, salespersonShare } from './salespersonUtils'
-import { isDealParking } from './salesStatusGroups'
+import { isDealParking, buildUnitStatusMap } from './salesStatusGroups'
 import { netPremiumDeductYuan } from './unitFeeGifts'
 
 /**
@@ -179,11 +179,12 @@ const getHouseFloorPrice = (household) => {
  * 建立「戶別 → 該戶車位」索引
  * Why: 人員排行／溢差價計算會對每位人員 × 每戶重複查車位，用索引把 O(人數×戶數×車位數) 降為一次掃描
  */
-export const buildParkingIndex = (parkings) => {
+export const buildParkingIndex = (parkings, households = []) => {
   const index = new Map()
+  const statusOf = buildUnitStatusMap(households)
   ;(parkings || []).forEach(p => {
-    // 準備購買（保留等）的車位不算該戶成交車位
-    if (!isDealParking(p)) return
+    // 準備購買（保留等）的車位不算該戶成交車位（狀態與戶別相同者除外）
+    if (!isDealParking(p, undefined, statusOf.get(p.buyerUnitId))) return
     if (!index.has(p.buyerUnitId)) index.set(p.buyerUnitId, [])
     index.get(p.buyerUnitId).push(p)
   })
@@ -197,7 +198,7 @@ export const buildParkingIndex = (parkings) => {
  */
 export const getUnitParkings = (household, allParkings) => {
   if (allParkings instanceof Map) return allParkings.get(household.unitId) || []
-  return (allParkings || []).filter(p => isDealParking(p, household.unitId))
+  return (allParkings || []).filter(p => isDealParking(p, household.unitId, household.salesStatus_backend))
 }
 
 /**
@@ -452,8 +453,8 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
 
   // 計算累計已售（關聯到有小訂日期且狀態有效的戶別的車位）
   const cumulativeAssigned = parkings.filter(p => {
-    if (!isDealParking(p)) return false
     const relatedHousehold = householdById.get(p.buyerUnitId)
+    if (!isDealParking(p, undefined, relatedHousehold?.salesStatus_backend)) return false
     if (!relatedHousehold || !relatedHousehold.payment_deposit_date) return false
 
     // 檢查狀態是否為有效狀態（小訂、補足、簽約）
@@ -484,7 +485,7 @@ export const calculateParkingStats = (parkings, households = null, dateRange = n
     filtered = parkings.filter(p => unitIdsInRange.has(p.buyerUnitId))
   }
 
-  const assigned = filtered.filter(p => isDealParking(p))
+  const assigned = filtered.filter(p => isDealParking(p, undefined, householdById.get(p.buyerUnitId)?.salesStatus_backend))
 
   // 計算該時間段內的新銷售
   const periodSold = assigned.length
@@ -543,7 +544,7 @@ export const calculatePersonnelStats = (households, parkings, personnel, dateRan
   }
 
   const soldHouseholds = filtered
-  const parkingIndex = buildParkingIndex(parkings)
+  const parkingIndex = buildParkingIndex(parkings, households)
 
   // 名單 = 系統銷售人員 ∪ 成交戶別上出現的所有銷售人員
   // Why: 戶別上填寫的成交人員可能不在系統人員名單內，若只依系統名單統計會漏列

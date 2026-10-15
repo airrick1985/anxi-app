@@ -105,7 +105,7 @@ async function buildProposal(ctx, draft, answers = {}) {
   if (draft.kind === 'cancel') {
     if (targets.length !== 1) { blockers.push('退戶一次只能處理一戶'); return finish({ kind: 'cancel', unitId: null, ...acc, actions: [] }); }
     const unit = targets[0];
-    return validateCancel(ctx, data, unit, data.parkings.filter(p => D.isDealParking(p, unit.unitId)), draft, answers, acc);
+    return validateCancel(ctx, data, unit, data.parkings.filter(p => D.isDealParking(p, unit.unitId, unit.salesStatus_backend)), draft, answers, acc);
   }
 
   const isBatch = targets.length > 1;
@@ -127,7 +127,7 @@ async function buildProposal(ctx, draft, answers = {}) {
 async function validateUnitChanges(ctx, data, unit, draft, answers, acc, { isBatch = false } = {}) {
   const { missing, warnings, blockers, diff } = acc;
   const unitId = unit.unitId;
-  const ownedParkings = data.parkings.filter(p => D.isDealParking(p, unitId));
+  const ownedParkings = data.parkings.filter(p => D.isDealParking(p, unitId, unit.salesStatus_backend));
 
   // ---- 2. 欄位白名單與正規化 ----
   // 可寫欄位＝使用者本人在戶別資訊表單能編輯的欄位（AI 是使用者的分身，見 data.js FIELD_DEFS）
@@ -348,7 +348,7 @@ async function validateUnitChanges(ctx, data, unit, draft, answers, acc, { isBat
       continue;
     }
     const p = r.exact;
-    const avail = D.parkingAvailability(p, unitId, data.tierOverrides);
+    const avail = D.parkingAvailability(p, unitId, data.tierOverrides, data.units);
     if (!avail.ok) { blockers.push(`車位 ${p.spotId} 無法配置：${avail.reason}`); continue; }
     if (avail.warn) warnings.push(`車位 ${p.spotId} ${avail.warn}，配置後將改為本戶持有`);
     // 價格

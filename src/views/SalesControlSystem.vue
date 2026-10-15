@@ -2243,7 +2243,7 @@ import {
 import { useToast, POSITION } from 'vue-toastification';
 import { useSalesDataStore } from '@/store/salesDataStore';
 import { useParkingRatio, PARKING_RATIO_LEVEL_META } from '@/composables/useParkingRatio';
-import { buildCommitmentOverrides, isDealParking } from '@/utils/salesStatusGroups';
+import { buildCommitmentOverrides, isDealParking, buildUnitStatusMap } from '@/utils/salesStatusGroups';
 import { unitParkingFields } from '@/utils/unitParkingFields';
 import { feeGiftFields } from '@/utils/unitFeeGifts';
 import { useProjectStore } from '@/store/projectStore';
@@ -5235,14 +5235,15 @@ const buildParkingMap = (parkings) => {
   const parkingMap = {};
   // 所有綁定戶別的車位（含準備購買／保留／已售等任何狀態）：只供全域搜尋用，不影響金額計算
   const allBound = {};
+  const statusOf = buildUnitStatusMap(salesHouseholds.value);
   parkings.forEach(p => {
     const boundKey = p && p.buyerUnitId !== null && p.buyerUnitId !== undefined ? String(p.buyerUnitId).trim() : '';
     if (boundKey) {
       if (!allBound[boundKey]) allBound[boundKey] = [];
       allBound[boundKey].push(p);
     }
-    // 準備購買（保留等）的車位不算該戶成交車位，不計入成交／底價
-    if (isDealParking(p)) {
+    // 準備購買（保留等）的車位不算該戶成交車位，不計入成交／底價（狀態與戶別相同者除外）
+    if (isDealParking(p, undefined, statusOf.get(p.buyerUnitId))) {
       if (!parkingMap[p.buyerUnitId]) parkingMap[p.buyerUnitId] = [];
       parkingMap[p.buyerUnitId].push(p);
     }
@@ -5841,7 +5842,7 @@ async function copyUnitSummary(unit) {
       if (unit.price_transaction_house) lines.push(`成交價：${formatNumber(unit.price_transaction_house, 0)} 萬${unitPriceText(e.unit_price_transaction)}`);
       // 車位：逐一列出編號與成交價，多個再附合計（僅成交車位，準備購買／保留車位不列）
       const dealParkings = (salesParkings.value || [])
-        .filter(p => isDealParking(p, unit.unitId))
+        .filter(p => isDealParking(p, unit.unitId, unit.salesStatus_backend))
         .sort((a, b) => naturalSort(a.spotId ?? '', b.spotId ?? ''));
       if (dealParkings.length) {
         const parts = dealParkings.map(p => {
@@ -5950,9 +5951,9 @@ function onQuickNotifyFinished(payload) {
 }
 
 // 持有車位的後台狀態需與戶別同步（比照 UnitDetailModal.syncOwnedParkingFields）
-async function syncOwnedParkingStatus(unitId, newStatus) {
-  // 準備購買（保留等）的車位狀態由車位端自行維護，不跟著戶別狀態改
-  const owned = (salesParkings.value || []).filter(p => isDealParking(p, unitId) && p.id);
+async function syncOwnedParkingStatus(unitId, newStatus, oldStatus) {
+  // 準備購買（保留等）的車位狀態由車位端自行維護，不跟著戶別狀態改；以變更前的戶別狀態判斷本戶車位
+  const owned = (salesParkings.value || []).filter(p => isDealParking(p, unitId, oldStatus) && p.id);
   for (const parking of owned) {
     await updateParkingLot(parking.id, { status_backend: newStatus || null, updatedAt: new Date() });
   }
@@ -5972,7 +5973,7 @@ async function confirmQuickStatusChange() {
     };
     const result = await updateSalesData(payload);
     if (result.status !== 'success') throw new Error(result.message || '儲存失敗');
-    await syncOwnedParkingStatus(unit.unitId, newStatus);
+    await syncOwnedParkingStatus(unit.unitId, newStatus, statusQuickDialog.currentStatus);
 
     // 本地先行更新，網格顏色立即反映；再觸發重新載入確保一致
     const raw = (salesHouseholds.value || []).find(u => u.unitId === unit.unitId);

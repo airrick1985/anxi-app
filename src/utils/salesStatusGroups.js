@@ -95,6 +95,8 @@ export function isOccupiedTier(tier) {
 // Why: 車位後台狀態若是保留／已售／主管保留等「非小訂／補足／簽約」，代表客戶只是準備購買、尚未確定，
 //      不能與實際成交車位混在一起計算戶別成交價／底價／單價／佣金，否則會誤判。
 //      後台狀態為空視為舊資料（綁定時未同步狀態），仍照舊計入以免既有數字改變。
+//      例外：車位狀態與戶別本身狀態相同（戶別保留／現場銷控時從車位明細選的車位，狀態跟著戶別），
+//      仍屬本戶車位；只有狀態不同（如小訂戶另保留一個車位）才算加購或保留。
 // =================================================================
 export const FORMAL_PARKING_STATUSES = ['小訂', '補足', '簽約'];
 
@@ -104,17 +106,29 @@ export function isPreparatoryParkingStatus(status) {
   return !!s && !FORMAL_PARKING_STATUSES.includes(s);
 }
 
-/** 車位是否為某戶的「成交車位」（有綁定戶別且不是準備購買狀態） */
-export function isDealParking(parking, unitId) {
+/**
+ * 車位是否為某戶的「成交車位」（有綁定戶別，且不是準備購買狀態或狀態與戶別相同）
+ * @param {string} [unitStatus] 綁定戶別的後台狀態；未提供時只依車位狀態判斷
+ */
+export function isDealParking(parking, unitId, unitStatus) {
   if (!parking) return false;
   const bound = parking.buyerUnitId !== undefined && parking.buyerUnitId !== null && String(parking.buyerUnitId).trim() !== '';
   if (!bound) return false;
   if (unitId !== undefined && parking.buyerUnitId !== unitId) return false;
-  return !isPreparatoryParkingStatus(parking.status_backend);
+  if (!isPreparatoryParkingStatus(parking.status_backend)) return true;
+  const own = normalizeStatus(unitStatus);
+  return !!own && normalizeStatus(parking.status_backend) === own;
 }
 
 /** 取某戶的成交車位清單 */
-export function getUnitDealParkings(unitId, parkings) {
+export function getUnitDealParkings(unitId, parkings, unitStatus) {
   if (!unitId) return [];
-  return (Array.isArray(parkings) ? parkings : []).filter((p) => isDealParking(p, unitId));
+  return (Array.isArray(parkings) ? parkings : []).filter((p) => isDealParking(p, unitId, unitStatus));
+}
+
+/** 戶別 → 後台狀態對照（全案判斷成交車位時用：isDealParking(p, undefined, map.get(p.buyerUnitId))） */
+export function buildUnitStatusMap(units) {
+  const map = new Map();
+  (Array.isArray(units) ? units : []).forEach((u) => { if (u && u.unitId) map.set(u.unitId, u.salesStatus_backend); });
+  return map;
 }

@@ -26,7 +26,7 @@ export function getOwnedParkingSpots(unitData, allParkings = []) {
   if (unitData && Array.isArray(unitData['持有車位'])) return unitData['持有車位'];
   const unitId = unitData?.unitId;
   if (!unitId || !Array.isArray(allParkings)) return [];
-  return getUnitDealParkings(unitId, allParkings);
+  return getUnitDealParkings(unitId, allParkings, unitData?.salesStatus_backend);
 }
 
 /** 車位顯示字串：B2-058(法定/坡道平面/550*250) */

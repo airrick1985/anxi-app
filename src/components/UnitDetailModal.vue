@@ -2142,8 +2142,9 @@ const enrichedUnitData = computed(() => {
   const currentUnitId = props.unitData.unitId;
 
   // 準備購買（保留等）的車位不算本戶成交車位，不進車位明細與成交／底價合計（另列於「加購或保留車位」）
+  // 車位狀態與戶別相同（戶別保留／現場銷控時選的車位）仍屬本戶車位
   const assignedParkings = allParkingLotsForProject
-    .filter(parkingLot => isDealParking(parkingLot, currentUnitId))
+    .filter(parkingLot => isDealParking(parkingLot, currentUnitId, props.unitData.salesStatus_backend))
     .map(parkingLot => ({
       ...parkingLot,
       '車位編號': parkingLot.spotId || parkingLot['車位編號'],
@@ -2167,14 +2168,16 @@ const assignedParkingLots = computed(() => enrichedUnitData.value?.['持有車�
 //      層級判斷沿用 salesStatusGroups（可由銷控設定的 commitmentTier 覆蓋）。
 // =================================================================
 const parkingTierOverrides = computed(() => buildCommitmentOverrides(props.allData?.['參數'] || []));
-const isFlaggedParkingStatus = isPreparatoryParkingStatus;
+// 綁定本戶、狀態為準備購買且與戶別狀態不同（相同者屬車位明細）
+const isHeldParkingOfUnit = (p, unitId) => !!p && p.buyerUnitId === unitId
+  && isPreparatoryParkingStatus(p.status_backend) && !isDealParking(p, unitId, props.unitData?.salesStatus_backend);
 
 const flaggedParkings = computed(() => {
   const unitId = props.unitData?.unitId;
   if (!unitId) return [];
   const today = todayKey();
   return (props.allData?.['車位'] || [])
-    .filter(p => p && p.buyerUnitId === unitId && isFlaggedParkingStatus(p.status_backend))
+    .filter(p => isHeldParkingOfUnit(p, unitId))
     .map((p) => {
       const tier = classifyCommitment(p.status_backend, parkingTierOverrides.value);
       const entry = buildHeldEntry(p, tier, today);
@@ -2224,7 +2227,7 @@ function openQuickParkingPicker() {
   const unitId = props.unitData.unitId;
   // 帶入目前的成交車位（準備購買／保留車位不在此清單，維持原綁定）
   quickParkingInitial.value = (props.allData?.['車位'] || [])
-    .filter(p => isDealParking(p, unitId))
+    .filter(p => isDealParking(p, unitId, props.unitData.salesStatus_backend))
     .map(p => ({ ...p }));
   quickParkingPickerMounted.value = true;
   isQuickParkingPickerOpen.value = true;
@@ -2285,18 +2288,20 @@ const holdParkingPickerMounted = ref(false);
 const holdParkingInitial = ref([]);
 const isHoldParkingSaving = ref(false);
 // 可指定的後台狀態：建案銷控狀態參數中「非小訂／補足／簽約」者，補上常用預設值；已釋出類不列
+// 與戶別相同的狀態不列：同狀態的車位屬本戶車位明細，選了會跑到上方
 const holdStatusOptions = computed(() => {
+  const unitStatus = String(props.unitData?.salesStatus_backend || '').trim();
   const fromParams = (props.allData?.['參數'] || [])
     .map(p => String(p?.statusName || '').trim())
     .filter(name => name && isPreparatoryParkingStatus(name) && classifyCommitment(name, parkingTierOverrides.value) !== 'released');
-  return Array.from(new Set([...fromParams, '保留', '主管保留', '已售']));
+  return Array.from(new Set([...fromParams, '保留', '主管保留', '已售'])).filter(name => name !== unitStatus);
 });
 const holdDefaultStatus = computed(() => (holdStatusOptions.value.includes('保留') ? '保留' : holdStatusOptions.value[0] || '保留'));
 // 目前綁定本戶的準備購買車位（原始物件）
 const currentHeldRawParkings = () => {
   const unitId = props.unitData?.unitId;
   if (!unitId) return [];
-  return (props.allData?.['車位'] || []).filter(p => p && p.buyerUnitId === unitId && isPreparatoryParkingStatus(p.status_backend));
+  return (props.allData?.['車位'] || []).filter(p => isHeldParkingOfUnit(p, unitId));
 };
 function openHoldParkingPicker() {
   if (!canQuickPickParking.value) return;
@@ -2349,6 +2354,9 @@ async function handleHoldParkingConfirm(parkingList) {
       const statusBackend = item.status_backend || holdDefaultStatus.value;
       if (!isPreparatoryParkingStatus(statusBackend)) {
         throw new Error(`「${statusBackend}」屬正式成交狀態，請改用上方「車位明細」選擇車位`);
+      }
+      if (statusBackend === String(src.salesStatus_backend || '').trim()) {
+        throw new Error(`「${statusBackend}」與戶別狀態相同，屬本戶車位，請改用上方「車位明細」選擇車位`);
       }
       const isHeld = classifyCommitment(statusBackend, parkingTierOverrides.value) === 'held';
       const wasHeldByUnit = existing.buyerUnitId === unitId && classifyCommitment(existing.status_backend, parkingTierOverrides.value) === 'held';
@@ -2841,16 +2849,10 @@ function prepareEditingData() {
   }
   // ✅ END: 新增
 
-  const currentUnitId = props.unitData ? props.unitData.unitId : null;
-  const allParkingLotsForProject = props.allData && props.allData['車位'] ? props.allData['車位'] : [];
-
+  // 持有車位一律以車位資料為準（與成交總覽同源）；戶別文件存的「持有車位」是上次儲存的快照，
+  // 車位在別處被釋出／改綁後會過時，不可沿用（儲存時會以此清單更正快照）
   const existingParkings = enrichedUnitData.value ? enrichedUnitData.value['持有車位'] : [];
-
-  if (existingParkings && existingParkings.length > 0) {
-    editingData.value['持有車位'] = JSON.parse(JSON.stringify(existingParkings));
-  } else if (!editingData.value['持有車位']) {
-    editingData.value['持有車位'] = [];
-  }
+  editingData.value['持有車位'] = JSON.parse(JSON.stringify(existingParkings || []));
 }
 
 function cancelEditing() {
@@ -3762,8 +3764,8 @@ async function syncOwnedParkingFields(unitId) {
   if (!data) return;
 
   const allParkingData = props.allData?.['車位'] || [];
-  // 準備購買（保留等）的車位狀態由車位端自行維護，不跟著戶別欄位同步
-  const ownedParkings = allParkingData.filter(p => isDealParking(p, unitId));
+  // 準備購買（保留等）的車位狀態由車位端自行維護，不跟著戶別欄位同步；以儲存前的戶別狀態判斷本戶車位
+  const ownedParkings = allParkingData.filter(p => isDealParking(p, unitId, props.unitData?.salesStatus_backend));
 
   if (ownedParkings.length === 0) return;
 
@@ -3787,8 +3789,8 @@ async function commitParkingChanges(unitId, parkingList) {
   // 編輯中用暫存資料；檢視模式（車位明細快速修改）用目前戶別資料
   const src = editingData.value || props.unitData || {};
 
-  // 🔄 步驟1：清除舊關聯（準備購買的車位不在編輯清單內，保持原綁定不動）
-  const currentOwnedParkings = allParkingData.filter(p => isDealParking(p, unitId));
+  // 🔄 步驟1：清除舊關聯（準備購買的車位不在編輯清單內，保持原綁定不動；以儲存前的戶別狀態判斷）
+  const currentOwnedParkings = allParkingData.filter(p => isDealParking(p, unitId, props.unitData?.salesStatus_backend));
   for (const parking of currentOwnedParkings) {
     if (parking.id) {
       await updateParkingLot(parking.id, {

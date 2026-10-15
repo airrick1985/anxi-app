@@ -129,7 +129,7 @@ export function formatFieldValue(fieldKey, raw, opts = {}) {
  */
 export function withDerivedFields(unit, parkings = []) {
   const item = { ...unit };
-  const mySpots = (parkings || []).filter(p => isDealParking(p, unit.unitId));
+  const mySpots = (parkings || []).filter(p => isDealParking(p, unit.unitId, unit.salesStatus_backend));
   // 成交車位與加購或保留車位（held_parking_*）分開計算
   Object.assign(item, unitParkingFields(mySpots, getUnitBoundParkings(unit.unitId, parkings)));
   const parkingTransTotal = item.parking_trans_total;

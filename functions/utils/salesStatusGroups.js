@@ -76,17 +76,28 @@ function isPreparatoryParkingStatus(status) {
   return !!s && !FORMAL_PARKING_STATUSES.includes(s);
 }
 
-function isDealParking(parking, unitId) {
+// 例外：車位狀態與戶別本身狀態相同（戶別保留／現場銷控時一起選的車位）仍屬本戶車位
+// unitStatus：綁定戶別的後台狀態；未提供時只依車位狀態判斷
+function isDealParking(parking, unitId, unitStatus) {
   if (!parking) return false;
   const bound = parking.buyerUnitId !== undefined && parking.buyerUnitId !== null && String(parking.buyerUnitId).trim() !== '';
   if (!bound) return false;
   if (unitId !== undefined && parking.buyerUnitId !== unitId) return false;
-  return !isPreparatoryParkingStatus(parking.status_backend);
+  if (!isPreparatoryParkingStatus(parking.status_backend)) return true;
+  const own = normalizeStatus(unitStatus);
+  return !!own && normalizeStatus(parking.status_backend) === own;
 }
 
-function getUnitDealParkings(unitId, parkings) {
+function getUnitDealParkings(unitId, parkings, unitStatus) {
   if (!unitId) return [];
-  return (Array.isArray(parkings) ? parkings : []).filter((p) => isDealParking(p, unitId));
+  return (Array.isArray(parkings) ? parkings : []).filter((p) => isDealParking(p, unitId, unitStatus));
+}
+
+/** 戶別 → 後台狀態對照（全案判斷成交車位時用） */
+function buildUnitStatusMap(units) {
+  const map = new Map();
+  (Array.isArray(units) ? units : []).forEach((u) => { if (u && u.unitId) map.set(u.unitId, u.salesStatus_backend); });
+  return map;
 }
 
 module.exports = {
@@ -103,4 +114,5 @@ module.exports = {
   isPreparatoryParkingStatus,
   isDealParking,
   getUnitDealParkings,
+  buildUnitStatusMap,
 };

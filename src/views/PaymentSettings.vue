@@ -508,7 +508,7 @@ const ownedParkingSpots = computed(() => {
     if (!allParkings.length || !currentUnitId) return [];
     
     // 準備購買（保留等）的車位不計入付款表
-    return getUnitDealParkings(currentUnitId, allParkings);
+    return getUnitDealParkings(currentUnitId, allParkings, props.unitData?.salesStatus_backend);
 });
 
 const accountSections = computed(() => {

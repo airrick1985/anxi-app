@@ -172,8 +172,9 @@ const TOOLS = [
         }
       }
       let parkingSold = 0, parkingAvail = 0, parkingTotal = 0;
+      const statusOf = D.buildUnitStatusMap(data.units);
       for (const p of data.parkings) {
-        if (D.isDealParking(p)) { parkingSold += 1; parkingTotal += D.num(p.price_transaction) ?? D.num(p.price_floor) ?? 0; }
+        if (D.isDealParking(p, undefined, statusOf.get(p.buyerUnitId))) { parkingSold += 1; parkingTotal += D.num(p.price_transaction) ?? D.num(p.price_floor) ?? 0; }
         else if (!p.status_backend && !p.buyerUnitId) parkingAvail += 1;
       }
       return {

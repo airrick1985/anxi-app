@@ -1990,7 +1990,7 @@ function autoFreeFieldValue(f) {
   }
   if (key === 'priceDiff' || label.includes('溢差')) {
     if (!(Number(u.price_transaction_house) > 0)) return '';
-    const parkFloor = getUnitDealParkings(u.unitId, props.allData?.['車位'] || [])
+    const parkFloor = getUnitDealParkings(u.unitId, props.allData?.['車位'] || [], u.salesStatus_backend)
       .reduce((s, p) => s + (Number(p.price_floor) || 0), 0);
     const floorTotal = (Number(u.price_floor_house_total) || 0) + parkFloor;
     return Math.round((unitCtx.value.totalPrice - floorTotal) * 10000) / 10000;

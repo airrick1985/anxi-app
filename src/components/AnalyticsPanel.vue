@@ -1106,7 +1106,7 @@ const generateStatisticsText = () => {
         const unitPrice = calculateUnitPrice(unit.unitId, unit.price_transaction_house, unit.area_house_ping)
 
         // 找到該戶對應的所有車位
-        const parkings = getUnitDealParkings(unit.unitId, projectData.value.parkings)
+        const parkings = getUnitDealParkings(unit.unitId, projectData.value.parkings, status)
 
         // 生成車位信息文本
         let parkingText = ''

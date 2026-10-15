@@ -1181,15 +1181,11 @@ watch(() => editableData.value.buyerMailingAddressDetail, (val) => {
   }
 });
 
-// 🖥️ [新增] 本次編輯是否動過車位（含清空）：動過後一律以暫存名單為準，避免清空後又 fallback 回 DB 名單
-const hasStagedParking = ref(false);
-watch(() => editableData.value?.unitId, () => { hasStagedParking.value = false; });
-
 // 📋 從 salesParkings 集合中找出該戶別持有的車位
 const ownedParkingSpots = computed(() => {
-  // 1. 本次編輯動過車位（含清空）或已有暫存資料時，優先使用暫存
+  // 1. 暫存清單：父層進入編輯時已依車位資料初始化（含空陣列），本次選車位也會寫回此處
   const staged = editableData.value?.['持有車位'];
-  if (Array.isArray(staged) && (hasStagedParking.value || staged.length > 0)) {
+  if (Array.isArray(staged)) {
     return staged.map(p => ({
         ...p,
         spotId: p.spotId || p['車位編號'], // 確保 Key 相容
@@ -1200,7 +1196,7 @@ const ownedParkingSpots = computed(() => {
   // 2. 否則才從原始資料庫列表過濾 (原本的邏輯)
   if (!props.allParkingData || !editableData.value?.unitId) return [];
   // 準備購買（保留等）的車位不屬於本戶成交車位，不列入編輯清單（避免儲存時被改成戶別狀態）
-  return getUnitDealParkings(editableData.value.unitId, props.allParkingData);
+  return getUnitDealParkings(editableData.value.unitId, props.allParkingData, editableData.value.salesStatus_backend);
 });
 
 const houseBasePrice = computed(() => editableData.value?.price_floor_house_total || 0);
@@ -1256,7 +1252,6 @@ async function handleParkingUpdate(updatedParkingList) {
         if (editableData.value) {
            editableData.value['持有車位'] = updatedParkingList;
         }
-        hasStagedParking.value = true;
 
         // 觸發父元件進行車位資料更新
         // 傳遞更新的車位清單給父元件處理

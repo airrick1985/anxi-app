@@ -2,7 +2,7 @@
 // Why: 資料改由後端讀（安全、省 token、可套權限），前端不再傳全案 JSON。
 
 const { normalizeSalespersons, formatSalespersons } = require('../utils/salesperson');
-const { classifyCommitment, buildCommitmentOverrides, isDealParking } = require('../utils/salesStatusGroups');
+const { classifyCommitment, buildCommitmentOverrides, isDealParking, buildUnitStatusMap } = require('../utils/salesStatusGroups');
 const { DateTime } = require('luxon');
 
 // ---- AI 可寫欄位定義（§6.2）----
@@ -264,7 +264,7 @@ const stripEmpty = obj => {
 };
 
 function slimUnit(u, parkings, { includeFloor = true, full = false } = {}) {
-  const owned = (parkings || []).filter(p => isDealParking(p, u.unitId)).map(p => ({
+  const owned = (parkings || []).filter(p => isDealParking(p, u.unitId, u.salesStatus_backend)).map(p => ({
     車位編號: p.spotId, 成交價_萬: num(p.price_transaction), 狀態: p.status_backend || null,
   }));
   const terrace = num(u.area_terrace_ping) || 0;
@@ -320,11 +320,12 @@ function slimParking(p, tierOverrides, { includeFloor = true } = {}) {
   });
 }
 
-/** 車位是否可配置給某戶（可售、或已是本戶） */
-function parkingAvailability(p, unitId, tierOverrides) {
+/** 車位是否可配置給某戶（可售、或已是本戶）；units 用來判斷綁定戶別的狀態（車位狀態與該戶相同即屬該戶車位） */
+function parkingAvailability(p, unitId, tierOverrides, units) {
   const bound = p.buyerUnitId && String(p.buyerUnitId).trim() !== '';
   if (bound && p.buyerUnitId === unitId) return { ok: true, reason: 'own' };
-  if (bound && isDealParking(p, p.buyerUnitId)) return { ok: false, reason: `已配置給 ${p.buyerUnitId}` };
+  const ownerStatus = bound && Array.isArray(units) ? units.find(u => u.unitId === p.buyerUnitId)?.salesStatus_backend : undefined;
+  if (bound && isDealParking(p, p.buyerUnitId, ownerStatus)) return { ok: false, reason: `已配置給 ${p.buyerUnitId}` };
   const tier = classifyCommitment(p.status_backend, tierOverrides);
   if (bound) return { ok: true, warn: `目前為「${p.status_backend}」（準備購買，綁定 ${p.buyerUnitId}）` };
   if (tier === 'guest') return { ok: false, reason: '非銷售用車位' };
@@ -349,5 +350,5 @@ module.exports = {
   writableFieldsFor, parseBool, parseRocDate, formatRocDate, displayValue,
   todayTaipei, nowTaipeiText, toDateStr, toDateTimeStr, parseDateInput,
   normalizeId, idKeys, findById, loadProjectData, slimUnit, slimParking, parkingAvailability, matchSalesperson,
-  normalizeSalespersons, formatSalespersons, isDealParking, classifyCommitment, num, stripEmpty,
+  normalizeSalespersons, formatSalespersons, isDealParking, buildUnitStatusMap, classifyCommitment, num, stripEmpty,
 };

@@ -218,7 +218,7 @@ export function resolveHandoverSourceKey(cat, categories) {
  */
 export function computeUnitFinance(unit, parkings) {
   // 準備購買（保留等）的車位不計入請佣金額
-  const myParkings = (parkings || []).filter(p => isDealParking(p, unit.unitId));
+  const myParkings = (parkings || []).filter(p => isDealParking(p, unit.unitId, unit.salesStatus_backend));
   const parkDeal = myParkings.reduce((s, p) => s + toNum(p.price_transaction), 0);
   const parkFloor = myParkings.reduce((s, p) => s + toNum(p.price_floor), 0);
   const houseDeal = toNum(unit.price_transaction_house);

@@ -122,7 +122,7 @@ async function applyUnit(ctx, unitId, unitActions, parkings, deps) {
   const assignedIds = new Set((assignAction?.parkings || []).map(p => p.spotId));
 
   for (const r of releaseAction?.parkings || []) {
-    const p = parkings.find(x => x.spotId === r.spotId && D.isDealParking(x, unitId));
+    const p = parkings.find(x => x.spotId === r.spotId && D.isDealParking(x, unitId, oldStatus));
     if (!p) throw new Error(`車位 ${r.spotId} 已不是 ${unitId} 的持有車位（資料已變動）`);
     batch.set(db.collection('salesParkings').doc(p.id), {
       buyerUnitId: null, buyerName: null, price_transaction: null, status: null, status_backend: null,
@@ -134,7 +134,7 @@ async function applyUnit(ctx, unitId, unitActions, parkings, deps) {
   for (const a of assignAction?.parkings || []) {
     const p = parkings.find(x => x.spotId === a.spotId);
     if (!p) throw new Error(`車位 ${a.spotId} 不存在`);
-    const avail = D.parkingAvailability(p, unitId, ctx.data?.tierOverrides);
+    const avail = D.parkingAvailability(p, unitId, ctx.data?.tierOverrides, ctx.data?.units);
     if (!avail.ok) throw new Error(`車位 ${a.spotId} 無法配置：${avail.reason}（資料已變動）`);
     batch.set(db.collection('salesParkings').doc(p.id), {
       buyerUnitId: unitId, buyerName: buyerAfter, price_transaction: a.price_transaction ?? null,
@@ -146,7 +146,7 @@ async function applyUnit(ctx, unitId, unitActions, parkings, deps) {
   }
   // 既有持有車位同步戶別欄位（狀態／銷售人員／買方）
   const syncFields = ['salesStatus_backend', 'salesperson', 'buyerName'].some(k => k in unitPatch);
-  const ownedAfter = parkings.filter(p => (D.isDealParking(p, unitId) && !releasedIds.has(p.spotId)) || assignedIds.has(p.spotId));
+  const ownedAfter = parkings.filter(p => (D.isDealParking(p, unitId, oldStatus) && !releasedIds.has(p.spotId)) || assignedIds.has(p.spotId));
   if (syncFields) {
     for (const p of ownedAfter) {
       if (assignedIds.has(p.spotId)) continue;
