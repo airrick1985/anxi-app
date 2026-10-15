@@ -1,29 +1,33 @@
 <template>
   <div class="attachment-field">
-    <div class="d-flex flex-wrap align-start ga-2">
+    <div class="att-list">
       <div
         v-for="(att, i) in modelValue"
         :key="att.storagePath || att.url || i"
         class="att-item"
         :title="att.name"
       >
-        <div class="att-thumb" @click="preview(att)">
-          <v-img v-if="isImage(att)" :src="att.url" cover width="56" height="56"></v-img>
-          <v-icon v-else :color="isPdf(att) ? 'red-darken-2' : 'blue-grey'" size="36">
-            {{ isPdf(att) ? 'mdi-file-pdf-box' : 'mdi-file-document-outline' }}
-          </v-icon>
+        <div class="att-thumb" role="button" tabindex="0" @click="open(i)" @keydown.enter="open(i)">
+          <img v-if="isImageAttachment(att)" :src="att.url" alt="" loading="lazy" />
+          <template v-else>
+            <v-icon size="30" color="#8e8e93">mdi-file-document-outline</v-icon>
+            <span class="att-type" :style="{ background: fileTypeStyle(att).color }">{{ fileTypeStyle(att).label }}</span>
+          </template>
+          <button
+            type="button"
+            class="att-download"
+            title="下載"
+            :disabled="downloadingIndex === i"
+            @click.stop="download(att, i)"
+          >
+            <v-progress-circular v-if="downloadingIndex === i" indeterminate size="12" width="2"></v-progress-circular>
+            <v-icon v-else size="15">mdi-download</v-icon>
+          </button>
         </div>
-        <div class="att-name text-caption">{{ att.name }}</div>
-        <v-btn
-          v-if="!readonly"
-          class="att-remove"
-          icon="mdi-close"
-          size="x-small"
-          density="comfortable"
-          variant="flat"
-          color="grey-darken-3"
-          @click="remove(i)"
-        ></v-btn>
+        <div class="att-name">{{ att.name }}</div>
+        <button v-if="!readonly" type="button" class="att-remove" title="移除" @click="remove(i)">
+          <v-icon size="13">mdi-close</v-icon>
+        </button>
       </div>
 
       <div
@@ -45,42 +49,18 @@
             <v-icon v-else size="22" color="white">{{ p.retryable ? 'mdi-refresh' : 'mdi-alert-circle-outline' }}</v-icon>
           </div>
         </div>
-        <div class="att-name text-caption">{{ p.name }}</div>
-        <div v-if="p.status === 'failed'" class="att-name text-caption text-error">{{ p.error }}</div>
-        <v-btn
-          v-if="p.status !== 'uploading'"
-          class="att-remove"
-          icon="mdi-close"
-          size="x-small"
-          density="comfortable"
-          variant="flat"
-          color="grey-darken-3"
-          @click="discard(p)"
-        ></v-btn>
+        <div class="att-name">{{ p.name }}</div>
+        <div v-if="p.status === 'failed'" class="att-name text-error">{{ p.error }}</div>
+        <button v-if="p.status !== 'uploading'" type="button" class="att-remove" title="移除" @click="discard(p)">
+          <v-icon size="13">mdi-close</v-icon>
+        </button>
       </div>
 
       <UploadDropZone v-if="!readonly" :accept="accept" :mac="mac" @files="enqueue" />
       <span v-if="readonly && modelValue.length === 0" class="text-caption text-grey">—</span>
     </div>
 
-    <v-dialog v-model="previewOpen" max-width="960px">
-      <v-card>
-        <div class="att-preview-head">
-          <span class="att-preview-name">{{ current?.name }}</span>
-          <v-btn icon="mdi-open-in-new" variant="text" color="white" @click="openTab(current?.url)"></v-btn>
-          <v-btn icon="mdi-close" variant="text" color="white" @click="previewOpen = false"></v-btn>
-        </div>
-        <v-card-text class="pa-0 bg-grey-lighten-3" style="height: 75vh;">
-          <v-img v-if="current && isImage(current)" :src="current.url" height="100%" contain></v-img>
-          <iframe
-            v-else-if="current"
-            :src="current.url"
-            style="width: 100%; height: 100%; border: 0;"
-            title="附件預覽"
-          ></iframe>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
+    <AttachmentViewer v-model="viewerOpen" :items="modelValue" :start-index="viewerIndex" />
   </div>
 </template>
 
@@ -88,7 +68,9 @@
 import { ref, nextTick } from 'vue';
 import { uploadSubscriptionFile } from '@/api.js';
 import { useUploadQueue } from '@/composables/useUploadQueue';
+import { isImageAttachment, fileTypeStyle, downloadAttachment } from '@/utils/attachmentFile';
 import UploadDropZone from './UploadDropZone.vue';
+import AttachmentViewer from './AttachmentViewer.vue';
 
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
@@ -100,8 +82,9 @@ const props = defineProps({
 });
 const emit = defineEmits(['update:modelValue']);
 
-const previewOpen = ref(false);
-const current = ref(null);
+const viewerOpen = ref(false);
+const viewerIndex = ref(0);
+const downloadingIndex = ref(-1);
 
 // 逐檔上傳：每完成一個就寫回 modelValue，等父層更新後再傳下一個，避免覆蓋
 const { pending, enqueue, retry, discard } = useUploadQueue(async (file, id) => {
@@ -112,26 +95,18 @@ const { pending, enqueue, retry, discard } = useUploadQueue(async (file, id) => 
   await nextTick();
 });
 
-function isImage(att) {
-  if (att?.contentType) return att.contentType.startsWith('image/');
-  return /\.(png|jpe?g|gif|webp)(\?|$)/i.test(att?.url || '');
+function open(index) {
+  viewerIndex.value = index;
+  viewerOpen.value = true;
 }
 
-function isPdf(att) {
-  return att?.contentType === 'application/pdf' || /\.pdf(\?|$)/i.test(att?.url || '');
-}
-
-function preview(att) {
-  if (!isImage(att) && !isPdf(att)) {
-    openTab(att.url);
-    return;
+async function download(att, index) {
+  downloadingIndex.value = index;
+  try {
+    await downloadAttachment(att);
+  } finally {
+    downloadingIndex.value = -1;
   }
-  current.value = att;
-  previewOpen.value = true;
-}
-
-function openTab(url) {
-  if (url) window.open(url, '_blank');
 }
 
 function remove(index) {
@@ -140,41 +115,89 @@ function remove(index) {
 </script>
 
 <style scoped>
+.att-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+}
 .att-item {
   position: relative;
-  width: 96px;
+  width: 84px;
 }
 .att-thumb {
-  width: 56px;
-  height: 56px;
+  position: relative;
+  width: 72px;
+  height: 72px;
   margin: 0 auto;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
   overflow: hidden;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   cursor: pointer;
-  background: #fafafa;
+  background: #f5f5f7;
+  transition: box-shadow 0.15s, border-color 0.15s;
 }
-.att-thumb:hover {
-  opacity: 0.85;
+.att-thumb:hover,
+.att-thumb:focus-visible {
+  border-color: rgba(0, 113, 227, 0.5);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+  outline: none;
 }
-/* 完整顯示檔名：自動換行，不截斷 */
-.att-name {
-  margin-top: 3px;
-  text-align: center;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-.att-pending {
-  position: relative;
-  cursor: default;
-}
-.att-pending img {
+.att-thumb > img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.att-type {
+  padding: 0 5px;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 15px;
+  letter-spacing: 0.3px;
+}
+/* 下載鈕：滑鼠移上縮圖才出現；觸控裝置改在檢視器內下載 */
+.att-download {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(29, 29, 31, 0.78);
+  color: #fff;
+  cursor: pointer;
+}
+.att-download:hover {
+  background: #0071e3;
+}
+@media (hover: hover) {
+  .att-thumb:hover .att-download,
+  .att-download:focus-visible {
+    display: inline-flex;
+  }
+}
+/* 完整顯示檔名：自動換行，不截斷 */
+.att-name {
+  margin-top: 4px;
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #3a3a3c;
+  overflow-wrap: anywhere;
+}
+.att-pending {
+  cursor: default;
 }
 .att-pending-mask {
   position: absolute;
@@ -196,22 +219,19 @@ function remove(index) {
 .att-remove {
   position: absolute;
   top: -6px;
-  right: calc(50% - 36px);
-}
-.att-preview-head {
-  display: flex;
+  right: 0;
+  display: inline-flex;
   align-items: center;
-  gap: 2px;
-  min-height: 48px;
-  padding: 4px 4px 4px 16px;
-  background: #004383;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #48484a;
   color: #fff;
+  cursor: pointer;
 }
-.att-preview-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 15px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
+.att-remove:hover {
+  background: #d62d20;
 }
 </style>
