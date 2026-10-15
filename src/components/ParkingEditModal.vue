@@ -212,7 +212,7 @@
             <template v-if="props.mode === 'quote' && props.unitId" #header-extra>
               <span class="parking-editor-hint d-none d-md-inline">點選車位 → 為 {{ props.unitId }} 加入此車位</span>
               <span class="parking-editor-count">
-                <v-icon size="14">mdi-car-multiple</v-icon>已選 {{ localParking.length }} 個
+                <v-icon size="18">mdi-car-multiple</v-icon>已選 {{ localParking.length }} 個
               </span>
             </template>
           </ParkingCanvas>
@@ -712,19 +712,19 @@ onUnmounted(() => {
 
 /* 車位銷控標題列提示與計數（報價模式，插入 ParkingCanvas 的 header-extra slot） */
 .parking-editor-hint {
-  font-size: 12.5px;
+  font-size: 14px;
   color: #6e6e73;
 }
 .parking-editor-count {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 10px;
+  gap: 5px;
+  height: 34px;
+  padding: 0 14px;
   border-radius: 999px;
   background: rgba(0, 113, 227, 0.1);
   color: #0071e3;
-  font-size: 12.5px;
+  font-size: 14.5px;
   font-weight: 600;
   white-space: nowrap;
 }

@@ -46,6 +46,10 @@
             <svg-icon type="mdi" :path="mdiFitToScreenOutline" :size="15"></svg-icon><span>最適</span>
           </button>
         </div>
+        <!-- 隱藏／顯示所有車位矩形，方便查看原始底圖 -->
+        <button :class="['mac-btn', { 'is-active': spotsHidden }]" @click="spotsHidden = !spotsHidden">
+          <svg-icon type="mdi" :path="spotsHidden ? mdiEyeOutline : mdiEyeOffOutline" :size="16"></svg-icon> {{ spotsHidden ? '顯示車位' : '隱藏車位' }}
+        </button>
         <button class="mac-btn" @click="openPrintDialog">
           <svg-icon type="mdi" :path="mdiPrinter" :size="16"></svg-icon> 列印
         </button>
@@ -73,6 +77,7 @@
     <div class="canvas-zoom-wrapper" :style="zoomWrapperStyle">
     <div
       class="parking-canvas-area"
+      :class="{ 'spots-hidden': spotsHidden }"
       ref="canvasAreaRef"
       :style="canvasAreaStyle" >
       <img 
@@ -686,6 +691,8 @@ import {
   mdiCheck,
   mdiCarSide,
   mdiCheckBold,
+  mdiEyeOutline,
+  mdiEyeOffOutline,
 } from '@mdi/js';
 import { useToast } from 'vue-toastification';
 import { formatSalespersons } from '@/utils/salespersonUtils';
@@ -801,7 +808,9 @@ export default {
     const containerRef = ref(null) 
     const headerRef = ref(null)
     const hasHeader = computed(() => !!props.headerTitle)
-    const canvasScale = ref(1) 
+    // 隱藏所有車位矩形，只看底圖（切換樓層時維持）
+    const spotsHidden = ref(false)
+    const canvasScale = ref(1)
     const canvasAreaStyle = computed(() => ({
       width: `${canvasWidth.value}px`,
       height: `${canvasHeight.value}px`,
@@ -1738,7 +1747,7 @@ export default {
     watch(() => props.projectId, (newVal, oldVal) => { if (newVal !== oldVal) fetchAvailableFloors(); })
 
     return {
-      containerRef, headerRef, hasHeader, canvasAreaRef, canvasAreaStyle, zoomWrapperStyle, bgImageUrl, bgImageStyles, spotLayouts, selectedSpot, selectedSpotId, spotProperties, importDialog, loading, importing, previewParkings, totalParkingCount, displayMode: computed(() => props.displayMode), floorPlan: computed(() => props.floorPlan), previewMode: computed(() => props.previewMode), contextMode: computed(() => props.contextMode),
+      containerRef, headerRef, hasHeader, spotsHidden, canvasAreaRef, canvasAreaStyle, zoomWrapperStyle, bgImageUrl, bgImageStyles, spotLayouts, selectedSpot, selectedSpotId, spotProperties, importDialog, loading, importing, previewParkings, totalParkingCount, displayMode: computed(() => props.displayMode), floorPlan: computed(() => props.floorPlan), previewMode: computed(() => props.previewMode), contextMode: computed(() => props.contextMode),
       multiSelectedIds, marqueeRect, onMarqueeStart, handleSpotDeactivated,
       scrollAreaRef, isPanning, onScrollAreaMouseDown,
       getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, zoomIn, zoomOut, zoomSliderMin, zoomSliderMax, onZoomSlider, isCanvasLoading, propertiesPanelStyle, onPropertiesPanelDragStart,
@@ -1750,7 +1759,7 @@ export default {
       formatSalespersons,
       canvasWidth, canvasHeight,
       showPrintDialog, printOrientation, recommendedOrientation, printModeLabel, openPrintDialog, closePrintDialog, doPrint,
-      mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus, mdiFitToScreenOutline, mdiPrinter, mdiPencil, mdiCheck, mdiCarSide, mdiCheckBold,
+      mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus, mdiFitToScreenOutline, mdiPrinter, mdiPencil, mdiCheck, mdiCarSide, mdiCheckBold, mdiEyeOutline, mdiEyeOffOutline,
       onCanvasWheel
     }
   }
@@ -1867,10 +1876,10 @@ export default {
 .mac-zoom {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 30px;
-  padding: 0 6px;
-  border-radius: 8px;
+  gap: 6px;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: 10px;
   background: rgba(0, 0, 0, 0.06);
 }
 .mac-zoom-btn,
@@ -1878,28 +1887,31 @@ export default {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  height: 24px;
-  min-width: 24px;
-  padding: 0 4px;
+  gap: 4px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 6px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: #1d1d1f;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 14.5px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition: background-color 0.12s;
 }
+.mac-zoom-btn svg,
+.mac-zoom-fit svg { width: 19px; height: 19px; }
 .mac-zoom-btn:hover:not(:disabled),
 .mac-zoom-fit:hover { background: rgba(0, 0, 0, 0.06); }
 .mac-zoom-btn:disabled { opacity: 0.35; cursor: default; }
-.mac-zoom-fit { color: #0071e3; padding: 0 7px; }
+.mac-zoom-fit { color: #0071e3; padding: 0 10px; }
 .mac-zoom-percent {
-  min-width: 38px;
+  min-width: 46px;
   text-align: right;
-  font-size: 11.5px;
+  font-size: 13.5px;
   font-weight: 600;
   color: #6e6e73;
   font-variant-numeric: tabular-nums;
@@ -1907,18 +1919,18 @@ export default {
 .mac-zoom-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 120px;
-  height: 4px;
-  margin: 0 2px;
-  border-radius: 2px;
+  width: 150px;
+  height: 5px;
+  margin: 0 3px;
+  border-radius: 3px;
   background: linear-gradient(90deg, #0071e3 0%, #0071e3 var(--zoom-fill, 50%), rgba(0, 0, 0, 0.18) var(--zoom-fill, 50%));
   outline: none;
   cursor: pointer;
 }
 .mac-zoom-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #fff;
   border: 0;
@@ -1927,16 +1939,18 @@ export default {
 }
 .mac-zoom-slider::-webkit-slider-thumb:active { cursor: grabbing; }
 .mac-zoom-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #fff;
   border: 0;
   box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.3);
   cursor: grab;
 }
-.mac-zoom-slider::-moz-range-track { height: 4px; border-radius: 2px; background: transparent; }
+.mac-zoom-slider::-moz-range-track { height: 5px; border-radius: 3px; background: transparent; }
 @media (max-width: 600px) {
+  .mac-zoom { height: 36px; gap: 4px; padding: 0 6px; }
+  .mac-zoom-btn, .mac-zoom-fit { height: 30px; min-width: 30px; }
   .mac-zoom-slider { width: 90px; }
   .mac-zoom-fit span { display: none; }
 }
@@ -1946,9 +1960,9 @@ export default {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 12px;
-  min-height: 48px;
-  padding: 6px 12px 6px 10px;
+  gap: 10px 16px;
+  min-height: 60px;
+  padding: 8px 16px 8px 12px;
   background: #f6f6f8;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
@@ -1959,11 +1973,11 @@ export default {
 .mac-titlebar-lead {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 .mac-titlebar-title {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -1973,10 +1987,10 @@ export default {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 9px;
   background: transparent;
   color: #6e6e73;
   cursor: pointer;
@@ -1984,11 +1998,12 @@ export default {
   transition: background-color 0.12s, color 0.12s;
 }
 .mac-titlebar-close:hover { background: rgba(0, 0, 0, 0.06); color: #1d1d1f; }
+.mac-titlebar-close svg { width: 22px; height: 22px; }
 .mac-titlebar-tools {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   margin-left: auto;
   min-width: 0;
 }
@@ -1996,21 +2011,21 @@ export default {
 .mac-seg {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
   background: rgba(0, 0, 0, 0.06);
   max-width: 100%;
 }
 .mac-seg-btn {
-  height: 26px;
-  padding: 0 11px;
+  height: 34px;
+  padding: 0 16px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: #1d1d1f;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -2032,12 +2047,26 @@ export default {
 }
 .mac-seg--floors::-webkit-scrollbar { display: none; }
 .mac-seg--floors .mac-seg-btn { font-variant-numeric: tabular-nums; }
+/* 標題列內的一般按鈕（隱藏車位、列印…）：比共用 mac-btn 大一號，與分段控制等高感一致 */
+.mac-titlebar .mac-btn {
+  height: 40px;
+  padding: 0 16px;
+  gap: 6px;
+  border-radius: 9px;
+  font-size: 15px;
+}
+.mac-titlebar .mac-btn svg { width: 20px; height: 20px; }
 
 @media (max-width: 600px) {
-  .mac-titlebar { padding: 6px 8px; gap: 6px 8px; }
-  .mac-titlebar-title { font-size: 13.5px; }
+  .mac-titlebar { min-height: 52px; padding: 6px 8px; gap: 6px 8px; }
+  .mac-titlebar-title { font-size: 15px; }
+  .mac-titlebar-close { width: 34px; height: 34px; }
+  .mac-seg-btn { height: 32px; padding: 0 12px; font-size: 14px; }
+  .mac-titlebar .mac-btn { height: 36px; padding: 0 12px; font-size: 14px; }
+  .mac-titlebar .mac-btn svg { width: 18px; height: 18px; }
   .mac-titlebar-tools { margin-left: 0; width: 100%; }
   .mac-titlebar-tools .mac-btn { margin-left: auto; }
+  .mac-titlebar-tools .mac-btn + .mac-btn { margin-left: 0; }
 }
 
 .canvas-scroll-area.pan-enabled { cursor: grab; }
@@ -2065,6 +2094,9 @@ export default {
 
 :deep(.parking-spot-item) {
   position: absolute !important;
+}
+.parking-canvas-area.spots-hidden :deep(.parking-spot-item) {
+  display: none !important;
 }
 
 .parking-canvas-area {
