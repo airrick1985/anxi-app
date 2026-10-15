@@ -11,7 +11,11 @@
               合約製作設定 - {{ unitCtx.unitId }}
             </span>
           </v-col>
-          <v-col class="text-right">
+          <v-col cols="auto" class="text-right">
+            <v-btn v-if="isMobile" icon="mdi-file-cog-outline" variant="text" title="合約製作範本"
+              @click="templateEditorDialog = true" />
+            <v-btn v-else variant="tonal" color="secondary" prepend-icon="mdi-file-cog-outline" class="mr-2"
+              @click="templateEditorDialog = true">合約製作範本</v-btn>
             <v-btn icon="mdi-close" variant="text" @click="$emit('update:show', false)" />
           </v-col>
         </v-row>
@@ -30,7 +34,11 @@
           <v-progress-circular indeterminate color="primary" />
         </div>
         <v-alert v-else-if="!config" type="info" variant="tonal" class="ma-4">
-          本建案尚未設定「合約製作範本」。請由具本建案「銷控系統」權限的人員至「銷控設定 → 合約製作範本」建立後再使用。
+          本建案尚未設定「合約製作範本」。
+          <div class="mt-3">
+            <v-btn color="primary" variant="flat" prepend-icon="mdi-file-cog-outline"
+              @click="templateEditorDialog = true">開啟合約製作範本</v-btn>
+          </div>
         </v-alert>
 
         <v-row v-else :no-gutters="isMobile">
@@ -802,6 +810,24 @@
     </v-card>
   </v-dialog>
 
+  <!-- 合約製作範本（不離開合約製作設定即可調整；儲存後關閉即重新套用） -->
+  <v-dialog :model-value="templateEditorDialog" @update:model-value="!$event && closeTemplateEditor()"
+    :fullscreen="isMobile" max-width="1400px" scrollable>
+    <v-card class="d-flex flex-column" :style="{ height: isMobile ? '100dvh' : '92vh' }">
+      <v-card-title class="pa-3 d-flex align-center">
+        <v-icon start>mdi-file-cog-outline</v-icon>
+        合約製作範本 - {{ projectName }}
+        <v-spacer />
+        <v-btn icon="mdi-close" variant="text" @click="closeTemplateEditor" />
+      </v-card-title>
+      <v-divider />
+      <v-card-text style="overflow-y: auto; flex-grow: 1;" class="pa-2">
+        <ContractDocConfigEditor v-if="templateEditorDialog" ref="templateEditorRef" embedded
+          :project-id="projectId" :initial-trial-unit-id="householdDocId" @saved="templateSaved = true" />
+      </v-card-text>
+    </v-card>
+  </v-dialog>
+
   <!-- 自訂表單管理（不離開合約製作設定即可取用表單連結） -->
   <v-dialog v-model="customFormsDialog" :fullscreen="isMobile" max-width="1250px" scrollable>
     <v-card class="d-flex flex-column" :style="{ height: isMobile ? '100dvh' : '90vh' }">
@@ -857,6 +883,8 @@ import DecorationBreakdownPreview from './DecorationBreakdownPreview.vue';
 import DecorationPaymentDetailPreview from './DecorationPaymentDetailPreview.vue';
 import ContractNumberTablePreview from './ContractNumberTablePreview.vue';
 
+// 合約製作範本編輯器（於 Dialog 內開啟；lazy 載入）
+const ContractDocConfigEditor = defineAsyncComponent(() => import('@/components/ContractDocConfigEditor.vue'));
 // 自訂表單管理（於 Dialog 內開啟，取用表單連結；lazy 載入避免拖慢開啟）
 const CustomFormManager = defineAsyncComponent(() => import('@/components/CustomFormManager.vue'));
 // PDF 預覽（歷史檔案檢視；lazy 載入）
@@ -1877,8 +1905,9 @@ const downloadBlockers = computed(() => {
 const canDownload = computed(() => !!config.value && downloadBlockers.value.length === 0);
 
 /* ---------- 開啟時載入 ---------- */
-watch(() => props.show, async (val) => {
-  if (!val) return;
+watch(() => props.show, (val) => { if (val) loadAll(); }, { immediate: true });
+
+async function loadAll() {
   loading.value = true;
   mobileTab.value = 'edit';
   attachmentFiles.value = [];
@@ -1910,7 +1939,42 @@ watch(() => props.show, async (val) => {
   } finally {
     loading.value = false;
   }
-}, { immediate: true });
+}
+
+/* ---------- 合約製作範本（內嵌編輯） ---------- */
+const templateEditorDialog = ref(false);
+const templateEditorRef = ref(null);
+const templateSaved = ref(false);
+
+async function closeTemplateEditor() {
+  if (templateEditorRef.value?.hasUnsavedChanges?.()
+    && !window.confirm('合約製作範本有未儲存的變更，確定關閉？')) return;
+  templateEditorDialog.value = false;
+  if (!templateSaved.value) return;
+  templateSaved.value = false;
+  await reloadConfigKeepEdits();
+}
+
+// 範本儲存後重新載入：保留本戶目前（含未儲存）的編輯內容，套用到新範本
+async function reloadConfigKeepEdits() {
+  if (!config.value) return loadAll();
+  const snapshot = buildDocDataPayload();
+  loading.value = true;
+  try {
+    const cfg = await fetchContractDocConfig(props.projectId);
+    config.value = cfg;
+    if (cfg) restoreDocData(cfg, snapshot);
+    if (cfg && attachmentsPage.value && attachmentSourceUrl.value && !attachmentsLoaded.value) {
+      loadAttachmentFiles();
+    }
+    toast.success('已套用最新合約製作範本');
+  } catch (e) {
+    console.error('重新載入合約製作範本失敗:', e);
+    toast.error(`重新載入合約製作範本失敗：${e.message}`);
+  } finally {
+    loading.value = false;
+  }
+}
 
 // 會辦單自由欄位自動帶入：贈品＝品項、介紹費＝介紹費合計（萬）、溢差價＝成交總價 − 合計底價（萬）；存檔已有值者不覆蓋
 function autoFreeFieldValue(f) {

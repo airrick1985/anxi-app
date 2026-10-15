@@ -2,7 +2,7 @@
   <v-card flat class="pa-2">
     <!-- 標題列 -->
     <div class="d-flex align-center flex-wrap ga-2 mb-3">
-      <div class="text-h6">
+      <div v-if="!embedded" class="text-h6">
         <v-icon class="mr-1">mdi-file-document-edit-outline</v-icon>
         合約製作範本
       </div>
@@ -675,17 +675,29 @@ import { useDisplay } from 'vuetify';
 import TokenFormulaEditor from '@/components/TokenFormulaEditor.vue';
 import ContractNumberTableLayoutEditor from '@/components/contractDoc/ContractNumberTableLayoutEditor.vue';
 
+// 嵌入其他對話框（如合約製作設定）時由外部指定建案與試算戶別
+const props = defineProps({
+  projectId: { type: String, default: '' },
+  embedded: Boolean,
+  initialTrialUnitId: { type: String, default: '' },
+});
+const emit = defineEmits(['saved']);
+
 const route = useRoute();
 const toast = useToast();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 
-const projectId = ref(route.params.projectId);
+const projectId = ref(props.projectId || route.params.projectId);
 
 const loading = ref(true);
 const saving = ref(false);
 const config = ref(null);
 const expandedPages = ref([]);
+// 未儲存變更偵測（嵌入對話框關閉前確認用）
+const savedSnapshot = ref('null');
+const hasUnsavedChanges = () => JSON.stringify(config.value) !== savedSnapshot.value;
+defineExpose({ hasUnsavedChanges });
 
 // 🖥️ 左側項目導覽（電腦版左欄 / 手機版頂部橫向列）
 const { mobile } = useDisplay();
@@ -714,6 +726,11 @@ onMounted(async () => {
   try {
     projectStore.setCurrentProject(projectId.value);
     config.value = await fetchContractDocConfig(projectId.value);
+    savedSnapshot.value = JSON.stringify(config.value);
+    if (props.initialTrialUnitId) {
+      trialUnitId.value = props.initialTrialUnitId;
+      loadUnitsOnce();
+    }
   } catch (e) {
     console.error('讀取合約製作設定失敗:', e);
     toast.error(`讀取合約製作設定失敗：${e.message}`);
@@ -735,7 +752,9 @@ async function saveConfig() {
     const payload = JSON.parse(JSON.stringify(config.value));
     delete payload.id;
     await setContractDocConfig(projectId.value, payload);
+    savedSnapshot.value = JSON.stringify(config.value);
     toast.success('合約製作範本已儲存');
+    emit('saved');
   } catch (e) {
     console.error('儲存合約製作設定失敗:', e);
     toast.error(`儲存失敗：${e.message}`);
