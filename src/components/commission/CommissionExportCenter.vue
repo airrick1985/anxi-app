@@ -285,14 +285,14 @@ const emit = defineEmits(['update:personOrder', 'update:unitOrders', 'settings-s
 const router = useRouter();
 const toast = useToast();
 // ---------- 文字自訂就地編輯（即時預覽點格子修改；按「儲存文字」才寫入） ----------
-const TEXT_EDIT_KEYS = ['claimTitlePattern', 'note1', 'note2', 'kiloLabel', 'youfuLabelPattern', 'partyALabel'];
-const TEXT_KEY_TO_CONFIG = { claimTitlePattern: 'titlePattern', kiloLabel: 'kiloLabel', youfuLabelPattern: 'youfuLabelPattern' };
+const TEXT_EDIT_KEYS = ['claimTitlePattern', 'note1', 'note2', 'youfuLabelPattern', 'partyALabel'];
+const TEXT_KEY_TO_CONFIG = { claimTitlePattern: 'titlePattern', youfuLabelPattern: 'youfuLabelPattern' };
 const textOverrides = ref({});
 const savingText = ref(false);
 const hasTextEdits = computed(() => Object.keys(textOverrides.value).length > 0);
 const exportSettings = computed(() => ({ ...props.settings, ...textOverrides.value, priceBasis: plan.value.priceBasis }));
 
-/** 已存版型有自己的標題／條文／千4／優付文字時，預覽期間以就地修改的值覆蓋（儲存時一併寫回該版型） */
+/** 已存版型有自己的標題／條文／優付文字時，預覽期間以就地修改的值覆蓋（儲存時一併寫回該版型） */
 function applyTextOverrides(cfg) {
   const o = textOverrides.value;
   if (!cfg || !Object.keys(o).length) return cfg;
@@ -468,7 +468,6 @@ const editValues = computed(() => {
     claimTitlePattern: cfg.titlePattern ?? s.claimTitlePattern ?? '',
     note1: Array.isArray(cfg.notes) ? (cfg.notes[0] ?? '') : (s.note1 ?? ''),
     note2: Array.isArray(cfg.notes) ? (cfg.notes[1] ?? '') : (s.note2 ?? ''),
-    kiloLabel: cfg.kiloLabel ?? s.kiloLabel ?? '',
     youfuLabelPattern: cfg.youfuLabelPattern ?? s.youfuLabelPattern ?? '',
     partyALabel: s.partyALabel ?? '',
   };

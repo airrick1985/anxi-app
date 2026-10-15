@@ -720,7 +720,7 @@ const BONUS_COLUMNS = [
   { key: 'dealAfter', title: '折數後總價(萬)', align: 'end', filter: 'number' },
   { key: 'bonusCount', title: '人數', align: 'center', filter: 'number' },
   { key: 'bonusNet', title: '獎金實發(元)', align: 'end', filter: 'number' },
-  { key: 'handover', title: '交屋團獎暫留(元)', align: 'end', filter: 'number' },
+  { key: 'handover', title: '交屋保留款(元)', align: 'end', filter: 'number' },
   { key: 'note', title: '備註', filter: 'text' },
   { key: 'source', title: '來源', filter: 'select', hidden: true },
   { key: 'createdBy', title: '建立者', filter: 'select', hidden: true },

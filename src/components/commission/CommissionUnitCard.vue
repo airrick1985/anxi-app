@@ -303,7 +303,7 @@
               />
             </template>
 
-            <!-- 提撥類別（交屋團獎）：本戶可關閉 -->
+            <!-- 交屋團獎（交屋保留款，含於保留款、不扣個獎）：本戶可關閉 -->
             <template v-for="cat in handoverCategories" :key="cat.key">
               <div v-if="entry.categories[cat.key]" class="handover-box" :class="{ off: !isHandoverOn(cat) }">
                 <div class="d-flex align-center flex-wrap ga-2">
@@ -313,12 +313,12 @@
                     @update:model-value="v => setHandoverOn(cat, v)"
                   >
                     <template #label>
-                      <span class="text-subtitle-2 font-weight-bold">本戶提撥{{ cat.label }}</span>
+                      <span class="text-subtitle-2 font-weight-bold">本戶{{ cat.label }}</span>
                     </template>
                   </v-switch>
                   <template v-if="isHandoverOn(cat)">
                     <span class="d-inline-flex align-center text-body-2">
-                      提撥
+                      比例
                       <v-text-field
                         :model-value="entry.categories[cat.key].ratePct"
                         type="number" step="0.1" min="0" max="100"
@@ -326,18 +326,15 @@
                         @update:model-value="v => { entry.categories[cat.key].ratePct = Number(v) || 0; }"
                       ></v-text-field>
                     </span>
-                    <span class="text-caption text-medium-emphasis">自「{{ handoverSourceLabel(cat) }}」池 {{ money(handoverInfo(cat).sourcePool) }} 元提撥</span>
+                    <span class="text-caption text-medium-emphasis">「{{ handoverSourceLabel(cat) }}」池 {{ money(handoverInfo(cat).sourcePool) }} 元</span>
                     <v-spacer></v-spacer>
-                    <v-chip size="small" color="primary" variant="tonal">暫留 {{ money(handoverInfo(cat).amount) }} 元・本期不發放</v-chip>
+                    <v-chip size="small" color="primary" variant="tonal">交屋保留款 {{ money(handoverInfo(cat).amount) }} 元（含於保留款）</v-chip>
                   </template>
                   <template v-else>
-                    <span class="text-caption text-medium-emphasis">本戶不提撥，「{{ handoverSourceLabel(cat) }}」全額分配給人員</span>
+                    <span class="text-caption text-medium-emphasis">本戶不計</span>
                   </template>
                 </div>
-                <div v-if="isHandoverOn(cat)" class="text-caption text-medium-emphasis mt-1">
-                  提撥後「{{ handoverSourceLabel(cat) }}」實際分配池 {{ money(result.pools[handoverInfo(cat).sourceCatKey] || 0) }} 元；暫留金額不計入任何人員小計／實發，日後另製交屋獎金時發放。
-                  <span v-if="!handoverInfo(cat).sourceCatKey" class="text-error">（找不到來源類別，請至設定分頁指定）</span>
-                </div>
+                <div v-if="isHandoverOn(cat) && !handoverInfo(cat).sourceCatKey" class="text-caption text-error mt-1">找不到來源類別，請至設定分頁指定</div>
               </div>
             </template>
           </div>

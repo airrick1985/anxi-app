@@ -1,6 +1,6 @@
 <template>
   <v-container fluid class="commission-bonus-page pa-4">
-    <div class="d-flex align-center mb-3 flex-wrap ga-2">
+    <div class="commission-head d-flex align-center mb-3 flex-wrap ga-2">
       <v-btn icon="mdi-arrow-left" variant="text" @click="goBack"></v-btn>
       <h1 class="text-h5 font-weight-bold mr-2">請佣獎金</h1>
       <v-chip color="primary" variant="tonal" v-if="projectName">{{ projectName }}</v-chip>
@@ -515,6 +515,8 @@ onMounted(async () => {
   max-width: 1600px;
   margin: 0 auto;
 }
+/* 左側讓出全站浮動漢堡鈕（fixed 左上 10px+40px） */
+.commission-head { padding-left: 44px; }
 </style>
 
 <style scoped>

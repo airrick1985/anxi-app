@@ -52,11 +52,8 @@
             <v-col cols="12" md="6">
               <v-text-field v-model="local.partyBLabel" label="介紹費欄位 B（計入請佣基準）" variant="outlined" density="compact"></v-text-field>
             </v-col>
-            <v-col cols="6" md="3">
+            <v-col cols="12" md="6">
               <v-text-field v-model="local.projectShortName" label="建案簡稱（檔名用）" variant="outlined" density="compact"></v-text-field>
-            </v-col>
-            <v-col cols="6" md="3">
-              <v-text-field v-model="local.kiloLabel" label="「千4」標籤" variant="outlined" density="compact"></v-text-field>
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field v-model="local.youfuLabelPattern" label="優付列文字（{pct}＝比例）" variant="outlined" density="compact"></v-text-field>
@@ -91,7 +88,7 @@
           <ul class="text-caption text-medium-emphasis mb-3 cat-hints">
             <li><b>發放方式</b>：依職務＝發給符合職務的人；個人＝發給該戶銷售；團隊＝依團獎分組發放；若另設對應職務，需分組與職務同時符合。</li>
             <li><b>分配方式</b>：均分＝比例為整個類別，人員平分（0.1%、2 人各 0.05%）；單獨＝每人各得比例（0.1%、2 人各 0.1%）。戶別卡片可再改為自訂比例／鎖定金額。</li>
-            <li><b>自個獎提撥</b>（交屋團獎）：自「來源類別」（預設銷售個獎）的獎金池提撥「比例(%)」，本期不發放、不分配給人員，暫留供日後另行製作交屋獎金；來源類別以提撥後的餘額分配。</li>
+            <li><b>交屋保留款</b>（交屋團獎）：「來源類別」（預設銷售個獎）獎金池 ×「比例(%)」，含於保留款內，不另扣、不影響個獎分配。</li>
             <li><b>對應職務</b>：可多選，選項是本建案人員的職務；沒有的職務可直接打字新增。</li>
             <li><b>預設人員</b>：可填多位；填入後該類別不再依對應職務找人，請佣工作台直接帶入這些人並均分。每人可填保留款／稅金／二代健保 %，留空沿用人員名單設定。</li>
             <li>不用的類別請「停用」，不要刪除，歷史資料才會保留。</li>
@@ -118,7 +115,7 @@
                   <td><v-text-field v-model="cat.label" variant="outlined" density="compact" hide-details></v-text-field></td>
                   <td>
                     <v-text-field v-model.number="cat.ratePct" type="number" step="0.001" variant="outlined" density="compact" hide-details></v-text-field>
-                    <div v-if="cat.mode === 'handover'" class="text-caption text-medium-emphasis mt-1">自來源池提撥 %</div>
+                    <div v-if="cat.mode === 'handover'" class="text-caption text-medium-emphasis mt-1">來源池 %</div>
                   </td>
                   <td>
                     <v-select v-model="cat.mode" :items="modeOptions" item-title="title" item-value="value"
@@ -367,7 +364,7 @@ const modeOptions = [
   { title: '依職務', value: 'role' },
   { title: '個人（銷售）', value: 'individual' },
   { title: '團隊', value: 'team' },
-  { title: '自個獎提撥（交屋團獎）', value: 'handover' },
+  { title: '交屋保留款（交屋團獎）', value: 'handover' },
 ];
 
 /** 提撥類別可選的來源類別：其他非提撥類別 */

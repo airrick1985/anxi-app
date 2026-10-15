@@ -104,7 +104,6 @@ export function defaultBonusConfig(settings) {
       titleFontSize: 20, headerFontSize: 12, dataFontSize: 12,
       headerBg: '#c4bd97', totalRowBg: '#ffff00', summaryColor: '#DD0806', borders: true,
     },
-    kiloLabel: settings?.kiloLabel || '千4',
     youfuLabelPattern: settings?.youfuLabelPattern || '優付方案請款{pct}%',
     fileNamePattern: settings?.bonusFileNamePattern || '{簡稱}NO.{期別}獎金-{民國年月}',
     showSourceProjectTag: true,
@@ -174,7 +173,7 @@ export function buildClaimModel(records, opts) {
   const minguoYM = firstMinguoYM(sorted);
   const title = fillPattern(cfg.titlePattern, {
     projectName, shortName: settings.projectShortName || '', period, minguoYM,
-  });
+  }) + (String(cfg.titlePattern).includes('{民國年月}') ? '' : titleMonthSuffix(minguoYM));
   const fileName = withProjectName(fillPattern(cfg.fileNamePattern, {
     projectName, shortName: settings.projectShortName || '', period,
     minguoYM: minguoYM.replace('/', '.'),
@@ -206,6 +205,12 @@ function firstMinguoYM(records) {
     if (ym) return ym;
   }
   return '';
+}
+
+/** 標題結尾月份：'115/10' → '（115 年 10 月）' */
+function titleMonthSuffix(minguoYM) {
+  const [y, m] = String(minguoYM || '').split('/');
+  return y && m ? `（${y} 年 ${Number(m)} 月）` : '';
 }
 
 function isMgmtRole(role) {
@@ -275,21 +280,11 @@ export function buildBonusModel(opts) {
   const indivKeys = cls.indiv.map(c => c.key);
   const teamKeys = cls.team.map(c => c.key);
 
-  // 交屋團獎（自個獎提撥、本期不發放）：設定有啟用提撥類別，或紀錄快照含金額時，上段多一欄
-  // 交屋團獎暫留：以「本次實際提撥」（已乘請佣比例）呈現，請佣 50% 就暫留 50%，
-  // 下次再請剩餘比例時才不會重複暫留；退佣紀錄為負值抵銷
-  const handoverRecordAmt = r => toNum(r.handover?.total);
-  const hasHandover = cls.handover.length > 0 || records.some(r => handoverRecordAmt(r) !== 0);
-  const handoverLabel = cls.handover[0]?.label || '交屋團獎';
-  const handoverRate = cls.handover.reduce((s, c) => s + toNum(c.ratePct), 0);
-  const handoverX = handoverRate ? `${cls.indiv[0]?.label || '個獎'}×${handoverRate}%` : '';
-
   const personSorter = makePersonSorter(personOrder, personnelOrder);
   const personRank = makePersonRank(personOrder, personnelOrder);
   const mgmtKeys = cls.mgmt.map(c => c.key);
 
   const minguoYM = firstMinguoYM(records);
-  const saleYM = minguoYM;
 
   // 分組（退佣紀錄 ratioPct 為負：依退回比例合計歸組，金額以實際負值呈現）
   const groups = {};
@@ -322,7 +317,7 @@ export function buildBonusModel(opts) {
             personKey: b.personKey, name: b.name, role: b.role || '',
             sourceProjectId: b.sourceProjectId || '', sourceProjectName: b.sourceProjectName || '',
             indiv: 0, team: 0, byCat: {}, sub: 0,
-            subDisc: 0, keepDisc: 0, taxDisc: 0, nhiDisc: 0,
+            subDisc: 0, keepDisc: 0, taxDisc: 0, nhiDisc: 0, handoverBySrc: {},
             remark: b.remark || '', legacyNotes: [],
           };
         }
@@ -339,6 +334,26 @@ export function buildBonusModel(opts) {
         if (!a.remark) a.remark = b.remark || '';
         if (b.remark && !a.legacyNotes.includes(b.remark)) a.legacyNotes.push(b.remark);
       });
+      // 交屋保留款（參考，含於保留款、不參與計算）：各戶交屋團獎（本次實際金額，已乘請佣比例）
+      // 依來源類別分配比例攤給人員（整數，末位吸收尾差）
+      g.records.forEach(r => {
+        const rows = g.bonusRows.filter(b => b.commissionRecordId === r.id);
+        Object.values(r.handover?.byCat || {}).forEach(h => {
+          const keys = h?.sourceCatKey ? [h.sourceCatKey] : indivKeys;
+          const live = rows.filter(b => sumCats(b.amounts, keys));
+          const total = live.reduce((s, b) => s + sumCats(b.amounts, keys), 0);
+          const amount = toNum(h?.amount);
+          if (!amount || !total) return;
+          let given = 0;
+          live.forEach((b, i) => {
+            const v = i === live.length - 1 ? amount - given : Math.round(amount * sumCats(b.amounts, keys) / total);
+            given += v;
+            const k = keys.find(x => toNum(b.amounts?.[x])) || keys[0];
+            const a = agg[b.personKey];
+            a.handoverBySrc[k] = (a.handoverBySrc[k] || 0) + v;
+          });
+        });
+      });
       // 100% 的保留/稅/健保：以實際有效比例回推
       // 每人歷期備註：呼叫端可傳入以全建案獎金明細算好的 noteHistory（送出前預覽只帶本次草稿時仍能帶入最近一期備註）
       const noteHistory = opts.noteHistory || personNoteHistory(bonusRecords);
@@ -352,50 +367,17 @@ export function buildBonusModel(opts) {
         a.nhi = Math.round(a.sub * nr);
         a.net = a.sub - a.keep - a.tax - a.nhi;
         a.netDisc = a.subDisc - a.keepDisc - a.taxDisc - a.nhiDisc;
+        a.handoverKeep = sumAll(a.handoverBySrc);
       });
 
-      // 管理職（下段左側，銷售日期與項目欄之間）：以「實際領到管理類別獎金」歸位，
-      // 沒領管理類別但職務為主委／副總／輔導者亦列左側；其餘有獎金者列右側（項目欄右側）
-      // 同一人同時領管理類別與業務類別（個獎／團獎／其他類別，如輔導專案兼專案）時，左右各一欄：
-      // 左側只放管理類別金額，右側放其餘類別金額；保留／稅／健保依各自小計按有效比例拆分
+      // 獎金合計人員欄（一人一欄）：有管理類別獎金，或職務為主委／副總／輔導者列前段（管理職），其餘有獎金者列後段
       const left = [], right = [];
-      const isMgmtKey = k => cls.mgmt.some(c => c.key === k);
-      const otherKeys = cls.others.map(c => c.key);
-      const partOf = (a, keepKey) => {
-        const byCat = {};
-        Object.keys(a.byCat).forEach(k => { if (keepKey(k)) byCat[k] = a.byCat[k]; });
-        const sub = Object.values(byCat).reduce((s, v) => s + toNum(v), 0);
-        const ratio = a.sub ? sub / a.sub : 0;
-        const kr = a.subDisc ? a.keepDisc / a.subDisc : 0;
-        const tr = a.subDisc ? a.taxDisc / a.subDisc : 0;
-        const nr = a.subDisc ? a.nhiDisc / a.subDisc : 0;
-        const p = {
-          ...a, byCat, sub,
-          indiv: keepKey('__nonMgmt') ? a.indiv : 0,
-          team: keepKey('__nonMgmt') ? a.team : 0,
-          subDisc: Math.round(a.subDisc * ratio), keepDisc: Math.round(a.keepDisc * ratio),
-          taxDisc: Math.round(a.taxDisc * ratio), nhiDisc: Math.round(a.nhiDisc * ratio),
-        };
-        p.keep = Math.round(sub * kr); p.tax = Math.round(sub * tr); p.nhi = Math.round(sub * nr);
-        p.net = sub - p.keep - p.tax - p.nhi;
-        p.netDisc = p.subDisc - p.keepDisc - p.taxDisc - p.nhiDisc;
-        return p;
-      };
       Object.values(agg).forEach(a => {
-        const mgmtAmounts = {};
-        let mgmtSum = 0;
-        cls.mgmt.forEach(c => { const v = Math.round(toNum(a.byCat[c.key])); mgmtAmounts[c.key] = v; mgmtSum += v; });
-        const otherSum = Math.round(a.sub) - mgmtSum;                                          // 個獎＋團獎＋其他類別
-        const otherCatSum = otherKeys.reduce((s, k) => s + Math.round(toNum(a.byCat[k])), 0);  // 其他類別（右側獨立列，左側無列可放）
+        const firstCat = cls.mgmt.find(c => Math.round(toNum(a.byCat[c.key])) !== 0);
         const roleCat = isMgmtRole(a.role);
-        const firstCat = cls.mgmt.find(c => mgmtAmounts[c.key] !== 0);
-        const pushLeft = x => { x.mgmtCat = firstCat ? mgmtCatOf(firstCat) : roleCat; x.mgmtAmounts = mgmtAmounts; left.push(x); };
-        if (mgmtSum !== 0 && otherSum !== 0) {
-          pushLeft(partOf(a, isMgmtKey));
-          right.push(partOf(a, k => k === '__nonMgmt' || !isMgmtKey(k)));
-        } else if (mgmtSum !== 0 || (roleCat && a.sub !== 0 && otherCatSum === 0)) {
-          // 只領管理類別；或管理職只領個獎／團獎（左側 0／1 列可呈現）
-          pushLeft(a);
+        if (firstCat || (roleCat && a.sub !== 0)) {
+          a.mgmtCat = firstCat ? mgmtCatOf(firstCat) : roleCat;
+          left.push(a);
         } else if (a.sub !== 0) right.push(a);
       });
       // 排序：已儲存的人員欄順序優先（可拖曳）；未排序者管理職依主委→副總→輔導，再依人員名單
@@ -415,12 +397,35 @@ export function buildBonusModel(opts) {
         perUnitPerson[b.commissionRecordId][b.personKey].team += sumCats(full, teamKeys);
       });
       // 上段人員欄：只列在任一戶有個獎或團獎金額的人員（只領其他類別者不出現）
-      const topPersons = right
+      const topPersons = left.concat(right)
         .filter(a => Object.values(perUnitPerson).some(m => {
           const v = m[a.personKey];
           return v && (Math.round(v.indiv) !== 0 || Math.round(v.team) !== 0);
         }))
+        .sort(personSorter)
         .map(a => ({ personKey: a.personKey, name: a.name, sourceProjectName: a.sourceProjectName, sourceProjectId: a.sourceProjectId }));
+
+      const rateOf = keys => keys.reduce((s, k) => {
+        const cat = (settings.bonusCategories || []).find(c => c.key === k);
+        return s + toNum(cat?.ratePct);
+      }, 0);
+      // 每戶個獎／團獎費率：以該戶紀錄的類別比例為準；紀錄未存類別（如退佣）但有金額時沿用建案設定
+      const unitRateOf = (r, keys, hasAmount) => {
+        const own = keys.filter(k => r.categories?.[k]);
+        if (own.length) return own.reduce((s, k) => s + toNum(r.categories[k].ratePct), 0);
+        return hasAmount ? rateOf(keys) : 0;
+      };
+      // 每戶交屋保留款：費率標示基準類別（如「銷售個獎 5%」）；金額同個獎欄以 100% 呈現
+      const catLabelOf = (r, key) => r.categories?.[key]?.label
+        || (settings.bonusCategories || []).find(c => c.key === key)?.label || '個獎';
+      const handoverOf = r => {
+        const list = Object.values(r.handover?.byCat || {});
+        return {
+          hkRate: list.filter(h => toNum(h?.ratePct))
+            .map(h => `${catLabelOf(r, h.sourceCatKey || indivKeys[0])} ${pctText(h.ratePct)}%`).join('、'),
+          hkAmt: Math.round(list.reduce((s, h) => s + toNum(h?.amountFull ?? h?.amount), 0)),
+        };
+      };
 
       const sortedRecords = opts.preserveRecordOrder ? g.records : sortRecordsByUnitOrder(g.records, unitOrder);
       const unitRows = sortedRecords.map((r, i) => {
@@ -436,6 +441,7 @@ export function buildBonusModel(opts) {
           teamCount = Math.max(teamCount, allocs.length);
         });
         const refund = isRefundRecord(r);
+        const amts = Object.values(perUnitPerson[r.id] || {});
         return {
           no: i + 1,
           unitId: String(r.unitId), recordId: r.id,
@@ -454,32 +460,30 @@ export function buildBonusModel(opts) {
           after: toNum(r.calc?.dealAfter),
           sales: Array.isArray(r.snapshot?.salesperson) ? r.snapshot.salesperson.join('、') : String(r.snapshot?.salesperson || ''),
           team: teamCount,
-          handover: Math.round(handoverRecordAmt(r)),   // 交屋團獎暫留（本次實際提撥，已乘請佣比例）
+          indivRate: unitRateOf(r, indivKeys, amts.some(v => Math.round(v.indiv) !== 0)),
+          teamRate: unitRateOf(r, teamKeys, amts.some(v => Math.round(v.team) !== 0)),
+          ...handoverOf(r),
           pp,
         };
       });
 
-      const topTotal = { total: 0, after: 0, referral: 0, handover: 0, pp: {} };
+      const topTotal = { total: 0, after: 0, referral: 0, hk: 0, pp: {} };
       topPersons.forEach(p => { topTotal.pp[p.personKey] = { indiv: 0, team: 0 }; });
       unitRows.forEach(row => {
-        topTotal.total += row.total; topTotal.after += row.after; topTotal.referral += row.referral;
-        topTotal.handover += row.handover;
+        topTotal.total += row.total; topTotal.after += row.after; topTotal.referral += row.referral; topTotal.hk += row.hkAmt;
         topPersons.forEach(p => {
           topTotal.pp[p.personKey].indiv += row.pp[p.personKey].indiv;
           topTotal.pp[p.personKey].team += row.pp[p.personKey].team;
         });
       });
 
-      // ---- 右側列定義（個獎/團獎/其他類別/合計/優付/扣款） ----
-      const rateOf = keys => keys.reduce((s, k) => {
-        const cat = (settings.bonusCategories || []).find(c => c.key === k);
-        return s + toNum(cat?.ratePct);
-      }, 0);
-      const rightRows = [];
-      rightRows.push({ key: '_indiv', label: cls.indiv[0]?.label || '銷售個獎', ratePct: rateOf(indivKeys), get: a => Math.round(a.indiv) });
-      rightRows.push({ key: '_team', label: '銷售團獎', ratePct: rateOf(teamKeys), get: a => Math.round(a.team) });
-      cls.others.forEach(c => {
-        rightRows.push({ key: c.key, label: c.label, ratePct: toNum(c.ratePct), get: a => Math.round(toNum(a.byCat[c.key])) });
+      // ---- 獎金合計類別列：個獎、團獎，其餘職務類別（管理／其他）依設定順序各一列 ----
+      const roleCats = (settings.bonusCategories || []).filter(c => cls.mgmt.includes(c) || cls.others.includes(c));
+      const catRows = [];
+      catRows.push({ key: '_indiv', label: cls.indiv[0]?.label || '銷售個獎', ratePct: rateOf(indivKeys), get: a => Math.round(a.indiv) });
+      catRows.push({ key: '_team', label: '銷售團獎', ratePct: rateOf(teamKeys), get: a => Math.round(a.team) });
+      roleCats.forEach(c => {
+        catRows.push({ key: c.key, label: c.label, ratePct: toNum(c.ratePct), get: a => Math.round(toNum(a.byCat[c.key])) });
       });
 
       // ---- 合計 ----
@@ -490,20 +494,13 @@ export function buildBonusModel(opts) {
         grandNhi += isYoufu ? a.nhiDisc : a.nhi;
       });
 
-      // 千4 標籤列：個獎/團獎比例 ×10000
-      const indivX = Math.round(rateOf(indivKeys) / 100 * 10000 * 100) / 100;
-      const teamX = Math.round(rateOf(teamKeys) / 100 * 10000 * 100) / 100;
-
       return {
         pctKey, isYoufu, youfuLabel,
         sheetName: `業務獎金-${pctKey}%`,
-        title: `${projectName}－業務獎金　第 ${period} 期　獎金發放比例 ${pctKey}%`,
-        kiloLabel: cfg.kiloLabel, indivX, teamX,
-        hasHandover, handoverLabel, handoverX,
-        saleYM,
+        title: `${projectName}－業務獎金　第 ${period} 期　獎金發放比例 ${pctKey}%${titleMonthSuffix(minguoYM)}`,
         topPersons, unitRows, topTotal,
-        left, right, rightRows,
-        mgmtCats: cls.mgmt,
+        hasHandover: unitRows.some(row => row.hkRate || row.hkAmt),
+        left, right, catRows,
         grand: { net: grandNet, tax: grandTax, nhi: grandNhi, total: grandNet + grandTax + grandNhi },
       };
     });
@@ -516,12 +513,11 @@ export function buildBonusModel(opts) {
   return {
     docType: 'bonus',
     priceBasis: settings.priceBasis || 'house',
-    period, fileName, projectId,
+    period, fileName, projectId, minguoYM,
     style: cfg.style,
     partyALabel: settings.partyALabel || '一研九鼎負擔介紹費',
     showSourceProjectTag: cfg.showSourceProjectTag !== false,
     includeClaimSheet: cfg.includeClaimSheet !== false,
-    hasHandover, handoverLabel,
     groups: modelGroups,
     paper: cfg.paper || 'A3',
     orientation: cfg.orientation || 'landscape',
@@ -540,7 +536,13 @@ export function buildMergedBonusModel({ sources = [], ...opts }) {
     }));
     sortRecordsByUnitOrder(planRecords, unitOrder).forEach(record => {
       const id = keyOf(record.id);
-      records.push({ ...record, id, categories: remap(record.categories) });
+      const handover = record.handover && {
+        ...record.handover,
+        byCat: Object.fromEntries(Object.entries(record.handover.byCat || {}).map(([key, h]) => [
+          keyOf(key), { ...h, sourceCatKey: h?.sourceCatKey ? keyOf(h.sourceCatKey) : '' },
+        ])),
+      };
+      records.push({ ...record, id, categories: remap(record.categories), ...(handover ? { handover } : {}) });
       sourceByRecord.set(id, plan);
     });
     planBonuses.forEach(b => bonusRecords.push({
@@ -555,13 +557,9 @@ export function buildMergedBonusModel({ sources = [], ...opts }) {
   model.mergedRows = true;
   model.includeClaimSheet = false;
   model.groups.forEach(group => {
-    group.title = `${opts.projectName || ''}－合併獎金表　第 ${opts.period} 期　獎金發放比例 ${group.pctKey}%`;
+    group.title = `${opts.projectName || ''}－合併獎金表　第 ${opts.period} 期　獎金發放比例 ${group.pctKey}%${titleMonthSuffix(model.minguoYM)}`;
     group.sheetName = `合併獎金-${group.pctKey}%`;
-    group.kiloLabel = '各方案原獎金';
-    group.indivX = group.teamX = '依方案';
-    group.handoverLabel = '交屋團獎';
-    group.handoverX = '依方案';
-    group.rightRows.filter(row => ['_indiv', '_team'].includes(row.key)).forEach(row => {
+    group.catRows.filter(row => ['_indiv', '_team'].includes(row.key)).forEach(row => {
       row.label = row.key === '_indiv' ? '銷售個獎' : '銷售團獎';
       row.rateText = '依方案';
     });

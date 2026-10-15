@@ -14,10 +14,11 @@ try {
   const { buildBonusModel, buildMergedBonusModel, buildPersonModel, exportProjectNameOf } = await server.ssrLoadModule('/src/utils/commissionExportModel.js');
   const XLSX = await import('xlsx-js-style');
   const calc = await server.ssrLoadModule('/src/utils/commissionCalculation.js');
+  const { draftClaimRecord } = await server.ssrLoadModule('/src/utils/commissionDraftRecords.js');
   const service = fs.readFileSync(new URL('../../src/services/commissionExcelService.js', import.meta.url), 'utf8')
     .replace(/^import .*;$/gm, '').replace(/export (async )?function/g, '$1function');
   const { buildBonusGrids, buildPersonGrid, buildPersonExcelGrids, gridsToExcelBlob } = vm.runInNewContext(`${service}\n({ buildBonusGrids, buildPersonGrid, buildPersonExcelGrids, gridsToExcelBlob })`,
-    { XLSX: XLSX.default, toNum: calc.toNum, money: calc.money, applyPrintSetup, NARROW_MARGINS });
+    { XLSX: XLSX.default, toNum: calc.toNum, money: calc.money, pctText: calc.pctText, applyPrintSetup, NARROW_MARGINS });
   const settings = { bonusCategories: [{ key: 'sales', label: '個獎', mode: 'individual', enabled: true, ratePct: 1 }] };
   const records = [
     { id: 'general1', unitId: 'A-1', planId: 'general', ratioPct: 100 },
@@ -34,6 +35,44 @@ try {
     assert.deepEqual(group.unitRows.map(r => r.pp['0912345678'].indiv), [1000, 200, -100]);
     assert.equal(group.topTotal.pp['0912345678'].indiv, 1100);
     assert.equal(group.right[0].sub, 1100);
+  });
+  test('獎金表每戶列出個獎／團獎費率，不再有千4標籤列', () => {
+    const rs = { bonusCategories: [
+      { key: 'indiv', label: '銷售個獎', mode: 'individual', enabled: true, ratePct: 0.32 },
+      { key: 'team', label: '銷售團獎', mode: 'team', enabled: true, ratePct: 0.08 },
+    ] };
+    const recs = [
+      { id: 'u1', unitId: 'A-1', ratioPct: 100, categories: { indiv: { ratePct: 0.3 }, team: { ratePct: 0.1 } } },
+      { id: 'u2', unitId: 'A-2', ratioPct: 100, categories: {} },
+    ];
+    const br = recs.map(r => ({ commissionRecordId: r.id, personKey: '甲', name: '甲', amounts: { indiv: 300, team: 100 }, subtotal: 400 }));
+    const group = buildBonusModel({ records: recs, bonusRecords: br, settings: rs, period: 1 }).groups[0];
+    const grid = buildBonusGrids({ groups: [group], style: {} })[0];
+    assert.deepEqual([grid.cells[1][14].v, grid.cells[1][15].v], ['個獎費率', '團獎費率']);
+    assert.deepEqual(Array.from(grid.cells.slice(3, 5), r => `${r[14].v}/${r[15].v}`), ['0.3%/0.1%', '0.32%/0.08%']);
+    assert.equal(grid.cells[1][16].v, '甲');
+    assert.ok(!grid.cells.flat().some(c => c?.v === '千4'));
+  });
+  test('獎金表上方在團獎費率右邊列出交屋保留款費率（標示基準）與 100% 金額；無提撥不顯示', () => {
+    const rs = { bonusCategories: [
+      { key: 'indiv', label: '銷售個獎', mode: 'individual', enabled: true, ratePct: 1 },
+      { key: 'team', label: '銷售團獎', mode: 'team', enabled: true, ratePct: 0.5 },
+      { key: 'handover', label: '交屋團獎', mode: 'handover', enabled: true, ratePct: 5, sourceCatKey: 'indiv' },
+    ] };
+    const recs = [
+      { id: 'u1', unitId: 'A-1', ratioPct: 50, categories: { indiv: { label: '銷售個獎', ratePct: 1 } },
+        handover: { total: 2500, totalFull: 5000, byCat: { handover: { sourceCatKey: 'indiv', ratePct: 5, amount: 2500, amountFull: 5000 } } } },
+      { id: 'u2', unitId: 'A-2', ratioPct: 50, categories: {} },
+    ];
+    const br = recs.map(r => ({ commissionRecordId: r.id, personKey: '甲', name: '甲', amounts: { indiv: 50000 }, amountsFull: { indiv: 100000 }, subtotal: 50000 }));
+    const group = buildBonusModel({ records: recs, bonusRecords: br, settings: rs, period: 1 }).groups[0];
+    const grid = buildBonusGrids({ groups: [group], style: {} })[0];
+    assert.deepEqual([grid.cells[1][16].v, grid.cells[1][17].v], ['交屋保留款費率', '交屋保留款金額']);
+    assert.deepEqual([grid.cells[3][16].v, grid.cells[3][17].v], ['銷售個獎 5%', 5000]);
+    assert.equal(grid.cells[5][17].v, 5000);
+    assert.equal(grid.cells[1][18].v, '甲');
+    const plain = buildBonusModel({ records: [recs[1]], bonusRecords: [br[1]], settings: rs, period: 1 }).groups[0];
+    assert.equal(buildBonusGrids({ groups: [plain], style: {} })[0].cells[1][16].v, '甲');
   });
   test('合併工作表保留方案標題、資料、合併儲存格，Excel 可讀回單一 Sheet', async () => {
     const grids = records.slice(0, 2).flatMap((r, i) => buildBonusGrids(buildBonusModel({
@@ -157,6 +196,95 @@ try {
     periodNotes[0].notes = [];
     assert.deepEqual(buildBonusModel(opts).groups[0].right[0].remarkNotes, []);
     assert.deepEqual(buildPersonModel({ ...opts, periods: [1], personKey: '0912345678' }).periodRemarks, []);
+  });
+  test('交屋團獎（交屋保留款）不扣個獎池，前後端計算一致', () => {
+    const finance = { dealTotal: 2000, totalFloor: 2000, spread: 0 };
+    const input = { ratioPct: 100, commPct: 2, categories: {
+      sales: { ratePct: 0.3, mode: 'individual', allocations: [{ personKey: '甲', name: '甲', sharePct: 100 }] },
+      handover: { ratePct: 5, mode: 'handover', sourceCatKey: 'sales', allocations: [] },
+    } };
+    const serverCalc = createRequire(import.meta.url)('../../functions/utils/commissionCalculation.js');
+    for (const res of [calc.calcUnitBonus(finance, input, {}), serverCalc.calcUnitBonus(finance, input, {})]) {
+      assert.equal(res.people[0].amounts.sales, 60000);
+      assert.equal(res.people[0].subtotal, 60000);
+      assert.equal(res.handoverTotal, 3000);
+    }
+  });
+  test('工作台計算→存檔紀錄→獎金表：項目欄在前、一人一欄、全員無金額的列不呈現、稅金以合計(扣保留款)為基礎', () => {
+    const finance = { dealTotal: 2000, totalFloor: 2000, spread: 0 };
+    const entry = { id: 'u1', unitId: 'A-1', period: 1, ratioPct: 100, commPct: 2, keepPct: 10, finance, unit: {}, categories: {
+      chair: { ratePct: 0.04, mode: 'role', allocations: [{ personKey: '王', name: '王', sharePct: 100 }] },
+      indiv: { ratePct: 0.24, mode: 'individual', allocations: [{ personKey: '林', name: '林', sharePct: 100 }] },
+      team: { ratePct: 0.06, mode: 'team', allocations: [{ personKey: '王', name: '王', sharePct: 50 }, { personKey: '林', name: '林', sharePct: 50 }] },
+      handover: { ratePct: 5, mode: 'handover', sourceCatKey: 'indiv', allocations: [] },
+    } };
+    const result = calc.calcUnitBonus(finance, entry, {
+      王: { name: '王', role: '主委', keepPct: 10, taxPct: 0, nhiPct: 0 },
+      林: { name: '林', keepPct: 10, taxPct: 10, nhiPct: 0 },
+    });
+    const { record, bonusRecords: br } = draftClaimRecord({ entry, result, projectId: 'p', planId: 'general', plan: { name: '一般' } });
+    const hs = { bonusCategories: [
+      { key: 'chair', label: '主委獎金', mode: 'role', rolePositions: ['主委'], enabled: true, ratePct: 0.04 },
+      { key: 'proj', label: '專案獎金', mode: 'role', rolePositions: ['專案'], enabled: true, ratePct: 0.08 },
+      { key: 'indiv', label: '銷售個獎', mode: 'individual', enabled: true, ratePct: 0.24 },
+      { key: 'team', label: '銷售團獎', mode: 'team', enabled: true, ratePct: 0.06 },
+      { key: 'handover', label: '交屋團獎', mode: 'handover', sourceCatKey: 'indiv', enabled: true, ratePct: 5 },
+    ] };
+    const group = buildBonusModel({ records: [record], bonusRecords: br, settings: hs, period: 1 }).groups[0];
+    const grid = buildBonusGrids({ groups: [group], style: {} })[0];
+    const rowIdx = label => grid.cells.length - 1 - [...grid.cells].reverse().findIndex(r => r?.some(c => c?.v === label));
+    const row = label => Array.from(grid.cells[rowIdx(label)].filter(c => typeof c?.v === 'number'), c => c.v);
+    const head = grid.cells[rowIdx('項目')];
+    assert.deepEqual(Array.from(head.filter(c => c?.v), c => c.v), ['項目', '王', '林']);
+    assert.deepEqual(group.topPersons.map(p => p.name).sort(), ['林', '王']);
+    assert.ok(!grid.cells.flat().some(c => ['銷售日期', '實發'].includes(c?.v) || String(c?.v ?? '').startsWith('總銷')));
+    const labels = ['銷售個獎 0.24%', '銷售團獎 0.06%', '主委獎金 0.04%', '累計', '保留款　10%', '合計(扣保留款)', '稅金', '最終實領', '交屋保留款'];
+    assert.deepEqual(labels.map(rowIdx), labels.map((_, i) => rowIdx(labels[0]) + i));   // 依序相鄰
+    assert.deepEqual(Object.fromEntries(labels.map(l => [l, row(l)])), {
+      '銷售個獎 0.24%': [48000], '銷售團獎 0.06%': [6000, 6000], '主委獎金 0.04%': [8000],
+      累計: [14000, 54000], '保留款　10%': [1400, 5400], '合計(扣保留款)': [12600, 48600],
+      稅金: [4860], 最終實領: [12600, 43740], 交屋保留款: [2400],
+    });
+    assert.ok(grid.cells[rowIdx('交屋保留款')].every(c => c?.s?.bg === '#fde2e2' && c?.s?.color === '#000000'));
+    assert.deepEqual(row('最終實領合計'), [56340]);
+    const texts = grid.cells.flat().map(c => String(c?.v ?? ''));
+    assert.ok(!texts.some(t => t.startsWith('專案獎金') || t === '二代健保' || t === '備註'));
+    assert.equal(rowIdx('最終實領合計'), rowIdx('交屋保留款') + 1);
+  });
+  test('獎金合計：交屋保留款列於最終實領下方，僅供參考不參與計算', () => {
+    const hs = { bonusCategories: [
+      { key: 'sales', label: '銷售個獎', mode: 'individual', enabled: true, ratePct: 0.3 },
+      { key: 'handover', label: '交屋團獎', mode: 'handover', sourceCatKey: 'sales', enabled: true, ratePct: 5 },
+    ] };
+    const rec = { id: 'h1', unitId: 'B-2', ratioPct: 100, handover: { total: 90, byCat: { handover: { sourceCatKey: 'sales', amount: 90, amountFull: 90 } } } };
+    const br = [['甲', 1200], ['乙', 600]].map(([name, v]) => ({
+      commissionRecordId: 'h1', personKey: name, name, amounts: { sales: v }, subtotal: v, keep: v / 10, tax: 0, nhi: 0,
+    }));
+    const group = buildBonusModel({ records: [rec], bonusRecords: br, settings: hs, period: 1 }).groups[0];
+    const grid = buildBonusGrids({ groups: [group], style: {} })[0];
+    const LABEL = '交屋保留款';
+    const rowOf = label => grid.cells.findIndex(row => row?.some(c => c?.v === label));
+    const vals = r => Array.from(grid.cells[r].filter(c => typeof c?.v === 'number'), c => c.v);
+    const byName = m => group.right.map(a => m[a.name]);
+    assert.ok(!grid.cells.flat().some(c => String(c?.v ?? '').includes('暫留不發放')));
+    assert.deepEqual(vals(rowOf('累計')), byName({ 甲: 1200, 乙: 600 }));
+    assert.deepEqual(vals(rowOf('最終實領')), byName({ 甲: 1080, 乙: 540 }));
+    const hRow = rowOf(LABEL);
+    assert.equal(hRow, rowOf('最終實領') + 1);
+    assert.deepEqual(vals(hRow), byName({ 甲: 60, 乙: 30 }));
+    assert.ok(grid.cells[hRow].every(c => c?.s?.bg === '#fde2e2'));
+
+    // 優付（請佣 50%）：交屋保留款以實際金額
+    const half = { ...rec, ratioPct: 50, handover: { total: 45, byCat: { handover: { sourceCatKey: 'sales', amount: 45, amountFull: 90 } } } };
+    const hbr = br.map(b => ({ ...b, amounts: { sales: b.amounts.sales / 2 }, amountsFull: b.amounts, subtotal: b.subtotal / 2, keep: b.keep / 2 }));
+    const yGrid = buildBonusGrids({ groups: buildBonusModel({ records: [half], bonusRecords: hbr, settings: hs, period: 1 }).groups, style: {} })[0];
+    const yRow = yGrid.cells.findIndex(row => row?.some(c => c?.v === LABEL));
+    assert.deepEqual(Array.from(yGrid.cells[yRow].filter(c => typeof c?.v === 'number'), c => c.v), byName({ 甲: 30, 乙: 15 }));
+
+    const merged = buildMergedBonusModel({ sources: [{ plan: { id: 'general', name: '一般' }, records: [rec], bonusRecords: br, settings: hs, unitOrder: [] }], settings: {}, period: 1 });
+    assert.deepEqual(merged.groups[0].right.map(a => a.handoverKeep), byName({ 甲: 60, 乙: 30 }));
+    const plain = buildBonusGrids(buildBonusModel({ records: [{ ...rec, handover: undefined }], bonusRecords: br, settings, period: 1 }))[0];
+    assert.ok(!plain.cells.some(row => row?.some(c => c?.v === LABEL)));
   });
   test('沒有可匯出資料時不建立空白合併工作表', () => {
     assert.equal(combineCommissionGrids([], '獎金'), null);

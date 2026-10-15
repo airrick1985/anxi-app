@@ -137,7 +137,7 @@
           <v-col v-if="refunds.length" cols="6" md="3"><div class="sum-item refund"><label>退佣合計（已含於本次請佣合計）</label><div>{{ money(summary.refundSum) }} 元</div></div></v-col>
           <v-col v-if="hasHandover" cols="12" md="6">
             <div class="sum-item handover">
-              <label>{{ handoverLabel }}暫留（自個獎提撥，本期不發放、不計入下表）</label>
+              <label>{{ handoverLabel }}・交屋保留款（含於保留款）</label>
               <div>{{ money(summary.handoverSum) }} 元</div>
             </div>
           </v-col>

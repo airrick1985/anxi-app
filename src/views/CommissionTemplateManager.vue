@@ -1,6 +1,6 @@
 <template>
   <v-container class="pa-4" style="max-width: 1100px">
-    <div class="d-flex align-center mb-4">
+    <div class="d-flex align-center mb-4" style="padding-left: 44px">
       <v-btn icon="mdi-arrow-left" variant="text" @click="$router.back()"></v-btn>
       <h1 class="text-h5 font-weight-bold">請佣獎金版型範本管理</h1>
       <v-spacer></v-spacer>

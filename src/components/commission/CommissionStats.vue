@@ -87,18 +87,18 @@
         </v-card-text>
       </v-card>
 
-      <!-- 交屋團獎累積（自個獎提撥、本期不發放） -->
+      <!-- 交屋團獎（交屋保留款，含於保留款）累積 -->
       <v-card variant="outlined" class="mb-4">
         <v-card-title class="text-subtitle-1 d-flex align-center flex-wrap ga-2">
-          <v-icon start size="small">mdi-home-clock-outline</v-icon>交屋團獎累積（本建案，暫留未發放）
+          <v-icon start size="small">mdi-home-clock-outline</v-icon>交屋保留款累積（本建案）
           <v-spacer></v-spacer>
           <v-chip size="small" color="orange-darken-3" variant="tonal">累積 {{ money(handoverTotal) }} 元</v-chip>
         </v-card-title>
         <v-card-text>
           <div class="text-caption text-medium-emphasis mb-2">
-            每期送出獎金時自「銷售個獎」提撥的交屋團獎（依獎金紀錄快照；作廢紀錄不計）。此金額尚未發放給任何人員，供日後製作交屋獎金時查閱。
+            依獎金紀錄快照，作廢紀錄不計；含於保留款。
           </div>
-          <div v-if="!handoverPeriods.length" class="text-center text-medium-emphasis py-4">尚無交屋團獎暫留紀錄</div>
+          <div v-if="!handoverPeriods.length" class="text-center text-medium-emphasis py-4">尚無交屋保留款紀錄</div>
           <div v-else class="table-scroll">
             <v-table density="compact">
               <thead>
@@ -106,7 +106,7 @@
                   <th style="width:32px"></th>
                   <th>期別</th><th>請佣日期</th>
                   <th class="text-right">戶數</th>
-                  <th class="text-right">本期暫留</th>
+                  <th class="text-right">本期</th>
                   <th class="text-right">累積至本期</th>
                 </tr>
               </thead>
@@ -129,8 +129,8 @@
                         <thead>
                           <tr>
                             <th>戶別</th><th>買方</th>
-                            <th class="text-right">請佣比例</th><th class="text-right">提撥比例</th>
-                            <th class="text-right">個獎池(元)</th><th class="text-right">暫留(元)</th>
+                            <th class="text-right">請佣比例</th><th class="text-right">比例</th>
+                            <th class="text-right">個獎池(元)</th><th class="text-right">交屋保留款(元)</th>
                           </tr>
                         </thead>
                         <tbody>

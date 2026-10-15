@@ -56,8 +56,7 @@
               </template>
               <template v-else>
                 <v-row dense>
-                  <v-col cols="4"><v-text-field v-model="local.config.kiloLabel" label="「千4」標籤" variant="outlined" density="compact"></v-text-field></v-col>
-                  <v-col cols="8"><v-text-field v-model="local.config.youfuLabelPattern" label="優付列文字（{pct}＝比例）" variant="outlined" density="compact"></v-text-field></v-col>
+                  <v-col cols="12"><v-text-field v-model="local.config.youfuLabelPattern" label="優付列文字（{pct}＝比例）" variant="outlined" density="compact"></v-text-field></v-col>
                 </v-row>
                 <v-switch v-model="local.config.showSourceProjectTag" label="他案人員名稱附註來源建案" color="primary" density="compact" hide-details></v-switch>
                 <v-switch v-model="local.config.includeClaimSheet" label="獎金總表一併包含「請佣總表」分頁" color="primary" density="compact" hide-details></v-switch>

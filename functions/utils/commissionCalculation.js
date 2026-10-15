@@ -25,7 +25,7 @@ const DEFAULT_BONUS_CATEGORIES = [
   { key: 'pm',       label: '專案獎金', ratePct: 0.1,  mode: 'role', rolePositions: ['專案'], enabled: true, order: 4 },
   { key: 'apm',      label: '副專獎金', ratePct: 0.05, mode: 'role', rolePositions: ['副專'], enabled: true, order: 5 },
   { key: 'indiv',    label: '銷售個獎', ratePct: 0.32, mode: 'individual', rolePositions: [], enabled: true, order: 6 },
-  // 交屋團獎：自「銷售個獎」獎金池提撥 ratePct%（此處 ratePct 為提撥比例，非總價比例），本期不發放、不分配給人員
+  // 交屋團獎（交屋保留款）：「銷售個獎」獎金池 × ratePct%（此處 ratePct 為個獎比例，非總價比例），含於保留款、不另扣、不分配給人員
   { key: 'handover', label: '交屋團獎', ratePct: 5, mode: 'handover', sourceCatKey: 'indiv', rolePositions: [], enabled: true, order: 7 },
   { key: 'team',     label: '銷售團獎', ratePct: 0.08, mode: 'team', rolePositions: [], enabled: true, order: 8 },
   { key: 'pmTeam',   label: '專案團獎', ratePct: 0.02, mode: 'role', rolePositions: ['專案團獎'], enabled: true, order: 9 },
@@ -38,7 +38,6 @@ const DEFAULT_COMMISSION_SETTINGS = {
   defaultCashPct: 50,
   partyALabel: '一研九鼎負擔介紹費/贈品',
   partyBLabel: '富宇負擔介紹費/贈品',
-  kiloLabel: '千4',
   youfuLabelPattern: '優付方案請款{pct}%',
   claimTitlePattern: '{建案名}－業務服務佣金第{期別中文}次請款',
   claimFileNamePattern: '{簡稱}NO.{期別}請款-{民國年月}',
@@ -234,7 +233,7 @@ function allocateAmounts(pool, allocations, lockedScale, splitMode) {
   return { amounts, total: target, valid: true, diff: 0, error: '' };
 }
 
-/** 類別是否為「自個獎提撥」（交屋團獎）：本期不發放、不分配給人員（與前端 isHandoverCategory 一致） */
+/** 類別是否為交屋團獎（交屋保留款）：只記錄，不扣來源池、不分配給人員（與前端 isHandoverCategory 一致） */
 function isHandoverCategory(cat) {
   return !!cat && cat.mode === 'handover';
 }
@@ -280,9 +279,7 @@ function calcUnitBonus(finance, input, personProfiles) {
     rawPoolsFull[catKey] = categoryPool(claim.dealAfter, cat.ratePct, 100) * mult;
   });
 
-  // 2) 提撥類別（交屋團獎）：自來源類別池先提撥 ratePct%，來源池扣除後再分配；提撥金額不分配給人員
-  const deduct = {};
-  const deductFull = {};
+  // 2) 交屋團獎（交屋保留款）：來源類別池 × ratePct%，含於人員保留款內，只記錄不扣池、不分配給人員
   handoverKeys.forEach(catKey => {
     const cat = cats[catKey] || {};
     const enabled = cat.enabled !== false;   // 逐戶可關閉提撥（工作台開關）
@@ -293,10 +290,6 @@ function calcUnitBonus(finance, input, personProfiles) {
     const sourcePoolFull = sourceCatKey ? toNum(rawPoolsFull[sourceCatKey]) : 0;
     const amount = Math.round(sourcePool * rate / 100);
     const amountFull = Math.round(sourcePoolFull * rate / 100);
-    if (sourceCatKey) {
-      deduct[sourceCatKey] = (deduct[sourceCatKey] || 0) + amount;
-      deductFull[sourceCatKey] = (deductFull[sourceCatKey] || 0) + amountFull;
-    }
     handover[catKey] = { sourceCatKey, enabled, ratePct: rate, sourcePool, sourcePoolFull, amount, amountFull };
     handoverTotal += amount;
     handoverTotalFull += amountFull;
@@ -304,12 +297,12 @@ function calcUnitBonus(finance, input, personProfiles) {
     categoryResults[catKey] = { amounts: {}, total: amount, valid: true, error: '', diff: 0 };
   });
 
-  // 3) 發放類別分配（來源類別以提撥後的池分配）
+  // 3) 發放類別分配（全額分配）
   payKeys.forEach(catKey => {
     const cat = cats[catKey] || {};
     const allocations = Array.isArray(cat.allocations) ? cat.allocations : [];
-    const pool = rawPools[catKey] - (deduct[catKey] || 0);
-    const fullPool = rawPoolsFull[catKey] - (deductFull[catKey] || 0);
+    const pool = rawPools[catKey];
+    const fullPool = rawPoolsFull[catKey];
     pools[catKey] = pool;
 
     const splitMode = cat.splitMode || 'lastAbsorb';
@@ -336,8 +329,8 @@ function calcUnitBonus(finance, input, personProfiles) {
     const taxPct = toNum(p.taxPct);
     const nhiPct = toNum(p.nhiPct);
     const keep = Math.round(subtotal * keepPct / 100);
-    const tax = Math.round(subtotal * taxPct / 100);
-    const nhi = Math.round(subtotal * nhiPct / 100);
+    const tax = Math.round((subtotal - keep) * taxPct / 100);   // 稅金／二代健保以「合計(扣保留款)」為基礎
+    const nhi = Math.round((subtotal - keep) * nhiPct / 100);
     return {
       personKey,
       name: p.name || rec.alloc.name || personKey,
@@ -460,7 +453,7 @@ function buildRefundPlan(opts) {
   calc.thisClaim = includeKeep ? -sumR : -sumT;
   calc.refundAmount = includeKeep ? sumR : sumT;
 
-  // 交屋團獎暫留：反向沖回（僅在追回獎金時）
+  // 交屋團獎（交屋保留款）：反向沖回（僅在追回獎金時）
   const byCat = {};
   let hTotal = 0, hTotalFull = 0;
   if (refundBonus) {
@@ -539,8 +532,8 @@ function buildRefundPlan(opts) {
       });
       // 未調整＝原數反向（扣款直接取原值，確保完全對沖）；有調整＝依原比例重算
       const keep = adjusted ? Math.round(subtotal * o.keepPct / 100) : Math.round(o.keep);
-      const tax = adjusted ? Math.round(subtotal * o.taxPct / 100) : Math.round(o.tax);
-      const nhi = adjusted ? Math.round(subtotal * o.nhiPct / 100) : Math.round(o.nhi);
+      const tax = adjusted ? Math.round((subtotal - keep) * o.taxPct / 100) : Math.round(o.tax);
+      const nhi = adjusted ? Math.round((subtotal - keep) * o.nhiPct / 100) : Math.round(o.nhi);
       people.push({
         personKey: key, name: o.name, role: o.role,
         sourceProjectId: o.sourceProjectId, sourceProjectName: o.sourceProjectName, isExternal: o.isExternal,
