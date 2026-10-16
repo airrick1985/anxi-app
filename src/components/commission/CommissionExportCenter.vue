@@ -118,6 +118,7 @@
             <v-col cols="12" sm="auto">
               <span class="text-caption text-medium-emphasis">
                 <template v-if="encryptMode === 'userKey'">每份 PDF 以該人員的 USERKEY（電話）作為開啟密碼。</template>
+                <template v-else-if="encryptMode === 'loginPassword'">每份 PDF 以該人員的登入密碼作為開啟密碼；沒有登入密碼者不產出。</template>
                 <template v-else-if="encryptMode === 'custom'">所有 PDF 使用同一組密碼；寄信時不會將密碼寫入信件內容。</template>
                 <template v-else>PDF 不加密。Excel 檔一律不加密。</template>
               </span>
@@ -408,7 +409,10 @@ const encryptOptions = [
   { title: '不加密', value: 'none' },
   { title: '自訂密碼', value: 'custom' },
   { title: '人員 USERKEY（電話）', value: 'userKey' },
+  { title: '人員登入密碼', value: 'loginPassword' },
 ];
+/** 後端以人員登入密碼加密時，該人員沒有登入密碼 → 擋下不產出 */
+const isNoLoginPassword = e => e?.details?.reason === 'noLoginPassword';
 
 const isPerson = computed(() => docType.value === 'person');
 
@@ -744,6 +748,8 @@ function encryptFor(model) {
     const key = String(model.person.personKey || '').trim();
     return key ? { userPassword: key } : null;
   }
+  // 登入密碼由後端讀取加密，不經前端
+  if (encryptMode.value === 'loginPassword') return { loginPasswordOf: String(model.person.personKey || '').trim() };
   const pwd = String(customPassword.value || '');
   return pwd ? { userPassword: pwd } : false;
 }
@@ -803,11 +809,21 @@ async function downloadPdf() {
     if (isPerson.value) {
       const models = personModels.value;
       const results = [];
+      const noPassword = [];
       for (const m of models) {
-        const res = await generateCommissionPdfAPI({ projectId: props.projectId, planId: planId.value, docType: 'person', payload: await personPdfPayload(m) });
+        let res;
+        try {
+          res = await generateCommissionPdfAPI({ projectId: props.projectId, planId: planId.value, docType: 'person', payload: await personPdfPayload(m) });
+        } catch (e) {
+          if (!isNoLoginPassword(e)) throw e;
+          noPassword.push(m.person.name);
+          continue;
+        }
         if (!res?.ok) throw new Error(`${m.person.name} PDF 產製失敗`);
         results.push({ name: res.fileName || `${m.fileName}.pdf`, blob: base64ToBlob(res.base64, res.mimeType) });
       }
+      if (noPassword.length) toast.warning(`以下人員沒有登入密碼，未產出：${noPassword.join('、')}`);
+      if (!results.length) return;
       if (results.length === 1) {
         saveBlob(results[0].blob, results[0].name);
       } else {
@@ -879,6 +895,7 @@ function openEmail() {
     `附件為「${props.projectName}」第 ${pText} 期獎金明細（PDF），請審閱。`,
   ];
   if (encryptMode.value === 'userKey') lines.push('PDF 開啟密碼為您登記於系統的手機號碼。');
+  else if (encryptMode.value === 'loginPassword') lines.push('PDF 開啟密碼為您登入系統的密碼。');
   else if (encryptMode.value === 'custom') lines.push('PDF 已加密，開啟密碼將另行通知。');
   lines.push('', '如有疑問請與專案聯繫，謝謝。');
   emailBody.value = lines.join('\n');
@@ -916,7 +933,7 @@ async function sendEmails() {
         ok++;
       } catch (e) {
         r.status = 'error';
-        r.error = e.message || '寄送失敗';
+        r.error = isNoLoginPassword(e) ? '沒有登入密碼，未寄送' : (e.message || '寄送失敗');
         fail++;
       }
     }

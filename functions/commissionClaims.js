@@ -1336,6 +1336,19 @@ exports.undoCommissionImport = onCall({
   return { ok: true, periods, records: recs.length, bonuses: bonusSnap.size, units };
 });
 
+/**
+ * 個人明細 PDF 以人員登入密碼加密：encrypt.loginPasswordOf＝人員 personKey（電話，users 文件 ID），
+ * 由後端讀 users/{key}.password 換成 userPassword，密碼不經前端；沒有登入密碼則擋下不產出。
+ */
+async function resolvePdfEncrypt_(payload) {
+  const key = String(payload?.encrypt?.loginPasswordOf || "").trim();
+  if (!key) return payload;
+  const snap = await db_().collection("users").doc(key).get();
+  const pwd = snap.exists ? String(snap.data().password || "").trim() : "";
+  if (!pwd) throw new HttpsError("failed-precondition", "沒有登入密碼", { reason: "noLoginPassword" });
+  return { ...payload, encrypt: { userPassword: pwd } };
+}
+
 /* ==========================================================
  * 請佣總表 / 獎金表 PDF 產製
  * data: { projectId, docType: 'claim'|'bonus', payload }
@@ -1353,7 +1366,7 @@ exports.generateCommissionPdf = onCall({
   try {
     const { buildClaimPdf, buildBonusPdf, buildPersonPdf } = require("./commissionDocument");
     const builders = { claim: buildClaimPdf, bonus: buildBonusPdf, person: buildPersonPdf };
-    const buffer = await builders[docType](payload);
+    const buffer = await builders[docType](docType === "person" ? await resolvePdfEncrypt_(payload) : payload);
     const MAX = 7 * 1024 * 1024;
     if (buffer.length > MAX) {
       throw new HttpsError("resource-exhausted", "PDF 檔案超過 7MB 上限，請減少期別資料量或分次匯出。");
@@ -1376,7 +1389,7 @@ exports.generateCommissionPdf = onCall({
  * data: {
  *   projectId, projectName,
  *   to, personName, subject, body,          // body：純文字（換行以 \n）
- *   payload: { fileName, paper, orientation, grids, encrypt? }
+ *   payload: { fileName, paper, orientation, grids, encrypt? }   // encrypt: { userPassword } 或 { loginPasswordOf }
  * }
  */
 exports.sendCommissionPersonEmail = onCall({
@@ -1400,7 +1413,8 @@ exports.sendCommissionPersonEmail = onCall({
   }
   try {
     const { buildPersonPdf } = require("./commissionDocument");
-    const buffer = await buildPersonPdf(payload);
+    const pdfPayload = await resolvePdfEncrypt_(payload);
+    const buffer = await buildPersonPdf(pdfPayload);
     const MAX = 7 * 1024 * 1024;
     if (buffer.length > MAX) throw new HttpsError("resource-exhausted", "PDF 超過 7MB 上限，請減少期別後再寄送。");
 
@@ -1423,7 +1437,7 @@ exports.sendCommissionPersonEmail = onCall({
       html,
       attachments: [{ filename: fileName, content: buffer, contentType: "application/pdf" }],
     });
-    console.log(`[sendCommissionPersonEmail] ${projectId} → ${personName || ""} <${email}> ${fileName} (${buffer.length} bytes, encrypted=${!!payload.encrypt?.userPassword})`);
+    console.log(`[sendCommissionPersonEmail] ${projectId} → ${personName || ""} <${email}> ${fileName} (${buffer.length} bytes, encrypted=${!!pdfPayload.encrypt?.userPassword})`);
     return { ok: true, to: email, fileName };
   } catch (error) {
     if (error instanceof HttpsError) throw error;
