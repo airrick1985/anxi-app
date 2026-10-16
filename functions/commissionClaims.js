@@ -54,12 +54,29 @@ async function planRows_(query, planId) {
  * excludeIds：本次即將作廢／刪除的紀錄；tx 有值時於 transaction 內讀取（須在任何寫入之前呼叫）。
  */
 async function activeRatioSum_(db, projectId, planId, collection, unitId, excludeIds = new Set(), tx = null) {
+  return Math.max(0, await rawActiveRatioSum_(db, projectId, planId, collection, unitId, excludeIds, tx));
+}
+/** 同上但不設下限：用於「其他紀錄＋本筆新比例」的部分加總（退佣負值不可先被歸零） */
+async function rawActiveRatioSum_(db, projectId, planId, collection, unitId, excludeIds = new Set(), tx = null) {
   const q = db.collection(collection).where("projectId", "==", projectId).where("unitId", "==", unitId);
   const snap = tx ? await tx.get(q) : await q.get();
   const sum = snap.docs.filter(d => !excludeIds.has(d.id)).map(d => d.data())
     .filter(r => planIdOf(r) === planId && r.status === "active")
     .reduce((s, r) => s + calc.toNum(r.ratioPct), 0);
-  return Math.max(0, Math.round(sum * 1000) / 1000);
+  return Math.round(sum * 1000) / 1000;
+}
+/**
+ * 某戶已送獎金比例：獨立獎金紀錄（bonusEntries）＋仍有有效獎金明細的舊版請佣附帶獎金（commissionRecords）。
+ * 須在 transaction 任何寫入之前呼叫；excludeId：本次要修改的獎金紀錄。
+ */
+async function bonusRatioSum_(db, tx, projectId, planId, unitId, excludeId = '') {
+  const bonusSnap = await tx.get(db.collection('bonusRecords').where('projectId', '==', projectId).where('unitId', '==', unitId));
+  const sourceIds = [...new Set(bonusSnap.docs.filter(d => d.data().status !== 'voided' && planIdOf(d.data()) === planId).map(d => d.data().commissionRecordId))];
+  const independent = await tx.get(db.collection('bonusEntries').where('projectId', '==', projectId).where('unitId', '==', unitId));
+  const independentDocs = independent.docs.filter(d => d.id !== excludeId && d.data().status !== 'voided' && planIdOf(d.data()) === planId);
+  const ownIds = new Set(independent.docs.map(d => d.id));
+  const legacy = await Promise.all(sourceIds.filter(id => !ownIds.has(id)).map(id => tx.get(db.collection('commissionRecords').doc(id))));
+  return [...independentDocs, ...legacy.filter(d => d.exists)].reduce((sum, d) => sum + calc.toNum(d.data().ratioPct), 0);
 }
 function planFromSnapshot_(snap, projectId, planId) {
   const saved = snap.exists ? snap.data() : null;
@@ -595,15 +612,7 @@ exports.submitCommissionEntries = onCall({
       ledgerRefs[unitId] = ref;
       const snap = await tx.get(ref);
       let existing = snap.exists ? calc.toNum(snap.data().claimedRatioPct) : 0;
-      if (bonusOnly) {
-        const bonusSnap = await tx.get(db.collection('bonusRecords').where('projectId', '==', projectId).where('unitId', '==', unitId));
-        const sourceIds = [...new Set(bonusSnap.docs.filter(d => d.data().status !== 'voided' && planIdOf(d.data()) === planId).map(d => d.data().commissionRecordId))];
-        const independent = await tx.get(db.collection('bonusEntries').where('projectId', '==', projectId).where('unitId', '==', unitId));
-        const independentDocs = independent.docs.filter(d => d.data().status !== 'voided' && planIdOf(d.data()) === planId);
-        const ownIds = new Set(independent.docs.map(d => d.id));
-        const legacy = await Promise.all(sourceIds.filter(id => !ownIds.has(id)).map(id => tx.get(db.collection('commissionRecords').doc(id))));
-        existing = [...independentDocs, ...legacy.filter(d => d.exists)].reduce((sum, d) => sum + calc.toNum(d.data().ratioPct), 0);
-      }
+      if (bonusOnly) existing = await bonusRatioSum_(db, tx, projectId, planId, unitId);
       const afterRefund = Math.max(0, existing - (ratioSub[unitId] || 0));
       if (afterRefund + ratioAdd[unitId] > 100.0001) {
         throw new HttpsError("failed-precondition",
@@ -956,6 +965,269 @@ exports.voidCommissionRecord = onCall({
   const bonusVoided = bonusOnly ? await voidBonusDetails_(db, recordId, voidedBy) : 0;
 
   return { ok: true, unitId, bonusVoided };
+});
+
+/* ==========================================================
+ * 歷期總覽連點修改單一欄位（直接更新原紀錄，寫入稽核紀錄）
+ * data: { projectId, planId, recordId, submissionType: 'claim'|'bonus', field, value, overrideManual, operatorKey, operatorName }
+ * - 日期／備註：直接存（獎金紀錄同步每人明細日期）
+ * - 請佣比例：更新比例與已請額度（請佣金額不受比例影響）
+ * - 獎金比例：依紀錄快照價格與原分配重算每人獎金明細、交屋保留款
+ * - 佣金比例／房屋總價／房屋底價／車位總價／車位底價：分項差額連動請佣總價、總底價，依快照重算請佣金額
+ *   （溢差價＝請佣總價−總底價），會覆蓋手動調整；舊匯入資料分項與總價可能不一致，故以差額連動而非重新加總
+ * - 成交總價：只改快照顯示值（不參與計算）
+ * - 實際請領／保留款／本次請佣／折數後總價：手動覆寫（實際請領、保留款連動本次請佣），記入 manualFields
+ * - 退佣紀錄（請佣）：比例＝退回比例（負數，同步已請額度與作廢時加回的 refundRatioPct，不超過原紀錄合計）；
+ *   價格、佣金比例是原紀錄反向加總的參考值，退佣金額不由此計算 → 只改顯示值、不重算，記入 manualFields
+ * - 退獎金紀錄只能改日期、備註；已退佣的原紀錄可照常修改，不連動退佣紀錄
+ * ========================================================== */
+const EDIT_FIELDS_ = {
+  claim: ['requestDate', 'note', 'ratioPct', 'commPct', 'houseDeal', 'houseFloor', 'parkDeal', 'parkFloor', 'transactionTotal', 'realClaim', 'claimKeep', 'thisClaim', 'dealAfter'],
+  bonus: ['requestDate', 'note', 'ratioPct'],
+};
+const REFUND_EDIT_FIELDS_ = { claim: EDIT_FIELDS_.claim, bonus: ['requestDate', 'note'] };
+const PRICE_PART_TOTAL_ = { houseDeal: 'dealTotal', parkDeal: 'dealTotal', houseFloor: 'totalFloor', parkFloor: 'totalFloor' };
+const MANUAL_FIELDS_ = ['realClaim', 'claimKeep', 'thisClaim', 'dealAfter'];
+const CLAIM_CALC_KEYS_ = ['feeWan', 'realSpread', 'baseWan', 'realClaim', 'claimKeep', 'thisClaim', 'base', 'discount', 'dealAfter'];
+const CLAIM_CALC_SHOWN_ = ['realClaim', 'claimKeep', 'thisClaim', 'dealAfter'];
+
+/** yyyy/MM/dd（接受 - . 分隔與不補零）；空字串表示清除 */
+function editDate_(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const m = raw.match(/^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})$/);
+  const d = m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : null;
+  if (!d || d.getUTCMonth() !== Number(m[2]) - 1) throw new HttpsError('invalid-argument', '日期格式須為 yyyy/MM/dd。');
+  return `${m[1]}/${m[2].padStart(2, '0')}/${m[3].padStart(2, '0')}`;
+}
+function editNumber_(value, label, check, hint) {
+  const n = value === '' || value === null || value === undefined ? NaN : Number(value);
+  if (!Number.isFinite(n) || (check && !check(n))) throw new HttpsError('invalid-argument', `${label}${hint || '須為數字'}。`);
+  return n;
+}
+/** 依快照價格組計算用 finance（溢差價一律＝請佣總價−總底價） */
+function snapshotFinance_(snapshot) {
+  const dealTotal = calc.toNum(snapshot?.dealTotal);
+  const totalFloor = calc.toNum(snapshot?.totalFloor);
+  return { dealTotal, totalFloor, spread: dealTotal - totalFloor };
+}
+function claimInput_(rec, overrides = {}) {
+  return {
+    commPct: rec.commPct, keepPct: rec.keepPct, partyAFee: calc.toNum(rec.partyAFee), partyBFee: calc.toNum(rec.partyBFee),
+    claimBasisMethod: rec.claimBasisMethod, bonusBasisMethod: rec.bonusBasisMethod, partyBFeeTiming: rec.partyBFeeTiming,
+    ...overrides,
+  };
+}
+
+exports.updateCommissionRecordField = onCall({
+  region: REGION,
+  timeoutSeconds: 60,
+  memory: "512MiB",
+}, async (request) => {
+  const planId = requestPlanId_(request);
+  const { projectId, recordId, field, value, operatorKey, operatorName = "", submissionType = "claim", overrideManual = false } = request.data || {};
+  if (!projectId || !recordId) throw new HttpsError("invalid-argument", "缺少 projectId 或 recordId。");
+  if (!EDIT_FIELDS_[submissionType]) throw new HttpsError("invalid-argument", "修改類型不正確。");
+  if (!EDIT_FIELDS_[submissionType].includes(field)) throw new HttpsError("invalid-argument", "此欄位不可修改。");
+  const bonusOnly = submissionType === "bonus";
+  const recordWord = bonusOnly ? "獎金" : "請佣";
+  const refundWord = bonusOnly ? "退獎金" : "退佣";
+
+  let next;
+  if (field === "requestDate") next = editDate_(value);
+  else if (field === "note") next = noteOf_(value);
+  else if (field === "ratioPct") next = Math.round(editNumber_(value, `${recordWord}比例`) * 1000) / 1000;   // 正負範圍依紀錄類型於 transaction 內檢查
+  else if (field === "commPct") next = editNumber_(value, "佣金比例", n => n >= 0 && n <= 100, "須介於 0～100");
+  else if (PRICE_PART_TOTAL_[field] || field === "transactionTotal") next = editNumber_(value, "價格");
+  else next = Math.round(editNumber_(value, "金額"));
+
+  const db = db_();
+  await ensureManagePermission_(db, operatorKey, projectId);
+  const recordRef = db.collection(bonusOnly ? "bonusEntries" : "commissionRecords").doc(String(recordId));
+
+  let unitId = "";
+  let period = 0;
+  const changes = [];
+  const patch = {};
+  const bonusPatches = [];
+  await db.runTransaction(async (tx) => {
+    changes.length = 0;
+    bonusPatches.length = 0;
+    Object.keys(patch).forEach(k => delete patch[k]);
+
+    const snap = await tx.get(recordRef);
+    if (!snap.exists) throw new HttpsError("not-found", `找不到此${recordWord}紀錄。`);
+    const rec = snap.data();
+    if (rec.projectId !== projectId || planIdOf(rec) !== planId) throw new HttpsError("permission-denied", "紀錄不屬於此建案／方案。");
+    if (rec.status === "voided") throw new HttpsError("failed-precondition", "此紀錄已作廢，不可修改。");
+    const isRefund = rec.type === "refund";
+    if (isRefund && !REFUND_EDIT_FIELDS_[submissionType].includes(field)) {
+      throw new HttpsError("failed-precondition", `${refundWord}紀錄只能修改日期與備註。`);
+    }
+    if (field === "ratioPct") {
+      if (isRefund ? !(next < 0 && next >= -100) : !(next > 0 && next <= 100)) {
+        throw new HttpsError("invalid-argument", isRefund ? `${refundWord}比例須介於 -100～0（負數）。` : `${recordWord}比例須介於 0～100。`);
+      }
+      const sourceRatio = (rec.sources || []).reduce((s, x) => s + calc.toNum(x.ratioPct), 0);
+      if (isRefund && sourceRatio > 0 && -next > sourceRatio + 0.0001) {
+        throw new HttpsError("invalid-argument", `退回比例不可超過原紀錄合計 ${Math.round(sourceRatio * 1000) / 1000}%。`);
+      }
+    }
+    if ((PRICE_PART_TOTAL_[field] || field === "transactionTotal") && (isRefund ? next > 0 : next < 0)) {
+      throw new HttpsError("invalid-argument", isRefund ? `${refundWord}紀錄的價格為負數，請輸入負數或 0。` : "價格不可為負數。");
+    }
+    unitId = rec.unitId;
+    period = calc.toNum(rec.period);
+
+    const update = {};
+    const snapshot = { ...(rec.snapshot || {}) };
+    const calcVals = { ...(rec.calc || {}) };
+    const same = (a, b) => (typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-9 : a === b);
+    const change = (key, before, after, log = true) => {
+      if (same(before, after)) return false;
+      if (log) changes.push({ field: key, before, after });
+      return true;
+    };
+    const setSnapshot = (key, after, log = true) => {
+      const before = key === "transactionTotal" ? calc.toNum(snapshot.transactionTotal ?? snapshot.dealTotal) : calc.toNum(snapshot[key]);
+      if (change(key, before, after, log)) { update[`snapshot.${key}`] = after; snapshot[key] = after; patch.snapshot = snapshot; }
+    };
+    const setCalc = (key, after, log = true) => {
+      if (change(key, calc.toNum(calcVals[key]), after, log)) { update[`calc.${key}`] = after; calcVals[key] = after; patch.calc = calcVals; }
+    };
+    const markManual = keys => {
+      if (!changes.length) return;
+      const manual = new Set(Array.isArray(rec.manualFields) ? rec.manualFields : []);
+      keys.forEach(k => manual.add(k));
+      update.manualFields = [...manual];
+      patch.manualFields = update.manualFields;
+    };
+    // 價格分項以差額連動總價（舊匯入資料分項與總價可能不一致，不重新加總）
+    const setPricePart = () => {
+      const totalKey = PRICE_PART_TOTAL_[field];
+      const delta = next - calc.toNum(snapshot[field]);
+      setSnapshot(field, next);
+      setSnapshot(totalKey, Math.round((calc.toNum(snapshot[totalKey]) + delta) * 10000) / 10000);
+      setSnapshot("spread", snapshotFinance_(snapshot).spread);
+    };
+
+    // 讀取（transaction 內所有讀取須在寫入之前）
+    let ledgerRef = null;
+    let ratioOthers = 0;
+    let bonusDocs = [];
+    if (field === "ratioPct") {
+      ledgerRef = db.collection(bonusOnly ? "bonusUnitLedgers" : "commissionUnitLedgers").doc(ledgerId_(projectId, unitId, planId));
+      ratioOthers = bonusOnly
+        ? await bonusRatioSum_(db, tx, projectId, planId, unitId, String(recordId))
+        : await rawActiveRatioSum_(db, projectId, planId, "commissionRecords", unitId, new Set([String(recordId)]), tx);
+      if (ratioOthers + next > 100.0001) {
+        throw new HttpsError("failed-precondition",
+          `戶別 ${unitId} 其他紀錄合計 ${Math.round(ratioOthers * 1000) / 1000}%，改為 ${next}% 將超過 100%。`);
+      }
+    }
+    if (bonusOnly && (field === "ratioPct" || field === "requestDate")) {
+      const bs = await tx.get(db.collection("bonusRecords").where("commissionRecordId", "==", String(recordId)));
+      bonusDocs = bs.docs.filter(d => d.data().status !== "voided");
+    }
+
+    if (field === "requestDate" || field === "note") {
+      if (change(field, String(rec[field] ?? ""), next)) { update[field] = next; patch[field] = next; }
+      if (field === "requestDate" && update.requestDate !== undefined) {
+        bonusDocs.forEach(d => { tx.update(d.ref, { requestDate: next }); bonusPatches.push({ id: d.id, requestDate: next }); });
+      }
+    } else if (field === "ratioPct") {
+      const before = calc.toNum(rec.ratioPct);
+      if (change("ratioPct", before, next)) { update.ratioPct = next; patch.ratioPct = next; }
+      // 退佣：作廢時以 refundRatioPct 加回已請比例
+      if (isRefund && update.ratioPct !== undefined) { update.refundRatioPct = -next; patch.refundRatioPct = -next; }
+      if (bonusOnly && update.ratioPct !== undefined) {
+        // 依快照價格與原分配重算每人獎金（人員費率取原明細）
+        const profiles = {};
+        bonusDocs.forEach(d => {
+          const b = d.data();
+          profiles[b.personKey] = { name: b.name, role: b.role, keepPct: b.keepPct, taxPct: b.taxPct, nhiPct: b.nhiPct, remark: b.remark || "" };
+        });
+        const result = calc.calcUnitBonus(snapshotFinance_(snapshot), { ...claimInput_(rec), ratioPct: next, categories: rec.categories || {} }, profiles);
+        if (result.errors.length) {
+          throw new HttpsError("invalid-argument", `戶別 ${unitId} 重算未通過：${result.errors.map(e => `${e.catKey}：${e.error}`).join("；")}`);
+        }
+        const byPerson = new Map(bonusDocs.map(d => [d.data().personKey, d]));
+        if (result.people.length !== bonusDocs.length || result.people.some(p => !byPerson.has(p.personKey))) {
+          throw new HttpsError("failed-precondition", `戶別 ${unitId} 的獎金明細與原分配不一致，請改用「拉回編輯」修改。`);
+        }
+        const netBefore = bonusDocs.reduce((s, d) => s + calc.toNum(d.data().net), 0);
+        result.people.forEach(p => {
+          const fields = { amounts: p.amounts, amountsFull: p.amountsFull, subtotal: p.subtotal, keep: p.keep, tax: p.tax, nhi: p.nhi, net: p.net };
+          tx.update(byPerson.get(p.personKey).ref, fields);
+          bonusPatches.push({ id: byPerson.get(p.personKey).id, ...fields });
+        });
+        change("bonusNet", netBefore, result.people.reduce((s, p) => s + p.net, 0));
+        const handover = { total: calc.toNum(result.handoverTotal), totalFull: calc.toNum(result.handoverTotalFull), byCat: result.handover || {} };
+        change("handover", calc.toNum(rec.handover?.total), handover.total);
+        update.handover = handover;
+        patch.handover = handover;
+        CLAIM_CALC_KEYS_.forEach(k => setCalc(k, result.claim[k], false));
+      }
+      if (update.ratioPct !== undefined) {
+        tx.set(ledgerRef, {
+          projectId, planId, unitId,
+          ...(bonusOnly ? { submissionType: "bonus" } : {}),
+          claimedRatioPct: Math.max(0, Math.round((ratioOthers + next) * 1000) / 1000),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+    } else if (field === "transactionTotal") {
+      setSnapshot("transactionTotal", next);
+      if (isRefund) markManual(["transactionTotal"]);
+    } else if (isRefund && (field === "commPct" || PRICE_PART_TOTAL_[field])) {
+      // 退佣：價格、佣金比例是原紀錄反向加總的參考值，退佣金額不由此計算 → 只改顯示值
+      if (field === "commPct") {
+        if (change("commPct", calc.toNum(rec.commPct), next)) { update.commPct = next; patch.commPct = next; }
+      } else {
+        setPricePart();
+      }
+      markManual([field]);
+    } else if (field === "commPct" || PRICE_PART_TOTAL_[field]) {
+      const manual = Array.isArray(rec.manualFields) ? rec.manualFields : [];
+      if (manual.length && !overrideManual) {
+        throw new HttpsError("failed-precondition", "此筆有手動調整的金額，重算會覆蓋，請確認後再試。");
+      }
+      if (field === "commPct") {
+        if (change("commPct", calc.toNum(rec.commPct), next)) { update.commPct = next; patch.commPct = next; }
+      } else {
+        setPricePart();
+      }
+      const claim = calc.calcClaim(snapshotFinance_(snapshot), claimInput_(rec, field === "commPct" ? { commPct: next } : {}));
+      CLAIM_CALC_KEYS_.forEach(k => setCalc(k, claim[k], CLAIM_CALC_SHOWN_.includes(k)));
+      if (changes.length && manual.length) { update.manualFields = []; patch.manualFields = []; }
+    } else if (MANUAL_FIELDS_.includes(field)) {
+      setCalc(field, next);
+      const keys = [field];
+      if (field === "realClaim" || field === "claimKeep") {
+        // 退佣含保留款時，退回金額＝實際請領（與 buildRefundPlan 一致）
+        const keep = isRefund && rec.includeKeep ? 0 : calc.toNum(calcVals.claimKeep);
+        setCalc("thisClaim", calc.toNum(calcVals.realClaim) - keep);
+        keys.push("thisClaim");
+      }
+      markManual(keys);
+    }
+
+    if (!changes.length) return;
+    update.editedAt = FieldValue.serverTimestamp();
+    update.editedBy = operatorName;
+    tx.update(recordRef, update);
+  });
+
+  if (changes.length) {
+    await writeAudit_(db, {
+      projectId, planId, submissionType,
+      action: "editField",
+      period, unitId, recordId: String(recordId), field, changes,
+      operator: operatorName,
+      operatorKey: String(operatorKey),
+    });
+  }
+  return { ok: true, unitId, period, changes, patch, bonusPatches };
 });
 
 /* ==========================================================

@@ -108,6 +108,7 @@
           :bonus-entries="planBonusEntries"
           :loading="recordsLoading"
           @refresh="handleSubmitted"
+          @refresh-quiet="reloadQuietly"
           @export-period="goExportPeriod"
           @reimport-period="goReimportPeriod"
           @edit-record="r => goEditRecords([r])"
@@ -387,8 +388,8 @@ async function loadLedgers() {
   ledgers.value = await fetchCommissionLedgers(projectId.value);
 }
 
-async function loadRecords() {
-  recordsLoading.value = true;
+async function loadRecords(quiet = false) {
+  if (!quiet) recordsLoading.value = true;
   try {
     const [recs, bonuses, bonusEntries, notes] = await Promise.all([
       fetchCommissionRecords(projectId.value),
@@ -427,6 +428,15 @@ async function handleSubmitted(payload = null) {
   if (payload?.period) {
     exportDocType.value = payload.docType || 'claim';
     goExportPeriod(payload.period);
+  }
+}
+
+/** 歷期總覽連點修改後：背景同步紀錄與額度，不顯示載入畫面（保留表格篩選、分頁與捲動） */
+async function reloadQuietly() {
+  try {
+    await Promise.all([loadLedgers(), loadRecords(true)]);
+  } catch (e) {
+    console.warn('[CommissionBonus] 背景同步失敗:', e);
   }
 }
 

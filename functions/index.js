@@ -31486,6 +31486,7 @@ const commissionClaims = require("./commissionClaims");
 exports.manageCommissionPlan = commissionClaims.manageCommissionPlan;
 exports.submitCommissionEntries = commissionClaims.submitCommissionEntries;
 exports.voidCommissionRecord = commissionClaims.voidCommissionRecord;
+exports.updateCommissionRecordField = commissionClaims.updateCommissionRecordField;
 exports.importCommissionHistory = commissionClaims.importCommissionHistory;
 exports.voidCommissionPeriod = commissionClaims.voidCommissionPeriod;
 exports.purgeVoidedCommissionPeriod = commissionClaims.purgeVoidedCommissionPeriod;

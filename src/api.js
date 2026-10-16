@@ -9895,6 +9895,13 @@ export const voidCommissionRecordAPI = async (payload) => {
   return result.data;
 };
 
+/** 歷期總覽連點修改單一欄位（後端驗證、重算並寫入稽核紀錄；回傳 patch 供畫面即時更新） */
+export const updateCommissionRecordFieldAPI = async (payload) => {
+  const fn = httpsCallable(functions, 'updateCommissionRecordField');
+  const result = await fn(payload);
+  return result.data;
+};
+
 /** 歷史資料批次匯入（payload 可帶 operatorKey、replaceExisting、importFileName） */
 export const importCommissionHistoryAPI = async (payload) => {
   const fn = httpsCallable(functions, 'importCommissionHistory', { timeout: 540000 });

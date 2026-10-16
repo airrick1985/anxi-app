@@ -51,12 +51,14 @@
             <v-btn v-bind="mp" size="small" variant="text" prepend-icon="mdi-view-column-outline">欄位</v-btn>
           </template>
           <v-list density="compact" min-width="200">
-            <v-list-item v-for="c in columnDefs" :key="c.key" @click="toggleColumn(c.key)">
+            <v-list-item v-for="c in orderedDefs" :key="c.key" @click="toggleColumn(c.key)">
               <template #prepend><v-checkbox-btn :model-value="!hiddenCols.includes(c.key)" density="compact" /></template>
               <v-list-item-title>{{ c.title }}</v-list-item-title>
+              <template v-if="isPinned(c.key)" #append><v-icon size="small" color="primary">mdi-pin</v-icon></template>
             </v-list-item>
             <v-divider class="my-1"></v-divider>
             <v-list-item title="全部顯示" prepend-icon="mdi-restore" @click="hiddenCols = []"></v-list-item>
+            <v-list-item title="重設欄位排列" prepend-icon="mdi-table-refresh" @click="resetLayout"></v-list-item>
           </v-list>
         </v-menu>
         <v-btn size="small" variant="text" prepend-icon="mdi-microsoft-excel" :disabled="!rows.length" @click="exportExcel">匯出 Excel</v-btn>
@@ -117,6 +119,7 @@
 
       <v-data-table
         v-else
+        ref="tableRef"
         v-model="selected"
         v-model:expanded="expanded"
         v-model:sort-by="sortBy"
@@ -132,10 +135,15 @@
         :custom-key-sort="customSort"
         :items-per-page-options="[25, 50, 100, { value: -1, title: '全部' }]"
         :row-props="rowProps"
+        :cell-props="cellProps"
         no-data-text="沒有符合篩選的紀錄"
       >
-        <!-- 標頭：排序＋內嵌篩選 -->
+        <!-- 標頭：排序＋內嵌篩選；整格可拖曳排序，右上角圖釘釘選 -->
         <template v-for="h in filterHeaders" :key="h.key" #[`header.${h.key}`]="{ column, isSorted, getSortIcon }">
+          <button type="button" class="th-pin" :class="{ 'is-pinned': isPinned(h.key) }" :title="isPinned(h.key) ? '取消釘選' : '釘選'"
+            :aria-label="`${isPinned(h.key) ? '取消釘選' : '釘選'}${column.title}`" @click.stop="togglePin(h.key)">
+            <v-icon size="14">{{ isPinned(h.key) ? 'mdi-pin' : 'mdi-pin-outline' }}</v-icon>
+          </button>
           <div class="th-cell" :class="{ 'justify-end': column.align === 'end', 'justify-center': column.align === 'center' }">
             <span class="th-title">
               {{ column.title }}
@@ -179,20 +187,25 @@
         </template>
         <template #item.buyer="{ item }">{{ item.buyer || '—' }}</template>
         <template #item.sales="{ item }">{{ item.sales || '—' }}</template>
-        <template #item.requestDate="{ item }">{{ item.requestDate || '—' }}</template>
-        <template #item.ratioPct="{ item }">{{ item.ratioPct }}%</template>
-        <template #item.commPct="{ item }">{{ item.commPct.toFixed(2) }}%</template>
-        <template #item.transactionTotal="{ item }">{{ money(item.transactionTotal) }}</template>
         <template #item.dealTotal="{ item }">{{ money(item.dealTotal) }}</template>
         <template #item.totalFloor="{ item }">{{ money(item.totalFloor) }}</template>
         <template #item.spread="{ item }"><span :class="item.spread < 0 ? 'text-error' : ''">{{ money(item.spread) }}</span></template>
-        <template #item.dealAfter="{ item }">{{ money(item.dealAfter) }}</template>
-        <template #item.realClaim="{ item }">{{ money(item.realClaim) }}</template>
-        <template #item.claimKeep="{ item }">{{ money(item.claimKeep) }}</template>
-        <template #item.thisClaim="{ item }"><b>{{ money(item.thisClaim) }}</b></template>
         <template #item.bonusNet="{ item }"><b>{{ money(item.bonusNet) }}</b></template>
         <template #item.handover="{ item }"><span class="text-orange-darken-3">{{ item.handover ? money(item.handover) : '—' }}</span></template>
-        <template #item.note="{ item }"><span class="note-cell" :title="item.note">{{ item.note || '' }}</span></template>
+        <!-- 可連點修改的儲存格（雙擊事件掛在 td，見 cellProps） -->
+        <template v-for="k in EDIT_CELL_KEYS" :key="k" #[`item.${k}`]="{ item }">
+          <span v-if="editing && editing.id === item.id && editing.key === k" class="cell-edit">
+            <input :ref="focusEditInput" v-model="editing.value" type="text" class="mac-form-input cell-input"
+              :class="{ 'is-note': k === 'note', 'text-right': !TEXT_EDIT_KEYS.includes(k) }"
+              :inputmode="TEXT_EDIT_KEYS.includes(k) ? undefined : 'decimal'" :placeholder="k === 'requestDate' ? 'yyyy/mm/dd' : ''"
+              :aria-label="fieldLabel(k)" :disabled="editing.saving"
+              @keydown.enter.prevent="commitEdit" @keydown.esc.prevent="cancelEdit" @blur="commitEdit" @dblclick.stop />
+            <v-progress-circular v-if="editing.saving" indeterminate size="14" width="2" color="primary" />
+          </span>
+          <span v-else-if="k === 'note'" class="note-cell" :title="item.note">{{ item.note }}</span>
+          <b v-else-if="k === 'thisClaim'">{{ cellText(item, k) }}</b>
+          <template v-else>{{ cellText(item, k) }}</template>
+        </template>
         <template #item.source="{ item }">{{ item.source }}</template>
         <template #item.status="{ item }">
           <v-chip size="x-small" :color="statusColor(item.statusKey)" :variant="item.statusKey === 'refund' ? 'flat' : 'tonal'"
@@ -295,7 +308,7 @@
         <!-- 合計列 -->
         <template #body.append="{ columns }">
           <tr v-if="rows.length" class="total-row">
-            <td v-for="c in columns" :key="c.key" :class="c.align === 'end' ? 'text-right' : ''">
+            <td v-for="c in columns" :key="c.key" v-bind="pinProps(c.key)" :class="c.align === 'end' ? 'text-right' : ''">
               <template v-if="c.key === 'unitId'">合計（有效 {{ totals.count }} 筆）</template>
               <template v-else-if="c.key === 'period' && totals.count"></template>
               <template v-else-if="SUM_KEYS.includes(c.key)">{{ money(totals[c.key]) }}</template>
@@ -488,8 +501,10 @@
                 <b>{{ auditLabel(l.action) }}</b>
                 <span v-if="l.period"> 第 {{ l.period }} 期</span>
                 <span v-else-if="l.periods?.length"> 第 {{ l.periods.join('、') }} 期</span>
+                <span v-if="l.unitId"> {{ l.unitId }}</span>
                 <span class="text-caption text-medium-emphasis ml-2">{{ fmtTs(l.createdAt) }}｜{{ l.operator || '—' }}</span>
               </div>
+              <div v-if="l.changes?.length" class="text-caption">{{ l.changes.map(c => changeText(c, l.submissionType)).join('、') }}</div>
               <div class="text-caption">
                 <span v-if="l.impact?.records !== undefined">請佣 {{ l.impact.records }} 筆</span>
                 <span v-if="l.impact?.claims !== undefined">請佣 {{ l.impact.claims }} 筆</span>
@@ -517,15 +532,16 @@
 <script setup>
 import { useCommissionPlan } from '@/composables/useCommissionPlan';
 const { planId, belongsToPlan } = useCommissionPlan();
-import { ref, reactive, computed, watch } from 'vue';
+import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue';
 import { useToast } from 'vue-toastification';
 import * as XLSX from 'xlsx-js-style';
 import { useUserStore } from '@/store/user';
 import {
   voidCommissionRecordAPI, voidCommissionPeriodAPI, purgeVoidedCommissionPeriodAPI,
   undoCommissionImportAPI, fetchCommissionAuditLogs, fetchRetentionPayouts,
+  updateCommissionRecordFieldAPI,
 } from '@/api';
-import { money, toNum } from '@/utils/commissionCalculation';
+import { money, toNum, pctText } from '@/utils/commissionCalculation';
 import DateFieldTW from './DateFieldTW.vue';
 
 const props = defineProps({
@@ -538,7 +554,7 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['refresh', 'export-period', 'reimport-period', 'edit-record', 'edit-records', 'edit-period', 'edit-bonus-record', 'edit-bonus-records', 'edit-bonus-period']);
+const emit = defineEmits(['refresh', 'refresh-quiet', 'export-period', 'reimport-period', 'edit-record', 'edit-records', 'edit-period', 'edit-bonus-record', 'edit-bonus-records', 'edit-bonus-period']);
 
 // 檢視：請佣紀錄／獎金紀錄（獨立獎金＋退獎金，舊版請佣附帶獎金唯讀列出）
 const view = ref('claim');
@@ -662,6 +678,10 @@ const allRows = computed(() => sourceRecords.value.slice()
     commPct: toNum(r.commPct),
     dealTotal: toNum(r.snapshot?.dealTotal),
     transactionTotal: toNum(r.snapshot?.transactionTotal ?? r.snapshot?.dealTotal),
+    houseDeal: toNum(r.snapshot?.houseDeal),
+    houseFloor: toNum(r.snapshot?.houseFloor),
+    parkDeal: toNum(r.snapshot?.parkDeal),
+    parkFloor: toNum(r.snapshot?.parkFloor),
     totalFloor: toNum(r.snapshot?.totalFloor),
     spread: toNum(r.snapshot?.spread),
     dealAfter: toNum(r.calc?.dealAfter),
@@ -682,6 +702,13 @@ const allRows = computed(() => sourceRecords.value.slice()
 }));
 
 // ================= 欄位 =================
+// 請佣總價＝房屋總價＋車位總價、總底價＝房屋底價＋車位底價（快照分項）
+const PRICE_PART_COLUMNS = [
+  { key: 'houseDeal', title: '房屋總價(萬)', align: 'end', filter: 'number' },
+  { key: 'houseFloor', title: '房屋底價(萬)', align: 'end', filter: 'number' },
+  { key: 'parkDeal', title: '車位總價(萬)', align: 'end', filter: 'number' },
+  { key: 'parkFloor', title: '車位底價(萬)', align: 'end', filter: 'number' },
+];
 const CLAIM_COLUMNS = [
   { key: 'period', title: '期別', align: 'center', filter: 'select', width: 72 },
   { key: 'unitId', title: '戶別', filter: 'text' },
@@ -692,6 +719,7 @@ const CLAIM_COLUMNS = [
   { key: 'ratioPct', title: '請佣比例', align: 'end', filter: 'number' },
   { key: 'commPct', title: '佣金比例', align: 'end', filter: 'number' },
   { key: 'transactionTotal', title: '成交總價(萬)', align: 'end', filter: 'number' },
+  ...PRICE_PART_COLUMNS,
   { key: 'dealTotal', title: '請佣總價(萬)', align: 'end', filter: 'number', hidden: true },
   { key: 'totalFloor', title: '總底價(萬)', align: 'end', filter: 'number' },
   { key: 'spread', title: '溢差價(萬)', align: 'end', filter: 'number' },
@@ -714,6 +742,7 @@ const BONUS_COLUMNS = [
   { key: 'ratioPct', title: '獎金比例', align: 'end', filter: 'number' },
   { key: 'commPct', title: '佣金比例', align: 'end', filter: 'number', hidden: true },
   { key: 'transactionTotal', title: '成交總價(萬)', align: 'end', filter: 'number' },
+  ...PRICE_PART_COLUMNS,
   { key: 'dealTotal', title: '請佣總價(萬)', align: 'end', filter: 'number', hidden: true },
   { key: 'totalFloor', title: '總底價(萬)', align: 'end', filter: 'number' },
   { key: 'spread', title: '溢差價(萬)', align: 'end', filter: 'number' },
@@ -739,17 +768,151 @@ function loadHidden() {
   return columnDefs.value.filter(c => c.hidden).map(c => c.key);
 }
 const hiddenCols = ref(loadHidden());
-watch(view, () => { hiddenCols.value = loadHidden(); selected.value = []; expanded.value = []; });
+watch(view, () => { hiddenCols.value = loadHidden(); layout.value = loadLayout(); selected.value = []; expanded.value = []; editing.value = null; });
 watch(hiddenCols, v => { try { localStorage.setItem(storageKey.value, JSON.stringify(v)); } catch { /* ignore */ } }, { deep: true });
 function toggleColumn(key) {
   hiddenCols.value = hiddenCols.value.includes(key) ? hiddenCols.value.filter(k => k !== key) : [...hiddenCols.value, key];
 }
 
+// 欄位排列與釘選（記在瀏覽器）：釘選欄一律排在最前面成為固定區
+const layoutKey = computed(() => `commissionPeriodList.layout.${view.value}`);
+function normalizeLayout(order, pinned) {
+  const keys = columnDefs.value.map(c => c.key);
+  const list = (Array.isArray(order) ? order : []).filter((k, i, a) => keys.includes(k) && a.indexOf(k) === i);
+  // 之後新增的欄位：插在預設順序的前一欄後面
+  keys.forEach((k, i) => {
+    if (list.includes(k)) return;
+    const prev = keys.slice(0, i).reverse().find(p => list.includes(p));
+    list.splice(prev ? list.indexOf(prev) + 1 : 0, 0, k);
+  });
+  const pins = (Array.isArray(pinned) ? pinned : []).filter(k => keys.includes(k));
+  return { order: [...list.filter(k => pins.includes(k)), ...list.filter(k => !pins.includes(k))], pinned: pins };
+}
+function loadLayout() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(layoutKey.value) || 'null'); } catch { /* ignore */ }
+  return normalizeLayout(saved?.order, saved?.pinned);
+}
+const layout = ref(loadLayout());
+watch(layout, v => { try { localStorage.setItem(layoutKey.value, JSON.stringify(v)); } catch { /* ignore */ } });
+function resetLayout() { layout.value = normalizeLayout(null, []); }
+function isPinned(key) { return layout.value.pinned.includes(key); }
+/** 釘選：移到固定區最後；取消：移到固定區右邊第一欄 */
+function togglePin(key) {
+  const pinned = isPinned(key) ? layout.value.pinned.filter(k => k !== key) : [...layout.value.pinned, key];
+  const order = layout.value.order.filter(k => k !== key);
+  order.splice(order.filter(k => pinned.includes(k)).length, 0, key);
+  layout.value = normalizeLayout(order, pinned);
+}
+/** 拖曳放下：插到目標欄前／後，並跟隨目標欄的釘選狀態 */
+function moveColumn(from, to, after) {
+  const order = layout.value.order.filter(k => k !== from);
+  order.splice(order.indexOf(to) + (after ? 1 : 0), 0, from);
+  const pinned = layout.value.pinned.filter(k => k !== from).concat(isPinned(to) ? [from] : []);
+  layout.value = normalizeLayout(order, pinned);
+}
+
+const orderedDefs = computed(() => {
+  const byKey = Object.fromEntries(columnDefs.value.map(c => [c.key, c]));
+  return layout.value.order.map(k => byKey[k]).filter(Boolean);
+});
+const filterHeaders = computed(() => orderedDefs.value.filter(c => !hiddenCols.value.includes(c.key)));
+// 有釘選欄時，勾選框欄一併固定
+const fixedKeys = computed(() => {
+  const pins = filterHeaders.value.filter(c => isPinned(c.key)).map(c => c.key);
+  return pins.length ? ['data-table-select', ...pins] : [];
+});
+const pinOffsets = ref({});
+function pinProps(key) {
+  const i = fixedKeys.value.indexOf(key);
+  if (i < 0) return {};
+  return { class: ['pin-col', { 'pin-last': i === fixedKeys.value.length - 1 }], style: { left: `${pinOffsets.value[key] || 0}px` } };
+}
+
+// 依實際欄寬計算固定欄的 left（不鎖欄寬，內容變動時由 ResizeObserver 重算）
+const tableRef = ref(null);
+let pinObserver = null;
+function pinnedTh(key) { return tableRef.value?.$el?.querySelector(`thead th[data-col="${key}"]`); }
+function measurePins() {
+  const next = {};
+  let left = 0;
+  fixedKeys.value.forEach(k => {
+    next[k] = left;
+    left += pinnedTh(k)?.getBoundingClientRect().width || 0;
+  });
+  if (JSON.stringify(next) !== JSON.stringify(pinOffsets.value)) pinOffsets.value = next;
+}
+function observePins() {
+  pinObserver?.disconnect();
+  pinObserver = null;
+  if (!tableRef.value || !fixedKeys.value.length) return;
+  if (typeof ResizeObserver !== 'undefined') {
+    pinObserver = new ResizeObserver(measurePins);
+    fixedKeys.value.forEach(k => { const th = pinnedTh(k); if (th) pinObserver.observe(th); });
+  }
+  measurePins();
+}
+watch([fixedKeys, tableRef], observePins, { flush: 'post' });
+onBeforeUnmount(() => pinObserver?.disconnect());
+
+// 標頭拖曳排序（落點標示直接改 DOM class，避免拖曳中整張表重繪）
+let dragKey = null;
+let dropTh = null;
+function clearDropMark() {
+  dropTh?.classList.remove('col-drop-before', 'col-drop-after');
+  dropTh = null;
+}
+function onColDragStart(e, key) {
+  dragKey = key;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', key);
+  e.currentTarget.classList.add('col-dragging');
+}
+function onColDragOver(e, key) {
+  if (!dragKey) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const th = e.currentTarget;
+  if (dropTh !== th) clearDropMark();
+  dropTh = th;
+  const r = th.getBoundingClientRect();
+  const after = e.clientX > r.left + r.width / 2;
+  th.classList.toggle('col-drop-before', key !== dragKey && !after);
+  th.classList.toggle('col-drop-after', key !== dragKey && after);
+}
+function onColDragLeave(e) {
+  if (e.currentTarget === dropTh && !e.currentTarget.contains(e.relatedTarget)) clearDropMark();
+}
+function onColDrop(e, key) {
+  if (!dragKey) return;
+  e.preventDefault();
+  const after = e.currentTarget.classList.contains('col-drop-after');
+  if (dragKey !== key) moveColumn(dragKey, key, after);
+  endColDrag();
+}
+function endColDrag() {
+  clearDropMark();
+  tableRef.value?.$el?.querySelectorAll('th.col-dragging').forEach(th => th.classList.remove('col-dragging'));
+  dragKey = null;
+}
+function headerPropsOf(key) {
+  return {
+    'data-col': key,
+    draggable: 'true',
+    onDragstart: e => onColDragStart(e, key),
+    onDragover: e => onColDragOver(e, key),
+    onDragleave: onColDragLeave,
+    onDrop: e => onColDrop(e, key),
+    onDragend: endColDrag,
+    ...pinProps(key),
+  };
+}
+
 const headers = computed(() => [
-  ...columnDefs.value.filter(c => !hiddenCols.value.includes(c.key)).map(c => ({ key: c.key, title: c.title, align: c.align || 'start', width: c.width, sortable: true })),
+  { key: 'data-table-select', headerProps: { 'data-col': 'data-table-select', ...pinProps('data-table-select') } },
+  ...filterHeaders.value.map(c => ({ key: c.key, title: c.title, align: c.align || 'start', width: c.width, sortable: true, headerProps: headerPropsOf(c.key) })),
   { key: 'actions', title: '', sortable: false, width: 150 },
 ]);
-const filterHeaders = computed(() => columnDefs.value.filter(c => !hiddenCols.value.includes(c.key)));
 const customSort = { unitId: naturalCompare, buyer: naturalCompare, sales: naturalCompare };
 
 // ================= 篩選 =================
@@ -808,6 +971,126 @@ const totals = computed(() => {
 
 function rowProps({ item }) {
   return { class: { 'voided-row': item.voided, 'refund-row': item.refund && !item.voided } };
+}
+
+// ================= 連點修改 =================
+// 請佣：日期／備註直接存；比例只動額度；佣金比例與價格分項依快照重算；金額欄手動覆寫。獎金：日期／備註、比例（重算每人明細）
+// 退佣列：比例＝退回比例（同步額度）；價格、佣金比例只改顯示值不重算。退獎金列只能改日期、備註。已退佣的原紀錄照常可改（不連動退佣紀錄）
+const PRICE_PART_KEYS = ['houseDeal', 'houseFloor', 'parkDeal', 'parkFloor'];
+const EDIT_CELL_KEYS = ['requestDate', 'note', 'ratioPct', 'commPct', 'transactionTotal', ...PRICE_PART_KEYS, 'dealAfter', 'realClaim', 'claimKeep', 'thisClaim'];
+const CLAIM_EDIT_KEYS = EDIT_CELL_KEYS;
+const BONUS_EDIT_KEYS = ['requestDate', 'note', 'ratioPct'];
+const TEXT_EDIT_KEYS = ['requestDate', 'note'];
+const RECALC_KEYS = ['commPct', ...PRICE_PART_KEYS];
+const WAN_KEYS = ['transactionTotal', ...PRICE_PART_KEYS, 'dealTotal', 'totalFloor', 'spread', 'dealAfter'];
+const FIELD_LABELS = {
+  note: '備註', commPct: '佣金比例', transactionTotal: '成交總價', houseDeal: '房屋總價', houseFloor: '房屋底價', parkDeal: '車位總價', parkFloor: '車位底價',
+  dealTotal: '請佣總價', totalFloor: '總底價', spread: '溢差價',
+  dealAfter: '折數後總價', realClaim: '實際請領', claimKeep: '保留款', thisClaim: '本次請佣', bonusNet: '獎金實發', handover: '交屋保留款',
+};
+function fieldLabel(key, type = view.value) {
+  if (key === 'ratioPct') return type === 'bonus' ? '獎金比例' : '請佣比例';
+  if (key === 'requestDate') return type === 'bonus' ? '獎金日期' : '請佣日期';
+  return FIELD_LABELS[key] || key;
+}
+function fmtFieldValue(key, v) {
+  if (TEXT_EDIT_KEYS.includes(key)) return v || '（空白）';
+  if (key === 'ratioPct' || key === 'commPct') return `${pctText(v)}%`;
+  if (WAN_KEYS.includes(key)) return `${fmtWan(v)}萬`;
+  return money(v);
+}
+function changeText(c, type) {
+  return `${fieldLabel(c.field, type)} ${fmtFieldValue(c.field, c.before)}→${fmtFieldValue(c.field, c.after)}`;
+}
+
+const editing = ref(null);   // { id, key, value, original, saving, busy, row }
+function manualFieldsOf(item) { return Array.isArray(item.raw.manualFields) ? item.raw.manualFields : []; }
+function canEditCell(item, key) {
+  if (!canManage.value || item.voided || item.raw._legacyBonus) return false;
+  if (!(isBonusView.value ? BONUS_EDIT_KEYS : CLAIM_EDIT_KEYS).includes(key)) return false;
+  return TEXT_EDIT_KEYS.includes(key) || !(item.refund && isBonusView.value);
+}
+function cellText(item, key) {
+  if (key === 'requestDate') return item.requestDate || '—';
+  if (key === 'ratioPct') return `${item.ratioPct}%`;
+  if (key === 'commPct') return `${item.commPct.toFixed(2)}%`;
+  return money(item[key]);
+}
+function cellProps({ item, column }) {
+  const pin = pinProps(column.key);
+  const editable = canEditCell(item, column.key);
+  const manual = !isBonusView.value && manualFieldsOf(item).includes(column.key);
+  if (!editable && !manual) return pin;
+  return {
+    ...pin,
+    class: [pin.class, { 'editable-cell': editable, 'manual-cell': manual }],
+    title: manual ? '手動調整' : '連點修改',
+    ...(editable ? { onDblclick: () => startEdit(item, column.key) } : {}),
+  };
+}
+function editValueOf(item, key) {
+  const r = item.raw;
+  if (TEXT_EDIT_KEYS.includes(key)) return String(r[key] || '');
+  if (key === 'ratioPct' || key === 'commPct') return String(toNum(r[key]));
+  if (key === 'transactionTotal' || PRICE_PART_KEYS.includes(key)) return String(item[key]);
+  return String(toNum(r.calc?.[key]));
+}
+function startEdit(item, key) {
+  if (editing.value?.saving || editing.value?.busy) return;
+  const value = editValueOf(item, key);
+  editing.value = { id: item.id, key, value, original: value, saving: false, busy: false, row: item };
+}
+/** 輸入框出現時聚焦並全選（函式 ref 每次更新都會呼叫，只處理第一次） */
+function focusEditInput(el) {
+  if (!el || el.dataset.focused) return;
+  el.dataset.focused = '1';
+  el.focus();
+  el.select();
+}
+function cancelEdit() {
+  if (!editing.value?.saving) editing.value = null;
+}
+async function commitEdit() {
+  const e = editing.value;
+  if (!e || e.busy) return;
+  e.busy = true;   // confirm／送出期間輸入框失焦會再觸發 blur，避免重入
+  const text = String(e.value ?? '').trim();
+  const numeric = !TEXT_EDIT_KEYS.includes(e.key);
+  if (numeric ? text !== '' && Number(text) === Number(e.original) : text === e.original.trim()) { editing.value = null; return; }
+  if (numeric && (text === '' || !Number.isFinite(Number(text)))) {
+    toast.warning(`${fieldLabel(e.key)}請輸入數字`);
+    editing.value = null;
+    return;
+  }
+  const manual = manualFieldsOf(e.row);
+  // 退佣列的價格／佣金比例不重算，不需確認
+  const overrideManual = !isBonusView.value && !e.row.refund && RECALC_KEYS.includes(e.key) && manual.length > 0;
+  if (overrideManual && !window.confirm(`此筆有手動調整的金額（${manual.map(k => fieldLabel(k)).join('、')}），重算後將覆蓋，確定？`)) {
+    editing.value = null;
+    return;
+  }
+  e.saving = true;
+  try {
+    const res = await updateCommissionRecordFieldAPI({
+      projectId: props.projectId, planId: planId.value, recordId: e.id,
+      submissionType: isBonusView.value ? 'bonus' : 'claim',
+      field: e.key, value: numeric ? Number(text) : text, overrideManual,
+      operatorKey: operatorKey.value, operatorName: operatorName.value,
+    });
+    // 先就地更新畫面，再背景同步（額度、獎金明細）
+    Object.assign(e.row.raw, res.patch || {});
+    (res.bonusPatches || []).forEach(({ id, ...fields }) => {
+      const b = props.bonusRecords.find(x => x.id === id);
+      if (b) Object.assign(b, fields);
+    });
+    if (res.changes?.length) toast.success(`${res.unitId} 已更新：${res.changes.map(c => changeText(c)).join('、')}`);
+    emit('refresh-quiet');
+  } catch (err) {
+    console.error('[CommissionPeriodList] 修改失敗:', err);
+    toast.error(`修改失敗：${err.message}`);
+  } finally {
+    if (editing.value === e) editing.value = null;
+  }
 }
 
 // ================= 每人獎金彙總（獎金檢視，依目前篩選） =================
@@ -1147,10 +1430,11 @@ const AUDIT_LABELS = {
   purgeVoided: '清除已作廢紀錄',
   import: '歷史匯入',
   undoImport: '撤銷匯入',
+  editField: '修改欄位',
 };
 function auditLabel(a) { return AUDIT_LABELS[a] || a || '—'; }
 function auditColor(a) {
-  return a === 'import' ? 'primary' : a === 'purgeVoided' || a === 'undoImport' ? 'error' : 'warning';
+  return a === 'import' ? 'primary' : a === 'editField' ? 'info' : a === 'purgeVoided' || a === 'undoImport' ? 'error' : 'warning';
 }
 </script>
 
@@ -1163,7 +1447,24 @@ function auditColor(a) {
 .th-filter { opacity: .55; }
 .th-filter:hover, .th-filter[aria-expanded="true"] { opacity: 1; }
 .filter-options { max-height: 260px; overflow: auto; }
+.th-pin { position: absolute; top: 2px; right: 1px; display: inline-flex; padding: 0; border: 0; background: none; color: rgba(0, 0, 0, 0.45); cursor: pointer; opacity: 0; }
+.records-table th:hover .th-pin, .th-pin:focus-visible, .th-pin.is-pinned { opacity: 1; }
+.th-pin:hover, .th-pin.is-pinned { color: rgb(var(--v-theme-primary)); }
+@media (hover: none) { .th-pin { opacity: 0.6; } }
+.records-table :deep(thead th[data-col]) { position: relative; }
+.records-table :deep(thead th.pin-col), .records-table :deep(td.pin-col) { position: sticky; z-index: 1; background-color: rgb(var(--v-theme-surface)); }
+.records-table :deep(thead th.pin-col) { z-index: 3; }
+.records-table :deep(.pin-last) { box-shadow: inset -1px 0 0 rgba(var(--v-border-color), var(--v-border-opacity)), 6px 0 6px -6px rgba(0, 0, 0, 0.25); }
+.records-table :deep(thead th.col-dragging) { opacity: 0.45; }
+.records-table :deep(thead th.col-drop-before) { box-shadow: inset 3px 0 0 rgb(var(--v-theme-primary)); }
+.records-table :deep(thead th.col-drop-after) { box-shadow: inset -3px 0 0 rgb(var(--v-theme-primary)); }
 .note-cell { display: inline-block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.records-table :deep(td.editable-cell) { cursor: text; }
+.records-table :deep(td.editable-cell:hover) { background-image: linear-gradient(rgba(0, 113, 227, 0.06), rgba(0, 113, 227, 0.06)); }
+.records-table :deep(tr:not(.voided-row) td.manual-cell) { color: #e65100; }
+.cell-edit { display: inline-flex; align-items: center; gap: 4px; }
+.cell-input { flex: none; width: 110px; height: 26px; padding: 0 6px; }
+.cell-input.is-note { width: 200px; }
 .records-table :deep(.voided-row td) { color: #aaa; text-decoration: line-through; }
 .records-table :deep(.voided-row td:last-child), .records-table :deep(.voided-row td:nth-last-child(2)), .records-table :deep(.voided-row td:first-child) { text-decoration: none; }
 .records-table :deep(.refund-row td) { color: #c62828; background: #fff8f8; }
