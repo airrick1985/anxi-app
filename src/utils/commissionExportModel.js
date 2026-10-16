@@ -241,6 +241,39 @@ export function classifyCategories(settings) {
   return { indiv, team, mgmt, others, handover };
 }
 
+const sumCats = (obj, keys) => keys.reduce((s, k) => s + toNum(obj?.[k]), 0);
+
+/** 交屋保留款費率標示：如「銷售個獎 5%」（來源類別名稱以該戶紀錄為準） */
+function handoverRateText(r, h, settings, indivKeys) {
+  const key = h?.sourceCatKey || indivKeys[0];
+  const label = r.categories?.[key]?.label
+    || (settings.bonusCategories || []).find(c => c.key === key)?.label || '個獎';
+  return `${label} ${pctText(h?.ratePct)}%`;
+}
+
+/**
+ * 交屋保留款（含於保留款、不參與計算）攤給該戶銷售人員：依來源類別（預設銷售個獎）金額比例，
+ * 本次實際金額（已乘請佣比例），整數、末位吸收尾差；沒領來源類別者沒有。
+ * @returns {{ row, srcKey, amount, h }[]}
+ */
+function handoverShares(record, rows, indivKeys) {
+  const out = [];
+  Object.values(record?.handover?.byCat || {}).forEach(h => {
+    const keys = h?.sourceCatKey ? [h.sourceCatKey] : indivKeys;
+    const live = rows.filter(b => sumCats(b.amounts, keys));
+    const total = live.reduce((s, b) => s + sumCats(b.amounts, keys), 0);
+    const amount = toNum(h?.amount);
+    if (!amount || !total) return;
+    let given = 0;
+    live.forEach((b, i) => {
+      const v = i === live.length - 1 ? amount - given : Math.round(amount * sumCats(b.amounts, keys) / total);
+      given += v;
+      out.push({ row: b, srcKey: keys.find(x => toNum(b.amounts?.[x])) || keys[0], amount: v, h });
+    });
+  });
+  return out;
+}
+
 /**
  * 獎金表 model：依請佣比例分組，每組一張。
  * 金額規則（同舊系統）：非 100% 組以 amountsFull（100% 重算）呈現，
@@ -299,8 +332,7 @@ export function buildBonusModel(opts) {
     groups[ratioKey(Math.abs(toNum(rec.ratioPct)))].bonusRows.push(b);
   });
 
-  const sumCats = (obj, keys) => keys.reduce((s, k) => s + toNum(obj?.[k]), 0);
-  const sumAll = obj => Object.values(obj || {}).reduce((s, v) => s + toNum(v), 0);
+  const sumAll =obj => Object.values(obj || {}).reduce((s, v) => s + toNum(v), 0);
 
   const modelGroups = Object.keys(groups)
     .sort((a, b) => Number(b) - Number(a))
@@ -334,24 +366,12 @@ export function buildBonusModel(opts) {
         if (!a.remark) a.remark = b.remark || '';
         if (b.remark && !a.legacyNotes.includes(b.remark)) a.legacyNotes.push(b.remark);
       });
-      // 交屋保留款（參考，含於保留款、不參與計算）：各戶交屋團獎（本次實際金額，已乘請佣比例）
-      // 依來源類別分配比例攤給人員（整數，末位吸收尾差）
+      // 交屋保留款（參考，含於保留款、不參與計算）：各戶交屋團獎攤給該戶銷售人員
       g.records.forEach(r => {
         const rows = g.bonusRows.filter(b => b.commissionRecordId === r.id);
-        Object.values(r.handover?.byCat || {}).forEach(h => {
-          const keys = h?.sourceCatKey ? [h.sourceCatKey] : indivKeys;
-          const live = rows.filter(b => sumCats(b.amounts, keys));
-          const total = live.reduce((s, b) => s + sumCats(b.amounts, keys), 0);
-          const amount = toNum(h?.amount);
-          if (!amount || !total) return;
-          let given = 0;
-          live.forEach((b, i) => {
-            const v = i === live.length - 1 ? amount - given : Math.round(amount * sumCats(b.amounts, keys) / total);
-            given += v;
-            const k = keys.find(x => toNum(b.amounts?.[x])) || keys[0];
-            const a = agg[b.personKey];
-            a.handoverBySrc[k] = (a.handoverBySrc[k] || 0) + v;
-          });
+        handoverShares(r, rows, indivKeys).forEach(({ row, srcKey, amount }) => {
+          const a = agg[row.personKey];
+          a.handoverBySrc[srcKey] = (a.handoverBySrc[srcKey] || 0) + amount;
         });
       });
       // 100% 的保留/稅/健保：以實際有效比例回推
@@ -416,13 +436,11 @@ export function buildBonusModel(opts) {
         return hasAmount ? rateOf(keys) : 0;
       };
       // 每戶交屋保留款：費率標示基準類別（如「銷售個獎 5%」）；金額同個獎欄以 100% 呈現
-      const catLabelOf = (r, key) => r.categories?.[key]?.label
-        || (settings.bonusCategories || []).find(c => c.key === key)?.label || '個獎';
       const handoverOf = r => {
         const list = Object.values(r.handover?.byCat || {});
         return {
           hkRate: list.filter(h => toNum(h?.ratePct))
-            .map(h => `${catLabelOf(r, h.sourceCatKey || indivKeys[0])} ${pctText(h.ratePct)}%`).join('、'),
+            .map(h => handoverRateText(r, h, settings, indivKeys)).join('、'),
           hkAmt: Math.round(list.reduce((s, h) => s + toNum(h?.amountFull ?? h?.amount), 0)),
         };
       };
@@ -656,9 +674,28 @@ export function buildPersonModel(opts) {
     [...personRows.map(b => b.name), staffEarly?.name].map(n => String(n || '').trim()).filter(Boolean)
   );
   const normSales = v => (Array.isArray(v) ? v : String(v || '').split(/[、,，/\s]+/)).map(x => String(x).trim()).filter(Boolean);
+  const recOf = b => recById[b.commissionRecordId] || records.find(r => r.projectId === b.projectId && r.unitId === b.unitId && toNum(r.period) === toNum(b.period)) || {};
+
+  // 交屋保留款：本人為該戶銷售人員（領來源類別）才有，金額為本人分攤額（同獎金表）
+  const indivKeys = classifyCategories(settings).indiv.map(c => c.key);
+  const rowsByRecord = {};
+  bonusRecords.forEach(b => {
+    if (b.status === 'voided' || !b.commissionRecordId) return;
+    if (!rowsByRecord[b.commissionRecordId]) rowsByRecord[b.commissionRecordId] = [];
+    rowsByRecord[b.commissionRecordId].push(b);
+  });
+  const handoverOfRow = b => {
+    const rec = recOf(b);
+    const mine = handoverShares(rec, b.commissionRecordId ? rowsByRecord[b.commissionRecordId] || [] : [b], indivKeys)
+      .filter(s => s.row === b);
+    return {
+      hk: mine.reduce((s, x) => s + x.amount, 0),
+      hkRate: mine.filter(x => toNum(x.h?.ratePct)).map(x => handoverRateText(rec, x.h, settings, indivKeys)).join('、'),
+    };
+  };
 
   const rows = sorted.map(b => {
-    const rec = recById[b.commissionRecordId] || records.find(r => r.projectId === b.projectId && r.unitId === b.unitId && toNum(r.period) === toNum(b.period)) || {};
+    const rec = recOf(b);
     const snap = rec.snapshot || {};
     const amounts = {};
     categories.forEach(c => { amounts[c.key] = Math.round(toNum(b.amounts?.[c.key])); });
@@ -677,6 +714,7 @@ export function buildPersonModel(opts) {
       amounts,
       subtotal: toNum(b.subtotal),
       keepPct: toNum(b.keepPct), keep: toNum(b.keep),
+      ...handoverOfRow(b),
       taxPct: toNum(b.taxPct), tax: toNum(b.tax),
       nhiPct: toNum(b.nhiPct), nhi: toNum(b.nhi),
       net: toNum(b.net),
@@ -684,7 +722,7 @@ export function buildPersonModel(opts) {
     };
   });
 
-  const sumKeys = ['subtotal', 'keep', 'tax', 'nhi', 'net', 'dealTotal'];
+  const sumKeys = ['subtotal', 'keep', 'hk', 'tax', 'nhi', 'net', 'dealTotal'];
   const sumRows = list => {
     const t = { amounts: {} };
     sumKeys.forEach(k => { t[k] = list.reduce((s, r) => s + toNum(r[k]), 0); });
@@ -706,16 +744,17 @@ export function buildPersonModel(opts) {
   // 期別彙總
   const byPeriod = {};
   rows.forEach(r => {
-    if (!byPeriod[r.period]) byPeriod[r.period] = { period: r.period, requestDate: r.requestDate, count: 0, subtotal: 0, keep: 0, tax: 0, nhi: 0, net: 0 };
+    if (!byPeriod[r.period]) byPeriod[r.period] = { period: r.period, requestDate: r.requestDate, count: 0, subtotal: 0, keep: 0, hk: 0, tax: 0, nhi: 0, net: 0 };
     const p = byPeriod[r.period];
     p.count++;
-    p.subtotal += r.subtotal; p.keep += r.keep; p.tax += r.tax; p.nhi += r.nhi; p.net += r.net;
+    p.subtotal += r.subtotal; p.keep += r.keep; p.hk += r.hk; p.tax += r.tax; p.nhi += r.nhi; p.net += r.net;
     if (!p.requestDate) p.requestDate = r.requestDate;
   });
   const periodSummaries = Object.values(byPeriod).sort((a, b) => a.period - b.period);
 
   // 保留款累計（該人於本建案全部期別）
   const keepTotal = personAll.reduce((s, b) => s + toNum(b.keep), 0);
+  const hkTotal = personAll.reduce((s, b) => s + handoverOfRow(b).hk, 0);
   const keepPaid = (payouts || [])
     .filter(p => p.type === 'person' && p.personKey === personKey)
     .reduce((s, p) => s + toNum(p.amount), 0);
@@ -761,7 +800,7 @@ export function buildPersonModel(opts) {
     detailScope: showAllUnits ? 'all' : 'own',
     showDetail: detailRows.length > 0,
     periodSummaries,
-    retention: { keepTotal, keepPaid, keepUnpaid: keepTotal - keepPaid },
+    retention: { keepTotal, hkTotal, keepPaid, keepUnpaid: keepTotal - keepPaid },
     paper: cfg.paper || 'A4',
     orientation: cfg.orientation || 'landscape',
   };

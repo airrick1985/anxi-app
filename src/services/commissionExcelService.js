@@ -12,6 +12,8 @@ import * as XLSX from 'xlsx-js-style';
 import { toNum, money, pctText } from '@/utils/commissionCalculation';
 import { applyPrintSetup, NARROW_MARGINS } from './xlsxPrintSetup';
 
+const HK_BG = '#fde2e2';   // 交屋保留款：含於保留款，僅供參考、不參與計算
+
 // ================= Grid 基礎 =================
 class Grid {
   constructor(name, nCols, nRows, baseStyle = {}) {
@@ -234,7 +236,7 @@ export function buildBonusGroupGrid(group, model) {
   const people = group.left.concat(group.right);
   const D = group.isYoufu;
   const keepOf = a => (D ? a.keepDisc : a.keep);
-  const HK_STYLE = { color: '#000000', bg: '#fde2e2', border: true };   // 交屋保留款：含於保留款，僅供參考、不參與計算
+  const HK_STYLE = { color: '#000000', bg: HK_BG, border: true };
   const rowDefs = [
     ...group.catRows.map(cr => ({ label: `${cr.label} ${cr.rateText ?? `${pctText(cr.ratePct)}%`}`, labelSz: 10, get: cr.get })),
     { label: '累計', get: a => a.sub, style: { bold: true }, band: 'total', always: true },
@@ -443,7 +445,10 @@ function personDetailColumns(model) {
   });
   cols.push({ key: 'subtotal', label: '小計', width: 78, numFmt: '#,##0', sum: true, bold: true, get: r => r.subtotal });
   cols.push({ key: 'keep',     label: '保留款',   width: 70, numFmt: '#,##0', sum: true, get: r => r.keep, sub: r => `${r.keepPct}%` });
-  cols.push({ key: 'tax',      label: '稅金',     width: 66, numFmt: '#,##0', sum: true, get: r => r.tax, sub: r => `${r.taxPct}%` });
+  // 交屋保留款：含於保留款，僅供參考（淡紅底，同獎金表）
+  cols.push({ key: 'hkRate',   label: '交屋保留款費率', width: 96, align: 'center', bg: HK_BG, get: r => r.hkRate });
+  cols.push({ key: 'hk',       label: '交屋保留款金額', width: 80, numFmt: '#,##0', sum: true, bg: HK_BG, get: r => r.hk });
+  cols.push({ key: 'tax',     label: '稅金',     width: 66, numFmt: '#,##0', sum: true, get: r => r.tax, sub: r => `${r.taxPct}%` });
   cols.push({ key: 'nhi',      label: '二代健保', width: 66, numFmt: '#,##0', sum: true, get: r => r.nhi, sub: r => `${r.nhiPct}%` });
   cols.push({ key: 'net',      label: '實發金額', width: 84, numFmt: '#,##0', sum: true, bold: true, get: r => r.net });
   cols.push({ key: 'remark',   label: '備註',     width: 90, align: 'left', get: r => r.remark });
@@ -463,7 +468,8 @@ const PERSON_SUMMARY_COLS = [
   { key: 'count',       label: '戶數',     width: 60,  numFmt: '#,##0', get: p => p.count },
   { key: 'subtotal',    label: '獎金小計', width: 100, numFmt: '#,##0', get: p => p.subtotal },
   { key: 'keep',        label: '保留款',   width: 90,  numFmt: '#,##0', get: p => p.keep },
-  { key: 'tax',         label: '稅金',     width: 90,  numFmt: '#,##0', get: p => p.tax },
+  { key: 'hk',          label: '交屋保留款', width: 100, numFmt: '#,##0', bg: HK_BG, get: p => p.hk },
+  { key: 'tax',        label: '稅金',     width: 90,  numFmt: '#,##0', get: p => p.tax },
   { key: 'nhi',         label: '二代健保', width: 100, numFmt: '#,##0', get: p => p.nhi },
   { key: 'net',         label: '實發金額', width: 110, numFmt: '#,##0', bold: true, get: p => p.net },
 ];
@@ -548,7 +554,7 @@ function drawPersonDetail(g, r0, model, cols, secLabel = '一') {
       const isText = typeof v === 'string' && v !== '';
       if (isText) g.rowHeights[r] = Math.max(g.rowHeights[r], estimateRowHeight(v, c.width, sz, 26));
       g.set(r, ci, v === undefined || v === null ? '' : v, {
-        align: c.align || 'right', fmt: c.numFmt, border: true, bold: !!c.bold, wrap: isText,
+        align: c.align || 'right', fmt: c.numFmt, border: true, bold: !!c.bold, wrap: isText, bg: c.bg,
       });
     });
   });
@@ -596,14 +602,14 @@ function drawPersonSummary(g, r0, model, NC, secLabel = '二') {
   model.periodSummaries.forEach((p, i) => {
     const r = rH + 1 + i;
     g.rowHeights[r] = 26;
-    cols.forEach((c, ci) => g.set(r, ci, c.get(p), { align: c.align || 'right', fmt: c.numFmt, border: true, bold: !!c.bold }));
+    cols.forEach((c, ci) => g.set(r, ci, c.get(p), { align: c.align || 'right', fmt: c.numFmt, border: true, bold: !!c.bold, bg: c.bg }));
   });
   const rTotal = rH + 1 + model.periodSummaries.length;
   g.set(rTotal, 0, '合計', { bold: true, align: 'center', border: true, bg: normBg(st.totalRowBg) });
   g.merge(rTotal, 0, rTotal, 1);
   g.set(rTotal, 2, model.rows.length, { bold: true, align: 'right', fmt: '#,##0', border: true, bg: normBg(st.totalRowBg) });
-  ['subtotal', 'keep', 'tax', 'nhi', 'net'].forEach((k, i) => {
-    g.set(rTotal, 3 + i, toNum(model.totals[k]), { bold: true, align: 'right', fmt: '#,##0', border: true, bg: normBg(st.totalRowBg) });
+  cols.slice(3).forEach((c, i) => {
+    g.set(rTotal, 3 + i, toNum(model.totals[c.key]), { bold: true, align: 'right', fmt: '#,##0', border: true, bg: normBg(st.totalRowBg) });
   });
   g.region(rTotal, 0, rTotal, cols.length - 1, { border: true, bold: true, bg: normBg(st.totalRowBg) });
   g.rowHeights[rTotal] = 28;
@@ -619,24 +625,28 @@ function drawPersonRetention(g, r0, model, NC, secLabel = '三') {
   const r = r0 + 1;
   const items = [
     ['累計保留款', model.retention.keepTotal],
+    ['其中交屋保留款', model.retention.hkTotal, HK_BG],
     ['已發還', model.retention.keepPaid],
-    ['未發還', model.retention.keepUnpaid],
+    ['未發還', model.retention.keepUnpaid, undefined, color],
   ];
-  const labStyle = { bold: true, align: 'center', border: true, bg: normBg(st.headerBg) };
+  const labStyle = { bold: true, align: 'center', wrap: true, border: true, bg: normBg(st.headerBg) };
   // 版位：欄數足夠時標籤／數值各佔兩欄；否則首個標籤佔兩欄（第 0 欄最窄），其餘各佔一欄
-  const wide = NC >= 12;
+  const wide = NC >= 16;
   const layout = wide
-    ? [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]           // [labStart, labEnd, valStart, valEnd]
-    : [[0, 1, 2, 2], [3, 3, 4, 4], [5, 5, 6, 6]];
-  items.forEach(([lab, val], i) => {
+    ? [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]]   // [labStart, labEnd, valStart, valEnd]
+    : [[0, 1, 2, 2], [3, 3, 4, 4], [5, 5, 6, 6], [7, 7, 8, 8]];
+  const spanW = (c1, c2) => g.cols.slice(c1, c2 + 1).reduce((s, w) => s + w, 0);
+  let h = 28;
+  items.forEach(([lab, val, bg, valColor], i) => {
     const [l1, l2, v1, v2] = layout[i];
     if (v2 >= NC) return;
     g.set(r, l1, lab, labStyle);
-    g.set(r, v1, toNum(val), { bold: true, align: 'right', fmt: '#,##0', border: true, color: i === 2 ? color : undefined });
+    g.set(r, v1, toNum(val), { bold: true, align: 'right', fmt: '#,##0', border: true, color: valColor, bg });
     if (l2 > l1) { g.region(r, l1, r, l2, labStyle); g.merge(r, l1, r, l2); }
-    if (v2 > v1) { g.region(r, v1, r, v2, { border: true }); g.merge(r, v1, r, v2); }
+    if (v2 > v1) { g.region(r, v1, r, v2, { border: true, bg }); g.merge(r, v1, r, v2); }
+    h = Math.max(h, estimateRowHeight(lab, spanW(l1, l2), st.dataFontSize || 11, 28));
   });
-  g.rowHeights[r] = 28;
+  g.rowHeights[r] = h;
   return r + 1;
 }
 

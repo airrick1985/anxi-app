@@ -176,6 +176,7 @@
           :personnel="personnel"
           :ledgers="ledgerMap"
           :records="records"
+          :bonus-sources="planBonusSources"
           @imported="handleSubmitted"
         />
       </v-window-item>

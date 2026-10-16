@@ -86,7 +86,7 @@
           <!-- 期別衝突：檔內期別已有有效紀錄 -->
           <v-alert v-if="conflictPeriods.length" :type="replaceExisting ? 'warning' : 'error'" variant="tonal" density="compact" class="mb-3">
             <div class="font-weight-bold mb-1">
-              第 {{ conflictPeriods.join('、') }} 期已有有效請佣紀錄（{{ conflictActiveCount }} 戶）
+              第 {{ conflictPeriods.join('、') }} 期已有有效請佣或獎金紀錄（{{ conflictActiveCount }} 戶）
             </div>
             <div class="text-body-2 mb-1">
               為避免重複計入，同一期別不可直接再匯入。可勾選下方選項於匯入時先整期作廢既有資料，或到「歷期總覽」先處理。
@@ -235,6 +235,7 @@ const props = defineProps({
   personnel: { type: Array, default: () => [] },
   ledgers: { type: Object, default: () => ({}) },
   records: { type: Array, default: () => [] },   // 既有 commissionRecords（期別衝突檢查用）
+  bonusSources: { type: Array, default: () => [] },   // 既有有效獎金來源（期別衝突檢查用）
 });
 const emit = defineEmits(['imported']);
 
@@ -272,9 +273,22 @@ const activeByPeriod = computed(() => {
   return map;
 });
 
-/** 檔內期別中，已有有效紀錄者 */
-const conflictPeriods = computed(() => filePeriods.value.filter(p => (activeByPeriod.value[p] || []).length > 0));
-const conflictActiveCount = computed(() => conflictPeriods.value.reduce((s, p) => s + (activeByPeriod.value[p] || []).length, 0));
+/** 既有有效獎金來源（依期別）：請佣作廢後獎金仍有效者亦含；檔內含獎金時才列入衝突（與後端一致） */
+const bonusByPeriod = computed(() => {
+  const map = {};
+  if (!rawBonusRows.value.length) return map;
+  props.bonusSources.forEach(r => {
+    if (r.status === 'voided') return;
+    const p = toNum(r.period);
+    (map[p] = map[p] || []).push(r);
+  });
+  return map;
+});
+
+/** 檔內期別中，已有有效請佣或獎金紀錄者 */
+const conflictUnits = p => new Set([...(activeByPeriod.value[p] || []), ...(bonusByPeriod.value[p] || [])].map(r => r.unitId));
+const conflictPeriods = computed(() => filePeriods.value.filter(p => conflictUnits(p).size > 0));
+const conflictActiveCount = computed(() => conflictPeriods.value.reduce((s, p) => s + conflictUnits(p).size, 0));
 
 /** 比例基準：以該戶有效紀錄加總（退佣為負）重算，與後端一致；勾選覆蓋時，扣掉將被整期作廢的既有比例 */
 function ledgerBase(unitId) {

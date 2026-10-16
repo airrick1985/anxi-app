@@ -286,6 +286,48 @@ try {
     const plain = buildBonusGrids(buildBonusModel({ records: [{ ...rec, handover: undefined }], bonusRecords: br, settings, period: 1 }))[0];
     assert.ok(!plain.cells.some(row => row?.some(c => c?.v === LABEL)));
   });
+  test('個人明細：交屋保留款費率／金額（本人為該戶銷售人員才有）、期別彙總與保留款累計', () => {
+    const hs = { bonusCategories: [
+      { key: 'sales', label: '銷售個獎', mode: 'individual', enabled: true, ratePct: 0.3 },
+      { key: 'pm', label: '專案獎金', mode: 'role', rolePositions: ['專案'], enabled: true, ratePct: 0.1 },
+      { key: 'handover', label: '交屋團獎', mode: 'handover', sourceCatKey: 'sales', enabled: true, ratePct: 5 },
+    ] };
+    const hk = (amount, ratePct = 5) => ({ byCat: { handover: { sourceCatKey: 'sales', ratePct, amount, amountFull: amount } } });
+    const recs = [
+      { id: 'a', unitId: 'A-1', period: 1, ratioPct: 100, handover: hk(90), snapshot: { salesperson: ['甲', '乙'] } },
+      { id: 'b', unitId: 'A-2', period: 2, ratioPct: 50, handover: hk(20), snapshot: { salesperson: ['甲'] } },
+      { id: 'c', unitId: 'A-3', period: 2, ratioPct: 100, handover: hk(0, 0), snapshot: { salesperson: ['甲'] } },
+    ];
+    const br = [
+      ['a', 1, '甲', { sales: 1200 }], ['a', 1, '乙', { sales: 600 }], ['a', 1, '丙', { pm: 300 }],
+      ['b', 2, '甲', { sales: 400 }], ['c', 2, '甲', { sales: 500 }],
+    ].map(([id, period, name, amounts]) => ({
+      commissionRecordId: id, period, personKey: name, name, amounts,
+      subtotal: Object.values(amounts)[0], keep: Object.values(amounts)[0] / 10,
+    }));
+    const opts = { records: recs, bonusRecords: br, settings: hs };
+    const me = buildPersonModel({ ...opts, periods: [1, 2], personKey: '甲' });
+    assert.deepEqual(me.rows.map(r => [r.unit, r.hkRate, r.hk]), [['A-1', '銷售個獎 5%', 60], ['A-2', '銷售個獎 5%', 20], ['A-3', '', 0]]);
+    assert.equal(me.totals.hk, 80);
+    assert.deepEqual(me.periodSummaries.map(p => p.hk), [60, 20]);
+    assert.equal(buildPersonModel({ ...opts, periods: [2], personKey: '甲' }).retention.hkTotal, 80);   // 累計含全部期別
+
+    const grid = buildPersonGrid(me);
+    const cells = grid.cells.flat().filter(Boolean);
+    ['交屋保留款費率', '交屋保留款金額', '交屋保留款', '其中交屋保留款'].forEach(t => assert.ok(cells.some(c => c.v === t), t));
+    const rowOf = v => grid.cells.findIndex(row => row?.some(c => c?.v === v));
+    assert.ok(grid.cells[rowOf('其中交屋保留款')].some(c => c?.v === 80 && c?.s?.bg === '#fde2e2'));
+    const totals = grid.cells.filter(row => row?.[0]?.v === '合計');
+    assert.ok(totals.every(row => row.some(c => c?.v === 80)), '每戶明細與期別彙總合計含交屋保留款');
+
+    // 非本戶銷售人員（只領專案獎金）：欄位仍顯示，金額 0、費率空白
+    const pm = buildPersonModel({ ...opts, periods: [1], personKey: '丙' });
+    assert.deepEqual(pm.rows.map(r => [r.hkRate, r.hk]), [['', 0]]);
+    assert.equal(pm.retention.hkTotal, 0);
+    const pmGrid = buildPersonGrid(pm);
+    assert.ok(pmGrid.cells.flat().some(c => c?.v === '其中交屋保留款'));
+    assert.ok(buildPersonExcelGrids(pm)[0].cells.flat().some(c => c?.v === '交屋保留款'));
+  });
   test('沒有可匯出資料時不建立空白合併工作表', () => {
     assert.equal(combineCommissionGrids([], '獎金'), null);
   });

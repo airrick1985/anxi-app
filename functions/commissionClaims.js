@@ -1004,28 +1004,36 @@ exports.importCommissionHistory = onCall({
     filePeriods.add(Number(c.period));
   });
 
-  // 期別衝突檢查：檔案內期別已有有效紀錄 → 未勾選覆蓋則擋下；勾選則先整期作廢
+  // 期別衝突檢查：檔案內期別已有有效請佣紀錄 → 未勾選覆蓋則擋下；勾選則先整期作廢
+  // 請佣與獎金作廢已脫鉤：請佣作廢後獎金明細仍有效 → 檔案含獎金時，該期仍有有效獎金也視為衝突，覆蓋時一併整期作廢獎金
   const conflictPeriods = [];
+  const bonusConflictPeriods = [];
+  const activeIn_ = (col, p) => planRows_(db.collection(col)
+    .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "active"), planId);
   for (const p of [...filePeriods].sort((a, b) => a - b)) {
-    const snap = await planRows_(db.collection("commissionRecords")
-      .where("projectId", "==", projectId).where("period", "==", p).where("status", "==", "active"), planId);
-    if (!snap.empty) conflictPeriods.push(p);
+    if (!(await activeIn_("commissionRecords", p)).empty) conflictPeriods.push(p);
+    if (bonusList.length && (!(await activeIn_("bonusRecords", p)).empty || !(await activeIn_("bonusEntries", p)).empty)) {
+      bonusConflictPeriods.push(p);
+    }
   }
+  const allConflicts = [...new Set([...conflictPeriods, ...bonusConflictPeriods])].sort((a, b) => a - b);
   const replaced = [];
-  if (conflictPeriods.length) {
+  if (allConflicts.length) {
     if (!replaceExisting) {
       throw new HttpsError("failed-precondition",
-        `第 ${conflictPeriods.join("、")} 期已有有效請佣紀錄。請先於「歷期總覽」整期作廢，或勾選「先整期作廢再匯入（覆蓋）」後重試。未寫入任何資料。`);
+        `第 ${allConflicts.join("、")} 期已有有效請佣或獎金紀錄。請先於「歷期總覽」整期作廢，或勾選「先整期作廢再匯入（覆蓋）」後重試。未寫入任何資料。`);
     }
-    for (const p of conflictPeriods) {
+    for (const p of allConflicts) {
       const payouts = await findRetentionPayoutsForPeriod_(db, projectId, p, planId);
       if (payouts.length) {
         throw new HttpsError("failed-precondition",
           `第 ${p} 期已有 ${payouts.length} 筆保留款發還登記，請先於「保留款追蹤」刪除後再覆蓋匯入。未寫入任何資料。`);
       }
     }
-    for (const p of conflictPeriods) {
-      const r = await voidPeriodCore_(db, projectId, p, { reason: `重新匯入覆蓋（${importFileName || "歷史匯入"}）`, by: createdBy || "" }, planId);
+    const voidBy = { reason: `重新匯入覆蓋（${importFileName || "歷史匯入"}）`, by: createdBy || "" };
+    for (const p of allConflicts) {
+      const r = conflictPeriods.includes(p) ? await voidPeriodCore_(db, projectId, p, voidBy, planId) : { records: 0, bonuses: 0, units: [] };
+      if (bonusConflictPeriods.includes(p)) r.bonuses += (await voidPeriodCore_(db, projectId, p, voidBy, planId, true)).bonuses;
       replaced.push({ period: p, ...r });
     }
   }
