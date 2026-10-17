@@ -254,7 +254,12 @@
           :title="item.fileName"
           @click="openPinnedActivityMessage(item)"
         >
-          <div v-if="isPdfActivityItem(item)" class="pinned-activity-pdf">
+          <div v-if="item.type === 'page'" class="pinned-activity-page">
+            <img v-if="item.coverURL" :src="item.coverURL" alt="" loading="lazy" />
+            <v-icon v-else size="44" color="teal-lighten-1">mdi-file-document-outline</v-icon>
+            <span class="pinned-activity-page-title">{{ item.title }}</span>
+          </div>
+          <div v-else-if="isPdfActivityItem(item)" class="pinned-activity-pdf">
             <v-icon size="44" color="red-lighten-1">mdi-file-pdf-box</v-icon>
             <span class="pinned-activity-pdf-name">{{ item.fileName }}</span>
           </div>
@@ -696,6 +701,7 @@ const pinnedActivityMessages = computed(() =>
   activityMessages.value.filter(m => m.pinnedToQuote && !m.hidden)
 );
 function isPdfActivityItem(item) {
+  if (item?.type === 'page') return false;
   return item?.contentType === 'application/pdf' || /\.pdf$/i.test(item?.fileName || '');
 }
 function subscribeActivityMessages() {
@@ -1665,6 +1671,31 @@ function runTool(action) {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.pinned-activity-page {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 160px;
+  height: 100%;
+}
+.pinned-activity-page-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 38px 6px 10px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .pinned-activity-zoom {
   position: absolute;

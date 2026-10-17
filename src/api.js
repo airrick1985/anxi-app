@@ -5215,11 +5215,22 @@ export const addActivityMessageMetadata = async (metadata) => {
 };
 
 /**
- * 透過 Cloud Function 代理刪除活動訊息圖檔（含 Storage 與 Firestore）
+ * 更新活動訊息自建頁面（標題、內容、頁內圖片）
  */
-export const deleteActivityMessage = async ({ projectId, userKey, docId, storagePath }) => {
-  if (!projectId || !docId || !storagePath) {
-    throw new Error('缺少 projectId / docId / storagePath，無法刪除活動訊息。');
+export const updateActivityMessagePage = async (docId, data) => {
+  if (!docId) throw new Error('缺少 docId，無法更新頁面。');
+  await updateDoc(doc(db, "activityMessages", docId), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * 透過 Cloud Function 代理刪除活動訊息檔案（含 Storage 與 Firestore；自建頁面一併刪除頁內圖片）
+ */
+export const deleteActivityMessage = async ({ projectId, userKey, docId, storagePath = '' }) => {
+  if (!projectId || !docId) {
+    throw new Error('缺少 projectId / docId，無法刪除活動訊息。');
   }
   try {
     const deleter = httpsCallable(functions, 'handleActivityMessageDelete');
@@ -5231,6 +5242,17 @@ export const deleteActivityMessage = async ({ projectId, userKey, docId, storage
     console.error("呼叫 handleActivityMessageDelete 雲端函式時發生錯誤:", error);
     throw new Error(error.message || "刪除失敗");
   }
+};
+
+/**
+ * 清除自建頁面已不再使用的圖片（編輯時移除、或取消編輯時剛上傳的圖）
+ * 後端只會刪除該建案活動訊息資料夾內、且沒有任何活動訊息引用的檔案
+ */
+export const deleteActivityMessageAssets = async ({ projectId, userKey, storagePaths }) => {
+  const paths = (storagePaths || []).filter(Boolean);
+  if (!projectId || paths.length === 0) return;
+  const deleter = httpsCallable(functions, 'handleActivityMessageAssetsDelete');
+  await deleter({ projectId, userKey, storagePaths: paths });
 };
 
 /**

@@ -45,11 +45,34 @@
             variant="flat"
             color="white"
             class="mr-2 upload-btn text-teal-darken-2"
-            prepend-icon="mdi-cloud-upload"
             rounded="pill"
+            title="上傳檔案"
             @click="isUploadDialogOpen = true"
           >
-            上傳檔案
+            <v-icon>mdi-cloud-upload</v-icon>
+            <span class="d-none d-sm-inline ml-2">上傳檔案</span>
+          </v-btn>
+          <v-btn
+            variant="flat"
+            color="white"
+            class="mr-2 upload-btn text-teal-darken-2"
+            rounded="pill"
+            title="建立頁面"
+            @click="openPageEditor(null)"
+          >
+            <v-icon>mdi-file-document-edit-outline</v-icon>
+            <span class="d-none d-sm-inline ml-2">建立頁面</span>
+          </v-btn>
+          <v-btn
+            v-if="currentIsPage"
+            variant="text"
+            color="white"
+            class="mr-1"
+            title="編輯這個頁面"
+            @click="openPageEditor(currentMessage)"
+          >
+            <v-icon>mdi-pencil</v-icon>
+            <span class="d-none d-sm-inline ml-1">編輯</span>
           </v-btn>
           <v-btn
             variant="text"
@@ -69,7 +92,7 @@
           color="white"
           class="mr-1"
           :loading="isPrinting"
-          :title="currentIsPdf ? '列印這份 PDF' : '列印這張圖'"
+          :title="currentIsPage ? '列印這個頁面' : (currentIsPdf ? '列印這份 PDF' : '列印這張圖')"
           @click="printCurrent"
         />
 
@@ -118,7 +141,7 @@
             <v-icon size="80" color="grey-lighten-1">mdi-image-off-outline</v-icon>
             <p class="mt-4 text-h6">目前尚無活動訊息</p>
             <p v-if="canUpload && manageMode" class="text-body-1 text-grey-lighten-1">
-              請點擊右上角「上傳檔案」開始建立活動訊息。
+              請點擊右上角「上傳檔案」或「建立頁面」。
             </p>
             <p v-else-if="!canUpload" class="text-body-1 text-grey-lighten-1">
               請聯絡有「銷控系統」權限的人員上傳活動圖檔／PDF。
@@ -128,7 +151,7 @@
           <template v-else>
             <div class="lightbox-stage flex-grow-1" ref="stageRef">
               <div
-                v-if="currentMessage && !currentIsPdf"
+                v-if="currentMessage && !currentIsPdf && !currentIsPage"
                 ref="panRef"
                 class="lightbox-pan-target"
                 @dblclick="toggleZoom"
@@ -143,6 +166,15 @@
                   @load="onImageLoaded"
                 />
               </div>
+
+              <!-- 自建頁面（自由畫布）：等比縮放置中，可縮放、捲動 -->
+              <ActivityCanvasView
+                v-else-if="currentMessage && currentIsPage"
+                :key="currentMessage.id"
+                v-model:zoom="pageZoom"
+                class="page-stage"
+                :canvas="currentMessage.canvas || {}"
+              />
 
               <!-- PDF 分頁瀏覽（vue-pdf-embed 逐頁渲染，寬度符合容器，縮放改變渲染寬度） -->
               <div v-else-if="currentMessage" ref="pdfScrollRef" class="pdf-stage">
@@ -178,7 +210,7 @@
               <!-- 已隱藏標示（管理模式下檢視到被隱藏的圖時提示） -->
               <div v-if="manageMode && currentMessage?.hidden" class="hidden-badge">
                 <v-icon size="small" start>mdi-eye-off</v-icon>
-                此圖已隱藏（一般人員看不到）
+                {{ currentIsPage ? '此頁面' : '此圖' }}已隱藏（一般人員看不到）
               </div>
 
               <!-- 左右切換 -->
@@ -252,7 +284,12 @@
                       :class="{ 'is-active': idx === currentIndex, 'is-hidden': item.hidden }"
                       @click="selectThumbnail(idx)"
                     >
-                      <div v-if="isPdfItem(item)" class="thumbnail-pdf rounded">
+                      <div v-if="isPageItem(item)" class="thumbnail-page rounded">
+                        <img v-if="item.coverURL" :src="item.coverURL" alt="" class="thumbnail-page-cover" loading="lazy" />
+                        <v-icon v-else size="26" color="teal-lighten-2">mdi-file-document-outline</v-icon>
+                        <span class="thumbnail-page-title">{{ item.title }}</span>
+                      </div>
+                      <div v-else-if="isPdfItem(item)" class="thumbnail-pdf rounded">
                         <v-icon size="30" color="red-lighten-1">mdi-file-pdf-box</v-icon>
                         <span class="thumbnail-pdf-name">{{ item.fileName }}</span>
                       </div>
@@ -404,7 +441,7 @@
         <v-card-text class="pt-4">
           確定要刪除這則活動訊息嗎？此動作無法復原。
           <div v-if="pendingDeleteItem" class="mt-2 text-caption text-grey">
-            檔名：{{ pendingDeleteItem.fileName }}
+            {{ isPageItem(pendingDeleteItem) ? '頁面' : '檔名' }}：{{ pendingDeleteItem.fileName }}
           </div>
         </v-card-text>
         <v-card-actions>
@@ -418,6 +455,14 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <ActivityCanvasEditor
+      v-if="pageEditor.open"
+      :project-id="projectId"
+      :page="pageEditor.page"
+      @close="pageEditor.open = false"
+      @saved="focusMessage"
+    />
   </v-dialog>
 </template>
 
@@ -436,9 +481,14 @@ import {
   updateActivityMessagePinned,
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
+import { isActivityPage, ACTIVITY_PAGE_CSS } from '@/utils/activityPage';
+import { renderCanvasHtml, normalizeCanvas, CANVAS_WIDTH } from '@/utils/activityCanvas';
+import ActivityCanvasView from '@/components/ActivityCanvasView.vue';
 
 // pdfjs 體積大（約 2.4MB），改為動態載入：只有真的瀏覽／上傳 PDF 時才會下載
 const VuePdfEmbed = defineAsyncComponent(() => import('vue-pdf-embed'));
+// 頁面編輯器（自由畫布＋tiptap）只有管理者建立／編輯頁面時才載入
+const ActivityCanvasEditor = defineAsyncComponent(() => import('@/components/ActivityCanvasEditor.vue'));
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -461,9 +511,10 @@ const PDF_MAX_SIZE = 7 * 1024 * 1024;    // PDF 上限 7MB（base64 後約 9.4MB
 
 // 判斷一則活動訊息是否為 PDF（優先看 contentType，舊資料則退回副檔名）
 function isPdfItem(item) {
-  if (!item) return false;
+  if (!item || isActivityPage(item)) return false;
   return item.contentType === PDF_TYPE || /\.pdf$/i.test(item.fileName || '');
 }
+const isPageItem = isActivityPage;
 
 const messages = ref([]);
 const isLoading = ref(false);
@@ -513,9 +564,10 @@ const pdfRenderWidth = computed(() =>
   pdfBaseWidth.value > 0 ? Math.round(pdfBaseWidth.value * pdfScale.value) : undefined
 );
 
-const scalePercent = computed(() =>
-  Math.round((currentIsPdf.value ? pdfScale.value : currentScale.value) * 100)
-);
+const scalePercent = computed(() => {
+  if (currentIsPage.value) return Math.round(pageZoom.value * 100);
+  return Math.round((currentIsPdf.value ? pdfScale.value : currentScale.value) * 100);
+});
 let panzoomInstance = null;
 let PanzoomCtor = null;
 let wheelBound = null;
@@ -534,6 +586,24 @@ const displayMessages = computed({
 
 const currentMessage = computed(() => displayMessages.value[currentIndex.value] || null);
 const currentIsPdf = computed(() => isPdfItem(currentMessage.value));
+const currentIsPage = computed(() => isPageItem(currentMessage.value));
+// 自建頁面縮放倍率（乘在「符合寬度」之上）
+const pageZoom = ref(1);
+const PAGE_ZOOM_MIN = 0.5;
+const PAGE_ZOOM_MAX = 4;
+
+// --- 自建頁面編輯器 ---
+const pageEditor = ref({ open: false, page: null });
+function openPageEditor(page) {
+  pageEditor.value = { open: true, page: page || null };
+}
+// 儲存後跳到該頁面（新頁面可能還沒出現在快照中，交給下一次快照定位）
+function focusMessage(id) {
+  if (!id) return;
+  const idx = displayMessages.value.findIndex(m => m.id === id);
+  if (idx >= 0) currentIndex.value = idx;
+  else pendingInitialId = id;
+}
 
 // 縮圖列：一般情況超過 1 張才出現；管理模式下只要有 1 張就出現（才能刪除/隱藏唯一一張）
 const hasManageTools = computed(() => props.canUpload && manageMode.value);
@@ -609,16 +679,23 @@ function setPdfScale(next) {
   pdfScale.value = Math.min(PDF_SCALE_MAX, Math.max(PDF_SCALE_MIN, next));
 }
 
+function setPageZoom(next) {
+  pageZoom.value = Math.min(PAGE_ZOOM_MAX, Math.max(PAGE_ZOOM_MIN, next));
+}
+
 function zoomIn() {
-  if (currentIsPdf.value) setPdfScale(pdfScale.value * 1.25);
+  if (currentIsPage.value) setPageZoom(pageZoom.value * 1.25);
+  else if (currentIsPdf.value) setPdfScale(pdfScale.value * 1.25);
   else panzoomInstance?.zoomIn();
 }
 function zoomOut() {
-  if (currentIsPdf.value) setPdfScale(pdfScale.value / 1.25);
+  if (currentIsPage.value) setPageZoom(pageZoom.value / 1.25);
+  else if (currentIsPdf.value) setPdfScale(pdfScale.value / 1.25);
   else panzoomInstance?.zoomOut();
 }
 function resetZoom() {
-  if (currentIsPdf.value) pdfScale.value = 1;
+  if (currentIsPage.value) pageZoom.value = 1;
+  else if (currentIsPdf.value) pdfScale.value = 1;
   else panzoomInstance?.reset();
 }
 function toggleZoom() {
@@ -653,6 +730,11 @@ function measurePdfBaseWidth() {
 watch(
   () => currentMessage.value?.id,
   () => {
+    if (currentIsPage.value) {
+      destroyPanzoom();
+      pageZoom.value = 1;
+      return;
+    }
     if (!currentIsPdf.value) return;
     destroyPanzoom();
     pdfScale.value = 1;
@@ -748,7 +830,7 @@ function onWindowResize() {
 onMounted(() => window.addEventListener('resize', onWindowResize));
 
 function onKeydown(e) {
-  if (!props.modelValue) return;
+  if (!props.modelValue || pageEditor.value.open) return;
   // 燈箱是 fullscreen dialog，原生 Ctrl/Cmd+P 會把整個系統介面一起印出來，攔下來只印目前這則
   if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
     e.preventDefault();
@@ -783,7 +865,7 @@ function applyManageMode(next) {
 
 // 以 keyup 偵測（避免按鍵被其他元件的 keydown 攔截）
 function onUnlockKeyup(e) {
-  if (!props.canUpload) return;
+  if (!props.canUpload || pageEditor.value.open) return;
   if (typeof e.key !== 'string' || e.key.length !== 1) return;
   keyBuffer = (keyBuffer + normalizeChar(e.key)).slice(-UNLOCK_CODE.length);
   if (keyBuffer === UNLOCK_CODE) {
@@ -841,6 +923,7 @@ watch(
       window.addEventListener('keyup', onUnlockKeyup, true);
     } else {
       manageMode.value = false;
+      pageEditor.value = { open: false, page: null };
       stopListening();
       destroyPanzoom();
       document.removeEventListener('keydown', onKeydown);
@@ -1090,14 +1173,57 @@ async function printPdf(item) {
   });
 }
 
+// 自建頁面：畫布等比縮到列印寬度後寫進 iframe（套用同一份畫布樣式），等圖片載入完再印
+function printPage(item) {
+  return new Promise((resolve, reject) => {
+    const frame = createPrintFrame();
+    const doc = frame.contentDocument;
+    const canvas = normalizeCanvas(item.canvas);
+    const printWidth = frame.clientWidth || 718;
+    const k = Math.min(1, printWidth / CANVAS_WIDTH);
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(item.title || '活動訊息')}</title>
+<style>
+  @page { margin: 10mm; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  .print-sizer { position: relative; width: ${Math.round(CANVAS_WIDTH * k)}px; height: ${Math.ceil(canvas.height * k)}px; margin: 0 auto; overflow: hidden; }
+  .print-stage { position: absolute; top: 0; left: 0; transform: scale(${k}); transform-origin: 0 0; }
+  ${ACTIVITY_PAGE_CSS}
+</style>
+</head><body><div class="print-sizer"><div class="print-stage">${renderCanvasHtml(canvas)}</div></div></body></html>`);
+    doc.close();
+
+    const pending = [...doc.images].filter(img => !img.complete).map(img => new Promise((done) => {
+      img.onload = done;
+      img.onerror = done;
+    }));
+    const timeout = new Promise(done => setTimeout(done, 8000));
+    Promise.race([Promise.all(pending), timeout]).then(() => {
+      try {
+        triggerPrint(frame);
+        resolve();
+      } catch (e) {
+        reject(e);
+      } finally {
+        disposePrintFrame(frame);
+      }
+    });
+  });
+}
+
 async function printCurrent() {
   const item = currentMessage.value;
   if (!item || isPrinting.value) return;
   isPrinting.value = true;
   try {
-    if (isPdfItem(item)) await printPdf(item);
+    if (isPageItem(item)) await printPage(item);
+    else if (isPdfItem(item)) await printPdf(item);
     else await printImage(item);
   } catch (err) {
+    if (isPageItem(item)) {
+      toast.error(`列印失敗：${err.message}`);
+      return;
+    }
     // 退路：直接開新分頁，讓使用者用瀏覽器內建檢視器列印
     toast.warning(`${err.message}，已改為另開分頁，請於該分頁列印。`, { timeout: 4000 });
     window.open(item.downloadURL, '_blank', 'noopener');
@@ -1120,7 +1246,7 @@ async function executeDelete() {
       projectId: props.projectId,
       userKey: userStore.user?.key,
       docId: pendingDeleteItem.value.id,
-      storagePath: pendingDeleteItem.value.storagePath,
+      storagePath: pendingDeleteItem.value.storagePath || '',
     });
     toast.success('已刪除');
     isDeleteDialogOpen.value = false;
@@ -1238,6 +1364,54 @@ async function executeDelete() {
   display: block;
   max-width: none; /* 放大時允許超出容器寬度，由外層捲動 */
 }
+
+/* ---------- 自建頁面閱讀區（畫布等比縮放、可捲動） ---------- */
+.page-stage {
+  position: absolute;
+  inset: 0;
+  padding: 24px 72px 72px;
+}
+@media (max-width: 767px) {
+  .page-stage { padding: 10px 6px 72px; }
+}
+
+/* 自建頁面縮圖：有圖用第一張圖，下方疊標題 */
+.thumbnail-page {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #2b2b2b;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.thumbnail-page-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.thumbnail-page-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3px 4px;
+  background: rgba(0, 0, 0, 0.66);
+  color: #fff;
+  font-size: 9px;
+  line-height: 1.15;
+  text-align: center;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
+}
+.thumbnail-item.is-hidden .thumbnail-page { opacity: 0.4; }
 
 /* PDF 縮圖：無預覽圖，以圖示 + 檔名呈現 */
 .thumbnail-pdf {

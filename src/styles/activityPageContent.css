@@ -1,0 +1,83 @@
+/* 活動訊息「自建頁面」樣式：畫布編輯器、燈箱閱讀、列印共用同一份，確保所見即所得 */
+
+/* ---------- 畫布與物件 ---------- */
+.ac-canvas {
+  position: relative;
+  overflow: hidden;
+  background-color: #fff;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.ac-item {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+  transform-origin: center center;
+  color: inherit;
+  text-decoration: none;
+}
+.ac-text { padding: 2px 4px; }
+.ac-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: fill;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.ac-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+.ac-btn-label { overflow-wrap: anywhere; }
+
+/* ---------- 文字方塊內容 ---------- */
+.ap-content {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #1d1d1f;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+/* 編輯中內容包在 .ProseMirror 裡，首尾邊距規則要同時套用，高度才會與閱讀時一致 */
+.ap-content > :first-child,
+.ap-content > .ProseMirror > :first-child { margin-top: 0; }
+.ap-content > :last-child,
+.ap-content > .ProseMirror > :last-child { margin-bottom: 0; }
+.ap-content p { margin: 0 0 0.6em; }
+.ap-content h1 {
+  margin: 0.8em 0 0.4em;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.ap-content h2 {
+  margin: 0.7em 0 0.35em;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.ap-content ul,
+.ap-content ol { margin: 0 0 0.6em; padding-left: 1.5em; }
+.ap-content ul { list-style-type: disc; }
+.ap-content ol { list-style-type: decimal; }
+.ap-content li { margin: 0.15em 0; }
+.ap-content li p { margin: 0; }
+.ap-content strong { font-weight: 700; }
+.ap-content em { font-style: italic; }
+.ap-content u { text-decoration: underline; }
+.ap-content a { color: #0071e3; text-decoration: underline; }

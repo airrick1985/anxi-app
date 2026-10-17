@@ -2814,40 +2814,112 @@ exports.handleActivityMessageUpload = onCall({ region: "asia-east1", memory: "51
 });
 
 /**
- * 代理刪除活動訊息圖片 (含 Storage 檔案與 Firestore 記錄)
- * 入參：{ projectId, userKey, docId, storagePath }
+ * 活動訊息檔案路徑必須在該建案的活動訊息資料夾內，避免刪到其他檔案
+ */
+function _isActivityMessagePath(projectId, path) {
+  return typeof path === "string"
+    && path.startsWith(`projects/${projectId}/activityMessages/`)
+    && !path.includes("..");
+}
+
+/**
+ * 刪除 Storage 檔案，不存在時略過
+ */
+async function _deleteActivityStorageFiles(functionName, paths) {
+  const bucket = admin.storage().bucket();
+  for (const path of paths) {
+    try {
+      await bucket.file(path).delete();
+      console.log(`[${functionName}] Storage 檔案已刪除: ${path}`);
+    } catch (err) {
+      if (err.code === 404) {
+        console.warn(`[${functionName}] Storage 檔案不存在，略過: ${path}`);
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+/**
+ * 代理刪除活動訊息 (含 Storage 檔案與 Firestore 記錄；自建頁面一併刪除頁內圖片)
+ * 入參：{ projectId, userKey, docId, storagePath? }
+ * 要刪的檔案以 Firestore 文件記錄為準；文件已不存在時才退回前端傳入的 storagePath
  */
 exports.handleActivityMessageDelete = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
   const { projectId, userKey, docId, storagePath } = request.data || {};
   const functionName = `handleActivityMessageDelete (Project: ${projectId})`;
 
-  if (!projectId || !docId || !storagePath) {
-    throw new HttpsError("invalid-argument", "缺少刪除所需的參數 (projectId/docId/storagePath)。");
+  if (!projectId || !docId) {
+    throw new HttpsError("invalid-argument", "缺少刪除所需的參數 (projectId/docId)。");
   }
 
   const anxiDb = new Firestore({ databaseId: "anxi-app" });
   await _ensureActivityMessageManagePermission(anxiDb, userKey, projectId);
 
   try {
-    const bucket = admin.storage().bucket();
-    try {
-      await bucket.file(storagePath).delete();
-      console.log(`[${functionName}] Storage 檔案已刪除: ${storagePath}`);
-    } catch (err) {
-      if (err.code === 404) {
-        console.warn(`[${functionName}] Storage 檔案不存在，略過: ${storagePath}`);
-      } else {
-        throw err;
+    const docRef = anxiDb.collection("activityMessages").doc(docId);
+    const snap = await docRef.get();
+    let paths = [];
+    if (snap.exists) {
+      const data = snap.data() || {};
+      if (data.projectId !== projectId) {
+        throw new HttpsError("permission-denied", "這則活動訊息不屬於此建案。");
       }
+      paths = [data.storagePath, ...(Array.isArray(data.imagePaths) ? data.imagePaths : [])];
+    } else if (storagePath) {
+      paths = [storagePath];
     }
+    paths = [...new Set(paths.filter(p => _isActivityMessagePath(projectId, p)))];
 
-    await anxiDb.collection("activityMessages").doc(docId).delete();
-    console.log(`[${functionName}] Firestore 文件已刪除: ${docId}`);
+    await _deleteActivityStorageFiles(functionName, paths);
+    if (snap.exists) {
+      await docRef.delete();
+      console.log(`[${functionName}] Firestore 文件已刪除: ${docId}`);
+    }
 
     return { status: "success", message: "活動訊息已成功刪除" };
   } catch (error) {
+    if (error instanceof HttpsError) throw error;
     console.error(`[${functionName}] 刪除失敗:`, error);
     throw new HttpsError("internal", `後端刪除活動訊息時發生錯誤: ${error.message}`);
+  }
+});
+
+/**
+ * 清除自建頁面不再使用的圖片（編輯時移除、取消編輯時剛上傳的圖）
+ * 入參：{ projectId, userKey, storagePaths }
+ * 只刪該建案活動訊息資料夾內、且沒有任何活動訊息文件引用的檔案
+ */
+exports.handleActivityMessageAssetsDelete = onCall({ region: "asia-east1", memory: "512MiB" }, async (request) => {
+  const { projectId, userKey, storagePaths } = request.data || {};
+  const functionName = `handleActivityMessageAssetsDelete (Project: ${projectId})`;
+
+  if (!projectId || !Array.isArray(storagePaths)) {
+    throw new HttpsError("invalid-argument", "缺少參數 (projectId/storagePaths)。");
+  }
+
+  const anxiDb = new Firestore({ databaseId: "anxi-app" });
+  await _ensureActivityMessageManagePermission(anxiDb, userKey, projectId);
+
+  try {
+    const requested = [...new Set(storagePaths.slice(0, 100).filter(p => _isActivityMessagePath(projectId, p)))];
+    if (requested.length === 0) return { status: "success", deleted: 0 };
+
+    const referenced = new Set();
+    const snap = await anxiDb.collection("activityMessages").where("projectId", "==", projectId).get();
+    snap.forEach((d) => {
+      const data = d.data() || {};
+      if (data.storagePath) referenced.add(data.storagePath);
+      (Array.isArray(data.imagePaths) ? data.imagePaths : []).forEach(p => referenced.add(p));
+    });
+
+    const targets = requested.filter(p => !referenced.has(p));
+    await _deleteActivityStorageFiles(functionName, targets);
+    return { status: "success", deleted: targets.length };
+  } catch (error) {
+    console.error(`[${functionName}] 清除失敗:`, error);
+    throw new HttpsError("internal", `後端清除活動訊息圖片時發生錯誤: ${error.message}`);
   }
 });
 
