@@ -1,6 +1,6 @@
 <template>
   <div>
-    <v-alert type="info" variant="tonal" density="compact" class="mb-3">請佣、獎金可各自選擇方案分檔或合併。「合併同一 Sheet」依方案分區；獎金表另可選「合併列」，將一般與配套戶別接續編號、合計獎金（不同請佣比例分頁），使用目前所選版型；目前方案使用下方所選版型，其他方案沿用自己的設定與預設版型。個人明細仍依目前方案匯出。</v-alert>
+    <v-alert type="info" variant="tonal" density="compact" class="mb-3">請佣、獎金可各自選擇方案分檔或合併。「合併同一 Sheet」依方案分區；獎金表另可選「合併列」，將一般與配套戶別接續編號、合計獎金，使用目前所選版型；目前方案使用下方所選版型，其他方案沿用自己的設定與預設版型。個人明細仍依目前方案匯出。</v-alert>
     <div v-if="loading" class="text-center py-10">
       <v-progress-circular indeterminate color="primary"></v-progress-circular>
     </div>
@@ -21,6 +21,12 @@
             <v-col v-if="!isPerson" cols="12" sm="4">
               <v-select v-model="groupingMode" :items="groupingOptions" :label="docType === 'claim' ? '請佣匯出方式' : '獎金匯出方式'"
                 variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col v-if="docType === 'bonus'" cols="12" sm="auto">
+              <v-btn-toggle v-model="bonusPaging" mandatory color="primary" variant="outlined" divided density="comfortable">
+                <v-btn value="ratio" size="small">依比例分頁</v-btn>
+                <v-btn value="single" size="small">統整一頁</v-btn>
+              </v-btn-toggle>
             </v-col>
             <v-col v-if="!isPerson && groupingMode !== 'current'" cols="12">
               <v-select v-model="selectedPlanIds" :items="plans" item-title="name" item-value="id" label="包含方案（以相同期別合併）"
@@ -357,13 +363,16 @@ function readGrouping() {
 }
 const savedGrouping = readGrouping();
 const groupingModes = ref({ claim: savedGrouping.claim || 'current', bonus: savedGrouping.bonus || 'current' });
+// 獎金表分頁方式：ratio＝各請佣比例一頁、single＝全部統整一頁（實際金額）
+const bonusPaging = ref(savedGrouping.bonusPaging === 'single' ? 'single' : 'ratio');
+const singlePage = computed(() => bonusPaging.value === 'single');
 const selectedPlanIds = ref(props.plans.map(p => p.id));
 const groupingMode = computed({
   get: () => groupingModes.value[docType.value] || 'current',
   set: value => { groupingModes.value[docType.value] = value; },
 });
-watch(groupingModes, value => {
-  try { localStorage.setItem(preferenceKey.value, JSON.stringify(value)); } catch { /* private browsing */ }
+watch([groupingModes, bonusPaging], ([value, paging]) => {
+  try { localStorage.setItem(preferenceKey.value, JSON.stringify({ ...value, bonusPaging: paging })); } catch { /* private browsing */ }
 }, { deep: true });
 const groupingSettings = ref({});
 const allExportConfigs = ref([]);
@@ -588,6 +597,7 @@ const bonusModel = computed(() => {
     personnelOrder: personnelOrder.value,
     personOrder: props.personOrder,
     unitOrder: currentUnitOrder.value,
+    singlePage: singlePage.value,
   });
 });
 
@@ -657,6 +667,7 @@ const groupedDocuments = computed(() => {
       personnelOrder: personnelOrder.value,
       personOrder: props.personOrder,
       unitOrder,
+      singlePage: singlePage.value,
     });
     return [{ plan: p, model: bonus, grids: [...(bonus.includeClaimSheet && claimRecords.length ? [buildClaimGrid(claim)] : []), ...buildBonusGrids(bonus)] }];
   });
@@ -673,7 +684,7 @@ const mergedBonusModel = computed(() => {
   })).filter(source => source.records.length);
   return buildMergedBonusModel({ sources, periodNotes: props.periodNotes, settings: exportSettings.value, config: currentConfig.value,
     period: period.value, projectName: props.projectName, projectId: props.projectId,
-    personnelOrder: personnelOrder.value, personOrder: props.personOrder,
+    personnelOrder: personnelOrder.value, personOrder: props.personOrder, singlePage: singlePage.value,
   });
 });
 

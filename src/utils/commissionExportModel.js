@@ -195,6 +195,8 @@ export function buildClaimModel(records, opts) {
 }
 
 // ================= 獎金表 model =================
+export const SINGLE_PAGE_KEY = 'all';   // 統整一頁：所有請佣比例合為同一組
+
 function ratioKey(ratioPct) {
   return pctText(ratioPct);   // 依來源精度（不四捨五入到一位）
 }
@@ -275,10 +277,11 @@ function handoverShares(record, rows, indivKeys) {
 }
 
 /**
- * 獎金表 model：依請佣比例分組，每組一張。
+ * 獎金表 model：依請佣比例分組，每組一張；singlePage 時全部比例合為一張（SINGLE_PAGE_KEY）。
  * 金額規則（同舊系統）：非 100% 組以 amountsFull（100% 重算）呈現，
  * 「優付方案請款」列與扣款列以實際金額（amounts / keep / tax / nhi / net）。
- * @param {object} opts - { records, bonusRecords, settings, config, period, projectName, personnelOrder }
+ * 統整一頁：上表、類別列、累計與扣款全部以實際金額呈現，不列優付列。
+ * @param {object} opts - { records, bonusRecords, settings, config, period, projectName, personnelOrder, singlePage }
  */
 /**
  * 人員排序比較函式：
@@ -306,7 +309,7 @@ export function makePersonSorter(personOrder = [], personnelOrder = []) {
 export function buildBonusModel(opts) {
   const {
     records = [], bonusRecords = [], settings = {}, config = {},
-    period, projectName = '', projectId = '', personnelOrder = [], personOrder = [], unitOrder = [],
+    period, projectName = '', projectId = '', personnelOrder = [], personOrder = [], unitOrder = [], singlePage = false,
   } = opts;
   const cfg = { ...defaultBonusConfig(settings), ...config };
   const cls = classifyCategories(settings);
@@ -320,16 +323,17 @@ export function buildBonusModel(opts) {
   const minguoYM = firstMinguoYM(records);
 
   // 分組（退佣紀錄 ratioPct 為負：依退回比例合計歸組，金額以實際負值呈現）
+  const groupKeyOf = r => (singlePage ? SINGLE_PAGE_KEY : ratioKey(Math.abs(toNum(r.ratioPct))));
   const groups = {};
   records.forEach(r => {
-    const key = ratioKey(Math.abs(toNum(r.ratioPct)));
+    const key = groupKeyOf(r);
     if (!groups[key]) groups[key] = { records: [], bonusRows: [] };
     groups[key].records.push(r);
   });
   bonusRecords.forEach(b => {
     const rec = records.find(r => r.id === b.commissionRecordId);
     if (!rec) return;
-    groups[ratioKey(Math.abs(toNum(rec.ratioPct)))].bonusRows.push(b);
+    groups[groupKeyOf(rec)].bonusRows.push(b);
   });
 
   const sumAll =obj => Object.values(obj || {}).reduce((s, v) => s + toNum(v), 0);
@@ -338,8 +342,10 @@ export function buildBonusModel(opts) {
     .sort((a, b) => Number(b) - Number(a))
     .map(pctKey => {
       const g = groups[pctKey];
-      const isYoufu = pctKey !== '100';
+      const actual = pctKey === SINGLE_PAGE_KEY;   // 統整一頁：一律實際金額
+      const isYoufu = !actual && pctKey !== '100';
       const youfuLabel = fillPattern(cfg.youfuLabelPattern, { pct: pctKey });
+      const amountsOf = b => (actual ? b.amounts : (b.amountsFull || b.amounts)) || {};
 
       // ---- 每人彙總 ----
       const agg = {};
@@ -354,7 +360,7 @@ export function buildBonusModel(opts) {
           };
         }
         const a = agg[b.personKey];
-        const full = b.amountsFull || b.amounts || {};
+        const full = amountsOf(b);
         a.indiv += sumCats(full, indivKeys);
         a.team += sumCats(full, teamKeys);
         Object.keys(full).forEach(k => { a.byCat[k] = (a.byCat[k] || 0) + toNum(full[k]); });
@@ -379,12 +385,16 @@ export function buildBonusModel(opts) {
       const noteHistory = opts.noteHistory || personNoteHistory(bonusRecords);
       Object.values(agg).forEach(a => {
         a.remarkNotes = periodPersonNotes(opts.periodNotes, period, a.personKey, a.legacyNotes, noteHistory[a.personKey] || []);
-        const kr = a.subDisc ? a.keepDisc / a.subDisc : 0;
-        const tr = a.subDisc ? a.taxDisc / a.subDisc : 0;
-        const nr = a.subDisc ? a.nhiDisc / a.subDisc : 0;
-        a.keep = Math.round(a.sub * kr);
-        a.tax = Math.round(a.sub * tr);
-        a.nhi = Math.round(a.sub * nr);
+        if (actual) {
+          a.sub = a.subDisc; a.keep = a.keepDisc; a.tax = a.taxDisc; a.nhi = a.nhiDisc;
+        } else {
+          const kr = a.subDisc ? a.keepDisc / a.subDisc : 0;
+          const tr = a.subDisc ? a.taxDisc / a.subDisc : 0;
+          const nr = a.subDisc ? a.nhiDisc / a.subDisc : 0;
+          a.keep = Math.round(a.sub * kr);
+          a.tax = Math.round(a.sub * tr);
+          a.nhi = Math.round(a.sub * nr);
+        }
         a.net = a.sub - a.keep - a.tax - a.nhi;
         a.netDisc = a.subDisc - a.keepDisc - a.taxDisc - a.nhiDisc;
         a.handoverKeep = sumAll(a.handoverBySrc);
@@ -407,10 +417,10 @@ export function buildBonusModel(opts) {
         || String(x.name).localeCompare(String(y.name), 'zh-Hant'));
       right.sort(personSorter);
 
-      // ---- 每戶列 + 每戶每人 個獎/團獎（100%） ----
+      // ---- 每戶列 + 每戶每人 個獎/團獎（100%；統整一頁為實際金額） ----
       const perUnitPerson = {};   // commissionRecordId -> personKey -> {indiv, team}
       g.bonusRows.forEach(b => {
-        const full = b.amountsFull || b.amounts || {};
+        const full = amountsOf(b);
         if (!perUnitPerson[b.commissionRecordId]) perUnitPerson[b.commissionRecordId] = {};
         if (!perUnitPerson[b.commissionRecordId][b.personKey]) perUnitPerson[b.commissionRecordId][b.personKey] = { indiv: 0, team: 0 };
         perUnitPerson[b.commissionRecordId][b.personKey].indiv += sumCats(full, indivKeys);
@@ -435,13 +445,13 @@ export function buildBonusModel(opts) {
         if (own.length) return own.reduce((s, k) => s + toNum(r.categories[k].ratePct), 0);
         return hasAmount ? rateOf(keys) : 0;
       };
-      // 每戶交屋保留款：費率標示基準類別（如「銷售個獎 5%」）；金額同個獎欄以 100% 呈現
+      // 每戶交屋保留款：費率標示基準類別（如「銷售個獎 5%」）；金額同個獎欄以 100%（統整一頁為實際金額）呈現
       const handoverOf = r => {
         const list = Object.values(r.handover?.byCat || {});
         return {
           hkRate: list.filter(h => toNum(h?.ratePct))
             .map(h => handoverRateText(r, h, settings, indivKeys)).join('、'),
-          hkAmt: Math.round(list.reduce((s, h) => s + toNum(h?.amountFull ?? h?.amount), 0)),
+          hkAmt: Math.round(list.reduce((s, h) => s + toNum(actual ? h?.amount : (h?.amountFull ?? h?.amount)), 0)),
         };
       };
 
@@ -478,6 +488,7 @@ export function buildBonusModel(opts) {
           after: toNum(r.calc?.dealAfter),
           sales: Array.isArray(r.snapshot?.salesperson) ? r.snapshot.salesperson.join('、') : String(r.snapshot?.salesperson || ''),
           team: teamCount,
+          ratioPct: toNum(r.ratioPct),   // 獎金比例（退佣為負）
           indivRate: unitRateOf(r, indivKeys, amts.some(v => Math.round(v.indiv) !== 0)),
           teamRate: unitRateOf(r, teamKeys, amts.some(v => Math.round(v.team) !== 0)),
           ...handoverOf(r),
@@ -514,8 +525,8 @@ export function buildBonusModel(opts) {
 
       return {
         pctKey, isYoufu, youfuLabel,
-        sheetName: `業務獎金-${pctKey}%`,
-        title: `${projectName}－業務獎金　第 ${period} 期　獎金發放比例 ${pctKey}%${titleMonthSuffix(minguoYM)}`,
+        sheetName: actual ? '業務獎金' : `業務獎金-${pctKey}%`,
+        title: `${projectName}－業務獎金　第 ${period} 期${actual ? '' : `　獎金發放比例 ${pctKey}%`}${titleMonthSuffix(minguoYM)}`,
         topPersons, unitRows, topTotal,
         hasHandover: unitRows.some(row => row.hkRate || row.hkAmt),
         left, right, catRows,
@@ -575,8 +586,9 @@ export function buildMergedBonusModel({ sources = [], ...opts }) {
   model.mergedRows = true;
   model.includeClaimSheet = false;
   model.groups.forEach(group => {
-    group.title = `${opts.projectName || ''}－合併獎金表　第 ${opts.period} 期　獎金發放比例 ${group.pctKey}%${titleMonthSuffix(model.minguoYM)}`;
-    group.sheetName = `合併獎金-${group.pctKey}%`;
+    const single = group.pctKey === SINGLE_PAGE_KEY;
+    group.title = `${opts.projectName || ''}－合併獎金表　第 ${opts.period} 期${single ? '' : `　獎金發放比例 ${group.pctKey}%`}${titleMonthSuffix(model.minguoYM)}`;
+    group.sheetName = single ? '合併獎金' : `合併獎金-${group.pctKey}%`;
     group.catRows.filter(row => ['_indiv', '_team'].includes(row.key)).forEach(row => {
       row.label = row.key === '_indiv' ? '銷售個獎' : '銷售團獎';
       row.rateText = '依方案';
@@ -591,19 +603,22 @@ export function buildMergedBonusModel({ sources = [], ...opts }) {
 }
 
 // ================= 個人獎金明細 model =================
+/** 個人明細樣式：A4 直式、大字、清爽配色（不受已存版型影響） */
+const PERSON_STYLE = {
+  fontFamily: 'Microsoft JhengHei',
+  titleFontSize: 20, headerFontSize: 12, dataFontSize: 12,
+  headerBg: '#e8f0f8', totalRowBg: '#e8f0f8', summaryColor: '#127347', accentColor: '#1f5f99', borders: false,
+};
+
 /** 預設個人明細版型 config */
 export function defaultPersonConfig(settings) {
   return {
-    style: {
-      fontFamily: 'DFKai-SB',
-      titleFontSize: 18, headerFontSize: 11, dataFontSize: 11,
-      headerBg: '#e7e6e6', totalRowBg: '#fff2cc', summaryColor: '#DD0806', borders: true,
-    },
+    style: { ...PERSON_STYLE },
     showBuyerName: true,
     showDealTotal: true,
     fileNamePattern: settings?.personFileNamePattern || '{建案名}NO.{期別}獎金明細-{姓名}',
     paper: 'A4',
-    orientation: 'landscape',
+    orientation: 'portrait',
   };
 }
 
@@ -694,6 +709,41 @@ export function buildPersonModel(opts) {
     };
   };
 
+  // 獎金分配比例：每戶每類別的分配人員與比例（比例＝分到該類別費率的比例，單獨模式每人各得全額）
+  // 有分配名單者依設定比例；含鎖定金額者依實際金額換算；無分配名單（Excel 匯入）者依各人金額換算
+  const unitKeyOf = b => b.commissionRecordId || `${b.unitId}|${toNum(b.period)}`;
+  const rowsByUnit = {};
+  bonusRecords.forEach(b => {
+    if (b.status === 'voided') return;
+    const k = unitKeyOf(b);
+    if (!rowsByUnit[k]) rowsByUnit[k] = [];
+    rowsByUnit[k].push(b);
+  });
+  const sharePct = v => Math.round(v * 100) / 100;
+  const shareListOf = (b, rec, catKey) => {
+    const live = (rowsByUnit[unitKeyOf(b)] || []).filter(x => toNum(x.amounts?.[catKey]) !== 0);
+    const amountOf = pk => live.filter(x => (x.personKey || x.name) === pk).reduce((s, x) => s + toNum(x.amounts[catKey]), 0);
+    const total = live.reduce((s, x) => s + toNum(x.amounts[catKey]), 0);
+    const cat = rec.categories?.[catKey] || {};
+    const allocs = Array.isArray(cat.allocations) ? cat.allocations : [];
+    if (allocs.length) {
+      const mult = cat.allocMode === 'each' ? allocs.length : 1;
+      const anyLocked = allocs.some(a => a.mode === 'locked');
+      return allocs.map(a => ({
+        personKey: a.personKey,
+        name: a.name || live.find(x => x.personKey === a.personKey)?.name || a.personKey,
+        locked: a.mode === 'locked',
+        pct: sharePct(anyLocked ? (total ? amountOf(a.personKey) / total * 100 * mult : 0) : toNum(a.sharePct) * mult),
+      }));
+    }
+    if (!total) return [];
+    return [...new Set(live.map(x => x.personKey || x.name))].map(pk => ({
+      personKey: pk, name: live.find(x => (x.personKey || x.name) === pk).name || pk, locked: false,
+      pct: sharePct(amountOf(pk) / total * 100),
+    }));
+  };
+  const allocGroups = new Map();   // 同類別＋同分配名單與比例 → 一組，列出戶別
+
   const rows = sorted.map(b => {
     const rec = recOf(b);
     const snap = rec.snapshot || {};
@@ -701,12 +751,33 @@ export function buildPersonModel(opts) {
     categories.forEach(c => { amounts[c.key] = Math.round(toNum(b.amounts?.[c.key])); });
     const isOwnSale = normSales(snap.salesperson).some(n => personNames.has(n));
     const refund = isRefundRecord(rec) || b.type === 'refund';
+    const unit = `${b.unitId || rec.unitId || ''}`;
+    const shares = {};
+    categories.forEach(c => {
+      if (!amounts[c.key]) return;
+      const list = shareListOf(b, rec, c.key);
+      const own = list.find(x => x.personKey === personKey);
+      if (!own) return;
+      shares[c.key] = { pct: own.pct, locked: own.locked };
+      if (list.length < 2) return;
+      const sig = `${c.key}|${list.map(x => `${x.personKey}:${x.pct}:${x.locked ? 1 : 0}`).join(',')}`;
+      if (!allocGroups.has(sig)) {
+        allocGroups.set(sig, {
+          catKey: c.key, label: c.label, own: shares[c.key], units: [],
+          persons: list.map(x => ({ name: x.name, pct: x.pct, locked: x.locked, self: x.personKey === personKey })),
+        });
+      }
+      const units = allocGroups.get(sig).units;
+      const unitLabel = refund ? `${unit}(退佣)` : unit;
+      if (!units.includes(unitLabel)) units.push(unitLabel);
+    });
     return {
       isOwnSale,
       refund,
       period: toNum(b.period),
       requestDate: toMinguo(b.requestDate || rec.requestDate),
-      unit: `${b.unitId || rec.unitId || ''}`,
+      unit,
+      shares,
       contractDate: toMinguo(snap.contractDate),
       buyerName: snap.buyerName || '',
       dealTotal: toNum(snap.dealTotal),
@@ -752,6 +823,13 @@ export function buildPersonModel(opts) {
   });
   const periodSummaries = Object.values(byPeriod).sort((a, b) => a.period - b.period);
 
+  // 分配區塊：依類別順序，同類別內依首次出現（期別、戶別）
+  const catIndex = Object.fromEntries(categories.map((c, i) => [c.key, i]));
+  const allocations = [...allocGroups.values()]
+    .map((g, i) => ({ g, i }))
+    .sort((a, b) => (catIndex[a.g.catKey] - catIndex[b.g.catKey]) || (a.i - b.i))
+    .map(({ g }) => ({ ...g, count: g.units.length }));
+
   // 保留款累計（該人於本建案全部期別）
   const keepTotal = personAll.reduce((s, b) => s + toNum(b.keep), 0);
   const hkTotal = personAll.reduce((s, b) => s + handoverOfRow(b).hk, 0);
@@ -790,7 +868,7 @@ export function buildPersonModel(opts) {
     subtitle: `第 ${label} 期`,
     fileName,
     generatedAt: formatDateTW(new Date()),
-    style: cfg.style,
+    style: { ...PERSON_STYLE },
     showBuyerName: cfg.showBuyerName !== false,
     showDealTotal: cfg.showDealTotal !== false,
     person,
@@ -799,10 +877,11 @@ export function buildPersonModel(opts) {
     detailRows, otherAggregate,
     detailScope: showAllUnits ? 'all' : 'own',
     showDetail: detailRows.length > 0,
+    allocations,
     periodSummaries,
     retention: { keepTotal, hkTotal, keepPaid, keepUnpaid: keepTotal - keepPaid },
-    paper: cfg.paper || 'A4',
-    orientation: cfg.orientation || 'landscape',
+    paper: 'A4',
+    orientation: 'portrait',
   };
 }
 

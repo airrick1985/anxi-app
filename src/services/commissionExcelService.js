@@ -214,7 +214,7 @@ function personNoteRows(model) {
 export function buildBonusGroupGrid(group, model) {
   const st = model.style || {};
   const HK = !!group.hasHandover;   // 交屋保留款費率／金額兩欄：該組有提撥才顯示
-  const FIX = HK ? 18 : 16;
+  const FIX = HK ? 19 : 17;
   const P = group.topPersons.length;
   const L = group.left.length;
   const R = group.right.length;
@@ -259,7 +259,7 @@ export function buildBonusGroupGrid(group, model) {
   const nRows = rGrand0 + GRAND_N;
 
   const g = new Grid(group.sheetName, NC, nRows, { fontFamily: st.fontFamily || 'DFKai-SB', sz: st.dataFontSize || 12 });
-  const FW = [46, 82, 82, 84, 72, 96, 66, 62, 90, 96, 56, 96, 84, 72, 66, 66, ...(HK ? [110, 84] : [])];
+  const FW = [46, 82, 82, 84, 72, 96, 66, 62, 90, 96, 56, 96, 84, 72, 66, 66, 66, ...(HK ? [110, 84] : [])];
   for (let c = 0; c < NC; c++) g.cols[c] = c < FW.length ? FW[c] : 66;
 
   const headerBg = normBg(st.headerBg) || '#c4bd97';
@@ -272,7 +272,7 @@ export function buildBonusGroupGrid(group, model) {
 
   // 上方表頭
   const isPackage = !model.mergedRows && model.priceBasis === 'package';
-  const H1 = ['編號', '小訂日期', '簽約日期', '戶別', isPackage ? '配套底價(萬)' : '停車位', '姓名', isPackage ? '配套價格(萬)' : '成交價(萬)', '', isPackage ? '配套總價(萬)' : '總成交價(萬)', model.partyALabel, '折數', '折數後總價(萬)', '銷售人員', '團獎人數', '個獎費率', '團獎費率'];
+  const H1 = ['編號', '小訂日期', '簽約日期', '戶別', isPackage ? '配套底價(萬)' : '停車位', '姓名', isPackage ? '配套價格(萬)' : '成交價(萬)', '', isPackage ? '配套總價(萬)' : '總成交價(萬)', model.partyALabel, '折數', '折數後總價(萬)', '銷售人員', '團獎人數', '獎金比例', '個獎費率', '團獎費率'];
   if (HK) H1.push('交屋保留款費率', '交屋保留款金額');
   if (model.mergedRows) {
     H1[3] = '戶別／方案'; H1[4] = '停車位／配套底價(萬)'; H1[6] = '成交價／配套價格(萬)'; H1[8] = '總價(萬)';
@@ -285,7 +285,7 @@ export function buildBonusGroupGrid(group, model) {
     g.set(rH2, 6, model.mergedRows ? '房價／配套價' : '房價', hStyle); g.set(rH2, 7, '車價', hStyle);
     g.merge(rH1, 6, rH1, 7);
   }
-  [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, ...(HK ? [16, 17] : [])].forEach(c => g.merge(rH1, c, rH2, c));
+  [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, ...(HK ? [17, 18] : [])].forEach(c => g.merge(rH1, c, rH2, c));
   group.topPersons.forEach((p, i) => {
     const col = FIX + 2 * i;
     g.set(rH1, col, personHeaderName(p, model), hStyle);
@@ -316,11 +316,12 @@ export function buildBonusGroupGrid(group, model) {
     g.set(r, 11, d.after || '', { fmt: '#,##0', border: true, color: rc });
     g.set(r, 12, d.sales, { align: 'center', border: true, color: rc });
     g.set(r, 13, d.team || '', { align: 'center', border: true, color: rc });
-    g.set(r, 14, d.indivRate ? `${pctText(d.indivRate)}%` : '', { align: 'center', border: true, color: rc });
-    g.set(r, 15, d.teamRate ? `${pctText(d.teamRate)}%` : '', { align: 'center', border: true, color: rc });
+    g.set(r, 14, d.ratioPct ? `${pctText(d.ratioPct)}%` : '', { align: 'center', border: true, color: rc });
+    g.set(r, 15, d.indivRate ? `${pctText(d.indivRate)}%` : '', { align: 'center', border: true, color: rc });
+    g.set(r, 16, d.teamRate ? `${pctText(d.teamRate)}%` : '', { align: 'center', border: true, color: rc });
     if (HK) {
-      g.set(r, 16, d.hkRate || '', { align: 'center', border: true, color: rc });
-      g.set(r, 17, d.hkAmt || '', { fmt: '#,##0', border: true, color: rc });
+      g.set(r, 17, d.hkRate || '', { align: 'center', border: true, color: rc });
+      g.set(r, 18, d.hkAmt || '', { fmt: '#,##0', border: true, color: rc });
     }
     group.topPersons.forEach((p, j) => {
       const col = FIX + 2 * j;
@@ -336,7 +337,7 @@ export function buildBonusGroupGrid(group, model) {
   g.set(rTopTotal, 8, group.topTotal.total || '', { fmt: '#,##0', bold: true });
   g.set(rTopTotal, 9, group.topTotal.referral || '', { fmt: '#,##0', bold: true });
   g.set(rTopTotal, 11, group.topTotal.after || '', { fmt: '#,##0', bold: true });
-  if (HK) g.set(rTopTotal, 17, group.topTotal.hk || '', { fmt: '#,##0', bold: true });
+  if (HK) g.set(rTopTotal, 18, group.topTotal.hk || '', { fmt: '#,##0', bold: true });
   group.topPersons.forEach((p, j) => {
     const col = FIX + 2 * j;
     g.set(rTopTotal, col, group.topTotal.pp[p.personKey].indiv || '', { fmt: '#,##0', bold: true });
@@ -425,83 +426,14 @@ export function buildBonusGrids(model) {
 }
 
 // ================= 個人獎金明細 grid =================
-/** 明細表欄位定義（依 model 動態組合） */
-function personDetailColumns(model) {
-  const cols = [
-    { key: 'period',       label: '期別',       width: 40, align: 'center', get: r => r.period },
-    { key: 'requestDate',  label: '請佣日期',   width: 66, align: 'center', get: r => r.requestDate },
-    { key: 'unit',         label: '戶別',       width: 56, align: 'center', get: r => r.unit },
-    { key: 'contractDate', label: '簽約日期',   width: 66, align: 'center', get: r => r.contractDate },
-  ];
-  if (model.showBuyerName) cols.push({ key: 'buyerName', label: '買方', width: 72, align: 'center', get: r => r.buyerName });
-  if (model.showDealTotal) cols.push({ key: 'dealTotal', label: '成交總價(萬)', width: 92, numFmt: '#,##0', sum: true, get: r => r.dealTotal });
-  cols.push({ key: 'ratioPct', label: '請佣比例', width: 68, align: 'center', get: r => `${r.ratioPct}%` });
-  model.categories.forEach(c => {
-    cols.push({
-      key: `cat_${c.key}`, label: c.label, width: 74, numFmt: '#,##0', sum: true,
-      headerSub: `${pctText(c.ratePct)}%`,   // 類別比例（建案設定 ratePct，單位 %）
-      get: r => r.amounts[c.key], sumGet: t => t.amounts[c.key],
-    });
-  });
-  cols.push({ key: 'subtotal', label: '小計', width: 78, numFmt: '#,##0', sum: true, bold: true, get: r => r.subtotal });
-  cols.push({ key: 'keep',     label: '保留款',   width: 70, numFmt: '#,##0', sum: true, get: r => r.keep, sub: r => `${r.keepPct}%` });
-  // 交屋保留款：含於保留款，僅供參考（淡紅底，同獎金表）
-  cols.push({ key: 'hkRate',   label: '交屋保留款費率', width: 96, align: 'center', bg: HK_BG, get: r => r.hkRate });
-  cols.push({ key: 'hk',       label: '交屋保留款金額', width: 80, numFmt: '#,##0', sum: true, bg: HK_BG, get: r => r.hk });
-  cols.push({ key: 'tax',     label: '稅金',     width: 66, numFmt: '#,##0', sum: true, get: r => r.tax, sub: r => `${r.taxPct}%` });
-  cols.push({ key: 'nhi',      label: '二代健保', width: 66, numFmt: '#,##0', sum: true, get: r => r.nhi, sub: r => `${r.nhiPct}%` });
-  cols.push({ key: 'net',      label: '實發金額', width: 84, numFmt: '#,##0', sum: true, bold: true, get: r => r.net });
-  cols.push({ key: 'remark',   label: '備註',     width: 90, align: 'left', get: r => r.remark });
-  return cols;
-}
-
-/** 全列扣款比例一致時，表頭顯示 %；否則以資料列各自比例呈現於備註 */
-function uniformPct(rows, key) {
-  if (!rows.length) return null;
-  const v = rows[0][key];
-  return rows.every(r => r[key] === v) ? v : null;
-}
-
-const PERSON_SUMMARY_COLS = [
-  { key: 'period',      label: '期別',     width: 60,  align: 'center', get: p => p.period },
-  { key: 'requestDate', label: '請佣日期', width: 90,  align: 'center', get: p => p.requestDate },
-  { key: 'count',       label: '戶數',     width: 60,  numFmt: '#,##0', get: p => p.count },
-  { key: 'subtotal',    label: '獎金小計', width: 100, numFmt: '#,##0', get: p => p.subtotal },
-  { key: 'keep',        label: '保留款',   width: 90,  numFmt: '#,##0', get: p => p.keep },
-  { key: 'hk',          label: '交屋保留款', width: 100, numFmt: '#,##0', bg: HK_BG, get: p => p.hk },
-  { key: 'tax',        label: '稅金',     width: 90,  numFmt: '#,##0', get: p => p.tax },
-  { key: 'nhi',         label: '二代健保', width: 100, numFmt: '#,##0', get: p => p.nhi },
-  { key: 'net',         label: '實發金額', width: 110, numFmt: '#,##0', bold: true, get: p => p.net },
-];
-
-function personRowCounts(model) {
-  return {
-    head: 4,                                       // 標題、期別、人員資訊、產出資訊
-    detail: model.showDetail ? 3 + model.detailRows.length + (model.otherAggregate ? 1 : 0) + 1 : 0, // 區塊標題、表頭(2列)、資料、其他彙整、合計
-    summary: 2 + model.periodSummaries.length + 1, // 區塊標題、表頭、資料、合計
-    retention: 2,                                  // 區塊標題、數值列
-    spacer: 1,
-  };
-}
-
-function drawPersonHead(g, r0, model, NC) {
-  const st = model.style || {};
-  g.set(r0, 0, model.title, { sz: st.titleFontSize || 18, bold: true, align: 'center' });
-  g.merge(r0, 0, r0, NC - 1);
-  g.rowHeights[r0] = 36;
-  g.set(r0 + 1, 0, model.subtitle, { sz: (st.titleFontSize || 18) - 4, bold: true, align: 'center' });
-  g.merge(r0 + 1, 0, r0 + 1, NC - 1);
-  g.rowHeights[r0 + 1] = 28;
-  const p = model.person;
-  const src = p.sourceProjectName ? `（${p.sourceProjectName}）` : '';
-  g.set(r0 + 2, 0, `姓名：${p.name}${src}　　職務：${p.role || '—'}　　建案：${model.projectName}`, { align: 'left' });
-  g.merge(r0 + 2, 0, r0 + 2, NC - 1);
-  g.rowHeights[r0 + 2] = 26;
-  g.set(r0 + 3, 0, `產出日期：${model.generatedAt}　　本明細僅含本人獎金，金額單位：元`, { align: 'left', sz: Math.max(9, (st.dataFontSize || 11) - 1), color: '#555555' });
-  g.merge(r0 + 3, 0, r0 + 3, NC - 1);
-  g.rowHeights[r0 + 3] = 22;
-  return r0 + 4;
-}
+// A4 直式、清爽配色：細基準欄（每欄 PERSON_UNIT px）＋各區塊以合併格自行分欄；無框線，以斑馬底分列。
+const PERSON_UNIT = 10;
+const PERSON_PAGE_PX = 720;   // A4 直式可用寬（PDF 不縮放）
+const PERSON_THEME = {
+  accent: '#1f5f99', ink: '#1f2a37', muted: '#6b7785',
+  headBg: '#e8f0f8', zebra: '#f5f8fb', totalBg: '#e8f0f8',
+  net: '#127347', netBg: '#e6f4ec', neg: '#c0392b',
+};
 
 /** 依文字長度估算需要的列高（px），供 Excel／預覽避免截斷 */
 function estimateRowHeight(text, widthPx, sz, minH) {
@@ -513,214 +445,252 @@ function estimateRowHeight(text, widthPx, sz, minH) {
   return Math.max(minH, lines * (sz + 6) + 8);
 }
 
-function drawPersonDetail(g, r0, model, cols, secLabel = '一') {
-  const st = model.style || {};
-  const sz = st.dataFontSize || 11;
-  const headerStyle = { sz: st.headerFontSize || 11, bold: true, align: 'center', wrap: true, border: true, bg: normBg(st.headerBg) };
-  const scopeText = model.detailScope === 'all' ? '' : '（僅列本人為銷售人員之戶別）';
-  g.set(r0, 0, `${secLabel}、每戶獎金明細${scopeText}`, { bold: true, align: 'left' });
-  g.merge(r0, 0, r0, cols.length - 1);
-  g.rowHeights[r0] = 26;
-  const rH1 = r0 + 1, rH2 = r0 + 2;
-  cols.forEach((c, ci) => {
-    g.set(rH1, ci, c.label, headerStyle);
-    if (c.headerSub) {
-      g.set(rH2, ci, c.headerSub, headerStyle);
-    } else if (c.sub) {
-      const u = uniformPct(model.rows, `${c.key}Pct`);
-      g.set(rH2, ci, u !== null ? `${u}%` : '', headerStyle);
-    } else {
-      g.merge(rH1, ci, rH2, ci);
+/** 全列扣款比例一致時回傳該比例；否則 null */
+function uniformPct(rows, key) {
+  if (!rows.length) return null;
+  const v = rows[0][key];
+  return rows.every(r => r[key] === v) ? v : null;
+}
+
+/** 依權重把 NC 個基準欄分成連續區段（每段至少 1 欄，最大餘數法） */
+function weightSpans(weights, NC) {
+  const total = weights.reduce((s, w) => s + w, 0) || 1;
+  const exact = weights.map(w => w / total * NC);
+  const units = exact.map(x => Math.max(1, Math.floor(x)));
+  let used = units.reduce((s, v) => s + v, 0);
+  const byRem = exact.map((x, i) => ({ i, rem: x - Math.floor(x) })).sort((a, b) => b.rem - a.rem);
+  for (let k = 0; used < NC; k++, used++) units[byRem[k % units.length].i]++;
+  while (used > NC) {
+    const j = units.indexOf(Math.max(...units));
+    units[j]--; used--;
+  }
+  let c = 0;
+  return units.map(u => { const span = [c, c + u - 1]; c += u; return span; });
+}
+
+/** 名單以「、」接續，超過 maxLines 行即分到下一列（避免單列過高，PDF 可換頁） */
+function chunkJoin(items, widthPx, sz, maxLines = 6) {
+  const perLine = Math.max(1, Math.floor((widthPx - 8) / (sz * 1.05)));
+  const limit = perLine * maxLines;
+  const out = [];
+  let cur = '';
+  items.forEach(it => {
+    const next = cur ? `${cur}、${it}` : it;
+    if (cur && next.length > limit) { out.push(cur); cur = it; } else cur = next;
+  });
+  if (cur) out.push(cur);
+  return out.length ? out : [''];
+}
+
+const allocShareText = (pct, locked) => `${pctText(pct)}%${locked ? '(鎖定)' : ''}`;
+const pctLabel = (rows, key) => { const u = uniformPct(rows, key); return u === null ? '' : ` ${pctText(u)}%`; };
+
+/** 每戶明細欄位（寬度為期望 px，實際依基準欄分配）；多行標籤用空白而非換行字元，PDF（pdfkit）遇換行字元時首行會多佔寬而提早折行 */
+function personDetailColumns(model) {
+  const cols = [];
+  cols.push({ key: 'unit', label: '戶別', w: 56, bold: true, get: r => (r.refund ? `${r.unit} (退佣)` : r.unit) });
+  if (model.showBuyerName) cols.push({ key: 'buyerName', label: '買方', w: 58, get: r => r.buyerName });
+  cols.push({ key: 'contractDate', label: '簽約日', w: 68, nowrap: true, get: r => r.contractDate });
+  if (model.showDealTotal) cols.push({ key: 'dealTotal', label: '總價 (萬)', w: 54, num: true, get: r => r.dealTotal });
+  cols.push({ key: 'ratioPct', label: '請佣 比例', w: 52, nowrap: true, get: r => `${pctText(r.ratioPct)}%` });
+  model.categories.forEach(c => cols.push({
+    key: `cat_${c.key}`, catKey: c.key, label: `${c.label} ${pctText(c.ratePct)}%`, w: 72, num: true, sum: true,
+    get: r => r.amounts[c.key], sumGet: t => t.amounts[c.key],
+  }));
+  cols.push({ key: 'subtotal', label: '小計', w: 76, num: true, sum: true, bold: true, get: r => r.subtotal });
+  cols.push({ key: 'deduct', label: '扣款', w: 66, num: true, sum: true, get: r => r.keep + r.tax + r.nhi, sumGet: t => t.keep + t.tax + t.nhi });
+  cols.push({ key: 'net', label: '實發', w: 74, num: true, sum: true, bold: true, net: true, get: r => r.net });
+  return cols;
+}
+
+/** 名單分配區塊版面：類別｜戶別｜戶數｜本人比例｜分配人員；名單過長分列（續） */
+function personAllocationLayout(model, spans) {
+  const sz = model.style?.dataFontSize || 12;
+  const spanW = ([a, b]) => (b - a + 1) * PERSON_UNIT;
+  const rows = [];
+  (model.allocations || []).forEach((a, gi) => {
+    const units = chunkJoin(a.units, spanW(spans[1]), sz);
+    const persons = chunkJoin(a.persons.map(p => `${p.name}${p.self ? '(本人)' : ''} ${allocShareText(p.pct, p.locked)}`), spanW(spans[4]), sz);
+    const n = Math.max(units.length, persons.length);
+    for (let i = 0; i < n; i++) {
+      const cells = [i ? `${a.label}（續）` : a.label, units[i] || '', i ? '' : a.count, i ? '' : allocShareText(a.own.pct, a.own.locked), persons[i] || ''];
+      const h = Math.max(28, estimateRowHeight(cells[1], spanW(spans[1]), sz, 28), estimateRowHeight(cells[4], spanW(spans[4]), sz, 28));
+      rows.push({ cells, h, group: gi, cont: i > 0 });
     }
   });
-  g.region(rH1, 0, rH2, cols.length - 1, { border: true, bg: normBg(st.headerBg) });
-  g.rowHeights[rH1] = 30; g.rowHeights[rH2] = 20;
-
-  const rData0 = rH2 + 1;
-  const detailRows = model.detailRows || model.rows;
-  detailRows.forEach((row, ri) => {
-    const r = rData0 + ri;
-    g.rowHeights[r] = 26;
-    cols.forEach((c, ci) => {
-      let v = c.get(row);
-      // 扣款比例不一致時，在備註前補註該列比例
-      if (c.key === 'remark') {
-        const notes = [];
-        ['keep', 'tax', 'nhi'].forEach(k => {
-          if (uniformPct(model.rows, `${k}Pct`) === null) notes.push(`${k === 'keep' ? '保留' : k === 'tax' ? '稅' : '健保'}${row[`${k}Pct`]}%`);
-        });
-        if (notes.length) v = [notes.join('/'), v].filter(Boolean).join(' ');
-      }
-      const isText = typeof v === 'string' && v !== '';
-      if (isText) g.rowHeights[r] = Math.max(g.rowHeights[r], estimateRowHeight(v, c.width, sz, 26));
-      g.set(r, ci, v === undefined || v === null ? '' : v, {
-        align: c.align || 'right', fmt: c.numFmt, border: true, bold: !!c.bold, wrap: isText, bg: c.bg,
-      });
-    });
-  });
-  // 非本人銷售之戶別：彙整為一列，不列戶別／買方
-  let rNext = rData0 + detailRows.length;
-  if (model.otherAggregate) {
-    const agg = model.otherAggregate;
-    const labelEnd = Math.max(0, cols.findIndex(c => c.key === 'ratioPct'));
-    g.set(rNext, 0, `其他戶別（${agg.count} 戶，非本人銷售）`, { align: 'left', border: true, wrap: true });
-    if (labelEnd > 0) { g.region(rNext, 0, rNext, labelEnd, { border: true }); g.merge(rNext, 0, rNext, labelEnd); }
-    cols.forEach((c, ci) => {
-      if (ci <= labelEnd) return;
-      if (c.sum && c.key !== 'dealTotal') {
-        const v = c.sumGet ? c.sumGet(agg) : agg[c.key];
-        g.set(rNext, ci, toNum(v), { align: 'right', fmt: c.numFmt, border: true, bold: !!c.bold });
-      } else {
-        g.set(rNext, ci, '', { border: true });
-      }
-    });
-    g.rowHeights[rNext] = 26;
-    rNext += 1;
-  }
-  const rTotal = rNext;
-  g.set(rTotal, 0, '合計', { bold: true, align: 'center', border: true, bg: normBg(st.totalRowBg) });
-  cols.forEach((c, ci) => {
-    if (!c.sum) return;
-    const v = c.sumGet ? c.sumGet(model.totals) : model.totals[c.key];
-    g.set(rTotal, ci, toNum(v), { bold: true, align: 'right', fmt: c.numFmt, border: true, bg: normBg(st.totalRowBg) });
-  });
-  g.region(rTotal, 0, rTotal, cols.length - 1, { border: true, bold: true, bg: normBg(st.totalRowBg) });
-  g.rowHeights[rTotal] = 28;
-  return rTotal + 1;
+  return rows;
 }
 
-function drawPersonSummary(g, r0, model, NC, secLabel = '二') {
-  const st = model.style || {};
-  const cols = PERSON_SUMMARY_COLS;
-  const headerStyle = { sz: st.headerFontSize || 11, bold: true, align: 'center', wrap: true, border: true, bg: normBg(st.headerBg) };
-  g.set(r0, 0, `${secLabel}、期別彙總（含本人全部獎金）`, { bold: true, align: 'left' });
-  g.merge(r0, 0, r0, NC - 1);
-  g.rowHeights[r0] = 26;
-  const rH = r0 + 1;
-  cols.forEach((c, ci) => g.set(rH, ci, c.label, headerStyle));
-  g.rowHeights[rH] = 28;
-  model.periodSummaries.forEach((p, i) => {
-    const r = rH + 1 + i;
-    g.rowHeights[r] = 26;
-    cols.forEach((c, ci) => g.set(r, ci, c.get(p), { align: c.align || 'right', fmt: c.numFmt, border: true, bold: !!c.bold, bg: c.bg }));
-  });
-  const rTotal = rH + 1 + model.periodSummaries.length;
-  g.set(rTotal, 0, '合計', { bold: true, align: 'center', border: true, bg: normBg(st.totalRowBg) });
-  g.merge(rTotal, 0, rTotal, 1);
-  g.set(rTotal, 2, model.rows.length, { bold: true, align: 'right', fmt: '#,##0', border: true, bg: normBg(st.totalRowBg) });
-  cols.slice(3).forEach((c, i) => {
-    g.set(rTotal, 3 + i, toNum(model.totals[c.key]), { bold: true, align: 'right', fmt: '#,##0', border: true, bg: normBg(st.totalRowBg) });
-  });
-  g.region(rTotal, 0, rTotal, cols.length - 1, { border: true, bold: true, bg: normBg(st.totalRowBg) });
-  g.rowHeights[rTotal] = 28;
-  return rTotal + 1;
-}
-
-function drawPersonRetention(g, r0, model, NC, secLabel = '三') {
-  const st = model.style || {};
-  const color = st.summaryColor || '#DD0806';
-  g.set(r0, 0, `${secLabel}、保留款累計（本建案全部期別）`, { bold: true, align: 'left' });
-  g.merge(r0, 0, r0, NC - 1);
-  g.rowHeights[r0] = 26;
-  const r = r0 + 1;
-  const items = [
-    ['累計保留款', model.retention.keepTotal],
-    ['其中交屋保留款', model.retention.hkTotal, HK_BG],
-    ['已發還', model.retention.keepPaid],
-    ['未發還', model.retention.keepUnpaid, undefined, color],
-  ];
-  const labStyle = { bold: true, align: 'center', wrap: true, border: true, bg: normBg(st.headerBg) };
-  // 版位：欄數足夠時標籤／數值各佔兩欄；否則首個標籤佔兩欄（第 0 欄最窄），其餘各佔一欄
-  const wide = NC >= 16;
-  const layout = wide
-    ? [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]]   // [labStart, labEnd, valStart, valEnd]
-    : [[0, 1, 2, 2], [3, 3, 4, 4], [5, 5, 6, 6], [7, 7, 8, 8]];
-  const spanW = (c1, c2) => g.cols.slice(c1, c2 + 1).reduce((s, w) => s + w, 0);
-  let h = 28;
-  items.forEach(([lab, val, bg, valColor], i) => {
-    const [l1, l2, v1, v2] = layout[i];
-    if (v2 >= NC) return;
-    g.set(r, l1, lab, labStyle);
-    g.set(r, v1, toNum(val), { bold: true, align: 'right', fmt: '#,##0', border: true, color: valColor, bg });
-    if (l2 > l1) { g.region(r, l1, r, l2, labStyle); g.merge(r, l1, r, l2); }
-    if (v2 > v1) { g.region(r, v1, r, v2, { border: true, bg }); g.merge(r, v1, r, v2); }
-    h = Math.max(h, estimateRowHeight(lab, spanW(l1, l2), st.dataFontSize || 11, 28));
-  });
-  g.rowHeights[r] = h;
-  return r + 1;
-}
-
-function drawPersonNotes(g, start, model, columns) {
-  const rows = personNoteRows(model);
-  if (!rows.length) return;
-  g.set(start, 0, '當期備註', { bold: true, border: true });
-  g.merge(start, 0, start, columns - 1);
-  const width = g.cols.reduce((sum, w) => sum + w, 0);
-  rows.forEach((note, i) => {
-    const r = start + 1 + i;
-    const text = `第 ${note.period} 期：${note.text}`;
-    g.set(r, 0, text, { align: 'left', wrap: true, border: true });
-    g.merge(r, 0, r, columns - 1);
-    g.rowHeights[r] = estimateRowHeight(text, width, model.style?.dataFontSize || 11, 28);
-  });
-}
-
-/** 個人明細：單張合併 grid（PDF / 預覽） */
-const SEC = ['一', '二', '三'];
-
+/** 個人明細：單張 grid（預覽、PDF、Excel 共用，A4 直式） */
 export function buildPersonGrid(model) {
-  const cols = personDetailColumns(model);
-  const NC = model.showDetail ? Math.max(cols.length, PERSON_SUMMARY_COLS.length) : PERSON_SUMMARY_COLS.length;
-  const rc = personRowCounts(model);
-  const nRows = rc.head + (model.showDetail ? rc.detail + rc.spacer : 0) + rc.summary + rc.spacer + rc.retention + (personNoteRows(model).length ? personNoteRows(model).length + 1 : 0);
   const st = model.style || {};
-  const g = new Grid(model.person.name || '個人明細', NC, nRows, { fontFamily: st.fontFamily || 'DFKai-SB', sz: st.dataFontSize || 11 });
+  const T = { ...PERSON_THEME, accent: st.accentColor || PERSON_THEME.accent, headBg: normBg(st.headerBg) || PERSON_THEME.headBg,
+    totalBg: normBg(st.totalRowBg) || PERSON_THEME.totalBg, net: st.summaryColor || PERSON_THEME.net };
+  const sz = st.dataFontSize || 12;
+  const hsz = st.headerFontSize || 12;
+  const small = Math.max(9, sz - 2);
+  const cols = personDetailColumns(model);
+  const NC = Math.max(Math.round(PERSON_PAGE_PX / PERSON_UNIT), Math.ceil(cols.reduce((s, c) => s + c.w, 0) / PERSON_UNIT));
+  const notes = personNoteRows(model);
+  const allocSpans = weightSpans([100, 150, 44, 70, 356], NC);
+  const allocRows = model.allocations?.length ? personAllocationLayout(model, allocSpans) : [];
+  const maxRows = 40 + model.rows.length * 2 + allocRows.length + model.periodSummaries.length * 2 + notes.length;
+  const g = new Grid(model.person.name || '個人明細', NC, maxRows, { fontFamily: st.fontFamily || 'Microsoft JhengHei', sz });
+  g.cols = new Array(NC).fill(PERSON_UNIT);
+  const full = [[0, NC - 1]];
+  let r = 0;
+
+  /** 一列：各區段放值並合併，styles 可為單一樣式或逐段樣式 */
+  const put = (spans, values, styles, h) => {
+    spans.forEach(([c1, c2], i) => {
+      const s = Array.isArray(styles) ? (styles[i] || {}) : styles;
+      g.region(r, c1, r, c2, s);
+      if (values[i] !== undefined && values[i] !== null) g.set(r, c1, values[i], s);
+      if (c2 > c1) g.merge(r, c1, r, c2);
+    });
+    g.rowHeights[r] = h || 26;
+    r += 1;
+  };
+  const gap = (h = 12) => { g.rowHeights[r] = h; r += 1; };
+  const heading = text => put(full, [text], { sz: 14, bold: true, color: T.accent, align: 'left' }, 30);
+  const sec = ['一', '二', '三', '四', '五'];
+  let secIdx = 0;
+  const nextSec = () => sec[secIdx++];
+
+  // ---- 標題 ----
+  const singleDate = model.periodSummaries.length === 1 ? model.periodSummaries[0].requestDate : '';
+  const p = model.person;
+  put(full, [model.title], { sz: st.titleFontSize || 20, bold: true, color: T.accent, align: 'left' }, 40);
+  put(full, [`${model.subtitle}${singleDate ? `　請佣日期 ${singleDate}` : ''}`], { sz: 13, color: T.muted, align: 'left' }, 24);
+  put(full, [`姓名　${p.name}${p.sourceProjectName ? `（${p.sourceProjectName}）` : ''}　　職務　${p.role || '—'}　　建案　${model.projectName}`], { sz: 13, bold: true, color: T.ink, align: 'left' }, 28);
+  put(full, [`產出日期 ${model.generatedAt}　｜　本明細僅含本人獎金　｜　金額單位：元`], { sz: small, color: T.muted, align: 'left' }, 20);
+  gap(14);
+
+  // ---- 重點：獎金小計 − 扣款 ＝ 實發 ----
+  heading(model.periods.length > 1 ? `所選期別合計（第 ${model.periodsLabel} 期）` : '本期獎金');
+  const t = model.totals;
+  const boxSpans = weightSpans([1, 1, 1, 1, 1.3], NC);
+  const boxLabels = ['獎金小計', `－ 保留款${pctLabel(model.rows, 'keepPct')}`, `－ 稅金${pctLabel(model.rows, 'taxPct')}`, `－ 二代健保${pctLabel(model.rows, 'nhiPct')}`, '＝ 實發金額'];
+  const boxLab = { sz: small + 1, color: T.muted, bg: T.zebra, align: 'center' };
+  put(boxSpans, boxLabels, [boxLab, boxLab, boxLab, boxLab, { ...boxLab, color: T.net, bold: true, bg: T.netBg }], 26);
+  const boxVal = { sz: 17, bold: true, color: T.ink, bg: T.zebra, align: 'center', fmt: '#,##0' };
+  put(boxSpans, [t.subtotal, t.keep, t.tax, t.nhi, t.net], [boxVal, boxVal, boxVal, boxVal, { ...boxVal, sz: 22, color: T.net, bg: T.netBg }], 42);
+  if (Math.round(toNum(t.hk))) put(full, [`※ 保留款中含交屋保留款 ${money(t.hk)} 元`], { sz: small, color: T.muted, align: 'left' }, 22);
+  gap(16);
+
+  // ---- 每戶獎金明細 ----
   if (model.showDetail) {
-    cols.forEach((c, i) => { g.cols[i] = c.width; });
-    for (let i = cols.length; i < NC; i++) g.cols[i] = 60;
-  } else {
-    PERSON_SUMMARY_COLS.forEach((c, i) => { g.cols[i] = c.width; });
+    heading(`${nextSec()}、每戶獎金明細${model.detailScope === 'all' ? '' : '（僅列本人銷售之戶別）'}`);
+    const spans = weightSpans(cols.map(c => c.w), NC);
+    const firstCat = cols.findIndex(c => c.catKey);
+    const infoEnd = (firstCat < 0 ? cols.findIndex(c => c.key === 'subtotal') : firstCat) - 1;
+    const tailStart = cols.findIndex(c => c.key === 'subtotal');
+    const headStyle = { sz: hsz, bold: true, color: T.ink, bg: T.headBg, align: 'center', wrap: true };
+    put(spans, cols.map(c => c.label), headStyle, model.categories.length ? 40 : 30);
+    const cellStyle = (c, bg, refund = false) => ({
+      sz, bg, align: c.num ? 'right' : 'center', fmt: c.num ? '#,##0' : undefined, wrap: !c.num && !c.nowrap, nowrap: !!c.nowrap,
+      bold: !!c.bold, color: refund ? T.neg : (c.net ? T.net : T.ink),
+    });
+    const nonUniform = ['keep', 'tax', 'nhi'].filter(k => uniformPct(model.rows, `${k}Pct`) === null);
+    const dateOf = per => model.periodSummaries.find(x => x.period === per)?.requestDate || '';
+    let lastPeriod = null;
+    (model.detailRows || []).forEach((row, i) => {
+      // 多期：每期第一戶前加期別分組列
+      if (model.periods.length > 1 && row.period !== lastPeriod) {
+        lastPeriod = row.period;
+        put(full, [`第 ${row.period} 期${dateOf(row.period) ? `　請佣日期 ${dateOf(row.period)}` : ''}`], { sz, bold: true, color: T.accent, align: 'left' }, 26);
+      }
+      const bg = i % 2 ? T.zebra : undefined;
+      put(spans, cols.map(c => c.get(row) ?? ''), cols.map(c => cellStyle(c, bg, row.refund)), row.refund ? 36 : 28);
+      // 本人分配比例（類別金額下方）＋備註
+      const remark = [nonUniform.map(k => `${k === 'keep' ? '保留' : k === 'tax' ? '稅' : '健保'}${row[`${k}Pct`]}%`).join('／'), row.remark].filter(Boolean).join('　');
+      const hasShare = Object.keys(row.shares || {}).length > 0;
+      if (!hasShare && !remark) return;
+      const subSpans = [[0, spans[infoEnd][1]], ...cols.slice(infoEnd + 1, tailStart).map((c, k) => spans[infoEnd + 1 + k]), [spans[tailStart][0], NC - 1]];
+      const subVals = [hasShare ? '本人分配比例' : '', ...cols.slice(infoEnd + 1, tailStart).map(c => {
+        const sh = row.shares?.[c.catKey];
+        return sh ? allocShareText(sh.pct, sh.locked) : '';
+      }), remark ? `備註：${remark}` : ''];
+      const sub = { sz: small, color: T.muted, bg };
+      const remarkW = (NC - spans[tailStart][0]) * PERSON_UNIT;
+      put(subSpans, subVals, [{ ...sub, align: 'right' }, ...cols.slice(infoEnd + 1, tailStart).map(() => ({ ...sub, color: T.accent, align: 'right' })), { ...sub, align: 'left', wrap: true }],
+        Math.max(22, estimateRowHeight(subVals[subVals.length - 1], remarkW, small, 22)));
+    });
+    const sumVals = (label, src) => {
+      const vals = [label];
+      cols.slice(infoEnd + 1).forEach(c => vals.push(c.sum ? toNum(c.sumGet ? c.sumGet(src) : src[c.key]) : ''));
+      return vals;
+    };
+    const sumSpans = [[0, spans[infoEnd][1]], ...spans.slice(infoEnd + 1)];
+    if (model.otherAggregate) {
+      const bg = (model.detailRows.length % 2) ? T.zebra : undefined;
+      put(sumSpans, sumVals(`其他戶別 ${model.otherAggregate.count} 戶（非本人銷售）`, model.otherAggregate),
+        [{ sz, color: T.muted, bg, align: 'left' }, ...cols.slice(infoEnd + 1).map(c => cellStyle(c, bg))], 28);
+    }
+    put(sumSpans, sumVals('合計', t), [{ sz, bold: true, color: T.ink, bg: T.totalBg, align: 'center' },
+      ...cols.slice(infoEnd + 1).map(c => ({ ...cellStyle(c, T.totalBg), bold: true }))], 30);
+    gap(16);
   }
 
-  let sec = 0;
-  let r = drawPersonHead(g, 0, model, NC);
-  if (model.showDetail) {
-    r = drawPersonDetail(g, r, model, cols, SEC[sec++]);
-    g.rowHeights[r] = 14; r += 1;
+  // ---- 獎金分配比例 ----
+  if (allocRows.length) {
+    heading(`${nextSec()}、獎金分配比例（多人分配之類別）`);
+    put(allocSpans, ['獎金類別', '戶別', '戶數', '本人比例', '分配人員'], { sz: hsz, bold: true, color: T.ink, bg: T.headBg, align: 'center' }, 30);
+    allocRows.forEach(row => {
+      const bg = row.group % 2 ? T.zebra : undefined;
+      const text = { sz, bg, color: T.ink, align: 'left', wrap: true };
+      put(allocSpans, row.cells, [{ ...text, align: 'center', color: row.cont ? T.muted : T.ink }, text, { ...text, align: 'center', fmt: '#,##0' },
+        { ...text, align: 'center', bold: true, color: T.accent }, text], row.h);
+    });
+    gap(16);
   }
-  r = drawPersonSummary(g, r, model, NC, SEC[sec++]);
-  g.rowHeights[r] = 14; r += 1;
-  r = drawPersonRetention(g, r, model, NC, SEC[sec++]);
-  drawPersonNotes(g, r, model, NC);
-  return g.toJSON();
+
+  // ---- 期別彙總（多期才列） ----
+  if (model.periodSummaries.length > 1) {
+    heading(`${nextSec()}、期別彙總`);
+    const ps = [
+      { label: '期別', w: 50, get: x => x.period }, { label: '請佣日期', w: 80, get: x => x.requestDate },
+      { label: '戶數', w: 50, num: true, get: x => x.count }, { label: '獎金小計', w: 90, num: true, get: x => x.subtotal },
+      { label: '保留款', w: 80, num: true, get: x => x.keep }, { label: '稅金', w: 70, num: true, get: x => x.tax },
+      { label: '二代健保', w: 80, num: true, get: x => x.nhi }, { label: '實發金額', w: 100, num: true, net: true, get: x => x.net },
+    ];
+    const spans = weightSpans(ps.map(c => c.w), NC);
+    put(spans, ps.map(c => c.label), { sz: hsz, bold: true, color: T.ink, bg: T.headBg, align: 'center' }, 30);
+    const style = (c, bg, bold) => ({ sz, bg, bold: bold || !!c.net, color: c.net ? T.net : T.ink, align: c.num ? 'right' : 'center', fmt: c.num ? '#,##0' : undefined });
+    model.periodSummaries.forEach((x, i) => put(spans, ps.map(c => c.get(x)), ps.map(c => style(c, i % 2 ? T.zebra : undefined)), 28));
+    const tot = { period: '合計', requestDate: '', count: model.rows.length, ...t };
+    put(spans, ps.map(c => c.get(tot)), ps.map(c => style(c, T.totalBg, true)), 30);
+    gap(16);
+  }
+
+  // ---- 保留款累計 ----
+  heading(`${nextSec()}、保留款累計（本建案全部期別）`);
+  const ret = model.retention;
+  const items = [['累計保留款', ret.keepTotal], ...(Math.round(toNum(ret.hkTotal)) ? [['其中交屋保留款', ret.hkTotal]] : []), ['已發還', ret.keepPaid], ['未發還', ret.keepUnpaid, true]];
+  const retSpans = weightSpans(items.map(() => 1), NC);
+  put(retSpans, items.map(x => x[0]), items.map(x => ({ sz: small + 1, color: x[2] ? T.accent : T.muted, bold: !!x[2], bg: x[2] ? T.headBg : T.zebra, align: 'center' })), 26);
+  put(retSpans, items.map(x => toNum(x[1])), items.map(x => ({ sz: 16, bold: true, color: x[2] ? T.accent : T.ink, bg: x[2] ? T.headBg : T.zebra, align: 'center', fmt: '#,##0' })), 38);
+
+  // ---- 當期備註 ----
+  if (notes.length) {
+    gap(16);
+    heading('當期備註');
+    notes.forEach((note, i) => {
+      const text = `第 ${note.period} 期：${note.text}`;
+      put(full, [text], { sz, color: T.ink, align: 'left', wrap: true, bg: i % 2 ? T.zebra : undefined }, estimateRowHeight(text, NC * PERSON_UNIT, sz, 26));
+    });
+  }
+
+  // 收斂實際列數
+  g.nRows = r;
+  g.cells.length = r;
+  g.rowHeights.length = r;
+  return { ...g.toJSON(), print: { orientation: 'portrait', fitToHeight: 0 } };
 }
 
-/** 個人明細：Excel 兩張工作表（彙總 ＋ 每戶明細） */
+/** 個人明細 Excel：與 PDF／預覽同一張（A4 直式、寬度一頁） */
 export function buildPersonExcelGrids(model) {
-  const st = model.style || {};
-  const base = { fontFamily: st.fontFamily || 'DFKai-SB', sz: st.dataFontSize || 11 };
-  const rc = personRowCounts(model);
-
-  // 彙總
-  const NC1 = PERSON_SUMMARY_COLS.length;
-  const g1 = new Grid('彙總', NC1, rc.head + rc.summary + rc.spacer + rc.retention + (personNoteRows(model).length ? personNoteRows(model).length + 1 : 0), base);
-  PERSON_SUMMARY_COLS.forEach((c, i) => { g1.cols[i] = c.width; });
-  let r = drawPersonHead(g1, 0, model, NC1);
-  r = drawPersonSummary(g1, r, model, NC1, '一');
-  g1.rowHeights[r] = 14; r += 1;
-  r = drawPersonRetention(g1, r, model, NC1, '二');
-  drawPersonNotes(g1, r, model, NC1);
-  if (!model.showDetail) return [g1.toJSON()];
-
-  // 每戶明細（本人為銷售人員之戶別）
-  const cols = personDetailColumns(model);
-  const NC2 = cols.length;
-  const g2 = new Grid('每戶明細', NC2, rc.head + rc.detail, base);
-  cols.forEach((c, i) => { g2.cols[i] = c.width; });
-  r = drawPersonHead(g2, 0, model, NC2);
-  drawPersonDetail(g2, r, model, cols, '三');
-
-  return [g1.toJSON(), g2.toJSON()];
+  return [buildPersonGrid(model)];
 }
 
 // ================= Grid → Excel =================
@@ -808,7 +778,7 @@ function gridsToWorkbook(grids) {
 /** 產生 xlsx Blob：A4 橫式、列印範圍＝使用範圍、寬高各 1 頁、窄邊界、水平置中 */
 export async function gridsToExcelBlob(grids) {
   const out = XLSX.write(gridsToWorkbook(grids), { bookType: 'xlsx', type: 'array' });
-  return applyPrintSetup(out);
+  return applyPrintSetup(out, grids.map(g => g.print));
 }
 
 export async function exportGridsToExcel(grids, fileName) {
@@ -850,7 +820,9 @@ export function gridToHtml(grid) {
   (grid.unitRows || []).forEach((ur, idx) => { urMap[ur.r] = idx; });
 
   const colTags = grid.cols.map(w => `<col style="width:${Math.round(w * 1.05)}px">`).join('');
-  let html = `<table class="comm-grid" style="border-collapse:collapse;table-layout:fixed;font-family:'${grid.base.fontFamily || 'DFKai-SB'}','Noto Serif TC',serif">` + `<colgroup>${colTags}</colgroup>`;
+  const family = grid.base.fontFamily || 'DFKai-SB';
+  const fallback = /Kai|楷|Serif|明/.test(family) ? "'Noto Serif TC',serif" : "'Noto Sans TC','PingFang TC',sans-serif";
+  let html = `<table class="comm-grid" style="border-collapse:collapse;table-layout:fixed;font-family:'${family}',${fallback}">` + `<colgroup>${colTags}</colgroup>`;
   for (let r = 0; r < grid.nRows; r++) {
     html += `<tr style="height:${grid.rowHeights[r]}px">`;
     for (let c = 0; c < grid.nCols; c++) {

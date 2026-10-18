@@ -10,13 +10,15 @@ import JSZip from 'jszip';
 /** Excel「窄」邊界（英吋） */
 export const NARROW_MARGINS = { left: 0.25, right: 0.25, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 };
 
-const PAGE_SETUP = '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="1"/>';
+/** 預設 A4 橫式、寬高各 1 頁；print 可指定 { orientation, fitToHeight }（fitToHeight 0＝高度不限頁數） */
+const pageSetup = (print = {}) => `<pageSetup paperSize="9" orientation="${print.orientation === 'portrait' ? 'portrait' : 'landscape'}" fitToWidth="1" fitToHeight="${print.fitToHeight ?? 1}"/>`;
 const PRINT_OPTIONS = '<printOptions horizontalCentered="1"/>';
 const FIT_TO_PAGE = '<pageSetUpPr fitToPage="1"/>';
 const DEFAULT_MARGINS = `<pageMargins left="${NARROW_MARGINS.left}" right="${NARROW_MARGINS.right}" top="${NARROW_MARGINS.top}" bottom="${NARROW_MARGINS.bottom}" header="${NARROW_MARGINS.header}" footer="${NARROW_MARGINS.footer}"/>`;
 
-/** 單張工作表 XML：A4 橫式、寬高各 1 頁、水平置中（垂直靠上為預設） */
-export function patchSheetXml(xml) {
+/** 單張工作表 XML：A4 橫式（或 print 指定）、寬高各 1 頁、水平置中（垂直靠上為預設） */
+export function patchSheetXml(xml, print) {
+  const PAGE_SETUP = pageSetup(print);
   let out = String(xml);
   if (/<pageSetup\b/.test(out)) return out; // 已有設定就不動
 
@@ -42,13 +44,13 @@ export function patchSheetXml(xml) {
   return out;
 }
 
-/** 對 xlsx 二進位（ArrayBuffer / Uint8Array）的所有工作表套用列印設定，回傳 Blob */
-export async function applyPrintSetup(xlsxBinary) {
+/** 對 xlsx 二進位（ArrayBuffer / Uint8Array）的所有工作表套用列印設定，回傳 Blob；prints[i] 對應第 i+1 張工作表 */
+export async function applyPrintSetup(xlsxBinary, prints = []) {
   const zip = await JSZip.loadAsync(xlsxBinary);
   const sheets = Object.keys(zip.files).filter(p => /^xl\/worksheets\/sheet\d+\.xml$/.test(p));
   for (const p of sheets) {
     const xml = await zip.file(p).async('string');
-    zip.file(p, patchSheetXml(xml));
+    zip.file(p, patchSheetXml(xml, prints[Number(p.match(/sheet(\d+)\.xml$/)[1]) - 1]));
   }
   return zip.generateAsync({
     type: 'blob',
