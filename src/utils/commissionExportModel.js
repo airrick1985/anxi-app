@@ -1,4 +1,4 @@
-import { periodPersonNotes, personNoteHistory } from './commissionPeriodBonus';
+import { periodPersonNotes, personNoteHistory, summarizePeriodBonus } from './commissionPeriodBonus';
 /**
  * 請佣獎金 匯出模型（docs/請佣獎金系統-spec.md §7）
  * 前端預覽（HTML）、Excel（xlsx-js-style）、後端 PDF（pdfkit）三端共用同一 model，
@@ -600,6 +600,52 @@ export function buildMergedBonusModel({ sources = [], ...opts }) {
     });
   });
   return model;
+}
+
+// ================= 每人當期獎金結果 model =================
+/**
+ * 與工作台「每人當期獎金結果」同一份資料：該期所有方案已送出獎金（排除作廢）＋本次草稿（拉回修改的原筆不重複）。
+ * 獎金項目每類別一欄（只列有金額者，依類別順序）；扣款比例各筆一致時顯示該比例，不一致為 null（依戶別）。
+ * @param {object} opts - { period, saved, drafts, replacingIds, categoryLabels: {key: label}, categoryOrder: [key],
+ *   sorter, periodNotes, noteHistory, projectName, style, paper, orientation }
+ */
+export function buildPeriodResultModel(opts) {
+  const {
+    period, saved = [], drafts = [], replacingIds = [], categoryLabels = {}, categoryOrder = [], sorter = null,
+    periodNotes = [], noteHistory = {}, projectName = '', style = {}, paper = 'A3', orientation = 'landscape',
+  } = opts;
+  const summary = summarizePeriodBonus({ period, saved, drafts, replacingIds, sorter, categoryOrder });
+  const replacing = new Set(replacingIds.filter(Boolean));
+  const rows = [...saved.filter(b => b.status !== 'voided' && !replacing.has(b.commissionRecordId)), ...drafts]
+    .filter(b => toNum(b.period) === toNum(period));
+  const pctOf = (key, field) => {
+    const set = new Set(rows.filter(b => (b.personKey || b.name) === key && toNum(b.subtotal) !== 0).map(b => toNum(b[field])));
+    return set.size === 1 ? [...set][0] : (set.size ? null : 0);
+  };
+
+  const byCatTotal = {};
+  summary.people.forEach(p => Object.entries(p.byCat || {}).forEach(([k, v]) => { byCatTotal[k] = (byCatTotal[k] || 0) + toNum(v); }));
+  const usedKeys = Object.keys(byCatTotal).filter(k => summary.people.some(p => Math.round(toNum(p.byCat?.[k])) !== 0));
+  const idx = k => { const i = categoryOrder.indexOf(k); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+  const categories = usedKeys.sort((a, b) => idx(a) - idx(b)).map(k => ({ key: k, label: categoryLabels[k] || k }));
+
+  const people = summary.people.map(p => ({
+    personKey: p.personKey, name: p.name,
+    byCat: Object.fromEntries(categories.map(c => [c.key, Math.round(toNum(p.byCat?.[c.key]))])),
+    keepPct: pctOf(p.personKey, 'keepPct'), taxPct: pctOf(p.personKey, 'taxPct'), nhiPct: pctOf(p.personKey, 'nhiPct'),
+    subtotal: p.subtotal, keep: p.keep, tax: p.tax, nhi: p.nhi, net: p.net,
+    notes: periodPersonNotes(periodNotes, period, p.personKey, p.legacyNotes || [], noteHistory[p.personKey] || [])
+      .map(n => String(n || '').trim()).filter(Boolean),
+  }));
+  const minguoYM = firstMinguoYM(rows);
+  return {
+    docType: 'periodResult', period, projectName,
+    title: `${projectName}－每人當期獎金結果　第 ${period} 期${titleMonthSuffix(minguoYM)}`,
+    sheetName: '每人當期獎金結果',
+    categories, people,
+    totals: { ...summary.totals, byCat: Object.fromEntries(categories.map(c => [c.key, Math.round(byCatTotal[c.key])])) },
+    style, paper, orientation,
+  };
 }
 
 // ================= 個人獎金明細 model =================

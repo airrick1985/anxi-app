@@ -12,13 +12,13 @@ import { combineCommissionGrids } from '../../src/utils/commissionExportGrouping
 
 const server = await createServer({ optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true }, appType: 'custom' });
 try {
-  const { buildBonusModel, buildMergedBonusModel, buildPersonModel, exportProjectNameOf } = await server.ssrLoadModule('/src/utils/commissionExportModel.js');
+  const { buildBonusModel, buildMergedBonusModel, buildPersonModel, buildPeriodResultModel, makePersonSorter, exportProjectNameOf } = await server.ssrLoadModule('/src/utils/commissionExportModel.js');
   const XLSX = await import('xlsx-js-style');
   const calc = await server.ssrLoadModule('/src/utils/commissionCalculation.js');
   const { draftClaimRecord } = await server.ssrLoadModule('/src/utils/commissionDraftRecords.js');
   const service = fs.readFileSync(new URL('../../src/services/commissionExcelService.js', import.meta.url), 'utf8')
     .replace(/^import .*;$/gm, '').replace(/export (async )?function/g, '$1function');
-  const { buildBonusGrids, buildPersonGrid, buildPersonExcelGrids, gridsToExcelBlob } = vm.runInNewContext(`${service}\n({ buildBonusGrids, buildPersonGrid, buildPersonExcelGrids, gridsToExcelBlob })`,
+  const { buildBonusGrids, buildPeriodResultGrid, buildPersonGrid, buildPersonExcelGrids, gridsToExcelBlob } = vm.runInNewContext(`${service}\n({ buildBonusGrids, buildPeriodResultGrid, buildPersonGrid, buildPersonExcelGrids, gridsToExcelBlob })`,
     { XLSX: XLSX.default, toNum: calc.toNum, money: calc.money, pctText: calc.pctText, applyPrintSetup, NARROW_MARGINS });
   const settings = { bonusCategories: [{ key: 'sales', label: '個獎', mode: 'individual', enabled: true, ratePct: 1 }] };
   const records = [
@@ -445,6 +445,50 @@ try {
     assert.equal(listed.join('、').split('、').length, 61);
     const pdf = await buildBonusPdf({ grids: [bigGrid], paper: 'A4', orientation: 'portrait' });
     assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  });
+  test('每人當期獎金結果：與工作台同資料（跨方案、排除作廢、草稿取代原筆），每類別一欄、扣款比例不一致顯示依戶別', async () => {
+    const b = (id, planId, period, personKey, amounts, extra = {}) => {
+      const subtotal = Object.values(amounts).reduce((x, y) => x + y, 0);
+      return { commissionRecordId: id, planId, period, personKey, name: personKey, amounts, subtotal,
+        keep: subtotal / 10, tax: 0, nhi: 0, net: subtotal * 0.9, keepPct: 10, taxPct: 0, nhiPct: 0, requestDate: '2026-10-01', ...extra };
+    };
+    const saved = [
+      b('g1', 'general', 3, '甲', { sales: 1000, team: 200 }),
+      b('p1', 'package', 3, '甲', { pkg: 500 }, { keepPct: 5, keep: 25, net: 475 }),
+      b('g2', 'general', 3, '乙', { team: 200, apm: 300 }, { remark: '舊備註' }),
+      b('g3', 'general', 3, '乙', { team: 999 }, { status: 'voided' }),
+      b('g4', 'general', 2, '乙', { team: 777 }),
+      b('g5', 'general', 3, '丙', { apm: 100 }),
+    ];
+    const drafts = [b('g5x', 'general', 3, '丙', { apm: 150 })];
+    const model = buildPeriodResultModel({
+      period: 3, saved, drafts, replacingIds: ['g5'],
+      categoryLabels: { sales: '銷售個獎', team: '銷售團獎', apm: '副專獎金', pkg: '配套獎金' },
+      categoryOrder: ['apm', 'sales', 'team'],
+      sorter: makePersonSorter([], ['甲', '乙', '丙']),
+      periodNotes: [{ period: 3, personKey: '甲', notes: ['第一行', '第二行'] }],
+      projectName: '測試建案', style: {},
+    });
+    assert.deepEqual(model.categories.map(c => c.label), ['副專獎金', '銷售個獎', '銷售團獎', '配套獎金']);
+    assert.deepEqual(model.people.map(p => [p.name, p.subtotal, p.byCat.apm, p.byCat.pkg]), [['乙', 500, 300, 0], ['丙', 150, 150, 0], ['甲', 1700, 0, 500]]);
+    assert.deepEqual(model.people.map(p => p.keepPct), [10, 10, null]);
+    assert.deepEqual(model.people.map(p => p.notes), [['舊備註'], [], ['第一行', '第二行']]);
+    assert.equal(model.totals.subtotal, 2350);
+    assert.equal(model.totals.byCat.team, 400);
+    assert.equal(model.title, '測試建案－每人當期獎金結果　第 3 期（115 年 10 月）');
+
+    const grid = buildPeriodResultGrid(model);
+    assert.deepEqual(Array.from(grid.cells[1], c => c.v), ['人員', '副專獎金', '銷售個獎', '銷售團獎', '配套獎金', '保留款％', '稅金％', '二代健保％', '小計', '保留款', '稅金', '二代健保', '實發', '當期備註']);
+    assert.deepEqual(Array.from(grid.cells[4], c => c.v).slice(0, 9), ['甲', '', 1000, 200, 500, '依戶別', '0%', '0%', 1700]);
+    assert.equal(grid.cells[4][13].v, '第一行\n第二行');
+    assert.deepEqual(Array.from(grid.cells[5], c => c.v).slice(0, 5), ['合計', 450, 1000, 400, 500]);
+    assert.equal(grid.cells[5][8].v, 2350);
+    const workbook = XLSX.default.read(await (await gridsToExcelBlob([grid])).arrayBuffer(), { type: 'array' });
+    assert.deepEqual(workbook.SheetNames, ['每人當期獎金結果']);
+    const pdf = await buildBonusPdf({ grids: [grid], paper: 'A3', orientation: 'landscape' });
+    assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+    const empty = buildPeriodResultGrid(buildPeriodResultModel({ period: 9, saved, projectName: '測試建案' }));
+    assert.equal(empty.cells[2][0].v, '本期尚無獎金資料');
   });
   test('沒有可匯出資料時不建立空白合併工作表', () => {
     assert.equal(combineCommissionGrids([], '獎金'), null);

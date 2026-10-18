@@ -425,6 +425,66 @@ export function buildBonusGrids(model) {
   return model.groups.map(gr => buildBonusGroupGrid(gr, model));
 }
 
+// ================= 每人當期獎金結果 grid（獎金表最後一頁） =================
+/** 欄位同工作台「每人當期獎金結果」：人員｜各類別｜扣款比例｜小計｜扣款｜實發｜當期備註 */
+export function buildPeriodResultGrid(model) {
+  const st = model.style || {};
+  const sz = st.dataFontSize || 12;
+  const pctCell = v => (v === null ? '依戶別' : `${pctText(v)}%`);
+  const cols = [
+    { label: '人員', w: 90, align: 'center', get: p => p.name },
+    ...model.categories.map(c => ({ label: c.label, w: 96, num: true, get: p => p.byCat[c.key], sumGet: t => t.byCat[c.key] })),
+    { label: '保留款％', w: 70, align: 'center', get: p => pctCell(p.keepPct) },
+    { label: '稅金％', w: 64, align: 'center', get: p => pctCell(p.taxPct) },
+    { label: '二代健保％', w: 92, align: 'center', get: p => pctCell(p.nhiPct) },
+    ...[['小計', 'subtotal', 100], ['保留款', 'keep', 90], ['稅金', 'tax', 84], ['二代健保', 'nhi', 84], ['實發', 'net', 100]]
+      .map(([label, key, w]) => ({ label, w, num: true, bold: key === 'subtotal' || key === 'net', get: p => p[key], sumGet: t => t[key] })),
+    { label: '當期備註', w: 300, align: 'left', wrap: true, get: p => p.notes.join('\n') },
+  ];
+  const NC = cols.length;
+  const n = model.people.length;
+  const nRows = 2 + Math.max(n, 1) + (n ? 1 : 0);
+  const g = new Grid(model.sheetName, NC, nRows, { fontFamily: st.fontFamily || 'DFKai-SB', sz });
+  cols.forEach((c, i) => { g.cols[i] = c.w; });
+  const border = st.borders !== false;
+  const headerStyle = { sz: st.headerFontSize || 12, bold: true, align: 'center', wrap: true, bg: normBg(st.headerBg) || '#c4bd97', border };
+
+  g.set(0, 0, model.title, { sz: st.titleFontSize || 20, bold: true, align: 'center' });
+  g.merge(0, 0, 0, NC - 1);
+  g.rowHeights[0] = 38;
+  cols.forEach((c, i) => g.set(1, i, c.label, headerStyle));
+  g.rowHeights[1] = 30;
+
+  model.people.forEach((p, i) => {
+    const r = 2 + i;
+    let h = 26;
+    cols.forEach((c, ci) => {
+      const v = c.get(p);
+      g.set(r, ci, c.num ? (Math.round(toNum(v)) || '') : (v ?? ''), {
+        align: c.align || 'right', fmt: c.num ? '#,##0' : undefined, wrap: !!c.wrap, bold: !!c.bold, border,
+        color: c.num && toNum(v) < 0 ? '#C00000' : undefined,
+      });
+      if (c.wrap) h = Math.max(h, estimateRowHeight(v, c.w, sz, 26));
+    });
+    g.rowHeights[r] = h;
+  });
+  if (!n) {
+    g.set(2, 0, '本期尚無獎金資料', { align: 'center', border });
+    g.merge(2, 0, 2, NC - 1);
+    return g.toJSON();
+  }
+  const rt = 2 + n;
+  const totalBg = normBg(st.totalRowBg) || '#ffff00';
+  g.region(rt, 0, rt, NC - 1, { bold: true, bg: totalBg, border });
+  g.set(rt, 0, '合計', { bold: true, align: 'center', bg: totalBg, border });
+  cols.forEach((c, ci) => {
+    if (!c.num) return;
+    g.set(rt, ci, Math.round(toNum(c.sumGet(model.totals))), { bold: true, align: 'right', fmt: '#,##0', bg: totalBg, border });
+  });
+  g.rowHeights[rt] = 28;
+  return g.toJSON();
+}
+
 // ================= 個人獎金明細 grid =================
 // A4 直式、清爽配色：細基準欄（每欄 PERSON_UNIT px）＋各區塊以合併格自行分欄；無框線，以斑馬底分列。
 const PERSON_UNIT = 10;

@@ -259,12 +259,12 @@ import {
   generateCommissionPdfAPI, sendCommissionPersonEmailAPI, setCommissionPersonOrder, setCommissionSettings, setCommissionUnitOrder,
 } from '@/api';
 import {
-  buildClaimModel, buildBonusModel, buildMergedBonusModel, buildPersonModel,
+  buildClaimModel, buildBonusModel, buildMergedBonusModel, buildPersonModel, buildPeriodResultModel, makePersonSorter,
   defaultClaimConfig, defaultBonusConfig, defaultPersonConfig,
   periodsLabel, listPersonsInPeriods, withProjectName, exportProjectNameOf,
 } from '@/utils/commissionExportModel';
 import {
-  buildClaimGrid, buildBonusGrids, buildPersonGrid, buildPersonExcelGrids,
+  buildClaimGrid, buildBonusGrids, buildPeriodResultGrid, buildPersonGrid, buildPersonExcelGrids,
   exportGridsToExcel, gridsToExcelBlob,
 } from '@/services/commissionExcelService';
 import { toNum, fillPattern } from '@/utils/commissionCalculation';
@@ -688,18 +688,38 @@ const mergedBonusModel = computed(() => {
   });
 });
 
+/** 每人當期獎金結果（獎金表最後一頁）：同工作台，該期所有方案已送出獎金，每人一列 */
+const periodResultGrid = computed(() => {
+  if (docType.value !== 'bonus' || !period.value) return null;
+  const labels = {};
+  [props.settings, ...Object.values(groupingSettings.value)].forEach(s => (s?.bonusCategories || []).forEach(c => {
+    if (!labels[c.key]) labels[c.key] = c.label || c.key;   // 目前方案名稱優先
+  }));
+  const order = (props.settings.bonusCategories || []).filter(c => c.enabled !== false)
+    .slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map(c => c.key);
+  const bonusCfg = { ...defaultBonusConfig(exportSettings.value), ...(currentConfig.value || {}) };
+  return buildPeriodResultGrid(buildPeriodResultModel({
+    period: period.value, saved: props.allBonusRecords, categoryLabels: labels, categoryOrder: order,
+    sorter: makePersonSorter(props.personOrder, personnelOrder.value),
+    periodNotes: props.periodNotes, noteHistory: noteHistoryAll.value,
+    projectName: props.projectName, style: { ...defaultBonusConfig(exportSettings.value).style, ...(bonusCfg.style || {}) },
+  }));
+});
+const withPeriodResult = list => (periodResultGrid.value ? [...list, periodResultGrid.value] : list);
+
 const grids = computed(() => {
   try {
     if (!activeRecords.value.length) return [];
     if (isPerson.value) return personModels.value.map(m => buildPersonGrid(m));
     if (groupingMode.value !== 'current') {
-      if (groupingMode.value === 'mergedRows') return mergedBonusModel.value ? buildBonusGrids(mergedBonusModel.value) : [];
+      if (groupingMode.value === 'mergedRows') return mergedBonusModel.value ? withPeriodResult(buildBonusGrids(mergedBonusModel.value)) : [];
       const documents = groupedDocuments.value;
       if (groupingMode.value === 'combined') {
         const combined = combineCommissionGrids(documents.flatMap(d => d.grids), docType.value === 'claim' ? '合併請佣總表' : '合併獎金表');
-        return combined ? [combined] : [];
+        return combined ? withPeriodResult([combined]) : [];
       }
-      return documents.flatMap(d => d.grids.map(g => ({ ...g, name: `${d.plan.name}・${g.name}` })));
+      const list = documents.flatMap(d => d.grids.map(g => ({ ...g, name: `${d.plan.name}・${g.name}` })));
+      return list.length ? withPeriodResult(list) : [];
     }
     if (docType.value === 'claim') {
       return claimModel.value ? [buildClaimGrid(claimModel.value)] : [];
@@ -708,7 +728,7 @@ const grids = computed(() => {
     const list = [];
     if (bonusModel.value.includeClaimSheet && claimModel.value) list.push(buildClaimGrid(claimModel.value));
     list.push(...buildBonusGrids(bonusModel.value));
-    return list;
+    return withPeriodResult(list);
   } catch (e) {
     console.error('[CommissionExportCenter] 版面產生失敗:', e);
     return [];
@@ -789,7 +809,7 @@ async function downloadExcel() {
     }
     if (groupingMode.value === 'separate') {
       const zip = new JSZip();
-      groupedDocuments.value.forEach(d => zip.file(`${withProjectName(fileName.value || 'export', `${d.plan.name}_${d.plan.id}`)}.xlsx`, gridsToExcelBlob(d.grids)));
+      groupedDocuments.value.forEach(d => zip.file(`${withProjectName(fileName.value || 'export', `${d.plan.name}_${d.plan.id}`)}.xlsx`, gridsToExcelBlob(withPeriodResult(d.grids))));
       saveBlob(await zip.generateAsync({ type: 'blob' }), `${fileName.value || 'export'}.zip`);
       toast.success(`已下載 ZIP（${groupedDocuments.value.length} 份 Excel）`);
       return;
@@ -850,7 +870,7 @@ async function downloadPdf() {
       for (const d of groupedDocuments.value) {
         const name = withProjectName(fileName.value || 'export', `${d.plan.name}_${d.plan.id}`);
         const res = await generateCommissionPdfAPI({ projectId: props.projectId, planId: d.plan.id, docType: docType.value,
-          payload: { fileName: name, paper: d.model.paper || 'A4', orientation: d.model.orientation || 'landscape', grids: d.grids } });
+          payload: { fileName: name, paper: d.model.paper || 'A4', orientation: d.model.orientation || 'landscape', grids: withPeriodResult(d.grids) } });
         if (!res?.ok) throw new Error(`${d.plan.name} PDF 產製失敗`);
         zip.file(`${name}.pdf`, base64ToBlob(res.base64, res.mimeType));
       }

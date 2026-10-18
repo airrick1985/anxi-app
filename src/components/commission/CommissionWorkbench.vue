@@ -397,8 +397,8 @@ import CommissionRefundCard from './CommissionRefundCard.vue';
 import CommissionGridPreview from './CommissionGridPreview.vue';
 import { refundableRecordsByUnit, buildRefundEntryPlan } from './refundEntry';
 import { submitCommissionEntriesAPI, fetchCommissionExportConfigs, setBonusPeriodNotes, voidCommissionRecordAPI } from '@/api';
-import { buildClaimModel, buildBonusModel, defaultClaimConfig, defaultBonusConfig, exportProjectNameOf, makePersonSorter } from '@/utils/commissionExportModel';
-import { buildClaimGrid, buildBonusGrids } from '@/services/commissionExcelService';
+import { buildClaimModel, buildBonusModel, buildPeriodResultModel, defaultClaimConfig, defaultBonusConfig, exportProjectNameOf, makePersonSorter } from '@/utils/commissionExportModel';
+import { buildClaimGrid, buildBonusGrids, buildPeriodResultGrid } from '@/services/commissionExcelService';
 import { draftClaimRecord, draftRefundRecord, normalizeSalesNames } from '@/utils/commissionDraftRecords';
 import {
   calcUnitBonus, computeUnitFinance, resolveCommPct, formatDateTW,
@@ -1344,6 +1344,16 @@ const previewGrids = computed(() => {
           personnelOrder: props.personnel.map(p => p.name),
           personOrder: props.personOrder,
         }));
+        // 最後一頁：每人當期獎金結果（與下方「每人當期獎金結果」同資料：所有方案已送出＋本次草稿）
+        const bonusCfg = previewConfigOf('bonus');
+        grids.push(buildPeriodResultGrid(buildPeriodResultModel({
+          period, saved: props.allBonusRecords, drafts: bonusRecords, replacingIds: entries.value.map(e => e.replaceRecordId),
+          categoryLabels: Object.fromEntries((props.settings.bonusCategories || []).map(c => [c.key, c.label || c.key])),
+          categoryOrder: enabledCategories.value.map(c => c.key),
+          sorter: makePersonSorter(props.personOrder, props.personnel.map(p => p.name)),
+          periodNotes: effectiveNotes.value, noteHistory: personNoteHistory.value,
+          projectName: props.projectName, style: { ...defaultBonusConfig(exportSettings.value).style, ...(bonusCfg.style || {}) },
+        })));
       }
       if (multi) grids.forEach(g => { g.name = `第${period}期 ${g.name}`; });
       list.push(...grids);
