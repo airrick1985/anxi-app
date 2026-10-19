@@ -91,6 +91,7 @@
           :claim-records="records"
           :bonus-records="bonusRecords"
           :all-bonus-records="allBonusRecords"
+          :all-bonus-sources="allBonusSources"
           :period-notes="periodNotes"
           @notes-saved="loadPeriodNotes"
           :person-order="personOrder"

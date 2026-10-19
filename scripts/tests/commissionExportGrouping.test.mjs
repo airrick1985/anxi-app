@@ -12,13 +12,13 @@ import { combineCommissionGrids } from '../../src/utils/commissionExportGrouping
 
 const server = await createServer({ optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true }, appType: 'custom' });
 try {
-  const { buildBonusModel, buildMergedBonusModel, buildPersonModel, buildPeriodResultModel, makePersonSorter, exportProjectNameOf } = await server.ssrLoadModule('/src/utils/commissionExportModel.js');
+  const { buildBonusModel, buildMergedBonusModel, buildPersonModel, buildPeriodResultModel, buildPeriodUnitModel, makePersonSorter, exportProjectNameOf } = await server.ssrLoadModule('/src/utils/commissionExportModel.js');
   const XLSX = await import('xlsx-js-style');
   const calc = await server.ssrLoadModule('/src/utils/commissionCalculation.js');
   const { draftClaimRecord } = await server.ssrLoadModule('/src/utils/commissionDraftRecords.js');
   const service = fs.readFileSync(new URL('../../src/services/commissionExcelService.js', import.meta.url), 'utf8')
     .replace(/^import .*;$/gm, '').replace(/export (async )?function/g, '$1function');
-  const { buildBonusGrids, buildPeriodResultGrid, buildPersonGrid, buildPersonExcelGrids, gridsToExcelBlob } = vm.runInNewContext(`${service}\n({ buildBonusGrids, buildPeriodResultGrid, buildPersonGrid, buildPersonExcelGrids, gridsToExcelBlob })`,
+  const { buildBonusGrids, buildPeriodResultGrid, buildPeriodUnitGrid, buildPersonGrid, buildPersonExcelGrids, gridsToExcelBlob } = vm.runInNewContext(`${service}\n({ buildBonusGrids, buildPeriodResultGrid, buildPeriodUnitGrid, buildPersonGrid, buildPersonExcelGrids, gridsToExcelBlob })`,
     { XLSX: XLSX.default, toNum: calc.toNum, money: calc.money, pctText: calc.pctText, applyPrintSetup, NARROW_MARGINS });
   const settings = { bonusCategories: [{ key: 'sales', label: '個獎', mode: 'individual', enabled: true, ratePct: 1 }] };
   const records = [
@@ -319,6 +319,7 @@ try {
     assert.ok(!grid.cells.flat().some(c => String(c?.v ?? '').includes('暫留不發放')));
     assert.deepEqual(vals(rowOf('累計')), byName({ 甲: 1200, 乙: 600 }));
     assert.deepEqual(vals(rowOf('最終實領')), byName({ 甲: 1080, 乙: 540 }));
+    assert.ok(grid.cells[rowOf('最終實領')].every(c => c?.s?.bg === '#ffff00'));   // 同合計列底色（預設黃色）
     const hRow = rowOf(LABEL);
     assert.equal(hRow, rowOf('最終實領') + 1);
     assert.deepEqual(vals(hRow), byName({ 甲: 60, 乙: 30 }));
@@ -380,7 +381,7 @@ try {
     assert.ok(!pmGrid.cells.flat().some(c => String(c?.v).includes('期別彙總')), '單期不列期別彙總');
     assert.equal(buildPersonExcelGrids(pm).length, 1);
   });
-  test('個人明細：各類別本人分配比例列於金額下方，多人分配類別依相同名單合併列出戶別與全部人員比例', async () => {
+  test('個人明細：各類別本人分配比例列於金額下方，分配類別（含只有本人）依相同名單合併列出戶別與全部人員比例', async () => {
     const ss = { bonusCategories: [
       { key: 'sales', label: '銷售個獎', mode: 'individual', enabled: true, ratePct: 1, order: 1 },
       { key: 'team', label: '銷售團獎', mode: 'team', enabled: true, ratePct: 0.5, order: 2 },
@@ -411,6 +412,7 @@ try {
     assert.deepEqual(me.rows.find(r => r.unit === 'A-1').shares, { sales: { pct: 100, locked: false }, team: { pct: 25, locked: false } });
     assert.deepEqual(me.rows.find(r => r.unit === 'B-1').shares.apm, { pct: 30, locked: true });
     assert.deepEqual(me.allocations.map(a => [a.label, a.units.join('、'), a.count, a.own.pct, a.persons.map(p => `${p.name}${p.self ? '*' : ''}${p.pct}${p.locked ? 'L' : ''}`).join(' ')]), [
+      ['銷售個獎', 'A-1', 1, 100, '甲*100'],
       ['銷售團獎', 'A-1、A-2', 2, 25, '甲*25 乙25 丙25 丁25'],
       ['銷售團獎', 'B-1', 1, 50, '乙50 甲*50'],
       ['銷售團獎', 'C-1', 1, 25, '甲*25 乙75'],
@@ -445,6 +447,47 @@ try {
     assert.equal(listed.join('、').split('、').length, 61);
     const pdf = await buildBonusPdf({ grids: [bigGrid], paper: 'A4', orientation: 'portrait' });
     assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  });
+  test('個人明細依戶別：指定戶別跨期別逐戶列出（期別、月份、簽約日），不限本人銷售；沒有所選戶別獎金者照樣產出', async () => {
+    const ss = { bonusCategories: [
+      { key: 'sales', label: '銷售個獎', mode: 'individual', enabled: true, ratePct: 1, order: 1 },
+      { key: 'pm', label: '專案獎金', mode: 'role', rolePositions: ['專案'], enabled: true, ratePct: 0.13, order: 2 },
+    ] };
+    const solo = key => ({ [key]: { allocations: [{ personKey: '甲', name: '甲', mode: 'pct', sharePct: 100 }] } });
+    const c16 = { unitId: 'C-16', ratioPct: 50, snapshot: { salesperson: ['乙'], buyerName: '林小姐', contractDate: '2026/08/01' }, categories: solo('pm') };
+    const recs = [
+      { id: 'a9', period: 9, requestDate: '2026/10/18', ...c16 },
+      { id: 'a8', period: 8, requestDate: '2026/09/15', ...c16 },
+      { id: 'b9', unitId: 'F-18', period: 9, ratioPct: 100, requestDate: '2026/10/18', snapshot: { salesperson: ['甲'], buyerName: '陳先生', contractDate: '2026/09/02' }, categories: solo('sales') },
+      { id: 'c9', unitId: 'A-01', period: 9, ratioPct: 100, requestDate: '2026/10/18', snapshot: { salesperson: ['乙'] }, categories: solo('pm') },
+    ];
+    const row = (id, amounts) => {
+      const r = recs.find(x => x.id === id);
+      const subtotal = Object.values(amounts).reduce((a, b) => a + b, 0);
+      return { commissionRecordId: id, period: r.period, unitId: r.unitId, requestDate: r.requestDate, personKey: '甲', name: '甲', amounts,
+        subtotal, keep: subtotal / 10, tax: 0, nhi: 0, net: subtotal * 0.9, keepPct: 10, taxPct: 0, nhiPct: 0 };
+    };
+    const br = [row('a9', { pm: 23920 }), row('a8', { pm: 23920 }), row('b9', { sales: 1000 }), row('c9', { pm: 5000 })];
+    const opts = { records: recs, bonusRecords: br, settings: ss, periods: [9], unitIds: ['F-18', 'C-16'], projectName: '測試' };
+    const me = buildPersonModel({ ...opts, personKey: '甲' });
+    assert.deepEqual([me.unitMode, me.subtitle, me.periods], [true, '指定戶別 2 戶', [8, 9]]);
+    assert.deepEqual(me.rows.map(r => [r.unit, r.period, r.month, r.contractDate]),
+      [['C-16', 8, '115/09', '115/8/1'], ['C-16', 9, '115/10', '115/8/1'], ['F-18', 9, '115/10', '115/9/2']]);
+    assert.deepEqual([me.detailRows.length, me.otherAggregate, me.totals.subtotal], [3, null, 48840]);
+    assert.deepEqual(me.allocations.map(a => [a.label, a.units.join('、'), a.own.pct]), [['銷售個獎', 'F-18', 100], ['專案獎金', 'C-16', 100]]);
+    assert.match(me.fileName, /戶別獎金明細-甲$/);
+
+    const grid = buildPersonGrid(me);
+    const texts = grid.cells.flat().filter(Boolean).map(c => c.v);
+    assert.ok(texts.includes('所選戶別合計（2 戶）'));
+    assert.ok(['戶別', '期別', '月份', '簽約日'].every(h => texts.includes(h)));
+    assert.ok(!texts.some(v => /^第 \d+ 期/.test(String(v))));
+    const pdf = await buildBonusPdf({ grids: [grid], paper: 'A4', orientation: 'portrait' });
+    assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+
+    const none = buildPersonModel({ ...opts, unitIds: ['Z-99'], personKey: '甲' });
+    assert.deepEqual([none.rows.length, none.totals.net, none.showDetail], [0, 0, false]);
+    assert.ok(buildPersonGrid(none).cells.flat().some(c => c?.v === '所選戶別合計（1 戶）'));
   });
   test('每人當期獎金結果：與工作台同資料（跨方案、排除作廢、草稿取代原筆），每類別一欄、扣款比例不一致顯示依戶別', async () => {
     const b = (id, planId, period, personKey, amounts, extra = {}) => {
@@ -489,6 +532,157 @@ try {
     assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
     const empty = buildPeriodResultGrid(buildPeriodResultModel({ period: 9, saved, projectName: '測試建案' }));
     assert.equal(empty.cells[2][0].v, '本期尚無獎金資料');
+  });
+  test('每人當期獎金結果：表頭標註類別比例（依戶別紀錄，不同比例拆欄），交屋保留款比例與金額標在該銷售人員', () => {
+    const b = (id, recId, personKey, amounts) => {
+      const subtotal = Object.values(amounts).reduce((x, y) => x + y, 0);
+      return { commissionRecordId: recId, id, period: 4, personKey, name: personKey, amounts, subtotal,
+        keep: subtotal / 10, tax: 0, nhi: 0, net: subtotal * 0.9, keepPct: 10, taxPct: 0, nhiPct: 0, requestDate: '2026-10-01' };
+    };
+    const records = [
+      { id: 'r1', categories: { indiv: { label: '銷售個獎', ratePct: 0.32 }, team: { ratePct: 0.08 } },
+        handover: { byCat: { handover: { sourceCatKey: 'indiv', ratePct: 5, amount: 300 } } } },
+      { id: 'r2', categories: { indiv: { label: '銷售個獎', ratePct: 0.3 }, team: { ratePct: 0.08 } },
+        handover: { byCat: { handover: { sourceCatKey: 'indiv', ratePct: 5, amount: 100 } } } },
+      { id: 'rf', type: 'refund', categories: {}, sourceRecordIds: ['r0'] },
+      { id: 'r0', categories: { indiv: { ratePct: 0.3 } } },
+    ];
+    const saved = [
+      b('a', 'r1', '甲', { indiv: 2000, team: 100 }),
+      b('b', 'r1', '乙', { indiv: 1000, team: 100 }),
+      b('c', 'r2', '甲', { indiv: 2000, apm: 50 }),
+      b('d', 'rf', '乙', { indiv: -500 }),
+    ];
+    const model = buildPeriodResultModel({
+      period: 4, saved, records,
+      categoryLabels: { indiv: '銷售個獎', team: '銷售團獎', apm: '副專獎金' },
+      categoryRates: { indiv: 0.32, team: 0.08, apm: 0.05 },
+      categoryOrder: ['apm', 'indiv', 'team'], indivKeys: ['indiv'],
+      sorter: makePersonSorter([], ['甲', '乙']), projectName: '測試建案',
+    });
+    // 同類別不同比例拆欄（由高到低）；退佣紀錄沒有類別時看原紀錄比例；紀錄都沒有時沿用設定
+    assert.deepEqual(model.categories.map(c => [c.key, c.label, c.rateText]),
+      [['apm', '副專獎金', '0.05%'], ['indiv@0.32', '銷售個獎', '0.32%'], ['indiv@0.3', '銷售個獎', '0.3%'], ['team', '銷售團獎', '0.08%']]);
+    assert.deepEqual(model.people.map(p => [p.name, p.byCat['indiv@0.32'], p.byCat['indiv@0.3']]), [['甲', 2000, 2000], ['乙', 1000, -500]]);
+    assert.deepEqual(model.totals.byCat, { apm: 50, 'indiv@0.32': 3000, 'indiv@0.3': 1500, team: 200 });
+    assert.deepEqual(model.people.map(p => [p.name, p.hkRate, p.hk]), [['甲', '銷售個獎 5%', 300], ['乙', '銷售個獎 5%', 100]]);
+    assert.equal(model.totals.hk, 400);
+
+    const grid = buildPeriodResultGrid(model);
+    const header = Array.from(grid.cells[1], c => c.v);
+    assert.deepEqual(header.slice(0, 5), ['人員', '副專獎金\n0.05%', '銷售個獎\n0.32%', '銷售個獎\n0.3%', '銷售團獎\n0.08%']);
+    assert.deepEqual(header.slice(-3), ['交屋保留款比例', '交屋保留款金額', '當期備註']);
+    assert.deepEqual([grid.cells[2][13].v, grid.cells[2][14].v, grid.cells[2][14].s.bg], ['銷售個獎 5%', 300, '#fde2e2']);
+    assert.equal(grid.cells[4][14].v, 400);
+
+    const noHandover = buildPeriodResultModel({ period: 4, saved, categoryLabels: { indiv: '銷售個獎' } });
+    assert.equal(noHandover.hasHandover, false);
+    assert.ok(!Array.from(buildPeriodResultGrid(noHandover).cells[1], c => c.v).includes('交屋保留款比例'));
+  });
+  test('每人當期獎金結果：金額格附來源戶別（同戶跨方案合併、退佣另標），預覽 hover 用', () => {
+    const b = (recId, unitId, personKey, amounts, type) => {
+      const subtotal = Object.values(amounts).reduce((x, y) => x + y, 0);
+      return { commissionRecordId: recId, unitId, type, period: 5, personKey, name: personKey, amounts, subtotal,
+        keep: subtotal / 10, tax: 0, nhi: 0, net: subtotal * 0.9, keepPct: 10, taxPct: 0, nhiPct: 0 };
+    };
+    const records = [
+      { id: 'g1', unitId: 'B2-3F', categories: { indiv: { ratePct: 0.3 } },
+        handover: { byCat: { handover: { sourceCatKey: 'indiv', ratePct: 5, amount: 50 } } } },
+      { id: 'p1', unitId: 'B2-3F', categories: { indiv: { ratePct: 0.3 } } },
+      { id: 'g2', unitId: 'A1-10F', categories: { indiv: { ratePct: 0.3 } } },
+      { id: 'rf', unitId: 'A1-2F', type: 'refund', categories: { indiv: { ratePct: 0.3 } } },
+    ];
+    const saved = [
+      b('g1', 'B2-3F', '甲', { indiv: 1000 }),
+      b('p1', 'B2-3F', '甲', { indiv: 200 }),
+      b('g2', 'A1-10F', '甲', { indiv: 3000 }),
+      b('g2', 'A1-10F', '乙', { indiv: 500 }),
+      b('rf', 'A1-2F', '乙', { indiv: -400 }, 'refund'),
+    ];
+    const model = buildPeriodResultModel({
+      period: 5, saved, records, categoryLabels: { indiv: '銷售個獎' }, indivKeys: ['indiv'],
+      sorter: makePersonSorter([], ['甲', '乙']),
+    });
+    const [a, z] = model.people;
+    assert.deepEqual(a.sources.indiv, [{ unit: 'A1-10F', amount: 3000 }, { unit: 'B2-3F', amount: 1200 }]);
+    assert.deepEqual(a.sources.hk, [{ unit: 'B2-3F', amount: 50 }]);
+    assert.deepEqual(z.sources.net, [{ unit: 'A1-2F(退佣)', amount: -360 }, { unit: 'A1-10F', amount: 450 }]);
+    assert.deepEqual(model.totals.sources.indiv,
+      [{ unit: 'A1-2F(退佣)', amount: -400 }, { unit: 'A1-10F', amount: 3500 }, { unit: 'B2-3F', amount: 1200 }]);
+
+    const grid = buildPeriodResultGrid(model);
+    const header = Array.from(grid.cells[1], c => c.v);
+    const tipAt = (r, label) => grid.cellTips.find(t => t.r === r && t.c === header.indexOf(label));
+    assert.equal(tipAt(2, '銷售個獎\n0.3%').title, '甲｜銷售個獎 0.3%');
+    assert.deepEqual(tipAt(3, '實發').lines, z.sources.net);
+    assert.equal(tipAt(4, '小計').title, '合計｜小計');
+    assert.equal(tipAt(4, '交屋保留款金額').lines.length, 1);
+    // 只有金額欄有來源；人員、比例、備註沒有
+    assert.ok(grid.cellTips.every(t => !['人員', '保留款％', '交屋保留款比例', '當期備註'].includes(header[t.c])));
+  });
+  test('每戶當期獎金結果：每筆戶別紀錄一列（跨方案標方案、依方案與戶別順序、退佣紅字），類別格列金額與領取人員', async () => {
+    const b = (recId, planId, personKey, amounts, extra = {}) => {
+      const subtotal = Object.values(amounts).reduce((x, y) => x + y, 0);
+      return { commissionRecordId: recId, planId, period: 9, personKey, name: personKey, amounts, subtotal,
+        keep: subtotal / 10, tax: 0, nhi: 0, net: subtotal * 0.9, keepPct: 10, taxPct: 0, nhiPct: 0, requestDate: '2026-10-18', ...extra };
+    };
+    const snap = (buyerName, salesperson) => ({ buyerName, salesperson });
+    const records = [
+      { id: 'g-c16', planId: 'general', unitId: 'C-16', ratioPct: 100, calc: { dealAfter: 3680 }, snapshot: snap('林小姐', ['徐滋惠']),
+        categories: { chairman: { ratePct: 0.1 }, indiv: { label: '銷售個獎', ratePct: 0.32 } },
+        handover: { byCat: { handover: { sourceCatKey: 'indiv', ratePct: 5, amount: 589 } } } },
+      { id: 'g-f18', planId: 'general', unitId: 'F-18', ratioPct: 50, calc: { dealAfter: 3459.5 }, snapshot: snap('陳先生', ['王智慧']),
+        categories: { chairman: { ratePct: 0.1 } } },
+      { id: 'p-c16', planId: 'package', unitId: 'C-16', ratioPct: 100, calc: { dealAfter: 250 }, snapshot: snap('林小姐', ['徐滋惠']),
+        categories: { chairman: { ratePct: 0.05 } } },
+      { id: 'g-a01', planId: 'general', unitId: 'A-01', type: 'refund', ratioPct: -100, calc: { dealAfter: 1000 }, snapshot: snap('張先生', []),
+        categories: {}, sourceRecordIds: ['g-a01-old'] },
+      { id: 'g-a01-old', planId: 'general', unitId: 'A-01', categories: { chairman: { ratePct: 0.1 } } },
+    ];
+    const saved = [
+      b('g-c16', 'general', '主委 王志遠', { chairman: 36800 }),
+      b('g-c16', 'general', '副主委 謝志誠', { chairman: 36800 }),
+      b('g-c16', 'general', '徐滋惠', { indiv: 11776 }),
+      b('g-f18', 'general', '主委 王志遠', { chairman: 17295 }),
+      b('p-c16', 'package', '主委 王志遠', { chairman: 1250 }),
+      b('g-a01', 'general', '主委 王志遠', { chairman: -10000 }),
+    ];
+    const model = buildPeriodUnitModel({
+      period: 9, saved, records,
+      categoryLabels: { chairman: '主委獎金', indiv: '銷售個獎' }, categoryOrder: ['chairman', 'indiv'], indivKeys: ['indiv'],
+      sorter: makePersonSorter([], ['副主委 謝志誠', '主委 王志遠']),
+      planOrder: ['general', 'package'], planNames: { general: '一般', package: '配套' },
+      unitOrders: { general: ['F-18', 'C-16'] }, projectName: '測試建案',
+    });
+    assert.equal(model.title, '測試建案－每戶當期獎金結果　第 9 期（115 年 10 月）');
+    assert.equal(model.multiPlan, true);
+    assert.deepEqual(model.categories.map(c => [c.key, c.rateText]), [['chairman@0.1', '0.1%'], ['chairman@0.05', '0.05%'], ['indiv', '0.32%']]);
+    assert.deepEqual(model.units.map(u => [u.unitId, u.planId, u.refund]),
+      [['F-18', 'general', false], ['C-16', 'general', false], ['A-01', 'general', true], ['C-16', 'package', false]]);
+    const c16 = model.units[1];
+    assert.deepEqual(c16.byCat['chairman@0.1'], { amount: 73600, names: ['副主委 謝志誠', '主委 王志遠'] });
+    assert.deepEqual([c16.subtotal, c16.keep, c16.net, c16.hkRate, c16.hk], [85376, 8537.6, 76838.4, '銷售個獎 5%', 589]);
+    assert.equal(model.units[2].byCat['chairman@0.1'].amount, -10000);
+    assert.deepEqual(model.totals.byCat, { 'chairman@0.1': 80895, 'chairman@0.05': 1250, indiv: 11776 });
+    assert.equal(model.totals.after, 8389.5);
+
+    const grid = buildPeriodUnitGrid(model);
+    assert.equal(grid.name, '每戶當期獎金結果');
+    assert.deepEqual(Array.from(grid.cells[1], c => c.v), ['戶別', '客戶姓名', '銷售人員', '折後總價(萬)', '獎金發放比例',
+      '主委獎金\n0.1%', '主委獎金\n0.05%', '銷售個獎\n0.32%', '小計', '保留款', '稅金', '二代健保', '實發', '交屋保留款比例', '交屋保留款金額']);
+    assert.deepEqual(Array.from(grid.cells[2], c => c.v).slice(0, 6), ['F-18（一般）', '陳先生', '王智慧', '3,459.5', '50%', '17,295\n主委 王志遠']);
+    assert.equal(grid.cells[3][5].v, '73,600\n副主委 謝志誠\n主委 王志遠');
+    assert.deepEqual([grid.cells[4][1].v, grid.cells[4][0].s.color, grid.cells[4][5].v], ['張先生(退佣)', '#C00000', '-10,000\n主委 王志遠']);
+    assert.deepEqual(Array.from(grid.cells[6], c => c.v).slice(0, 9), ['合計', '', '', '8,389.5', '', 80895, 1250, 11776, 93921]);
+    assert.equal(grid.cells[6][5].s.fmt, '#,##0');
+    const workbook = XLSX.default.read(await (await gridsToExcelBlob([grid])).arrayBuffer(), { type: 'array' });
+    assert.deepEqual(workbook.SheetNames, ['每戶當期獎金結果']);
+    const pdf = await buildBonusPdf({ grids: [grid], paper: 'A3', orientation: 'landscape' });
+    assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+
+    const single = buildPeriodUnitModel({ period: 9, saved: saved.filter(x => x.planId === 'general'), records, planNames: { general: '一般' } });
+    assert.equal(buildPeriodUnitGrid(single).cells[2][0].v, 'A-01');
+    assert.equal(buildPeriodUnitGrid(buildPeriodUnitModel({ period: 1, saved })).cells[2][0].v, '本期尚無獎金資料');
   });
   test('沒有可匯出資料時不建立空白合併工作表', () => {
     assert.equal(combineCommissionGrids([], '獎金'), null);

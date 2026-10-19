@@ -22,8 +22,19 @@
     <v-divider></v-divider>
     <v-card-text ref="wrapRef" class="preview-wrap" :class="{ 'is-sortable': sortable && hasPersonCols, 'is-editable': editable && hasEditCells, 'is-unit-sortable': unitSortable && hasUnitRows }" :style="{ maxHeight }">
       <div v-if="current" class="preview-zoom" :style="{ zoom }" v-html="html"
-        @click="onCellClick"
+        @click="onCellClick" @mouseover="onTipOver" @mouseleave="hideTip"
         @dragstart="onDragStart" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop" @dragend="onDragEnd"></div>
+      <!-- 金額來源戶別（hover 金額格） -->
+      <v-tooltip :model-value="tipOpen" :target="tip?.el" location="top" content-class="comm-cell-tip">
+        <template v-if="tip">
+          <div class="comm-cell-tip-title">{{ tip.title }}</div>
+          <div class="comm-cell-tip-lines" :style="{ gridTemplateRows: `repeat(${tipRows}, auto)` }">
+            <div v-for="(l, i) in tip.lines" :key="i" class="comm-cell-tip-line">
+              <span>{{ l.unit }}</span><span :class="{ neg: l.amount < 0 }">{{ money(l.amount) }}</span>
+            </div>
+          </div>
+        </template>
+      </v-tooltip>
       <!-- 就地編輯浮動框（定位於被點的格子） -->
       <v-card v-if="editor" class="cell-editor" elevation="8" :style="{ top: editor.top + 'px', left: editor.left + 'px', width: editor.width + 'px' }" @click.stop>
         <v-card-text class="pa-2">
@@ -38,7 +49,7 @@
           </div>
         </v-card-text>
       </v-card>
-      <div v-else class="text-center text-medium-emphasis py-8">沒有可預覽的內容</div>
+      <div v-if="!current" class="text-center text-medium-emphasis py-8">沒有可預覽的內容</div>
     </v-card-text>
   </v-card>
 </template>
@@ -46,6 +57,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { gridToHtml } from '@/services/commissionExcelService';
+import { money } from '@/utils/commissionCalculation';
 
 const props = defineProps({
   grids: { type: Array, default: () => [] },
@@ -124,6 +136,25 @@ function onRowDragEnd() {
   rowDrag = null;
 }
 
+// ---------- 金額來源戶別 hover（cellTips） ----------
+const tip = ref(null);   // { el, title, lines }；關閉時保留內容避免淡出時變空
+const tipOpen = ref(false);
+function onTipOver(e) {
+  if (drag || rowDrag) return;
+  const cell = e.target?.closest?.('[data-tip]');
+  const meta = cell && current.value?.cellTips?.[Number(cell.dataset.tip)];
+  if (!meta) { tipOpen.value = false; return; }
+  if (tip.value?.el !== cell) tip.value = { el: cell, title: meta.title, lines: meta.lines };
+  tipOpen.value = true;
+}
+function hideTip() { tipOpen.value = false; }
+// 戶別多時分欄（每欄至少 12 戶，最多 3 欄）
+const tipRows = computed(() => {
+  const n = tip.value?.lines.length || 1;
+  return Math.ceil(n / Math.min(3, Math.ceil(n / 12)));
+});
+watch(html, hideTip);
+
 // ---------- 文字自訂就地編輯 ----------
 const editor = ref(null);   // { key, label, hint, multiline, value, top, left, width }
 function onCellClick(e) {
@@ -172,6 +203,7 @@ function canDropOn(idx) {
   return !!m && m.section === drag.section;
 }
 function onDragStart(e) {
+  hideTip();
   const rowHandle = e.target?.closest?.('[data-unit-handle]');
   if (rowHandle) {
     if (!props.unitSortable) { e.preventDefault?.(); return; }
@@ -294,4 +326,17 @@ onBeforeUnmount(() => { observer?.disconnect(); });
 .preview-wrap :deep(td.ur-dragging) { opacity: .35; }
 .preview-wrap :deep(td.ur-over-above) { box-shadow: inset 0 3px 0 rgb(var(--v-theme-primary)); }
 .preview-wrap :deep(td.ur-over-below) { box-shadow: inset 0 -3px 0 rgb(var(--v-theme-primary)); }
+/* 金額來源戶別 hover */
+.preview-wrap :deep(td.tip-cell) { cursor: help; }
+.preview-wrap :deep(td.tip-cell:hover) { box-shadow: inset 0 0 0 2px rgb(var(--v-theme-primary)); }
+</style>
+
+<style>
+/* v-tooltip 內容 teleport 到 overlay 容器，無法用 scoped */
+.comm-cell-tip { padding: 6px 10px !important; font-size: 12px !important; line-height: 1.6; }
+.comm-cell-tip-title { font-weight: 700; margin-bottom: 2px; padding-bottom: 2px; border-bottom: 1px solid rgba(255, 255, 255, .25); }
+.comm-cell-tip-lines { display: grid; grid-auto-flow: column; column-gap: 24px; }
+.comm-cell-tip-line { display: flex; justify-content: space-between; gap: 16px; }
+.comm-cell-tip-line > span:last-child { font-variant-numeric: tabular-nums; }
+.comm-cell-tip-line .neg { color: #ff8a80; }
 </style>

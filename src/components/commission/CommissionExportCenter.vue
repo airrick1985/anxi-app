@@ -43,11 +43,38 @@
                 <template #item="{ item, props: p }"><v-list-item v-bind="p" :title="`第 ${item.value} 期`"></v-list-item></template>
               </v-select>
             </v-col>
-            <v-col v-else cols="12" sm="4" md="3">
+            <v-col v-if="isPerson" cols="12" sm="auto">
+              <v-btn-toggle v-model="personScope" mandatory color="primary" variant="outlined" divided density="comfortable">
+                <v-btn value="period" size="small">依期別</v-btn>
+                <v-btn value="unit" size="small">依戶別</v-btn>
+              </v-btn-toggle>
+            </v-col>
+            <v-col v-if="isPerson && !unitScope" cols="12" sm="4" md="3">
               <v-select v-model="periods" :items="availablePeriods" label="期別（可多選）" variant="outlined" density="compact" hide-details
                 multiple chips closable-chips>
                 <template #chip="{ item, props: p }"><v-chip v-bind="p" size="small">第 {{ item.value }} 期</v-chip></template>
                 <template #item="{ item, props: p }"><v-list-item v-bind="p" :title="`第 ${item.value} 期`"></v-list-item></template>
+              </v-select>
+            </v-col>
+            <v-col v-else-if="isPerson" cols="12" sm="4" md="3">
+              <v-select v-model="selectedUnitIds" :items="unitOptions" item-title="title" item-value="value"
+                label="戶別（可多選）" variant="outlined" density="compact" hide-details multiple no-data-text="目前方案沒有獎金紀錄">
+                <template #selection="{ item, index }">
+                  <v-chip v-if="index < 3" size="small">{{ item.title }}</v-chip>
+                  <span v-else-if="index === 3" class="text-caption text-medium-emphasis">＋{{ selectedUnitIds.length - 3 }} 戶</span>
+                </template>
+                <template #item="{ item, props: p }">
+                  <v-list-item v-bind="p" :title="item.raw.title" :subtitle="item.raw.subtitle"></v-list-item>
+                </template>
+                <template #prepend-item>
+                  <v-list-item density="compact" @click="toggleAllUnits">
+                    <template #prepend>
+                      <v-checkbox-btn :model-value="allUnitsSelected" :indeterminate="selectedUnitIds.length > 0 && !allUnitsSelected" density="compact"></v-checkbox-btn>
+                    </template>
+                    <v-list-item-title>全選（{{ unitOptions.length }} 戶）</v-list-item-title>
+                  </v-list-item>
+                  <v-divider></v-divider>
+                </template>
               </v-select>
             </v-col>
 
@@ -80,7 +107,7 @@
               <v-col cols="12" sm="5" md="4">
                 <v-select v-model="selectedPersonKeys" :items="personOptions" item-title="title" item-value="value"
                   label="人員（可多選，批次產出）" variant="outlined" density="compact" hide-details multiple chips closable-chips
-                  :no-data-text="periods.length ? '所選期別沒有獎金紀錄' : '請先選擇期別'">
+                  :no-data-text="unitScope || periods.length ? '沒有獎金紀錄' : '請先選擇期別'">
                   <template #chip="{ item, props: p }"><v-chip v-bind="p" size="small">{{ item.raw.name }}</v-chip></template>
                   <template #item="{ item, props: p }">
                     <v-list-item v-bind="p" :title="item.raw.title" :subtitle="item.raw.subtitle"></v-list-item>
@@ -133,10 +160,12 @@
         </v-card-text>
       </v-card>
 
-      <v-alert v-if="!activeRecords.length" type="info" variant="tonal" class="mb-3">
-        <template v-if="isPerson">所選期別沒有有效（未作廢）的請佣紀錄。</template>
+      <v-alert v-if="unitScope ? !unitOptions.length : !activeRecords.length" type="info" variant="tonal" class="mb-3">
+        <template v-if="unitScope">目前方案沒有獎金紀錄。</template>
+        <template v-else-if="isPerson">所選期別沒有有效（未作廢）的請佣紀錄。</template>
         <template v-else>目前沒有可預覽的請佣紀錄；可先設定本方案的版型。</template>
       </v-alert>
+      <v-alert v-else-if="unitScope && !selectedUnitIds.length" type="info" variant="tonal" class="mb-3">請選擇戶別。</v-alert>
       <v-alert v-else-if="isPerson && !selectedPersonKeys.length" type="info" variant="tonal" class="mb-3">
         請選擇要產出明細的人員（可多選；選多人時 Excel／PDF 會打包成 ZIP，每人一檔）。
       </v-alert>
@@ -188,7 +217,7 @@
     <v-dialog v-model="emailOpen" max-width="760" :persistent="emailSending">
       <v-card>
         <v-card-title class="text-subtitle-1 d-flex align-center">
-          <v-icon start>mdi-email-fast-outline</v-icon>寄送個人獎金明細（第 {{ periodsText }} 期）
+          <v-icon start>mdi-email-fast-outline</v-icon>寄送個人獎金明細（{{ personScopeText }}）
           <v-spacer></v-spacer>
           <v-chip size="small" variant="tonal" :color="encryptMode === 'none' ? 'default' : 'warning'" prepend-icon="mdi-lock-outline">
             {{ encryptLabel }}
@@ -259,12 +288,12 @@ import {
   generateCommissionPdfAPI, sendCommissionPersonEmailAPI, setCommissionPersonOrder, setCommissionSettings, setCommissionUnitOrder,
 } from '@/api';
 import {
-  buildClaimModel, buildBonusModel, buildMergedBonusModel, buildPersonModel, buildPeriodResultModel, makePersonSorter,
+  buildClaimModel, buildBonusModel, buildMergedBonusModel, buildPersonModel, buildPeriodResultModel, buildPeriodUnitModel, makePersonSorter,
   defaultClaimConfig, defaultBonusConfig, defaultPersonConfig,
   periodsLabel, listPersonsInPeriods, withProjectName, exportProjectNameOf,
 } from '@/utils/commissionExportModel';
 import {
-  buildClaimGrid, buildBonusGrids, buildPeriodResultGrid, buildPersonGrid, buildPersonExcelGrids,
+  buildClaimGrid, buildBonusGrids, buildPeriodResultGrid, buildPeriodUnitGrid, buildPersonGrid, buildPersonExcelGrids,
   exportGridsToExcel, gridsToExcelBlob,
 } from '@/services/commissionExcelService';
 import { toNum, fillPattern } from '@/utils/commissionCalculation';
@@ -397,6 +426,8 @@ watch(() => props.plans, async plans => {
 }, { immediate: true });
 const period = ref(null);          // claim / bonus：單期
 const periods = ref([]);           // person：多期
+const personScope = ref('period');   // person：依期別／依戶別（指定戶別 × 全部期別）
+const selectedUnitIds = ref([]);
 const fileName = ref('');
 const pdfLoading = ref(false);
 
@@ -424,6 +455,7 @@ const encryptOptions = [
 const isNoLoginPassword = e => e?.details?.reason === 'noLoginPassword';
 
 const isPerson = computed(() => docType.value === 'person');
+const unitScope = computed(() => isPerson.value && personScope.value === 'unit');
 
 const isAdmin = computed(() => {
   const roles = userStore.user?.roles || [];
@@ -602,8 +634,28 @@ const bonusModel = computed(() => {
 });
 
 // ---- 個人明細 ----
+/** 依戶別：目前方案所有期別有獎金紀錄的戶別 */
+const unitOptions = computed(() => {
+  const map = {};
+  props.bonusRecords.forEach(b => {
+    if (b.status === 'voided' || !b.unitId) return;
+    const id = String(b.unitId);
+    if (!map[id]) map[id] = new Set();
+    map[id].add(toNum(b.period));
+  });
+  return Object.keys(map).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }))
+    .map(id => ({ value: id, title: id, subtitle: `第 ${periodsLabel([...map[id]])} 期` }));
+});
+watch(unitOptions, opts => {
+  const ids = new Set(opts.map(o => o.value));
+  selectedUnitIds.value = selectedUnitIds.value.filter(id => ids.has(id));
+});
+const allUnitsSelected = computed(() => unitOptions.value.length > 0 && selectedUnitIds.value.length === unitOptions.value.length);
+function toggleAllUnits() {
+  selectedUnitIds.value = allUnitsSelected.value ? [] : unitOptions.value.map(o => o.value);
+}
 const personOptions = computed(() =>
-  listPersonsInPeriods(props.bonusRecords, periods.value, personnelOrder.value, props.personOrder).map(p => ({
+  listPersonsInPeriods(props.bonusRecords, unitScope.value ? availablePeriods.value : periods.value, personnelOrder.value, props.personOrder).map(p => ({
     value: p.personKey,
     name: p.name,
     title: p.sourceProjectName && p.sourceProjectId !== props.projectId ? `${p.name}（${p.sourceProjectName}）` : p.name,
@@ -622,7 +674,7 @@ function toggleAllPersons() {
 }
 
 const personModels = computed(() => {
-  if (!isPerson.value || !activeRecords.value.length) return [];
+  if (!isPerson.value || (unitScope.value ? !selectedUnitIds.value.length : !activeRecords.value.length)) return [];
   const order = personOptions.value.map(o => o.value);
   return selectedPersonKeys.value
     .slice()
@@ -636,6 +688,7 @@ const personModels = computed(() => {
       settings: exportSettings.value,
       config: currentConfig.value,
       periods: periods.value,
+      unitIds: unitScope.value ? selectedUnitIds.value : null,
       personKey,
       projectName: exportProjectName.value,
       projectId: props.projectId,
@@ -643,6 +696,7 @@ const personModels = computed(() => {
 });
 
 const periodsText = computed(() => periodsLabel(periods.value));
+const personScopeText = computed(() => (unitScope.value ? `指定戶別 ${selectedUnitIds.value.length} 戶` : `第 ${periodsText.value} 期`));
 
 const groupedDocuments = computed(() => {
   if (isPerson.value || groupingMode.value === 'current' || groupingLoading.value || groupingError.value) return [];
@@ -688,29 +742,36 @@ const mergedBonusModel = computed(() => {
   });
 });
 
-/** 每人當期獎金結果（獎金表最後一頁）：同工作台，該期所有方案已送出獎金，每人一列 */
-const periodResultGrid = computed(() => {
-  if (docType.value !== 'bonus' || !period.value) return null;
-  const labels = {};
+/** 每人／每戶當期獎金結果（獎金表最後兩頁）：同工作台，該期所有方案已送出獎金，每人／每戶一列 */
+const periodResultGrids = computed(() => {
+  if (docType.value !== 'bonus' || !period.value) return [];
+  const labels = {}, rates = {}, indivKeys = [];
   [props.settings, ...Object.values(groupingSettings.value)].forEach(s => (s?.bonusCategories || []).forEach(c => {
-    if (!labels[c.key]) labels[c.key] = c.label || c.key;   // 目前方案名稱優先
+    if (!labels[c.key]) labels[c.key] = c.label || c.key;   // 目前方案名稱、比例優先
+    if (rates[c.key] === undefined) rates[c.key] = c.ratePct;
+    if (c.mode === 'individual' && !indivKeys.includes(c.key)) indivKeys.push(c.key);
   }));
   const order = (props.settings.bonusCategories || []).filter(c => c.enabled !== false)
     .slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map(c => c.key);
   const bonusCfg = { ...defaultBonusConfig(exportSettings.value), ...(currentConfig.value || {}) };
-  return buildPeriodResultGrid(buildPeriodResultModel({
-    period: period.value, saved: props.allBonusRecords, categoryLabels: labels, categoryOrder: order,
+  const opts = {
+    period: period.value, saved: props.allBonusRecords, records: props.bonusSourceRecords,
+    categoryLabels: labels, categoryRates: rates, categoryOrder: order, indivKeys,
     sorter: makePersonSorter(props.personOrder, personnelOrder.value),
     periodNotes: props.periodNotes, noteHistory: noteHistoryAll.value,
+    planOrder: props.plans.map(p => p.id),
+    planNames: Object.fromEntries(props.plans.map(p => [p.id, p.name])),
+    unitOrders: Object.fromEntries(props.plans.map(p => [p.id, unitOrderOf(p.id, period.value)])),
     projectName: props.projectName, style: { ...defaultBonusConfig(exportSettings.value).style, ...(bonusCfg.style || {}) },
-  }));
+  };
+  return [buildPeriodResultGrid(buildPeriodResultModel(opts)), buildPeriodUnitGrid(buildPeriodUnitModel(opts))];
 });
-const withPeriodResult = list => (periodResultGrid.value ? [...list, periodResultGrid.value] : list);
+const withPeriodResult = list => [...list, ...periodResultGrids.value];
 
 const grids = computed(() => {
   try {
-    if (!activeRecords.value.length) return [];
     if (isPerson.value) return personModels.value.map(m => buildPersonGrid(m));
+    if (!activeRecords.value.length) return [];
     if (groupingMode.value !== 'current') {
       if (groupingMode.value === 'mergedRows') return mergedBonusModel.value ? withPeriodResult(buildBonusGrids(mergedBonusModel.value)) : [];
       const documents = groupedDocuments.value;
@@ -736,13 +797,14 @@ const grids = computed(() => {
 });
 
 // 檔名：依文件/期別/版型自動帶入，可改
-watch([docType, period, periods, claimModel, bonusModel, personModels, groupingMode, groupedDocuments], () => {
+watch([docType, period, periods, personScope, claimModel, bonusModel, personModels, groupingMode, groupedDocuments], () => {
   if (!isPerson.value && groupingMode.value !== 'current') {
     fileName.value = withProjectName(`第${period.value || ""}期_${docType.value === "claim" ? "請佣" : "獎金"}_${groupingMode.value === "mergedRows" ? "合併列" : groupingMode.value === "combined" ? "合併" : "分檔"}`, props.projectName);
     return;
   }
   if (isPerson.value) {
     if (personModels.value.length === 1) fileName.value = personModels.value[0].fileName || '';
+    else if (unitScope.value) fileName.value = withProjectName('戶別獎金明細', exportProjectName.value);
     else {
       const pattern = String(currentConfig.value.fileNamePattern || '').replace(/[-_－ ]?\{姓名\}/g, '');
       fileName.value = withProjectName(fillPattern(pattern, {
@@ -918,12 +980,12 @@ const emailDone = computed(() => emailRecipients.value.length > 0 && emailRecipi
 
 function openEmail() {
   if (!checkEncryptReady()) return;
-  const pText = periodsText.value;
-  emailSubject.value = `【${props.projectName}】第 ${pText} 期獎金明細`;
+  const scope = personScopeText.value;
+  emailSubject.value = `【${props.projectName}】${scope}獎金明細`;
   const lines = [
     '{姓名} 您好：',
     '',
-    `附件為「${props.projectName}」第 ${pText} 期獎金明細（PDF），請審閱。`,
+    `附件為「${props.projectName}」${scope}獎金明細（PDF），請審閱。`,
   ];
   if (encryptMode.value === 'userKey') lines.push('PDF 開啟密碼為您登記於系統的手機號碼。');
   else if (encryptMode.value === 'loginPassword') lines.push('PDF 開啟密碼為您登入系統的密碼。');

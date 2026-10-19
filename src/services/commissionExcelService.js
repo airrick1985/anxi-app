@@ -245,7 +245,7 @@ export function buildBonusGroupGrid(group, model) {
     { label: '合計(扣保留款)', get: a => (D ? a.subDisc : a.sub) - keepOf(a), style: { bold: true }, band: 'total', always: true },
     { label: '稅金', get: a => (D ? a.taxDisc : a.tax) },
     { label: '二代健保', get: a => (D ? a.nhiDisc : a.nhi) },
-    { label: '最終實領', get: a => (D ? a.netDisc : a.net), style: { bold: true }, always: true },
+    { label: '最終實領', get: a => (D ? a.netDisc : a.net), style: { bold: true }, band: 'total', always: true },
     { label: '交屋保留款', get: a => a.handoverKeep, style: HK_STYLE, band: 'hk' },
   ].filter(d => d && (d.always || people.some(a => Math.round(toNum(d.get(a))) !== 0)));
   const notesFor = person => (person.remarkNotes || [person.remark || '']).flatMap(text => noteParts(text));
@@ -425,24 +425,18 @@ export function buildBonusGrids(model) {
   return model.groups.map(gr => buildBonusGroupGrid(gr, model));
 }
 
-// ================= 每人當期獎金結果 grid（獎金表最後一頁） =================
-/** 欄位同工作台「每人當期獎金結果」：人員｜各類別｜扣款比例｜小計｜扣款｜實發｜當期備註 */
-export function buildPeriodResultGrid(model) {
+// ================= 每人／每戶當期獎金結果 grid（獎金表最後兩頁） =================
+/**
+ * 共用表格：標題｜表頭｜資料列｜合計列。
+ * cols: { label, w, align, num, wrap, bold, bg, get(item), sumGet(totals), color(item), srcKey }
+ * num 欄為數字（四捨五入、負數紅字）；非 num 欄有 sumGet 時合計列放文字。
+ * srcKey：該欄金額來源戶別取 item.sources[srcKey]（合計列取 totals.sources），輸出為 cellTips 供預覽 hover。
+ */
+function periodTableGrid(model, cols, items, rowColor = () => undefined) {
   const st = model.style || {};
   const sz = st.dataFontSize || 12;
-  const pctCell = v => (v === null ? '依戶別' : `${pctText(v)}%`);
-  const cols = [
-    { label: '人員', w: 90, align: 'center', get: p => p.name },
-    ...model.categories.map(c => ({ label: c.label, w: 96, num: true, get: p => p.byCat[c.key], sumGet: t => t.byCat[c.key] })),
-    { label: '保留款％', w: 70, align: 'center', get: p => pctCell(p.keepPct) },
-    { label: '稅金％', w: 64, align: 'center', get: p => pctCell(p.taxPct) },
-    { label: '二代健保％', w: 92, align: 'center', get: p => pctCell(p.nhiPct) },
-    ...[['小計', 'subtotal', 100], ['保留款', 'keep', 90], ['稅金', 'tax', 84], ['二代健保', 'nhi', 84], ['實發', 'net', 100]]
-      .map(([label, key, w]) => ({ label, w, num: true, bold: key === 'subtotal' || key === 'net', get: p => p[key], sumGet: t => t[key] })),
-    { label: '當期備註', w: 300, align: 'left', wrap: true, get: p => p.notes.join('\n') },
-  ];
   const NC = cols.length;
-  const n = model.people.length;
+  const n = items.length;
   const nRows = 2 + Math.max(n, 1) + (n ? 1 : 0);
   const g = new Grid(model.sheetName, NC, nRows, { fontFamily: st.fontFamily || 'DFKai-SB', sz });
   cols.forEach((c, i) => { g.cols[i] = c.w; });
@@ -453,18 +447,26 @@ export function buildPeriodResultGrid(model) {
   g.merge(0, 0, 0, NC - 1);
   g.rowHeights[0] = 38;
   cols.forEach((c, i) => g.set(1, i, c.label, headerStyle));
-  g.rowHeights[1] = 30;
+  g.rowHeights[1] = model.categories.some(c => c.rateText) ? 44 : 30;
 
-  model.people.forEach((p, i) => {
+  const cellTips = [];   // { r, c, title, lines: [{ unit, amount }] }
+  const addTip = (r, ci, name, sources) => {
+    const c = cols[ci];
+    const lines = c.srcKey ? sources?.[c.srcKey] : null;
+    if (lines?.length) cellTips.push({ r, c: ci, title: `${name}｜${String(c.label).replace(/\n/g, ' ')}`, lines });
+  };
+
+  items.forEach((item, i) => {
     const r = 2 + i;
     let h = 26;
     cols.forEach((c, ci) => {
-      const v = c.get(p);
+      const v = c.get(item);
       g.set(r, ci, c.num ? (Math.round(toNum(v)) || '') : (v ?? ''), {
-        align: c.align || 'right', fmt: c.num ? '#,##0' : undefined, wrap: !!c.wrap, bold: !!c.bold, border,
-        color: c.num && toNum(v) < 0 ? '#C00000' : undefined,
+        align: c.align || 'right', fmt: c.num ? '#,##0' : undefined, wrap: !!c.wrap, bold: !!c.bold, border, bg: c.bg,
+        color: rowColor(item) || c.color?.(item) || (c.num && toNum(v) < 0 ? '#C00000' : undefined),
       });
       if (c.wrap) h = Math.max(h, estimateRowHeight(v, c.w, sz, 26));
+      addTip(r, ci, cols[0].get(item), item.sources);
     });
     g.rowHeights[r] = h;
   });
@@ -478,11 +480,60 @@ export function buildPeriodResultGrid(model) {
   g.region(rt, 0, rt, NC - 1, { bold: true, bg: totalBg, border });
   g.set(rt, 0, '合計', { bold: true, align: 'center', bg: totalBg, border });
   cols.forEach((c, ci) => {
-    if (!c.num) return;
-    g.set(rt, ci, Math.round(toNum(c.sumGet(model.totals))), { bold: true, align: 'right', fmt: '#,##0', bg: totalBg, border });
+    if (!c.sumGet) return;
+    const v = c.sumGet(model.totals);
+    const isNum = c.num || typeof v === 'number';
+    g.set(rt, ci, c.num ? Math.round(toNum(v)) : v, { bold: true, align: 'right', fmt: isNum ? '#,##0' : undefined, bg: totalBg, border });
+    addTip(rt, ci, '合計', model.totals.sources);
   });
   g.rowHeights[rt] = 28;
-  return g.toJSON();
+  return { ...g.toJSON(), cellTips };
+}
+
+const categoryHeader = c => (c.rateText ? `${c.label}\n${c.rateText}` : c.label);
+const moneyCols = () => [['小計', 'subtotal', 100], ['保留款', 'keep', 90], ['稅金', 'tax', 84], ['二代健保', 'nhi', 84], ['實發', 'net', 100]]
+  .map(([label, key, w]) => ({ label, w, num: true, bold: key === 'subtotal' || key === 'net', get: x => x[key], sumGet: t => t[key], srcKey: key }));
+// 交屋保留款：含於保留款，僅供參考（淡紅底，同獎金表）
+const handoverCols = model => (model.hasHandover ? [
+  { label: '交屋保留款比例', w: 120, align: 'center', wrap: true, bg: HK_BG, get: x => x.hkRate },
+  { label: '交屋保留款金額', w: 100, num: true, bg: HK_BG, get: x => x.hk, sumGet: t => t.hk, srcKey: 'hk' },
+] : []);
+
+/** 每人當期獎金結果：人員｜各類別×比例｜扣款比例｜小計｜扣款｜實發｜(交屋保留款比例／金額)｜當期備註 */
+export function buildPeriodResultGrid(model) {
+  const pctCell = v => (v === null ? '依戶別' : `${pctText(v)}%`);
+  const cols = [
+    { label: '人員', w: 90, align: 'center', get: p => p.name },
+    ...model.categories.map(c => ({ label: categoryHeader(c), w: 96, num: true, get: p => p.byCat[c.key], sumGet: t => t.byCat[c.key], srcKey: c.key })),
+    { label: '保留款％', w: 70, align: 'center', get: p => pctCell(p.keepPct) },
+    { label: '稅金％', w: 64, align: 'center', get: p => pctCell(p.taxPct) },
+    { label: '二代健保％', w: 92, align: 'center', get: p => pctCell(p.nhiPct) },
+    ...moneyCols(),
+    ...handoverCols(model),
+    { label: '當期備註', w: 300, align: 'left', wrap: true, get: p => p.notes.join('\n') },
+  ];
+  return periodTableGrid(model, cols, model.people);
+}
+
+/** 每戶當期獎金結果：戶別｜客戶｜銷售人員｜折後總價｜發放比例｜各類別×比例（金額＋領取人員）｜小計｜扣款｜實發｜(交屋保留款) */
+export function buildPeriodUnitGrid(model) {
+  const wan = v => (toNum(v) ? Number(toNum(v).toFixed(4)).toLocaleString('en-US', { maximumFractionDigits: 4 }) : '');
+  const cols = [
+    { label: '戶別', w: 100, align: 'center', wrap: true, get: u => (model.multiPlan ? `${u.unitId}（${u.planName}）` : u.unitId) },
+    { label: '客戶姓名', w: 90, align: 'center', wrap: true, get: u => (u.refund ? `${u.buyerName}(退佣)` : u.buyerName) },
+    { label: '銷售人員', w: 100, align: 'center', wrap: true, get: u => u.sales },
+    { label: '折後總價(萬)', w: 90, get: u => wan(u.after), sumGet: t => wan(t.after) },
+    { label: '獎金發放比例', w: 90, align: 'center', wrap: true, get: u => (u.ratioPct ? `${pctText(u.ratioPct)}%` : '') },
+    ...model.categories.map(c => ({
+      label: categoryHeader(c), w: 110, wrap: true,
+      get: u => (u.byCat[c.key].amount ? [money(u.byCat[c.key].amount), ...u.byCat[c.key].names].join('\n') : ''),
+      color: u => (u.byCat[c.key].amount < 0 ? '#C00000' : undefined),
+      sumGet: t => Math.round(t.byCat[c.key]),
+    })),
+    ...moneyCols(),
+    ...handoverCols(model),
+  ];
+  return periodTableGrid(model, cols, model.units, u => (u.refund ? '#C00000' : undefined));
 }
 
 // ================= 個人獎金明細 grid =================
@@ -549,6 +600,10 @@ const pctLabel = (rows, key) => { const u = uniformPct(rows, key); return u === 
 function personDetailColumns(model) {
   const cols = [];
   cols.push({ key: 'unit', label: '戶別', w: 56, bold: true, get: r => (r.refund ? `${r.unit} (退佣)` : r.unit) });
+  if (model.unitMode) {
+    cols.push({ key: 'period', label: '期別', w: 36, get: r => r.period });
+    cols.push({ key: 'month', label: '月份', w: 52, nowrap: true, get: r => r.month });
+  }
   if (model.showBuyerName) cols.push({ key: 'buyerName', label: '買方', w: 58, get: r => r.buyerName });
   cols.push({ key: 'contractDate', label: '簽約日', w: 68, nowrap: true, get: r => r.contractDate });
   if (model.showDealTotal) cols.push({ key: 'dealTotal', label: '總價 (萬)', w: 54, num: true, get: r => r.dealTotal });
@@ -627,7 +682,7 @@ export function buildPersonGrid(model) {
   gap(14);
 
   // ---- 重點：獎金小計 − 扣款 ＝ 實發 ----
-  heading(model.periods.length > 1 ? `所選期別合計（第 ${model.periodsLabel} 期）` : '本期獎金');
+  heading(model.unitMode ? `所選戶別合計（${model.unitCount} 戶）` : model.periods.length > 1 ? `所選期別合計（第 ${model.periodsLabel} 期）` : '本期獎金');
   const t = model.totals;
   const boxSpans = weightSpans([1, 1, 1, 1, 1.3], NC);
   const boxLabels = ['獎金小計', `－ 保留款${pctLabel(model.rows, 'keepPct')}`, `－ 稅金${pctLabel(model.rows, 'taxPct')}`, `－ 二代健保${pctLabel(model.rows, 'nhiPct')}`, '＝ 實發金額'];
@@ -656,7 +711,7 @@ export function buildPersonGrid(model) {
     let lastPeriod = null;
     (model.detailRows || []).forEach((row, i) => {
       // 多期：每期第一戶前加期別分組列
-      if (model.periods.length > 1 && row.period !== lastPeriod) {
+      if (!model.unitMode && model.periods.length > 1 && row.period !== lastPeriod) {
         lastPeriod = row.period;
         put(full, [`第 ${row.period} 期${dateOf(row.period) ? `　請佣日期 ${dateOf(row.period)}` : ''}`], { sz, bold: true, color: T.accent, align: 'left' }, 26);
       }
@@ -694,7 +749,7 @@ export function buildPersonGrid(model) {
 
   // ---- 獎金分配比例 ----
   if (allocRows.length) {
-    heading(`${nextSec()}、獎金分配比例（多人分配之類別）`);
+    heading(`${nextSec()}、獎金分配比例`);
     put(allocSpans, ['獎金類別', '戶別', '戶數', '本人比例', '分配人員'], { sz: hsz, bold: true, color: T.ink, bg: T.headBg, align: 'center' }, 30);
     allocRows.forEach(row => {
       const bg = row.group % 2 ? T.zebra : undefined;
@@ -878,6 +933,8 @@ export function gridToHtml(grid) {
   (grid.editCells || []).forEach((ec, idx) => { edMap[`${ec.r},${ec.c}`] = idx; });
   const urMap = {};   // r -> unitRows index
   (grid.unitRows || []).forEach((ur, idx) => { urMap[ur.r] = idx; });
+  const tipMap = {};   // "r,c" -> cellTips index（金額來源戶別，預覽 hover）
+  (grid.cellTips || []).forEach((t, idx) => { tipMap[`${t.r},${t.c}`] = idx; });
 
   const colTags = grid.cols.map(w => `<col style="width:${Math.round(w * 1.05)}px">`).join('');
   const family = grid.base.fontFamily || 'DFKai-SB';
@@ -922,6 +979,8 @@ export function gridToHtml(grid) {
         attrs += ` data-ur="${ur}"`;
         if (c === (grid.unitRows[ur].handleCol ?? 0)) { attrs += ` data-unit-handle="1" draggable="true"`; classes.push('ur-handle'); }
       }
+      const tip = tipMap[`${r},${c}`];
+      if (tip !== undefined) { attrs += ` data-tip="${tip}"`; classes.push('tip-cell'); }
       if (classes.length) attrs += ` class="${classes.join(' ')}"`;
       html += `<td${span}${attrs} style="${styles.join(';')}">${text}</td>`;
     }

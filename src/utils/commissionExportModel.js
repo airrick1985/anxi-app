@@ -602,48 +602,212 @@ export function buildMergedBonusModel({ sources = [], ...opts }) {
   return model;
 }
 
-// ================= 每人當期獎金結果 model =================
+// ================= 每人／每戶當期獎金結果 model =================
 /**
- * 與工作台「每人當期獎金結果」同一份資料：該期所有方案已送出獎金（排除作廢）＋本次草稿（拉回修改的原筆不重複）。
- * 獎金項目每類別一欄（只列有金額者，依類別順序）；扣款比例各筆一致時顯示該比例，不一致為 null（依戶別）。
- * @param {object} opts - { period, saved, drafts, replacingIds, categoryLabels: {key: label}, categoryOrder: [key],
+ * 共用資料：與工作台「每人當期獎金結果」同一份——該期所有方案已送出獎金（排除作廢）＋本次草稿（拉回修改的原筆不重複）。
+ * 類別欄：每類別×比例一欄（依類別順序）。比例以該戶紀錄的類別比例為準（退佣看原紀錄，都沒有時沿用 categoryRates）；
+ * 同類別有多種比例（不同方案／戶別）時依比例拆欄、由高到低（欄 key 為 `類別@比例`）。
+ * 交屋保留款（參考，含於保留款）：各戶交屋團獎攤給該戶銷售人員（同獎金表）。
+ * @returns {{ rows, recById, rowsByRecord, columns, handover, minguoYM }}
+ *   columns[i].byPerson：personKey -> 金額；columns[i].byRecord：recordId -> { amount, people: [{ personKey, name, amount }] }
+ */
+function periodResultBasis(opts) {
+  const {
+    period, saved = [], drafts = [], replacingIds = [], records = [],
+    categoryLabels = {}, categoryRates = {}, categoryOrder = [], indivKeys = [],
+  } = opts;
+  const replacing = new Set(replacingIds.filter(Boolean));
+  const rows = [...saved.filter(b => b.status !== 'voided' && !replacing.has(b.commissionRecordId)), ...drafts]
+    .filter(b => toNum(b.period) === toNum(period));
+  const recById = new Map(records.map(r => [r.id, r]));
+  const recRate = (rec, key) => toNum(rec?.categories?.[key]?.ratePct);
+  const rateOf = (b, key) => {
+    const rec = recById.get(b.commissionRecordId);
+    const own = recRate(rec, key);
+    if (own) return own;
+    const src = (rec?.sourceRecordIds || []).map(id => recRate(recById.get(id), key)).find(Boolean);
+    return src || toNum(categoryRates[key]);
+  };
+
+  // categoryKey -> rate -> { byPerson, byRecord }
+  const byCatRate = {};
+  rows.forEach(b => Object.entries(b.amounts || {}).forEach(([k, v]) => {
+    if (!toNum(v)) return;
+    const rate = rateOf(b, k);
+    const personKey = b.personKey || b.name;
+    if (!byCatRate[k]) byCatRate[k] = {};
+    if (!byCatRate[k][rate]) byCatRate[k][rate] = { byPerson: {}, byRecord: {} };
+    const cell = byCatRate[k][rate];
+    cell.byPerson[personKey] = (cell.byPerson[personKey] || 0) + toNum(v);
+    if (!cell.byRecord[b.commissionRecordId]) cell.byRecord[b.commissionRecordId] = { amount: 0, people: [] };
+    const unit = cell.byRecord[b.commissionRecordId];
+    unit.amount += toNum(v);
+    unit.people.push({ personKey, name: b.name, amount: toNum(v) });
+  }));
+  const idx = k => { const i = categoryOrder.indexOf(k); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+  const columns = Object.keys(byCatRate).sort((a, b) => idx(a) - idx(b)).flatMap(k => {
+    const rates = Object.keys(byCatRate[k]).map(Number).sort((a, b) => b - a);
+    return rates.map(rate => ({
+      key: rates.length > 1 ? `${k}@${pctText(rate)}` : k, catKey: k, label: categoryLabels[k] || k,
+      rate, rateText: rate ? `${pctText(rate)}%` : '', ...byCatRate[k][rate],
+    }));
+  });
+
+  const labelSettings = { bonusCategories: Object.entries(categoryLabels).map(([key, label]) => ({ key, label })) };
+  const rowsByRecord = {};
+  rows.forEach(b => {
+    if (!rowsByRecord[b.commissionRecordId]) rowsByRecord[b.commissionRecordId] = [];
+    rowsByRecord[b.commissionRecordId].push(b);
+  });
+  const handover = [];   // { recordId, personKey, amount, rateText }
+  Object.entries(rowsByRecord).forEach(([id, list]) => {
+    const rec = recById.get(id);
+    handoverShares(rec, list, indivKeys).forEach(({ row, amount, h }) => {
+      handover.push({ recordId: id, personKey: row.personKey || row.name, amount,
+        rateText: toNum(h?.ratePct) ? handoverRateText(rec, h, labelSettings, indivKeys) : '' });
+    });
+  });
+  return { rows, recById, rowsByRecord, columns, handover, minguoYM: firstMinguoYM(rows) };
+}
+
+const columnHeader = ({ key, catKey, label, rate, rateText }) => ({ key, catKey, label, rate, rateText });
+const uniqueJoin = list => [...new Set(list.filter(Boolean))].join('、');
+
+/**
+ * 每人當期獎金結果：每人一列，獎金項目每類別×比例一欄（只列有人金額不為 0 者）；
+ * 扣款比例各筆一致時顯示該比例，不一致為 null（依戶別）；交屋保留款列出比例與本人分攤金額。
+ * 每人與合計列附 sources（欄 key -> [{ unit, amount }]）：金額來自哪些戶別，供預覽 hover 顯示。
+ * @param {object} opts - { period, saved, drafts, replacingIds, records（請佣／獎金來源紀錄，含草稿）,
+ *   categoryLabels: {key: label}, categoryRates: {key: ratePct}, categoryOrder: [key], indivKeys,
  *   sorter, periodNotes, noteHistory, projectName, style, paper, orientation }
  */
 export function buildPeriodResultModel(opts) {
   const {
-    period, saved = [], drafts = [], replacingIds = [], categoryLabels = {}, categoryOrder = [], sorter = null,
+    period, saved = [], drafts = [], replacingIds = [], categoryOrder = [], sorter = null,
     periodNotes = [], noteHistory = {}, projectName = '', style = {}, paper = 'A3', orientation = 'landscape',
   } = opts;
   const summary = summarizePeriodBonus({ period, saved, drafts, replacingIds, sorter, categoryOrder });
-  const replacing = new Set(replacingIds.filter(Boolean));
-  const rows = [...saved.filter(b => b.status !== 'voided' && !replacing.has(b.commissionRecordId)), ...drafts]
-    .filter(b => toNum(b.period) === toNum(period));
+  const { rows, recById, rowsByRecord, columns, handover, minguoYM } = periodResultBasis(opts);
   const pctOf = (key, field) => {
     const set = new Set(rows.filter(b => (b.personKey || b.name) === key && toNum(b.subtotal) !== 0).map(b => toNum(b[field])));
     return set.size === 1 ? [...set][0] : (set.size ? null : 0);
   };
+  const categories = columns.filter(c => Object.values(c.byPerson).some(v => Math.round(v) !== 0));
+  const hkOf = key => handover.filter(x => x.personKey === key);
 
-  const byCatTotal = {};
-  summary.people.forEach(p => Object.entries(p.byCat || {}).forEach(([k, v]) => { byCatTotal[k] = (byCatTotal[k] || 0) + toNum(v); }));
-  const usedKeys = Object.keys(byCatTotal).filter(k => summary.people.some(p => Math.round(toNum(p.byCat?.[k])) !== 0));
-  const idx = k => { const i = categoryOrder.indexOf(k); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
-  const categories = usedKeys.sort((a, b) => idx(a) - idx(b)).map(k => ({ key: k, label: categoryLabels[k] || k }));
+  // 金額來源戶別（預覽 hover）：欄 key（類別欄／subtotal…net／hk）-> 戶別 -> 金額；totalSrc 為合計列
+  const unitOf = id => {
+    const rec = recById.get(id);
+    const first = rowsByRecord[id]?.[0] || {};
+    const unit = String(rec?.unitId ?? first.unitId ?? '') || '未指定戶別';
+    return isRefundRecord(rec) || first.type === 'refund' ? `${unit}(退佣)` : unit;
+  };
+  const personSrc = {}, totalSrc = {};
+  const addSource = (personKey, col, id, amount) => {
+    if (!toNum(amount)) return;
+    const unit = unitOf(id);
+    if (!personSrc[personKey]) personSrc[personKey] = {};
+    [personSrc[personKey], totalSrc].forEach(map => {
+      if (!map[col]) map[col] = {};
+      map[col][unit] = (map[col][unit] || 0) + toNum(amount);
+    });
+  };
+  categories.forEach(c => Object.entries(c.byRecord).forEach(([id, u]) => u.people.forEach(x => addSource(x.personKey, c.key, id, x.amount))));
+  rows.forEach(b => ['subtotal', 'keep', 'tax', 'nhi', 'net'].forEach(f => addSource(b.personKey || b.name, f, b.commissionRecordId, b[f])));
+  handover.forEach(x => addSource(x.personKey, 'hk', x.recordId, x.amount));
+  const sourcesOf = (map = {}) => Object.fromEntries(Object.entries(map).map(([col, units]) => [col,
+    Object.entries(units).map(([unit, amount]) => ({ unit, amount: Math.round(amount) })).filter(x => x.amount)
+      .sort((a, b) => a.unit.localeCompare(b.unit, 'zh-Hant', { numeric: true }))]));
 
   const people = summary.people.map(p => ({
     personKey: p.personKey, name: p.name,
-    byCat: Object.fromEntries(categories.map(c => [c.key, Math.round(toNum(p.byCat?.[c.key]))])),
+    byCat: Object.fromEntries(categories.map(c => [c.key, Math.round(toNum(c.byPerson[p.personKey]))])),
     keepPct: pctOf(p.personKey, 'keepPct'), taxPct: pctOf(p.personKey, 'taxPct'), nhiPct: pctOf(p.personKey, 'nhiPct'),
     subtotal: p.subtotal, keep: p.keep, tax: p.tax, nhi: p.nhi, net: p.net,
+    hkRate: uniqueJoin(hkOf(p.personKey).map(x => x.rateText)),
+    hk: Math.round(hkOf(p.personKey).reduce((sum, x) => sum + x.amount, 0)),
+    sources: sourcesOf(personSrc[p.personKey]),
     notes: periodPersonNotes(periodNotes, period, p.personKey, p.legacyNotes || [], noteHistory[p.personKey] || [])
       .map(n => String(n || '').trim()).filter(Boolean),
   }));
-  const minguoYM = firstMinguoYM(rows);
   return {
     docType: 'periodResult', period, projectName,
     title: `${projectName}－每人當期獎金結果　第 ${period} 期${titleMonthSuffix(minguoYM)}`,
     sheetName: '每人當期獎金結果',
-    categories, people,
-    totals: { ...summary.totals, byCat: Object.fromEntries(categories.map(c => [c.key, Math.round(byCatTotal[c.key])])) },
+    categories: categories.map(columnHeader), people,
+    hasHandover: people.some(p => p.hk || p.hkRate),
+    totals: {
+      ...summary.totals,
+      byCat: Object.fromEntries(categories.map(c => [c.key, people.reduce((sum, p) => sum + p.byCat[c.key], 0)])),
+      hk: people.reduce((sum, p) => sum + p.hk, 0),
+      sources: sourcesOf(totalSrc),
+    },
+    style, paper, orientation,
+  };
+}
+
+/**
+ * 每戶當期獎金結果：資料與類別欄規則同每人當期獎金結果，改為每筆戶別紀錄一列（同戶不同方案各一列，退佣另列）。
+ * 類別格為該戶該類別金額與領取人員；小計、扣款、實發為該戶所有人員加總；交屋保留款為該戶提撥（攤給銷售人員的合計）。
+ * 排序：依方案（planOrder），同方案依該方案獎金表戶別順序（unitOrders[planId]），再依戶別、退佣在後。
+ * @param {object} opts - buildPeriodResultModel 的 opts，另加 { planOrder: [planId], planNames: {planId: name}, unitOrders: {planId: [unitId]} }
+ */
+export function buildPeriodUnitModel(opts) {
+  const {
+    period, sorter = null, planOrder = [], planNames = {}, unitOrders = {},
+    projectName = '', style = {}, paper = 'A3', orientation = 'landscape',
+  } = opts;
+  const { recById, rowsByRecord, columns, handover, minguoYM } = periodResultBasis(opts);
+  const categories = columns.filter(c => Object.values(c.byRecord).some(u => Math.round(u.amount) !== 0));
+  const peopleOrder = list => (typeof sorter === 'function' ? list.slice().sort(sorter) : list);
+
+  const units = Object.entries(rowsByRecord).map(([id, list]) => {
+    const rec = recById.get(id) || {};
+    const first = list[0] || {};
+    const planId = rec.planId || first.planId || 'general';
+    const sum = field => list.reduce((s, b) => s + toNum(b[field]), 0);
+    const hk = handover.filter(x => x.recordId === id);
+    const sales = rec.snapshot?.salesperson;
+    return {
+      recordId: id, planId,
+      planName: planNames[planId] || rec.planName || rec.snapshot?.planName || first.planName || '',
+      unitId: String(rec.unitId ?? first.unitId ?? ''),
+      refund: isRefundRecord(rec) || first.type === 'refund',
+      buyerName: rec.snapshot?.buyerName || '',
+      sales: Array.isArray(sales) ? sales.join('、') : String(sales || ''),
+      after: toNum(rec.calc?.dealAfter),
+      ratioPct: toNum(rec.ratioPct),
+      byCat: Object.fromEntries(categories.map(c => {
+        const u = c.byRecord[id];
+        const people = peopleOrder((u?.people || []).filter(x => Math.round(x.amount) !== 0));
+        return [c.key, { amount: Math.round(toNum(u?.amount)), names: people.map(x => x.name) }];
+      })),
+      subtotal: sum('subtotal'), keep: sum('keep'), tax: sum('tax'), nhi: sum('nhi'), net: sum('net'),
+      hkRate: uniqueJoin(hk.map(x => x.rateText)),
+      hk: Math.round(hk.reduce((s, x) => s + x.amount, 0)),
+    };
+  }).filter(u => Math.round(u.subtotal) !== 0 || Object.values(u.byCat).some(c => c.amount !== 0));
+
+  const rank = (list, v) => { const i = list.indexOf(v); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+  units.sort((a, b) => (rank(planOrder, a.planId) - rank(planOrder, b.planId))
+    || String(a.planId).localeCompare(String(b.planId))
+    || (rank((unitOrders[a.planId] || []).map(String), a.unitId) - rank((unitOrders[b.planId] || []).map(String), b.unitId))
+    || a.unitId.localeCompare(b.unitId, 'zh-Hant', { numeric: true })
+    || (a.refund - b.refund));
+
+  const total = field => units.reduce((s, u) => s + u[field], 0);
+  return {
+    docType: 'periodUnitResult', period, projectName,
+    title: `${projectName}－每戶當期獎金結果　第 ${period} 期${titleMonthSuffix(minguoYM)}`,
+    sheetName: '每戶當期獎金結果',
+    multiPlan: new Set(units.map(u => u.planId)).size > 1,
+    categories: categories.map(columnHeader), units,
+    hasHandover: units.some(u => u.hk || u.hkRate),
+    totals: {
+      after: total('after'), subtotal: total('subtotal'), keep: total('keep'), tax: total('tax'), nhi: total('nhi'), net: total('net'),
+      byCat: Object.fromEntries(categories.map(c => [c.key, units.reduce((s, u) => s + u.byCat[c.key].amount, 0)])),
+      hk: total('hk'),
+    },
     style, paper, orientation,
   };
 }
@@ -698,21 +862,28 @@ export function listPersonsInPeriods(bonusRecords, periods, personnelOrder = [],
 
 /**
  * 個人獎金明細 model：指定人員 × 指定期別（可多期），僅含該人自己的金額。
- * @param {object} opts - { records, bonusRecords, payouts, personnel, settings, config, periods, personKey, projectName, projectId }
+ * 依戶別（unitIds 為陣列）：改為指定戶別 × 全部期別，所選戶別逐戶逐期列出（含期別、月份），不限本人銷售。
+ * @param {object} opts - { records, bonusRecords, payouts, personnel, settings, config, periods, unitIds, personKey, projectName, projectId }
  */
 export function buildPersonModel(opts) {
   const {
     records = [], bonusRecords = [], payouts = [], personnel = [],
-    settings = {}, config = {}, periods = [], personKey, projectName = '', projectId = '',
+    settings = {}, config = {}, periods = [], unitIds = null, personKey, projectName = '', projectId = '',
   } = opts;
   const cfg = { ...defaultPersonConfig(settings), ...config };
-  const periodSet = new Set((periods || []).map(toNum));
+  const unitMode = Array.isArray(unitIds);
+  const unitSet = new Set((unitIds || []).map(String));
 
   const recById = {};
   records.forEach(r => { recById[r.id] = r; });
 
   const personAll = bonusRecords.filter(b => b.status !== 'voided' && (b.personKey || b.name) === personKey);
-  const personRows = personAll.filter(b => periodSet.has(toNum(b.period)));
+  const periodFilter = new Set((periods || []).map(toNum));
+  const personRows = unitMode
+    ? personAll.filter(b => unitSet.has(String(b.unitId ?? recById[b.commissionRecordId]?.unitId ?? '')))
+    : personAll.filter(b => periodFilter.has(toNum(b.period)));
+  // 依戶別：期別為所選戶別實際涉及的期別
+  const periodSet = unitMode ? new Set(personRows.map(b => toNum(b.period))) : periodFilter;
 
   // 類別：依建案設定順序，另補歷史紀錄中存在但設定已停用/移除的 key；僅保留該人有金額的類別
   const catDefs = (settings.bonusCategories || []).slice().sort((a, b) => toNum(a.order) - toNum(b.order));
@@ -726,9 +897,10 @@ export function buildPersonModel(opts) {
   });
   const categories = Object.values(catMap).filter(c => c.sum !== 0);
 
-  const sorted = personRows.slice().sort((a, b) =>
-    (toNum(a.period) - toNum(b.period))
-    || String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true }));
+  const cmpUnit = (a, b) => String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true });
+  const cmpPeriod = (a, b) => toNum(a.period) - toNum(b.period);
+  const sorted = personRows.slice().sort((a, b) => (unitMode ? (cmpUnit(a, b) || cmpPeriod(a, b)) : (cmpPeriod(a, b) || cmpUnit(a, b)))
+    || String(a.requestDate || '').localeCompare(String(b.requestDate || '')));
 
   const staffEarly = personnel.find(p => p.phone === personKey) || null;
   const personNames = new Set(
@@ -805,7 +977,6 @@ export function buildPersonModel(opts) {
       const own = list.find(x => x.personKey === personKey);
       if (!own) return;
       shares[c.key] = { pct: own.pct, locked: own.locked };
-      if (list.length < 2) return;
       const sig = `${c.key}|${list.map(x => `${x.personKey}:${x.pct}:${x.locked ? 1 : 0}`).join(',')}`;
       if (!allocGroups.has(sig)) {
         allocGroups.set(sig, {
@@ -822,6 +993,7 @@ export function buildPersonModel(opts) {
       refund,
       period: toNum(b.period),
       requestDate: toMinguo(b.requestDate || rec.requestDate),
+      month: toMinguoYM(b.requestDate || rec.requestDate),
       unit,
       shares,
       contractDate: toMinguo(snap.contractDate),
@@ -851,7 +1023,7 @@ export function buildPersonModel(opts) {
   // 每戶明細預設只列「本人為該戶銷售人員」的戶別；其餘（專案／主委／團獎等）彙整為一列，不揭露戶別資訊。
   // 建案設定 personDetailShowAllRoles：職務含關鍵字者改為顯示全部戶別。
   const latestRole = String((sorted[sorted.length - 1] || personAll[personAll.length - 1] || {}).role || staffEarly?.positions?.join('、') || '');
-  const showAllUnits = (settings.personDetailShowAllRoles || [])
+  const showAllUnits = unitMode || (settings.personDetailShowAllRoles || [])
     .map(k => String(k || '').trim()).filter(Boolean)
     .some(k => latestRole.includes(k));
   const detailRows = showAllUnits ? rows : rows.filter(r => r.isOwnSale);
@@ -896,22 +1068,23 @@ export function buildPersonModel(opts) {
     isExternal: !!latest.isExternal,
   };
 
-  const label = periodsLabel(periods);
-  const fileLabel = periodsLabel(periods, true);
+  const label = periodsLabel([...periodSet]);
+  const fileLabel = periodsLabel([...periodSet], true);
   const shortName = settings.projectShortName || '';
-  const fileName = withProjectName(
-    fillPattern(cfg.fileNamePattern, { projectName, shortName, period: fileLabel }).replace(/\{姓名\}/g, person.name),
-    projectName,
-  );
+  const fileName = withProjectName(unitMode
+    ? `戶別獎金明細-${person.name}`
+    : fillPattern(cfg.fileNamePattern, { projectName, shortName, period: fileLabel }).replace(/\{姓名\}/g, person.name),
+  projectName);
 
   return {
     docType: 'person',
-    periodRemarks: [...periodSet].sort((a, b) => a - b).flatMap(period => periodPersonNotes(opts.periodNotes, period, personKey, [...new Set(personRows.filter(b => toNum(b.period) === period).map(b => b.remark).filter(Boolean))]).map(text => ({ period, text }))),
+    periodRemarks: unitMode ? [] : [...periodSet].sort((a, b) => a - b).flatMap(period => periodPersonNotes(opts.periodNotes, period, personKey, [...new Set(personRows.filter(b => toNum(b.period) === period).map(b => b.remark).filter(Boolean))]).map(text => ({ period, text }))),
     projectId, projectName,
     periods: [...periodSet].sort((a, b) => a - b),
     periodsLabel: label,
     title: `${projectName}－業務獎金個人明細`,
-    subtitle: `第 ${label} 期`,
+    subtitle: unitMode ? `指定戶別 ${unitSet.size} 戶` : `第 ${label} 期`,
+    unitMode, unitCount: unitSet.size,
     fileName,
     generatedAt: formatDateTW(new Date()),
     style: { ...PERSON_STYLE },
