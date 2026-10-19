@@ -9771,12 +9771,25 @@ export const setCommissionPersonOrder = (projectId, personOrder, updatedBy = '')
 
 /**
  * 請佣總表／獎金表戶別列順序（建案單一文件；依方案＋期別）：
- * { orders: { [planId]: { [period]: [unitId, ...] } } }
+ * { orders: { [planId]: { [period]: [unitId, ...] } }, unitSort: 'unit' | 'contractDate' }
+ * unitSort＝未拖曳戶別的排序方式（建案層級、所有方案共用），未設定為依戶別
  */
 export const fetchCommissionUnitOrders = async (projectId) => {
   const snap = await getDoc(doc(db, 'commissionSettings', `${projectId}__unitOrder`));
-  const orders = snap.exists() ? snap.data().orders : null;
-  return orders && typeof orders === 'object' ? orders : {};
+  const data = snap.exists() ? snap.data() : {};
+  const orders = data.orders && typeof data.orders === 'object' ? data.orders : {};
+  return { orders, unitSort: data.unitSort === 'contractDate' ? 'contractDate' : 'unit' };
+};
+
+/** 儲存戶別排序方式（建案層級）：'unit'＝戶別、'contractDate'＝簽約日期 */
+export const setCommissionUnitSort = (projectId, unitSort, updatedBy = '') => {
+  return setDoc(doc(db, 'commissionSettings', `${projectId}__unitOrder`), {
+    projectId,
+    kind: 'unitOrder',
+    unitSort: unitSort === 'contractDate' ? 'contractDate' : 'unit',
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 };
 
 /** 儲存某方案某期別的戶別列順序（只更新該期） */

@@ -21,6 +21,17 @@ export function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+/**
+ * 獎金扣款（保留款／稅金／二代健保）進位：先四捨五入到小數 1 位，再四捨五入到元（與會計一致）。
+ * 例：245.4985 → 245.5 → 246；245.44 → 245.4 → 245。toFixed 去除浮點誤差；負數依絕對值對稱處理。
+ */
+export function roundDeduction(v) {
+  const n = Number(v) || 0;
+  const tenths = Math.round(Number((Math.abs(n) * 10).toFixed(6)));
+  const r = Math.round(tenths / 10);
+  return r === 0 ? 0 : (n < 0 ? -r : r);
+}
+
 /** 百分比數值依來源精度原樣顯示（2.35 → "2.35"、10 → "10"），不補零、不進位；僅去除浮點誤差 */
 export function pctText(v) {
   return String(Math.round(toNum(v) * 10000) / 10000);
@@ -230,6 +241,12 @@ export function computeUnitFinance(unit, parkings) {
     spread: dealTotal - totalFloor,
     parkingSpots: myParkings.map(p => p.spotId || p.number || '').filter(Boolean).join('、'),
   };
+}
+
+/** 成交總價(萬)：快照的房屋成交＋車位成交（請佣採用的價格；配套方案為配套價格），分項皆無時取請佣總價 */
+export function snapshotDealWan(snapshot) {
+  const s = snapshot || {};
+  return Math.round(((toNum(s.houseDeal) + toNum(s.parkDeal)) || toNum(s.dealTotal)) * 10000) / 10000;
 }
 
 /** 繳款比例（%）：已繳合計(元) ÷ 成交總價(含車位, 萬)×10000，四捨五入至 0.1；無成交總價回傳 null（與 SalesControlSystem payment_ratio 一致） */
@@ -480,9 +497,9 @@ export function calcUnitBonus(finance, input, personProfiles) {
     const keepPct = toNum(p.keepPct);
     const taxPct = toNum(p.taxPct);
     const nhiPct = toNum(p.nhiPct);
-    const keep = Math.round(subtotal * keepPct / 100);
-    const tax = Math.round((subtotal - keep) * taxPct / 100);   // 稅金／二代健保以「合計(扣保留款)」為基礎
-    const nhi = Math.round((subtotal - keep) * nhiPct / 100);
+    const keep = roundDeduction(subtotal * keepPct / 100);
+    const tax = roundDeduction((subtotal - keep) * taxPct / 100);   // 稅金／二代健保以「合計(扣保留款)」為基礎
+    const nhi = roundDeduction((subtotal - keep) * nhiPct / 100);
     return {
       personKey,
       name: p.name || rec.alloc.name || personKey,
@@ -501,6 +518,51 @@ export function calcUnitBonus(finance, input, personProfiles) {
   });
 
   return { claim, pools, categoryResults, people, errors, handover, handoverTotal, handoverTotalFull };
+}
+
+// ---------- 獎金表每頁每人扣款（保留款／稅金／二代健保以累計計算） ----------
+/** 獎金表分頁鍵：期別＋發放比例（與獎金表依比例分頁一致；退回紀錄取比例絕對值） */
+export function bonusPageKey(period, ratioPct) {
+  return `${toNum(period)}|${Math.round(Math.abs(toNum(ratioPct)) * 10000) / 10000}`;
+}
+
+/**
+ * 保留款／稅金／二代健保以「獎金表每頁每人累計」計算（同方案、同期、同發放比例；呼叫端只傳同方案明細）。
+ * 每人每頁：保留款＝roundDeduction(Σ小計×保留%)；稅金／二代健保＝roundDeduction(Σ(小計−保留款)×比例)。
+ * rows 先依逐戶計算，與累計目標的尾差由該人本批戶別編號最後一戶吸收、實發重算；
+ * saved 為同頁已依此規則存檔的明細（有 deductionPage，不含本批取代者），只計入累計、不修改。
+ * 舊規則／匯入明細（無 deductionPage）與退回明細不參與。
+ * @param {Array} rows  本批明細（直接修改）：{ deductionPage, unitId, personKey, subtotal, keepPct, taxPct, nhiPct, keep, tax, nhi, net }
+ * @param {Array} saved 已存明細（欄位同上）
+ * @returns {Array} rows
+ */
+export function applyPageDeductions(rows, saved = []) {
+  const groups = new Map();
+  const groupOf = r => {
+    const key = `${r.deductionPage}\u0000${r.personKey}`;
+    if (!groups.has(key)) groups.set(key, { own: [], all: [] });
+    return groups.get(key);
+  };
+  (saved || []).forEach(r => { if (r && r.deductionPage) groupOf(r).all.push(r); });
+  (rows || []).forEach(r => {
+    if (!r || !r.deductionPage) return;
+    const g = groupOf(r);
+    g.all.push(r);
+    g.own.push(r);
+  });
+  const unitCmp = (a, b) => String(a.unitId || '').localeCompare(String(b.unitId || ''), 'zh-Hant', { numeric: true });
+  groups.forEach(g => {
+    if (!g.own.length) return;
+    const last = g.own.reduce((a, b) => (unitCmp(b, a) >= 0 ? b : a));
+    const sum = f => g.all.reduce((s, r) => s + toNum(r[f]), 0);
+    const target = fn => roundDeduction(g.all.reduce((s, r) => s + fn(r), 0));
+    last.keep = toNum(last.keep) + target(r => toNum(r.subtotal) * toNum(r.keepPct) / 100) - sum('keep');
+    const base = r => toNum(r.subtotal) - toNum(r.keep);   // 稅金／二代健保以「合計(扣保留款)」為基礎
+    last.tax = toNum(last.tax) + target(r => base(r) * toNum(r.taxPct) / 100) - sum('tax');
+    last.nhi = toNum(last.nhi) + target(r => base(r) * toNum(r.nhiPct) / 100) - sum('nhi');
+    last.net = toNum(last.subtotal) - last.keep - last.tax - last.nhi;
+  });
+  return rows;
 }
 
 // ---------- 日期 / 文字工具 ----------
@@ -645,8 +707,13 @@ export function buildRefundPlan(opts) {
     salesStatus: ls.salesStatus || '',
     remarks: ls.remarks || '',
   };
+  // 原成交總價：舊紀錄無此欄時取請佣總價（與歷期總覽一致）
+  const snapNum = (x, k) => {
+    const sn = x.snapshot || {};
+    return toNum(k === 'transactionTotal' ? (sn.transactionTotal ?? sn.dealTotal) : sn[k]);
+  };
   REFUND_SNAPSHOT_NUM_KEYS.forEach(k => {
-    const v = -sources.reduce((s, x) => s + toNum(x.snapshot && x.snapshot[k]), 0);
+    const v = -sources.reduce((s, x) => s + snapNum(x, k), 0);
     snapshot[k] = partial ? Math.round(v * factor * 10000) / 10000 : v;
   });
 
@@ -739,9 +806,9 @@ export function buildRefundPlan(opts) {
         subtotal += v;
       });
       // 未調整＝原數反向（扣款直接取原值，確保完全對沖）；有調整＝依原比例重算
-      const keep = adjusted ? Math.round(subtotal * o.keepPct / 100) : Math.round(o.keep);
-      const tax = adjusted ? Math.round((subtotal - keep) * o.taxPct / 100) : Math.round(o.tax);
-      const nhi = adjusted ? Math.round((subtotal - keep) * o.nhiPct / 100) : Math.round(o.nhi);
+      const keep = adjusted ? roundDeduction(subtotal * o.keepPct / 100) : Math.round(o.keep);
+      const tax = adjusted ? roundDeduction((subtotal - keep) * o.taxPct / 100) : Math.round(o.tax);
+      const nhi = adjusted ? roundDeduction((subtotal - keep) * o.nhiPct / 100) : Math.round(o.nhi);
       people.push({
         personKey: key, name: o.name, role: o.role,
         sourceProjectId: o.sourceProjectId, sourceProjectName: o.sourceProjectName, isExternal: o.isExternal,

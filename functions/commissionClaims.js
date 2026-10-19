@@ -574,6 +574,27 @@ exports.submitCommissionEntries = onCall({
     prepared.push({ entry, unit, finance, input, result, isPreferred });
   }
 
+  // 保留款／稅金／二代健保依獎金表每頁每人累計（同方案、同期、同發放比例）：
+  // 同頁已依此規則存檔的明細一起累計（拉回取代者除外），尾差由本批該人戶別編號最後一戶吸收
+  const pageRows = [];
+  prepared.forEach(p => p.result.people.forEach(person => {
+    person.unitId = p.entry.unitId;
+    person.deductionPage = calc.bonusPageKey(p.entry.period, p.entry.ratioPct);
+    pageRows.push(person);
+  }));
+  if (pageRows.length) {
+    const replacedIds = new Set(preparedReplaces.map(r => r.recordId));
+    const pageSaved = [];
+    for (const per of [...new Set(prepared.map(p => Number(p.entry.period)))]) {
+      const snap = await db.collection("bonusRecords").where("projectId", "==", projectId).where("period", "==", per).get();
+      snap.docs.forEach(d => {
+        const b = d.data();
+        if (b.status !== "voided" && b.deductionPage && planIdOf(b) === planId && !replacedIds.has(b.commissionRecordId)) pageSaved.push(b);
+      });
+    }
+    calc.applyPageDeductions(pageRows, pageSaved);
+  }
+
   // 預估寫入量（每戶 1 請佣紀錄 + N 獎金明細 + 1 ledger），transaction 上限 500
   const totalWrites = 1 + preparedReplaces.length + periodNotes.length + prepared.reduce((s, p) => s + 1 + p.result.people.length, 0) + prepared.length
     + preparedRefunds.reduce((s, r) => s + 1 + r.plan.people.length + r.ids.length + 1, 0);
@@ -768,6 +789,7 @@ exports.submitCommissionEntries = onCall({
           tax: person.tax,
           nhi: person.nhi,
           net: person.net,
+          deductionPage: person.deductionPage,
           remark: person.remark || "",
           planName: commissionPlan.name,
           source: "system",
@@ -1129,6 +1151,13 @@ exports.updateCommissionRecordField = onCall({
       const bs = await tx.get(db.collection("bonusRecords").where("commissionRecordId", "==", String(recordId)));
       bonusDocs = bs.docs.filter(d => d.data().status !== "voided");
     }
+    // 改獎金比例：同頁（新比例）已依累計規則存檔的明細，供保留款／稅金／二代健保累計
+    let pageSaved = [];
+    if (bonusOnly && field === "ratioPct") {
+      const ps = await tx.get(db.collection("bonusRecords").where("projectId", "==", projectId).where("period", "==", period));
+      pageSaved = ps.docs.map(d => d.data())
+        .filter(b => b.status !== "voided" && b.deductionPage && planIdOf(b) === planId && b.commissionRecordId !== String(recordId));
+    }
 
     if (field === "requestDate" || field === "note") {
       if (change(field, String(rec[field] ?? ""), next)) { update[field] = next; patch[field] = next; }
@@ -1156,8 +1185,10 @@ exports.updateCommissionRecordField = onCall({
           throw new HttpsError("failed-precondition", `戶別 ${unitId} 的獎金明細與原分配不一致，請改用「拉回編輯」修改。`);
         }
         const netBefore = bonusDocs.reduce((s, d) => s + calc.toNum(d.data().net), 0);
+        result.people.forEach(p => { p.unitId = unitId; p.deductionPage = calc.bonusPageKey(period, next); });
+        calc.applyPageDeductions(result.people, pageSaved);
         result.people.forEach(p => {
-          const fields = { amounts: p.amounts, amountsFull: p.amountsFull, subtotal: p.subtotal, keep: p.keep, tax: p.tax, nhi: p.nhi, net: p.net };
+          const fields = { amounts: p.amounts, amountsFull: p.amountsFull, subtotal: p.subtotal, keep: p.keep, tax: p.tax, nhi: p.nhi, net: p.net, deductionPage: p.deductionPage };
           tx.update(byPerson.get(p.personKey).ref, fields);
           bonusPatches.push({ id: byPerson.get(p.personKey).id, ...fields });
         });

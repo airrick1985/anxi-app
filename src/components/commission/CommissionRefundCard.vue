@@ -24,8 +24,8 @@
       <v-btn icon="mdi-close" size="small" variant="text" class="remove-unit" title="移除此戶" @click.stop="$emit('remove')"></v-btn>
       <dl class="finance-summary" :aria-label="`戶別${isBonus ? '退獎金' : '退佣'}數據`">
         <div class="finance-metric">
-          <dt>成交總價<span class="metric-unit">萬</span></dt>
-          <dd>{{ fmtWan(sourceSnap.dealTotal) }}</dd>
+          <dt>{{ sourceSnap.priceSource === 'package' ? '配套價格' : '成交總價' }}<span class="metric-unit">萬</span></dt>
+          <dd>{{ sourceSnap.dealTotal === undefined ? '—' : fmtWan(snapshotDealWan(sourceSnap)) }}</dd>
           <span class="metric-note">{{ sourceLabel }}</span>
         </div>
         <div class="finance-metric">
@@ -207,7 +207,7 @@
 <script setup>
 import { contractTypeColor } from '@/utils/contractTypeColor';
 import { computed, watch } from 'vue';
-import { money, toNum, isHandoverCategory, formatDateTW } from '@/utils/commissionCalculation';
+import { money, toNum, isHandoverCategory, formatDateTW, snapshotDealWan } from '@/utils/commissionCalculation';
 import { normalizeSalesNames } from '@/utils/commissionDraftRecords';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
 import { buildRefundEntryPlan } from './refundEntry';

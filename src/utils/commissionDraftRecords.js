@@ -5,7 +5,7 @@
  * 寫入 commissionRecords／bonusRecords 相同形狀的物件，讓送出前預覽可直接沿用
  * 匯出中心的 model → grid → HTML 流程（欄位對應請與後端保持一致）。
  */
-import { toNum, formatDateTW } from '@/utils/commissionCalculation';
+import { toNum, formatDateTW, bonusPageKey } from '@/utils/commissionCalculation';
 
 export function normalizeSalesNames(v) {
   if (Array.isArray(v)) return v.map(s => String(s).trim()).filter(Boolean);
@@ -108,6 +108,7 @@ export function draftClaimRecord({ entry, result, projectId, planId, plan, creat
   const base = {
     projectId, planId, unitId: entry.unitId, period, status: 'active',
     commissionRecordId: recordId, requestDate: record.requestDate, planName: plan.name, source: 'draft', createdBy,
+    deductionPage: bonusPageKey(period, entry.ratioPct),   // 保留款／稅金／二代健保依獎金表每頁每人累計（applyPageDeductions）
   };
   return { record, bonusRecords: result.people.map(p => bonusRow(base, p)) };
 }

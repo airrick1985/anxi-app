@@ -358,6 +358,11 @@
             </v-btn-toggle>
             <v-select v-model="previewConfigId" :items="previewConfigOptions" item-title="name" item-value="id"
               label="欄位版型" variant="outlined" density="compact" hide-details :loading="previewConfigsLoading" style="max-width: 280px"></v-select>
+            <v-btn-toggle :model-value="unitSort" mandatory color="primary" variant="outlined" divided density="comfortable"
+              aria-label="戶別排序" @update:model-value="v => emit('update:unitSort', v)">
+              <v-btn value="unit" size="small">依戶別</v-btn>
+              <v-btn value="contractDate" size="small">依簽約日期</v-btn>
+            </v-btn-toggle>
           </div>
 
           <div v-for="(sec, i) in previewWarnings" :key="i" class="mb-3">
@@ -383,7 +388,7 @@
 
 <script setup>
 import { contractTypeColor } from '@/utils/contractTypeColor';
-import { computePlanFinance, defaultPriceSource, defaultManualFloor, isNonGeneralContract } from '@/utils/commissionPlans';
+import { computePlanFinance, defaultPriceSource, defaultManualFloor, isNonGeneralContract, planIdOf } from '@/utils/commissionPlans';
 import { useCommissionPlan } from '@/composables/useCommissionPlan';
 const { plan, planId, belongsToPlan } = useCommissionPlan();
 import { ref, reactive, computed, watch, nextTick } from 'vue';
@@ -403,7 +408,7 @@ import { draftClaimRecord, draftRefundRecord, normalizeSalesNames } from '@/util
 import {
   calcUnitBonus, computeUnitFinance, resolveCommPct, formatDateTW,
   money, toNum, evenShares, paymentRatioPct, matchesRolePositions, isHandoverCategory, resolveSplitMode, categoryDefaultPersons,
-  basisMethodOf, feeTimingOf,
+  basisMethodOf, feeTimingOf, applyPageDeductions,
 } from '@/utils/commissionCalculation';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
 import { listFeeGiftEntries } from '@/utils/unitFeeGifts';
@@ -422,6 +427,7 @@ const props = defineProps({
   parkings: { type: Array, default: () => [] },
   personnel: { type: Array, default: () => [] },
   personOrder: { type: Array, default: () => [] },   // 建案層級：獎金表人員欄排序（personKey 清單）
+  unitSort: { type: String, default: 'unit' },       // 建案層級：戶別排序方式 'unit'｜'contractDate'
   ledgers: { type: Object, default: () => ({}) },   // unitId -> claimedRatioPct
   nextPeriod: { type: Number, default: 1 },
   records: { type: Array, default: () => [] },        // 全建案請佣紀錄（退佣來源）
@@ -429,7 +435,7 @@ const props = defineProps({
 });
 
 const showSummary = ref(false);
-const emit = defineEmits(['submitted', 'notes-saved']);
+const emit = defineEmits(['submitted', 'notes-saved', 'update:unitSort']);
 const isBonus = computed(() => props.mode === 'bonus');
 const refundLabel = computed(() => (isBonus.value ? '退獎金' : '退佣'));
 const toast = useToast();
@@ -1198,6 +1204,11 @@ const draftData = computed(() => {
     records.push(d.record);
     bonusRecords.push(...d.bonusRecords);
   });
+  // 保留款／稅金／二代健保依獎金表每頁每人累計（與後端送出相同）：同頁已存明細一起累計，拉回取代者除外
+  const replacing = new Set(entries.value.map(e => e.replaceRecordId).filter(Boolean));
+  const saved = (isBonus.value ? props.allBonusRecords : props.bonusRecords)
+    .filter(b => b.status !== 'voided' && b.deductionPage && planIdOf(b) === planId.value && !replacing.has(b.commissionRecordId));
+  applyPageDeductions(bonusRecords, saved);
   refunds.value.forEach(entry => {
     const d = draftRefundRecord({ entry, refundPlan: refundPlan(entry), ...common });
     records.push(d.record);
@@ -1329,7 +1340,7 @@ const previewGrids = computed(() => {
       const recs = records.filter(r => toNum(r.period) === period);
       if (!recs.length) return;
       const ids = new Set(recs.map(r => r.id));
-      const base = { settings: exportSettings.value, period, projectName: exportProjectName.value };
+      const base = { settings: exportSettings.value, period, projectName: exportProjectName.value, unitSort: props.unitSort };
       let grids;
       if (previewDocType.value === 'claim') {
         grids = [buildClaimGrid(buildClaimModel(recs, { ...base, config: previewConfigOf('claim') }))];
@@ -1356,7 +1367,7 @@ const previewGrids = computed(() => {
           indivKeys: (props.settings.bonusCategories || []).filter(c => c.mode === 'individual').map(c => c.key),
           sorter: makePersonSorter(props.personOrder, props.personnel.map(p => p.name)),
           periodNotes: effectiveNotes.value, noteHistory: personNoteHistory.value,
-          planOrder: [planId.value], planNames: { [planId.value]: plan.value.name },
+          planOrder: [planId.value], planNames: { [planId.value]: plan.value.name }, unitSort: props.unitSort,
           projectName: props.projectName, style: { ...defaultBonusConfig(exportSettings.value).style, ...(bonusCfg.style || {}) },
         };
         grids.push(buildPeriodResultGrid(buildPeriodResultModel(resultOpts)), buildPeriodUnitGrid(buildPeriodUnitModel(resultOpts)));

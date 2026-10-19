@@ -6,7 +6,7 @@ import { periodPersonNotes, personNoteHistory, summarizePeriodBonus } from './co
  */
 
 import {
-  toNum, money, toMinguo, toMinguoYM, fillPattern, formatDateTW, pctText,
+  toNum, money, toMinguo, toMinguoYM, fillPattern, formatDateTW, pctText, snapshotDealWan,
 } from '@/utils/commissionCalculation';
 
 // ================= 檔名：統一加上建案名 =================
@@ -42,7 +42,7 @@ export const CLAIM_COLUMNS = [
   { key: 'houseDeal',  title: '房價', group: '成交價(萬)', width: 66, numFmt: '#,##0', sum: true, get: r => toNum(r.snapshot?.houseDeal) },
   { key: 'parkDeal',   title: '車價', group: '成交價(萬)', width: 58, numFmt: '#,##0', sum: true, get: r => toNum(r.snapshot?.parkDeal) },
   { key: 'totalFloor', title: '總底價(萬)',      width: 70, numFmt: '#,##0', sum: true, get: r => toNum(r.snapshot?.totalFloor) },
-  { key: 'totalDeal',  title: '總成交價(萬)',    width: 70, numFmt: '#,##0', sum: true, get: r => toNum(r.snapshot?.dealTotal) },
+  { key: 'totalDeal',  title: '總成交價(萬)',    width: 70, numFmt: '#,##0', sum: true, get: r => snapshotDealWan(r.snapshot) },
   { key: 'spread',     title: '溢差價(萬)',      width: 60, numFmt: '#,##0', sum: true, get: r => toNum(r.snapshot?.spread) },
   { key: 'feeWan',     title: '介紹費(萬)',      width: 68, numFmt: '0.0',   sum: true, get: r => toNum(r.calc?.feeWan) },
   { key: 'realSpread', title: '實際溢差價(萬)',  width: 70, numFmt: '0.0',   sum: true, get: r => toNum(r.calc?.realSpread) },
@@ -118,17 +118,28 @@ export function defaultBonusConfig(settings) {
  * @param {Array} records - 該期有效 commissionRecords
  * @param {object} opts - { settings, config, period, projectName }
  */
-/** 戶別列排序：已儲存的戶別順序（unitOrder）優先，其餘依戶別編號自然排序接在後面 */
-export function sortRecordsByUnitOrder(records, unitOrder = []) {
+/** 簽約日期排序鍵（yyyymmdd）；未填排最後 */
+function contractDateKey(v) {
+  const m = String(v || '').match(/(\d{4})\D(\d{1,2})\D(\d{1,2})/);
+  return m ? Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]) : Number.MAX_SAFE_INTEGER;
+}
+/** 戶別排序方式：'unit'＝戶別、'contractDate'＝簽約日期（舊→新，同日依戶別） */
+export function compareUnitSort(unitSort, a, b) {
+  return (unitSort === 'contractDate' ? contractDateKey(a.contractDate) - contractDateKey(b.contractDate) : 0)
+    || String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true });
+}
+
+/** 戶別列排序：已儲存的戶別順序（unitOrder）優先，其餘依排序方式（unitSort）接在後面 */
+export function sortRecordsByUnitOrder(records, unitOrder = [], unitSort = 'unit') {
   const idx = {};
   (unitOrder || []).forEach((u, i) => { if (idx[u] === undefined) idx[u] = i; });
   const rank = r => (idx[String(r.unitId)] !== undefined ? idx[String(r.unitId)] : Number.MAX_SAFE_INTEGER);
-  return records.slice().sort((a, b) => (rank(a) - rank(b))
-    || String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true }));
+  const keyOf = r => ({ unitId: r.unitId, contractDate: r.snapshot?.contractDate });
+  return records.slice().sort((a, b) => (rank(a) - rank(b)) || compareUnitSort(unitSort, keyOf(a), keyOf(b)));
 }
 
 export function buildClaimModel(records, opts) {
-  const { settings = {}, config = {}, period, projectName = '', unitOrder = [] } = opts;
+  const { settings = {}, config = {}, period, projectName = '', unitOrder = [], unitSort = 'unit' } = opts;
   const cfg = { ...defaultClaimConfig(settings), ...config };
   const keepPct = toNum(cfg.keepPct);
   const ctx = { keepPct, youfuTag: cfg.youfuTag || '5%優付' };
@@ -154,7 +165,7 @@ export function buildClaimModel(records, opts) {
       };
     });
 
-  const sorted = sortRecordsByUnitOrder(records, unitOrder);
+  const sorted = sortRecordsByUnitOrder(records, unitOrder, unitSort);
   const rows = sorted.map((r, i) => {
     const cells = {};
     CLAIM_COLUMNS.forEach(col => { cells[col.key] = col.get(r, i, ctx); });   // 編號依排序後位置連續編號
@@ -309,7 +320,7 @@ export function makePersonSorter(personOrder = [], personnelOrder = []) {
 export function buildBonusModel(opts) {
   const {
     records = [], bonusRecords = [], settings = {}, config = {},
-    period, projectName = '', projectId = '', personnelOrder = [], personOrder = [], unitOrder = [], singlePage = false,
+    period, projectName = '', projectId = '', personnelOrder = [], personOrder = [], unitOrder = [], unitSort = 'unit', singlePage = false,
   } = opts;
   const cfg = { ...defaultBonusConfig(settings), ...config };
   const cls = classifyCategories(settings);
@@ -455,7 +466,7 @@ export function buildBonusModel(opts) {
         };
       };
 
-      const sortedRecords = opts.preserveRecordOrder ? g.records : sortRecordsByUnitOrder(g.records, unitOrder);
+      const sortedRecords = opts.preserveRecordOrder ? g.records : sortRecordsByUnitOrder(g.records, unitOrder, unitSort);
       const unitRows = sortedRecords.map((r, i) => {
         const pp = {};
         topPersons.forEach(p => {
@@ -482,7 +493,7 @@ export function buildBonusModel(opts) {
           house: toNum(r.snapshot?.houseDeal),
           parkP: toNum(r.snapshot?.parkDeal),
           packageFloor: toNum(r.snapshot?.houseFloor),
-          total: toNum(r.snapshot?.dealTotal),
+          total: snapshotDealWan(r.snapshot),
           referral: toNum(r.partyAFee),
           disc: toNum(r.calc?.discount),
           after: toNum(r.calc?.dealAfter),
@@ -563,7 +574,7 @@ export function buildMergedBonusModel({ sources = [], ...opts }) {
     (settings.bonusCategories || []).forEach(cat => bonusCategories.push({
       ...cat, key: keyOf(cat.key), label: `${plan.name}・${cat.label}`,
     }));
-    sortRecordsByUnitOrder(planRecords, unitOrder).forEach(record => {
+    sortRecordsByUnitOrder(planRecords, unitOrder, opts.unitSort).forEach(record => {
       const id = keyOf(record.id);
       const handover = record.handover && {
         ...record.handover,
@@ -749,12 +760,12 @@ export function buildPeriodResultModel(opts) {
 /**
  * 每戶當期獎金結果：資料與類別欄規則同每人當期獎金結果，改為每筆戶別紀錄一列（同戶不同方案各一列，退佣另列）。
  * 類別格為該戶該類別金額與領取人員；小計、扣款、實發為該戶所有人員加總；交屋保留款為該戶提撥（攤給銷售人員的合計）。
- * 排序：依方案（planOrder），同方案依該方案獎金表戶別順序（unitOrders[planId]），再依戶別、退佣在後。
- * @param {object} opts - buildPeriodResultModel 的 opts，另加 { planOrder: [planId], planNames: {planId: name}, unitOrders: {planId: [unitId]} }
+ * 排序：依方案（planOrder），同方案依該方案獎金表戶別順序（unitOrders[planId]），再依排序方式（unitSort）、退佣在後。
+ * @param {object} opts - buildPeriodResultModel 的 opts，另加 { planOrder: [planId], planNames: {planId: name}, unitOrders: {planId: [unitId]}, unitSort }
  */
 export function buildPeriodUnitModel(opts) {
   const {
-    period, sorter = null, planOrder = [], planNames = {}, unitOrders = {},
+    period, sorter = null, planOrder = [], planNames = {}, unitOrders = {}, unitSort = 'unit',
     projectName = '', style = {}, paper = 'A3', orientation = 'landscape',
   } = opts;
   const { recById, rowsByRecord, columns, handover, minguoYM } = periodResultBasis(opts);
@@ -772,6 +783,7 @@ export function buildPeriodUnitModel(opts) {
       recordId: id, planId,
       planName: planNames[planId] || rec.planName || rec.snapshot?.planName || first.planName || '',
       unitId: String(rec.unitId ?? first.unitId ?? ''),
+      contractDate: rec.snapshot?.contractDate || '',
       refund: isRefundRecord(rec) || first.type === 'refund',
       buyerName: rec.snapshot?.buyerName || '',
       sales: Array.isArray(sales) ? sales.join('、') : String(sales || ''),
@@ -792,7 +804,7 @@ export function buildPeriodUnitModel(opts) {
   units.sort((a, b) => (rank(planOrder, a.planId) - rank(planOrder, b.planId))
     || String(a.planId).localeCompare(String(b.planId))
     || (rank((unitOrders[a.planId] || []).map(String), a.unitId) - rank((unitOrders[b.planId] || []).map(String), b.unitId))
-    || a.unitId.localeCompare(b.unitId, 'zh-Hant', { numeric: true })
+    || compareUnitSort(unitSort, a, b)
     || (a.refund - b.refund));
 
   const total = field => units.reduce((s, u) => s + u[field], 0);

@@ -83,6 +83,13 @@
                 <v-select v-model="selectedConfigId" :items="configOptions" item-title="name" item-value="id"
                   label="欄位版型" variant="outlined" density="compact" hide-details></v-select>
               </v-col>
+              <v-col cols="12" sm="auto">
+                <v-btn-toggle :model-value="unitSort" mandatory color="primary" variant="outlined" divided density="comfortable"
+                  aria-label="戶別排序" @update:model-value="v => emit('update:unitSort', v)">
+                  <v-btn value="unit" size="small">依戶別</v-btn>
+                  <v-btn value="contractDate" size="small">依簽約日期</v-btn>
+                </v-btn-toggle>
+              </v-col>
               <v-col cols="12" sm="auto" class="d-flex ga-1 flex-wrap">
                 <v-btn size="small" variant="tonal" prepend-icon="mdi-pencil" @click="editTemplate">
                   {{ selectedConfigId === '__default' ? '以此為底新增版型' : '編輯版型' }}
@@ -315,8 +322,9 @@ const props = defineProps({
   presetPeriod: { type: Number, default: null },   // 由父層指定要帶入的期別（送出後跳轉）
   personOrder: { type: Array, default: () => [] },   // 建案層級：獎金表人員欄排序（personKey 清單）
   unitOrders: { type: Object, default: () => ({}) },   // 戶別列順序 { [planId]: { [period]: [unitId] } }
+  unitSort: { type: String, default: 'unit' },         // 未拖曳戶別的排序方式 'unit'｜'contractDate'（建案層級）
 });
-const emit = defineEmits(['update:personOrder', 'update:unitOrders', 'settings-saved']);
+const emit = defineEmits(['update:personOrder', 'update:unitOrders', 'update:unitSort', 'settings-saved']);
 
 const router = useRouter();
 const toast = useToast();
@@ -602,7 +610,7 @@ const claimModel = computed(() => {
   const cfg = docType.value === 'claim' ? currentConfig.value : projectDefaultClaimConfig();
   return buildClaimModel(props.records.filter(r => r.status !== 'voided' && toNum(r.period) === toNum(period.value)), {
     settings: exportSettings.value, config: cfg, period: period.value, projectName: exportProjectName.value,
-    unitOrder: currentUnitOrder.value,
+    unitOrder: currentUnitOrder.value, unitSort: props.unitSort,
   });
 });
 
@@ -629,6 +637,7 @@ const bonusModel = computed(() => {
     personnelOrder: personnelOrder.value,
     personOrder: props.personOrder,
     unitOrder: currentUnitOrder.value,
+    unitSort: props.unitSort,
     singlePage: singlePage.value,
   });
 });
@@ -713,7 +722,7 @@ const groupedDocuments = computed(() => {
     const projectName = `${props.projectName}・${p.name}`;
     const unitOrder = unitOrderOf(p.id, period.value);
     const claimRecords = props.allRecords.filter(r => planIdOf(r) === p.id && r.status !== 'voided' && toNum(r.period) === toNum(period.value));
-    const claim = buildClaimModel(claimRecords, { settings, config: configOf('claim'), period: period.value, projectName, unitOrder });
+    const claim = buildClaimModel(claimRecords, { settings, config: configOf('claim'), period: period.value, projectName, unitOrder, unitSort: props.unitSort });
     if (docType.value === 'claim') return [{ plan: p, model: claim, grids: [buildClaimGrid(claim)] }];
     const bonus = buildBonusModel({ records, periodNotes: props.periodNotes, noteHistory: noteHistoryAll.value,
       bonusRecords: props.allBonusRecords.filter(b => b.status !== 'voided' && planIdOf(b) === p.id && toNum(b.period) === toNum(period.value)),
@@ -721,6 +730,7 @@ const groupedDocuments = computed(() => {
       personnelOrder: personnelOrder.value,
       personOrder: props.personOrder,
       unitOrder,
+      unitSort: props.unitSort,
       singlePage: singlePage.value,
     });
     return [{ plan: p, model: bonus, grids: [...(bonus.includeClaimSheet && claimRecords.length ? [buildClaimGrid(claim)] : []), ...buildBonusGrids(bonus)] }];
@@ -738,7 +748,7 @@ const mergedBonusModel = computed(() => {
   })).filter(source => source.records.length);
   return buildMergedBonusModel({ sources, periodNotes: props.periodNotes, settings: exportSettings.value, config: currentConfig.value,
     period: period.value, projectName: props.projectName, projectId: props.projectId,
-    personnelOrder: personnelOrder.value, personOrder: props.personOrder, singlePage: singlePage.value,
+    personnelOrder: personnelOrder.value, personOrder: props.personOrder, unitSort: props.unitSort, singlePage: singlePage.value,
   });
 });
 
@@ -762,6 +772,7 @@ const periodResultGrids = computed(() => {
     planOrder: props.plans.map(p => p.id),
     planNames: Object.fromEntries(props.plans.map(p => [p.id, p.name])),
     unitOrders: Object.fromEntries(props.plans.map(p => [p.id, unitOrderOf(p.id, period.value)])),
+    unitSort: props.unitSort,
     projectName: props.projectName, style: { ...defaultBonusConfig(exportSettings.value).style, ...(bonusCfg.style || {}) },
   };
   return [buildPeriodResultGrid(buildPeriodResultModel(opts)), buildPeriodUnitGrid(buildPeriodUnitModel(opts))];

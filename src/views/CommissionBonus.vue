@@ -71,6 +71,8 @@
           :records="records"
           :bonus-records="bonusRecords"
           :person-order="personOrder"
+          :unit-sort="unitSort"
+          @update:unit-sort="saveUnitSort"
           @submitted="handleSubmitted"
         />
       </v-window-item>
@@ -95,6 +97,8 @@
           :period-notes="periodNotes"
           @notes-saved="loadPeriodNotes"
           :person-order="personOrder"
+          :unit-sort="unitSort"
+          @update:unit-sort="saveUnitSort"
           @submitted="handleSubmitted"
         />
       </v-window-item>
@@ -153,6 +157,8 @@
           @update:person-order="v => { personOrder = v; }"
           :unit-orders="unitOrders"
           @update:unit-orders="v => { unitOrders = v; }"
+          :unit-sort="unitSort"
+          @update:unit-sort="saveUnitSort"
           @settings-saved="loadSettings"
         />
       </v-window-item>
@@ -199,6 +205,7 @@ import {
   fetchCommissionLedgers,
   fetchCommissionPersonOrder,
   fetchCommissionUnitOrders,
+  setCommissionUnitSort,
 } from '@/api';
 import { DEFAULT_PLANS, planIdOf, isBuiltInPlan, mergePlans } from '@/utils/commissionPlans';
 import { bonusSourceRecords } from '@/utils/commissionPeriodBonus';
@@ -230,6 +237,7 @@ const exportDocType = ref('claim');   // 匯出中心要帶入的期別（歷期
 const settings = ref(mergeSettings(null));
 const personOrder = ref([]);   // 建案層級：獎金表人員欄排序（personKey 清單；即時預覽拖曳儲存）
 const unitOrders = ref({});    // 戶別列順序 { [planId]: { [period]: [unitId] } }（即時預覽拖曳儲存）
+const unitSort = ref('unit');  // 建案層級：未拖曳戶別的排序方式 'unit'｜'contractDate'（送出前預覽、匯出中心共用）
 const allRecords = ref([]);
 const allBonusRecords = ref([]);
 const allBonusEntries = ref([]);
@@ -377,11 +385,28 @@ async function loadPersonOrder() {
   try {
     const [po, uo] = await Promise.all([fetchCommissionPersonOrder(projectId.value), fetchCommissionUnitOrders(projectId.value)]);
     personOrder.value = po;
-    unitOrders.value = uo;
+    unitOrders.value = uo.orders;
+    unitSort.value = uo.unitSort;
   } catch (e) {
     console.warn('[CommissionBonus] 載入人員欄／戶別排序失敗:', e);
     personOrder.value = [];
     unitOrders.value = {};
+    unitSort.value = 'unit';
+  }
+}
+
+/** 切換戶別排序方式：先更新預覽，再寫入；失敗還原 */
+async function saveUnitSort(v) {
+  const next = v === 'contractDate' ? 'contractDate' : 'unit';
+  const prev = unitSort.value;
+  if (next === prev) return;
+  unitSort.value = next;
+  try {
+    await setCommissionUnitSort(projectId.value, next, userStore.user?.name || '');
+  } catch (e) {
+    console.error('[CommissionBonus] 儲存戶別排序方式失敗:', e);
+    toast.error(`儲存排序方式失敗：${e.message}`);
+    unitSort.value = prev;
   }
 }
 
