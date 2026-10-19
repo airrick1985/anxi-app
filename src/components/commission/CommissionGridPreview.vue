@@ -3,7 +3,8 @@
     <v-card-title class="text-subtitle-2 d-flex align-center flex-wrap ga-1">
       <v-icon start size="small">mdi-eye-outline</v-icon>{{ title }}
       <span v-if="caption" class="text-caption text-medium-emphasis ml-2">{{ caption }}</span>
-      <v-chip v-if="sortable && hasPersonCols" size="x-small" variant="tonal" color="primary" class="ml-1" prepend-icon="mdi-drag-horizontal-variant">拖曳人員姓名可調整欄位順序</v-chip>
+      <v-chip v-if="(sortable && hasPersonCols) || (columnSortable && hasFixedCols)" size="x-small" variant="tonal" color="primary" class="ml-1" prepend-icon="mdi-drag-horizontal-variant">拖曳表頭可調整欄位順序</v-chip>
+      <v-btn v-if="columnSortable && columnsCustomized" size="x-small" variant="text" prepend-icon="mdi-restore" @click="emit('reset-columns')">還原欄位順序</v-btn>
       <v-chip v-if="editable && hasEditCells" size="x-small" variant="tonal" color="primary" class="ml-1" prepend-icon="mdi-cursor-text">點虛線框文字可直接修改</v-chip>
       <v-chip v-if="unitSortable && hasUnitRows" size="x-small" variant="tonal" color="primary" class="ml-1" prepend-icon="mdi-drag-vertical-variant">拖曳編號可調整戶別順序</v-chip>
       <v-spacer></v-spacer>
@@ -20,7 +21,7 @@
       <v-tab v-for="(gr, i) in grids" :key="i" :value="i">{{ gr.name }}</v-tab>
     </v-tabs>
     <v-divider></v-divider>
-    <v-card-text ref="wrapRef" class="preview-wrap" :class="{ 'is-sortable': sortable && hasPersonCols, 'is-editable': editable && hasEditCells, 'is-unit-sortable': unitSortable && hasUnitRows }" :style="{ maxHeight }">
+    <v-card-text ref="wrapRef" class="preview-wrap" :class="{ 'is-sortable': sortable && hasPersonCols, 'is-col-sortable': columnSortable && hasFixedCols, 'is-editable': editable && hasEditCells, 'is-unit-sortable': unitSortable && hasUnitRows }" :style="{ maxHeight }">
       <div v-if="current" class="preview-zoom" :style="{ zoom }" v-html="html"
         @click="onCellClick" @mouseover="onTipOver" @mouseleave="hideTip"
         @dragstart="onDragStart" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop" @dragend="onDragEnd"></div>
@@ -56,7 +57,7 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
-import { gridToHtml } from '@/services/commissionExcelService';
+import { gridToHtml, BONUS_TOP_COLUMN_KEYS } from '@/services/commissionExcelService';
 import { money } from '@/utils/commissionCalculation';
 
 const props = defineProps({
@@ -66,11 +67,12 @@ const props = defineProps({
   unitLabel: { type: String, default: '張分頁' },
   maxHeight: { type: String, default: '70vh' },
   sortable: { type: Boolean, default: false },   // 允許拖曳人員欄位排序（獎金表）
+  columnSortable: { type: Boolean, default: false },   // 允許拖曳獎金表上方固定欄排序
   unitSortable: { type: Boolean, default: false },   // 允許拖曳戶別列上下排序（請佣總表／獎金表）
   editable: { type: Boolean, default: false },   // 允許點格子就地修改文字自訂
   editValues: { type: Object, default: () => ({}) },   // 文字自訂目前值 { key: 原始字串（含 {pct} 等樣板） }
 });
-const emit = defineEmits(['reorder', 'reorder-units', 'edit']);   // reorder：{ section, personKeys }；reorder-units：{ unitIds }；edit：{ key, value }
+const emit = defineEmits(['reorder', 'reorder-units', 'reorder-columns', 'reset-columns', 'edit']);   // reorder：{ section, personKeys }；reorder-units：{ unitIds }；reorder-columns：{ keys }（該頁可見固定欄新順序）；edit：{ key, value }
 
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2;
@@ -87,6 +89,60 @@ const html = computed(() => (current.value ? gridToHtml(current.value) : ''));
 const hasPersonCols = computed(() => (current.value?.personCols || []).length > 0);
 const hasEditCells = computed(() => (current.value?.editCells || []).length > 0);
 const hasUnitRows = computed(() => (current.value?.unitRows || []).length > 1);
+const hasFixedCols = computed(() => (current.value?.fixedCols || []).length > 1);
+// 目前分頁的固定欄順序與預設不同才顯示「還原欄位順序」
+const columnsCustomized = computed(() => {
+  const keys = (current.value?.fixedCols || []).map(f => f.key);
+  return keys.join() !== BONUS_TOP_COLUMN_KEYS.filter(k => keys.includes(k)).join();
+});
+
+// ---------- 獎金表上方固定欄拖曳排序 ----------
+let colDrag = null;   // { idx }
+let colOverIdx = -1;
+function colCells(idx) {
+  const root = wrapRef.value?.$el || wrapRef.value;
+  return root ? Array.from(root.querySelectorAll(`[data-fc="${idx}"]`)) : [];
+}
+function clearColOver() {
+  if (colOverIdx < 0) return;
+  colCells(colOverIdx).forEach(el => el.classList.remove('pc-over-before', 'pc-over-after'));
+  colOverIdx = -1;
+}
+function onColDragStart(e, head) {
+  const idx = Number(head.dataset.fc);
+  colDrag = { idx };
+  try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', head.dataset.colKey); } catch { /* ignore */ }
+  colCells(idx).forEach(el => el.classList.add('pc-dragging'));
+}
+function onColDragOver(e) {
+  const cell = e.target?.closest?.('[data-fc]');
+  const idx = cell ? Number(cell.dataset.fc) : -1;
+  if (idx < 0 || idx === colDrag.idx) { clearColOver(); return; }
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  if (colOverIdx !== idx) {
+    clearColOver();
+    colOverIdx = idx;
+    colCells(idx).forEach(el => el.classList.add(idx < colDrag.idx ? 'pc-over-before' : 'pc-over-after'));
+  }
+}
+function onColDrop(e) {
+  const cell = e.target?.closest?.('[data-fc]');
+  const idx = cell ? Number(cell.dataset.fc) : -1;
+  const from = colDrag.idx;
+  onColDragEnd();
+  if (idx < 0 || idx === from) return;
+  e.preventDefault();
+  const keys = current.value.fixedCols.map(f => f.key);
+  const [moved] = keys.splice(from, 1);
+  keys.splice(idx, 0, moved);
+  emit('reorder-columns', { keys });
+}
+function onColDragEnd() {
+  if (colDrag) colCells(colDrag.idx).forEach(el => el.classList.remove('pc-dragging'));
+  clearColOver();
+  colDrag = null;
+}
 
 // ---------- 戶別列拖曳排序 ----------
 let rowDrag = null;   // { idx }
@@ -140,7 +196,7 @@ function onRowDragEnd() {
 const tip = ref(null);   // { el, title, lines }；關閉時保留內容避免淡出時變空
 const tipOpen = ref(false);
 function onTipOver(e) {
-  if (drag || rowDrag) return;
+  if (drag || rowDrag || colDrag) return;
   const cell = e.target?.closest?.('[data-tip]');
   const meta = cell && current.value?.cellTips?.[Number(cell.dataset.tip)];
   if (!meta) { tipOpen.value = false; return; }
@@ -210,6 +266,12 @@ function onDragStart(e) {
     onRowDragStart(e, rowHandle);
     return;
   }
+  const colHead = e.target?.closest?.('[data-col-key]');
+  if (colHead) {
+    if (!props.columnSortable) { e.preventDefault?.(); return; }
+    onColDragStart(e, colHead);
+    return;
+  }
   const head = e.target?.closest?.('[data-person-key]');
   if (!props.sortable || !head) { e.preventDefault?.(); return; }
   const idx = Number(head.dataset.pc);
@@ -221,6 +283,7 @@ function onDragStart(e) {
 }
 function onDragOver(e) {
   if (rowDrag) { onRowDragOver(e); return; }
+  if (colDrag) { onColDragOver(e); return; }
   if (!drag) return;
   const cell = e.target?.closest?.('[data-pc]');
   const idx = cell ? Number(cell.dataset.pc) : -1;
@@ -239,9 +302,11 @@ function onDragLeave(e) {
   if (root && e.relatedTarget && root.contains(e.relatedTarget)) return;
   clearOver();
   clearRowOver();
+  clearColOver();
 }
 function onDrop(e) {
   if (rowDrag) { onRowDrop(e); return; }
+  if (colDrag) { onColDrop(e); return; }
   if (!drag) return;
   const cell = e.target?.closest?.('[data-pc]');
   const idx = cell ? Number(cell.dataset.pc) : -1;
@@ -261,6 +326,7 @@ function onDrop(e) {
 }
 function onDragEnd() {
   if (rowDrag) { onRowDragEnd(); return; }
+  if (colDrag) { onColDragEnd(); return; }
   if (drag) cellsOf(drag.idx).forEach(el => el.classList.remove('pc-dragging'));
   clearOver();
   drag = null;
@@ -320,6 +386,9 @@ onBeforeUnmount(() => { observer?.disconnect(); });
 .preview-wrap :deep(td.pc-dragging) { opacity: .35; }
 .preview-wrap :deep(td.pc-over-before) { box-shadow: inset 3px 0 0 rgb(var(--v-theme-primary)); }
 .preview-wrap :deep(td.pc-over-after) { box-shadow: inset -3px 0 0 rgb(var(--v-theme-primary)); }
+/* 獎金表上方固定欄拖曳排序（拖曳中／放置提示沿用人員欄樣式） */
+.is-col-sortable :deep(td.fc-head) { cursor: grab; }
+.is-col-sortable :deep(td.fc-head:hover) { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: -2px; }
 /* 戶別列拖曳排序 */
 .is-unit-sortable :deep(td.ur-handle) { cursor: grab; }
 .is-unit-sortable :deep(td.ur-handle:hover) { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: -2px; }

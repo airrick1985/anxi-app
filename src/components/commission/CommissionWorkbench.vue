@@ -358,6 +358,11 @@
             </v-btn-toggle>
             <v-select v-model="previewConfigId" :items="previewConfigOptions" item-title="name" item-value="id"
               label="欄位版型" variant="outlined" density="compact" hide-details :loading="previewConfigsLoading" style="max-width: 280px"></v-select>
+            <v-btn-toggle v-if="previewDocType === 'bonus'" :model-value="bonusPaging === 'single' ? 'single' : 'ratio'" mandatory color="primary" variant="outlined" divided density="comfortable"
+              aria-label="獎金表分頁方式" @update:model-value="v => emit('update:bonusPaging', v)">
+              <v-btn value="ratio" size="small">依比例分頁</v-btn>
+              <v-btn value="single" size="small">統整一頁</v-btn>
+            </v-btn-toggle>
             <v-btn-toggle :model-value="unitSort" mandatory color="primary" variant="outlined" divided density="comfortable"
               aria-label="戶別排序" @update:model-value="v => emit('update:unitSort', v)">
               <v-btn value="unit" size="small">依戶別</v-btn>
@@ -373,7 +378,9 @@
               :class="['mb-1', { 'critical-alert': sec.critical }]">{{ item.text ?? item }}</v-alert>
           </div>
 
-          <CommissionGridPreview :grids="previewGrids" title="送出後匯出的版面" max-height="none" />
+          <CommissionGridPreview :grids="previewGrids" title="送出後匯出的版面" max-height="none"
+            column-sortable @reorder-columns="({ keys }) => emit('update:bonusColumnOrder', mergeColumnOrder(bonusColumnOrder, keys))"
+            @reset-columns="emit('update:bonusColumnOrder', [])" />
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions class="preview-actions">
@@ -403,7 +410,7 @@ import CommissionGridPreview from './CommissionGridPreview.vue';
 import { refundableRecordsByUnit, buildRefundEntryPlan } from './refundEntry';
 import { submitCommissionEntriesAPI, fetchCommissionExportConfigs, setBonusPeriodNotes, voidCommissionRecordAPI } from '@/api';
 import { buildClaimModel, buildBonusModel, buildPeriodResultModel, buildPeriodUnitModel, defaultClaimConfig, defaultBonusConfig, exportProjectNameOf, makePersonSorter } from '@/utils/commissionExportModel';
-import { buildClaimGrid, buildBonusGrids, buildPeriodResultGrid, buildPeriodUnitGrid } from '@/services/commissionExcelService';
+import { buildClaimGrid, buildBonusGrids, buildPeriodResultGrid, buildPeriodUnitGrid, mergeColumnOrder } from '@/services/commissionExcelService';
 import { draftClaimRecord, draftRefundRecord, normalizeSalesNames } from '@/utils/commissionDraftRecords';
 import {
   calcUnitBonus, computeUnitFinance, resolveCommPct, formatDateTW,
@@ -428,6 +435,8 @@ const props = defineProps({
   personnel: { type: Array, default: () => [] },
   personOrder: { type: Array, default: () => [] },   // 建案層級：獎金表人員欄排序（personKey 清單）
   unitSort: { type: String, default: 'unit' },       // 建案層級：戶別排序方式 'unit'｜'contractDate'
+  bonusPaging: { type: String, default: 'ratio' },   // 獎金表分頁方式 'ratio'｜'single'（與匯出中心共用）
+  bonusColumnOrder: { type: Array, default: () => [] },   // 建案層級：獎金表上方固定欄順序（與匯出中心共用）
   ledgers: { type: Object, default: () => ({}) },   // unitId -> claimedRatioPct
   nextPeriod: { type: Number, default: 1 },
   records: { type: Array, default: () => [] },        // 全建案請佣紀錄（退佣來源）
@@ -435,7 +444,7 @@ const props = defineProps({
 });
 
 const showSummary = ref(false);
-const emit = defineEmits(['submitted', 'notes-saved', 'update:unitSort']);
+const emit = defineEmits(['submitted', 'notes-saved', 'update:unitSort', 'update:bonusPaging', 'update:bonusColumnOrder']);
 const isBonus = computed(() => props.mode === 'bonus');
 const refundLabel = computed(() => (isBonus.value ? '退獎金' : '退佣'));
 const toast = useToast();
@@ -1355,6 +1364,8 @@ const previewGrids = computed(() => {
           projectId: props.projectId,
           personnelOrder: props.personnel.map(p => p.name),
           personOrder: props.personOrder,
+          singlePage: props.bonusPaging === 'single',
+          columnOrder: props.bonusColumnOrder,
         }));
         // 最後兩頁：每人／每戶當期獎金結果（與下方「每人當期獎金結果」同資料：所有方案已送出＋本次草稿）
         const bonusCfg = previewConfigOf('bonus');

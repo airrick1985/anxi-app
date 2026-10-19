@@ -73,6 +73,10 @@
           :person-order="personOrder"
           :unit-sort="unitSort"
           @update:unit-sort="saveUnitSort"
+          :bonus-paging="bonusPaging"
+          @update:bonus-paging="saveBonusPaging"
+          :bonus-column-order="bonusColumnOrder"
+          @update:bonus-column-order="saveBonusColumnOrder"
           @submitted="handleSubmitted"
         />
       </v-window-item>
@@ -99,6 +103,10 @@
           :person-order="personOrder"
           :unit-sort="unitSort"
           @update:unit-sort="saveUnitSort"
+          :bonus-paging="bonusPaging"
+          @update:bonus-paging="saveBonusPaging"
+          :bonus-column-order="bonusColumnOrder"
+          @update:bonus-column-order="saveBonusColumnOrder"
           @submitted="handleSubmitted"
         />
       </v-window-item>
@@ -159,6 +167,10 @@
           @update:unit-orders="v => { unitOrders = v; }"
           :unit-sort="unitSort"
           @update:unit-sort="saveUnitSort"
+          :bonus-paging="bonusPaging"
+          @update:bonus-paging="saveBonusPaging"
+          :bonus-column-order="bonusColumnOrder"
+          @update:bonus-column-order="saveBonusColumnOrder"
           @settings-saved="loadSettings"
         />
       </v-window-item>
@@ -193,7 +205,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, defineAsyncComponent, provide } from 'vue';
+import { ref, computed, watch, onMounted, defineAsyncComponent, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
@@ -206,6 +218,8 @@ import {
   fetchCommissionPersonOrder,
   fetchCommissionUnitOrders,
   setCommissionUnitSort,
+  fetchCommissionBonusColumnOrder,
+  setCommissionBonusColumnOrder,
 } from '@/api';
 import { DEFAULT_PLANS, planIdOf, isBuiltInPlan, mergePlans } from '@/utils/commissionPlans';
 import { bonusSourceRecords } from '@/utils/commissionPeriodBonus';
@@ -238,6 +252,7 @@ const settings = ref(mergeSettings(null));
 const personOrder = ref([]);   // 建案層級：獎金表人員欄排序（personKey 清單；即時預覽拖曳儲存）
 const unitOrders = ref({});    // 戶別列順序 { [planId]: { [period]: [unitId] } }（即時預覽拖曳儲存）
 const unitSort = ref('unit');  // 建案層級：未拖曳戶別的排序方式 'unit'｜'contractDate'（送出前預覽、匯出中心共用）
+const bonusColumnOrder = ref([]);   // 建案層級：獎金表上方固定欄順序（欄位 key 清單；空＝預設）
 const allRecords = ref([]);
 const allBonusRecords = ref([]);
 const allBonusEntries = ref([]);
@@ -383,16 +398,46 @@ async function loadSettings() {
 
 async function loadPersonOrder() {
   try {
-    const [po, uo] = await Promise.all([fetchCommissionPersonOrder(projectId.value), fetchCommissionUnitOrders(projectId.value)]);
+    const [po, uo, co] = await Promise.all([
+      fetchCommissionPersonOrder(projectId.value), fetchCommissionUnitOrders(projectId.value), fetchCommissionBonusColumnOrder(projectId.value),
+    ]);
     personOrder.value = po;
     unitOrders.value = uo.orders;
     unitSort.value = uo.unitSort;
+    bonusColumnOrder.value = co;
   } catch (e) {
     console.warn('[CommissionBonus] 載入人員欄／戶別排序失敗:', e);
     personOrder.value = [];
     unitOrders.value = {};
     unitSort.value = 'unit';
+    bonusColumnOrder.value = [];
   }
+}
+
+/** 獎金表上方固定欄拖曳／還原後：先更新預覽，再寫入；失敗還原 */
+async function saveBonusColumnOrder(next) {
+  const prev = bonusColumnOrder.value;
+  bonusColumnOrder.value = next || [];
+  try {
+    await setCommissionBonusColumnOrder(projectId.value, bonusColumnOrder.value, userStore.user?.name || '');
+    toast.success(bonusColumnOrder.value.length ? '欄位順序已儲存' : '已還原欄位順序');
+  } catch (e) {
+    console.error('[CommissionBonus] 儲存獎金表欄位順序失敗:', e);
+    toast.error(`儲存欄位順序失敗：${e.message}`);
+    bonusColumnOrder.value = prev;
+  }
+}
+
+// 獎金表分頁方式（ratio＝依比例分頁、single＝統整一頁）：送出前預覽與匯出中心共用，記在各人各建案的匯出偏好
+const exportPrefKey = computed(() => `commission-export-grouping:${userStore.user?.key || userStore.user?.phone || 'local'}:${projectId.value}`);
+function readExportPrefs() {
+  try { return JSON.parse(localStorage.getItem(exportPrefKey.value) || '{}') || {}; } catch { return {}; }
+}
+const bonusPaging = ref('ratio');
+watch(exportPrefKey, () => { bonusPaging.value = readExportPrefs().bonusPaging === 'single' ? 'single' : 'ratio'; }, { immediate: true });
+function saveBonusPaging(v) {
+  bonusPaging.value = v === 'single' ? 'single' : 'ratio';
+  try { localStorage.setItem(exportPrefKey.value, JSON.stringify({ ...readExportPrefs(), bonusPaging: bonusPaging.value })); } catch { /* private browsing */ }
 }
 
 /** 切換戶別排序方式：先更新預覽，再寫入；失敗還原 */

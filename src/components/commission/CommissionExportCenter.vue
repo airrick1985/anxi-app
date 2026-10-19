@@ -180,6 +180,8 @@
       <!-- 預覽 -->
       <CommissionGridPreview v-else :grids="grids" caption="與下載之 Excel / PDF 同一版面模型" :unit-label="isPerson ? '人' : '張分頁'"
         :sortable="docType === 'bonus'" @reorder="onReorderPersons"
+        :column-sortable="docType === 'bonus'" @reorder-columns="({ keys }) => emit('update:bonusColumnOrder', mergeColumnOrder(bonusColumnOrder, keys))"
+        @reset-columns="emit('update:bonusColumnOrder', [])"
         :unit-sortable="!isPerson && groupingMode === 'current'" @reorder-units="onReorderUnits"
         :editable="!isPerson" :edit-values="editValues" @edit="onTextEdit">
         <template #actions>
@@ -301,7 +303,7 @@ import {
 } from '@/utils/commissionExportModel';
 import {
   buildClaimGrid, buildBonusGrids, buildPeriodResultGrid, buildPeriodUnitGrid, buildPersonGrid, buildPersonExcelGrids,
-  exportGridsToExcel, gridsToExcelBlob,
+  exportGridsToExcel, gridsToExcelBlob, mergeColumnOrder,
 } from '@/services/commissionExcelService';
 import { toNum, fillPattern } from '@/utils/commissionCalculation';
 
@@ -323,8 +325,10 @@ const props = defineProps({
   personOrder: { type: Array, default: () => [] },   // 建案層級：獎金表人員欄排序（personKey 清單）
   unitOrders: { type: Object, default: () => ({}) },   // 戶別列順序 { [planId]: { [period]: [unitId] } }
   unitSort: { type: String, default: 'unit' },         // 未拖曳戶別的排序方式 'unit'｜'contractDate'（建案層級）
+  bonusPaging: { type: String, default: 'ratio' },     // 獎金表分頁方式 'ratio'｜'single'（與送出前預覽共用）
+  bonusColumnOrder: { type: Array, default: () => [] },   // 建案層級：獎金表上方固定欄順序（與送出前預覽共用）
 });
-const emit = defineEmits(['update:personOrder', 'update:unitOrders', 'update:unitSort', 'settings-saved']);
+const emit = defineEmits(['update:personOrder', 'update:unitOrders', 'update:unitSort', 'update:bonusPaging', 'update:bonusColumnOrder', 'settings-saved']);
 
 const router = useRouter();
 const toast = useToast();
@@ -400,8 +404,11 @@ function readGrouping() {
 }
 const savedGrouping = readGrouping();
 const groupingModes = ref({ claim: savedGrouping.claim || 'current', bonus: savedGrouping.bonus || 'current' });
-// 獎金表分頁方式：ratio＝各請佣比例一頁、single＝全部統整一頁（實際金額）
-const bonusPaging = ref(savedGrouping.bonusPaging === 'single' ? 'single' : 'ratio');
+// 獎金表分頁方式：ratio＝各請佣比例一頁、single＝全部統整一頁（實際金額）；由父層保存，與送出前預覽共用
+const bonusPaging = computed({
+  get: () => (props.bonusPaging === 'single' ? 'single' : 'ratio'),
+  set: v => emit('update:bonusPaging', v),
+});
 const singlePage = computed(() => bonusPaging.value === 'single');
 const selectedPlanIds = ref(props.plans.map(p => p.id));
 const groupingMode = computed({
@@ -639,6 +646,7 @@ const bonusModel = computed(() => {
     unitOrder: currentUnitOrder.value,
     unitSort: props.unitSort,
     singlePage: singlePage.value,
+    columnOrder: props.bonusColumnOrder,
   });
 });
 
@@ -732,6 +740,7 @@ const groupedDocuments = computed(() => {
       unitOrder,
       unitSort: props.unitSort,
       singlePage: singlePage.value,
+      columnOrder: props.bonusColumnOrder,
     });
     return [{ plan: p, model: bonus, grids: [...(bonus.includeClaimSheet && claimRecords.length ? [buildClaimGrid(claim)] : []), ...buildBonusGrids(bonus)] }];
   });
@@ -749,6 +758,7 @@ const mergedBonusModel = computed(() => {
   return buildMergedBonusModel({ sources, periodNotes: props.periodNotes, settings: exportSettings.value, config: currentConfig.value,
     period: period.value, projectName: props.projectName, projectId: props.projectId,
     personnelOrder: personnelOrder.value, personOrder: props.personOrder, unitSort: props.unitSort, singlePage: singlePage.value,
+    columnOrder: props.bonusColumnOrder,
   });
 });
 

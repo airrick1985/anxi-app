@@ -6,8 +6,15 @@ import { periodPersonNotes, personNoteHistory, summarizePeriodBonus } from './co
  */
 
 import {
-  toNum, money, toMinguo, toMinguoYM, fillPattern, formatDateTW, pctText, snapshotDealWan,
+  toNum, money, toMinguo, toMinguoYM, fillPattern, formatDateTW, pctText, snapshotDealWan, round2,
 } from '@/utils/commissionCalculation';
+
+/** 四捨五入到小數 1 位（去除浮點誤差；負數依絕對值對稱處理） */
+function round1(v) {
+  const n = Number(v) || 0;
+  const r = Math.round(Number((Math.abs(n) * 10).toFixed(6))) / 10;
+  return r === 0 ? 0 : (n < 0 ? -r : r);
+}
 
 // ================= 檔名：統一加上建案名 =================
 /**
@@ -321,6 +328,7 @@ export function buildBonusModel(opts) {
   const {
     records = [], bonusRecords = [], settings = {}, config = {},
     period, projectName = '', projectId = '', personnelOrder = [], personOrder = [], unitOrder = [], unitSort = 'unit', singlePage = false,
+    columnOrder = [],   // 建案層級：上方固定欄順序（欄位 key 清單）
   } = opts;
   const cfg = { ...defaultBonusConfig(settings), ...config };
   const cls = classifyCategories(settings);
@@ -500,6 +508,7 @@ export function buildBonusModel(opts) {
           sales: Array.isArray(r.snapshot?.salesperson) ? r.snapshot.salesperson.join('、') : String(r.snapshot?.salesperson || ''),
           team: teamCount,
           ratioPct: toNum(r.ratioPct),   // 獎金比例（退佣為負）
+          base: round1(toNum(r.calc?.dealAfter) * toNum(r.ratioPct) / 100),   // 計獎總價（萬，小數 1 位）＝折數後總價 × 獎金比例
           indivRate: unitRateOf(r, indivKeys, amts.some(v => Math.round(v.indiv) !== 0)),
           teamRate: unitRateOf(r, teamKeys, amts.some(v => Math.round(v.team) !== 0)),
           ...handoverOf(r),
@@ -507,15 +516,16 @@ export function buildBonusModel(opts) {
         };
       });
 
-      const topTotal = { total: 0, after: 0, referral: 0, hk: 0, pp: {} };
+      const topTotal = { total: 0, after: 0, base: 0, referral: 0, hk: 0, pp: {} };
       topPersons.forEach(p => { topTotal.pp[p.personKey] = { indiv: 0, team: 0 }; });
       unitRows.forEach(row => {
-        topTotal.total += row.total; topTotal.after += row.after; topTotal.referral += row.referral; topTotal.hk += row.hkAmt;
+        topTotal.total += row.total; topTotal.after += row.after; topTotal.base += row.base; topTotal.referral += row.referral; topTotal.hk += row.hkAmt;
         topPersons.forEach(p => {
           topTotal.pp[p.personKey].indiv += row.pp[p.personKey].indiv;
           topTotal.pp[p.personKey].team += row.pp[p.personKey].team;
         });
       });
+      topTotal.base = round1(topTotal.base);
 
       // ---- 獎金合計類別列：個獎、團獎，其餘職務類別（管理／其他）依設定順序各一列 ----
       const roleCats = (settings.bonusCategories || []).filter(c => cls.mgmt.includes(c) || cls.others.includes(c));
@@ -558,6 +568,7 @@ export function buildBonusModel(opts) {
     partyALabel: settings.partyALabel || '一研九鼎負擔介紹費',
     showSourceProjectTag: cfg.showSourceProjectTag !== false,
     includeClaimSheet: cfg.includeClaimSheet !== false,
+    columnOrder,
     groups: modelGroups,
     paper: cfg.paper || 'A3',
     orientation: cfg.orientation || 'landscape',
@@ -682,6 +693,22 @@ function periodResultBasis(opts) {
 }
 
 const columnHeader = ({ key, catKey, label, rate, rateText }) => ({ key, catKey, label, rate, rateText });
+
+/**
+ * 每戶類別格各人占該項目的比例（%）：2 人以上才標。依該戶分配設定（均分／單獨／自訂比例）的 sharePct；
+ * 含鎖定金額、比例不足 100% 或沒有分配資料（如退佣、歷史匯入）時改以實際金額占比。
+ */
+function personShares(cat, people) {
+  if (people.length < 2) return {};
+  const allocs = Array.isArray(cat?.allocations) ? cat.allocations : [];
+  const byKey = new Map(allocs.map(a => [String(a.personKey), a]));
+  const fromAllocs = allocs.length && !allocs.some(a => a.mode === 'locked')
+    && Math.abs(allocs.reduce((s, a) => s + toNum(a.sharePct), 0) - 100) < 0.011
+    && people.every(p => byKey.has(String(p.personKey)));
+  if (fromAllocs) return Object.fromEntries(people.map(p => [p.personKey, toNum(byKey.get(String(p.personKey)).sharePct)]));
+  const total = people.reduce((s, p) => s + p.amount, 0);
+  return total ? Object.fromEntries(people.map(p => [p.personKey, round2(p.amount / total * 100)])) : {};
+}
 const uniqueJoin = list => [...new Set(list.filter(Boolean))].join('、');
 
 /**
@@ -791,8 +818,15 @@ export function buildPeriodUnitModel(opts) {
       ratioPct: toNum(rec.ratioPct),
       byCat: Object.fromEntries(categories.map(c => {
         const u = c.byRecord[id];
-        const people = peopleOrder((u?.people || []).filter(x => Math.round(x.amount) !== 0));
-        return [c.key, { amount: Math.round(toNum(u?.amount)), names: people.map(x => x.name) }];
+        // 同人多筆合併後再算占比
+        const merged = new Map();
+        (u?.people || []).forEach(x => {
+          const m = merged.get(x.personKey);
+          if (m) m.amount += x.amount; else merged.set(x.personKey, { ...x });
+        });
+        const people = peopleOrder([...merged.values()].filter(x => Math.round(x.amount) !== 0));
+        const shares = personShares(rec.categories?.[c.catKey], people);
+        return [c.key, { amount: Math.round(toNum(u?.amount)), people: people.map(x => ({ name: x.name, sharePct: shares[x.personKey] ?? null })) }];
       })),
       subtotal: sum('subtotal'), keep: sum('keep'), tax: sum('tax'), nhi: sum('nhi'), net: sum('net'),
       hkRate: uniqueJoin(hk.map(x => x.rateText)),

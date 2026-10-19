@@ -9769,6 +9769,24 @@ export const setCommissionPersonOrder = (projectId, personOrder, updatedBy = '')
   }, { merge: true });
 };
 
+/** 獎金表上方固定欄順序（建案層級、所有方案共用）：欄位 key 清單；不存在回空陣列（＝預設順序） */
+export const fetchCommissionBonusColumnOrder = async (projectId) => {
+  const snap = await getDoc(doc(db, 'commissionSettings', `${projectId}__bonusColumnOrder`));
+  const list = snap.exists() ? snap.data().columnOrder : [];
+  return Array.isArray(list) ? list.map(k => String(k)).filter(Boolean) : [];
+};
+
+/** 儲存獎金表上方固定欄順序（建案層級）；空陣列＝還原預設 */
+export const setCommissionBonusColumnOrder = (projectId, columnOrder, updatedBy = '') => {
+  return setDoc(doc(db, 'commissionSettings', `${projectId}__bonusColumnOrder`), {
+    projectId,
+    kind: 'bonusColumnOrder',
+    columnOrder: (columnOrder || []).map(k => String(k)).filter(Boolean),
+    updatedBy,
+    updatedAt: serverTimestamp(),
+  });
+};
+
 /**
  * 請佣總表／獎金表戶別列順序（建案單一文件；依方案＋期別）：
  * { orders: { [planId]: { [period]: [unitId, ...] } }, unitSort: 'unit' | 'contractDate' }
