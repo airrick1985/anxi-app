@@ -1,0 +1,1 @@
+import{D as l,gh as t}from"./main-DKbnvgbX.js";import{D as e,g as s}from"./framework-DGW5crvu.js";function p(){const n=e("commissionPlan",s(()=>l[0])),o=s(()=>n.value.id);return{plan:n,planId:o,belongsToPlan:a=>t(a)===o.value}}export{p as u};
