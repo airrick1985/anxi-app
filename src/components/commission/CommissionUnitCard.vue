@@ -60,9 +60,11 @@
           <dd v-else class="commission-rate-input ratio-input">
             <v-text-field :model-value="entry.ratioPct" :aria-label="`${entry.unitId} 本次請佣比例(%)`"
               type="number" step="0.1" variant="outlined" density="compact" hide-details color="primary"
-              :error="ratioOver" @update:model-value="onRatioInput">
+              :error="ratioOver" @update:model-value="onRatioInput"
+              @focus="ratioBeforeEdit = toNum(entry.ratioPct)" @blur="askCommByRatio" @keydown.enter="askCommByRatio">
               <template #append-inner>
-                <v-btn v-if="claimedPct < 100 && toNum(entry.ratioPct) !== round1(100 - claimedPct)" size="x-small" variant="text" color="primary" @click.stop="onRatioInput(100 - claimedPct)">全部</v-btn>
+                <v-btn v-if="claimedPct < 100 && toNum(entry.ratioPct) !== round1(100 - claimedPct)" size="x-small" variant="text" color="primary"
+                  @mousedown.prevent @click.stop="onRatioInput(100 - claimedPct); askCommByRatio(true)">全部</v-btn>
               </template>
             </v-text-field>
           </dd>
@@ -350,6 +352,22 @@
       :project-id="projectId"
       @select="onPickPerson"
     />
+
+    <!-- 本次請佣比例調整後：詢問佣金比例是否依比例調整 -->
+    <v-dialog :model-value="!!commSuggest" max-width="420" @update:model-value="v => { if (!v) commSuggest = null; }">
+      <v-card v-if="commSuggest">
+        <v-card-title class="text-subtitle-1">調整佣金比例</v-card-title>
+        <v-card-text>
+          是否將佣金比例按照本次請佣比例 {{ fmtWan(commSuggest.ratio, 4) }}% 調整為 <b>{{ commSuggest.pct.toFixed(2) }}%</b>？
+          <div class="text-caption text-medium-emphasis mt-1">預設 {{ fmtWan(defaultCommPct, 4) }}% × {{ fmtWan(commSuggest.ratio, 4) }}%・目前 {{ fmtWan(entry.commPct, 4) }}%</div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="commSuggest = null">不調整</v-btn>
+          <v-btn color="primary" variant="flat" @click="entry.commPct = commSuggest.pct; commSuggest = null">調整</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-card>
 </template>
 
@@ -575,6 +593,19 @@ function onRatioInput(v) {
     toast.warning(`已請＋本次不可超過 100%，已調整為 ${val}%`);
   }
   props.entry.ratioPct = val;
+}
+
+// 請佣：本次請佣比例輸入完成（離開欄位／Enter／全部）後，建議佣金比例＝該戶預設 × 本次比例，與目前不同才詢問
+const ratioBeforeEdit = ref(null);
+const commSuggest = ref(null);   // { ratio, pct }
+function askCommByRatio(force = false) {
+  if (isBonus.value || commSuggest.value) return;
+  const ratio = toNum(props.entry.ratioPct);
+  const changed = force === true || ratioBeforeEdit.value === null || ratio !== ratioBeforeEdit.value;
+  ratioBeforeEdit.value = ratio;
+  if (!changed || !(ratio > 0)) return;
+  const pct = round2(defaultCommPct.value * ratio / 100);
+  if (pct !== round2(toNum(props.entry.commPct))) commSuggest.value = { ratio, pct };
 }
 
 // ---------- 候選人員 ----------
