@@ -3,7 +3,9 @@
     <div class="commission-head d-flex align-center mb-3 flex-wrap ga-2">
       <v-btn icon="mdi-arrow-left" variant="text" @click="goBack"></v-btn>
       <h1 class="text-h5 font-weight-bold mr-2">請佣獎金</h1>
-      <v-chip color="primary" variant="tonal" v-if="projectName">{{ projectName }}</v-chip>
+      <v-autocomplete :model-value="projectId" :items="commissionProjects" item-title="name" item-value="id"
+        label="建案" variant="outlined" density="compact" hide-details auto-select-first
+        class="project-switch" :disabled="isLoading" @update:model-value="switchProject" />
       <v-spacer></v-spacer>
       <v-btn
         variant="text"
@@ -210,6 +212,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'vue-toastification';
 import { useUserStore } from '@/store/user';
 import { useSalesDataStore } from '@/store/salesDataStore';
+import { useProjectStore } from '@/store/projectStore';
 import {
   fetchCommissionSettings, fetchCommissionPlans, createCommissionPlan, updateCommissionPlan, deleteCommissionPlan,
   fetchCommissionRecords,
@@ -237,6 +240,7 @@ const router = useRouter();
 const toast = useToast();
 const salesDataStore = useSalesDataStore();
 const userStore = useUserStore();
+const projectStore = useProjectStore();
 const planOperator = () => ({ operatorKey: userStore.user?.key || userStore.user?.phone || '', operatorName: userStore.user?.name || '' });
 
 const projectId = computed(() => route.params.projectId);
@@ -578,8 +582,27 @@ function goBack() {
   router.push({ name: 'SalesControlSystem', params: { projectName: projectId.value } });
 }
 
-onMounted(async () => {
+// 切換建案：只列有「請佣獎金」權限的建案（與路由守衛一致）
+const commissionProjects = computed(() => {
+  const list = (projectStore.projectsList || [])
+    .filter(p => userStore.hasProjectPermission('請佣獎金', p.name))
+    .map(p => ({ id: p.id, name: p.name }));
+  // 清單未載入或未含目前建案時仍顯示建案名稱（不閃出建案代碼）
+  if (!list.some(p => p.id === projectId.value)) list.unshift({ id: projectId.value, name: projectName.value || projectId.value });
+  return list;
+});
+function switchProject(id) {
+  if (!id || id === projectId.value) return;
+  if (hasDraft() && !window.confirm('切換建案將捨棄尚未儲存的變更，確定切換？')) return;
+  router.push({ name: 'CommissionBonus', params: { projectId: id } });
+}
+
+/** 載入建案：首次進入與切換建案共用；方案回到一般請佣，分頁維持不變 */
+async function loadProject() {
   isLoading.value = true;
+  selectedPlanId.value = 'general';
+  exportPeriod.value = null;
+  planDialog.value = false;
   try {
     await salesDataStore.loadProjectData(projectId.value);
     await Promise.all([loadPlans(), loadSettings(), loadLedgers(), loadRecords(), loadPersonOrder()]);
@@ -589,6 +612,13 @@ onMounted(async () => {
   } finally {
     isLoading.value = false;
   }
+}
+// 同一頁換建案（路由參數變更）時元件沿用，需自行重新載入
+watch(projectId, (id, old) => { if (id && id !== old) loadProject(); });
+
+onMounted(() => {
+  loadProject();
+  if (!projectStore.projectsList?.length) projectStore.fetchProjects().catch(e => console.warn('[CommissionBonus] 載入建案清單失敗:', e));
 });
 </script>
 
@@ -599,6 +629,7 @@ onMounted(async () => {
 }
 /* 左側讓出全站浮動漢堡鈕（fixed 左上 10px+40px） */
 .commission-head { padding-left: 44px; }
+.project-switch { flex: 0 1 260px; min-width: 200px; }
 </style>
 
 <style scoped>
