@@ -886,7 +886,8 @@ const routes = [
     props: true, // ✓ 允許將路由參數 projectId 作為 props 傳遞給組件
     meta: {
       layout: PublicLayout, // ✅
-      title: '接待狀態看板' // ✓ 頁面標題
+      title: '接待狀態看板', // ✓ 頁面標題
+      remountOnParamChange: true // 「進入建案BY序」切換建案時需重新載入
 
     }
   },

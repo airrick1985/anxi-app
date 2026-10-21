@@ -2,7 +2,10 @@
   <v-app>
     <v-layout>
       <v-main>
-        <router-view />
+        <!-- meta.remountOnParamChange：同路由切換參數（如 /standby/A → /standby/B）時強制重建元件 -->
+        <router-view v-slot="{ Component, route }">
+          <component :is="Component" :key="route.meta.remountOnParamChange ? route.fullPath : undefined" />
+        </router-view>
       </v-main>
     </v-layout>
   </v-app>
