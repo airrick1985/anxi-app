@@ -14,9 +14,10 @@ export const LIFF_IDS = {
   appointmentQuery: '2008257338-6N3jwqxA', // 預約查詢已停用；測試用 LIFF（Endpoint 為 trycloudflare），不列入入口路由
   reportFolder: '2008257338-gYnbKlpR', // 測試 2008257338-6N3jwqxA
   inspectionConsole: '2008257338-QV34v0pb', // 測試 2008257338-6N3jwqxA
-  inspectionCalendar: env.DEV ? env.VITE_LIFF_ID_DEV : env.VITE_LIFF_ID_PROD,
-  form: env.VITE_LIFF_ID_FORM,
-  lineAi: env.VITE_LIFF_ID_LINE_AI, // Endpoint：https://anxismart.com/?liff_path=line-ai-entry
+  // .env 只在本機，雲端建置讀不到，一律保留正式 ID 當預設
+  inspectionCalendar: (env.DEV ? env.VITE_LIFF_ID_DEV : env.VITE_LIFF_ID_PROD) || '2008257338-o8grV0ZD',
+  form: env.VITE_LIFF_ID_FORM || '2008257338-gmEaYQzA',
+  lineAi: env.VITE_LIFF_ID_LINE_AI || '2008257338-9pcWLaKD', // Endpoint：https://anxismart.com/?liff_path=line-ai-entry
 };
 
 // 依 LINE Developers 各 LIFF 的 Endpoint（?liff_path=…）；表單 Endpoint 為根目錄，只在登入回跳的 liff.state 出現 /s/…

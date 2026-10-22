@@ -8,8 +8,10 @@ import { findLiffLaunch, liffLaunchUrl, LIFF_IDS } from '../../src/utils/liffApp
 // LINE 內開啟賞屋預約：實際 Endpoint + LIFF 放在 hash 的登入憑證（假值）
 const inClientLaunch = 'https://anxismart.com/?liff_path=viewing-reservation-entry#access_token=fake&context_token=fake&feature_token=fake&id_token=fake&client_id=2008257338';
 
-// LINE Developers 後台的正式 Endpoint（驗屋時間表、表單的 ID 來自 .env，Node 測試環境讀不到，不列入）
+// LINE Developers 後台的正式 Endpoint（表單 Endpoint 為根目錄，不列入）
 const CONSOLE_ENDPOINTS = [
+  ['2008257338-o8grV0ZD', 'https://anxismart.com/?liff_path=liffinspection-calendar'],
+  ['2008257338-9pcWLaKD', 'https://anxismart.com/?liff_path=line-ai-entry'],
   ['2008257338-n5Gp6pT3', 'https://anxismart.com/?liff_path=customer-management-entry'],
   ['2008257338-FCbKJ8bB', 'https://anxismart.com/?liff_path=viewing-reservation-entry'],
   ['2008257338-8AWzYeNQ', 'https://anxismart.com/?liff_path=customer-data-sheet'],
