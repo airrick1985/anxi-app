@@ -15,7 +15,7 @@
 | GitHub | `https://github.com/airrick1985/anxi-app.git`，主分支 `main` |
 | Node 版本 | **22**（Windows 目前 v22.15.0；`functions/package.json` 的 engines 要求 22） |
 | 必裝 CLI | git、Node 22 + npm、`gh`（GitHub CLI）、`firebase-tools`、（選配）`gcloud`、`cloudflared` |
-| 不在 git 裡但必要的檔案 | `.env`、`docs/local/`、Claude Code 記憶檔（見第 4 章） |
+| 不在 git 裡但必要的檔案 | `docs/local/`、Claude Code 記憶檔（見第 4 章） |
 
 ---
 
@@ -144,20 +144,11 @@ cd functions && npm install && cd ..
 
 ## 4. 把「不在 git 裡」的東西搬到 Mac
 
-以下檔案因 `.gitignore` 排除，**必須從 Windows 手動複製**（AirDrop、隨身碟、iCloud、私人雲端皆可，但 `.env` 內含金鑰，不要走公開管道）。
+以下檔案因 `.gitignore` 排除，**必須從 Windows 手動複製**（AirDrop、隨身碟、iCloud、私人雲端皆可）。
 
-### 4.1 `.env`（前端環境變數，必要）
+### 4.1 `.env`（已不需要）
 
-位置：專案根目錄 `.env`。目前包含 4 個 key（值請從 Windows 複製）：
-
-```
-VITE_LIFF_ID_PROD=
-VITE_LIFF_ID_DEV=
-VITE_LIFF_ID_LEAD_REPORT=
-VITE_LIFF_ID_FORM=
-```
-
-沒有這個檔，`npm run dev` 能跑，但 LIFF 相關頁面（預約時間表、名單回報、自訂表單）會拿不到 LIFF ID。
+前端不再使用 `.env`：所有 LIFF ID 都寫在 `src/utils/liffApps.js`（名單回報在 `src/utils/leadReportLink.js`），雲端或任何機器建置結果都相同。
 
 Cloud Functions 的密鑰（Gmail、LINE、Drive、Gemini 等）都存在 **Firebase Secret Manager**，隨 `firebase deploy` 自動掛載，**本機不需要任何 functions 的 .env**。
 
@@ -300,7 +291,6 @@ gcloud functions deploy aiProxy --gen2 --runtime=nodejs20 --region=us-central1 -
 |---|---|
 | 離開 A 電腦前 | `git status` 確認乾淨；有改就 commit + push。做到一半不想 commit 的，至少 `git stash` 或用 WIP commit 推上去 |
 | 到 B 電腦開工 | `git pull --rebase origin main`；若 `package.json` 有變動就再 `npm install`（functions 亦同） |
-| 改了 `.env` | 另一台要手動同步（不在 git） |
 | 改了 `docs/local/` 內容 | 另一台要手動同步（不在 git） |
 | Claude 學到新記憶 | 定期把 `memory/` 複製到另一台（第 4.3 節） |
 | 發版 | 只在一台上跑 `npm run release:safe`，跑完另一台記得 pull |

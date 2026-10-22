@@ -4,6 +4,7 @@ const env = import.meta.env || {};
 
 // 頁面內自行登入的 LIFF App。LINE 內開啟時登入憑證放在 #access_token=…，hash 路由會把它當成未知頁並改寫，
 // 所以 bootstrap 依網址先以對應 ID 初始化，頁面再用 liffAuth.initializeLiff 共用同一次初始化。
+// ID 一律寫在這裡、不放 .env：.env 不進 git，雲端建置讀不到會讓 LIFF 頁面初始化失敗。
 export const LIFF_IDS = {
   viewingReservation: '2008257338-FCbKJ8bB', // 測試 2008257338-6N3jwqxA
   customerManagement: '2008257338-n5Gp6pT3', // 客資系統入口、洽談紀錄、歸屬裁決共用
@@ -14,10 +15,9 @@ export const LIFF_IDS = {
   appointmentQuery: '2008257338-6N3jwqxA', // 預約查詢已停用；測試用 LIFF（Endpoint 為 trycloudflare），不列入入口路由
   reportFolder: '2008257338-gYnbKlpR', // 測試 2008257338-6N3jwqxA
   inspectionConsole: '2008257338-QV34v0pb', // 測試 2008257338-6N3jwqxA
-  // .env 只在本機，雲端建置讀不到，一律保留正式 ID 當預設
-  inspectionCalendar: (env.DEV ? env.VITE_LIFF_ID_DEV : env.VITE_LIFF_ID_PROD) || '2008257338-o8grV0ZD',
-  form: env.VITE_LIFF_ID_FORM || '2008257338-gmEaYQzA',
-  lineAi: env.VITE_LIFF_ID_LINE_AI || '2008257338-9pcWLaKD', // Endpoint：https://anxismart.com/?liff_path=line-ai-entry
+  inspectionCalendar: env.DEV ? '2008257338-6N3jwqxA' : '2008257338-o8grV0ZD', // 本機開發用測試 LIFF
+  form: '2008257338-gmEaYQzA',
+  lineAi: '2008257338-9pcWLaKD', // Endpoint：https://anxismart.com/?liff_path=line-ai-entry
 };
 
 // 依 LINE Developers 各 LIFF 的 Endpoint（?liff_path=…）；表單 Endpoint 為根目錄，只在登入回跳的 liff.state 出現 /s/…

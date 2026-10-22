@@ -420,7 +420,7 @@ onMounted(async () => {
         try { localStorage.setItem(PENDING_LEAD_KEY, JSON.stringify({ id: leadId, ts: Date.now() })); } catch { /* ignore */ }
       },
     };
-    const ready = await initLiffAndEnsureLogin(import.meta.env.VITE_LIFF_ID_LEAD_REPORT || LEAD_REPORT_LIFF_ID, loginOpts);
+    const ready = await initLiffAndEnsureLogin(LEAD_REPORT_LIFF_ID, loginOpts);
     if (!ready) return;
     const profile = await getLiffProfileOrRelogin(loginOpts);
     if (!profile) return;

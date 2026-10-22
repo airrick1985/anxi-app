@@ -93,7 +93,6 @@ test('bootstrap 等 LINE 取走 hash 憑證後才改網址並建立主程式', a
   });
   vm.runInContext(source.replace(/^import .*;\n/gm, '')
     .replaceAll("const { initializeLiff } = await import('./utils/liffAuth');", '')
-    .replace('import.meta.env.VITE_LIFF_ID_LEAD_REPORT', 'null')
     .replace("await import('./main');", 'recordMain();')
     .replace('bootstrap().catch(() => window.__anxiStartup?.fail());', 'globalThis.done = bootstrap();'), context);
   await new Promise(resolve => setImmediate(resolve));

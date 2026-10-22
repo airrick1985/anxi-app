@@ -17,7 +17,7 @@ async function bootstrap() {
     const leadId = readLeadReportId(window.location.href) || pendingId;
     const { initializeLiff } = await import('./utils/liffAuth');
     try {
-      await initializeLiff(import.meta.env.VITE_LIFF_ID_LEAD_REPORT || LEAD_REPORT_LIFF_ID);
+      await initializeLiff(LEAD_REPORT_LIFF_ID);
     } catch {
       // 頁面會顯示可重試錯誤；啟動不會永遠被 SDK 阻塞。
     }

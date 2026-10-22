@@ -34,7 +34,6 @@ test('bootstrap 必須等 LINE 初始化才改網址或建立主程式', async (
   });
   vm.runInContext(source.replace(/^import .*;\n/gm, '')
     .replaceAll("const { initializeLiff } = await import('./utils/liffAuth');", '')
-    .replace('import.meta.env.VITE_LIFF_ID_LEAD_REPORT', 'null')
     .replace("await import('./main');", 'recordMain();')
     .replace('bootstrap().catch(() => window.__anxiStartup?.fail());', 'globalThis.done = bootstrap();'), context);
   assert.deepEqual(events, []);
@@ -72,7 +71,6 @@ test('實際 bootstrap 遇到舊連結先轉 LIFF，不載入 SDK 或主程式',
     window: { location: { href: 'https://app.test/#/contact?id=old-lead', replace: url => events.push(url) } },
   });
   vm.runInContext(source.replace(/^import .*;\n/gm, '')
-    .replace('import.meta.env.VITE_LIFF_ID_LEAD_REPORT', 'null')
     .replace('bootstrap().catch(() => window.__anxiStartup?.fail());', 'globalThis.done = bootstrap();'), context);
   await context.done;
   assert.deepEqual(events, [leadReportLiffUrl('old-lead')]);
@@ -92,7 +90,6 @@ test('遺失路徑的登入回跳也在 SDK 完成後才恢復名單', async () 
   });
   vm.runInContext(source.replace(/^import .*;\n/gm, '')
     .replaceAll("const { initializeLiff } = await import('./utils/liffAuth');", '')
-    .replace('import.meta.env.VITE_LIFF_ID_LEAD_REPORT', 'null')
     .replace("await import('./main');", 'recordMain();')
     .replace('bootstrap().catch(() => window.__anxiStartup?.fail());', 'globalThis.done = bootstrap();'), context);
   assert.deepEqual(events, []);
