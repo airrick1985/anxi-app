@@ -1533,7 +1533,11 @@ async function initProjectData() {
   await projectStore.fetchProjects();
   const allProjects = projectStore.projectsList;
   authorizedProjects.value = allProjects.filter(project => userStore.hasProjectPermission('驗屋系統', project.name));
+  await loadProjectData();
+}
 
+// 載入目前建案的棟別結構、篩選選項、紀錄與 PDF 模板
+async function loadProjectData() {
   if (props.projectId) {
     loadingText.value = '正在載入建案資料...';
     if (!userStore.hasProjectPermission('驗屋系統', projectName.value)) {
@@ -1559,6 +1563,21 @@ async function initProjectData() {
     loadingText.value = '請選擇建案';
   }
 }
+
+// 同一路由切換建案（選建案畫面點進、頁首換建案、上一頁）時元件會被沿用、不會重跑 onMounted，
+// 必須在這裡重新載入該建案的資料，否則棟別選單會是空的
+watch(() => props.projectId, async (newId, oldId) => {
+  if (newId === oldId || !isBound.value) return;
+  selectedBuilding.value = null;
+  selectedUnit.value = null;
+  showDeleted.value = false;
+  allRecords.value = [];
+  projectStructure.value = {};
+  pdfTemplate.value = DEFAULT_PDF_TEMPLATE;
+  clearAllFiltersQuiet();
+  await loadProjectData();
+  if (newId && newId === props.projectId) checkOnboardingStatus();
+});
 
 onMounted(async () => {
   try {
@@ -1817,7 +1836,8 @@ function handleMobileExport() {
 }
 
 async function loadOptionsForChips() { if (!props.projectId) return; const result = await getInspectionOptionsForProjectFB(props.projectId); if (result.status === 'success') { optionsForChips.status = result.data.status || []; optionsForChips.level = result.data.level || []; optionsForChips.progress = result.data.progress || []; } else console.error("載入 Chip 選項失敗:", result.message); }
-function enterProject(project) { if (project && project.id && project.id !== props.projectId) { router.push({ name: 'InspectionConsole', params: { projectId: project.id } }); selectedBuilding.value = null; selectedUnit.value = null; showDeleted.value = false; allRecords.value = []; loadData(); } }
+// 換建案只改網址，資料由 props.projectId 的 watch 重新載入
+function enterProject(project) { if (project && project.id && project.id !== props.projectId) { router.push({ name: 'InspectionConsole', params: { projectId: project.id } }); } }
 
 async function handleFieldUpdate(item, field, newValue) {
   console.log('[handleFieldUpdate] Received:', { id: item.id, field, newValue }); // ✓ 新增日誌
