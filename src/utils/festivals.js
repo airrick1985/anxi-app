@@ -39,7 +39,7 @@ export const FESTIVALS = [
   {
     id: 'christmas',
     name: '聖誕節',
-    effect: 'snow',
+    effect: 'christmas',
     recurring: { start: '12-18', end: '12-26' },
   },
 ];
