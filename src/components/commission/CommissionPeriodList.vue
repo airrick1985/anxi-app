@@ -28,7 +28,7 @@
               <template v-if="canManage">
                 <v-list-item prepend-icon="mdi-pencil-box-multiple-outline" title="整期拉回編輯" :disabled="!opPd || !editableRecords(opPd).length"
                   :subtitle="opPd && editableRecords(opPd).length ? `${editableRecords(opPd).length} 筆載回${isBonusView ? '獎金編輯' : '工作台'}` : '沒有可拉回的紀錄'"
-                  @click="$emit(isBonusView ? 'edit-bonus-period' : 'edit-period', opPd.period)"></v-list-item>
+                  @click="isBonusView ? $emit('edit-bonus-period', opPd.period) : $emit('edit-records', editableRecords(opPd))"></v-list-item>
                 <v-list-item prepend-icon="mdi-cancel" title="整期作廢" :disabled="!opPd || (!periodVoidableCount(opPd) && !(isBonusView && periodBonusCount(opPd)))"
                   @click="openVoidPeriod(opPd)"></v-list-item>
                 <v-list-item prepend-icon="mdi-delete-sweep-outline" title="清除已作廢紀錄" :disabled="!opPd?.voidedCount"
@@ -213,6 +213,9 @@
         </template>
         <template #item.actions="{ item }">
           <template v-if="!item.voided && item.refund">
+            <v-btn v-if="canManage && !isBonusView" size="x-small" variant="text" color="primary" :disabled="!item.editable"
+              :title="item.editable ? '載回工作台修改，送出時覆寫此退佣紀錄' : (item.bonusCount ? '含追回獎金明細，請作廢後重新退佣' : '沒有來源紀錄，無法拉回')"
+              @click="$emit('edit-record', item.raw)">拉回編輯</v-btn>
             <v-btn v-if="canManage && !item.raw._legacyBonus" size="x-small" variant="text" color="error" @click="openVoid(item.raw)">作廢{{ refundWord }}</v-btn>
           </template>
           <template v-else-if="!item.voided">
@@ -554,7 +557,7 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['refresh', 'refresh-quiet', 'export-period', 'reimport-period', 'edit-record', 'edit-records', 'edit-period', 'edit-bonus-record', 'edit-bonus-records', 'edit-bonus-period']);
+const emit = defineEmits(['refresh', 'refresh-quiet', 'export-period', 'reimport-period', 'edit-record', 'edit-records', 'edit-bonus-record', 'edit-bonus-records', 'edit-bonus-period']);
 
 // 檢視：請佣紀錄／獎金紀錄（獨立獎金＋退獎金，舊版請佣附帶獎金唯讀列出）
 const view = ref('claim');
@@ -664,7 +667,6 @@ const allRows = computed(() => sourceRecords.value.slice()
   const st = statusOf(r);
   const voided = r.status === 'voided';
   const refund = r.type === 'refund';
-  const refunded = !!(isBonusView.value ? r.bonusRefundedBy : r.refundedBy);
   return {
     id: r.id,
     raw: r,
@@ -696,7 +698,7 @@ const allRows = computed(() => sourceRecords.value.slice()
     createdBy: r.createdBy || '',
     status: st.label, statusKey: st.key, statusTitle: st.title,
     voided, refund,
-    editable: !voided && !refund && !refunded,
+    editable: isEditableRecord(r),
     selectable: !voided,
   };
 }));
@@ -984,7 +986,7 @@ const TEXT_EDIT_KEYS = ['requestDate', 'note'];
 const RECALC_KEYS = ['commPct', ...PRICE_PART_KEYS];
 const WAN_KEYS = ['transactionTotal', ...PRICE_PART_KEYS, 'dealTotal', 'totalFloor', 'spread', 'dealAfter'];
 const FIELD_LABELS = {
-  note: '備註', commPct: '佣金比例', transactionTotal: '成交總價', houseDeal: '房屋總價', houseFloor: '房屋底價', parkDeal: '車位總價', parkFloor: '車位底價',
+  period: '期別', note: '備註', commPct: '佣金比例', transactionTotal: '成交總價', houseDeal: '房屋總價', houseFloor: '房屋底價', parkDeal: '車位總價', parkFloor: '車位底價',
   dealTotal: '請佣總價', totalFloor: '總底價', spread: '溢差價',
   dealAfter: '折數後總價', realClaim: '實際請領', claimKeep: '保留款', thisClaim: '本次請佣', bonusNet: '獎金實發', handover: '交屋保留款',
 };
@@ -1160,9 +1162,17 @@ watch([periods, () => filters.period], ([list, sel]) => {
   else if (!list.some(pd => pd.period === opPeriod.value)) opPeriod.value = list[0]?.period ?? null;
 }, { immediate: true });
 
-/** 可拉回編輯的紀錄：有效、非退佣、未被退佣（獎金檢視以 bonusRefundedBy 判斷） */
+/**
+ * 可拉回編輯：有效且未被退佣（獎金檢視以 bonusRefundedBy 判斷）；
+ * 請佣的退佣紀錄需有來源紀錄、沒有追回獎金明細；退獎金不可拉回
+ */
+function isEditableRecord(r) {
+  if (r.status !== 'active') return false;
+  if (r.type === 'refund') return !isBonusView.value && (r.sourceRecordIds || []).length > 0 && !bonusCountOf(r.id);
+  return !(isBonusView.value ? r.bonusRefundedBy : r.refundedBy);
+}
 function editableRecords(pd) {
-  return (pd.records || []).filter(r => r.status === 'active' && r.type !== 'refund' && !(isBonusView.value ? r.bonusRefundedBy : r.refundedBy));
+  return (pd.records || []).filter(isEditableRecord);
 }
 /** 整期作廢範圍：獎金檢視只作用於獨立獎金紀錄（舊版請佣附帶獎金只作廢明細） */
 function periodVoidableRecords(pd) {
@@ -1431,10 +1441,11 @@ const AUDIT_LABELS = {
   import: '歷史匯入',
   undoImport: '撤銷匯入',
   editField: '修改欄位',
+  refundRewrite: '退佣拉回編輯',
 };
 function auditLabel(a) { return AUDIT_LABELS[a] || a || '—'; }
 function auditColor(a) {
-  return a === 'import' ? 'primary' : a === 'editField' ? 'info' : a === 'purgeVoided' || a === 'undoImport' ? 'error' : 'warning';
+  return a === 'import' ? 'primary' : a === 'editField' || a === 'refundRewrite' ? 'info' : a === 'purgeVoided' || a === 'undoImport' ? 'error' : 'warning';
 }
 </script>
 

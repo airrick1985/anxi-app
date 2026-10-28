@@ -15,6 +15,7 @@
         </span>
         <v-chip size="x-small" variant="tonal" :color="contractTypeColor(entry.unit?.contractType)">{{ entry.unit?.contractType || '未設定合約方式' }}</v-chip>
         <v-chip size="x-small" :color="isReleased ? 'error' : 'default'" variant="tonal">{{ statusText || '狀態不明' }}</v-chip>
+        <v-chip v-if="entry.replaceRecordId" size="x-small" color="orange-darken-3" variant="flat" prepend-icon="mdi-pencil-box-outline" title="送出後直接覆寫原退佣紀錄">拉回編輯・送出覆寫原退佣</v-chip>
         <span v-if="entry.note" class="head-note" :title="entry.note"><v-icon size="x-small">mdi-note-text-outline</v-icon>{{ entry.note }}</span>
       </div>
       <span class="head-amount text-error"><small>{{ isBonus ? '追回獎金' : '退回' }} </small>{{ money(isBonus ? peopleTotals.net : plan.calc.thisClaim) }} <small>元</small></span>

@@ -131,7 +131,6 @@
           @edit-bonus-record="r => goEditBonusRecords([r])"
           @edit-bonus-records="goEditBonusRecords"
           @edit-bonus-period="goEditBonusPeriod"
-          @edit-period="goEditPeriod"
         />
       </v-window-item>
 
@@ -562,12 +561,6 @@ function goEditBonusPeriod(period) {
   const list = planBonusSources.value.filter(r => toNum(r.period) === toNum(period) && r.status === 'active' && r.type !== 'refund' && !r.bonusRefundedBy);
   if (!list.length) { toast.info('此期沒有可拉回編輯的獎金紀錄'); return; }
   goEditBonusRecords(list);
-}
-
-function goEditPeriod(period) {
-  const list = records.value.filter(r => toNum(r.period) === toNum(period) && r.status === 'active' && r.type !== 'refund' && !r.refundedBy);
-  if (!list.length) { toast.info('此期沒有可拉回編輯的紀錄'); return; }
-  goEditRecords(list);
 }
 
 function goExportPeriod(period, docType = 'claim') {

@@ -216,6 +216,58 @@ test('退佣及作廢退佣只回溯本方案；跨方案來源被拒絕', async
   await assert.rejects(h.call('voidCommissionRecord', { planId: 'package', recordId: general.results[0].recordId }), /不屬於/);
 });
 
+test('退佣拉回編輯：覆寫原退佣，增減來源與比例同步已請額度與已退佣標記', async () => {
+  const h = harness();
+  const [id1, id2] = [(await h.submit('package', { ratioPct: 40 })).results[0].recordId, (await h.submit('package', { ratioPct: 60, period: 2 })).results[0].recordId];
+  const send = (refunds, submissionType = 'claim') => h.call('submitCommissionEntries', { planId: 'package', submissionType, refunds });
+  const refundId = (await send([{ unitId, period: 3, requestDate: '2026/10/01', sourceRecordIds: [id1], reason: '買方解約' }])).results[0].recordId;
+  assert.equal(h.ledger('package'), 60);
+  const createdAt = h.rows.get(`commissionRecords/${refundId}`).createdAt;
+
+  // 加入第 2 期並部分退回 80%：原紀錄編號不變、不留作廢列
+  const res = await send([{ unitId, period: 4, requestDate: '2026/10/20', sourceRecordIds: [id1, id2], refundRatioPct: 80, note: '改', replaceRecordId: refundId }]);
+  assert.equal(res.results[0].recordId, refundId);
+  assert.equal(res.results[0].replaced, true);
+  const doc = h.rows.get(`commissionRecords/${refundId}`);
+  assert.equal(doc.status, 'active');
+  assert.equal(doc.period, 4);
+  assert.equal(doc.ratioPct, -80);
+  assert.deepEqual([...doc.sourceRecordIds], [id1, id2]);
+  assert.equal(doc.createdAt.seconds, createdAt.seconds);
+  assert.equal(doc.editedBy, '測試');
+  assert.equal(h.ledger('package'), 20);
+  assert.equal(h.rows.get(`commissionRecords/${id2}`).refundedBy, refundId);
+  assert.equal(h.rows.get(`commissionRecords/${id2}`).refundPeriod, 4);
+  assert.equal([...h.rows.keys()].filter(k => k.startsWith('commissionRecords/') && h.rows.get(k).type === 'refund').length, 1);
+
+  // 只留第 2 期：第 1 期移除已退佣標記、比例加回
+  await send([{ unitId, period: 4, sourceRecordIds: [id2], replaceRecordId: refundId }]);
+  assert.equal(h.rows.get(`commissionRecords/${id1}`).refundedBy, undefined);
+  assert.equal(h.ledger('package'), 40);
+  const audits = [...h.rows.entries()].filter(([k, v]) => k.startsWith('commissionAuditLogs/') && v.action === 'refundRewrite').map(([, v]) => v);
+  assert.equal(audits.length, 2);
+  assert.ok(audits[0].changes.some(c => c.field === 'ratioPct' && c.before === -40 && c.after === -80));
+
+  // 來源已被其他退佣退回、同一來源重複、退獎金、含追回獎金明細者皆不可覆寫
+  await send([{ unitId, period: 5, sourceRecordIds: [id1] }]);
+  await assert.rejects(send([{ unitId, period: 4, sourceRecordIds: [id1, id2], replaceRecordId: refundId }]), /已退佣/);
+  await assert.rejects(send([{ unitId, period: 4, sourceRecordIds: [id2], replaceRecordId: refundId }, { unitId, period: 4, sourceRecordIds: [id2] }]), /重複退回/);
+  await assert.rejects(send([{ unitId, period: 4, sourceRecordIds: [id2], replaceRecordId: refundId }], 'bonus'), /只有請佣/);
+  assert.equal(h.ledger('package'), 0);
+
+  // 作廢覆寫後的退佣：來源恢復、已請比例加回
+  await h.call('voidCommissionRecord', { planId: 'package', recordId: refundId });
+  assert.equal(h.rows.get(`commissionRecords/${id2}`).refundedBy, undefined);
+  assert.equal(h.ledger('package'), 60);
+});
+
+test('含追回獎金明細的舊退佣不可拉回覆寫', async () => {
+  const h = harness();
+  const sourceId = (await h.submit('package')).results[0].recordId;
+  const refundId = (await h.call('submitCommissionEntries', { planId: 'package', refunds: [{ unitId, period: 2, sourceRecordIds: [sourceId], refundBonus: true }] })).results[0].recordId;
+  await assert.rejects(h.call('submitCommissionEntries', { planId: 'package', submissionType: 'claim', refunds: [{ unitId, period: 2, sourceRecordIds: [sourceId], replaceRecordId: refundId }] }), /追回獎金/);
+});
+
 test('退獎金：只追回獎金明細、標記 bonusRefundedBy 與退佣獨立；作廢退獎金還原', async () => {
   const h = harness();
   const bonus = await h.call('submitCommissionEntries', { planId: 'package', submissionType: 'bonus', entries: [h.entry] });

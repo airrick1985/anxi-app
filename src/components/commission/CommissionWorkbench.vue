@@ -506,9 +506,9 @@ function unitClaimedPct(unitId) {
     .reduce((s, r) => s + toNum(r.ratioPct), 0);
   return Math.round(sum * 100) / 100;
 }
-/** 同一戶在本批退佣／退獎金卡片要退回的比例合計（送出時先回溯，該戶可再請） */
+/** 同一戶在本批退佣／退獎金卡片要退回的比例合計（送出時先回溯，該戶可再請）；拉回編輯的退佣扣掉原退回比例 */
 function pendingRefundPct(unitId) {
-  return refunds.value.filter(e => e.unitId === unitId).reduce((s, e) => s + toNum(refundPlan(e).refundRatioPct), 0);
+  return refunds.value.filter(e => e.unitId === unitId).reduce((s, e) => s + toNum(refundPlan(e).refundRatioPct) - toNum(e.replaceRatioPct), 0);
 }
 /** 扣掉本批退佣後的已請比例 */
 function effectiveClaimedPct(unitId) {
@@ -696,6 +696,40 @@ function addRefund(unitId) {
     collapsed: true,
   });
   selectedId.value = refunds.value[refunds.value.length - 1].id;
+}
+
+/** 拉回編輯退佣：來源＝該戶可退回紀錄＋原本由此退佣退回的紀錄，預帶原設定，送出時覆寫原退佣紀錄 */
+function addRefundFromRecord(record) {
+  const own = new Set((record.sourceRecordIds || []).map(String));
+  const candidates = [
+    ...(refundableByUnit.value[record.unitId] || []),
+    ...props.records.filter(r => own.has(r.id) && r.status === 'active' && r.refundedBy === record.id),
+  ].sort((a, b) => toNum(a.period) - toNum(b.period));
+  const selectedIds = candidates.filter(r => own.has(r.id)).map(r => r.id);
+  if (!selectedIds.length) return false;
+  const refundPct = toNum(record.refundRatioPct ?? -toNum(record.ratioPct));
+  const fullPct = candidates.filter(r => own.has(r.id)).reduce((s, r) => s + toNum(r.ratioPct), 0);
+  refunds.value.push({
+    id: `r${seq++}`,
+    kind: 'refund',
+    unitId: record.unitId,
+    unit: props.households.find(u => u.unitId === record.unitId) || null,
+    period: claimPeriod.value,
+    requestDate: claimDate.value,
+    reason: String(record.reason || ''),
+    note: String(record.note || ''),
+    refundRatioPct: Math.abs(refundPct - fullPct) < 0.0001 ? null : refundPct,
+    includeKeep: !!record.includeKeep,
+    refundBonus: false,
+    candidates,
+    selectedIds,
+    people: null,
+    collapsed: false,
+    replaceRecordId: record.id,
+    replaceRatioPct: -toNum(record.ratioPct),   // 原退回比例（已請比例顯示時先加回）
+  });
+  selectedId.value = refunds.value[refunds.value.length - 1].id;
+  return true;
 }
 
 function removeRefund(e) {
@@ -909,12 +943,13 @@ function addUnit(unitId, fromRecord = null, bonusRows = []) {
 /**
  * 拉回編輯：把已送出的請佣紀錄載回工作台（每筆一張卡片，預帶原設定），送出時取代原紀錄。
  * 同一戶同期有多筆紀錄時每筆各一張卡片；已載回的同一筆、找不到戶別資料者略過並提示。
+ * 請佣的退佣紀錄載回成退佣卡片，送出時直接覆寫原退佣紀錄（含追回獎金明細、無來源紀錄者不可拉回）。
  */
 function loadFromRecords(records, bonusRows = []) {
   const skipped = [];
   let added = 0;
-  if (!entries.value.length) {
-    const first = (records || []).find(r => r && r.status === 'active' && r.type !== 'refund');
+  if (!entries.value.length && !refunds.value.length) {
+    const first = (records || []).find(r => r && r.status === 'active' && (r.type !== 'refund' || !isBonus.value));
     if (first) {
       if (isBonus.value) {
         if (toNum(first.period) > 0) summaryPeriod.value = toNum(first.period);
@@ -926,6 +961,13 @@ function loadFromRecords(records, bonusRows = []) {
     }
   }
   (records || []).forEach(r => {
+    if (r?.type === 'refund' && r.status === 'active' && !isBonus.value) {
+      if (refunds.value.some(e => e.replaceRecordId === r.id)) { skipped.push(`${r.unitId}（已在工作台）`); return; }
+      if (bonusRows.some(b => b.commissionRecordId === r.id && b.status !== 'voided')) { skipped.push(`${r.unitId}（退佣含追回獎金）`); return; }
+      if (addRefundFromRecord(r)) added++;
+      else skipped.push(`${r.unitId}（找不到退佣來源紀錄）`);
+      return;
+    }
     if (!r || r.status !== 'active' || r.type === 'refund' || (isBonus.value ? r.bonusRefundedBy : r.refundedBy)) { skipped.push(`${r?.unitId || '?'}（不可拉回）`); return; }
     if (entries.value.some(e => e.replaceRecordId === r.id)) { skipped.push(`${r.unitId}（已在工作台）`); return; }
     if (!props.households.find(u => u.unitId === r.unitId)) { skipped.push(`${r.unitId}（找不到戶別資料）`); return; }
@@ -1184,8 +1226,11 @@ function collectIssues() {
   });
 
   const refundNotes = [];
+  const pickedSources = new Set();
   refunds.value.forEach(e => {
     if (!e.selectedIds.length) blocking.push(`${refundLabel.value} ${e.unitId}：未勾選要退回的原${isBonus.value ? '獎金' : '請佣'}紀錄`);
+    if (e.selectedIds.some(id => pickedSources.has(id))) blocking.push(`${refundLabel.value} ${e.unitId}：與其他${refundLabel.value}卡片勾選了同一筆原紀錄`);
+    e.selectedIds.forEach(id => pickedSources.add(id));
     if (!(toNum(e.period) > 0)) blocking.push(`${refundLabel.value} ${e.unitId}：期別須為正整數`);
     const pl = refundPlan(e);
     if (e.selectedIds.length) pl.errors.forEach(err => blocking.push(`${refundLabel.value} ${e.unitId}：${err}`));
@@ -1193,7 +1238,7 @@ function collectIssues() {
     const released = classifySalesStatus(status) === 'released';
     const bonusText = e.refundBonus ? `追回獎金 ${money(pl.people.reduce((s, p) => s + p.net, 0))} 元` : '不追回獎金';
     const claimText = isBonus.value ? '' : `退回 ${money(pl.calc.thisClaim)} 元、`;
-    refundNotes.push(`${e.unitId}（${status || '狀態不明'}）：${claimText}${bonusText}${released ? '' : '；⚠ 銷控狀態非解約／退戶'}`);
+    refundNotes.push(`${e.unitId}（${status || '狀態不明'}）：${e.replaceRecordId ? '覆寫原退佣、' : ''}${claimText}${bonusText}${released ? '' : '；⚠ 銷控狀態非解約／退戶'}`);
   });
 
   return { blocking, warnings, feeMiss, ratioMismatch, refundNotes };
@@ -1545,6 +1590,7 @@ async function doSubmit() {
       refundBonus: isBonus.value,
       sourceRecordIds: [...e.selectedIds],
       people: e.people ? JSON.parse(JSON.stringify(e.people)) : null,
+      replaceRecordId: e.replaceRecordId || null,
     }));
 
     const res = await submitCommissionEntriesAPI({
