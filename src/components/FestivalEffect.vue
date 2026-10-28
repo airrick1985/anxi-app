@@ -21,6 +21,7 @@ let effect = null;
 let ctx = null;
 let rafId = 0;
 let startTs = 0;
+let lastDrawTs = 0;
 let reducedMotion = false;
 let cssW = 0;
 let cssH = 0;
@@ -47,6 +48,12 @@ const renderStatic = () => {
 const frame = (ts) => {
   if (!ctx || !effect) return;
   if (!startTs) startTs = ts;
+  // 特效有指定 fps 上限時跳過多餘的幀（高更新率螢幕不必每幀重畫）
+  if (effect.fps && lastDrawTs && ts - lastDrawTs < 1000 / effect.fps - 2) {
+    rafId = requestAnimationFrame(frame);
+    return;
+  }
+  lastDrawTs = ts;
   ctx.clearRect(0, 0, cssW, cssH);
   effect.draw(ctx, ts - startTs, cssW, cssH);
   rafId = requestAnimationFrame(frame);
@@ -54,6 +61,7 @@ const frame = (ts) => {
 
 const onResize = () => {
   if (!setupCanvas()) return;
+  lastDrawTs = 0; // 改尺寸會清空畫布，下一幀立刻重畫
   effect?.resize(cssW, cssH);
   if (reducedMotion) renderStatic();
 };
@@ -62,6 +70,7 @@ const teardown = () => {
   cancelAnimationFrame(rafId);
   rafId = 0;
   startTs = 0;
+  lastDrawTs = 0;
   window.removeEventListener('resize', onResize);
   effect = null;
   ctx = null;

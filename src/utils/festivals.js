@@ -31,6 +31,12 @@ export const FESTIVALS = [
     ],
   },
   {
+    id: 'halloween',
+    name: '萬聖節',
+    effect: 'halloween',
+    recurring: { start: '10-25', end: '10-31' },
+  },
+  {
     id: 'christmas',
     name: '聖誕節',
     effect: 'snow',
