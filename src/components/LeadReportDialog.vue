@@ -83,6 +83,7 @@
                       <div class="d-flex align-center">
                         <v-icon size="20" color="success" class="me-2">mdi-calendar-clock</v-icon>
                         <span class="text-body-2 font-weight-bold">{{ formatTime(res.reservationTime) }}</span>
+                        <v-chip v-if="isPastReservation(res)" size="x-small" variant="tonal" class="ms-2">已過</v-chip>
                       </div>
                     </v-col>
 
@@ -274,7 +275,7 @@ const props = defineProps({
   statusOptions: { type: Array, default: () => [] },
   statusColors: { type: Object, default: () => ({}) }, // 🎨 各狀態自訂顏色
   reasonOptions: { type: Array, default: () => [] },
-  // 該客戶（依電話）的有效預約清單，由父層傳入
+  // 該客戶（依電話）的有效預約清單（含已過），由父層傳入
   reservations: { type: Array, default: () => [] }
 });
 
@@ -384,17 +385,20 @@ const submitReport = async () => {
   }
   try {
     uiStore.setLoading(true);
+    const createdBy = userStore.user?.name || '系統人員';
+    // lastReport：最新一筆回報的快照，供名單表格「最新回報」欄直接顯示（不必讀 contactLogs）
     await updateDoc(doc(db, 'leads', props.lead.id), {
       status: reportForm.value.status,
       reason: reportForm.value.reason,
-      lastReportedAt: serverTimestamp()
+      lastReportedAt: serverTimestamp(),
+      lastReport: { ...reportForm.value, createdBy, createdAt: serverTimestamp() }
     });
 
     // 存入 contactLogs 時務必帶 projectId，供 collectionGroup 統計使用
     await addDoc(collection(db, `leads/${props.lead.id}/contactLogs`), {
       ...reportForm.value,
       projectId: props.projectId,
-      createdBy: userStore.user?.name || '系統人員',
+      createdBy,
       createdAt: serverTimestamp()
     });
 
@@ -413,6 +417,8 @@ const getStatusKey = (s) => ({ '已約賞屋': 'success', '不考慮': 'error', 
 
 // 🎨 狀態顏色：與名單頁共用工具，並吃父層傳入的自訂顏色
 const getStatusColor = (s) => resolveLeadStatusColor(s, props.statusColors);
+
+const isPastReservation = (res) => !(res?.reservationTime > Date.now());
 
 const formatTime = (date) => {
   if (!date) return '';

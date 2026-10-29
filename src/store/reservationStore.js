@@ -287,21 +287,17 @@ export const useReservationStore = defineStore('reservation', {
         }
 
         const createdBy = `${operatorName || resData.operatorName || '系統'}（系統自動同步）`;
+        const log = { status: logStatus, reason: '', note: summary, createdBy };
 
         await Promise.all(snap.docs.map(async (leadDoc) => {
-          if (action !== 'cancel') {
-            await updateDoc(doc(db, 'leads', leadDoc.id), {
-              status: '已約賞屋',
-              reason: '',
-              lastReportedAt: serverTimestamp()
-            });
-          }
+          // lastReport（名單「最新回報」欄）取消也要更新；狀態與最後回報時間取消時不動
+          const lastReport = { ...log, createdAt: serverTimestamp() };
+          await updateDoc(doc(db, 'leads', leadDoc.id), action !== 'cancel'
+            ? { status: '已約賞屋', reason: '', lastReportedAt: serverTimestamp(), lastReport }
+            : { lastReport });
           await addDoc(collection(db, `leads/${leadDoc.id}/contactLogs`), {
-            status: logStatus,
-            reason: '',
-            note: summary,
+            ...log,
             projectId,
-            createdBy,
             createdAt: serverTimestamp()
           });
         }));

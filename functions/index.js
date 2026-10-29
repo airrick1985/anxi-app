@@ -26485,10 +26485,11 @@ exports.batchImportLeadsV2 = onCall({
         if (leadData.date) updateData.date = leadData.date;
         if (leadData.note) updateData.note = leadData.note;
         if (status) {
-          // 狀態變更時一併重設 reason / lastReportedAt，避免殘留前一狀態的不考慮原因
+          // 狀態變更時一併重設 reason / lastReportedAt / lastReport，避免殘留前一狀態的不考慮原因與回報內容
           updateData.status = status;
           updateData.reason = reason;
           updateData.lastReportedAt = lastReportedAt || FieldValue.delete();
+          updateData.lastReport = FieldValue.delete();
         }
         // 決策：Excel 有填指派銷售（且比對成功）才覆蓋歸屬，空值保留原歸屬
         if (leadData.overwriteAssigned && leadData.assignedTo) {

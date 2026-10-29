@@ -242,10 +242,19 @@
             <span class="ld-muted">{{ item.lastReportedAt ? formatDateTime(item.lastReportedAt) : '-' }}</span>
           </template>
 
+          <!-- 最新回報：最新一筆回報的談話紀錄全文（空白改顯示原因）＋回報人 -->
+          <template v-slot:item.lastReport="{ item }">
+            <div v-if="item.lastReport" class="ld-lr">
+              <div class="ld-lr-text">{{ lastReportText(item.lastReport) }}</div>
+              <div class="ld-lr-by">{{ item.lastReport.createdBy }}</div>
+            </div>
+            <span v-else class="ld-muted">-</span>
+          </template>
+
           <!-- ✅ 預約狀態欄位（支援排序且保留樣式） -->
           <template v-slot:item.reservationCount="{ item }">
             <div v-if="getCustomerReservations(item.phone)?.length > 0" class="d-flex align-center ga-1">
-              <span class="mac-tag ld-tag-res"><v-icon size="12">mdi-calendar-check</v-icon>{{ getCustomerReservations(item.phone).length }} 筆</span>
+              <span class="mac-tag ld-tag-res" :class="{ 'ld-tag-res--past': !hasUpcomingReservation(item.phone) }"><v-icon size="12">mdi-calendar-check</v-icon>{{ getCustomerReservations(item.phone).length }} 筆</span>
               <v-menu content-class="mac-menu">
                 <template v-slot:activator="{ props }">
                   <button type="button" class="mac-icon-btn" title="預約明細" v-bind="props" @click.stop>
@@ -257,7 +266,8 @@
                     v-for="res in getCustomerReservations(item.phone)"
                     :key="res.id"
                     :title="formatTime(res.reservationTime)"
-                    :subtitle="`銷售：${res.salesName || '未指定'}`"
+                    :subtitle="`銷售：${res.salesName || '未指定'}${isPastReservation(res) ? '・已過' : ''}`"
+                    :class="{ 'ld-res-past': isPastReservation(res) }"
                   ></v-list-item>
                 </v-list>
               </v-menu>
@@ -295,11 +305,14 @@
                 <span class="mac-tag" :class="{ 'ld-tag-pending': isUnprocessedLead(item) }" :style="statusTagStyle(item.status)">
                   <v-icon v-if="isUnprocessedLead(item)" size="12">mdi-alert-circle</v-icon>{{ item.status || '未處理' }}
                 </span>
+                <button v-if="item.lastReport" type="button" class="mac-icon-btn ld-lr-btn" title="最新回報" @click.stop="openLastReport(item)" @keydown.enter.stop>
+                  <v-icon size="16">mdi-message-text-outline</v-icon>
+                </button>
               </div>
               <div class="mac-list-meta">{{ item.phone }}・{{ item.assignedName || '尚未指派' }}・{{ formatLeadDate(item.date) }}</div>
               <div v-if="item.status === '不考慮' && item.reason" class="mac-list-preview ld-reason">{{ item.reason }}</div>
               <div v-else-if="item.note" class="mac-list-preview">{{ item.note }}</div>
-              <div v-if="getCustomerReservations(item.phone)?.length" class="ld-mres">
+              <div v-if="getCustomerReservations(item.phone)?.length" class="ld-mres" :class="{ 'ld-mres--past': !hasUpcomingReservation(item.phone) }">
                 <v-icon size="13">mdi-calendar-check</v-icon>已預約 {{ formatTime(getCustomerReservations(item.phone)[0]?.reservationTime) }}
               </div>
             </div>
@@ -336,6 +349,34 @@
      :reservations="currentLead ? getCustomerReservations(currentLead.phone) : []"
      @notify="showMsg"
    />
+
+    <!-- 📱 手機：最新回報 -->
+    <v-dialog v-model="showLastReportDialog" max-width="480" scrollable content-class="mac-dialog-fit">
+      <v-card v-if="lastReportLead?.lastReport" class="mac-sheet">
+        <div class="mac-sheet-head">
+          <v-icon size="18">mdi-message-text-outline</v-icon>最新回報・{{ lastReportLead.name || '未填姓名' }}
+          <button type="button" class="mac-sheet-close" title="關閉" @click="showLastReportDialog = false">
+            <v-icon size="18">mdi-close</v-icon>
+          </button>
+        </div>
+        <v-card-text class="pa-0">
+          <div class="mac-sheet-section ld-lr-dl">
+            <span>狀態</span>
+            <span><span class="mac-tag" :style="statusTagStyle(lastReportLead.lastReport.status)">{{ lastReportLead.lastReport.status || '-' }}</span></span>
+            <span>回報時間</span>
+            <span>{{ formatDateTime(lastReportLead.lastReport.createdAt) }}</span>
+            <template v-if="lastReportLead.lastReport.reason">
+              <span>原因</span>
+              <span>{{ lastReportLead.lastReport.reason }}</span>
+            </template>
+            <span>談話紀錄</span>
+            <span class="ld-lr-text">{{ lastReportLead.lastReport.note?.trim() || '-' }}</span>
+            <span>回報人</span>
+            <span>{{ lastReportLead.lastReport.createdBy || '-' }}</span>
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
 
     <v-dialog v-model="showSoftDeleteDialog" max-width="480" persistent>
       <v-card class="rounded-xl">
@@ -1625,6 +1666,8 @@ const showSettings = ref(false);
 const showUploadDialog = ref(false);
 const showRecycleBin = ref(false);
 const showReportDialog = ref(false);
+const showLastReportDialog = ref(false);
+const lastReportLead = ref(null);
 
 const showSoftDeleteDialog = ref(false);
 const softDeleteTarget = ref(null);
@@ -2430,6 +2473,7 @@ const statusHeaders = [
     key: 'lastReportedAt',
     sortRaw: (a, b) => toLeadMillis(a.lastReportedAt) - toLeadMillis(b.lastReportedAt)
   },
+  { title: '最新回報', key: 'lastReport', sortable: false },
   { title: '預約紀錄', key: 'reservationCount' }, // ✅ [優化] 使用 reservationCount 欄位支援排序
   { title: '不考慮原因', key: 'reason' },
   { title: '備註', key: 'note' },
@@ -3605,6 +3649,13 @@ const closeUploadDialog = () => {
 };
 
 // ✅ 效能優化：立即開啟 Dialog，日誌由 LeadReportDialog 子元件非同步載入
+// 最新回報（lead.lastReport）：談話紀錄空白時改顯示原因
+const lastReportText = (r) => r?.note?.trim() || r?.reason || '-';
+const openLastReport = (item) => {
+  lastReportLead.value = item;
+  showLastReportDialog.value = true;
+};
+
 const openReport = (item) => {
   currentLead.value = item;
   showReportDialog.value = true;
@@ -3691,26 +3742,34 @@ const leadRowProps = ({ item }) => {
 
 // ✅ 效能優化：以電話為 key 預建索引 (computed 快取)，
 // 原本每次渲染每張卡片都對全部預約 filter + sort，改為 O(1) 查表
+// 已過的預約也列入（否則「已約賞屋」的名單在預約日過後會顯示無預約）；排序：未到的由近到遠在前，已過的由新到舊在後
 const reservationsByPhone = computed(() => {
   const map = new Map();
   const now = Date.now();
   for (const res of allReservations.value) {
-    if (!res.customerPhone || !(res.reservationTime > now)) continue;
+    if (!res.customerPhone || isNaN(res.reservationTime)) continue;
     const arr = map.get(res.customerPhone);
     if (arr) arr.push(res);
     else map.set(res.customerPhone, [res]);
   }
   for (const arr of map.values()) {
-    arr.sort((a, b) => a.reservationTime - b.reservationTime);
+    arr.sort((a, b) => {
+      const ap = a.reservationTime <= now, bp = b.reservationTime <= now;
+      if (ap !== bp) return ap ? 1 : -1;
+      return ap ? b.reservationTime - a.reservationTime : a.reservationTime - b.reservationTime;
+    });
   }
   return map;
 });
 
-// 根據電話號碼取得該客戶的有效預約記錄
+// 根據電話號碼取得該客戶的有效預約記錄（含已過）
 const getCustomerReservations = (phone) => {
   if (!phone) return [];
   return reservationsByPhone.value.get(phone) || [];
 };
+
+const isPastReservation = (res) => !(res?.reservationTime > Date.now());
+const hasUpcomingReservation = (phone) => getCustomerReservations(phone).some(r => !isPastReservation(r));
 
 // ✅ 新增：格式化時間顯示
 const formatTime = (date) => {
@@ -4691,14 +4750,24 @@ const handleExcelFileSelect = async (input) => {
 /* 姓名～指派給、狀態、預約紀錄不換行；原因／備註限寬換行（欄位順序見 statusHeaders） */
 .ld-table :deep(tbody td:nth-child(-n+6)),
 .ld-table :deep(tbody td:nth-child(8)),
-.ld-table :deep(tbody td:nth-child(10)) { white-space: nowrap; }
-.ld-table :deep(tbody td:nth-child(11)),
-.ld-table :deep(tbody td:nth-child(12)) { min-width: 150px; max-width: 240px; }
+.ld-table :deep(tbody td:nth-child(11)) { white-space: nowrap; }
+.ld-table :deep(tbody td:nth-child(12)),
+.ld-table :deep(tbody td:nth-child(13)) { min-width: 150px; max-width: 240px; }
+/* 最新回報：全文保留換行、限寬自動換行 */
+.ld-lr { min-width: 200px; max-width: 300px; padding: 6px 0; }
+.ld-lr-text { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.45; }
+.ld-lr-by { margin-top: 2px; font-size: 12px; color: #8e8e93; }
+.ld-lr-btn { width: 22px; height: 22px; margin: -1px -4px 0 -4px; }
+.ld-lr-dl { display: grid; grid-template-columns: auto 1fr; gap: 10px 14px; align-items: baseline; font-size: 14px; }
+.ld-lr-dl > span:nth-child(odd) { font-size: 12.5px; color: #6e6e73; white-space: nowrap; }
 .ld-tag-pending { animation: chip-pulse 2.2s ease-in-out infinite; }
 .ld-tag-res { --mac-tag-bg: rgba(52, 199, 89, 0.14); --mac-tag-color: #248a3d; }
+.ld-tag-res--past { --mac-tag-bg: rgba(142, 142, 147, 0.16); --mac-tag-color: #6e6e73; }
+.ld-res-past { opacity: 0.6; }
 .ld-reason { color: #d70015; }
 .ld-mres { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: #248a3d; font-weight: 500; }
 .ld-mres .v-icon { color: #34c759; }
+.ld-mres--past, .ld-mres--past .v-icon { color: #8e8e93; }
 .ld-row-more { flex-shrink: 0; margin: -2px -4px 0 0; width: 30px; height: 30px; }
 .ld-sync-body { padding: 14px 16px 16px; }
 
