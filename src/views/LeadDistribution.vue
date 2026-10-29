@@ -2459,21 +2459,21 @@ const toLeadMillis = (ts) => {
 
 // 1. 更新表格欄位定義 (新增 來源、預算、填表日期)
 const statusHeaders = [
+  { title: '狀態', key: 'status' },
   { title: '姓名', key: 'name' },
+  { title: '最新回報', key: 'lastReport', sortable: false },
   { title: '電話', key: 'phone' },
   { title: '來源', key: 'source' },
   { title: '預算', key: 'budget' },
   { title: '填表日期', key: 'date' },
   { title: '指派給', key: 'assignedName' },
   { title: '指派時間', key: 'assignedAt' },
-  { title: '狀態', key: 'status' },
   // ✅ [新增] 最後回報時間：以 sortRaw 轉毫秒排序（Timestamp 物件無法直接比較）
   {
     title: '最後回報時間',
     key: 'lastReportedAt',
     sortRaw: (a, b) => toLeadMillis(a.lastReportedAt) - toLeadMillis(b.lastReportedAt)
   },
-  { title: '最新回報', key: 'lastReport', sortable: false },
   { title: '預約紀錄', key: 'reservationCount' }, // ✅ [優化] 使用 reservationCount 欄位支援排序
   { title: '不考慮原因', key: 'reason' },
   { title: '備註', key: 'note' },
@@ -4747,9 +4747,9 @@ const handleExcelFileSelect = async (input) => {
 .ld-name { font-weight: 600; }
 .ld-muted { color: #6e6e73; font-size: 12.5px; }
 .ld-table :deep(tbody tr) { cursor: pointer; }
-/* 姓名～指派給、狀態、預約紀錄不換行；原因／備註限寬換行（欄位順序見 statusHeaders） */
-.ld-table :deep(tbody td:nth-child(-n+6)),
-.ld-table :deep(tbody td:nth-child(8)),
+/* 狀態、姓名、電話～指派給、預約紀錄不換行；原因／備註限寬換行（欄位順序見 statusHeaders） */
+.ld-table :deep(tbody td:nth-child(-n+2)),
+.ld-table :deep(tbody td:nth-child(n+4):nth-child(-n+8)),
 .ld-table :deep(tbody td:nth-child(11)) { white-space: nowrap; }
 .ld-table :deep(tbody td:nth-child(12)),
 .ld-table :deep(tbody td:nth-child(13)) { min-width: 150px; max-width: 240px; }
