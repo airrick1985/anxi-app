@@ -21,7 +21,7 @@ const fixture = await mkdtemp(path.join(root, '.household-grid-test-'));
 let server, browser;
 try {
   await writeFile(path.join(fixture, 'index.html'), '<html><body><div id="app"></div><script type="module" src="./main.js"></script></body></html>');
-  await writeFile(path.join(fixture, 'api.js'), 'export async function batchUpdateHouseholds(updates) { window.batchUpdates = updates; }');
+  await writeFile(path.join(fixture, 'api.js'), 'export async function batchUpdateHouseholds(updates) { window.batchUpdates = updates; return { status: window.batchFail ? "error" : "success", message: "模擬寫入失敗" }; }');
   await writeFile(path.join(fixture, 'main.js'), `
 import { createApp, h } from 'vue';
 import { createVuetify } from 'vuetify';
@@ -33,6 +33,7 @@ import SwitchHeaderRenderer from '../src/components/household/SwitchHeaderRender
 import CustomerMessageRenderer from '../src/components/household/CustomerMessageRenderer.vue';
 ModuleRegistry.registerModules([AllCommunityModule]);
 window.changes = [];
+window.notices = [];
 createApp({ render: () => h(AgGridVue, {
   style: 'height: 500px; width: 1000px', headerHeight: 90, rowHeight: 60,
   rowData: [
@@ -45,6 +46,7 @@ createApp({ render: () => h(AgGridVue, {
     { field: 'customerMessages', cellRenderer: CustomerMessageRenderer,
       cellRendererParams: { onClick: data => { window.clickedHousehold = data._docId; } } },
   ],
+  context: { notify: (text, color) => window.notices.push({ text, color }) },
   onCellValueChanged: event => window.changes.push({ field: event.colDef.field, value: event.newValue }),
 }) }).use(createVuetify()).mount('#app');
 `);
@@ -56,7 +58,7 @@ createApp({ render: () => h(AgGridVue, {
   const base = `http://127.0.0.1:${server.httpServer.address().port}`;
   browser = await puppeteer.launch({ executablePath, headless: true });
   const page = await browser.newPage();
-  await page.setViewport({ width: 1200, height: 800 });
+  await page.setViewport({ width: 1200, height: 800, hasTouch: true });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (/Failed to resolve|runtime compilation/.test(message.text())) errors.push(message.text()); });
@@ -79,12 +81,31 @@ createApp({ render: () => h(AgGridVue, {
     { docId: 'a', data: { showInMenu: true } }, { docId: 'b', data: { showInMenu: true } },
   ]);
   await page.waitForFunction(() => [...document.querySelectorAll('.ag-row [col-id="showInMenu"] .v-switch input')].every(input => input.checked));
+  // 觸控（平板／手機）點表頭全選：AG Grid 表頭拖曳會對 touchstart preventDefault，開關須自行攔下
+  const headerInput = await page.$('.ag-header-cell[col-id="交屋"] .v-switch input');
+  const box = await headerInput.boundingBox();
+  await page.evaluate(() => { window.batchUpdates = undefined; });
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForFunction(() => window.batchUpdates?.length === 2, { timeout: 3000 });
+  assert.deepEqual(await page.evaluate(() => window.batchUpdates), [
+    { docId: 'a', data: { '交屋': true } }, { docId: 'b', data: { '交屋': true } },
+  ]);
+  await page.waitForFunction(() => [...document.querySelectorAll('.ag-row [col-id="交屋"] .v-switch input')].every(input => input.checked));
+  await page.waitForFunction(() => window.notices.some(n => n.color === 'success'));
+  // 寫入失敗要提示，且不可把本機資料改成未儲存的值
+  await page.evaluate(() => { window.batchFail = true; window.notices = []; window.changes = []; });
+  await page.click('.ag-header-cell[col-id="交屋"] .v-switch input');
+  await page.waitForFunction(() => window.notices.length === 1);
+  assert.equal(await page.evaluate(() => window.notices[0].color), 'error');
+  assert.match(await page.evaluate(() => window.notices[0].text), /模擬寫入失敗/);
+  assert.deepEqual(await page.evaluate(() => window.changes), []);
+  assert.equal(await page.$eval('.ag-header-cell[col-id="交屋"] .v-switch input', input => input.checked), true);
   const message = '.ag-row[row-index="0"] [col-id="customerMessages"] button';
   assert.match(await page.$eval(message, button => button.textContent), /1 則/);
   await page.click(message);
   assert.equal(await page.evaluate(() => window.clickedHousehold), 'a');
   assert.deepEqual(errors, []);
-  console.log('PASS: production AG Grid 開關顯示、雙向切換、整欄全選與客戶回傳按鈕；無編譯或元件解析錯誤。');
+  console.log('PASS: production AG Grid 開關顯示、雙向切換、整欄全選（滑鼠／觸控、寫入失敗提示）與客戶回傳按鈕；無編譯或元件解析錯誤。');
 } finally {
   await browser?.close();
   await new Promise(resolve => server ? server.httpServer.close(resolve) : resolve());

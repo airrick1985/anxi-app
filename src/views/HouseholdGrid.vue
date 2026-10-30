@@ -101,6 +101,7 @@
     :sideBar="sideBarConfig"
     :localeText="AG_GRID_LOCALE_TW"
     :getRowId="getRowId"
+    :context="gridContext"
     :enableRangeSelection="true"
     @grid-ready="onGridReady"
     @cell-value-changed="onCellValueChanged"
@@ -1406,6 +1407,14 @@ const buildAppointmentMap = (appointmentsList) => {
 const projectName = computed(() => projectStore.idToNameMap[projectId.value] || '讀取中...');
 const pageTitle = computed(() => `${projectName.value} - 戶別資料總表`);
 const getRowId = (params) => params.data._docId;
+// 讓 Grid 內的元件（如表頭全選開關）能顯示頁面提示訊息
+const gridContext = {
+  notify: (text, color = 'success') => {
+    snackbar.text = text;
+    snackbar.color = color;
+    snackbar.show = true;
+  },
+};
 
 // --- AG Grid 設定 ---
 const defaultColDef = {
