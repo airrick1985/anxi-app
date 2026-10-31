@@ -389,193 +389,7 @@
       </v-window-item>
 
       <v-window-item value="images">
-        <v-card class="pa-4" elevation="2">
-          <v-card-title class="text-h5 text-indigo">
-            <v-icon start>mdi-image-multiple</v-icon>
-            銷控圖片管理
-          </v-card-title>
-          <v-card-subtitle>上傳並管理用於銷控系統的共用圖片 (例如：傢配圖、格局圖)
-          </v-card-subtitle>
-   
-          <v-divider class="my-4"></v-divider>
-
-          <v-row>
-            <v-col cols="12" md="5" v-file-drop>
-              <v-file-input
-                v-model="stagedFilesModel"
-                label="選擇或拖曳圖片 (可多選)"
-                variant="outlined"
-                multiple
-                accept="image/png, image/jpeg, image/webp"
-                prepend-icon="mdi-camera"
-                :loading="isReadingFiles"
-                clearable
-                chips
-              ></v-file-input>
-              <v-btn
-                @click="uploadAllStagedFiles"
-                :loading="isUploading"
-                :disabled="stagedFiles.length === 0"
-                color="green"
-                block
-                size="large"
-                prepend-icon="mdi-upload"
-              >
-                上傳 {{ stagedFiles.length }} 個已選檔案
-              </v-btn>
-              <v-alert
-                v-if="uploadErrors.length > 0"
-                type="error"
-                variant="tonal"
-                class="mt-4"
-                density="compact"
-              >
-                <p v-for="(error, i) in uploadErrors" :key="i">{{ error }}</p>
-              </v-alert>
-            </v-col>
-
-            <v-col cols="12" md="7">
-              <v-sheet
-                border
-                rounded="lg"
-                class="pa-4"
-                style="max-height: 400px; overflow-y: auto;"
-                v-if="stagedFiles.length > 0"
-              >
-                <div v-for="(item, index) in stagedFiles" :key="item.id" class="mb-4">
-                  <div class="d-flex align-start">
-                    <v-avatar rounded="lg" size="80" class="mr-4 elevation-1">
-                      <v-img :src="item.previewUrl" cover></v-img>
-                    </v-avatar>
-                    <div class="flex-grow-1">
-                      <v-text-field
-                        v-model="item.imageName"
-                        label="圖片名稱"
-                        variant="outlined"
-                        density="compact"
-                        hide-details="auto"
-                        :disabled="item.useFilename"
-                        :rules="[v => !item.useFilename ? !!v || '名稱為必填' : true]"
-                      ></v-text-field>
-                      <v-checkbox
-                        v-model="item.useFilename"
-                        label="使用原始檔名作為圖片名稱"
-                        density="compact"
-                        hide-details
-                      ></v-checkbox>
-                      <div class="text-caption text-grey mt-1">
-                        {{ (item.file.size / 1024).toFixed(1) }} KB | {{ item.width }}x{{ item.height }}px
-                      </div>
-                      <v-alert
-                        v-if="item.error"
-                        type="warning"
-                        variant="tonal"
-                        density="compact"
-                        class="mt-2 text-caption"
-                      >
-                        {{ item.error }}
-                      </v-alert>
-                    </div>
-                    <v-btn
-                      icon="mdi-close"
-                      variant="text"
-                      size="small"
-                      @click="removeStagedFile(item.id)"
-                    ></v-btn>
-                  </div>
-                  <v-divider v-if="index < stagedFiles.length - 1" class="mt-4"></v-divider>
-                </div>
-              </v-sheet>
-              <v-sheet
-                v-else
-                border
-                rounded="lg"
-                class="pa-4 d-flex justify-center align-center text-center"
-                height="100%"
-                min-height="200"
-              >
-                <div class="text-grey">
-                  <v-icon size="48">mdi-image-plus-outline</v-icon>
-                  <p>請從左側選擇要上傳的圖片</p>
-                </div>
-              </v-sheet>
-            </v-col>
-          </v-row>
-
-          <v-divider class="my-4"></v-divider>
-          <h3 class="text-subtitle-1 mb-2">已上傳圖片列表</h3>
-          
-          <div v-if="!imagesLoading">
-            <v-list v-if="salesImages.length > 0" lines="two">
-              <v-list-item
-                v-for="image in salesImages"
-                :key="image.id"
-                class="mb-2"
-                elevation="1"
-                border
-                v-file-drop="{ accept: 'image/png,image/jpeg,image/webp', multiple: false, onFiles: files => reuploadByDrop(image, files) }"
-              >
-                <template v-slot:prepend>
-                <v-avatar
-                    rounded="lg"
-                    size="64"
-                    class="mr-4 elevation-1"
-                    @click="openImageViewer(image)"
-                    style="cursor: pointer;"
-                  >
-                    <v-img :src="`${image.downloadURL}?t=${image.updatedAt?.seconds}`" cover>
-                    </v-img>
-                </v-avatar>
-              </template>
-
-                <v-list-item-title class="font-weight-bold">{{ image.imageName }}</v-list-item-title>
-                <v-list-item-subtitle>
-                  檔名: {{ image.fileName }}
-                  <span class="d-none d-sm-inline">
-                    | {{ image.updatedAt && image.createdAt && image.updatedAt.seconds > image.createdAt.seconds ? '重新上傳於' : '上傳於' }}: 
-                    {{ (image.updatedAt || image.createdAt) ? new Date((image.updatedAt || image.createdAt).seconds * 1000).toLocaleDateString() : 'N/A' }}
-                  </span>
-                </v-list-item-subtitle>
-                
-                <template v-slot:append>
-                  <v-btn
-                      icon="mdi-upload"
-                      variant="text"
-                      size="small"
-                      title="重新上傳"
-                      @click="triggerReupload(image)"
-                    ></v-btn>
-                    <v-btn
-                      icon="mdi-delete"
-                      variant="text"
-                      color="error"
-                      size="small"
-                      title="刪除"
-                      @click="confirmImageDelete(image)"
-                    ></v-btn>
-                  </template>
-              </v-list-item>
-            </v-list>
-             
-            <v-alert
-              v-else
-              type="info"
-              variant="tonal"
-              border="start"
-              density="compact"
-            >
-              目前尚無圖片，請使用上方功能上傳。
-            </v-alert>
-          </div>
-
-          <input
-            type="file"
-            ref="reuploadInput"
-            @change="handleReuploadFile"
-            accept="image/png, image/jpeg, image/webp"
-            style="display: none"
-          />
-        </v-card>
+        <SalesImageManager :project-id="projectId" />
       </v-window-item>
  <v-window-item value="svgs">
         <v-card class="pa-4" elevation="2">
@@ -1629,55 +1443,6 @@
         {{ snackbar.text }}
     </v-snackbar>
 
-    <v-dialog v-model="deleteImageDialog" persistent max-width="450px">
-      <v-card>
-        <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
-          <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
-          確認刪除圖片
-        </v-card-title>
-        <v-card-text class="pt-4">
-          您確定要刪除圖片
-          <strong class="text-red-darken-2 mx-1">「{{ imageToDelete.imageName }}」</strong>
-          嗎？
-          <br>
-          <br>
-          此操作將會從資料庫和儲存空間中永久移除檔案，無法復原。
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="grey" text @click="deleteImageDialog = false">取消</v-btn>
-          <v-btn color="error" text @click="executeImageDelete" :loading="isDeletingImage">
-            確認刪除
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-     <v-dialog
-      v-model="imageViewerDialog"
-      max-width="90vw"
-      max-height="90vh"
-    >
-      <v-card class="d-flex flex-column">
-        <v-toolbar density="compact" color="primary" dark>
-          <v-toolbar-title class="text-white">{{ viewingImage?.imageName }}</v-toolbar-title>
-          <v-spacer></v-spacer>
-          <v-btn icon @click="imageViewerDialog = false" class="text-white">
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-        </v-toolbar>
-        <div class="flex-grow-1 d-flex justify-center align-center pa-2" style="background-color: rgba(0,0,0,0.7);">
-        <v-img
-          v-if="viewingImage"
-          :src="`${viewingImage.downloadURL}?t=${viewingImage.updatedAt?.seconds}`"
-          contain
-          max-height="calc(90vh - 48px)"
-          max-width="90vw"
-        ></v-img>
-      </div>
-      </v-card>
-    </v-dialog>
-
     <!-- 房土比計算公式 -->
     <PriceFormulaDialog
       v-if="priceFormulaDialog"
@@ -1701,10 +1466,6 @@ import {
   addSalesParameter,
   updateSalesParameter,
   deleteSalesParameter,
-  listenToSalesImages,
-  uploadSalesImage,
-  setSalesImageMetadata,
-  deleteSalesImage,
    getUniqueSvgBuildings,
   listenToSvgsByBuilding,
   uploadSalesSvgViaFunction,
@@ -1743,6 +1504,7 @@ const SalesPersonnelImportDialog = defineAsyncComponent(() => import('@/componen
 const SalesPersonnelCrossProjectImportDialog = defineAsyncComponent(() => import('@/components/SalesPersonnelCrossProjectImportDialog.vue'));
 // ✅ [新增] 合約製作範本設定（docs/合約製作資料範本-spec.md）
 const ContractDocConfigEditor = defineAsyncComponent(() => import('@/components/ContractDocConfigEditor.vue'));
+const SalesImageManager = defineAsyncComponent(() => import('@/components/salesImages/SalesImageManager.vue'));
 
 const route = useRoute();
 const router = useRouter(); 
@@ -1932,24 +1694,6 @@ const isDeleting = ref(false);
 
 // Snackbar State
 const snackbar = ref({ show: false, text: '', color: 'success' });
-
-//  Image Management State
-const salesImages = ref([]);
-const imagesLoading = ref(true);
-let unsubscribeImages = null;
-const deleteImageDialog = ref(false);
-const imageToDelete = ref({});
-const isDeletingImage = ref(false);
-const stagedFilesModel = ref([]); 
-const stagedFiles = ref([]); 
-const isReadingFiles = ref(false); 
-const isUploading = ref(false);
-const uploadErrors = ref([]); 
-const reuploadInput = ref(null); 
-const reuploadTarget = ref(null); 
-const isReuploading = ref(false); 
-const imageViewerDialog = ref(false);
-const viewingImage = ref(null); 
 
 // ✅ START: Google Sheet Sync State
 const googleSheetForm = reactive({
@@ -2314,245 +2058,6 @@ const executeDelete = async () => {
     } finally {
         isDeleting.value = false;
     }
-};
-
-const setupImagesListener = () => {
-  imagesLoading.value = true;
-  unsubscribeImages = listenToSalesImages(
-    projectId.value,
-    (data) => {
-      salesImages.value = data;
-      if (imagesLoading.value) imagesLoading.value = false;
-    },
-    (error) => {
-      toast.error(`載入圖片列表失敗: ${error.message}`);
-      imagesLoading.value = false;
-    }
-  );
-};
-
-watch(stagedFilesModel, (newFiles) => {
-  if (newFiles && newFiles.length > 0) {
-    processFiles(newFiles);
-    stagedFilesModel.value = []; 
-  }
-});
-
-const processFiles = async (files) => {
-  isReadingFiles.value = true;
-  for (const file of files) {
-    const { valid, error, width, height } = await validateImage(file);
-    
-    const nameWithoutExtension = file.name.split('.').slice(0, -1).join('.');
-
-    stagedFiles.value.push({
-      id: Date.now() + Math.random(),
-      file,
-      previewUrl: URL.createObjectURL(file),
-      imageName: nameWithoutExtension, 
-      useFilename: false,
-      error: valid ? null : error,
-      width,
-      height,
-    });
-  }
-  isReadingFiles.value = false;
-};
-
-const validateImage = (file) => {
-  return new Promise((resolve) => {
-    if (file.size > 1 * 1024 * 1024) { 
-      resolve({ valid: false, error: '檔案大小超過 1MB' });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        resolve({ valid: true, error: null, width: img.width, height: img.height });
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-};
-
-const removeStagedFile = (id) => {
-  const fileToRemove = stagedFiles.value.find(f => f.id === id);
-  if (fileToRemove) {
-    URL.revokeObjectURL(fileToRemove.previewUrl); 
-  }
-  stagedFiles.value = stagedFiles.value.filter(f => f.id !== id);
-};
-
-
-// ✅ START: 修改 uploadAllStagedFiles 函式以使用新的上傳方式
-const uploadAllStagedFiles = async () => {
-  isUploading.value = true;
-  uploadErrors.value = [];
-  
-  const existingNames = new Set(salesImages.value.map(img => img.imageName));
-  const stagedNames = new Set();
-  
-  // 前端驗證 (邏輯不變)
-  for (const item of stagedFiles.value) {
-    const finalName = item.useFilename ? item.file.name.split('.').slice(0, -1).join('.') : item.imageName;
-    if (!finalName) {
-      toast.error('錯誤：有圖片未填寫「圖片名稱」。');
-      isUploading.value = false;
-      return;
-    }
-    if (existingNames.has(finalName) || stagedNames.has(finalName)) {
-      toast.error(`錯誤：圖片名稱 "${finalName}" 已存在或在本次上傳中重複。`);
-      isUploading.value = false;
-      return;
-    }
-    if (item.error) {
-       toast.error(`錯誤：檔案 "${item.file.name}" 未通過驗證。`);
-       isUploading.value = false;
-       return;
-    }
-    stagedNames.add(finalName);
-  }
-
-  // 開始上傳
-  for (const item of stagedFiles.value) {
-    const finalName = item.useFilename ? item.file.name.split('.').slice(0, -1).join('.') : item.imageName;
-    
-    try {
-      const docId = `${projectId.value}_${finalName}`;
-      const storagePath = `projects/${projectId.value}/salesImages/${item.file.name}`;
-      
-      toast.info(`正在上傳 ${finalName}...`);
-      
-      // 1. 將檔案轉為 Base64
-      const base64 = await fileToBase64(item.file);
-      
-      // 2. 呼叫新的代理上傳 API
-      const { downloadURL } = await uploadSalesImage(
-        storagePath,
-        item.file.name,
-        base64,
-        projectId.value
-      );
-
-      const metadata = {
-        projectId: projectId.value,
-        imageName: finalName,
-        fileName: item.file.name,
-        downloadURL, // 使用從 Cloud Function 回傳的 URL
-        storagePath,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
-      await setSalesImageMetadata(docId, metadata);
-      toast.success(`"${finalName}" 上傳成功！`);
-
-    } catch (err) {
-      toast.error(`"${finalName}" 上傳失敗: ${err.message}`);
-      uploadErrors.value.push(`"${finalName}": ${err.message}`);
-    }
-  }
-
-  stagedFiles.value = []; 
-  isUploading.value = false;
-};
-// ✅ END: 修改 uploadAllStagedFiles
-
-const confirmImageDelete = (image) => {
-  imageToDelete.value = image;
-  deleteImageDialog.value = true;
-};
-
-const executeImageDelete = async () => {
-  isDeletingImage.value = true;
-  try {
-    toast.info(`正在刪除 ${imageToDelete.value.imageName}...`);
-    await deleteSalesImage(imageToDelete.value.id, imageToDelete.value.storagePath);
-    toast.success(`圖片 "${imageToDelete.value.imageName}" 已成功刪除！`);
-    deleteImageDialog.value = false;
-  } catch (error) {
-    toast.error(`刪除失敗: ${error.message}`);
-  } finally {
-    isDeletingImage.value = false;
-  }
-};
-
-const triggerReupload = (image) => {
-  reuploadTarget.value = image;
-  
-  if (reuploadInput.value) {
-    reuploadInput.value.click();
-  } else {
-    console.error('程式無法找到 reuploadInput 元素，請檢查 template 中的 ref 是否正確。');
-    toast.error('無法觸發檔案上傳，請刷新頁面後再試一次。');
-  }
-};
-
-// ✅ START: 修改 handleReuploadFile 以符合新的代理上傳模式
-const handleReuploadFile = async (event) => {
-  const file = event.target.files[0];
-  await reuploadImageFile(file);
-};
-
-// 拖曳圖片到列表項目上：直接以該圖為目標重新上傳
-const reuploadByDrop = (image, files) => {
-  if (isReuploading.value) return;
-  reuploadTarget.value = image;
-  return reuploadImageFile(files[0]);
-};
-
-const reuploadImageFile = async (file) => {
-  if (!file || !reuploadTarget.value) return;
-
-  isReuploading.value = true;
-  toast.info(`正在驗證並重新上傳 "${reuploadTarget.value.imageName}"...`);
-
-  const { valid, error } = await validateImage(file);
-  if (!valid) {
-    toast.error(`驗證失敗: ${error}`);
-    isReuploading.value = false;
-    if (reuploadInput.value) reuploadInput.value.value = '';
-    reuploadTarget.value = null;
-    return;
-  }
-
-  try {
-    // 1. 將新檔案轉為 Base64
-    const base64 = await fileToBase64(file);
-
-    // 2. 呼叫新的代理上傳 API，並傳入所有必要參數
-    const { downloadURL } = await uploadSalesImage(
-      reuploadTarget.value.storagePath, // 使用舊的儲存路徑來覆蓋檔案
-      file.name,                        // 新的檔案名稱
-      base64,                           // 新檔案的 Base64 內容
-      projectId.value                   // 專案 ID
-    );
-
-    // 3. 更新 Firestore 中的 metadata (這部分邏輯不變)
-    const metadataUpdate = {
-      downloadURL,
-      fileName: file.name,
-      updatedAt: serverTimestamp(),
-    };
-    await setSalesImageMetadata(reuploadTarget.value.id, metadataUpdate);
-
-    toast.success(`圖片 "${reuploadTarget.value.imageName}" 已成功更新！`);
-
-  } catch (err) {
-    toast.error(`重新上傳失敗: ${err.message}`);
-  } finally {
-    isReuploading.value = false;
-    if (reuploadInput.value) reuploadInput.value.value = '';
-    reuploadTarget.value = null;
-  }
-};
-// ✅ END: 修改 handleReuploadFile
-
-const openImageViewer = (image) => {
-  viewingImage.value = image;
-  imageViewerDialog.value = true;
 };
 
 // ✅ 7. 新增銷售人員管理的 Methods
@@ -3143,7 +2648,6 @@ onMounted(() => {
   if (projectId.value) {
     loadProjectSettings();
     setupParamsListener();
-    setupImagesListener();
     loadUniqueBuildings();
     setupPersonnelListener(); 
   } else {
@@ -3154,7 +2658,6 @@ onMounted(() => {
 onUnmounted(() => {
   personnelDisposed = true;
   if (unsubscribeParams) unsubscribeParams();
-  if (unsubscribeImages) unsubscribeImages();
   if (unsubscribePersonnel) unsubscribePersonnel(); 
   Object.values(svgListeners).forEach(unsubscribe => unsubscribe());
 });

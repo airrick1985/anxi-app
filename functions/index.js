@@ -31617,6 +31617,12 @@ exports.lineAiHourly = lineAi.lineAiHourly;
 exports.lineAiDaily = lineAi.lineAiDaily;
 exports.lineAiDropboxCallback = lineAi.lineAiDropboxCallback;
 
+// 銷控圖片管理：新增／替換、更名（同步戶別引用）、批次刪除。
+const salesImages = require('./salesImages');
+exports.saveSalesImage = salesImages.saveSalesImage;
+exports.renameSalesImage = salesImages.renameSalesImage;
+exports.deleteSalesImages = salesImages.deleteSalesImages;
+
 // 批次開放時同步開啟預約項目的客戶可見性。
 const bookingVisibility = require('./bookingVisibility');
 exports.openBookingItemOnBatchWrite = bookingVisibility.openBookingItemOnBatchWrite;

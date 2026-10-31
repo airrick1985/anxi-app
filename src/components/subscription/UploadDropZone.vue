@@ -45,6 +45,7 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   mac: { type: Boolean, default: false }, // macOS 風格按鈕
   block: { type: Boolean, default: false }, // 佔滿整列
+  camera: { type: Boolean, default: true }, // 顯示「拍照」按鈕（圖檔庫類用途可關閉）
 });
 const emit = defineEmits(['files']);
 
@@ -63,7 +64,7 @@ const isImageToken = t => t.startsWith('image/') || IMAGE_EXT.test(t);
 const acceptsImages = computed(() => acceptTokens.value.length === 0 || acceptTokens.value.some(isImageToken));
 const imageOnly = computed(() => acceptTokens.value.length > 0 && acceptTokens.value.every(isImageToken));
 const imageAccept = computed(() => (imageOnly.value ? props.accept : 'image/*'));
-const showCamera = computed(() => acceptsImages.value && (isTouch || hasWebcam.value));
+const showCamera = computed(() => props.camera && acceptsImages.value && (isTouch || hasWebcam.value));
 
 function stamp() {
   const d = new Date();

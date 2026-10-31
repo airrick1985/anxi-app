@@ -5132,18 +5132,6 @@ export const uploadSalesImage = async (storagePath, fileName, fileBase64, projec
 //  END: 修改圖片上傳邏輯
 
 /**
- * 在 Firestore 中建立或更新銷控圖片的中繼資料
- * @param {string} docId - 文件 ID (格式: projectId_imageName)
- * @param {object} metadata - 要儲存的圖片資料
- * @returns {Promise<void>}
- */
-export const setSalesImageMetadata = async (docId, metadata) => {
-  const docRef = doc(db, "salesImages", docId);
-  // 使用 setDoc 搭配 merge:true，無論是新增還是覆蓋(重新上傳)都能處理
-  await setDoc(docRef, metadata, { merge: true });
-};
-
-/**
  * [新] 透過 Cloud Function 代理刪除一張銷控圖片 (包含 Storage 檔案和 Firestore 記錄)
  * @param {string} docId - Firestore 的文件 ID
  * @param {string} storagePath - Storage 中的檔案完整路徑
@@ -5165,6 +5153,28 @@ export const deleteSalesImage = async (docId, storagePath) => {
     console.error("呼叫 handleSalesImageDelete 雲端函式時發生錯誤:", error);
     throw new Error(error.message || "代理刪除失敗");
   }
+};
+
+/**
+ * 銷控圖片管理：新增或替換一張圖片（後端寫檔＋中繼資料；替換時刪除舊檔）
+ * @param {object} payload - { projectId, imageName | docId, replace, fileName, fileBase64, contentType, width, height }
+ * @returns {Promise<{docId: string, imageName: string, downloadURL: string, replaced: boolean}>}
+ */
+export const saveSalesImage = async (payload) => {
+  const result = await httpsCallable(functions, 'saveSalesImage', { timeout: 120000 })(payload);
+  return result.data;
+};
+
+/** 銷控圖片更名，並同步更新戶別引用的圖片名稱 */
+export const renameSalesImage = async (projectId, docId, newName) => {
+  const result = await httpsCallable(functions, 'renameSalesImage')({ projectId, docId, newName });
+  return result.data;
+};
+
+/** 批次刪除銷控圖片（中繼資料＋檔案），回傳 { deleted, failed: [{ docId, message }] } */
+export const deleteSalesImages = async (projectId, docIds) => {
+  const result = await httpsCallable(functions, 'deleteSalesImages', { timeout: 300000 })({ projectId, docIds });
+  return result.data;
 };
 
 // =================================================================
