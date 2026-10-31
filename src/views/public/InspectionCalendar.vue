@@ -87,33 +87,33 @@
             </template>
           </v-autocomplete>
           <!-- 與桌機版同一個進階篩選介面（手機自動改為全螢幕版型） -->
-          <v-badge :content="advFilterCount" :model-value="advFilterCount > 0" color="error" offset-x="2" offset-y="2" class="ml-2 flex-shrink-0">
+          <v-badge :content="totalFilterCount" :model-value="totalFilterCount > 0" color="error" offset-x="2" offset-y="2" class="ml-2 flex-shrink-0">
             <v-btn
-              :color="advFilterCount > 0 ? 'primary' : 'black'"
-              :variant="advFilterCount > 0 ? 'flat' : 'tonal'"
+              :color="totalFilterCount > 0 ? 'deep-orange' : 'primary'"
+              :variant="totalFilterCount > 0 ? 'flat' : 'outlined'"
               size="small"
               prepend-icon="mdi-filter-variant"
               @click="isAdvFilterDialogVisible = true"
-            >篩選</v-btn>
+            >{{ totalFilterCount > 0 ? '篩選中' : '篩選' }}</v-btn>
           </v-badge>
         </v-col>
       </v-row>
 
-      <!-- 手機／平板：已套用的進階條件，不用開對話框就能看見並移除 -->
-      <div v-if="activeAdvChips.length > 0" class="d-flex d-md-none align-center flex-wrap ga-1 mb-3 px-1">
+      <!-- 手機／平板：已套用的篩選條件，不用開對話框就能看見並移除 -->
+      <div v-if="activeFilterChips.length > 0" class="d-flex d-md-none align-center flex-wrap ga-1 mb-3 px-1">
         <v-chip
-          v-for="chip in activeAdvChips"
+          v-for="chip in activeFilterChips"
           :key="chip.id"
           size="small"
           color="primary"
           variant="flat"
           closable
           label
-          @click:close="removeAdvChip(chip)"
+          @click:close="removeFilterChip(chip)"
         >
           <v-icon start size="x-small">{{ chip.icon }}</v-icon>{{ chip.text }}
         </v-chip>
-        <v-btn size="x-small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="clearAdvFilters">全部清除</v-btn>
+        <v-btn size="x-small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="resetAllFilters">全部清除</v-btn>
       </div>
 
       <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error"></v-alert>
@@ -196,14 +196,14 @@
         </v-list-item>
       </template>
     </v-autocomplete>
-    <v-badge :content="advFilterCount" :model-value="advFilterCount > 0" color="error" offset-x="2" offset-y="2" class="ml-2 flex-shrink-0">
+    <v-badge :content="totalFilterCount" :model-value="totalFilterCount > 0" color="error" offset-x="2" offset-y="2" class="ml-2 flex-shrink-0">
       <v-btn
-        :color="advFilterCount > 0 ? 'primary' : 'black'"
-        :variant="advFilterCount > 0 ? 'flat' : 'tonal'"
+        :color="totalFilterCount > 0 ? 'deep-orange' : 'primary'"
+        :variant="totalFilterCount > 0 ? 'flat' : 'outlined'"
         size="small"
         prepend-icon="mdi-filter-variant"
         @click="isAdvFilterDialogVisible = true"
-      >篩選</v-btn>
+      >{{ totalFilterCount > 0 ? '篩選中' : '篩選' }}</v-btn>
     </v-badge>
   </v-col>
 
@@ -395,7 +395,24 @@
 </v-row>
 
 
-        
+        <!-- 提醒：有預約被篩選隱藏／目前範圍沒有預約時，一鍵顯示或前往最近的預約 -->
+        <div
+          v-if="isReminderBannerVisible"
+          :class="['ic-reminder-bar', `ic-reminder-bar--${reminderBanner.kind}`, 'd-flex align-center ga-2 mb-3']"
+        >
+          <div class="d-flex align-center flex-wrap ga-2 flex-grow-1">
+            <v-icon size="20">{{ reminderBanner.kind === 'hidden' ? 'mdi-eye-off-outline' : 'mdi-calendar-search' }}</v-icon>
+            <span v-if="reminderBanner.kind === 'hidden'" class="font-weight-bold">{{ reminderBanner.count }} 筆預約被篩選隱藏</span>
+            <span v-else class="font-weight-bold">最近的預約在 {{ formatSlotDayLabel(reminderBanner.slot.day) }}</span>
+            <template v-if="reminderBanner.kind === 'hidden'">
+              <v-btn size="small" color="deep-orange" variant="flat" prepend-icon="mdi-eye-outline" @click="showAllHiddenAppointments">全部顯示</v-btn>
+              <v-btn size="small" color="deep-orange" variant="text" @click="isAdvFilterDialogVisible = true">篩選</v-btn>
+            </template>
+            <v-btn v-else size="small" color="primary" variant="flat" prepend-icon="mdi-arrow-right" @click="jumpToSlot(reminderBanner.slot)">前往</v-btn>
+          </div>
+          <v-btn icon="mdi-close" size="x-small" variant="text" class="flex-shrink-0" @click="dismissReminderBanner"></v-btn>
+        </div>
+
         <!-- 手機版：行事曆式視圖（日 / 週 / 月） -->
         <div v-if="xs" class="mobile-agenda">
           <!-- 檢視切換 + 今天 -->
@@ -851,7 +868,7 @@
                   <td class="time-cell">
                     {{ timeSlot }}<v-icon v-if="addedTimeSlots.has(timeSlot)" size="x-small" color="orange-darken-2" class="ml-1" title="未勾選，有預約">mdi-auto-fix</v-icon>
                   </td>
-                  <td v-for="day in chunk" :key="day.fullDate" :class="['event-cell', { 'disabled-cell': !day.isInRange, 'today-column': day.isToday, 'weekend-column': day.isWeekend }]">
+                  <td v-for="day in chunk" :key="day.fullDate" :data-cell="`${day.fullDate} ${timeSlot}`" :class="['event-cell', { 'disabled-cell': !day.isInRange, 'today-column': day.isToday, 'weekend-column': day.isWeekend }]">
                     <div v-if="day.isInRange" class="event-cell-content">
                       <div v-if="groupedEvents[day.fullDate] && groupedEvents[day.fullDate][timeSlot]">
                         <div
@@ -1048,27 +1065,27 @@
         <v-card-title class="d-flex align-center bg-primary text-white py-3 px-4 flex-shrink-0">
           <v-icon start>mdi-filter-variant</v-icon>
           <span class="text-subtitle-1 font-weight-bold">進階篩選</span>
-          <v-chip v-if="advFilterCount > 0" size="x-small" color="error" variant="flat" class="ml-2" label>{{ advFilterCount }} 項條件</v-chip>
+          <v-chip v-if="totalFilterCount > 0" size="x-small" color="error" variant="flat" class="ml-2" label>{{ totalFilterCount }} 項條件</v-chip>
           <v-spacer></v-spacer>
           <v-btn icon="mdi-close" variant="text" color="white" size="small" @click="isAdvFilterDialogVisible = false"></v-btn>
         </v-card-title>
 
         <!-- 已套用條件：手機版看不到全部欄位，這排標籤可一眼掌握並單獨移除 -->
-        <div v-if="activeAdvChips.length > 0" class="adv-active-bar flex-shrink-0 px-3 py-2">
+        <div v-if="activeFilterChips.length > 0" class="adv-active-bar flex-shrink-0 px-3 py-2">
           <div class="d-flex align-center flex-wrap ga-1">
             <v-chip
-              v-for="chip in activeAdvChips"
+              v-for="chip in activeFilterChips"
               :key="chip.id"
               size="small"
               color="primary"
               variant="flat"
               closable
               label
-              @click:close="removeAdvChip(chip)"
+              @click:close="removeFilterChip(chip)"
             >
               <v-icon start size="x-small">{{ chip.icon }}</v-icon>{{ chip.text }}
             </v-chip>
-            <v-btn size="x-small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="clearAdvFilters">全部清除</v-btn>
+            <v-btn size="x-small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="resetAllFilters">全部清除</v-btn>
           </div>
         </div>
 
@@ -1236,7 +1253,7 @@
               <v-icon start size="x-small">mdi-calendar-check</v-icon>
               顯示 {{ filteredAppointments.length }} 筆
             </v-chip>
-            <v-btn v-if="advFilterCount > 0" size="small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="clearAdvFilters">清除條件</v-btn>
+            <v-btn v-if="totalFilterCount > 0" size="small" variant="text" color="grey-darken-1" prepend-icon="mdi-broom" @click="resetAllFilters">全部重設</v-btn>
             <v-spacer></v-spacer>
             <v-btn color="primary" variant="flat" :block="xs" :class="{ 'mt-2': xs }" @click="isAdvFilterDialogVisible = false">完成</v-btn>
           </div>
@@ -1959,11 +1976,11 @@
       <span>重整</span>
     </v-btn>
 
-    <v-btn @click="isAdvFilterDialogVisible = true">
-      <v-badge :content="advFilterCount" :model-value="advFilterCount > 0" color="error" offset-x="-4" offset-y="-2">
+    <v-btn :class="totalFilterCount > 0 ? 'text-deep-orange font-weight-bold' : 'text-primary'" @click="isAdvFilterDialogVisible = true">
+      <v-badge :content="totalFilterCount" :model-value="totalFilterCount > 0" color="error" offset-x="-4" offset-y="-2">
         <v-icon>mdi-filter-variant</v-icon>
       </v-badge>
-      <span>篩選</span>
+      <span>{{ totalFilterCount > 0 ? '篩選中' : '篩選' }}</span>
     </v-btn>
 
     <v-btn v-if="canEdit" @click="isAdminAddDialogVisible = true"> <v-icon>mdi-calendar-plus</v-icon>
@@ -3005,7 +3022,51 @@ const currentMethodOptions = computed(() => {
 // 優化：使用 useStorage 記住使用者的篩選設定
 const selectedTypes = useStorage(`inspection_calendar_selected_types_${projectId.value}`, []);
 const selectedMethods = useStorage(`inspection_calendar_selected_methods_${projectId.value}`, []);
-const selectedStatuses = useStorage(`inspection_calendar_selected_statuses_${projectId.value}`, ['預約中', '取消', '已完成']);
+const STATUS_OPTIONS = ['預約中', '取消', '已完成'];
+const selectedStatuses = useStorage(`inspection_calendar_selected_statuses_${projectId.value}`, [...STATUS_OPTIONS]);
+
+// 狀態／項目／選擇方式：清單裡沒有的值（方式空白或已刪除、項目改名、未知狀態）不受篩選影響，
+// 否則「全部勾選」仍會有預約看不到
+function matchesOptionFilter(value, selected, options) {
+  return !options.includes(value) || selected.includes(value);
+}
+function matchesTypeMethodFilters(appt) {
+  const typeMatch = matchesOptionFilter(appt.bookingType, selectedTypes.value, currentTypeOptions.value);
+  const methodMatch = selectedMethods.value.length === 0
+    || matchesOptionFilter(appt.inspectionMethod, selectedMethods.value, currentMethodOptions.value);
+  return typeMatch && methodMatch;
+}
+
+// 未全選的狀態／項目／選擇方式各算一項條件，與進階條件一起反映在「篩選」按鈕與條件標籤
+const partialBaseFilters = computed(() => [
+  { key: 'status', label: '狀態', icon: 'mdi-flag-variant', options: STATUS_OPTIONS, selected: selectedStatuses.value },
+  { key: 'type', label: '項目', icon: 'mdi-format-list-bulleted-type', options: currentTypeOptions.value, selected: selectedTypes.value },
+  { key: 'method', label: '方式', icon: 'mdi-call-split', options: currentMethodOptions.value,
+    selected: selectedMethods.value.length ? selectedMethods.value : currentMethodOptions.value },
+].filter(g => g.options.some(o => !g.selected.includes(o))));
+const totalFilterCount = computed(() => advFilterCount.value + partialBaseFilters.value.length);
+const activeFilterChips = computed(() => [
+  ...partialBaseFilters.value.map(g => {
+    const picked = g.options.filter(o => g.selected.includes(o));
+    const text = picked.length === 0 ? '無' : picked.length > 2 ? `${picked.slice(0, 2).join('、')}…` : picked.join('、');
+    return { id: `base:${g.key}`, base: g.key, icon: g.icon, text: `${g.label}:${text}` };
+  }),
+  ...activeAdvChips.value,
+]);
+function restoreBaseFilter(key) {
+  if (key === 'status') selectedStatuses.value = [...STATUS_OPTIONS];
+  else if (key === 'type') selectedTypes.value = [...currentTypeOptions.value];
+  else if (key === 'method') selectedMethods.value = [...currentMethodOptions.value];
+}
+function removeFilterChip(chip) {
+  if (chip.base) restoreBaseFilter(chip.base);
+  else removeAdvChip(chip);
+}
+function resetAllFilters() {
+  ['status', 'type', 'method'].forEach(restoreBaseFilter);
+  clearAdvFilters();
+}
+
 const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管理-修改', projectName.value));
 
 const isAnyOverlayActive = computed(() => {
@@ -3092,6 +3153,18 @@ const TAIPEI_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
 function toTaipeiDateStr(date) {
   return TAIPEI_DATE_FMT.format(date); // en-CA 輸出即為 yyyy-MM-dd
 }
+// 預約時段字串 → HH:mm；補足兩位數小時（「9:30」→「09:30」，否則 parseISO 失敗、整筆不顯示），無時間為 00:00
+function toSlotTime(raw) {
+  const m = String(raw || '').match(/(\d{1,2}[:：]\d{2})/);
+  return m ? m[0].replace(/：/g, ':').padStart(5, '0') : '00:00';
+}
+// 原始預約落在哪一天、幾點（與 processAppointments 相同判定）；日期無效回傳 null
+function appointmentSlotKey(appt) {
+  if (!appt?.appointmentDate) return null;
+  const d = appt.appointmentDate instanceof Date ? appt.appointmentDate : new Date(appt.appointmentDate);
+  if (isNaN(d.getTime())) return null;
+  return { day: toTaipeiDateStr(d), time: toSlotTime(appt.appointmentTimeSlot) };
+}
 
 // ✅ 5. 修改 processAppointments，現在它負責合併資料
 function processAppointments(rawAppointments) {
@@ -3118,10 +3191,7 @@ function processAppointments(rawAppointments) {
         // 一律以台灣時間判定日期，避免瀏覽器時區不同造成日期偏移
         const dateStr = toTaipeiDateStr(date);
 
-        const timeSlotString = combinedData.appointmentTimeSlot ? String(combinedData.appointmentTimeSlot) : '';
-        const timeMatch = timeSlotString.match(/(\d{1,2}[:：]\d{2})/); 
-        // 補足兩位數小時（「9:30」→「09:30」），否則 parseISO 解析失敗、整筆預約不顯示
-        const startTime = timeMatch ? timeMatch[0].replace(/：/g, ':').padStart(5, '0') : '00:00';
+        const startTime = toSlotTime(combinedData.appointmentTimeSlot);
 
         // 驗屋人員與備註改以獨立醒目區塊呈現（highlightParts），不再混入串接文字
         const displayParts = [];
@@ -3173,12 +3243,9 @@ function processAppointments(rawAppointments) {
 // ✅ 6. 修改 filteredAppointments Computed 屬性
 const filteredAppointments = computed(() => {
   // 1. 先過濾 appointments
-  const filteredAppts = allAppointments.value.filter(appt => {
-    const statusMatch = selectedStatuses.value.includes(appt.status);
-    const typeMatch = selectedTypes.value.includes(appt.bookingType);
-    const methodMatch = selectedMethods.value.length === 0 || selectedMethods.value.includes(appt.inspectionMethod);
-    return statusMatch && typeMatch && methodMatch;
-  });
+  const filteredAppts = allAppointments.value.filter(appt =>
+    matchesOptionFilter(appt.status, selectedStatuses.value, STATUS_OPTIONS) && matchesTypeMethodFilters(appt)
+  );
 
   // 2. 合併戶別資料並處理顯示
   const processed = processAppointments(filteredAppts);
@@ -3187,6 +3254,109 @@ const filteredAppointments = computed(() => {
   if (advFilterCount.value === 0) return processed;
   return processed.filter(matchesAdvFilters);
 });
+
+// --- 提醒列：有預約被篩選隱藏 → 全部顯示；目前範圍沒有未取消的預約 → 前往最近一筆 ---
+const currentRangeKey = computed(() => (startDate.value && endDate.value)
+  ? `${format(startDate.value, 'yyyy-MM-dd')}_${format(endDate.value, 'yyyy-MM-dd')}`
+  : '');
+const loadedRangeKey = ref(''); // fetchData 完成時記下，提醒只依「目前範圍已載入」的資料判斷
+// 目前範圍內未取消的預約（不論篩選）
+const rangeActiveAppointments = computed(() => {
+  if (!currentRangeKey.value) return [];
+  const [from, to] = currentRangeKey.value.split('_');
+  return allAppointments.value.filter(appt => {
+    if (appt.status === '取消') return false;
+    const k = appointmentSlotKey(appt);
+    return k && k.day >= from && k.day <= to;
+  });
+});
+const hiddenActiveAppointments = computed(() => {
+  const visibleIds = new Set(filteredAppointments.value.map(e => e.id));
+  return rangeActiveAppointments.value.filter(appt => !visibleIds.has(appt.id));
+});
+
+// 今天起最近一筆未取消的預約（之後沒有才往前找）；每次進頁查一次
+const nearestActiveSlot = ref(null);
+let isNearestLookedUp = false;
+async function lookupNearestActiveSlot() {
+  if (isNearestLookedUp || !projectId.value) return;
+  isNearestLookedUp = true;
+  try {
+    const now = new Date();
+    const appt = await inspectionCalendarStore.findNearestActiveAppointment(
+      projectId.value, new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    );
+    nearestActiveSlot.value = appt ? appointmentSlotKey(convertFirestoreTimestampsToDates(appt)) : null;
+  } catch (e) {
+    console.warn('查詢最近預約日期失敗:', e?.message || e);
+  }
+}
+watch(
+  () => loadedRangeKey.value === currentRangeKey.value && rangeActiveAppointments.value.length === 0,
+  (isRangeEmpty) => { if (isRangeEmpty) lookupNearestActiveSlot(); }
+);
+
+const reminderBanner = computed(() => {
+  if (!currentRangeKey.value || loadedRangeKey.value !== currentRangeKey.value) return null;
+  const hidden = hiddenActiveAppointments.value.length;
+  if (hidden > 0) return { kind: 'hidden', count: hidden };
+  if (rangeActiveAppointments.value.length === 0 && nearestActiveSlot.value) {
+    return { kind: 'nearest', slot: nearestActiveSlot.value };
+  }
+  return null;
+});
+// 按 × 關閉後，換日期範圍、改變篩選或筆數變動才再出現
+const isReminderBannerDismissed = ref(false);
+watch(
+  () => JSON.stringify([currentRangeKey.value, reminderBanner.value, selectedStatuses.value, selectedTypes.value, selectedMethods.value, advFilters]),
+  () => { isReminderBannerDismissed.value = false; }
+);
+const isReminderBannerVisible = computed(() => !!reminderBanner.value && !isReminderBannerDismissed.value);
+function dismissReminderBanner() {
+  isReminderBannerDismissed.value = true;
+}
+
+function formatSlotDayLabel(day) {
+  const d = parseISO(day);
+  if (isNaN(d.getTime())) return day;
+  const datePart = d.getFullYear() === new Date().getFullYear() ? format(d, 'M/d') : format(d, 'yyyy/M/d');
+  return `${datePart}(${'日一二三四五六'[d.getDay()]})`;
+}
+
+// 今天起最近：今天（含）之後最早的一筆；全在今天之前則取最晚的一筆
+function pickNearestSlot(slots) {
+  if (!slots.length) return null;
+  const todayKey = format(new Date(), 'yyyy-MM-dd');
+  const sorted = [...slots].sort((a, b) => `${a.day} ${a.time}`.localeCompare(`${b.day} ${b.time}`));
+  return sorted.find(s => s.day >= todayKey) || sorted[sorted.length - 1];
+}
+
+function showAllHiddenAppointments() {
+  const target = pickNearestSlot(hiddenActiveAppointments.value.map(appointmentSlotKey).filter(Boolean));
+  resetAllFilters();
+  if (target) jumpToSlot(target);
+}
+
+// 跳到指定日期時段：不在目前範圍才依檢視模式換範圍；手機選取該日，桌機捲動到該格
+const pendingJumpCell = ref('');
+function jumpToSlot({ day, time }) {
+  const target = parseISO(day);
+  if (isNaN(target.getTime())) return;
+  const [from, to] = currentRangeKey.value.split('_');
+  if (!(day >= from && day <= to)) {
+    if (xs.value) {
+      if (mobileViewMode.value === 'month') setRange(startOfMonth(target), endOfMonth(target));
+      else setRange(startOfWeek(target, { weekStartsOn: 1 }), endOfWeek(target, { weekStartsOn: 1 }));
+    } else {
+      applyDesktopRange(target);
+    }
+  }
+  selectedMobileDate.value = day;
+  if (xs.value) return;
+  const cellKey = `${day} ${time}`;
+  pendingJumpCell.value = cellKey;
+  setTimeout(() => { if (pendingJumpCell.value === cellKey) pendingJumpCell.value = ''; }, 8000);
+}
 
 
 const dateChunks = computed(() => {
@@ -3234,6 +3404,17 @@ const groupedEvents = computed(() => {
 });
   return grouped;
 });
+
+// 提醒列跳轉：換範圍要等資料載入、時段列出現後才找得到該格
+watch([pendingJumpCell, groupedEvents], () => {
+  if (!pendingJumpCell.value) return;
+  const el = document.querySelector(`.custom-calendar-table td[data-cell="${pendingJumpCell.value}"]`);
+  if (!el) return;
+  pendingJumpCell.value = '';
+  el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+  el.classList.add('ic-jump-flash');
+  setTimeout(() => el.classList.remove('ic-jump-flash'), 2000);
+}, { flush: 'post' });
 
 // --- 手機版行事曆式視圖（日期橫條 + 當日行程） ---
 // smAndDown：手機與小平板；篩選對話框在此區間改為全螢幕版型（與底部導覽列 d-md-none 的斷點一致）
@@ -3630,12 +3811,9 @@ watch(isPivotDialogVisible, (open) => {
 // 分析資料來源：目前日期區間 + 行事曆的「項目/選擇方式」篩選 + 對話框內的狀態勾選
 // （並以可見日期範圍再過濾一次，未顯示在行事曆網格上的預約一律不納入）
 const pivotSourceEvents = computed(() => {
-  const appts = allAppointments.value.filter(appt => {
-    const statusMatch = pivotStatuses.value.includes(appt.status);
-    const typeMatch = selectedTypes.value.includes(appt.bookingType);
-    const methodMatch = selectedMethods.value.length === 0 || selectedMethods.value.includes(appt.inspectionMethod);
-    return statusMatch && typeMatch && methodMatch;
-  });
+  const appts = allAppointments.value.filter(appt =>
+    matchesOptionFilter(appt.status, pivotStatuses.value, PIVOT_STATUS_OPTIONS) && matchesTypeMethodFilters(appt)
+  );
   const processed = processAppointments(appts);
   const s = startDate.value;
   const e = endDate.value;
@@ -3936,9 +4114,11 @@ async function fetchData() {
   try {
     const { key, ready } = inspectionCalendarStore.subscribeAppointments(projectId.value, startDate.value, endDate.value);
     currentAppointmentsKey.value = key;
+    const rangeKeyAtFetch = currentRangeKey.value;
     await ready;
     const list = inspectionCalendarStore.appointmentsByKey[key] || [];
     mergeAppointments(list);
+    loadedRangeKey.value = rangeKeyAtFetch;
     console.log(`[fetchData] 成功獲取 ${list.length} 筆預約。`);
   } catch (err) {
     console.error('獲取行事曆資料失敗:', err);
@@ -5635,6 +5815,32 @@ function navigateToHouseholdGrid() {
   table-layout: fixed;
   border-collapse: collapse;
   --v-table-header-height: 28px; /* 日期標題列更緊湊（Vuetify 預設 56px；內容較高的名額/備註列仍會自動撐開） */
+}
+
+/* 提醒列：有預約被篩選隱藏（橘）／前往最近預約（藍） */
+.ic-reminder-bar {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid;
+  font-size: 0.9rem;
+}
+.ic-reminder-bar--hidden {
+  background-color: #FFF3E0;
+  border-color: #FFB74D;
+  color: #BF360C;
+}
+.ic-reminder-bar--nearest {
+  background-color: #E3F2FD;
+  border-color: #90CAF9;
+  color: #0D47A1;
+}
+/* 提醒列跳轉後短暫標示目標格 */
+.event-cell.ic-jump-flash {
+  animation: ic-jump-flash 2s ease-out;
+}
+@keyframes ic-jump-flash {
+  0%, 50% { box-shadow: inset 0 0 0 3px #FF9800; }
+  100% { box-shadow: inset 0 0 0 3px transparent; }
 }
 
 /* 基礎儲存格 */

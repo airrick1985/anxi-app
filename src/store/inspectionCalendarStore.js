@@ -21,6 +21,8 @@ import { withDirectFallback, isDirectDenied, markDirectDenied } from '@/utils/di
 
 const STATIC_TTL_MS = 5 * 60 * 1000;      // 建案設定 / 日期範圍快取時間
 const MAX_APPOINTMENT_LISTENERS = 4;      // 同時保留的區間監聽數（LRU）
+const NEAREST_SCAN_LIMIT = 50;            // 找最近預約時每個方向掃描的筆數（跳過取消）
+const NEAREST_FALLBACK_DAYS = 180;        // 退回 Cloud Function 時前後各抓的天數
 const CALENDAR_NOTE_COLORS = ['amber', 'red', 'blue', 'green', 'purple'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -205,6 +207,38 @@ export const useInspectionCalendarStore = defineStore('inspectionCalendar', () =
     );
   }
 
+  /**
+   * 從 from 起最近一筆未取消的預約（之後沒有才往前找），回傳原始預約或 null。
+   * 直讀用 projectId + appointmentDate 排序（與日期範圍同一組索引）；退回模式改抓前後 180 天區間。
+   */
+  function findNearestActiveAppointment(projectId, from) {
+    const pickActive = (list) => list.find(a => a && a.status !== '取消') || null;
+    return withDirectFallback(
+      'inspection:appointments',
+      async () => {
+        const col = collection(db, 'appointments');
+        const scan = async (op, dir) => {
+          const snap = await getDocs(query(col, where('projectId', '==', projectId), where('appointmentDate', op, from),
+            orderBy('appointmentDate', dir), limit(NEAREST_SCAN_LIMIT)));
+          return pickActive(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        };
+        return (await scan('>=', 'asc')) || (await scan('<', 'desc'));
+      },
+      async () => {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const dateMs = (v) => (v && typeof v.toDate === 'function') ? v.toDate().getTime()
+          : (v && v._seconds !== undefined) ? v._seconds * 1000 : new Date(v).getTime();
+        const byDate = (list, dir) => [...list].sort((a, b) => dir * (dateMs(a.appointmentDate) - dateMs(b.appointmentDate)));
+        const fromMs = from.getTime();
+        const after = await fetchAppointmentsViaCallable(projectId, from, new Date(fromMs + NEAREST_FALLBACK_DAYS * dayMs));
+        const hit = pickActive(byDate(after.filter(a => dateMs(a.appointmentDate) >= fromMs), 1));
+        if (hit) return hit;
+        const before = await fetchAppointmentsViaCallable(projectId, new Date(fromMs - NEAREST_FALLBACK_DAYS * dayMs), from);
+        return pickActive(byDate(before.filter(a => dateMs(a.appointmentDate) < fromMs), -1));
+      }
+    );
+  }
+
   // ---- 排休 / 行事曆備註（輸出格式對齊後端 _handleFetchInspectorLeaves / _handleFetchCalendarNotes）----
   function fetchInspectorLeaves(projectId, startDate, endDate) {
     return withDirectFallback(
@@ -278,6 +312,7 @@ export const useInspectionCalendarStore = defineStore('inspectionCalendar', () =
     getAppointmentDateRange,
     subscribeAppointments,
     fetchAppointmentsOnce,
+    findNearestActiveAppointment,
     fetchInspectorLeaves,
     fetchCalendarNotes,
     fetchDailyQuotaSummary,
