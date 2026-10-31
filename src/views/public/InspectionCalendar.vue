@@ -848,7 +848,9 @@
               </thead>
               <tbody>
                 <tr v-for="timeSlot in timeSlots" :key="timeSlot">
-                  <td class="time-cell">{{ timeSlot }}</td>
+                  <td class="time-cell">
+                    {{ timeSlot }}<v-icon v-if="addedTimeSlots.has(timeSlot)" size="x-small" color="orange-darken-2" class="ml-1" title="未勾選，有預約">mdi-auto-fix</v-icon>
+                  </td>
                   <td v-for="day in chunk" :key="day.fullDate" :class="['event-cell', { 'disabled-cell': !day.isInRange, 'today-column': day.isToday, 'weekend-column': day.isWeekend }]">
                     <div v-if="day.isInRange" class="event-cell-content">
                       <div v-if="groupedEvents[day.fullDate] && groupedEvents[day.fullDate][timeSlot]">
@@ -2157,21 +2159,37 @@ const selectedTimeSlots = useStorage(`inspection_calendar_time_slots_${projectId
 // 2-1. 自動/手動時段模式切換 (預設自動)
 const autoTimeSlotMode = useStorage(`inspection_calendar_auto_time_mode_${projectId.value}`, true);
 
-// 2-2. 從實際預約資料中提取有資料的時段
-const dataBasedTimeSlots = computed(() => {
+// 2-2. 有預約的時段：指定日期區間內、篩選後會顯示的預約開始時間（支援任意分鐘數，如 09:10）
+// allAppointments 會累積其他已看過區間的資料，所以依日期區間過濾
+function eventTimeSlotsInRange(start, end) {
+  if (!start || !end) return [];
+  const from = format(start, 'yyyy-MM-dd');
+  const to = format(end, 'yyyy-MM-dd');
   const timeSet = new Set();
-  allAppointments.value.forEach(appt => {
-    if (!appt.appointmentTimeSlot) return;
-    const timeSlotStr = String(appt.appointmentTimeSlot);
-    const timeMatch = timeSlotStr.match(/(\d{1,2}[:：]\d{2})/);
-    if (timeMatch) {
-      const normalizedTime = timeMatch[0].replace(/：/g, ':');
-      // 直接使用實際預約時間，支援任意分鐘數（09:10, 09:15, 09:20 等）
-      const [h, m] = normalizedTime.split(':').map(Number);
-      timeSet.add(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
-    }
+  filteredAppointments.value.forEach(event => {
+    if (!event.start) return;
+    const day = format(event.start, 'yyyy-MM-dd');
+    if (day >= from && day <= to) timeSet.add(format(event.start, 'HH:mm'));
   });
   return [...timeSet].sort();
+}
+const dataBasedTimeSlots = computed(() => eventTimeSlotsInRange(startDate.value, endDate.value));
+
+// 依模式決定要列出的時段：有預約的時段一律列出，預約才會落在自己的時段列
+//  - 自動：只列有預約的時段，無資料時顯示預設工作時段 08:00 ~ 18:00
+//  - 手動：使用者勾選的時段＋有預約的時段
+function resolveTimeSlots(dataSlots) {
+  if (autoTimeSlotMode.value) {
+    return dataSlots.length > 0 ? dataSlots : allPossibleTimeSlots.filter(t => t >= '08:00' && t <= '18:00');
+  }
+  return [...new Set([...selectedTimeSlots.value, ...dataSlots])].sort();
+}
+
+// 手動模式下未勾選、因有預約而補上的時段（時間欄以圖示標示）
+const addedTimeSlots = computed(() => {
+  if (autoTimeSlotMode.value) return new Set();
+  const selected = new Set(selectedTimeSlots.value);
+  return new Set(dataBasedTimeSlots.value.filter(t => !selected.has(t)));
 });
 
 // 3. 控制時間選擇器選單的開關
@@ -3008,18 +3026,7 @@ const isAnyOverlayActive = computed(() => {
 
 const buildingOptions = computed(() => Object.keys(bookingOptions.value.buildingsAndUnits).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true })));
 const unitOptions = computed(() => newAppointmentData.building ? (bookingOptions.value.buildingsAndUnits[newAppointmentData.building] || []) : []);
-const timeSlots = computed(() => {
-  if (autoTimeSlotMode.value) {
-    // 自動模式：顯示有預約資料的時段，若無資料則回退顯示預設工作時段
-    if (dataBasedTimeSlots.value.length > 0) {
-      return dataBasedTimeSlots.value;
-    }
-    // 無資料時顯示預設工作時段 08:00 ~ 18:00
-    return allPossibleTimeSlots.filter(t => t >= '08:00' && t <= '18:00');
-  }
-  // 手動模式：使用者自選
-  return [...selectedTimeSlots.value].sort();
-});
+const timeSlots = computed(() => resolveTimeSlots(dataBasedTimeSlots.value));
 
 // ✅ 4. 新增輔助函數：用於將後端傳來的 (Timestamp / ISO String) 轉為 (Date / null)
 const convertFirestoreTimestampsToDates = (obj) => {
@@ -3113,8 +3120,9 @@ function processAppointments(rawAppointments) {
 
         const timeSlotString = combinedData.appointmentTimeSlot ? String(combinedData.appointmentTimeSlot) : '';
         const timeMatch = timeSlotString.match(/(\d{1,2}[:：]\d{2})/); 
-        const startTime = timeMatch ? timeMatch[0].replace(/：/g, ':') : '00:00';
-        
+        // 補足兩位數小時（「9:30」→「09:30」），否則 parseISO 解析失敗、整筆預約不顯示
+        const startTime = timeMatch ? timeMatch[0].replace(/：/g, ':').padStart(5, '0') : '00:00';
+
         // 驗屋人員與備註改以獨立醒目區塊呈現（highlightParts），不再混入串接文字
         const displayParts = [];
         const highlightParts = [];
@@ -4686,12 +4694,14 @@ async function handleDownloadPng(rangeStart, rangeEnd) {
     const endDateNormalized = new Date(end); endDateNormalized.setHours(0,0,0,0);
     return eventDate >= startDateNormalized && eventDate <= endDateNormalized;
   });
+  // 下載區間可能與畫面區間不同：時段依下載區間的預約重新決定
+  const pngTimeSlots = resolveTimeSlots(eventTimeSlotsInRange(start, end));
   const groupedEventsInRange = {};
   eventsInRange.forEach(event => {
     const dateKey = format(event.start, 'yyyy-MM-dd');
     const eventStartTime = format(event.start, 'HH:mm');
     // 精確匹配時段，如果不存在則使用第一個時段
-    const timeKey = timeSlots.value.find(slot => slot === eventStartTime) || timeSlots.value[0];
+    const timeKey = pngTimeSlots.find(slot => slot === eventStartTime) || pngTimeSlots[0];
 
     if (!groupedEventsInRange[dateKey]) groupedEventsInRange[dateKey] = {};
     if (!groupedEventsInRange[dateKey][timeKey]) groupedEventsInRange[dateKey][timeKey] = [];
@@ -4792,7 +4802,7 @@ async function handleDownloadPng(rangeStart, rangeEnd) {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    timeSlots.value.forEach(timeSlot => {
+    pngTimeSlots.forEach(timeSlot => {
       const bodyRow = document.createElement('tr');
       chunk.forEach(date => {
         const timeCell = document.createElement('td');

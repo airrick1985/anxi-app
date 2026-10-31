@@ -542,7 +542,7 @@
             <li>日／週／月切換；日期區間可快選今天、本週、下週、本月、下月</li>
             <li>關鍵字搜尋任何欄位，空白分隔可搜多組</li>
             <li>「篩選」依狀態、項目、方式、驗屋人員等條件</li>
-            <li>點左上角「<b>時間</b>」：自動顯示（只列有預約的時段）或手動選擇時段</li>
+            <li>點左上角「<b>時間</b>」：自動顯示（只列有預約的時段）或手動選擇時段；手動時有預約的時段一定會列出，未勾選的標 <i class="mdi mdi-auto-fix"></i></li>
           </ul>
 
           <h3>修改預約</h3>
@@ -834,7 +834,7 @@ import { useRoute, useRouter } from 'vue-router';
 import GuideFigure from './GuideFigure.vue';
 import { bookingGuideShotSrc as shot } from './bookingGuideShots';
 
-const UPDATED_AT = '2026-10-02';
+const UPDATED_AT = '2026-11-01';
 
 const sections = [
   { id: 'start', no: '', title: '開始之前' },
