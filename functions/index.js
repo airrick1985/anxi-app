@@ -1267,8 +1267,9 @@ exports.uploadHouseholds = onCall({
         }
       }
       if (dataToSave.isFirstTimeBuyer !== undefined) {
-        const val = String(dataToSave.isFirstTimeBuyer).toUpperCase();
-        dataToSave.isFirstTimeBuyer = (val === 'TRUE' || val === 'Y');
+        // 空白格存空值（前端一律預設「是」），不可當成「否」
+        const val = String(dataToSave.isFirstTimeBuyer ?? '').trim().toUpperCase();
+        dataToSave.isFirstTimeBuyer = val === '' ? null : (val === 'TRUE' || val === 'Y' || val === '是');
       }
 
       //  --- 新增：處理銷控圖片欄位 ---
@@ -3209,8 +3210,9 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
       if (typeof dataToSave.isFirstTimeBuyer === 'boolean') {
         // 已經是布林值，保持不變
       } else {
-        const val = String(dataToSave.isFirstTimeBuyer).toUpperCase();
-        dataToSave.isFirstTimeBuyer = (val === 'TRUE' || val === 'Y' || val === '1');
+        // 空值保持空值（前端一律預設「是」），不可當成「否」
+        const val = String(dataToSave.isFirstTimeBuyer ?? '').trim().toUpperCase();
+        dataToSave.isFirstTimeBuyer = val === '' ? null : (val === 'TRUE' || val === 'Y' || val === '1' || val === '是');
       }
     }
 
@@ -3750,7 +3752,7 @@ async function performCancelPurchase(payload, dbInstance) {
 
       // 合約與付款資料
       contractType: "",
-      isFirstTimeBuyer: false,
+      isFirstTimeBuyer: null, // 清空即可，下一位買方編輯時預設「是」
       payment_contract_amount: null,
       payment_contract_date: null,
       payment_deposit_amount: null,
