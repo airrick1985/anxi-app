@@ -762,6 +762,7 @@ const paymentDocContext = computed(() => {
     return {
         unitId: data.unitId || data['戶別'] || '',
         unitLabel: unitLabelText.value,
+        doorplate: String(props.unitData?.doorplate || '').trim(),
         contractType: data.合約方式,
         isFirstTimeBuyer: data.isFirstTimeBuyer !== false,
         usePreferredPayment: data.usePreferredPayment === true,

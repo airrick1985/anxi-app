@@ -1310,6 +1310,12 @@ exports.uploadHouseholds = onCall({
         dataToSave.contractDrawingFolderUrl = rawUrl === '' ? null : rawUrl;
       }
 
+      // 門牌（銷售端，與驗屋 households.address 無關）：trim 後字串；沒有此欄位不寫入、空儲存格 → null
+      if (Object.prototype.hasOwnProperty.call(dataToSave, 'doorplate')) {
+        const rawDoorplate = String(dataToSave.doorplate ?? '').trim();
+        dataToSave.doorplate = rawDoorplate === '' ? null : rawDoorplate;
+      }
+
       // ✓ START: 新增 - 處理銀行帳號和特定文字欄位
       // 正體中文註解：定義哪些欄位應被強制視為文字，以保留前導 0 或特殊格式。
       // (請確保您在 SalesControlSystem.vue 的 COLUMN_DEFINITIONS 中使用相同的英文 key)
@@ -3254,7 +3260,8 @@ exports.updateSalesData = onCall({ region: "asia-east1", memory: "512MiB", secre
       'buyerPermanentAddressCity', 'buyerPermanentAddressDistrict', 'buyerPermanentAddressDetail',
 
       // ✅ [新增] 加入 propertyType 以確保單筆更新時能正確處理字串格式
-      'propertyType'
+      'propertyType',
+      'doorplate'
     ];
 
     for (const field of stringFields) {

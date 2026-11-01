@@ -5,6 +5,7 @@
  * doc payload 結構：
  * {
  *   projectName, unitId, unitLabel, listDate,
+ *   doorplate,          // 門牌（成屋後才有；空白不列）
  *   logoUrl,            // Firebase Storage 下載 URL（可為 null）
  *   qrDataUrl,          // 前端生成之 QR PNG dataURL（可為 null）
  *   parkingText,        // "B5-40 (225萬)"，多車位逗號串接；無車位 = "無"
@@ -190,9 +191,9 @@ function drawPdfPage(pdf, docData, page, logoBuffer, qrBuffer) {
     ry += rowH;
     drawAreaRow(ry, "車位持分面積：", fmt2(a.parkingPing), fmt2(a.parkingSqm), true, true);
   }
-  const infoBottom = ry + rowH;
+  let infoBottom = ry + rowH;
 
-  // 左欄（戶別 / 車位）
+  // 左欄（戶別 / 車位 / 門牌）
   const lLabelX = left + 10;
   const lValX = lLabelX + 55;
   const lValW = 260 - lValX;
@@ -203,6 +204,24 @@ function drawPdfPage(pdf, docData, page, logoBuffer, qrBuffer) {
   };
   drawLeftBox(infoTop + rowH, "戶別：", docData.unitLabel || docData.unitId);
   drawLeftBox(infoTop + rowH * 3 + 4, "車位：", docData.parkingText || "無");
+
+  // 門牌：有門牌才列；字級縮小至一行放得下（最小 8pt），仍放不下才換行並加高灰框
+  const doorplate = String(docData.doorplate || "").trim();
+  if (doorplate) {
+    const y = infoTop + rowH * 5 + 8;
+    const innerW = lValW - 8;
+    let size = 12;
+    pdf.font("TC-Bold");
+    while (size > 8 && pdf.fontSize(size).widthOfString(doorplate) > innerW) size -= 0.5;
+    pdf.fontSize(size);
+    const textH = pdf.heightOfString(doorplate, { width: innerW, align: "center" });
+    const boxH = Math.max(22, Math.ceil(textH) + 6);
+    pdf.rect(lValX, y - 4, lValW, boxH).fill(GRAY_BG);
+    pdf.fillColor(BLACK).font("TC").fontSize(11).text("門牌：", lLabelX, y);
+    pdf.font("TC-Bold").fontSize(size)
+      .text(doorplate, lValX + 4, y - 4 + (boxH - textH) / 2, { width: innerW, align: "center" });
+    infoBottom = Math.max(infoBottom, y - 4 + boxH + 4);
+  }
 
   /* ---------- 期款表格 ---------- */
   const rows = page.rows || [];
@@ -531,6 +550,15 @@ function buildExcelSheet(wb, docData, page, sheetName, logoBuffer, qrBuffer) {
   if (Number(a.terracePing) > 0) {
     setLabel("E9", "露臺(不計坪)：");
     setVal("F9", `${fmt2(a.terracePing)}坪`);
+  }
+
+  // 門牌：有門牌才列；地址較長，儲存格縮小字型以完整顯示
+  const doorplate = String(docData.doorplate || "").trim();
+  if (doorplate) {
+    setLabel("A10", "門牌：");
+    ws.mergeCells("B10:D10");
+    const c = setVal("B10", doorplate, { gray: true, bold: true });
+    c.alignment = { ...center, shrinkToFit: true };
   }
 
   setLabel("E10", "土地持分：");

@@ -256,7 +256,7 @@
         <div class="global-search-bar">
           <v-text-field
             v-model="keywordInput"
-            placeholder="全域搜尋：戶別、買方、電話、銷售人員、備註、車位編號／車位備註…（可空白分隔多關鍵字）"
+            placeholder="全域搜尋：戶別、門牌、買方、電話、銷售人員、備註、車位編號／車位備註…（可空白分隔多關鍵字）"
             prepend-inner-icon="mdi-magnify"
             variant="solo"
             density="compact"

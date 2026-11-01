@@ -488,6 +488,10 @@
                                             <span class="ps-label">車位：</span>
                                             <span class="ps-box">{{ parkingText }}</span>
                                         </div>
+                                        <div v-if="context.doorplate" class="ps-info-row mt-4">
+                                            <span class="ps-label">門牌：</span>
+                                            <span class="ps-box ps-box-doorplate">{{ context.doorplate }}</span>
+                                        </div>
                                     </div>
                                     <div class="ps-info-right">
                                         <div class="ps-area-row ps-area-gray">
@@ -1215,6 +1219,7 @@ async function download(format) {
                 projectName: props.projectName,
                 unitId: c.unitId,
                 unitLabel: c.unitLabel || c.unitId,
+                doorplate: c.doorplate || '',
                 listDate: listDate.value,
                 logoUrl: docSettings.value.logoUrl || null,
                 qrDataUrl,
@@ -1410,6 +1415,12 @@ async function download(format) {
     font-weight: bold;
     padding: 4px 6px;
     font-size: 14px;
+}
+/* 門牌較長：縮小字級，仍放不下時換行（不截斷） */
+.ps-box-doorplate {
+    font-size: 11px;
+    padding: 5px 4px;
+    word-break: break-all;
 }
 .ps-info-right {
     flex: 1;

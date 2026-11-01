@@ -40,6 +40,7 @@ export const QUOTE_FIELD_GROUPS = [
       { key: 'preferredPayment', label: '優付' },
       { key: 'unitTags', label: '文字標籤' },
       { key: 'layoutType', label: '格局／類型' },
+      { key: 'doorplate', label: '門牌' },
       { key: 'images', label: '戶別圖片' },
       { key: 'plans', label: '可選方案' },
     ],
@@ -118,7 +119,7 @@ export function diffOverrides(effective, project) {
 /** 報價單（quoteStore.item.unitDetails）允許攜帶的原始欄位 */
 export const QUOTE_UNIT_WHITELIST = [
   'id', 'projectId', 'unitId', 'building', 'floor',
-  'propertyType', 'layout',
+  'propertyType', 'layout', 'doorplate',
   'salesStatus_quote',
   'isPreferredPayment', 'isFirstTimeBuyer', 'contractType',
   'allowNegotiation', // ✅ 議價開關（false = 報價單不可議價；缺省視為可議價）
@@ -148,6 +149,7 @@ const FIELD_KEYS_BY_TOGGLE = {
   preferredPayment: ['isPreferredPayment'],
   unitTags: ['unitTags', 'unitEffect'],
   layoutType: ['layout', 'propertyType'],
+  doorplate: ['doorplate'],
   images: ['salesImages', 'svgName'],
   plans: ['availablePlans'],
 };

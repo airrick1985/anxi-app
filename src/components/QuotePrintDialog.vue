@@ -1030,10 +1030,13 @@ function renderSheet(item) {
       }).join('')}
     </section>` : '';
 
-  // 配套未勾選時不渲染「配套／配套價」欄位
+  // 配套未勾選時不渲染「配套／配套價」欄位；第三個值 true = 整列跨兩欄
+  let infoCol = 0;
   const infoCells = [
     ['戶別', `<b>${esc(item.unitId)}</b>`],
     ['物件類型', esc(type)],
+    // 門牌：有門牌（且報價可見欄位未關閉）才列，地址較長故整列顯示
+    ...(ud.doorplate ? [['門牌', esc(ud.doorplate), true]] : []),
     ['面積', (() => { const a = pingWithSqm(area, ud.area_house_sqm); return `<b>${esc(a.ping)} 坪</b>${a.sqm ? `<span class="sqm-inline">／ ${esc(a.sqm)} m²</span>` : ''}`; })()],
     ['首購', item.isFirstTimeBuyer === '是' ? '首購' : '非首購'],
     ['房屋總價', housePriceVal],
@@ -1059,8 +1062,13 @@ function renderSheet(item) {
         return `${fmt(packagePrice)} 萬`;
       })()],
     ] : []),
-  ].map(([lbl, val]) => `
-      <div class="cell"><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`).join('');
+  ].map(([lbl, val, wide]) => {
+    // 左欄格加右框線（整列格後重新從左欄起算，不能用 nth-child 判斷）
+    const cls = wide ? 'cell wide' : (infoCol++ % 2 === 0 ? 'cell col-l' : 'cell');
+    if (wide) infoCol = 0;
+    return `
+      <div class="${cls}"><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`;
+  }).join('');
 
   // 期款版型：僅渲染前端實際採用的期款（總價期款或優付期款擇一；配套期款依前端顯示）
   const generalTitle = pay.generalIsPreferred ? '優付期款' : '總價期款';
@@ -1224,7 +1232,8 @@ const SHEET_CSS = `
   }
   .cell { display: flex; align-items: center; border-bottom: 1px solid #eceff1; }
   .cell:nth-last-child(-n+2) { border-bottom: none; }
-  .cell:nth-child(odd) { border-right: 1px solid #eceff1; }
+  .cell.col-l { border-right: 1px solid #eceff1; }
+  .cell.wide { grid-column: 1 / -1; }
   .lbl {
     width: 25mm; align-self: stretch; display: flex; align-items: center;
     background: #f4f7fa; color: #546e7a;

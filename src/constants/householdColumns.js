@@ -11,6 +11,7 @@ export const COLUMN_DEFINITIONS = [
     { key: 'unitId', title: '戶別' },
     { key: 'propertyType', title: '物件類型' },
     { key: 'layout', title: '格局' },
+    { key: 'doorplate', title: '門牌' },
     { key: 'isPreferredPayment', title: '優付' },
     { key: 'salesStatus_backend', title: '銷控後台狀態' },
     { key: 'salesStatus_quote', title: '報價系統狀態' },
@@ -144,7 +145,7 @@ export const DRAWING_EXCLUDED_FIELD_KEYS = new Set([
  */
 export const DRAWING_FIELD_GROUPS = [
   { key: 'basic', title: '基本', expanded: true, keys: [
-    'building', 'floor', 'unitId', 'propertyType', 'layout', 'salesStatus_backend', 'salesStatus_quote',
+    'building', 'floor', 'unitId', 'propertyType', 'layout', 'doorplate', 'salesStatus_backend', 'salesStatus_quote',
   ] },
   { key: 'area', title: '面積', expanded: true, keys: [
     'area_house_ping', 'area_house_sqm', 'area_main_ping', 'area_main_sqm', 'area_ancillary_ping', 'area_ancillary_sqm',

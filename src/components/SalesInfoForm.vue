@@ -56,6 +56,14 @@
               </v-col>
             </v-row>
 
+            <v-text-field
+              label="門牌"
+              v-model="editableData.doorplate"
+              placeholder="新竹縣竹北市勝利十二街19號20樓"
+              clearable
+              class="mb-2"
+            ></v-text-field>
+
             <label class="v-label text-caption">小訂日期</label>
             <VueDatePicker :locale="'zh-TW'" v-model="editableData.payment_deposit_date" auto-apply :enable-time-picker="false" format="yyyy/MM/dd" teleport="body" auto-position class="mb-4 anxi-datepicker"></VueDatePicker>
             <label class="v-label text-caption">補足日期</label>

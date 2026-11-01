@@ -30,20 +30,26 @@
       <div class="header-section">
         <v-card-title class="d-flex justify-space-between align-center text-h5">
           <!-- ✅ 標題列：戶別 + 文字標籤 chip（沿用標籤底色／文字色，尺寸比照戶別文字）；有邊框特效時戶別套用同一光環樣式 -->
-          <span class="header-unit-title">
-            <span class="header-unit-id" :class="headerEffectClass" :style="headerEffectStyle">
-              {{ unitData ? unitData.unitId : '詳細資訊' }}
+          <div class="header-unit-block">
+            <span class="header-unit-title">
+              <span class="header-unit-id" :class="headerEffectClass" :style="headerEffectStyle">
+                {{ unitData ? unitData.unitId : '詳細資訊' }}
+              </span>
+              <template v-if="qf('unitTags')">
+                <span
+                  v-for="(tag, i) in viewUnitTags"
+                  :key="i"
+                  class="header-unit-tag"
+                  :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
+                >{{ tag.text }}</span>
+              </template>
+              <span v-if="isEditing && focusedEditSection" class="text-body-2 font-weight-regular ml-2">編輯{{ focusedEditSectionTitle }}</span>
             </span>
-            <template v-if="qf('unitTags')">
-              <span
-                v-for="(tag, i) in viewUnitTags"
-                :key="i"
-                class="header-unit-tag"
-                :style="{ backgroundColor: tag.bgColor, color: tag.textColor }"
-              >{{ tag.text }}</span>
-            </template>
-            <span v-if="isEditing && focusedEditSection" class="text-body-2 font-weight-regular ml-2">編輯{{ focusedEditSectionTitle }}</span>
-          </span>
+            <!-- 門牌：成屋後才有，無門牌不顯示 -->
+            <div v-if="unitData?.doorplate && qf('doorplate')" class="header-unit-doorplate">
+              <v-icon size="15">mdi-map-marker-outline</v-icon>{{ unitData.doorplate }}
+            </div>
+          </div>
           <div>
             <v-btn v-if="viewMode === 'sales' && !isEditing" color="white" variant="text" @click="startEditing">
               <v-icon left>mdi-pencil</v-icon>
@@ -4017,6 +4023,26 @@ onUnmounted(() => {
 }
 
 /* ✅ 標題列：戶別 + 文字標籤 chip */
+.header-unit-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.header-unit-doorplate {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  opacity: 0.9;
+  word-break: break-all;
+}
+.header-unit-doorplate .v-icon {
+  margin-top: 2px;
+}
 .header-unit-title {
   display: inline-flex;
   flex-wrap: wrap;

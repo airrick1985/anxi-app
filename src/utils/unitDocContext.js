@@ -121,6 +121,7 @@ export function buildUnitDocContext(unitData, opts = {}) {
   return {
     unitId: d.unitId || '',
     unitLabel: buildUnitLabel(d),
+    doorplate: String(d.doorplate || '').trim(),
     contractType: d.contractType || '',
     isFirstTimeBuyer: d.isFirstTimeBuyer !== false,
     usePreferredPayment: d.usePreferredPayment === true,
