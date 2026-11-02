@@ -6,6 +6,7 @@ const { getGlobal, getChannel, resolveAgent } = require('./settings');
 const { notifyClient } = require('./line');
 const { generate, recentMessages, messageText } = require('./assist');
 const { shouldBlockOutbound } = require('../utils/trialGuard');
+const { lineAiAllowedKeys } = require('./auth');
 
 const MAX_PREVIEW = 3;
 
@@ -46,7 +47,9 @@ function buildMessage({ title, subtitle, lines, draft, url }) {
 
 async function recipients(conv, global) {
   const keys = conv.assignState === 'assigned' ? (conv.viewerKeys || []) : (global.claimerKeys || []);
-  const unique = [...new Set(keys.filter(Boolean))].slice(0, 10);
+  // 沒有 LINE AI 助理權限的人不通知
+  const allowed = await lineAiAllowedKeys(keys);
+  const unique = [...allowed].slice(0, 10);
   const snaps = await Promise.all(unique.map(k => getDb().collection('users').doc(k).get()));
   return snaps
     .filter(s => s.exists && String(s.data().lineId || '').startsWith('U') && s.data().disabled !== true)

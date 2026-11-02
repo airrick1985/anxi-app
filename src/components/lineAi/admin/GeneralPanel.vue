@@ -29,7 +29,7 @@
       <div class="mac-form-label">待認領的一對一對話</div>
       <v-autocomplete
         v-model="g.claimerKeys"
-        :items="users"
+        :items="pickableUsers(users, g.claimerKeys)"
         item-title="name"
         item-value="userKey"
         multiple
@@ -57,7 +57,7 @@
 
 <script setup>
 import { reactive, ref, computed, watch, onMounted } from 'vue';
-import { useLineAiAdmin } from './useLineAiAdmin';
+import { useLineAiAdmin, pickableUsers } from './useLineAiAdmin';
 
 const { settings, refresh, run, users, loadUsers } = useLineAiAdmin();
 const saving = ref(false);

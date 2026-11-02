@@ -1620,7 +1620,7 @@ const permissionCategories = [
     label: '訊息通知',
     icon: 'mdi-email',
     color: 'amber-darken-4',
-    keywords: ['訊息', '寄信', '收信']
+    keywords: ['訊息', '寄信', '收信', 'LINE AI']
   }
 ];
 

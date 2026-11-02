@@ -97,6 +97,8 @@ const routes = [
     component: () => import('@/views/LineAiWorkspace.vue'),
     meta: {
       requiresAuth: true,
+      requiredRoles: ['超級管理員'],
+      requiredRolesOrSystem: 'LINE AI 助理', // 具任一建案「LINE AI 助理」權限者亦可進入
       layout: DefaultLayout,
       title: 'LINE AI 助理'
     }

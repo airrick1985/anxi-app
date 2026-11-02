@@ -42,4 +42,10 @@ export function useLineAiAdmin() {
   return { settings, loading, users, refresh, run, loadUsers };
 }
 
+// 人員選單只列有 LINE AI 助理權限的人；已選但沒權限的仍列出，方便移除
+export function pickableUsers(users, selected) {
+  const keep = new Set([].concat(selected ?? []));
+  return users.filter(u => u.canUse || keep.has(u.userKey));
+}
+
 export const SEND_MODE_LABEL = { manual: '使用者自己送', bot: '官方帳號代發', both: '兩者皆可' };

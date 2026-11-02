@@ -8,6 +8,8 @@ const { getDb } = require('./db');
 const { getGlobal } = require('./settings');
 
 const ADMIN_ROLES = ['超級管理員', '系統管理員'];
+// 人員管理的系統功能名稱（systemFunctions）；任一建案勾選即可使用，超級管理員免勾
+const LINE_AI_SYSTEM = 'LINE AI 助理';
 
 function toUser(userKey, u, sessionId = null) {
   const roles = Array.isArray(u.roles) ? u.roles : [];
@@ -78,6 +80,33 @@ async function loadPermissions(user) {
   return user._permissions;
 }
 
+function permitsLineAi(roles, permissions) {
+  if (Array.isArray(roles) && roles.includes('超級管理員')) return true;
+  return Object.values(permissions || {}).some(p => (p?.systems || []).includes(LINE_AI_SYSTEM));
+}
+
+async function requireLineAiAccess(user) {
+  if (!permitsLineAi(user.roles, await loadPermissions(user))) {
+    throw new HttpsError('permission-denied', '沒有 LINE AI 助理權限，請洽管理員開通。');
+  }
+}
+
+/** 回傳有 LINE AI 助理權限的 userKey（排除停用、試用帳號） */
+async function lineAiAllowedKeys(keys) {
+  const unique = [...new Set((keys || []).filter(Boolean).map(String))];
+  if (!unique.length) return new Set();
+  const db = getDb();
+  const [users, perms] = await Promise.all([
+    db.getAll(...unique.map(k => db.collection('users').doc(k))),
+    db.getAll(...unique.map(k => db.collection('userPermissions').doc(k))),
+  ]);
+  return new Set(unique.filter((k, i) => {
+    const u = users[i].exists ? users[i].data() : null;
+    if (!u || u.disabled === true || u.isTrial === true) return false;
+    return permitsLineAi(u.roles, perms[i].exists ? perms[i].data()?.permissions : null);
+  }));
+}
+
 async function hasCrmAccess(user, projectId) {
   if (user.isAdmin) return true;
   const perms = await loadPermissions(user);
@@ -95,4 +124,7 @@ function canView(user, conv, global) {
   return false;
 }
 
-module.exports = { authenticate, requireSuperAdmin, loadPermissions, hasCrmAccess, canView, ADMIN_ROLES };
+module.exports = {
+  authenticate, requireSuperAdmin, loadPermissions, hasCrmAccess, canView, ADMIN_ROLES,
+  LINE_AI_SYSTEM, permitsLineAi, requireLineAiAccess, lineAiAllowedKeys,
+};

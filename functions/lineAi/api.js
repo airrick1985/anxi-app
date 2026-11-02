@@ -7,7 +7,7 @@ const { HttpsError } = require('firebase-functions/v2/https');
 const { getStorage } = require('firebase-admin/storage');
 const { getDb, COL, FieldValue, Timestamp, toIso } = require('./db');
 const S = require('./settings');
-const { authenticate, canView, hasCrmAccess, loadPermissions } = require('./auth');
+const { authenticate, canView, hasCrmAccess, loadPermissions, requireLineAiAccess, lineAiAllowedKeys } = require('./auth');
 const C = require('./conversations');
 const { generate, stylesFor } = require('./assist');
 const { updateMemory } = require('./memory');
@@ -93,6 +93,7 @@ async function handleApi(request) {
   const data = request.data || {};
   const user = await authenticate(data);
   if (user.isTrial) throw new HttpsError('permission-denied', '試用帳號無法使用 LINE AI 助理。');
+  await requireLineAiAccess(user);
   const global = await S.getGlobal();
 
   switch (data.action) {
@@ -190,9 +191,10 @@ async function handleApi(request) {
         if (!c || !(c.allProjectIds || [c.projectId]).includes(projectId)) throw new HttpsError('not-found', '找不到這位客戶');
         patch.customerId = c.id;
         patch.customerName = c.latestName || null;
-        // 一對一：負責業務自動成為可看的人
-        if (conv.type === 'user' && c.latestSalesPhone) {
-          patch.assignedKey = String(c.latestSalesPhone);
+        // 一對一：負責業務自動成為可看的人（沒有 LINE AI 權限就不指派，維持原狀）
+        const salesKey = c.latestSalesPhone ? String(c.latestSalesPhone) : null;
+        if (conv.type === 'user' && salesKey && (await lineAiAllowedKeys([salesKey])).has(salesKey)) {
+          patch.assignedKey = salesKey;
           patch.viewerKeys = viewerKeysOf(conv, patch.assignedKey);
           patch.assignState = 'assigned';
         }
@@ -206,6 +208,9 @@ async function handleApi(request) {
       if (conv.type !== 'user') throw new HttpsError('failed-precondition', '只有一對一對話需要認領');
       if (!(user.isSuperAdmin || global.claimerKeys.includes(user.userKey))) throw new HttpsError('permission-denied', '沒有認領權限');
       const assignedKey = data.assignTo ? str(data.assignTo, 100) : user.userKey;
+      if (assignedKey !== user.userKey && !(await lineAiAllowedKeys([assignedKey])).has(assignedKey)) {
+        throw new HttpsError('failed-precondition', '對方沒有 LINE AI 助理權限');
+      }
       await ref.update({ assignedKey, viewerKeys: viewerKeysOf(conv, assignedKey), assignState: 'assigned' });
       return { status: 'success' };
     }

@@ -128,12 +128,13 @@ export const homeFeatures = [
     nav: { name: 'AiAssistantAdmin' }
   },
 
-  // ✅ LINE AI 助理：可看的對話由後端依群組成員／負責業務決定
+  // ✅ LINE AI 助理：需「LINE AI 助理」權限（超級管理員免勾）；可看的對話由後端依群組成員／負責業務決定
   {
     id: 'lineAi',
     text: 'LINE AI 助理',
     icon: emailIcon,
-    permissionType: 'loggedIn',
+    permissionType: 'getter',
+    permissionArgs: ['canUseLineAi'],
     nav: { name: 'LineAiWorkspace' }
   },
 

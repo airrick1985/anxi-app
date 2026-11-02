@@ -396,6 +396,10 @@ export const useUserStore = defineStore('user', {
       }
       return false;
     },
+    // LINE AI 助理：任一建案勾選「LINE AI 助理」，超級管理員免勾
+    canUseLineAi() {
+      return this.currentUserRoles.includes('超級管理員') || this.hasPermission('LINE AI 助理');
+    },
     canSendMessage: (state) => {
       const permissions = state.user?.permissions;
       if (!permissions) return false;

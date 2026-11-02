@@ -50,7 +50,7 @@
             <div class="mac-sheet-label">負責人</div>
             <v-autocomplete
               v-model="people.assignedKey"
-              :items="users"
+              :items="pickableUsers(users, people.assignedKey)"
               item-title="name"
               item-value="userKey"
               placeholder="待認領"
@@ -66,7 +66,7 @@
           <div class="mac-sheet-label">另外指定可看的人</div>
           <v-autocomplete
             v-model="people.viewers"
-            :items="users"
+            :items="pickableUsers(users, people.viewers)"
             item-title="name"
             item-value="userKey"
             multiple
@@ -93,7 +93,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useToast } from 'vue-toastification';
-import { useLineAiAdmin } from './useLineAiAdmin';
+import { useLineAiAdmin, pickableUsers } from './useLineAiAdmin';
 import { TYPE_LABEL } from '../useLineAi';
 
 const { settings, run, users, loadUsers } = useLineAiAdmin();

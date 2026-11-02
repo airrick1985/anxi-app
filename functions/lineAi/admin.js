@@ -2,7 +2,7 @@
 const { HttpsError } = require('firebase-functions/v2/https');
 const { getDb, COL, FieldValue, toIso, adminLog } = require('./db');
 const S = require('./settings');
-const { authenticate, requireSuperAdmin } = require('./auth');
+const { authenticate, requireSuperAdmin, permitsLineAi, lineAiAllowedKeys } = require('./auth');
 const { LineClient } = require('./line');
 const C = require('./conversations');
 const { syncMemberIds } = require('./processor');
@@ -122,13 +122,15 @@ async function handleAdmin(request) {
 
     case 'saveGlobal': {
       const g = data.global || {};
+      const claimers = ids(g.claimerKeys, 50);
+      const allowedClaimers = await lineAiAllowedKeys(claimers);
       const patch = {
         appUrl: str(g.appUrl, 200).replace(/\/+$/, '') || S.DEFAULT_GLOBAL.appUrl,
         liffId: str(g.liffId, 60),
         liffChannelId: str(g.liffChannelId, 30) || S.DEFAULT_GLOBAL.liffChannelId,
         notifyChannelId: str(g.notifyChannelId, 100) || null,
         notifyDelayMinutes: num(g.notifyDelayMinutes, 0, 60, 2),
-        claimerKeys: ids(g.claimerKeys, 50),
+        claimerKeys: claimers.filter(k => allowedClaimers.has(k)), // 沒有 LINE AI 權限的人不能認領
         retentionMonths: num(g.retentionMonths, 1, 120, 12),
         summaryEvery: num(g.summaryEvery, 5, 200, 20),
         historyMessages: num(g.historyMessages, 5, 80, 30),
@@ -368,6 +370,15 @@ async function handleAdmin(request) {
         patch.assignState = assignedKey ? 'assigned' : 'unassigned';
         patch.viewerKeys = viewerKeysOf({ ...conv, ...patch }, assignedKey);
       }
+      // 新加入的檢視者／負責業務須有 LINE AI 權限；原本就在的保留，讓管理員自行移除
+      const added = [
+        ...(patch.manualViewerKeys || []).filter(k => !(conv.manualViewerKeys || []).includes(k)),
+        ...(patch.assignedKey && patch.assignedKey !== conv.assignedKey ? [patch.assignedKey] : []),
+      ];
+      if (added.length) {
+        const allowed = await lineAiAllowedKeys(added);
+        if (added.some(k => !allowed.has(k))) throw new HttpsError('failed-precondition', '選擇的人員沒有 LINE AI 助理權限');
+      }
       if (!Object.keys(patch).length) return { status: 'success' };
       await ref.update(patch);
       await adminLog(user, 'updateConversation', { id: snap.id, ...patch });
@@ -391,9 +402,17 @@ async function handleAdmin(request) {
     }
 
     case 'listUsers': {
-      const snap = await db.collection('users').select('name', 'lineId', 'disabled', 'isTrial').get();
+      const [snap, permSnap] = await Promise.all([
+        db.collection('users').select('name', 'lineId', 'disabled', 'isTrial', 'roles').get(),
+        db.collection('userPermissions').select('permissions').get(),
+      ]);
+      const perms = new Map(permSnap.docs.map(d => [d.id, d.data().permissions]));
       const users = snap.docs
-        .map(d => ({ userKey: d.id, name: d.data().name || d.id, lineBound: String(d.data().lineId || '').startsWith('U'), disabled: d.data().disabled === true, isTrial: d.data().isTrial === true }))
+        .map(d => ({
+          userKey: d.id, name: d.data().name || d.id, lineBound: String(d.data().lineId || '').startsWith('U'),
+          disabled: d.data().disabled === true, isTrial: d.data().isTrial === true,
+          canUse: permitsLineAi(d.data().roles, perms.get(d.id)),
+        }))
         .filter(u => !u.disabled && !u.isTrial)
         .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
       return { status: 'success', users };
