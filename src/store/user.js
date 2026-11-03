@@ -235,6 +235,13 @@ export const useUserStore = defineStore('user', {
       }
     },
 
+    // 管理員調整權限後即時套用（App.vue 監聽 userPermissions），不必重新登入
+    applyPermissions(permissions) {
+      if (!this.user) return;
+      this.user.permissions = permissions || {};
+      this.detailedPermissions = this.getDetailedPermissions(this.user.permissions);
+    },
+
     getDetailedPermissions(permissions) {
       const permsArray = [];
       if (!permissions) return permsArray;

@@ -1873,7 +1873,10 @@ export async function updateUserDetailsForAdmin(payload) {
     let mergedFieldPerms = {};
 
     if (!adminRoles.includes('超級管理員')) {
-      const rolesDocs = await getDocs(query(collection(db, 'roles'), where('name', 'in', adminRoles)));
+      // 沒有角色（只有「人員管理」系統權限）時不查：'in' 不接受空陣列
+      const rolesDocs = adminRoles.length
+        ? await getDocs(query(collection(db, 'roles'), where('name', 'in', adminRoles)))
+        : [];
 
       rolesDocs.forEach(roleDoc => {
         const perms = roleDoc.data().fieldPermissions?.UserManagement || {};

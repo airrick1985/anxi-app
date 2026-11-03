@@ -121,6 +121,24 @@ watch(() => route.name, (name) => {
   }
 }, { immediate: true });
 
+// ✅ 權限即時同步：權限只在登入時讀一次，管理員之後的調整要靠監聽 userPermissions 套用
+// 只比對 key：登入、換人時重新監聽；套用權限只改 user.permissions，不會觸發這裡
+let unsubscribePermissions = null;
+watch(() => userStore.user?.key, (key) => {
+  if (unsubscribePermissions) {
+    unsubscribePermissions();
+    unsubscribePermissions = null;
+  }
+  if (!key) return;
+  unsubscribePermissions = onSnapshot(doc(db, 'userPermissions', key), (snap) => {
+    // 快取快照可能比登入時取得的權限還舊，只採用伺服器確認過的資料
+    if (snap.metadata.fromCache || !snap.exists() || userStore.user?.key !== key) return;
+    userStore.applyPermissions(snap.data().permissions);
+  }, (error) => {
+    console.warn('[Permission Sync] onSnapshot error (ignored):', error);
+  });
+}, { immediate: true });
+
 let unsubscribe = null; 
 
 watch(() => userStore.user, (newUser) => {
