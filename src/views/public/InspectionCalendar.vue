@@ -1630,116 +1630,6 @@
       </v-card>
     </v-dialog>
 
-    <!-- 資料透視 -->
-    <v-dialog v-model="isPivotDialogVisible" max-width="960px" scrollable>
-      <v-card>
-        <v-card-title class="text-h6 d-flex align-center bg-blue-grey-lighten-5" v-draggable-dialog>
-          <v-icon start>mdi-table-pivot</v-icon>
-          <span class="text-subtitle-1 font-weight-bold">
-            {{ projectName }} {{ formattedDateRangeTitle }} 資料透視
-          </span>
-          <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" variant="text" @click="isPivotDialogVisible = false"></v-btn>
-        </v-card-title>
-        <v-divider></v-divider>
-
-        <v-card-text class="pa-4" style="background-color:#f5f6f8;">
-          <!-- 維度與範圍設定 -->
-          <div class="bg-white rounded-lg pa-3 mb-3" style="border:1px solid #eceff1;">
-            <div class="d-flex flex-wrap align-center ga-3">
-              <v-select v-model="pivotRowDim" :items="pivotDimensionOptions" item-title="label" item-value="key"
-                label="列（分組依據）" density="compact" hide-details variant="outlined"
-                prepend-inner-icon="mdi-table-row" style="min-width:200px;max-width:240px;"></v-select>
-              <v-icon color="grey">mdi-close</v-icon>
-              <v-select v-model="pivotColDim" :items="pivotColDimOptions" item-title="label" item-value="key"
-                label="欄（交叉維度，可不選）" density="compact" hide-details variant="outlined"
-                prepend-inner-icon="mdi-table-column" style="min-width:200px;max-width:240px;"></v-select>
-            </div>
-            <div class="d-flex flex-wrap align-center ga-1 mt-2">
-              <span class="text-caption text-grey-darken-1 mr-1">
-                <v-icon size="14">mdi-flag-variant</v-icon> 狀態：
-              </span>
-              <v-chip-group v-model="pivotStatuses" multiple column selected-class="text-primary" class="pivot-status-chips">
-                <v-chip v-for="s in PIVOT_STATUS_OPTIONS" :key="s" :value="s" filter variant="outlined" size="small">{{ s }}</v-chip>
-              </v-chip-group>
-            </div>
-            <div class="d-flex flex-wrap align-center ga-2 mt-1">
-              <v-chip size="small" color="blue-grey" variant="tonal" prepend-icon="mdi-calendar-range">
-                共 {{ pivotMatrix.eventCount }} 筆預約
-              </v-chip>
-              <span class="text-caption text-grey-darken-1">
-                狀態可在此獨立勾選（開啟時預設同行事曆）；「項目／選擇方式」篩選與日期區間則跟隨行事曆設定。
-              </span>
-              <v-chip v-if="pivotHasPersonCount" size="small" color="indigo" variant="tonal" prepend-icon="mdi-account-multiple">
-                合計 {{ pivotMatrix.grandTotal }} 人次
-              </v-chip>
-              <span v-if="pivotHasPersonCount" class="text-caption text-grey-darken-1">
-                一筆預約有多位驗屋人員時會分別計入，總計為「人次」而非筆數。
-              </span>
-            </div>
-          </div>
-
-          <!-- 資料透視表 -->
-          <v-alert v-if="pivotMatrix.rows.length === 0" type="info" variant="tonal"
-            text="目前條件下無任何預約資料可供分析。"></v-alert>
-          <div v-else class="bg-white rounded-lg" style="border:1px solid #eceff1;overflow:auto;max-height:60vh;">
-            <v-table density="compact">
-              <thead>
-                <tr class="bg-grey-lighten-4">
-                  <th class="text-left font-weight-bold pivot-sortable" style="min-width:140px;position:sticky;left:0;background:#f5f5f5;z-index:1;"
-                    @click="togglePivotSort('__name__')" title="點擊排序">
-                    {{ pivotDimensionLabel(pivotRowDim) }}
-                    <v-icon size="14" :color="pivotSort.key === '__name__' ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon('__name__') }}</v-icon>
-                  </th>
-                  <th v-for="c in pivotMatrix.colHeaders" :key="c" class="text-center font-weight-bold pivot-sortable" style="min-width:70px;"
-                    @click="togglePivotSort(c)" title="點擊排序">
-                    {{ c }}
-                    <v-icon size="14" :color="pivotSort.key === c ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon(c) }}</v-icon>
-                  </th>
-                  <th v-if="pivotMatrix.useCol" class="text-center font-weight-bold pivot-sortable" style="min-width:70px;"
-                    @click="togglePivotSort('__total__')" title="點擊排序">
-                    總計
-                    <v-icon size="14" :color="pivotSort.key === '__total__' ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon('__total__') }}</v-icon>
-                  </th>
-                  <th class="text-center font-weight-bold pivot-sortable" style="min-width:70px;"
-                    @click="togglePivotSort('__total__')" title="點擊排序（同總計）">
-                    佔比
-                    <v-icon size="14" :color="pivotSort.key === '__total__' ? 'primary' : 'grey-lighten-1'">{{ pivotSortIcon('__total__') }}</v-icon>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in sortedPivotRows" :key="row.name">
-                  <td class="font-weight-medium" style="position:sticky;left:0;background:#fff;z-index:1;">{{ row.name }}</td>
-                  <td v-for="c in pivotMatrix.colHeaders" :key="c" class="text-center">
-                    <span :class="row.counts[c] ? '' : 'text-grey-lighten-1'">{{ row.counts[c] || 0 }}</span>
-                  </td>
-                  <td v-if="pivotMatrix.useCol" class="text-center font-weight-bold text-blue-grey-darken-2">{{ row.total }}</td>
-                  <td class="text-center text-grey-darken-1">{{ row.pct }}%</td>
-                </tr>
-              </tbody>
-              <tfoot class="bg-grey-lighten-3">
-                <tr class="font-weight-bold">
-                  <td style="position:sticky;left:0;background:#eeeeee;z-index:1;">總計</td>
-                  <td v-for="c in pivotMatrix.colHeaders" :key="c" class="text-center">{{ pivotMatrix.totals[c] || 0 }}</td>
-                  <td v-if="pivotMatrix.useCol" class="text-center text-deep-orange-darken-3">{{ pivotMatrix.grandTotal }}</td>
-                  <td class="text-center">100%</td>
-                </tr>
-              </tfoot>
-            </v-table>
-          </div>
-        </v-card-text>
-
-        <v-divider></v-divider>
-        <v-card-actions class="pa-3 bg-grey-lighten-4">
-          <v-btn variant="text" color="primary" prepend-icon="mdi-content-copy"
-            :disabled="pivotMatrix.rows.length === 0" @click="copyPivotTable">複製表格</v-btn>
-          <v-spacer></v-spacer>
-          <v-btn color="primary" variant="flat" @click="isPivotDialogVisible = false">完成</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
     <!-- 下載人員行程表(PNG)：勾選人員後下載（每人一張 / 合併一張） -->
     <v-dialog v-model="isPersonPngDialogVisible" max-width="640px" scrollable :fullscreen="xs">
       <v-card>
@@ -1962,6 +1852,28 @@
     @fetch-range="handleListExportFetchRange"
   />
 
+  <!-- 資料透視（比照銷控資料透視：自選日期區間、多列多欄多值、篩選器、方案） -->
+  <InspectionPivotDialog
+    v-if="pivotDialogMounted"
+    ref="pivotDialogRef"
+    v-model="isPivotDialogVisible"
+    :project-id="projectId"
+    :project-name="projectName"
+    :items="listExportItems"
+    :custom-fields="pivotCustomFields"
+    :type-options="currentTypeOptions"
+    :method-options="currentMethodOptions"
+    :calendar-statuses="selectedStatuses"
+    :calendar-types="selectedTypes"
+    :calendar-methods="selectedMethods"
+    :range-start="listExportRangeStart"
+    :range-end="listExportRangeEnd"
+    :fetching="isListExportFetching"
+    :can-edit="canEdit"
+    @fetch-range="handleListExportFetchRange"
+    @open-event="handleCustomEventClick"
+  />
+
   </v-container>
 
 <teleport to="body">
@@ -2068,6 +1980,7 @@ const AdminAddBookingDialog = defineAsyncComponent(() => import('@/components/Ad
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
 import BookingGuideButton from '@/components/BookingGuideButton.vue';
 const ScheduleListExportDialog = defineAsyncComponent(() => import('@/components/ScheduleListExportDialog.vue'));
+const InspectionPivotDialog = defineAsyncComponent(() => import('@/components/InspectionPivotDialog.vue'));
 const InspectorLeaveManagerDialog = defineAsyncComponent(() => import('@/components/InspectorLeaveManagerDialog.vue'));
 const CalendarNoteManagerDialog = defineAsyncComponent(() => import('@/components/CalendarNoteManagerDialog.vue'));
 import { useLazyDialog } from '@/composables/useLazyDialog';
@@ -2263,6 +2176,8 @@ const isListExportDialogVisible = ref(false); // 下載EXCEL(列表) 對話框
 // ✅ [效能] 常駐型對話框「首次開啟才掛載、之後常駐」（元件為非同步 chunk）
 const { mounted: detailsDialogMounted, compRef: detailsDialogRef } = useLazyDialog(isDialogVisible);
 const { mounted: listExportDialogMounted, compRef: listExportDialogRef } = useLazyDialog(isListExportDialogVisible);
+const isPivotDialogVisible = ref(false); // 資料透視
+const { mounted: pivotDialogMounted, compRef: pivotDialogRef } = useLazyDialog(isPivotDialogVisible);
 const inspectionCalendarStore = useInspectionCalendarStore();
 const isAdvFilterDialogVisible = ref(false); // 進階篩選對話框（自「篩選與顯示設定」拆出）
 const selectedStatisticsTypes = ref([]); // 儲存 Dialog 中被勾選的項目 (e.g., ['初驗', '複驗'])
@@ -3738,219 +3653,14 @@ const statisticsMatrix = computed(() => {
 });
 // ✅ END: 替換 statisticsMatrix
 
-// --- 資料透視：對目前日期區間的預約資料做靈活的交叉統計 ---
-const isPivotDialogVisible = ref(false);
-const pivotRowDim = ref('inspectors');     // 列維度
-const pivotColDim = ref('none');           // 欄維度（'none' = 只算數量）
-const PIVOT_EMPTY_LABEL = '（未填寫）';
-const PIVOT_WEEKDAY_ORDER = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+// --- 資料透視（InspectionPivotDialog）：自訂欄位與時間表標題顯示同源 ---
+const pivotCustomFields = computed(() => displayFieldOptions.value.filter(f => f.isDynamic));
 
-// 可選維度：基礎欄位 + 動態自訂欄位（與「標題顯示」同源）
-const pivotDimensionOptions = computed(() => {
-  const base = [
-    { key: 'bookingType', label: '預約項目' },
-    { key: 'inspectionMethod', label: '選擇方式' },
-    { key: 'bookingSubOption', label: '子項目' },
-    { key: 'status', label: '狀態' },
-    { key: 'inspectors', label: '驗屋人員（每人分計）' },
-    { key: 'salesperson', label: '銷售人員（每人分計）' },
-    { key: 'source', label: '來源' },
-    { key: 'date', label: '日期' },
-    { key: 'weekday', label: '星期' },
-    { key: 'unitId', label: '戶別' },
-    { key: 'bookerName', label: '預約人' },
-  ];
-  const dynamic = displayFieldOptions.value
-    .filter(f => f.isDynamic)
-    .map(f => ({ key: `dyn:${f.key}`, label: f.label }));
-  return [...base, ...dynamic];
-});
-const pivotColDimOptions = computed(() => [
-  { key: 'none', label: '（無，只計數量）' },
-  ...pivotDimensionOptions.value.filter(o => o.key !== pivotRowDim.value),
-]);
-function pivotDimensionLabel(key) {
-  return pivotDimensionOptions.value.find(o => o.key === key)?.label || key;
-}
-// 取得事件在某維度下的值（陣列；驗屋人員一筆可拆多人，各計一次）
-function getPivotValues(evt, dimKey) {
-  if (dimKey.startsWith('dyn:')) {
-    const field = displayFieldOptions.value.find(f => f.isDynamic && f.key === dimKey.slice(4));
-    const v = field ? getFieldValue(evt, field) : null;
-    return (v === null || v === undefined || v === '') ? [PIVOT_EMPTY_LABEL] : [String(v)];
-  }
-  switch (dimKey) {
-    case 'inspectors': {
-      const raw = evt.inspectors;
-      const list = Array.isArray(raw) ? raw : String(raw || '').split(/[,、，;；/]+/);
-      const cleaned = list.map(s => String(s).trim()).filter(Boolean);
-      return cleaned.length ? cleaned : [PIVOT_EMPTY_LABEL];
-    }
-    case 'salesperson': {
-      const list = normalizeSalespersons(evt.salesperson);
-      return list.length ? list : [PIVOT_EMPTY_LABEL];
-    }
-    case 'source':
-      return [resolveSourceKey(evt.source) === 'admin' ? '後台新增' : '前台預約'];
-    case 'date':
-      return [evt.start ? format(evt.start, 'yyyy-MM-dd') : PIVOT_EMPTY_LABEL];
-    case 'weekday':
-      return [evt.start ? format(evt.start, 'EEEE', { locale: zhTW }) : PIVOT_EMPTY_LABEL];
-    default: {
-      const v = evt[dimKey];
-      return (v === null || v === undefined || v === '') ? [PIVOT_EMPTY_LABEL] : [String(v)];
-    }
-  }
-}
-// 資料透視的狀態篩選：開啟對話框時預設帶入行事曆目前的狀態勾選，可在對話框內獨立調整
-const PIVOT_STATUS_OPTIONS = ['預約中', '取消', '已完成'];
-const pivotStatuses = ref([...PIVOT_STATUS_OPTIONS]);
-watch(isPivotDialogVisible, (open) => {
-  if (open) pivotStatuses.value = [...selectedStatuses.value];
-});
-// 分析資料來源：目前日期區間 + 行事曆的「項目/選擇方式」篩選 + 對話框內的狀態勾選
-// （並以可見日期範圍再過濾一次，未顯示在行事曆網格上的預約一律不納入）
-const pivotSourceEvents = computed(() => {
-  const appts = allAppointments.value.filter(appt =>
-    matchesOptionFilter(appt.status, pivotStatuses.value, PIVOT_STATUS_OPTIONS) && matchesTypeMethodFilters(appt)
-  );
-  const processed = processAppointments(appts);
-  const s = startDate.value;
-  const e = endDate.value;
-  if (!s || !e) return processed;
-  const sKey = format(s, 'yyyy-MM-dd');
-  const eKey = format(e, 'yyyy-MM-dd');
-  return processed.filter(ev => {
-    if (!ev.start) return false;
-    const k = format(ev.start, 'yyyy-MM-dd');
-    return k >= sKey && k <= eKey;
-  });
-});
-// 維度鍵值排序：日期/星期依序、其餘依數量多→少（同數量依筆劃/字典序）
-function sortPivotKeys(keys, dimKey, getTotal) {
-  if (dimKey === 'date') return [...keys].sort();
-  if (dimKey === 'weekday') {
-    return [...keys].sort((a, b) => PIVOT_WEEKDAY_ORDER.indexOf(a) - PIVOT_WEEKDAY_ORDER.indexOf(b));
-  }
-  return [...keys].sort((a, b) => (getTotal(b) - getTotal(a)) || a.localeCompare(b, 'zh-Hant'));
-}
-const pivotMatrix = computed(() => {
-  const events = pivotSourceEvents.value;
-  const rowDim = pivotRowDim.value;
-  const colDim = pivotColDim.value;
-  const useCol = colDim && colDim !== 'none';
-
-  const rowMap = new Map();   // rowKey -> { total, cols: Map(colKey -> count) }
-  const colTotals = new Map();
-  let grandTotal = 0;
-
-  for (const evt of events) {
-    const rowVals = getPivotValues(evt, rowDim);
-    const colVals = useCol ? getPivotValues(evt, colDim) : ['__count__'];
-    for (const r of rowVals) {
-      let row = rowMap.get(r);
-      if (!row) { row = { total: 0, cols: new Map() }; rowMap.set(r, row); }
-      for (const c of colVals) {
-        row.cols.set(c, (row.cols.get(c) || 0) + 1);
-        colTotals.set(c, (colTotals.get(c) || 0) + 1);
-        row.total++;
-        grandTotal++;
-      }
-    }
-  }
-
-  const rowKeys = sortPivotKeys([...rowMap.keys()], rowDim, k => rowMap.get(k).total);
-  const colHeaders = useCol
-    ? sortPivotKeys([...colTotals.keys()], colDim, k => colTotals.get(k) || 0)
-    : ['數量'];
-  const rows = rowKeys.map(name => {
-    const row = rowMap.get(name);
-    const counts = {};
-    if (useCol) {
-      for (const c of colHeaders) counts[c] = row.cols.get(c) || 0;
-    } else {
-      counts['數量'] = row.total;
-    }
-    return {
-      name,
-      counts,
-      total: row.total,
-      pct: grandTotal ? Math.round((row.total / grandTotal) * 1000) / 10 : 0,
-    };
-  });
-  const totals = {};
-  if (useCol) {
-    for (const c of colHeaders) totals[c] = colTotals.get(c) || 0;
-  } else {
-    totals['數量'] = grandTotal;
-  }
-  return { rows, colHeaders, totals, grandTotal, useCol, eventCount: events.length };
-});
-// 列維度變更時，若與欄維度相同則重設欄維度，避免同維度交叉
-watch(pivotRowDim, (newDim) => {
-  if (newDim === pivotColDim.value) pivotColDim.value = 'none';
-});
-// 是否有「人次」計算（驗屋人員一筆多人會分別計入，總計會大於筆數）
-const pivotHasPersonCount = computed(() =>
-  pivotRowDim.value === 'inspectors' || pivotColDim.value === 'inspectors'
-);
-// --- 資料透視表欄位排序：點表頭切換 升冪 → 降冪 → 回復預設 ---
-// key: '__name__'（列名稱欄）| '__total__'（總計/佔比欄）| 欄維度的各欄名
-const pivotSort = ref({ key: null, dir: 'asc' });
-watch([pivotRowDim, pivotColDim], () => {
-  pivotSort.value = { key: null, dir: 'asc' };
-});
-function togglePivotSort(key) {
-  if (pivotSort.value.key === key) {
-    pivotSort.value = pivotSort.value.dir === 'asc'
-      ? { key, dir: 'desc' }
-      : { key: null, dir: 'asc' }; // 第三次點擊回復預設排序
-  } else {
-    // 名稱欄預設 A→Z，數值欄預設大→小
-    pivotSort.value = { key, dir: key === '__name__' ? 'asc' : 'desc' };
-  }
-}
-function pivotSortIcon(key) {
-  if (pivotSort.value.key !== key) return 'mdi-unfold-more-horizontal';
-  return pivotSort.value.dir === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down';
-}
-const sortedPivotRows = computed(() => {
-  const { key, dir } = pivotSort.value;
-  const rows = pivotMatrix.value.rows;
-  if (!key) return rows;
-  const mul = dir === 'asc' ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    if (key === '__name__') {
-      const rowDim = pivotRowDim.value;
-      if (rowDim === 'weekday') {
-        return (PIVOT_WEEKDAY_ORDER.indexOf(a.name) - PIVOT_WEEKDAY_ORDER.indexOf(b.name)) * mul;
-      }
-      // 日期為 yyyy-MM-dd 字串，字典序即時間序
-      return a.name.localeCompare(b.name, 'zh-Hant') * mul;
-    }
-    const av = key === '__total__' ? a.total : (a.counts[key] || 0);
-    const bv = key === '__total__' ? b.total : (b.counts[key] || 0);
-    return ((av - bv) * mul) || a.name.localeCompare(b.name, 'zh-Hant');
-  });
-});
-// 將目前資料透視表複製為 TSV（可直接貼進 Excel / Google Sheets）
-function copyPivotTable() {
-  const m = pivotMatrix.value;
-  const lines = [];
-  lines.push([
-    pivotDimensionLabel(pivotRowDim.value),
-    ...(m.useCol ? m.colHeaders : ['數量']),
-    '總計', '佔比',
-  ].join('\t'));
-  for (const row of sortedPivotRows.value) {
-    lines.push([
-      row.name,
-      ...m.colHeaders.map(c => row.counts[c] || 0),
-      row.total, `${row.pct}%`,
-    ].join('\t'));
-  }
-  lines.push(['總計', ...m.colHeaders.map(c => m.totals[c] || 0), m.grandTotal, '100%'].join('\t'));
-  handleCopy(lines.join('\n'));
+// 人員行程表依人員拆分：一筆多位人員各列一次，未填寫歸「（未填寫）」
+const PERSON_EMPTY_LABEL = '（未填寫）';
+function getPersonNames(evt, dimKey) {
+  const list = dimKey === 'inspectors' ? splitInspectors(evt.inspectors) : normalizeSalespersons(evt.salesperson);
+  return list.length ? list : [PERSON_EMPTY_LABEL];
 }
 
 // 讀取目前日期範圍的驗屋人員排休（供事件人員標籤與詳細資訊 chips 標記）
@@ -5163,18 +4873,18 @@ const personPngEventsInRange = computed(() => {
     .sort((a, b) => a.start - b.start);
 });
 
-// 依人員拆分：拆人邏輯與資料透視相同（getPivotValues）；未填寫歸到最後，其餘依筆數多→少
+// 依人員拆分（getPersonNames）；未填寫歸到最後，其餘依筆數多→少
 function groupPersonPngEvents(dimKey) {
   const map = new Map();
   personPngEventsInRange.value.forEach(evt => {
-    getPivotValues(evt, dimKey).forEach(name => {
+    getPersonNames(evt, dimKey).forEach(name => {
       if (!map.has(name)) map.set(name, []);
       map.get(name).push(evt);
     });
   });
   return Array.from(map.entries()).sort((a, b) => {
-    const aEmpty = a[0] === PIVOT_EMPTY_LABEL ? 1 : 0;
-    const bEmpty = b[0] === PIVOT_EMPTY_LABEL ? 1 : 0;
+    const aEmpty = a[0] === PERSON_EMPTY_LABEL ? 1 : 0;
+    const bEmpty = b[0] === PERSON_EMPTY_LABEL ? 1 : 0;
     return (aEmpty - bEmpty) || (b[1].length - a[1].length) || a[0].localeCompare(b[0], 'zh-Hant');
   });
 }
@@ -5243,7 +4953,7 @@ function buildPersonPngRowsHTML(person, events, isInspectorBlock) {
     const dateLabel = `${format(evt.start, 'MM/dd')}（${PERSON_PNG_DOW[evt.start.getDay()]}）`;
     // 驗屋人員區塊：該人員於該日該時段排休時，於時段旁標註提醒
     let leaveBadge = '';
-    if (isInspectorBlock && person !== PIVOT_EMPTY_LABEL) {
+    if (isInspectorBlock && person !== PERSON_EMPTY_LABEL) {
       const leaveType = getLeaveTypeForSlot(inspectorLeaveMap.value, dateKey, time, person);
       if (leaveType) {
         leaveBadge = `<span style="margin-left:4px;background:#FCE4EC;color:#C2185B;border:1px solid #F48FB1;border-radius:3px;padding:0 4px;font-weight:800;">${LEAVE_TYPE_LABELS[leaveType]}</span>`;
@@ -5748,23 +5458,6 @@ function navigateToHouseholdGrid() {
 /* teleport 到 body 的日期選單置頂，避免被其他元素遮住 */
 .dp__outer_menu_wrap {
   z-index: 3000 !important;
-}
-
-/* --- 資料透視：狀態勾選列高度收斂 --- */
-.pivot-status-chips .v-chip-group__content,
-.pivot-status-chips {
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-/* --- 資料透視：可排序表頭 --- */
-.pivot-sortable {
-  cursor: pointer;
-  white-space: nowrap;
-  user-select: none;
-}
-.pivot-sortable:hover {
-  background-color: #eceff1 !important;
 }
 
 /* --- 時段篩選引導提示動畫 --- */

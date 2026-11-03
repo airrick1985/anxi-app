@@ -530,7 +530,7 @@
                 <tr><td><b class="pin">4</b></td><td class="g-nowrap">行事曆備註</td><td>在指定日期顯示備註</td></tr>
                 <tr><td><b class="pin">5</b></td><td class="g-nowrap">下載時間表</td><td>PNG 或 Excel</td></tr>
                 <tr><td><b class="pin">6</b></td><td class="g-nowrap">統計摘要</td><td>項目 × 狀態的件數</td></tr>
-                <tr><td><b class="pin">7</b></td><td class="g-nowrap">資料透視</td><td>例：各驗屋人員件數，可「複製表格」</td></tr>
+                <tr><td><b class="pin">7</b></td><td class="g-nowrap">資料透視</td><td>自選日期區間做交叉統計，例：各驗屋人員 × 項目件數</td></tr>
                 <tr><td><b class="pin">8</b></td><td class="g-nowrap">顯示設定</td><td>卡片顯示欄位、事件顏色</td></tr>
               </tbody>
             </table>
@@ -544,6 +544,16 @@
             <li>「篩選」依狀態、項目、方式、驗屋人員等條件；有條件作用時按鈕變橘色「篩選中」</li>
             <li>有預約被篩選隱藏時，時間表上方會提示，按「全部顯示」還原篩選並跳到該筆；目前範圍沒有預約時，可按「前往」跳到最近的預約</li>
             <li>點左上角「<b>時間</b>」：自動顯示（只列有預約的時段）或手動選擇時段；手動時有預約的時段一定會列出，未勾選的標 <i class="mdi mdi-auto-fix"></i></li>
+          </ul>
+
+          <h3>資料透視</h3>
+          <ul class="g-list">
+            <li>開啟時帶入時間表目前的日期區間與狀態、項目、方式；可改起訖或按「本月」「今年」等快選，超出的日期會自動載入</li>
+            <li>把左側欄位拖到「列／欄／值／篩選器」，或在各區按「＋新增」選取（手機版用「＋新增」）</li>
+            <li>值：預約筆數、戶數（不重複），或任一欄位的「不重複計數」「有填筆數」，可放多個並顯示佔比</li>
+            <li>驗屋人員、銷售人員分「每人分計」（一筆兩人各算一次，各列加總可能大於總計）與「組合」兩種</li>
+            <li>點儲存格看該格的預約清單，再點一筆開啟預約詳細資訊</li>
+            <li>「儲存方案」全建案共用（需修改權限），快選的日期會依當天重算；可複製表格、匯出 Excel／PDF</li>
           </ul>
 
           <h3>修改預約</h3>
@@ -835,7 +845,7 @@ import { useRoute, useRouter } from 'vue-router';
 import GuideFigure from './GuideFigure.vue';
 import { bookingGuideShotSrc as shot } from './bookingGuideShots';
 
-const UPDATED_AT = '2026-11-01';
+const UPDATED_AT = '2026-11-03';
 
 const sections = [
   { id: 'start', no: '', title: '開始之前' },
