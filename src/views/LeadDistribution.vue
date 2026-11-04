@@ -26,6 +26,9 @@
         <button v-if="isAdmin || isReceptionist" type="button" class="mac-btn mac-btn--primary" @click="showUploadDialog = true">
           <v-icon size="16">mdi-text-box-plus-outline</v-icon>解析與分配
         </button>
+        <button type="button" class="mac-btn" title="資料透視" @click="openLeadPivot">
+          <v-icon size="16">mdi-table-pivot</v-icon><span class="mac-hide-xs">資料透視</span>
+        </button>
         <v-menu location="bottom end" content-class="mac-menu">
           <template #activator="{ props: menuProps }">
             <button type="button" class="mac-btn" title="匯出" :disabled="isLeadsExporting" v-bind="menuProps">
@@ -336,6 +339,24 @@
         </div>
       </v-window-item>
     </v-window>
+
+   <!-- 資料透視：第一次開啟才載入元件 -->
+   <LeadPivotDialog
+     v-if="leadPivotOpened"
+     :key="props.projectId"
+     v-model="leadPivotDialog"
+     :project-id="props.projectId"
+     :project-name="projectName"
+     :leads="exportScopeLeads"
+     :report-logs="allProjectLogs"
+     :reports-loading="reportLogsLoading"
+     :reports-error="reportLogsError"
+     :status-options="statusOptions"
+     :reservations-by-phone="reservationsByPhone"
+     :can-manage-presets="isReceptionist || isAdmin"
+     @load-reports="subscribeProjectLogs"
+     @open-lead="openReport"
+   />
 
    <!-- ✅ 效能優化：聯絡回報 Dialog 抽成獨立子元件，
         表單輸入只重繪 Dialog 本身，不再連動整份名單列表 -->
@@ -1528,7 +1549,7 @@
 
 <script setup>
 import LeadDetailDialog from '@/components/LeadDetailDialog.vue'; // Import Component
-import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, reactive, watch, defineAsyncComponent } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useUiStore } from '@/store/uiStore';
@@ -1624,6 +1645,7 @@ import LeadSettingsDialog from '@/components/LeadSettingsDialog.vue';
 
 
 import LeadReportDialog from '@/components/LeadReportDialog.vue';
+const LeadPivotDialog = defineAsyncComponent(() => import('@/components/pivot/LeadPivotDialog.vue'));
 import MacFilterPopover from '@/components/MacFilterPopover.vue';
 import GoogleSheetSyncCard from '@/components/GoogleSheetSyncCard.vue';
 import { resolveLeadStatusColor, buildLeadStatusStyle, hexToRgba } from '@/utils/leadStatusColors';
@@ -3833,6 +3855,46 @@ const onSettingsUpdated = (s) => {
 
 
 
+// ✅ 效能優化：contactLogs (collectionGroup 全專案回報紀錄) 只有統計圖表與資料透視的回報紀錄用得到，
+//    改為第一次切到「聯絡名單統計」分頁或透視切到回報紀錄時才訂閱，一般銷售人員不用時不載入
+let logsSubscribed = false;
+const reportLogsLoading = ref(false);
+const reportLogsError = ref('');
+const subscribeProjectLogs = () => {
+  if (logsSubscribed) return;
+  logsSubscribed = true;
+  reportLogsLoading.value = true;
+  reportLogsError.value = '';
+
+  const logsQuery = query(
+    collectionGroup(db, 'contactLogs'),
+    where('projectId', '==', props.projectId)
+  );
+
+  const unsubLogs = onSnapshot(logsQuery, (snap) => {
+    // 在 map 時加入 leadId，方便後續與名單對接
+    allProjectLogs.value = snap.docs.map(d => ({
+      ...d.data(),
+      leadId: d.ref.parent.parent.id // 取得父文件 (leads/{id}) 的 ID
+    }));
+    reportLogsLoading.value = false;
+  }, (err) => {
+    console.error('載入回報紀錄失敗:', err);
+    reportLogsLoading.value = false;
+    reportLogsError.value = '回報紀錄載入失敗';
+    logsSubscribed = false; // 允許重試
+  });
+  snapshotUnsubs.push(unsubLogs);
+};
+
+// --- 資料透視 ---
+const leadPivotOpened = ref(false);
+const leadPivotDialog = ref(false);
+const openLeadPivot = () => {
+  leadPivotOpened.value = true;
+  leadPivotDialog.value = true;
+};
+
 onMounted(async () => {
   fetchAITemplates();
 
@@ -3869,28 +3931,6 @@ onMounted(async () => {
   }
 
   // ✅ 新增：權限檢查 - 防止非櫃檯/管理員通過滑動切換進入受保護TAB
-  // ✅ 效能優化：contactLogs (collectionGroup 全專案回報紀錄) 只有統計圖表用得到，
-  //    改為第一次切到「聯絡名單統計」分頁時才訂閱，一般銷售人員不再載入
-  let logsSubscribed = false;
-  const subscribeProjectLogs = () => {
-    if (logsSubscribed) return;
-    logsSubscribed = true;
-
-    const logsQuery = query(
-      collectionGroup(db, 'contactLogs'),
-      where('projectId', '==', props.projectId)
-    );
-
-    const unsubLogs = onSnapshot(logsQuery, (snap) => {
-      // 在 map 時加入 leadId，方便後續與名單對接
-      allProjectLogs.value = snap.docs.map(d => ({
-        ...d.data(),
-        leadId: d.ref.parent.parent.id // 取得父文件 (leads/{id}) 的 ID
-      }));
-    });
-    snapshotUnsubs.push(unsubLogs);
-  };
-
   watch(activeTab, (newTab) => {
     const restrictedTabs = ['management'];
 

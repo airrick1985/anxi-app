@@ -20762,9 +20762,17 @@ async function _handleFetchCustomerList(data, db) {
           vipFieldsData[label] = normalizeSingleSelect(rawValue);
         });
 
+        // ✅ [資料透視] 客戶資料以 profile 為準（與儀表板一致）：帶出所有表單欄位（中文鍵），
+        // 系統欄位（英文鍵）與銷售歸屬不需要，避免回傳量變大
+        const profileAttrs = {};
+        Object.keys(profileData).forEach(key => {
+          if (/[^\x00-\x7F]/.test(key) && key !== '銷售人員' && key !== '銷售人員電話') profileAttrs[key] = profileData[key];
+        });
+
         flatSubmissions.push({
           ...latestSub,  // 包含所有提交欄位
           ...vipFieldsData,  // ✅ 用 profile 的 vipFormFields 覆蓋（如果存在）
+          'profileAttrs': profileAttrs,
           'submittedAt': latestSub.submittedAt ? latestSub.submittedAt.toDate().toISOString() : null,
 
           'docId': doc.id,
@@ -20780,7 +20788,10 @@ async function _handleFetchCustomerList(data, db) {
           'otherPhones': (Array.isArray(docData.otherPhones) && docData.otherPhones.length > 0
             ? docData.otherPhones
             : (Array.isArray(profileData.otherPhones) ? profileData.otherPhones : [])
-          ).map(p => ({ name: (p && p.name) || '', phone: (p && p.phone) || '' })),
+          ).map(p => ({ name: (p && p.name) || '', phone: (p && p.phone) || '', relation: (p && p.relation) || '' })),
+
+          // ✅ [資料透視] 關聯建案
+          'linkedProjectIds': docData.linkedProjectIds || [],
 
           // 來自 interactionLogs 的最新資訊 (共用)
           '等級研判': latestRating,
@@ -21710,6 +21721,10 @@ async function _handleFetchFullCustomersForExport(data, db) {
         linkedProjectIds: docData.linkedProjectIds || [],
         allProjectIds: docData.allProjectIds || [docData.projectId || projectId],
         isLinked: (docData.projectId || projectId) !== projectId, // 標記是否為關聯來源
+        // ✅ [資料透視] 其他聯絡人
+        otherPhones: Array.isArray(docData.otherPhones) && docData.otherPhones.length > 0
+          ? docData.otherPhones
+          : (Array.isArray(docData.profile?.otherPhones) ? docData.profile.otherPhones : []),
         createdAt: toIso(docData.createdAt),
         updatedAt: toIso(docData.updatedAt)
       });

@@ -81,6 +81,9 @@
               <button type="button" class="mac-icon-btn" title="重新整理" :disabled="isLoadingCustomerList" @click="refreshCustomerView">
                 <v-icon size="19" :class="{ 'cm-spin': isLoadingCustomerList }">mdi-refresh</v-icon>
               </button>
+              <button type="button" class="mac-btn" title="資料透視" @click="openCustomerPivot">
+                <v-icon size="16">mdi-table-pivot</v-icon><span class="mac-hide-xs">資料透視</span>
+              </button>
               <button v-if="canManageSettings" type="button" class="mac-btn" title="匯出" @click="exportDialog = true">
                 <v-icon size="16">mdi-tray-arrow-down</v-icon><span class="mac-hide-xs">匯出</span>
               </button>
@@ -305,6 +308,22 @@
             :settings="settings"
             :can-see-all="isCurrentUserCounter"
             :systems="fullDataSystems"
+            @open-customer="openCustomerFromDashboard"
+          />
+
+          <!-- 資料透視：第一次開啟才載入元件，切換建案時重建 -->
+          <CustomerPivotDialog
+            v-if="customerPivotOpened"
+            :key="props.projectId"
+            v-model="customerPivotDialog"
+            :project-id="props.projectId"
+            :project-name="projectName"
+            :customer-list="customerList"
+            :list-loading="isLoadingCustomerList"
+            :settings="settings"
+            :can-see-all="isCurrentUserCounter"
+            :systems="fullDataSystems"
+            :project-names="projectStore.idToNameMap"
             @open-customer="openCustomerFromDashboard"
           />
 
@@ -1396,6 +1415,7 @@ import { format } from 'date-fns';
 const LeadDistribution = defineAsyncComponent(() => import('@/views/LeadDistribution.vue'));
 const ViewingReservationCalendar = defineAsyncComponent(() => import('@/views/ViewingReservationCalendar.vue'));
 const CustomerDashboard = defineAsyncComponent(() => import('@/components/CustomerDashboard.vue'));
+const CustomerPivotDialog = defineAsyncComponent(() => import('@/components/pivot/CustomerPivotDialog.vue'));
 import {
   collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc,
   serverTimestamp, orderBy, limit, startAfter, getDoc // ✅ 新增 doc, updateDoc, getDoc
@@ -1704,6 +1724,15 @@ const refreshCustomerView = () => {
   else loadCustomerList();
 };
 // 儀表板「待追蹤」點客戶：直接開洽談紀錄
+// --- 客戶資料：資料透視 ---
+const customerPivotOpened = ref(false);
+const customerPivotDialog = ref(false);
+const openCustomerPivot = () => {
+  customerPivotOpened.value = true;
+  customerPivotDialog.value = true;
+  if (!customerList.value.length && !isLoadingCustomerList.value) loadCustomerList();
+};
+
 const openCustomerFromDashboard = ({ docId, salesName }) => {
   selectedCustomerDocId.value = docId;
   selectedCustomerSalesName.value = salesName || '';

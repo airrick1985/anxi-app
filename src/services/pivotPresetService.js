@@ -4,6 +4,8 @@
  * 每個系統一個頂層集合，依 projectId 篩選（與 announcements 相同模式）：
  *   - salesPivotPresets：銷控資料透視
  *   - inspectionPivotPresets：驗屋預約資料透視
+ *   - customerPivotPresets：客戶資料透視
+ *   - leadPivotPresets：聯絡名單透視
  * 文件欄位：
  *   projectId, name, settings（各系統自行定義的透視設定快照）,
  *   createdAt, updatedAt, createdByName, createdByKey, updatedByName, updatedByKey

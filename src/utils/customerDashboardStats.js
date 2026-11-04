@@ -54,7 +54,7 @@ export const normValues = (raw) => {
   return [...new Set(out)];
 };
 // 單選欄位：陣列取最後一個值（與客資報表 getP 一致）
-const singleValue = (raw) => {
+export const singleValue = (raw) => {
   const vals = normValues(raw);
   return vals.length ? vals[vals.length - 1] : '';
 };
@@ -99,6 +99,12 @@ export function prepareCustomers(rawList, projectId) {
         rating: firstValue(l.tags?.rating),
         reasons: normValues(l.tags?.noPurchaseReason),
         visitors: visitorCount(l.tags?.visitors),
+        minutes: durationMinutes(l.startTime, l.endTime),
+        recorder: l.recorderName || '',
+        recorderPhone: l.recorderPhone || '',
+        keyTags: normValues(l.tags?.keyTags),
+        content: l.content || '',
+        createdAt: l.createdAt || '',
       }))
       .filter(l => l.date)
       .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
@@ -121,6 +127,12 @@ export function prepareCustomers(rawList, projectId) {
       rating,
       bucket: ratingBucket(rating),
       lastContact: logs.length ? logs[logs.length - 1].date : '',
+      otherPhones: item.otherPhones || item.profile?.otherPhones || [],
+      sourceProjectId: homeProject,
+      linkedProjectIds: item.linkedProjectIds || [],
+      isLinked: homeProject !== projectId,
+      createdAt: item.createdAt || '',
+      updatedAt: item.updatedAt || '',
     });
   });
   return out;
