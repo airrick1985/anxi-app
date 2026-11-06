@@ -6,7 +6,7 @@
 //
 // 用法：node scripts/tests/payment-records-browser.mjs [輸出資料夾] [--only=T1,T7,visual]
 //   群組：T1 面板檢視、T2 新增編輯刪除改回、T3 標記已繳、T4 憑證、T5 編輯模式、T6 繳款提醒設定、T7 到期清單、
-//         T8 批次新增、T9 帶入合約期款資料、PERIOD 期別與備註、T10 計算欄位、T11 通知入口、T12 修改銷控（真實 UnitDetailModal）、
+//         T8 批次新增、T9 帶入合約期款資料、PERIOD 期別與備註、UNDATED 預計日留空、T10 計算欄位、T11 通知入口、T12 修改銷控（真實 UnitDetailModal）、
 //         T13 銷控系統（真實 SalesControlSystem）、T14 樣式修正、visual 畫面矩陣
 //   失敗項代表實際發現的問題，結束時 exit 1；已知問題（known）照常執行、列入報告但不影響結束碼，修好時會提示。明細在 <輸出資料夾>/results.json
 //   只跑部分畫面：--only=visual --screens=settings,list-manager
@@ -1364,7 +1364,7 @@ group('T2', async () => {
   check(G, '新增預計：沒有憑證區', (await d.locator('input[type=file]').count()) === 0, '');
   await clickDialogButton(page, '儲存');
   await settle(page, 150);
-  check(G, '新增預計：預計日必填', (await d.locator('.mac-callout--error').innerText()).includes('請選擇預計日'), '');
+  check(G, '新增預計：預計日和金額都沒填要擋', (await d.locator('.mac-callout--error').innerText()).includes('至少要填一個'), '');
   eq(G, '驗證失敗不呼叫 API', calls('paymentProofApi').length, 0);
   await d.locator('input[aria-label="預計日"]').fill(addDays(10));
   await d.locator('input[aria-label="預計金額"]').fill('0');
@@ -1619,10 +1619,6 @@ group('T3', async () => {
   await settle(page, 100);
   eq(G, '少於預計：出現差額', await d.locator('.mpd-balance-amount').innerText(), `差額 ${money(100000)} 元`);
   check(G, '差額開關預設開啟', await d.locator('.mpd-switch input').isChecked(), '');
-  await clickDialogButton(page, '確認已繳');
-  await settle(page, 150);
-  check(G, '差額預計日必填', (await d.locator('.mac-callout--error').innerText()).includes('差額的預計日'), '');
-  eq(G, '差額日未填不呼叫 API', calls('paymentProofApi').length, 0);
   await d.getByLabel('預計日').fill(addDays(14));
   await clickDialogButton(page, '確認已繳');
   await d.waitFor({ state: 'hidden' });
@@ -3185,8 +3181,8 @@ group('T9', async () => {
   eq(G, '金額不能在視窗內修改', await d.locator('.pti-amount input').count(), 0);
   eq(G, '沒有範本選單', await d.locator('.v-select').count(), 0);
   check(G, '有修改期款按鈕', await d.getByRole('button', { name: '修改期款' }).isVisible(), '');
-  check(G, '未填預計日不可帶入', await submitBtn(d).isDisabled(), '');
-  check(G, '提示未填筆數', (await d.locator('.pti-missing').innerText()).includes('6 筆'), await d.locator('.pti-missing').innerText());
+  check(G, '未填預計日也可帶入', !(await submitBtn(d).isDisabled()), '');
+  eq(G, '提示未填筆數與不會提醒', (await d.locator('.pti-missing').innerText()).trim(), '6 筆未填預計日，不會提醒');
   await rowOf(d, '頭期款').locator('input[type=date]').fill(addDays(10));
   await rowOf(d, '開工期款').locator('input[type=date]').fill(addDays(20));
   await keepOnly(d, ['頭期款', '開工期款']);
@@ -3848,6 +3844,173 @@ group('PERIOD', async () => {
   await sign.close();
 });
 
+// ─────────────── 預計日留空 ───────────────
+group('UNDATED', async () => {
+  const G = 'UNDATED 預計日留空';
+  const setUnit = (unit, patch) => {
+    const key = `salesHouseholds/p1_${unit}`;
+    backend.db.store.set(key, { ...backend.db.store.get(key), ...patch });
+  };
+  const records = unit => backend.db.store.get(`salesHouseholds/p1_${unit}`).paymentRecords;
+  const undatedPlan = (id, expectedAmount, period, extra = {}) => plan(id, 0, expectedAmount, '', { expectedDate: null, period, planSource: 'contract', ...extra });
+  const openRowMenu = async (row, page, item) => {
+    await row.getByRole('button', { name: '更多操作' }).click();
+    await settle(page, 200);
+    await page.locator('.v-menu.v-overlay--active .v-list-item', { hasText: item }).click();
+    await settle(page, 300);
+  };
+
+  // 帶入合約期款：預計日留空也能送出
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: { manualRows: [contractSingle('a', '簽約金', 100), contractSingle('b', '尾款', 2000)] } });
+  const { page, close } = await open({ view: 'panel', unit: 'EMPTY', total: 2100 });
+  await settle(page, 400);
+  await page.locator('.pr-actions').getByRole('button', { name: '帶入合約期款資料' }).click();
+  await settle(page, 700);
+  const d = dialog(page);
+  await d.locator('.pti-row').filter({ hasText: '簽約金' }).locator('input[type=date]').fill(addDays(10));
+  await settle(page, 100);
+  eq(G, '帶入：只提示未填筆數，不阻擋', [(await d.locator('.pti-missing').innerText()).trim(), await d.locator('.mac-sheet-foot .mac-btn--primary').isDisabled()], ['1 筆未填預計日，不會提醒', false]);
+  await evidence(page, 'undated-import');
+  await d.locator('.mac-sheet-foot .mac-btn--primary').click();
+  await d.waitFor({ state: 'hidden' });
+  await settle(page, 300);
+  const adds = calls('paymentProofApi', 'addRecord').map(c => c.payload);
+  eq(G, '帶入：留空送 null，有填的照常', adds.map(a => [a.period, a.expectedDate, a.expectedAmount, a.planSource]), [['簽約金', addDays(10), 1000000, 'contract'], ['尾款', null, 20000000, 'contract']]);
+  const stored = records('EMPTY').find(r => r.period === '尾款');
+  eq(G, '帶入：後端寫入沒有預計日、有來源標記', [stored.expectedDate ?? null, stored.expectedAmount, stored.planSource, stored.date, stored.amount], [null, 20000000, 'contract', '', null]);
+
+  // 繳款紀錄：留在預計區排最後，金額計入待繳，下次到期只看有日期的
+  const plannedRows = await rowsOf(planned(page));
+  eq(G, '列表：未定日期在預計區排最後', plannedRows.map(r => r.fields['期別']), ['簽約金', '尾款']);
+  eq(G, '列表：預計日顯示未定、標籤未定日期', [plannedRows[1].fields['預計日'], plannedRows[1].tag], ['未定', '未定日期']);
+  eq(G, '列表：不在已繳區', (await rowsOf(paid(page))).length, 0);
+  const summary = await stats(page);
+  eq(G, '統計：待繳含未定日期', summary['待繳'], `${money(21000000)} 元`);
+  check(G, '統計：下次到期只看有日期的', summary['下次到期'].includes(addDays(10).replace(/-/g, '/')), summary['下次到期']);
+  await evidence(page, 'undated-panel');
+
+  // 再開帶入視窗：比對到同一筆，顯示預計日未定
+  await page.locator('.pr-actions').getByRole('button', { name: '帶入合約期款資料' }).click();
+  await settle(page, 700);
+  const again = dialog(page).locator('.pti-row').filter({ hasText: '尾款' });
+  eq(G, '重開帶入：已帶入、顯示預計日未定', [(await again.locator('.mac-tag').innerText()).trim(), (await again.locator('.pti-date-text').innerText()).trim()], ['已帶入', '預計日未定']);
+  await clickDialogButton(page, '取消');
+  await settle(page, 300);
+
+  // 補上日期：變成一般預計繳款
+  await openRowMenu(plannedRow(page, '尾款'), page, '編輯');
+  const fillDate = dialog(page);
+  eq(G, '編輯：預計日是空的', await fillDate.locator('input[aria-label="預計日"]').inputValue(), '');
+  await fillDate.locator('input[aria-label="預計日"]').fill(addDays(40));
+  await clickDialogButton(page, '儲存');
+  await fillDate.waitFor({ state: 'hidden' });
+  await settle(page, 300);
+  const dated = (await rowsOf(planned(page))).find(r => r.fields['期別'] === '尾款');
+  eq(G, '補日期：顯示日期與剩餘天數', [dated.fields['預計日'], dated.tag], [addDays(40).replace(/-/g, '/'), '剩 40 天']);
+
+  // 清掉日期：可以；日期和金額都清掉要擋
+  await openRowMenu(plannedRow(page, '尾款'), page, '編輯');
+  const clearDate = dialog(page);
+  await clearDate.locator('input[aria-label="預計日"]').fill('');
+  await settle(page, 100);
+  await clearDate.locator('input[aria-label="預計金額"]').fill('');
+  await clickDialogButton(page, '儲存');
+  await settle(page, 200);
+  check(G, '編輯：日期和金額都清掉要擋', (await clearDate.locator('.mac-callout--error').innerText()).includes('至少要填一個'), '');
+  await clearDate.locator('input[aria-label="預計金額"]').fill('20000000');
+  await clickDialogButton(page, '儲存');
+  await clearDate.waitFor({ state: 'hidden' });
+  await settle(page, 300);
+  eq(G, '編輯：可清除預計日', records('EMPTY').find(r => r.period === '尾款').expectedDate ?? null, null);
+  await close();
+
+  // 手動新增：只填金額可以
+  backend.reset();
+  const manual = await open({ view: 'panel', unit: 'EMPTY', total: 2100 });
+  await settle(manual.page, 400);
+  await manual.page.locator('.pr-actions').getByRole('button', { name: '預計繳款', exact: true }).click();
+  await settle(manual.page);
+  const md = dialog(manual.page);
+  await md.locator('input[aria-label="預計金額"]').fill('300000');
+  await pickPeriod(md, '頭期款');
+  await clickDialogButton(manual.page, '儲存');
+  await md.waitFor({ state: 'hidden' });
+  await settle(manual.page, 300);
+  const manualAdd = calls('paymentProofApi', 'addRecord').at(-1).payload;
+  eq(G, '手動新增：只填金額可以', [manualAdd.expectedDate, manualAdd.expectedAmount, manualAdd.planSource], [null, 300000, 'manual']);
+  eq(G, '手動新增：判定為預計', (await rowsOf(planned(manual.page))).map(r => r.tag), ['未定日期']);
+
+  // 標記已繳：摘要顯示未定；可以改回預計；差額可留空且沿用期別
+  await plannedRow(manual.page, '頭期款').getByRole('button', { name: '標記已繳' }).click();
+  await settle(manual.page);
+  const mark = dialog(manual.page);
+  check(G, '標記已繳：摘要顯示預計未定', (await mark.locator('.mpd-summary').innerText()).includes('預計 未定'), await mark.locator('.mpd-summary').innerText());
+  await mark.locator('input[type=number]').first().fill('100000');
+  await settle(manual.page, 150);
+  await clickDialogButton(manual.page, '確認已繳');
+  await mark.waitFor({ state: 'hidden' });
+  await settle(manual.page, 300);
+  const afterMark = records('EMPTY');
+  eq(G, '標記已繳：轉為已繳', [afterMark[0].date, afterMark[0].amount], [TODAY, 100000]);
+  eq(G, '差額留空：沒有預計日、沿用期別', [afterMark[1].expectedDate ?? null, afterMark[1].expectedAmount, afterMark[1].period, afterMark[1].planSource], [null, 200000, '頭期款', 'balance']);
+  eq(G, '差額留空：顯示未定日期', (await rowsOf(planned(manual.page))).map(r => r.tag), ['未定日期']);
+  await openRowMenu(paidRow(manual.page, '頭期款'), manual.page, '改回預計');
+  await clickDialogButton(manual.page, '改回預計');
+  await settle(manual.page, 400);
+  const reverted = records('EMPTY')[0];
+  eq(G, '改回預計：沒有預計日也能改回', [reverted.date, reverted.amount, reverted.expectedAmount], ['', null, 300000]);
+  eq(G, '改回預計：回到預計區', (await rowsOf(planned(manual.page))).length, 2);
+  await manual.close();
+
+  // 舊資料：沒有來源標記的缺值紀錄照舊在已繳區
+  backend.reset();
+  setUnit('EMPTY', { paymentRecords: [{ id: 'old', date: '', amount: null, note: '舊資料', file: null }] });
+  const legacy = await open({ view: 'panel', unit: 'EMPTY', total: 2100 });
+  await settle(legacy.page, 400);
+  eq(G, '舊資料：缺值紀錄留在已繳區', [(await rowsOf(planned(legacy.page))).length, (await rowsOf(paid(legacy.page))).length], [0, 1]);
+  await legacy.close();
+
+  // 到期清單：列在最後、標示未定日期，不進篩選
+  backend.reset();
+  setUnit('A1', { paymentRecords: [undatedPlan('un', 500000, '未定期別'), plan('da', 3, 100000, '', { period: '有日期期別' })] });
+  const list = await open({ view: 'list', role: 'manager' });
+  await settle(list.page, 500);
+  const listed = await listTexts(list.page);
+  const undatedRow = listed.find(r => r[2] === '未定期別');
+  check(G, '到期清單：有列出且標示未定日期', !!undatedRow && undatedRow[0].includes('未定日期') && undatedRow[3] === '未定', JSON.stringify(undatedRow));
+  eq(G, '到期清單：未定日期排最後', listed.at(-1)[2], '未定期別');
+  for (const label of ['逾期', '7 天內', '30 天內']) {
+    await list.page.locator('.pd-toolbar .mac-form-seg-btn', { hasText: label }).click();
+    await settle(list.page, 200);
+    check(G, `到期清單：${label}不含未定日期`, !(await listTexts(list.page)).some(r => r[2] === '未定期別'), '');
+  }
+  await list.page.locator('.pd-toolbar .mac-form-seg-btn', { hasText: '全部' }).click();
+  await settle(list.page, 200);
+  await evidence(list.page, 'undated-list');
+  await list.close();
+
+  // 修改銷控：留空可以存；日期和金額都沒有擋下
+  backend.reset();
+  const edit = await open({ view: 'modal', unit: 'M1', editing: 1 });
+  edit.page.on('dialog', async (alert) => { await alert.accept(); });
+  await edit.page.waitForSelector('.v-dialog.v-overlay--active', { timeout: 60000 });
+  await settle(edit.page, 800);
+  await edit.page.locator('.edit-nav-item', { hasText: '戶別繳款紀錄' }).click();
+  await settle(edit.page, 500);
+  const toggle = edit.page.locator('.pr-summary:visible').first();
+  if ((await edit.page.locator('.pr-edit-card:visible').count()) === 0) { await toggle.click(); await settle(edit.page, 300); }
+  await edit.page.locator('.pr-actions').getByRole('button', { name: '預計繳款', exact: true }).click();
+  await settle(edit.page, 200);
+  await edit.page.locator('section[aria-label="預計繳款"] .pr-edit-card').last().locator('input[aria-label="預計金額"]').fill('88000');
+  await settle(edit.page, 150);
+  await edit.page.getByRole('button', { name: '儲存變更' }).first().click();
+  await settle(edit.page, 800);
+  const editSaved = backend.db.store.get('salesHouseholds/p1_M1').paymentRecords.find(r => r.expectedAmount === 88000);
+  eq(G, '修改銷控：留空寫入 null 並有來源標記', [editSaved?.expectedDate ?? null, editSaved?.planSource, editSaved?.date, editSaved?.amount], [null, 'manual', '', null]);
+  await edit.close();
+});
+
 // ─────────────── T10 列表計算欄位 ───────────────
 group('T10', async () => {
   const G = 'T10 計算欄位';
@@ -4134,7 +4297,7 @@ group('T12', async () => {
   await missing.page.locator('section[aria-label="預計繳款"] .pr-edit-card').last().locator('input[aria-label="備註"]').fill('缺日期');
   await settle(missing.page, 150);
   await save(missing.page);
-  check(G, '預計日未填擋下', missing.alerts.some(a => a.includes('未選擇預計日')) && updates().length === 0, JSON.stringify(missing.alerts));
+  check(G, '預計日和金額都沒填擋下', missing.alerts.some(a => a.includes('至少要填一個')) && updates().length === 0, JSON.stringify(missing.alerts));
   await missing.close();
 
   // 3b. 預計金額負數

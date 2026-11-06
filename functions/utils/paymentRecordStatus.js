@@ -58,24 +58,29 @@ function isPaidRecord(record) {
   return !!record && isValidYmd(record.date) && Number(record.amount) > 0;
 }
 
+// 預計繳款：未繳且有預計日，或預計日留空（有預計來源標記）；更早期缺日期的舊紀錄沒有標記，不算預計
 function isPlannedRecord(record) {
-  return !!record && isValidYmd(record.expectedDate) && !isPaidRecord(record);
+  if (!record || isPaidRecord(record)) return false;
+  return isValidYmd(record.expectedDate) || (!!record.planSource && !record.date);
 }
 
-// 預計：依預計日由近到遠（逾期自然排最前）；已繳：依繳款日由新到舊，沒有日期的舊資料排最後
+const plannedSortKey = record => (isValidYmd(record.expectedDate) ? String(record.expectedDate) : '9999-99-99');
+
+// 預計：依預計日由近到遠（逾期自然排最前），未定日期排最後；已繳：依繳款日由新到舊，沒有日期的舊資料排最後
 function splitPaymentRecords(records) {
   const list = Array.isArray(records) ? records.filter(Boolean) : [];
   const planned = list.filter(isPlannedRecord)
-    .sort((a, b) => String(a.expectedDate).localeCompare(String(b.expectedDate)));
+    .sort((a, b) => plannedSortKey(a).localeCompare(plannedSortKey(b)));
   const paid = list.filter(r => !isPlannedRecord(r))
     .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   return { planned, paid };
 }
 
-// state：paid | overdue | today | soon | upcoming | none
+// state：paid | overdue | today | soon | upcoming | undated | none
 function recordDueState(record, today = taipeiToday()) {
   if (isPaidRecord(record)) return { state: 'paid', daysLeft: null, label: '已繳' };
   if (!isPlannedRecord(record)) return { state: 'none', daysLeft: null, label: '' };
+  if (!isValidYmd(record.expectedDate)) return { state: 'undated', daysLeft: null, label: '未定日期' };
   const daysLeft = diffDays(record.expectedDate, today);
   if (daysLeft < 0) return { state: 'overdue', daysLeft, label: `逾期 ${-daysLeft} 天` };
   if (daysLeft === 0) return { state: 'today', daysLeft, label: '今天到期' };
@@ -93,7 +98,8 @@ function paidTimingNote(record) {
 
 function summarizePaymentRecords(records, today = taipeiToday()) {
   const { planned, paid } = splitPaymentRecords(records);
-  const next = planned[0] || null;
+  // 下次到期只看有日期的項目；未定日期的金額仍計入待繳
+  const next = planned.find(r => isValidYmd(r.expectedDate)) || null;
   return {
     paidYuan: paid.reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
     paidCount: paid.length,
@@ -101,7 +107,7 @@ function summarizePaymentRecords(records, today = taipeiToday()) {
     pendingYuan: planned.reduce((sum, r) => sum + (Number(r.expectedAmount) || 0), 0),
     overdueCount: planned.filter(r => recordDueState(r, today).state === 'overdue').length,
     next: next ? { record: next, ...recordDueState(next, today) } : null,
-    dueState: next ? recordDueState(next, today).state : 'none',
+    dueState: next ? recordDueState(next, today).state : (planned.length ? 'undated' : 'none'),
   };
 }
 

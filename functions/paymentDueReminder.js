@@ -82,7 +82,7 @@ function collectPlannedItems(households, today) {
       items.push({
         unitId: household.unitId,
         recordId: record.id,
-        expectedDate: record.expectedDate,
+        expectedDate: record.expectedDate || '',
         expectedAmount: record.expectedAmount ?? null,
         period: record.period || '',
         note: record.note || '',

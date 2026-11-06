@@ -299,7 +299,7 @@ function salesText(item) {
 }
 // 跨年才顯示年份，避免 01/05 看不出是哪一年
 function displayDate(ymd) {
-  if (!ymd) return '—';
+  if (!ymd) return '未定';
   return String(ymd).slice(0, 4) === String(today.value).slice(0, 4)
     ? formatMonthDay(ymd)
     : String(ymd).replace(/-/g, '/');
@@ -316,7 +316,9 @@ function goBack() {
 }
 
 function sortItems(list) {
-  return [...list].sort((a, b) => String(a.expectedDate).localeCompare(String(b.expectedDate))
+  // 未定日期排最後
+  const dateKey = item => item.expectedDate || '9999-99-99';
+  return [...list].sort((a, b) => dateKey(a).localeCompare(dateKey(b))
     || String(a.unitId).localeCompare(String(b.unitId), 'zh-Hant', { numeric: true }));
 }
 

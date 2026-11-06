@@ -233,10 +233,6 @@ async function submit() {
     return;
   }
   const needsBalance = addBalance.value && balance.value > 0;
-  if (needsBalance && !isValidYmd(balanceDate.value)) {
-    errorMessage.value = '請選擇差額的預計日';
-    return;
-  }
 
   saving.value = true;
   errorMessage.value = '';
@@ -248,7 +244,7 @@ async function submit() {
       note: props.record?.note || '',
       file: file.value,
       balancePlan: needsBalance
-        ? { expectedDate: balanceDate.value, expectedAmount: balance.value, period: props.record?.period || '', note: balanceNote(props.record?.note) }
+        ? { expectedDate: isValidYmd(balanceDate.value) ? balanceDate.value : null, expectedAmount: balance.value, period: props.record?.period || '', note: balanceNote(props.record?.note) }
         : null,
     });
     emit('update:modelValue', false);
@@ -260,7 +256,7 @@ async function submit() {
 }
 
 function formatYmd(value) {
-  return isValidYmd(value) ? String(value).replace(/-/g, '/') : '—';
+  return isValidYmd(value) ? String(value).replace(/-/g, '/') : '未定';
 }
 
 function formatMoney(value) {

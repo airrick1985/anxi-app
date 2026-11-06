@@ -768,8 +768,8 @@ test('paymentProofApi 驗證：舊呼叫方式不變、預計紀錄改驗證預�
   const unpaid = { action: 'addRecord', date: '', amount: null, expectedDate: '2026-12-20', expectedAmount: 100 };
   assert.equal(paymentPayloadError(unpaid), null);
   assert.equal(paymentPayloadError({ ...unpaid, expectedAmount: null }), null);
-  assert.match(paymentPayloadError({ ...unpaid, expectedDate: '' }), /預計繳款日/);
-  assert.match(paymentPayloadError({ ...unpaid, expectedDate: null }), /預計繳款日/);
+  assert.equal(paymentPayloadError({ ...unpaid, expectedDate: '' }), null);
+  assert.equal(paymentPayloadError({ ...unpaid, expectedDate: null }), null);
   assert.match(paymentPayloadError({ ...unpaid, expectedDate: '2026-02-30' }), /預計繳款日/);
   assert.match(paymentPayloadError({ ...unpaid, expectedAmount: 0 }), /預計金額/);
   assert.match(paymentPayloadError({ ...unpaid, expectedAmount: 1.5 }), /預計金額/);
@@ -784,9 +784,9 @@ test('paymentProofApi 驗證：舊呼叫方式不變、預計紀錄改驗證預�
   assert.equal(paymentPayloadError({ action: 'updateRecord', date: '', amount: null }), null);
 });
 
-test('paymentProofApi 更新前檢查：未繳必須有預計日，有憑證要先移除', () => {
-  assert.match(unpaidUpdateError({ date: '2026-01-01', amount: 1 }, {}), /預計繳款日/);
-  assert.match(unpaidUpdateError({ expectedDate: '2026-12-20' }, { expectedDate: null }), /預計繳款日/);
+test('paymentProofApi 更新前檢查：未繳要有預計日或預計金額，有憑證要先移除', () => {
+  assert.match(unpaidUpdateError({ date: '2026-01-01', amount: 1 }, {}), /至少要填一個/);
+  assert.match(unpaidUpdateError({ expectedDate: '2026-12-20' }, { expectedDate: null }), /至少要填一個/);
   assert.equal(unpaidUpdateError({ expectedDate: '2026-12-20' }, {}), null);
   assert.match(unpaidUpdateError({ expectedDate: '2026-12-20', file: { fileId: 'f' } }, {}), /移除憑證/);
   assert.equal(unpaidUpdateError({ expectedDate: '2026-12-20', file: { fileId: 'f' } }, { removeFile: true }), null);
@@ -1735,4 +1735,63 @@ test('到期項目帶期別；通知文字顯示期別（備註），舊資料�
   assert.equal(paymentPeriodLabel({ period: '訂金', note: '' }), '訂金');
   assert.equal(paymentPeriodLabel({ note: '第 3 期工程款' }), '第 3 期工程款');
   assert.equal(paymentPeriodLabel({}), '');
+});
+
+test('預計日留空：有預計金額可新增；預計日與金額都沒有要擋；日期格式錯仍擋', () => {
+  const unpaid = { action: 'addRecord', date: '', amount: null };
+  assert.equal(paymentPayloadError({ ...unpaid, expectedAmount: 100 }), null);
+  assert.equal(paymentPayloadError({ ...unpaid, expectedDate: '', expectedAmount: 100 }), null);
+  assert.equal(paymentPayloadError({ ...unpaid, expectedDate: null, expectedAmount: 100 }), null);
+  assert.equal(paymentPayloadError({ ...unpaid, expectedDate: '2026-12-20' }), null);
+  assert.match(paymentPayloadError(unpaid), /至少要填一個/);
+  assert.match(paymentPayloadError({ ...unpaid, expectedDate: '', expectedAmount: null }), /至少要填一個/);
+  assert.match(paymentPayloadError({ ...unpaid, expectedDate: '2026/12/20', expectedAmount: 100 }), /格式/);
+});
+
+test('預計日留空：新增後判定為預計繳款，不算已繳', () => {
+  const { isPlannedRecord, isPaidRecord } = require('../utils/paymentRecordStatus');
+  const record = buildPaymentRecord({ date: '', amount: null, expectedAmount: 100, period: '訂金', planSource: 'contract' }, { id: 'x', nowIso: 'now', file: null });
+  assert.deepEqual([record.expectedDate, record.expectedAmount, record.planSource, record.date, record.amount], [undefined, 100, 'contract', '', null]);
+  assert.equal(isPlannedRecord(record), true);
+  assert.equal(isPaidRecord(record), false);
+  const noSource = buildPaymentRecord({ date: '', amount: null, expectedAmount: 100 }, { id: 'y', nowIso: 'now', file: null });
+  assert.equal(noSource.planSource, 'manual');
+  assert.equal(isPlannedRecord(noSource), true);
+});
+
+test('預計日留空：編輯可清除日期；日期和金額都清掉要擋', () => {
+  const current = { id: 'x', date: '', amount: null, expectedDate: '2026-12-20', expectedAmount: 100, planSource: 'manual', file: null };
+  assert.equal(unpaidUpdateError(current, { expectedDate: null }), null);
+  assert.equal(unpaidUpdateError(current, { expectedAmount: null }), null);
+  assert.match(unpaidUpdateError(current, { expectedDate: null, expectedAmount: null }), /至少要填一個/);
+  assert.match(unpaidUpdateError({ ...current, expectedAmount: null }, { expectedDate: '' }), /至少要填一個/);
+  const updated = applyPaymentRecordUpdate(current, { date: '', amount: null, note: '', expectedDate: '' }, { nowIso: 'now', file: null });
+  assert.equal(updated.expectedDate, null);
+});
+
+test('改回預計：原本沒有來源標記也判定為預計，沒有日期時要有金額', () => {
+  const { isPlannedRecord } = require('../utils/paymentRecordStatus');
+  const paid = { id: 'x', date: '2026-12-01', amount: 100, expectedAmount: 100, note: '', file: null };
+  const reverted = applyPaymentRecordUpdate(paid, { date: '', amount: null, note: '' }, { nowIso: 'now', file: null });
+  assert.equal(reverted.planSource, 'manual');
+  assert.equal(isPlannedRecord(reverted), true);
+  assert.match(unpaidUpdateError({ ...paid, expectedAmount: null }, {}), /至少要填一個/);
+});
+
+test('預計日留空：不發提醒，到期清單列在最後並標示未定日期', async () => {
+  const { shouldRemind, recordDueState, summarizePaymentRecords, splitPaymentRecords } = require('../utils/paymentRecordStatus');
+  const undated = { id: 'u', date: '', amount: null, expectedAmount: 100, planSource: 'contract' };
+  const dated = { id: 'd', date: '', amount: null, expectedDate: '2026-12-20', expectedAmount: 200, planSource: 'manual' };
+  assert.deepEqual(recordDueState(undated, '2026-12-01'), { state: 'undated', daysLeft: null, label: '未定日期' });
+  assert.equal(shouldRemind(null, { offsetDays: [0], overdue: { enabled: true, intervalDays: 1 } }), false);
+  assert.deepEqual(splitPaymentRecords([undated, dated]).planned.map(r => r.id), ['d', 'u']);
+  const both = summarizePaymentRecords([undated, dated], '2026-12-01');
+  assert.deepEqual([both.pendingYuan, both.plannedCount, both.next.record.id, both.dueState], [300, 2, 'd', 'upcoming']);
+  const only = summarizePaymentRecords([undated], '2026-12-01');
+  assert.deepEqual([only.pendingYuan, only.next, only.dueState, only.overdueCount], [100, null, 'undated', 0]);
+
+  const households = [{ projectId: PROJECT, unitId: 'A1', salesStatus_backend: '簽約', paymentRecords: [undated, dated] }];
+  const result = await handleListDue({ db: createFakeDb(), projectId: PROJECT, access: manageAccess, now: NOW, deps: makeDeps({ households }) });
+  assert.deepEqual(result.items.map(i => [i.recordId, i.expectedDate]), [['d', '2026-12-20'], ['u', '']]);
+  assert.deepEqual([result.items[1].state, result.items[1].label, result.items[1].daysLeft], ['undated', '未定日期', null]);
 });

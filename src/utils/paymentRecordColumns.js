@@ -6,6 +6,7 @@ export const PAYMENT_DUE_STATE_LABELS = Object.freeze({
   today: '今天到期',
   soon: '7 天內',
   upcoming: '未到期',
+  undated: '未定日期',
   none: '',
 });
 

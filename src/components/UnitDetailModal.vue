@@ -3405,15 +3405,16 @@ async function preparePaymentRecordsForSave() {
   // 1. 驗證：預計紀錄要有預計日；已繳紀錄要有繳款日與正整數金額（元）
   for (let i = 0; i < list.length; i++) {
     const r = list[i];
-    const label = r.note ? `「${r.note}」` : `第 ${i + 1} 筆`;
+    const labelText = r.period || r.note;
+    const label = labelText ? `「${labelText}」` : `第 ${i + 1} 筆`;
     const expected = r.expectedAmount;
     if (expected !== null && expected !== undefined && expected !== ''
       && (!Number.isInteger(Number(expected)) || Number(expected) <= 0)) {
       throw new Error(`繳款紀錄${label}預計金額必須為大於 0 的整數（元）。`);
     }
     if (isPlannedRow(r)) {
-      if (!isValidYmd(r.expectedDate)) {
-        throw new Error(`預計繳款${label}未選擇預計日。`);
+      if (!isValidYmd(r.expectedDate) && !(Number(r.expectedAmount) > 0)) {
+        throw new Error(`預計繳款${label}的預計日和預計金額至少要填一個。`);
       }
       continue;
     }
@@ -3497,6 +3498,9 @@ async function preparePaymentRecordsForSave() {
       }
       return {
         ...rest,
+        // 沒有預計日的預計繳款靠來源標記判定
+        planSource: rest.planSource || 'manual',
+        expectedDate: isValidYmd(rest.expectedDate) ? rest.expectedDate : null,
         date: '',
         amount: null,
         file: null,

@@ -254,3 +254,30 @@ test('期別標籤：期別（備註）；缺一邊顯示另一邊；前後端�
     assert.equal(paymentPeriodLabel(null), '');
   }
 });
+
+test('預計日留空：前後端判定一致；舊的缺值紀錄不算預計', () => {
+  const undated = { id: 'u', date: '', amount: null, expectedDate: null, expectedAmount: 100, planSource: 'contract' };
+  const legacyBlank = { id: 'l', date: '', amount: null, note: '舊' };
+  const legacyDateOnly = { id: 'd', date: '2026-01-01', amount: null, planSource: 'manual' };
+  for (const { isPlannedRecord, recordDueState, splitPaymentRecords, summarizePaymentRecords } of [front, back]) {
+    assert.equal(isPlannedRecord(undated), true);
+    assert.equal(isPlannedRecord(legacyBlank), false);
+    assert.equal(isPlannedRecord(legacyDateOnly), false);
+    assert.equal(recordDueState(undated, '2026-12-01').state, 'undated');
+    assert.equal(recordDueState(legacyBlank, '2026-12-01').state, 'none');
+    assert.deepEqual(splitPaymentRecords([legacyBlank, undated]).paid.map(r => r.id), ['l']);
+    const summary = summarizePaymentRecords([undated], '2026-12-01');
+    assert.deepEqual([summary.dueState, summary.next, summary.pendingYuan], ['undated', null, 100]);
+    assert.deepEqual([summarizePaymentRecords([], '2026-12-01').dueState], ['none']);
+  }
+});
+
+test('預計日留空：列表欄位下次日空白、到期狀態顯示未定日期，待繳計入', async () => {
+  const { paymentRecordColumnFields } = await import('../../src/utils/paymentRecordColumns.js');
+  const undated = { id: 'u', date: '', amount: null, expectedDate: null, expectedAmount: 1000000, planSource: 'contract' };
+  const dated = { id: 'd', date: '', amount: null, expectedDate: '2026-12-20', expectedAmount: 1000000, planSource: 'manual' };
+  const only = paymentRecordColumnFields([undated], 2100, '2026-12-01');
+  assert.deepEqual([only.next_expected_date, only.payment_due_state, only.pending_total, only.overdue_count], ['', '未定日期', 100, 0]);
+  const both = paymentRecordColumnFields([undated, dated], 2100, '2026-12-01');
+  assert.deepEqual([both.next_expected_date, both.payment_due_state, both.pending_total], ['2026-12-20', '未到期', 200]);
+});

@@ -62,7 +62,7 @@
             <div class="pr-fields">
               <div class="pr-field">
                 <span class="pr-field-label">預計日</span>
-                <span class="pr-field-value">{{ formatYmd(r.expectedDate) }}</span>
+                <span class="pr-field-value">{{ isValidYmd(r.expectedDate) ? formatYmd(r.expectedDate) : '未定' }}</span>
               </div>
               <div class="pr-field">
                 <span class="pr-field-label">預計金額</span>
@@ -105,7 +105,7 @@
           <div v-for="{ record: r, index } in plannedRows" :key="r.id || index" class="pr-edit-card">
             <div class="pr-edit-grid">
               <div>
-                <span class="pr-label">預計日 *</span>
+                <span class="pr-label">預計日</span>
                 <v-text-field aria-label="預計日" :model-value="r.expectedDate" type="date" variant="solo" flat density="compact" hide-details class="mac-vfield"
                   @update:model-value="v => update(index, 'expectedDate', v)" />
               </div>
@@ -193,7 +193,7 @@
                 </template>
                 <v-list density="compact">
                   <v-list-item v-if="quickUpdateHandler" title="編輯" @click="openQuickEdit(r)" />
-                  <v-list-item v-if="quickUpdateHandler && isValidYmd(r.expectedDate)" title="改回預計" @click="confirmRevert(r)" />
+                  <v-list-item v-if="quickUpdateHandler && canRevertToPlan(r)" title="改回預計" @click="confirmRevert(r)" />
                   <v-list-item v-if="quickDeleteHandler" title="刪除" @click="confirmQuickDelete(r)" />
                 </v-list>
               </v-menu>
@@ -272,7 +272,7 @@
             <div class="pr-edit-foot">
               <span v-if="paidTimingNote(r)" class="pr-field-sub">{{ paidTimingNote(r) }}</span>
               <span class="mac-spacer"></span>
-              <button v-if="isValidYmd(r.expectedDate)" type="button" class="mac-btn mac-btn--sm" @click="confirmRevertLocal(index)">改回預計</button>
+              <button v-if="canRevertToPlan(r)" type="button" class="mac-btn mac-btn--sm" @click="confirmRevertLocal(index)">改回預計</button>
               <button type="button" class="mac-btn mac-btn--sm mac-btn--danger" @click="confirmRemove(index)">刪除</button>
             </div>
           </div>
@@ -300,7 +300,7 @@
 
         <div v-if="quick.kind === 'planned'" class="mac-form-group mac-form-pad pr-dialog-grid">
           <div>
-            <span class="pr-label">預計日 *</span>
+            <span class="pr-label">預計日</span>
             <v-text-field aria-label="預計日" v-model="quick.expectedDate" type="date" variant="solo" flat density="compact" hide-details class="mac-vfield" />
           </div>
           <div>
@@ -772,9 +772,9 @@ function buildQuickPayload() {
   const note = String(quick.note || '');
   const period = String(quick.period || '').trim();
   if (quick.kind === 'planned') {
-    if (!isValidYmd(quick.expectedDate)) throw new Error('請選擇預計日');
     const expectedAmount = parsePositiveInt(quick.expectedAmount);
     if (Number.isNaN(expectedAmount)) throw new Error('預計金額須為大於 0 的整數');
+    if (!isValidYmd(quick.expectedDate) && !expectedAmount) throw new Error('預計日和預計金額至少要填一個');
     return {
       date: '',
       amount: null,
@@ -782,7 +782,7 @@ function buildQuickPayload() {
       note,
       file: null,
       removeFile: false,
-      expectedDate: quick.expectedDate,
+      expectedDate: isValidYmd(quick.expectedDate) ? quick.expectedDate : null,
       expectedAmount,
       ...(quick.mode === 'add' ? { planSource: 'manual' } : {}),
     };
@@ -837,6 +837,11 @@ async function confirmQuickDelete(r) {
   } finally {
     busyId.value = '';
   }
+}
+
+// 改回預計後要有預計日或預計金額，否則會變成空白紀錄
+function canRevertToPlan(r) {
+  return isValidYmd(r.expectedDate) || (!!r.planSource && Number(r.expectedAmount) > 0);
 }
 
 async function confirmRevert(r) {
@@ -938,7 +943,7 @@ function submitMarkPaidLocal({ record, date, amount, note, file, balancePlan }) 
   });
   if (balancePlan) {
     next.push(newRow('planned', {
-      expectedDate: balancePlan.expectedDate,
+      expectedDate: balancePlan.expectedDate || '',
       expectedAmount: balancePlan.expectedAmount,
       period: balancePlan.period || '',
       note: balancePlan.note,
@@ -1153,7 +1158,7 @@ async function confirmRevertLocal(idx) {
   commit(records.value.map((r, i) => {
     if (i !== idx) return r;
     const { _pendingFile, _pendingPreviewUrl, _markedPaid, ...rest } = r;
-    return { ...rest, _kind: 'planned', date: '', amount: null, file: null, paidAt: null, paidBy: null, updatedAt: nowIso };
+    return { ...rest, _kind: 'planned', planSource: rest.planSource || 'manual', date: '', amount: null, file: null, paidAt: null, paidBy: null, updatedAt: nowIso };
   }));
 }
 

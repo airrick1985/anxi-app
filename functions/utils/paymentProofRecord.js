@@ -3,11 +3,18 @@
 // 預計繳款（未繳）以 date:'' 且 amount:null 表示，只適用 addRecord／updateRecord。
 // 預計欄位在 updateRecord 未帶時保留原值、帶 null 時清除；舊呼叫方式不帶新欄位，紀錄內容維持原樣。
 // 期別（period）與備註（note）分開存，規則同預計欄位；舊資料只有 note。
+// 預計日可留空，但預計日與預計金額至少要有一個，避免空白紀錄。
 
 const { isValidYmd, isPaidRecord, isPlannedRecord } = require('./paymentRecordStatus');
 
 // template 是改版前「範本帶入」留下的舊值，現在由 contract（帶入合約期款資料）取代
 const PAYMENT_PLAN_SOURCES = ['manual', 'batch', 'template', 'contract', 'balance'];
+
+const PLAN_REQUIRED_MESSAGE = '預計日和預計金額至少要填一個。';
+
+function hasPlanDateOrAmount(expectedDate, expectedAmount) {
+  return isValidYmd(expectedDate) || Number(expectedAmount) > 0;
+}
 
 function isUnpaidPaymentPayload({ action, date, amount }) {
   return (action === 'addRecord' || action === 'updateRecord')
@@ -26,7 +33,7 @@ function paymentPayloadError(payload) {
     const amountNum = Number(amount);
     if (!Number.isInteger(amountNum) || amountNum <= 0) return '繳款金額必須為大於 0 的整數（元）。';
   }
-  if (expectedDate !== undefined && expectedDate !== null && !isValidYmd(expectedDate)) {
+  if (expectedDate && !isValidYmd(expectedDate)) {
     return '預計繳款日格式必須為 YYYY-MM-DD。';
   }
   if (expectedAmount !== undefined && expectedAmount !== null
@@ -40,14 +47,15 @@ function paymentPayloadError(payload) {
     return '期別格式不正確。';
   }
   if (isUnpaid && base64) return '尚未繳款的紀錄不可上傳憑證。';
-  if (action === 'addRecord' && isUnpaid && !isValidYmd(expectedDate)) return '預計繳款日格式必須為 YYYY-MM-DD。';
+  if (action === 'addRecord' && isUnpaid && !hasPlanDateOrAmount(expectedDate, expectedAmount)) return PLAN_REQUIRED_MESSAGE;
   return null;
 }
 
 // updateRecord 讀到既有紀錄後才能判斷的條件；沒有問題回傳 null
-function unpaidUpdateError(current, { expectedDate, removeFile }) {
+function unpaidUpdateError(current, { expectedDate, expectedAmount, removeFile }) {
   const finalExpectedDate = expectedDate === undefined ? current?.expectedDate : expectedDate;
-  if (!isValidYmd(finalExpectedDate)) return '尚未繳款的紀錄必須有預計繳款日。';
+  const finalExpectedAmount = expectedAmount === undefined ? current?.expectedAmount : expectedAmount;
+  if (!hasPlanDateOrAmount(finalExpectedDate, finalExpectedAmount)) return PLAN_REQUIRED_MESSAGE;
   if (current?.file && !removeFile) return '改回預計繳款前必須先移除憑證。';
   return null;
 }
@@ -95,9 +103,11 @@ function applyPaymentRecordUpdate(current, payload, { nowIso, file }) {
     updatedAt: nowIso,
   };
   if (period !== undefined) updated.period = String(period || '').trim();
-  if (expectedDate !== undefined) updated.expectedDate = expectedDate === null ? null : String(expectedDate);
+  if (expectedDate !== undefined) updated.expectedDate = expectedDate ? String(expectedDate) : null;
   if (expectedAmount !== undefined) updated.expectedAmount = expectedAmount === null ? null : Number(expectedAmount);
   if (planSource !== undefined) updated.planSource = planSource;
+  // 沒有預計日的預計繳款靠來源標記判定
+  if (isUnpaid && !updated.planSource && !isValidYmd(updated.expectedDate)) updated.planSource = 'manual';
   // 只有預計轉已繳、已繳改回預計才動 paidAt／paidBy；舊紀錄（含日期有值但金額空白）修改內容不新增這兩欄
   if (wasPlanned && !isUnpaid) {
     updated.paidAt = nowIso;

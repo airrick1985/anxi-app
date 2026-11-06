@@ -132,7 +132,7 @@
       </v-card-text>
 
       <div class="mac-sheet-foot">
-        <span v-if="missingDateCount" class="pti-missing">還有 {{ missingDateCount }} 筆未填預計日</span>
+        <span v-if="missingDateCount" class="pti-missing">{{ missingDateCount }} 筆未填預計日，不會提醒</span>
         <span class="mac-spacer"></span>
         <button type="button" class="mac-btn" :disabled="saving" @click="close">{{ plan.rows.length ? '取消' : '關閉' }}</button>
         <button v-if="plan.rows.length" type="button" class="mac-btn mac-btn--primary" :disabled="!canSubmit" @click="submit">
@@ -244,9 +244,7 @@ const isRowChecked = row => row.selectable && (state[row.key]?.checked ?? row.st
 const checkedRows = computed(() => rows.value.filter(isRowChecked));
 const missingDateCount = computed(() => checkedRows.value
   .filter(row => row.status === 'new' && !isValidYmd(state[row.key]?.expectedDate)).length);
-const canSubmit = computed(() => !saving.value
-  && (checkedRows.value.length > 0 || assignedRecords.value.length > 0)
-  && missingDateCount.value === 0);
+const canSubmit = computed(() => !saving.value && (checkedRows.value.length > 0 || assignedRecords.value.length > 0));
 
 const submitLabel = computed(() => {
   const updateCount = checkedRows.value.filter(row => row.status === 'changed').length;
@@ -284,7 +282,8 @@ function rowDetail(row) {
 }
 
 function rowDateText(row) {
-  return row.status !== 'settled' && row.record ? `預計 ${row.record.expectedDate}` : '';
+  if (row.status === 'settled' || !row.record) return '';
+  return isValidYmd(row.record.expectedDate) ? `預計 ${row.record.expectedDate}` : '預計日未定';
 }
 
 function currentAmountText(row) {
@@ -330,8 +329,8 @@ async function submit() {
     })),
     ...checkedRows.value.map(row => (row.status === 'changed'
       // 金額不同只改預計金額，期別、備註與預計日照舊
-      ? { kind: 'update', recordId: row.record.id, note: row.record.note || '', expectedDate: row.record.expectedDate, expectedAmount: row.due }
-      : { kind: 'add', period: row.period, note: row.isBalance ? '差額' : '', expectedDate: state[row.key].expectedDate, expectedAmount: row.due })),
+      ? { kind: 'update', recordId: row.record.id, note: row.record.note || '', expectedDate: row.record.expectedDate || null, expectedAmount: row.due }
+      : { kind: 'add', period: row.period, note: row.isBalance ? '差額' : '', expectedDate: state[row.key].expectedDate || null, expectedAmount: row.due })),
   ];
   let savedCount = 0;
   try {
