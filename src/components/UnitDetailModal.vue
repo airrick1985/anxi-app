@@ -65,7 +65,7 @@
           <v-tab value="info"><v-icon size="18" class="mr-1 unit-tab-icon">mdi-home-outline</v-icon>詳細資訊</v-tab>
           <v-tab value="payments">
             <v-icon size="18" class="mr-1 unit-tab-icon">mdi-receipt-text-outline</v-icon>繳款紀錄
-            <v-badge v-if="viewPaymentRecords.length" :content="viewPaymentRecords.length" color="teal" inline class="ml-1 unit-tab-badge" />
+            <v-badge v-if="viewPaymentSummary.paidCount" :content="viewPaymentSummary.paidCount" color="teal" inline class="ml-1 unit-tab-badge" />
           </v-tab>
           <v-tab value="documents">
             <v-icon size="18" class="mr-1 unit-tab-icon">mdi-file-upload-outline</v-icon>上傳文件
@@ -379,7 +379,7 @@
                 <PaymentRecordsPanel
                   v-model="editingData.paymentRecords"
                   :editable="true"
-                  :total-price-wan="editingData.price_transaction_total"
+                  :total-price-wan="editingDealTotalWan"
                   :unit-id="editingData.unitId || ''"
                   :drive-folder-url="editingData.driveFolderUrl || ''"
                 />
@@ -1119,7 +1119,7 @@
                       <v-icon size="20" color="teal-darken-1">mdi-receipt-text-outline</v-icon>
                       <span class="unit-quick-link__body">
                         <span class="unit-quick-link__title">繳款紀錄</span>
-                        <span class="unit-quick-link__meta">{{ viewPaymentRecords.length ? `${viewPaymentRecords.length} 筆・已繳 ${formatNumber(viewPaidTotalWan, 0)} 萬` : '尚無紀錄，點此新增' }}</span>
+                        <span class="unit-quick-link__meta">{{ viewPaymentMeta }}</span>
                       </span>
                       <v-icon size="18" color="grey">mdi-chevron-right</v-icon>
                     </button>
@@ -1175,6 +1175,9 @@
                 :total-price-wan="grandTotalTransactionPrice"
                 :unit-id="unitData.unitId || ''"
                 :drive-folder-url="unitData.driveFolderUrl || ''"
+                :project-id="projectId"
+                :unit-data="unitData"
+                @plans-saved="emit('data-updated')"
               />
             </div>
           </v-window-item>
@@ -1477,13 +1480,19 @@ import { useStatusColorStore } from '@/store/statusColorStore';
 import SalesAiChat from './salesAi/SalesAiChat.vue';
 import LandParcelsPanel from './LandParcelsPanel.vue';
 import PaymentRecordsPanel from './PaymentRecordsPanel.vue';
+import { formatMonthDay, isPlannedRecord, isValidYmd, summarizePaymentRecords } from '@/utils/paymentRecordStatus';
+import { paymentProofFileToBase64 } from '@/utils/paymentRecordActions';
+import { paymentRowKind } from './payment/paymentEditRow';
+import { dealTotalWan, resolveOwnedParkingSpots } from '@/utils/unitDealTotal';
+import { resolveCancelledParkings } from '@/utils/cancelledParking';
+import { parkingLineText, parkingStateLabel } from '@/utils/cancelledPurchaseUtils';
 import UnitDocumentsPanel from './UnitDocumentsPanel.vue';
 import RemarkNotesPanel from './RemarkNotesPanel.vue';
 import UnitFeeGiftPanel from './UnitFeeGiftPanel.vue';
 import { referrerSyncFields, netPriceDiff, netPremiumDeductYuan } from '@/utils/unitFeeGifts';
 import UnitCancelledHistoryPanel from '@/components/UnitCancelledHistoryPanel.vue';
 import { db } from '@/firebase';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { buildRemarksSummary } from '@/utils/remarkNotes';
 import { normalizeUnitAnnotation, sanitizeAnnotationHtml, isAnnotationHtmlEmpty } from '@/utils/unitAnnotation';
 // ✅ [效能] 加註說明富文本編輯器（TipTap）只在開啟編輯時載入
@@ -1601,7 +1610,17 @@ const toast = useToast(); // ✅ [打勾] 2. 實例化 toast
 
 // 1. [新增] 定義暫存變數
 const tempParkingSelection = ref(null);      // 用於「付款表設定」暫存
-const editingParkingSelection = ref(null);   // 用於「修改銷控」暫存
+const editingParkingSelection = ref(null);   // 用於「修改銷控」暫存；車位寫入成功或取消編輯才清除
+// 車位寫入失敗重試用：已動過的車位。資料未刷新、戶別狀態已變或重新選車位時，仍能解除這些車位
+const parkingCommitTouchedIds = new Set();
+// 車位寫入失敗時先記住狀態變更通知：重試時後端已比對不出變更，重試成功才開通知對話框
+let pendingStatusNotification = null;
+
+function resetParkingCommitDraft() {
+  editingParkingSelection.value = null;
+  parkingCommitTouchedIds.clear();
+  pendingStatusNotification = null;
+}
 
 // 🔐 [隱藏功能] 連續按 8 次 'a' 鍵來顯示已售不提供報價
 const keySequence = ref('');
@@ -1638,6 +1657,11 @@ const handleKeyPress = (e) => {
 
 // ── 🖥️ [新增] 電腦版「修改銷控」左側項目導覽 ──
 // 左邊點項目、右邊只顯示對應內容；手機版不變（全部區塊由上而下堆疊）
+// 編輯中的成交總價：改價或改車位即時反映，不依賴可能過時的 price_transaction_total
+const editingDealTotalWan = computed(() => dealTotalWan(
+  editingData.value,
+  resolveOwnedParkingSpots(editingData.value, props.allData?.['車位']),
+));
 const SALES_FORM_SECTION_KEYS = ['sales', 'deal', 'buyer', 'system'];
 const editSections = computed(() => {
   const d = editingData.value || {};
@@ -1646,7 +1670,9 @@ const editSections = computed(() => {
   const ratioH = Number(d.housePriceRatio) || 0;
   const ratioL = Number(d.landPriceRatio) || 0;
   const parcelCount = Array.isArray(d.landParcels) ? d.landParcels.length : 0;
-  const recordCount = Array.isArray(d.paymentRecords) ? d.paymentRecords.length : 0;
+  const paymentRows = Array.isArray(d.paymentRecords) ? d.paymentRecords : [];
+  const paidRowCount = paymentRows.filter(r => paymentRowKind(r) === 'paid').length;
+  const plannedRowCount = paymentRows.length - paidRowCount;
   const planCount = Array.isArray(d.availablePlans) ? d.availablePlans.length : 0;
   const imageCount = Array.isArray(d.salesImages) ? d.salesImages.length : 0;
   const tagCount = Array.isArray(d.unitTags) ? d.unitTags.length : 0;
@@ -1658,7 +1684,7 @@ const editSections = computed(() => {
     },
     {
       key: 'deal', title: '成交資訊', icon: 'mdi-currency-usd', color: 'green-darken-2',
-      summary: `成交總價 ${formatNumber(Number(d.price_transaction_total) || 0)} 萬`,
+      summary: `成交總價 ${formatNumber(editingDealTotalWan.value)} 萬`,
     },
     {
       key: 'buyer', title: '買方資訊', icon: 'mdi-account-details', color: 'indigo',
@@ -1680,7 +1706,10 @@ const editSections = computed(() => {
     },
     {
       key: 'payments', title: '戶別繳款紀錄', icon: 'mdi-receipt-text-outline', color: 'teal-darken-2',
-      summary: recordCount > 0 ? `${recordCount} 筆` : '尚無紀錄',
+      summary: [
+        paidRowCount > 0 ? `已繳 ${paidRowCount} 筆` : '',
+        plannedRowCount > 0 ? `預計 ${plannedRowCount} 筆` : '',
+      ].filter(Boolean).join('・') || '尚無紀錄',
     },
     {
       key: 'system', title: '系統設定', icon: 'mdi-cog-outline', color: 'blue-grey-darken-1',
@@ -1713,7 +1742,7 @@ const salesFormVisibleSections = computed(() => {
 
 // ✅ [新增] 編輯模式即時提示 - 配套價格（＝成交總價 − 配套房屋總價，與合約製作／付款表同口徑）
 const editingPackagePriceHint = computed(() => {
-  const total = Number(editingData.value?.price_transaction_total) || 0;
+  const total = editingDealTotalWan.value;
   const packageDeal = Number(editingData.value?.price_package_deal) || 0;
   if (!packageDeal) return '避開高價住宅門檻時填寫，未填則不啟用配套拆分';
   return `配套價格: ${formatNumber(total - packageDeal, 2)} 萬（成交總價 ${formatNumber(total, 2)} − 配套房屋總價）`;
@@ -1788,8 +1817,16 @@ const cancelDialogMessage = computed(() => {
   const unitId = `【${props.unitData.unitId}】`;
   const buyerName = props.unitData.buyerName || '—';
   const salesperson = formatSalespersons(props.unitData.salesperson, '、', '—');
-  const parkingInfo = props.unitData['持有車位'] && props.unitData['持有車位'].length > 0
-    ? props.unitData['持有車位'].map(p => p['車位編號'] || p.spotId || p).join('、')
+  // 與退戶紀錄同一份清單：不能只看「持有車位」快照，快照可能空白
+  const parkings = resolveCancelledParkings({
+    ...props.unitData,
+    parkingData: (props.allData?.['車位'] || []).filter(p => p.buyerUnitId === props.unitData.unitId),
+  });
+  const parkingInfo = parkings.length > 0
+    ? parkings.map((p) => {
+      const state = parkingStateLabel(p);
+      return `${parkingLineText(p)}${state ? `（${state}）` : ''}`;
+    }).join('、')
     : '無';
 
   return `您確定要為 ${unitId} 辦理退戶嗎？<br><br>` +
@@ -2039,7 +2076,7 @@ function cancelSectionEdit() {
   clearPaymentRecordsPendingState();
   clearPriceRemarkLocalState();
   editingData.value = null;
-  editingParkingSelection.value = null;
+  resetParkingCommitDraft();
 }
 const isSaving = ref(false);
 const editingData = ref(null);
@@ -2794,6 +2831,7 @@ async function deletePriceRemarkMarkedImages() {
 
 function startEditing(sectionArg = null) {
   const section = typeof sectionArg === 'string' ? sectionArg : null;
+  tab.value = 'info'; // 修改銷控的表單在詳細資訊分頁，從其他分頁進入時要切回來
   activeEditSection.value = section || 'sales'; // 🖥️ 左側項目導覽回到第一項
   activeMobileEditSection.value = section || 'all'; // 📱 手機版分區切換回到「全部」
   focusedEditSection.value = section;
@@ -2826,11 +2864,7 @@ function prepareEditingData() {
   editingData.value.unitDocuments = JSON.parse(JSON.stringify(viewUnitDocuments.value || []));
   // ✅ [戶別繳款紀錄] 以檢視模式本地列表為準（可能含剛快速新增、父層尚未重新載入的紀錄）+ 快照原始欄位
   editingData.value.paymentRecords = JSON.parse(JSON.stringify(viewPaymentRecords.value || []));
-  paymentRecordsSnapshot = new Map(
-    editingData.value.paymentRecords
-      .filter(r => r && r.id)
-      .map(r => [r.id, { date: r.date, amount: r.amount, note: r.note, fileId: (r.file && r.file.fileId) || null }])
-  );
+  resetPaymentRecordsBaseline(editingData.value.paymentRecords);
 
   // ✅ START: 新增 - 將 Timestamp 欄位轉換為 JavaScript Date 物件
   if (props.unitData) {
@@ -2863,6 +2897,7 @@ function prepareEditingData() {
 
 function cancelEditing() {
   isEditing.value = false;
+  resetParkingCommitDraft();
   // ✅ [戶別繳款紀錄] 取消編輯時釋放本地預覽 URL，不動 Drive
   clearPaymentRecordsPendingState();
   editingData.value = null;
@@ -2908,8 +2943,31 @@ watch(isEditing, (editing) => {
   }
 });
 
-// ✅ [戶別繳款紀錄] 進入編輯時的原始欄位快照（id → {date, amount, note}），供判斷是否需同步 Drive 檔名
+// ✅ [戶別繳款紀錄] 目前已儲存的欄位快照（id → {date, amount, note, updatedAt, fileId, planned}），供同步 Drive 檔名、偵測他人修改與判斷轉已繳
 let paymentRecordsSnapshot = new Map();
+let paymentRecordsBaseline = '[]';
+
+function resetPaymentRecordsBaseline(list) {
+  paymentRecordsSnapshot = new Map(
+    (list || [])
+      .filter(r => r && r.id)
+      .map(r => [r.id, {
+        date: r.date,
+        amount: r.amount,
+        note: r.note,
+        updatedAt: r.updatedAt || '',
+        fileId: (r.file && r.file.fileId) || null,
+        planned: isPlannedRecord(r),
+      }])
+  );
+  paymentRecordsBaseline = paymentRecordsFingerprint(list);
+}
+
+function paymentRecordsFingerprint(list) {
+  return JSON.stringify((list || []).map(r => Object.fromEntries(
+    Object.entries(r || {}).filter(([key]) => !key.startsWith('_'))
+  )));
+}
 
 // ✅ [戶別繳款紀錄] 檢視模式本地列表：快速新增後即時反映，不必等父層重新載入
 const viewPaymentRecords = ref([]);
@@ -2921,10 +2979,14 @@ watch(() => props.unitData, (val) => {
 
 // ✅ [上傳文件] 檢視模式本地列表：上傳／改名／刪除後即時反映，不必等父層重新載入（SPEC_UnitDocumentUpload.md）
 const viewUnitDocuments = ref([]);
-// 詳細資訊分頁的繳款快速入口用：已繳總額（紀錄金額為元 → 萬）
-const viewPaidTotalWan = computed(() => {
-  const yuan = (viewPaymentRecords.value || []).reduce((sum, r) => sum + (Number(r?.amount) || 0), 0);
-  return Math.round(yuan / 10000 * 100) / 100;
+const viewPaymentSummary = computed(() => summarizePaymentRecords(viewPaymentRecords.value));
+// 詳細資訊分頁的繳款快速入口摘要（紀錄金額為元 → 萬）
+const viewPaymentMeta = computed(() => {
+  const { paidCount, paidYuan, next } = viewPaymentSummary.value;
+  const parts = [];
+  if (paidCount > 0) parts.push(`${paidCount} 筆・已繳 ${formatNumber(Math.round(paidYuan / 10000 * 100) / 100, 0)} 萬`);
+  if (next) parts.push(`下次 ${formatMonthDay(next.record.expectedDate)}`);
+  return parts.join('・') || '尚無紀錄，點此新增';
 });
 watch(() => props.unitData, (val) => {
   viewUnitDocuments.value = Array.isArray(val?.unitDocuments)
@@ -3191,7 +3253,7 @@ async function deleteAnnotation() {
  * [戶別繳款紀錄] 快速新增（檢視模式，不經修改銷控）：
  * 有圖檔則後端一併上傳並命名，寫入成功後即時更新本地列表。
  */
-async function handleQuickAddPaymentRecord({ date, amount, note, file }) {
+async function handleQuickAddPaymentRecord({ date, amount, note, file, silent, ...planFields }) {
   let base64 = null;
   if (file) {
     base64 = await paymentProofFileToBase64(file);
@@ -3203,12 +3265,15 @@ async function handleQuickAddPaymentRecord({ date, amount, note, file }) {
     base64,
     date,
     amount,
-    note
+    note,
+    ...planFields, // planFields 只含面板實際帶的預計欄位：callable 會把 undefined 編碼成 null，後端視為清除
+    paidBy: userStore.user?.name || ''
   });
   if (res.status !== 'success' || !res.record) {
     throw new Error(res.message || '請稍後再試');
   }
   viewPaymentRecords.value = [...viewPaymentRecords.value, res.record];
+  if (silent) return; // 連續寫入由面板統一提示與刷新（plans-saved）
   toast.success('繳款紀錄已新增');
   emit('data-updated');
 }
@@ -3217,7 +3282,7 @@ async function handleQuickAddPaymentRecord({ date, amount, note, file }) {
  * [戶別繳款紀錄] 快速編輯（檢視模式，不經修改銷控）：
  * 可換圖（舊圖保留於 Drive）或移除憑證；無換圖時內容異動由後端自動同步 Drive 檔名。
  */
-async function handleQuickUpdatePaymentRecord({ recordId, date, amount, note, file, removeFile }) {
+async function handleQuickUpdatePaymentRecord({ recordId, date, amount, note, file, removeFile, silent, ...planFields }) {
   let base64 = null;
   if (file) {
     base64 = await paymentProofFileToBase64(file);
@@ -3231,7 +3296,9 @@ async function handleQuickUpdatePaymentRecord({ recordId, date, amount, note, fi
     removeFile: !!removeFile,
     date,
     amount,
-    note
+    note,
+    ...planFields,
+    paidBy: userStore.user?.name || ''
   });
   if (res.status !== 'success' || !res.record) {
     throw new Error(res.message || '請稍後再試');
@@ -3243,6 +3310,7 @@ async function handleQuickUpdatePaymentRecord({ recordId, date, amount, note, fi
   if (res.trashWarning) {
     toast.warning('憑證已移除，但 Drive 檔案移至垃圾桶失敗');
   }
+  if (silent) return; // 連續寫入由面板統一提示與刷新（plans-saved）
   toast.success('繳款紀錄已更新');
   emit('data-updated');
 }
@@ -3267,12 +3335,13 @@ async function handleQuickDeletePaymentRecord({ recordId }) {
 }
 
 /**
- * [戶別繳款紀錄] 修改銷控儲存成功後：進入編輯時有憑證、儲存時已不存在的紀錄 → 憑證移至垃圾桶（失敗僅警告）。
+ * [戶別繳款紀錄] 修改銷控儲存成功後：進入編輯時有憑證，儲存時紀錄已刪除或憑證已清空（改回預計）→ 憑證移至垃圾桶（失敗僅警告）。
+ * 更換憑證維持原規則，舊檔保留於 Drive。
  */
-async function trashRemovedPaymentProofs(savedRecords) {
-  const remainingIds = new Set((savedRecords || []).map(r => r && r.id).filter(Boolean));
-  const toTrash = [...paymentRecordsSnapshot.entries()]
-    .filter(([id, snap]) => snap.fileId && !remainingIds.has(id))
+async function trashRemovedPaymentProofs(savedRecords, previousSnapshot) {
+  const savedById = new Map((savedRecords || []).filter(r => r && r.id).map(r => [r.id, r]));
+  const toTrash = [...previousSnapshot.entries()]
+    .filter(([id, snap]) => snap.fileId && (!savedById.has(id) || !savedById.get(id).file))
     .map(([, snap]) => snap.fileId);
   if (toTrash.length === 0) return;
   savingText.value = '正在清理已刪除的繳款憑證';
@@ -3301,32 +3370,54 @@ function clearPaymentRecordsPendingState() {
   });
 }
 
-function paymentProofFileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1]);
-    reader.onerror = () => reject(new Error('讀取圖檔失敗'));
-    reader.readAsDataURL(file);
-  });
+/**
+ * [戶別繳款紀錄] 修改銷控會整包覆寫繳款紀錄：儲存前重讀，他人已改過就中止，避免把對方的變更（如標記已繳）蓋回去。
+ */
+async function assertPaymentRecordsNotChangedByOthers() {
+  const snap = await getDoc(doc(db, 'salesHouseholds', `${props.projectId}_${props.unitData.unitId}`));
+  const current = (Array.isArray(snap.data()?.paymentRecords) ? snap.data().paymentRecords : []).filter(r => r && r.id);
+  const changedByOthers = current.length !== paymentRecordsSnapshot.size
+    || current.some((r) => {
+      const baseline = paymentRecordsSnapshot.get(r.id);
+      return !baseline || baseline.updatedAt !== (r.updatedAt || '');
+    });
+  if (changedByOthers) {
+    throw new Error('繳款紀錄已被其他人修改，請重新載入後再編輯。');
+  }
 }
 
 /**
  * [戶別繳款紀錄] 儲存前處理：驗證 → 既有圖檔改名同步（失敗僅警告）→ 上傳待上傳憑證（失敗中止）→ 清理內部欄位。
  * 已上傳成功的憑證資訊會即時寫回紀錄，儲存失敗重試時不會重複上傳。
+ * 預計紀錄不動 Drive，實繳內容固定為空。
  */
 async function preparePaymentRecordsForSave() {
   const list = editingData.value?.paymentRecords;
   if (!Array.isArray(list) || list.length === 0) return;
 
-  // 1. 驗證：日期必填、金額為正整數（元）
+  const isPlannedRow = r => paymentRowKind(r) === 'planned';
+
+  // 1. 驗證：預計紀錄要有預計日；已繳紀錄要有繳款日與正整數金額（元）
   for (let i = 0; i < list.length; i++) {
     const r = list[i];
+    const label = r.note ? `「${r.note}」` : `第 ${i + 1} 筆`;
+    const expected = r.expectedAmount;
+    if (expected !== null && expected !== undefined && expected !== ''
+      && (!Number.isInteger(Number(expected)) || Number(expected) <= 0)) {
+      throw new Error(`繳款紀錄${label}預計金額必須為大於 0 的整數（元）。`);
+    }
+    if (isPlannedRow(r)) {
+      if (!isValidYmd(r.expectedDate)) {
+        throw new Error(`預計繳款${label}未選擇預計日。`);
+      }
+      continue;
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.date || ''))) {
-      throw new Error(`繳款 #${i + 1} 未選擇繳款日期。`);
+      throw new Error(`繳款紀錄${label}未選擇繳款日。`);
     }
     const amountNum = Number(r.amount);
     if (!Number.isInteger(amountNum) || amountNum <= 0) {
-      throw new Error(`繳款 #${i + 1} 金額必須為大於 0 的整數（元）。`);
+      throw new Error(`繳款紀錄${label}金額必須為大於 0 的整數（元）。`);
     }
   }
 
@@ -3334,6 +3425,7 @@ async function preparePaymentRecordsForSave() {
 
   // 2. 既有圖檔且日期/金額/備註有異動 → 同步 Drive 檔名（失敗僅警告，不中斷儲存）
   for (const r of list) {
+    if (isPlannedRow(r)) continue;
     if (!r.file || !r.file.fileId || r._pendingFile) continue;
     const snap = paymentRecordsSnapshot.get(r.id);
     if (!snap) continue;
@@ -3357,10 +3449,10 @@ async function preparePaymentRecordsForSave() {
     }
   }
 
-  // 3. 上傳待上傳憑證
+  // 3. 上傳待上傳憑證（預計紀錄不可附憑證）
   for (let i = 0; i < list.length; i++) {
     const r = list[i];
-    if (!r._pendingFile) continue;
+    if (!r._pendingFile || isPlannedRow(r)) continue;
     savingText.value = `正在上傳繳款憑證（第 ${i + 1} 筆）`;
     const base64 = await paymentProofFileToBase64(r._pendingFile);
     const res = await paymentProofApi({
@@ -3383,8 +3475,37 @@ async function preparePaymentRecordsForSave() {
     delete r._pendingPreviewUrl;
   }
 
-  // 4. 防禦性清理：確保 File 物件與本地預覽 URL 不會進入 Firestore payload
-  editingData.value.paymentRecords = list.map(({ _pendingFile, _pendingPreviewUrl, ...rest }) => rest);
+  // 4. 正規化狀態；防禦性清理：確保 File 物件、本地預覽 URL 與編輯用標記不會進入 Firestore payload
+  const nowIso = new Date().toISOString();
+  const operator = userStore.user?.name || '';
+  const toExpectedAmount = v => (v === '' || v === null || v === undefined ? null : Number(v));
+  editingData.value.paymentRecords = list.map((r) => {
+    const planned = isPlannedRow(r);
+    const { _kind, _markedPaid, _pendingFile, _pendingPreviewUrl, ...rest } = r;
+    const before = paymentRecordsSnapshot.get(r.id);
+    if (planned) {
+      if (_pendingPreviewUrl) {
+        try { URL.revokeObjectURL(_pendingPreviewUrl); } catch (e) { /* noop */ }
+      }
+      return {
+        ...rest,
+        date: '',
+        amount: null,
+        file: null,
+        expectedAmount: toExpectedAmount(rest.expectedAmount),
+        ...(before && !before.planned ? { paidAt: null, paidBy: null } : {}),
+      };
+    }
+    const paid = { ...rest, amount: Number(rest.amount) };
+    if ('expectedAmount' in rest) paid.expectedAmount = toExpectedAmount(rest.expectedAmount);
+    if (rest.expectedDate === '') paid.expectedDate = null;
+    // 只有這次編輯標記已繳，或編輯前是預計、現在轉已繳的紀錄才記錄操作時間與操作人；一般修改已繳不動
+    if ((_markedPaid || before?.planned) && !rest.paidAt) {
+      paid.paidAt = nowIso;
+      paid.paidBy = operator;
+    }
+    return paid;
+  });
 }
 
 // 5. [修改] saveChanges：儲存成功後才執行車位寫入
@@ -3422,6 +3543,11 @@ async function saveChanges() {
   await executeSaveChanges();
 }
 
+function withoutPaymentRecords(data) {
+  const { paymentRecords, ...rest } = data;
+  return rest;
+}
+
 async function executeSaveChanges() {
   showPriceChangeDialog.value = false; // 關閉彈窗
   isSaving.value = true;
@@ -3443,8 +3569,13 @@ async function executeSaveChanges() {
       savingText.value = '正在儲存變更';
     }
 
-    // ✅ [戶別繳款紀錄] 驗證 → Drive 檔名同步 → 上傳待上傳憑證（失敗會 throw 中止儲存）
-    await preparePaymentRecordsForSave();
+    // ✅ [戶別繳款紀錄] 沒變更就不送，避免以舊快照覆蓋；有變更：確認無他人修改 → 驗證 → Drive 檔名同步 → 上傳憑證（失敗會 throw 中止儲存）
+    const paymentRecordsChanged = paymentRecordsFingerprint(editingData.value.paymentRecords) !== paymentRecordsBaseline;
+    if (paymentRecordsChanged) {
+      await assertPaymentRecordsNotChangedByOthers(); // 先擋一次，避免白傳檔案
+      await preparePaymentRecordsForSave();
+      await assertPaymentRecordsNotChangedByOthers(); // 上傳憑證需要時間，寫入前再確認
+    }
     savingText.value = '正在儲存變更';
 
     const data = editingData.value;
@@ -3463,15 +3594,21 @@ async function executeSaveChanges() {
       projectName: props.projectName,
       projectId: props.projectId,
       unitId: props.unitData.unitId,
-      data: data
+      data: paymentRecordsChanged ? data : withoutPaymentRecords(data)
     };
 
     const result = await updateSalesData(payload);
     if (result.status !== 'success') throw new Error(result.message);
+    if (result.notification?.statusChanged) pendingStatusNotification = result.notification;
 
     // ✅ [戶別繳款紀錄] 儲存成功後同步檢視模式本地列表，並將已刪除紀錄的 Drive 憑證移至垃圾桶
-    viewPaymentRecords.value = JSON.parse(JSON.stringify(data.paymentRecords || []));
-    await trashRemovedPaymentProofs(data.paymentRecords);
+    // 比對基準立即更新：後續車位寫入失敗再按儲存時，才不會把自己剛存的內容誤判成他人修改
+    if (paymentRecordsChanged) {
+      const previousSnapshot = paymentRecordsSnapshot;
+      resetPaymentRecordsBaseline(data.paymentRecords);
+      viewPaymentRecords.value = JSON.parse(JSON.stringify(data.paymentRecords || []));
+      await trashRemovedPaymentProofs(data.paymentRecords, previousSnapshot);
+    }
 
     // ✅ [新增] Firestore 寫入成功後，才從 Storage 真正刪除已標記的舊備註圖片
     if (priceRemarkPendingDeletions.value.length > 0) {
@@ -3479,17 +3616,24 @@ async function executeSaveChanges() {
       priceRemarkPendingDeletions.value = [];
     }
 
-    // ✅ [關鍵] 戶別資料儲存成功後，才寫入暫存的車位變動
-    if (editingParkingSelection.value) {
-      console.log('🚗 正在執行延遲的車位資料庫更新...');
-      await commitParkingChanges(props.unitData.unitId, editingParkingSelection.value);
-    } else {
-      // 車位未變動，仍需同步戶別欄位（後台狀態/銷售人員/買方姓名）至持有車位
-      await syncOwnedParkingFields(props.unitData.unitId);
+    // ✅ [關鍵] 戶別資料儲存成功後，才寫入暫存的車位變動；失敗時保留暫存，再按一次儲存可重試
+    try {
+      if (editingParkingSelection.value) {
+        console.log('🚗 正在執行延遲的車位資料庫更新...');
+        await commitParkingChanges(props.unitData.unitId, editingParkingSelection.value, parkingCommitTouchedIds);
+        editingParkingSelection.value = null;
+        parkingCommitTouchedIds.clear();
+      } else {
+        // 車位未變動，仍需同步戶別欄位（後台狀態/銷售人員/買方姓名）至持有車位
+        await syncOwnedParkingFields(props.unitData.unitId);
+      }
+    } catch (parkingError) {
+      throw new Error(`車位寫入失敗，戶別資料已儲存，請再按一次儲存重試：${parkingError.message}`);
     }
 
     // 銷控狀態若有變動且有候選通知人員 → 開啟通知對話框，由其關閉時收尾；否則直接收尾
-    const notif = result.notification;
+    const notif = pendingStatusNotification || result.notification;
+    pendingStatusNotification = null;
     // 區塊編輯對話框：儲存後只關對話框，戶別資訊留在原地（資料由 data-updated 重新載入）
     const fromSectionDialog = sectionEditDialog.value.show;
     if (fromSectionDialog) cancelSectionEdit();
@@ -3507,7 +3651,6 @@ async function executeSaveChanges() {
     alert(`儲存失敗: ${error.message}`);
   } finally {
     isSaving.value = false;
-    editingParkingSelection.value = null; // 清除暫存
   }
 }
 
@@ -3615,7 +3758,7 @@ function resetForOpen() {
   if (sectionEditDialog.value.show) cancelSectionEdit();
   tab.value = 'info';
   tempParkingSelection.value = null;
-  editingParkingSelection.value = null; // 重置編輯暫存
+  resetParkingCommitDraft(); // 重置編輯暫存
   currentImageIndex.value = 0;
   isPriceEditable.value = false;
   activeEditSection.value = 'sales';
@@ -3790,13 +3933,16 @@ async function syncOwnedParkingFields(unitId) {
 }
 
 // 4. [新增] 專門處理資料庫寫入的輔助函式
-async function commitParkingChanges(unitId, parkingList) {
+// touchedIds：修改銷控重試用。寫入都是覆蓋值，重跑不會重複綁定；上次動過的車位這次也納入解除，但已綁給其他戶的不動
+async function commitParkingChanges(unitId, parkingList, touchedIds = null) {
   const allParkingData = props.allData?.['車位'] || [];
   // 編輯中用暫存資料；檢視模式（車位明細快速修改）用目前戶別資料
   const src = editingData.value || props.unitData || {};
 
   // 🔄 步驟1：清除舊關聯（準備購買的車位不在編輯清單內，保持原綁定不動；以儲存前的戶別狀態判斷）
-  const currentOwnedParkings = allParkingData.filter(p => isDealParking(p, unitId, props.unitData?.salesStatus_backend));
+  const currentOwnedParkings = allParkingData.filter(p => isDealParking(p, unitId, props.unitData?.salesStatus_backend)
+    || (touchedIds?.has(p.id) && (!p.buyerUnitId || p.buyerUnitId === unitId)));
+  currentOwnedParkings.forEach(p => { if (p.id) touchedIds?.add(p.id); });
   for (const parking of currentOwnedParkings) {
     if (parking.id) {
       await updateParkingLot(parking.id, {
@@ -3828,6 +3974,7 @@ async function commitParkingChanges(unitId, parkingList) {
         remarks: newParking.remarks || null,
         updatedAt: new Date()
       });
+      touchedIds?.add(existingParking.id);
     }
   }
 }

@@ -703,7 +703,8 @@ import axios from 'axios';
 import { useDisplay } from 'vuetify';
 import TwCitiesData from '@/assets/TwCities.json' with { type: 'json' };
 import { normalizeSalespersons } from '@/utils/salespersonUtils';
-import { getUnitDealParkings } from '@/utils/salesStatusGroups';
+import { isPlannedRecord } from '@/utils/paymentRecordStatus';
+import { dealTotalWan, parkingSaleTotal, resolveOwnedParkingSpots } from '@/utils/unitDealTotal';
 import UnitTagEditor from './UnitTagEditor.vue';
 import UnitEffectPicker from './UnitEffectPicker.vue';
 const ParkingEditModal = defineAsyncComponent(() => import('./ParkingEditModal.vue'));
@@ -1190,22 +1191,7 @@ watch(() => editableData.value.buyerMailingAddressDetail, (val) => {
 });
 
 // 📋 從 salesParkings 集合中找出該戶別持有的車位
-const ownedParkingSpots = computed(() => {
-  // 1. 暫存清單：父層進入編輯時已依車位資料初始化（含空陣列），本次選車位也會寫回此處
-  const staged = editableData.value?.['持有車位'];
-  if (Array.isArray(staged)) {
-    return staged.map(p => ({
-        ...p,
-        spotId: p.spotId || p['車位編號'], // 確保 Key 相容
-        price_transaction: p.price_transaction || p['車位成交價']
-    }));
-  }
-
-  // 2. 否則才從原始資料庫列表過濾 (原本的邏輯)
-  if (!props.allParkingData || !editableData.value?.unitId) return [];
-  // 準備購買（保留等）的車位不屬於本戶成交車位，不列入編輯清單（避免儲存時被改成戶別狀態）
-  return getUnitDealParkings(editableData.value.unitId, props.allParkingData, editableData.value.salesStatus_backend);
-});
+const ownedParkingSpots = computed(() => resolveOwnedParkingSpots(editableData.value, props.allParkingData));
 
 const houseBasePrice = computed(() => editableData.value?.price_floor_house_total || 0);
 // 💰 [新增] 房屋底價拆分：露臺底價 > 0 時於房屋總底價下方輔助顯示「房屋＋露臺」
@@ -1225,15 +1211,14 @@ const parkingBasePrice = computed(() => {
   return ownedParkingSpots.value.reduce((sum, p) => sum + spotFloorPrice(p), 0);
 });
 const totalBasePrice = computed(() => houseBasePrice.value + parkingBasePrice.value);
-const parkingSalePrice = computed(() => {
-    return ownedParkingSpots.value.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
-});
-const totalSalePrice = computed(() => (Number(editableData.value?.price_transaction_house) || 0) + parkingSalePrice.value);
+const parkingSalePrice = computed(() => parkingSaleTotal(ownedParkingSpots.value));
+const totalSalePrice = computed(() => dealTotalWan(editableData.value, ownedParkingSpots.value));
 
 // ✅ [新增] 監聽 totalSalePrice 變動，自動同步到資料庫要儲存的欄位 price_transaction_total
-watch(totalSalePrice, (newVal) => {
-    if (editableData.value) {
-        editableData.value.price_transaction_total = newVal;
+// 同時監聽物件身分：上方補值 watcher 會 emit 新物件，總價沒變時只聽數值，新物件就拿不到即時總價，舊值會被存回去
+watch([totalSalePrice, () => editableData.value], ([total, data]) => {
+    if (data && data.price_transaction_total !== total) {
+        data.price_transaction_total = total;
     }
 }, { immediate: true });
 const unitSalePrice = computed(() => {
@@ -1411,12 +1396,16 @@ const statusPrompt = ref({
   amount: null,
   existingRecordId: '',
   existingAmount: null,
+  existingPlanned: false,
 });
 const statusPromptAmountRef = ref(null);
 
 const statusPromptIsToday = computed(() => toYmd(statusPrompt.value.date) === toYmd(todayTaipeiDate()));
 const statusPromptAmountHint = computed(() => {
   const p = statusPrompt.value;
+  if (p.existingPlanned) {
+    return `已有預計繳款「${p.status}」，確認後轉為已繳；留空則不更動`;
+  }
   if (p.existingRecordId) {
     const prev = p.existingAmount ? `${Number(p.existingAmount).toLocaleString('en-US')} 元` : '未填金額';
     return `已有備註「${p.status}」的繳款紀錄（原 ${prev}），確認後將更新該筆日期與金額；留空則不更動`;
@@ -1441,9 +1430,13 @@ function openStatusPrompt(cfg, status) {
     field: cfg.field,
     // 日期欄位已有值 → 沿用；否則預設今天
     date: currentDate || todayTaipeiDate(),
-    amount: existing && Number(existing.amount) > 0 ? Number(existing.amount) : null,
+    // 比對到預計紀錄時帶入預計金額，確認後寫入日期與金額即轉為已繳
+    amount: existing && (Number(existing.amount) > 0 || Number(existing.expectedAmount) > 0)
+      ? Number(existing.amount) || Number(existing.expectedAmount)
+      : null,
     existingRecordId: existing?.id || '',
     existingAmount: existing?.amount ?? null,
+    existingPlanned: isPlannedRecord(existing),
   };
   nextTick(() => {
     try { statusPromptAmountRef.value?.focus?.(); } catch (e) { /* noop */ }
@@ -1474,8 +1467,11 @@ function confirmStatusPrompt() {
     const dateYmd = toYmd(pickedDate);
     const list = Array.isArray(d.paymentRecords) ? d.paymentRecords : [];
     if (p.existingRecordId) {
+      // 預計轉已繳時加標記，修改銷控儲存時據此寫入 paidAt、paidBy，標記本身不會進 Firestore
       d.paymentRecords = list.map(r => (
-        r?.id === p.existingRecordId ? { ...r, date: dateYmd, amount: amountNum, updatedAt: nowIso } : r
+        r?.id === p.existingRecordId
+          ? { ...r, date: dateYmd, amount: amountNum, updatedAt: nowIso, ...(p.existingPlanned ? { _markedPaid: true } : {}) }
+          : r
       ));
     } else {
       d.paymentRecords = [

@@ -862,6 +862,7 @@ import {
 } from '@/api.js';
 import { runNewCalculationEngine, recalcGroupChildren } from '@/utils/paymentCalculation';
 import { buildUnitDocContext, resolveBankSets } from '@/utils/unitDocContext';
+import { resolveSavedContractTemplateId } from '@/utils/paymentTemplateMatch';
 import { getUnitDealParkings } from '@/utils/salesStatusGroups';
 import { normalizeReferralFees, normalizeGifts } from '@/utils/unitFeeGifts';
 import { PAGE_TYPE_MAP, isPackageOnlyPageType } from '@/utils/contractDocDefaults';
@@ -929,6 +930,7 @@ const unitCtx = computed(() => buildUnitDocContext(props.unitData, {
   personnelList: props.allData?.['銷售人員'] || [],
   allParkings: props.allData?.['車位'] || [],
   packageTypes: packageTypes.value,
+  project: projectStore.getProjectById(props.projectId),
 }));
 
 const isPackageContract = computed(() => unitCtx.value.isPackageContract === true);
@@ -2045,9 +2047,7 @@ function restoreDocData(cfg, freshDocData) {
 
   // 期款範本手動覆蓋 + 手動調整列
   resetToAuto();
-  if (saved.paymentTemplateId && templates.value.some(t => t.id === saved.paymentTemplateId)) {
-    manualTemplateId.value = saved.paymentTemplateId;
-  }
+  manualTemplateId.value = resolveSavedContractTemplateId(saved, templates.value, unitCtx.value.usePreferredPayment);
   manualMode.value = saved.installmentManualMode === true
     && Array.isArray(saved.manualRows) && saved.manualRows.length > 0;
   rebuildRows();

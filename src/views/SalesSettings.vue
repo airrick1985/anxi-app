@@ -47,6 +47,10 @@
         <v-icon start>mdi-format-list-numbered</v-icon>
         期款設定
       </v-tab>
+      <v-tab value="paymentReminder">
+        <v-icon start>mdi-bell-ring-outline</v-icon>
+        繳款提醒
+      </v-tab>
       <v-tab value="contractDoc">
         <v-icon start>mdi-file-document-edit-outline</v-icon>
         合約製作範本
@@ -382,6 +386,10 @@
 
       <v-window-item value="paymentTerms">
         <PaymentTermsSettings />
+      </v-window-item>
+
+      <v-window-item value="paymentReminder">
+        <PaymentReminderSettings :project-id="projectId" />
       </v-window-item>
 
       <v-window-item value="contractDoc">
@@ -1505,6 +1513,8 @@ const SalesPersonnelCrossProjectImportDialog = defineAsyncComponent(() => import
 // ✅ [新增] 合約製作範本設定（docs/合約製作資料範本-spec.md）
 const ContractDocConfigEditor = defineAsyncComponent(() => import('@/components/ContractDocConfigEditor.vue'));
 const SalesImageManager = defineAsyncComponent(() => import('@/components/salesImages/SalesImageManager.vue'));
+// ✅ 繳款提醒設定（docs/SPEC_PaymentDueReminder.md §6.7）
+const PaymentReminderSettings = defineAsyncComponent(() => import('@/components/payment/PaymentReminderSettings.vue'));
 
 const route = useRoute();
 const router = useRouter(); 
@@ -1856,6 +1866,8 @@ const saveProjectSettings = async () => {
   isSavingProject.value = true;
   try {
     const { id, ...dataToUpdate } = project.value;
+    // 繳款提醒由自己的分頁即時儲存，這裡不送，避免以開頁時的舊快照覆蓋
+    delete dataToUpdate.paymentReminderSettings;
     // 報價系統可見欄位：舊「優付」開關與新設定保持同步（其他頁面仍以新設定為準）
     if (dataToUpdate.quoteFieldDefaults) {
       dataToUpdate.showPreferredPaymentInQuote = dataToUpdate.quoteFieldDefaults.preferredPayment === true;

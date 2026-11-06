@@ -701,6 +701,25 @@
             </v-chip>
             <span v-else class="text-grey">-</span>
           </template>
+
+          <!-- 下次預計繳款日：點擊開啟該戶繳款紀錄 -->
+          <template v-slot:item.next_expected_date="{ item }">
+            <button
+              v-if="item.next_expected_date"
+              type="button"
+              class="next-due-cell"
+              @click.stop="openPaymentRecordsPopup(item)"
+            >
+              <span>{{ item.next_expected_date.replace(/-/g, '/') }}</span>
+              <span class="mac-tag" :class="nextDueTagClass(item.next_expected_state)">{{ item.next_expected_label }}</span>
+            </button>
+            <span v-else class="text-grey">-</span>
+          </template>
+
+          <template v-slot:item.pending_total="{ item }">
+            <span v-if="item.pending_total > 0">{{ formatWan(item.pending_total) }}</span>
+            <span v-else class="text-grey">-</span>
+          </template>
          
           <template v-slot:item.total_floor="{ item }">
           <span class="font-weight-bold text-red">
@@ -805,6 +824,10 @@
                   <span v-if="summaryRow.paymentRatioTotal !== null" class="text-teal font-weight-bold">{{ summaryRow.paymentRatioTotal.toFixed(1) }}%</span>
                   <span v-else>-</span>
                 </template>
+                <template v-else-if="col.key === 'pending_total'">
+                  <span v-if="summaryRow.pendingWanTotal > 0">{{ formatWan(summaryRow.pendingWanTotal) }}</span>
+                  <span v-else>-</span>
+                </template>
                 <template v-else-if="col.key === 'total_floor'">
                   <span class="text-red">{{ formatNumber(summaryRow.totalFloorTotal, 0) }}</span>
                 </template>
@@ -901,6 +924,10 @@
                 </template>
                 <template v-else-if="col.key === 'payment_ratio'">
                   <span v-if="summaryRow.paymentRatioTotal !== null" class="text-teal font-weight-bold">{{ summaryRow.paymentRatioTotal.toFixed(1) }}%</span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="col.key === 'pending_total'">
+                  <span v-if="summaryRow.pendingWanTotal > 0">{{ formatWan(summaryRow.pendingWanTotal) }}</span>
                   <span v-else>-</span>
                 </template>
                 <template v-else-if="col.key === 'total_floor'">
@@ -1199,6 +1226,7 @@
               <v-icon v-else size="22">{{ action.icon }}</v-icon>
             </span>
             <span class="mobile-tool-label">{{ action.label }}</span>
+            <span v-if="action.caption" class="unit-quick-sheet__caption">{{ action.caption }}</span>
           </button>
         </div>
       </div>
@@ -1896,15 +1924,15 @@
 
     <!-- ✅ [繳款紀錄] 列表模式：點繳款比例浮動顯示該戶繳款紀錄一覽（手機全螢幕 / 電腦置中視窗） -->
     <v-dialog v-model="paymentPopup.open" :fullscreen="isMobile" :max-width="isMobile ? undefined : 680" scrollable>
-      <v-card>
-        <v-toolbar color="teal-darken-1" density="compact">
-          <v-toolbar-title class="text-subtitle-1">
-            <v-icon size="small" class="mr-1">mdi-cash-multiple</v-icon>
-            {{ paymentPopup.unit ? paymentPopup.unit.unitId : '' }} 繳款紀錄一覽
-          </v-toolbar-title>
-          <v-btn icon="mdi-close" variant="text" @click="paymentPopup.open = false"></v-btn>
-        </v-toolbar>
-        <v-card-text class="pa-3">
+      <v-card class="mac-sheet payment-popup-sheet">
+        <div class="mac-sheet-head">
+          <v-icon size="18">mdi-cash-multiple</v-icon>
+          <span>{{ paymentPopup.unit ? paymentPopup.unit.unitId : '' }} 繳款紀錄</span>
+          <button type="button" class="mac-sheet-close" title="關閉" @click="paymentPopup.open = false">
+            <v-icon size="18">mdi-close</v-icon>
+          </button>
+        </div>
+        <v-card-text class="mac-form pa-3">
           <PaymentRecordsPanel
             v-if="paymentPopup.unit"
             :model-value="paymentPopup.unit.paymentRecords || []"
@@ -1917,6 +1945,8 @@
             :total-price-wan="paymentPopup.unit.total_transaction"
             :unit-id="paymentPopup.unit.unitId || ''"
             :drive-folder-url="paymentPopup.unit.driveFolderUrl || ''"
+            :project-id="projectId"
+            :unit-data="paymentPopup.unit"
           />
         </v-card-text>
       </v-card>
@@ -2292,6 +2322,9 @@ import { useDisplay } from 'vuetify';
 import UpdateControl from './UpdateControl.vue';
 import ParkingCanvas from '@/components/ParkingCanvas.vue';
 import PaymentRecordsPanel from '@/components/PaymentRecordsPanel.vue';
+import { formatMonthDay } from '@/utils/paymentRecordStatus';
+import { paymentRecordColumnFields } from '@/utils/paymentRecordColumns';
+import { paymentProofFileToBase64 } from '@/utils/paymentRecordActions';
 // ✅ [效能] 對話框型大元件改為非同步載入：首次開啟時才下載對應 chunk，
 // 銷控頁進入時的 JS 體積大幅縮小（AnalyticsPanel 121KB、CancelledPurchaseManager 97KB、
 // UnitDataExportDialog 74KB（含 xlsx）、SalesGridDownloadDialog 35KB…）。
@@ -2371,6 +2404,7 @@ const moreToolGroups = computed(() => {
     { icon: 'mdi-car-side', label: '車位銷控', action: openParkingCanvasEditor },
     { icon: 'mdi-car-cog', label: '車位管理', action: navigateToParkingControl },
     { icon: 'mdi-map-marker-multiple-outline', label: '銷售圖面', action: goToSalesDrawings },
+    { icon: 'mdi-calendar-alert', label: '繳款到期', action: goToPaymentDue },
     { icon: 'mdi-bullhorn-outline', label: '活動訊息', action: handleOpenActivityMessage },
     { icon: 'mdi-refresh', label: '重新載入', action: handleRefreshData },
   );
@@ -2436,6 +2470,7 @@ const desktopToolGroups = computed(() => {
     { icon: 'mdi-car-side', label: '車位銷控', action: openParkingCanvasEditor },
     { icon: 'mdi-car-cog', label: '車位銷控管理', action: navigateToParkingControl },
     { icon: 'mdi-map-marker-multiple-outline', label: '銷售圖面', action: goToSalesDrawings },
+    { icon: 'mdi-calendar-alert', label: '繳款到期', action: goToPaymentDue },
     { icon: 'mdi-bullhorn-outline', label: '活動訊息', action: handleOpenActivityMessage },
   );
   if (canManageAnnouncements.value) common.push({ icon: 'mdi-bullhorn-variant-outline', label: '公告管理', action: openAnnouncementManager });
@@ -2953,7 +2988,7 @@ const PIVOT_BINNED_DIM_KEYS = new Set([
   'held_parking_count', 'held_parking_list_total', 'held_parking_floor_total', 'held_parking_trans_total',
   'net_price_diff', 'referral_fee_total', 'gift_total',
   'unit_price_list', 'unit_price_floor', 'unit_price_transaction',
-  'paid_total', 'payment_ratio',
+  'paid_total', 'payment_ratio', 'pending_total', 'overdue_count',
 ]);
 // 值欄位選項：常用金額/面積置頂，其餘數值欄位接在後面
 const pivotValueFieldOptions = computed(() => {
@@ -2961,7 +2996,7 @@ const pivotValueFieldOptions = computed(() => {
   const priority = [
     'total_transaction', 'price_transaction_house', 'total_floor', 'price_floor_house_total', 'price_list_house_total',
     'parking_trans_total', 'parking_floor_total', 'price_diff', 'net_price_diff', 'referral_fee_total', 'gift_total',
-    'paid_total', 'payment_ratio',
+    'paid_total', 'payment_ratio', 'pending_total', 'overdue_count',
     'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount',
     'area_house_ping', 'area_terrace_ping',
     'unit_price_list', 'unit_price_floor', 'unit_price_transaction',
@@ -3105,7 +3140,7 @@ const pivotDobToDateStr = (v) => {
   return pivotTsToDateStr(v);
 };
 // 日期型欄位（值為 Timestamp/Date，顯示為 yyyy-MM-dd）
-const PIVOT_DATE_KEYS = new Set(['payment_deposit_date', 'payment_supplement_date', 'payment_contract_date', 'buyerDateOfBirth']);
+const PIVOT_DATE_KEYS = new Set(['payment_deposit_date', 'payment_supplement_date', 'payment_contract_date', 'buyerDateOfBirth', 'next_expected_date']);
 // 主買方欄位 → 共同買方（coBuyers）對應欄位：主買方與共同買方的值併在同一格
 const PIVOT_CO_BUYER_FIELDS = {
   buyerName: 'name',
@@ -4860,6 +4895,10 @@ function goToSalesDrawings() {
   router.push({ name: 'SalesDrawingList', params: { projectId: projectId.value } });
 }
 
+function goToPaymentDue() {
+  router.push({ name: 'PaymentDueList', params: { projectId: projectId.value } });
+}
+
 // ✅ [新增] 直接前往報價單設定（保留現有報價單資料，返回鍵可回銷控）
 function goToQuoteSettingsDirect() {
   router.push({
@@ -5124,6 +5163,8 @@ const tableHeaders = computed(() => {
         { title: '加購／保留成交', key: 'held_parking_trans_total', align: 'end', width: '100px' },
         { title: '成交總價(含車)', key: 'total_transaction', align: 'end', width: '110px' },
         { title: '繳款比例', key: 'payment_ratio', align: 'center', width: '90px', sort: customPriceSort },
+        { title: '下次預計繳款日', key: 'next_expected_date', align: 'center', width: '150px', sort: nextExpectedDateSort },
+        { title: '待繳金額(萬)', key: 'pending_total', align: 'end', width: '105px', sort: customPriceSort },
         { title: '合計底價(含車)', key: 'total_floor', align: 'end', width: '110px' },
         { title: '溢差價', key: 'price_diff', align: 'end', width: '80px' },
         { title: '淨溢差價', key: 'net_price_diff', align: 'end', width: '90px' },
@@ -5163,6 +5204,8 @@ const tableHeaders = computed(() => {
       { title: '加購／保留成交', key: 'held_parking_trans_total', align: 'start' },
       { title: '成交總價(含車)', key: 'total_transaction', align: 'start' },
       { title: '繳款比例', key: 'payment_ratio', align: 'center', sort: customPriceSort },
+      { title: '下次預計繳款日', key: 'next_expected_date', align: 'center', sort: nextExpectedDateSort },
+      { title: '待繳金額(萬)', key: 'pending_total', align: 'start', sort: customPriceSort },
       { title: '合計底價(含車)', key: 'total_floor', align: 'start' },
       { title: '溢差價', key: 'price_diff', align: 'start' },
       { title: '淨溢差價', key: 'net_price_diff', align: 'start' },
@@ -5228,6 +5271,17 @@ const customPriceSort = (a, b) => {
   // 正常的數字比較
   return a - b;
 };
+
+// 下次預計繳款日：沒有預計繳款的戶別排最後
+const nextExpectedDateSort = (a, b) => {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return String(a).localeCompare(String(b));
+};
+
+const NEXT_DUE_TAG_CLASSES = { overdue: 'mac-tag--red', today: 'mac-tag--orange-fill', soon: 'mac-tag--orange' };
+const nextDueTagClass = state => NEXT_DUE_TAG_CLASSES[state] || '';
 
 
 // 修改 tableItems computed
@@ -5296,14 +5350,8 @@ const enrichUnitItem = (unit, parkingMap) => {
     // 介紹費／贈品合計（元）、贈品品項、淨溢差價（萬，扣除勾選併入的金額）
     Object.assign(item, feeGiftFields(unit, item.price_diff));
 
-    // ✅ [繳款紀錄] 已繳款金額(萬) 與 繳款比例(%)：已繳合計(元) ÷ 成交總價(含車位, 萬)×10000
-    const paymentRecords = Array.isArray(unit.paymentRecords) ? unit.paymentRecords : [];
-    const paidYuan = paymentRecords.reduce((sum, r) => sum + (Number(r?.amount) || 0), 0);
-    item.payment_records_count = paymentRecords.length;
-    item.paid_total = Math.round(paidYuan / 10000 * 100) / 100; // 萬，與其他金額欄位單位一致
-    item.payment_ratio = item.total_transaction > 0
-        ? Math.round((paidYuan / (item.total_transaction * 10000)) * 1000) / 10
-        : null;
+    // ✅ [繳款紀錄] 已繳、繳款比例只算實繳；另提供下次預計繳款日、待繳金額與到期狀態
+    Object.assign(item, paymentRecordColumnFields(unit.paymentRecords, item.total_transaction));
 
     // 單價計算
     const areaVal = Number(item.area_house_ping) || 0;
@@ -5385,9 +5433,11 @@ const summaryRow = computed(() => {
   let referralFeeTotal = 0;      // 介紹費合計（元）
   let giftTotal = 0;             // 贈品合計（元）
   let paidWanTotal = 0;          // 已繳款金額(萬)加總
+  let pendingWanTotal = 0;       // 待繳金額(萬)加總
 
   items.forEach((item) => {
     paidWanTotal += Number(item.paid_total) || 0;
+    pendingWanTotal += Number(item.pending_total) || 0;
     areaTotal += Number(item.area_house_ping) || 0;
     terraceTotal += Number(item.area_terrace_ping) || 0;
     priceListTotal += Number(item.price_list_house_total) || 0;
@@ -5441,6 +5491,7 @@ const summaryRow = computed(() => {
     referralFeeTotal,
     giftTotal,
     paidWanTotal,
+    pendingWanTotal,
     paymentRatioTotal,
     unitPriceList,
     unitPriceFloor,
@@ -5456,15 +5507,6 @@ function openPaymentRecordsPopup(item) {
 }
 const canQuickEditPayments = computed(() => currentViewMode.value === 'sales');
 
-function paymentProofFileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1]);
-    reader.onerror = () => reject(new Error('讀取圖檔失敗'));
-    reader.readAsDataURL(file);
-  });
-}
-
 // CRUD 成功後同步 store 原始資料與彈窗列表：列表「繳款比例」chip 與資料透視即時重算，免重新載入
 function applyPaymentRecordsLocally(unitId, updater) {
   const raw = (salesHouseholds.value || []).find(u => u.unitId === unitId);
@@ -5477,7 +5519,7 @@ function applyPaymentRecordsLocally(unitId, updater) {
   }
 }
 
-async function popupQuickAddPaymentRecord({ date, amount, note, file }) {
+async function popupQuickAddPaymentRecord({ date, amount, note, file, silent, ...planFields }) {
   const unit = paymentPopup.unit;
   if (!unit) return;
   const base64 = file ? await paymentProofFileToBase64(file) : null;
@@ -5485,14 +5527,16 @@ async function popupQuickAddPaymentRecord({ date, amount, note, file }) {
     action: 'addRecord',
     projectId: projectId.value,
     unitId: unit.unitId,
-    base64, date, amount, note
+    base64, date, amount, note,
+    ...planFields, // planFields 只含面板實際帶的預計欄位：callable 會把 undefined 編碼成 null，後端視為清除
+    paidBy: userStore.user?.name || ''
   });
   if (res.status !== 'success' || !res.record) throw new Error(res.message || '請稍後再試');
   applyPaymentRecordsLocally(unit.unitId, list => [...list, res.record]);
-  toast.success('繳款紀錄已新增', { position: POSITION.BOTTOM_CENTER });
+  if (!silent) toast.success('繳款紀錄已新增', { position: POSITION.BOTTOM_CENTER });
 }
 
-async function popupQuickUpdatePaymentRecord({ recordId, date, amount, note, file, removeFile }) {
+async function popupQuickUpdatePaymentRecord({ recordId, date, amount, note, file, removeFile, silent, ...planFields }) {
   const unit = paymentPopup.unit;
   if (!unit) return;
   const base64 = file ? await paymentProofFileToBase64(file) : null;
@@ -5503,7 +5547,9 @@ async function popupQuickUpdatePaymentRecord({ recordId, date, amount, note, fil
     recordId,
     base64,
     removeFile: !!removeFile,
-    date, amount, note
+    date, amount, note,
+    ...planFields,
+    paidBy: userStore.user?.name || ''
   });
   if (res.status !== 'success' || !res.record) throw new Error(res.message || '請稍後再試');
   applyPaymentRecordsLocally(unit.unitId, list => list.map(r => (r.id === recordId ? res.record : r)));
@@ -5513,7 +5559,7 @@ async function popupQuickUpdatePaymentRecord({ recordId, date, amount, note, fil
   if (res.trashWarning) {
     toast.warning('憑證已移除，但 Drive 檔案移至垃圾桶失敗', { position: POSITION.BOTTOM_CENTER });
   }
-  toast.success('繳款紀錄已更新', { position: POSITION.BOTTOM_CENTER });
+  if (!silent) toast.success('繳款紀錄已更新', { position: POSITION.BOTTOM_CENTER });
 }
 
 async function popupQuickDeletePaymentRecord({ recordId }) {
@@ -6074,6 +6120,10 @@ const unitQuickActions = computed(() => {
       ? `${enriched.payment_ratio.toFixed(0)}%`
       : (enriched.payment_records_count > 0 ? `${enriched.payment_records_count} 筆` : ''))
     : '';
+  const paymentSubtitle = [
+    paymentBadge ? `已繳 ${paymentBadge}` : '',
+    enriched?.next_expected_date ? `下次 ${formatMonthDay(enriched.next_expected_date)}` : '',
+  ].filter(Boolean).join('・') || '尚無繳款紀錄';
   const quotePriceHidden = isQuoteMode && quoteFieldsOf(u).priceTotal === false;
   const canQuote = Number(u.price_list_house_total) > 0 && !(isQuoteMode && u.salesStatus_quote === '已售') && !quotePriceHidden;
   const quoteVisCustom = !isQuoteMode && unitHasQuoteOverrides(u);
@@ -6094,7 +6144,7 @@ const unitQuickActions = computed(() => {
       { key: 'quoteFields', icon: 'mdi-eye-settings-outline', label: '報價顯示', subtitle: quoteVisCustom ? '已自訂，與專案預設不同' : '依專案預設', badge: quoteVisCustom ? '自訂' : '', badgeColor: 'blue', run: unit => openQuoteFieldDialog(unit) },
       { key: 'divider-1', divider: true },
       { key: 'remarks', icon: 'mdi-comment-text-multiple-outline', label: '備註留言', subtitle: remarkCount > 0 ? `${remarkCount} 則留言` : '尚無留言，點此新增', badge: remarkCount > 0 ? String(remarkCount) : '', run: unit => openRemarkDialog(unit) },
-      { key: 'payments', icon: 'mdi-cash-multiple', label: '繳款紀錄', subtitle: paymentBadge ? `已繳 ${paymentBadge}` : '尚無繳款紀錄', badge: paymentBadge, badgeColor: enriched && enriched.payment_ratio >= 100 ? 'green' : 'deep-orange', run: unit => openPaymentRecordsPopup(enrichQuickMenuUnit(unit)) },
+      { key: 'payments', icon: 'mdi-cash-multiple', label: '繳款紀錄', subtitle: paymentSubtitle, caption: enriched?.next_expected_date ? `下次 ${formatMonthDay(enriched.next_expected_date)}` : '', badge: paymentBadge, badgeColor: enriched && enriched.payment_ratio >= 100 ? 'green' : 'deep-orange', run: unit => openPaymentRecordsPopup(enrichQuickMenuUnit(unit)) },
       ...(canUseSalesAi.value ? [{ key: 'ai', icon: 'mdi-robot-outline', label: 'AI 助理', subtitle: '詢問此戶別相關問題', run: unit => openUnitDetail(unit, { tab: 'aiAssistant' }) }] : []),
       { key: 'divider-2', divider: true },
     );
@@ -8043,6 +8093,14 @@ overflow: hidden;
 .unit-quick-sheet__head {
   padding: 4px 2px 10px;
 }
+.unit-quick-sheet__caption {
+  margin-top: -2px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #0058b0;
+  white-space: nowrap;
+}
 .unit-quick-sheet__tool:disabled {
   opacity: .45;
   cursor: not-allowed;
@@ -8468,6 +8526,26 @@ overflow: hidden;
 .payment-ratio-chip {
   cursor: pointer;
 }
+
+/* 下次預計繳款日：日期＋狀態，可點擊開啟繳款紀錄 */
+.next-due-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.next-due-cell:hover { background: rgba(0, 0, 0, 0.05); }
+
+/* 繳款紀錄浮動視窗：手機全螢幕不留圓角 */
+.v-dialog--fullscreen .payment-popup-sheet { border-radius: 0 !important; }
 
 /* ✅ 列表模式：加總列樣式（淺灰背景 + 粗體） */
 .list-view-container :deep(tr.summary-row > td) {

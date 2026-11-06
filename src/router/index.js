@@ -831,6 +831,32 @@ const routes = [
     }
   },
 
+  // ✅ 繳款到期入口頁（LINE／Email 繳款提醒連結導向；LIFF 自動登入後轉入到期清單）
+  {
+    path: '/payment-due-entry/:projectId',
+    name: 'PaymentDueEntry',
+    component: () => import('@/views/PaymentDueEntry.vue'),
+    props: true,
+    meta: {
+      requiresAuth: false, // 避開全域登入，由組件內 LIFF 驗證
+      layout: PublicLayout,
+      title: '開啟繳款到期'
+    }
+  },
+
+  // ✅ 繳款到期清單（docs/SPEC_PaymentDueReminder.md）；銷控與報價權限看到的範圍不同，由頁面與 API 判定
+  {
+    path: '/payment-due/:projectId',
+    name: 'PaymentDueList',
+    component: () => import('@/views/PaymentDueList.vue'),
+    props: true,
+    meta: {
+      requiresAuth: true,
+      layout: DefaultLayout,
+      title: '繳款到期'
+    }
+  },
+
   // ✅ 客資歸屬裁決頁（LINE 裁決通知連結導向，限櫃台）
   {
     path: '/vip-guest-arbitration/:projectId/:docId',

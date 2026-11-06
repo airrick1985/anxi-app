@@ -81,7 +81,7 @@ paymentDocSettings: {
 #### 上區：期款編輯器
 
 1. **範本選擇器**：沿用 `QuoteItem.vue` 的模式 —
-   - 自動預選：依 paymentCategory（合約方式為毛胚合約→另有配套邏輯不在此表、勾優付→優付期款）、成交總價落在 minPrice~maxPrice、buyerType（首購/非首購）、propertyType 篩選 `paymentTermTemplates`
+   - 自動預選：依 paymentCategory（合約方式為毛胚合約→另有配套邏輯不在此表、勾優付→優付期款；優付預設帶戶別開關 `isPreferredPayment`，可在付款表取消，規則共用 `utils/paymentTemplateMatch`；找不到優付範本時不預選、提示手動指定）、成交總價落在 minPrice~maxPrice、buyerType（首購/非首購）、propertyType 篩選 `paymentTermTemplates`
    - 手動覆蓋：兩層連動選擇器（類別 → 範本），可還原自動
    - 套用範本或切換範本時，**重置**所有手動調整
 2. **期款明細編輯表格**，欄位：`比例(%) | 期別名稱 | 金額(萬) | 備註`

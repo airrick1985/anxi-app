@@ -7,6 +7,8 @@
  *  - buyerType（首購/非首購）須相同（範本缺欄位視為「非首購」）
  */
 
+import { getProjectQuoteDefaults } from './quoteFieldVisibility.js';
+
 /**
  * @typedef {Object} MatchCondition
  * @property {string} propertyType 此戶物件類型（住家/店面…）
@@ -45,6 +47,70 @@ export function getTemplateMismatchReasons(template, cond) {
 /** 範本是否符合條件 */
 export function isTemplateMatched(template, cond) {
     return getTemplateMismatchReasons(template, cond).length === 0;
+}
+
+/**
+ * 戶別是否為優付戶。
+ * 優付開關存在 isPreferredPayment（銷控列表與修改銷控寫入，請佣與報價單資格也讀它）；
+ * usePreferredPayment 不會寫入戶別，是報價單、付款表「這次要不要用優付」的畫面狀態，
+ * 所以開關有值時一律以開關為準，只有舊資料沒有開關值時才參考。
+ */
+export function isUnitPreferredPayment(unit) {
+    if (typeof unit?.isPreferredPayment === 'boolean') return unit.isPreferredPayment;
+    return unit?.usePreferredPayment === true;
+}
+
+/** 建案是否開放優付選項（付款表的優付勾選框也依此顯示） */
+export function isPreferredPaymentOptionEnabled(project) {
+    return getProjectQuoteDefaults(project).preferredPayment === true;
+}
+
+/**
+ * 付款表、範本帶入、合約製作共用：這戶預設是否用優付期款。
+ * 建案隱藏優付選項時沒有勾選框可取消，一律視為非優付；
+ * 拿不到建案設定時比照勾選框視為隱藏，仍可手動選範本。
+ * @param {Object} unit
+ * @param {Object|null} [project] projects/{id} 文件
+ */
+export function resolveUnitPreferredPayment(unit, project) {
+    return isPreferredPaymentOptionEnabled(project) && isUnitPreferredPayment(unit);
+}
+
+/** 依是否優付決定總價期款類別 */
+export function preferredPaymentCategory(usePreferredPayment) {
+    return usePreferredPayment ? '優付期款' : '一般期款';
+}
+
+/**
+ * 已存合約要還原的期款範本 id，null 表示走自動判斷。
+ * - 手動指定過：還原指定的範本；範本已刪除時回到自動判斷
+ * - 存檔時是自動判斷：照常跟著自動判斷（總價變動換範本），但當時的範本與現在判斷的類別不同時要留在當時的範本，
+ *   否則優付規則或開關改動會悄悄換掉已存合約的期款
+ * @param {{ paymentTemplateId?: string|null, manualRowsTemplateId?: string|null }} saved 戶別 contractDocData
+ * @param {Object[]} templates
+ * @param {boolean} usePreferredPayment 目前的優付判斷
+ * @returns {string|null}
+ */
+export function resolveSavedContractTemplateId(saved, templates, usePreferredPayment) {
+    const findTemplate = id => (id ? (templates || []).find(t => t.id === id) : null);
+    const manual = findTemplate(saved?.paymentTemplateId);
+    if (manual) return manual.id;
+    const lastUsed = findTemplate(saved?.manualRowsTemplateId);
+    return lastUsed && lastUsed.paymentCategory !== preferredPaymentCategory(usePreferredPayment) ? lastUsed.id : null;
+}
+
+/**
+ * 自動判斷總價期款範本（付款表第 1 頁、繳款紀錄範本帶入共用）：
+ * 依是否優付決定類別，取該類別第一個符合條件的範本。
+ * 找不到回傳 null，不退回其他類別，由呼叫端提示並讓使用者手動選。
+ * @param {Object[]} templates
+ * @param {boolean} usePreferredPayment
+ * @param {MatchCondition} cond
+ * @returns {Object|null}
+ */
+export function selectAutoPaymentTemplate(templates, usePreferredPayment, cond) {
+    const category = preferredPaymentCategory(usePreferredPayment);
+    return (templates || []).find(t => t.paymentCategory === category && isTemplateMatched(t, cond)) || null;
 }
 
 /** 原因清單 → 顯示文字 */

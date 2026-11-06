@@ -7,6 +7,7 @@
  * - 日期一律以台灣時間顯示 YYYY/MM/DD
  */
 import { COLUMN_DEFINITIONS, UNIT_EXPORT_COMPUTED_COLUMNS, DRAWING_SHORT_LABELS } from '@/constants/householdColumns';
+import { paymentRecordColumnFields } from '@/utils/paymentRecordColumns';
 import { normalizeSalespersons } from '@/utils/salespersonUtils';
 import { isDealParking } from '@/utils/salesStatusGroups';
 import { getUnitBoundParkings, unitParkingFields } from '@/utils/unitParkingFields';
@@ -15,7 +16,7 @@ import { feeGiftFields } from '@/utils/unitFeeGifts';
 const TITLE_MAP = new Map([...COLUMN_DEFINITIONS, ...UNIT_EXPORT_COMPUTED_COLUMNS].map(c => [c.key, c.title]));
 
 const BOOL_KEYS = new Set(['isPreferredPayment', 'isFirstTimeBuyer', 'buyerHasPurchasedFuyu']);
-const DATE_KEYS = new Set(['payment_deposit_date', 'payment_supplement_date', 'payment_contract_date', 'buyerDateOfBirth']);
+const DATE_KEYS = new Set(['payment_deposit_date', 'payment_supplement_date', 'payment_contract_date', 'buyerDateOfBirth', 'next_expected_date']);
 const RATIO_DECIMAL_KEYS = new Set(['common_area_ratio', 'land_share_ratio']);       // 儲存 0~1
 const RATIO_PERCENT_KEYS = new Set(['housePriceRatio', 'landPriceRatio', 'payment_ratio']); // 已是百分數
 const UNIT_PRICE_KEYS = new Set(['unit_price_list', 'unit_price_floor', 'unit_price_transaction']);
@@ -24,10 +25,10 @@ const WAN_PRICE_KEYS = new Set([
   'price_list_house_only', 'price_list_terrace', 'price_list_terrace_unit', 'price_list_ancillary', 'price_list_house_total',
   'price_floor_house_only', 'price_floor_terrace', 'price_floor_ancillary', 'price_floor_house_total',
   'price_transaction_house', 'price_package_deal', 'price_package',
-  'parking_trans_total', 'parking_floor_total', 'total_transaction', 'total_floor', 'price_diff', 'paid_total',
+  'parking_trans_total', 'parking_floor_total', 'total_transaction', 'total_floor', 'price_diff', 'paid_total', 'pending_total',
   'held_parking_list_total', 'held_parking_floor_total', 'held_parking_trans_total', 'net_price_diff',
 ]);
-const COUNT_KEYS = new Set(['parking_count', 'held_parking_count']);
+const COUNT_KEYS = new Set(['parking_count', 'held_parking_count', 'overdue_count']);
 
 function fmtNumber(num, decimals = 0) {
   return Number(num).toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -142,10 +143,7 @@ export function withDerivedFields(unit, parkings = []) {
   item.price_diff = houseTrans > 0 ? item.total_transaction - item.total_floor : null;
   Object.assign(item, feeGiftFields(unit, item.price_diff));
 
-  const paymentRecords = Array.isArray(unit.paymentRecords) ? unit.paymentRecords : [];
-  const paidYuan = paymentRecords.reduce((s, r) => s + (Number(r?.amount) || 0), 0);
-  item.paid_total = Math.round(paidYuan / 10000 * 100) / 100;
-  item.payment_ratio = item.total_transaction > 0 ? Math.round((paidYuan / (item.total_transaction * 10000)) * 1000) / 10 : null;
+  Object.assign(item, paymentRecordColumnFields(unit.paymentRecords, item.total_transaction));
 
   const areaVal = Number(item.area_house_ping) || 0;
   const calcUnit = (total) => {

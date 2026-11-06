@@ -3496,6 +3496,10 @@ exports.updateSalesField = onCall({ region: "asia-east1" }, async (request) => {
   }
 });
 
+const parkingMoveOut = require('./parkingMoveOut');
+const { collectMovedOutParkings, restoreMoveOuts, findParkingConflicts, householdFieldsWithoutSpots } = parkingMoveOut;
+const { resolveCancelledParkings } = require('./utils/cancelledParking');
+
 /**
  * 【新增】退戶功能
  * 將指定戶別及其關聯車位的銷售資料清除，並建立永久退戶紀錄
@@ -3634,7 +3638,10 @@ async function performCancelPurchase(payload, dbInstance) {
     console.log(`[${functionName}] 已讀取戶別原始資料`);
 
     // 讀取關聯車位的原始資料
-    const parkingQuery = db.collection("salesParkings").where("buyerUnitId", "==", unitId);
+    // 各建案的戶別代號可能相同，一定要限定建案，否則會清掉其他建案的車位
+    const parkingQuery = db.collection("salesParkings")
+      .where("projectId", "==", projectId)
+      .where("buyerUnitId", "==", unitId);
     const parkingSnapshot = await parkingQuery.get();
 
     const originalParkingData = [];
@@ -3646,6 +3653,14 @@ async function performCancelPurchase(payload, dbInstance) {
     });
 
     console.log(`[${functionName}] 已讀取 ${originalParkingData.length} 筆關聯車位資料`);
+
+    // 換戶時車位可能已先轉到新戶，上面查不到，要另外帶進紀錄
+    const { movedOut: parkingMovedOut, moveRefs } = await collectMovedOutParkings(db, {
+      projectId,
+      unitId,
+      household: originalHouseholdData,
+      boundParkings: originalParkingData.map(p => p.data),
+    });
 
     // ========================================
     // 步驟 2：建立退戶日誌
@@ -3669,6 +3684,7 @@ async function performCancelPurchase(payload, dbInstance) {
       cancellationDate: cancellationTimestamp,
       originalHouseholdData: originalHouseholdData,
       originalParkingData: originalParkingData,
+      parkingMovedOut,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
 
@@ -3714,6 +3730,8 @@ async function performCancelPurchase(payload, dbInstance) {
       remarks: buildRemarksSummaryFromNotes(baseRemarkNotes),
       // 加入車位資料完整備份
       parkingData: originalParkingData.map(p => p.data),
+      // 退戶前已轉到別戶的車位：只留紀錄，復原時不寫回
+      parkingMovedOut,
       // 加入退戶元資料
       _cancellationMeta: {
         operatorName: operatorName,
@@ -3783,6 +3801,7 @@ async function performCancelPurchase(payload, dbInstance) {
       remarks: "",
       remarkNotes: [],  // ✅ [備註留言] 清空，避免新戶主看到前買方留言（已隨備份帶走）
       '持有車位': [],  // 清除車位關聯陣列
+      paymentRecords: [],  // 繳款紀錄（預計與已繳）清空，避免舊買方金額算進下一位買方；已隨備份帶走，復原時一併還原
 
       // 更新時間
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -3821,6 +3840,9 @@ async function performCancelPurchase(payload, dbInstance) {
       };
       batch.update(parkingDocRef, parkingResetData);
     }
+
+    // 5. 轉出紀錄已帶進退戶紀錄，清掉避免算到下一位買方
+    moveRefs.forEach(ref => batch.delete(ref));
 
     // 提交所有操作
     await batch.commit();
@@ -4074,7 +4096,7 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1", memory: "512MiB" 
     snapshot.forEach(doc => {
       const data = doc.data();
       const meta = data._cancellationMeta || {};
-      const parkingData = data.parkingData || [];
+      const parkingDetails = resolveCancelledParkings(data);
       const deletedMeta = data._deletedMeta || {};
       const restoredMeta = data._restoredMeta || {};
 
@@ -4117,16 +4139,8 @@ exports.getCancelledPurchases = onCall({ region: "asia-east1", memory: "512MiB" 
         payment_contract_amount: data.payment_contract_amount || null,
         payment_contract_date: data.payment_contract_date || null,
         // 車位詳細資料
-        parkingDetails: parkingData.map(p => ({
-          spotId: p.spotId || '',
-          floor: p.floor || '',
-          type: p.type || '',
-          price_list: p.price_list || null,
-          price_floor: p.price_floor || null,
-          price_transaction: p.price_transaction || null,
-          status: p.status || '',
-        })),
-        parkingCount: meta.parkingCount || parkingData.length || 0,
+        parkingDetails,
+        parkingCount: parkingDetails.length,
         // 退戶元資料
         operatorName: meta.operatorName || '',
         cancellationDate: meta.cancellationDate || null,
@@ -4322,6 +4336,8 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
   const { projectId, cancelledDocId, operatorName } = request.data;
   // ✅ keepRecord：復原後是否保留這筆退戶紀錄（標記為已復原，僅供查閱）；預設 false → 連同紀錄刪除
   const keepRecord = request.data.keepRecord === true;
+  // 使用者已確認：車位已有其他資料時，不含這些車位復原
+  const skipParkingConflicts = request.data.skipParkingConflicts === true;
   const functionName = `restoreCancelledPurchase (Doc: ${cancelledDocId})`;
 
   if (!projectId || !cancelledDocId || !operatorName) {
@@ -4388,19 +4404,67 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
     // ========================================
 
     const parkingBackup = cancelledData.parkingData || [];
+    // 舊版退戶查詢沒有限定建案，備份可能含其他建案的車位；寫回會變成本案的 {本案}_{spotId}，一律略過
+    const sameProjectParking = parkingBackup.filter(p => !p.projectId || p.projectId === projectId);
+    const skippedOtherProjectParkingCount = parkingBackup.length - sameProjectParking.length;
+    if (skippedOtherProjectParkingCount > 0) {
+      console.warn(`[${functionName}] 略過 ${skippedOtherProjectParkingCount} 筆其他建案的車位備份`);
+    }
+
+    // 退戶後車位可能已賣給別戶或改保留，不可覆蓋。每次都重新檢查，不採信前端傳來的清單
+    const parkingConflicts = await findParkingConflicts(db, projectId, sameProjectParking);
+    const conflictSpotText = parkingConflicts
+      .map(({ spotId, unitId: boundUnit }) => (boundUnit ? `${spotId}（${boundUnit}）` : spotId))
+      .join('、');
+    if (parkingConflicts.length > 0 && !skipParkingConflicts) {
+      console.log(`[${functionName}] 車位已有其他資料，等待確認: ${conflictSpotText}`);
+      return {
+        status: "parking-conflict",
+        message: `車位已有其他資料，不可覆蓋：${conflictSpotText}`,
+        parkingConflicts,
+      };
+    }
+    const conflictSpots = new Set(parkingConflicts.map(c => c.spotId));
+    const restorableParking = sameProjectParking.filter(p => !conflictSpots.has(p.spotId));
+    const skippedParkingText = conflictSpotText ? `，未恢復車位 ${conflictSpotText}` : '';
 
     // 準備戶別復原資料（去除退戶元資料、車位資料與退戶紀錄專屬的標記欄位）
     const householdRestoreData = { ...cancelledData };
     delete householdRestoreData._cancellationMeta;
     delete householdRestoreData.parkingData;
+    delete householdRestoreData.parkingMovedOut;
     delete householdRestoreData._isDeleted;
     delete householdRestoreData._deletedMeta;
     delete householdRestoreData._isRestored;
     delete householdRestoreData._restoredMeta;
+    // parkingDetails 是退戶紀錄專用的車位明細，舊備份可能含他案車位的買方姓名，不可寫回戶別。
+    // merge 寫入不會移除舊值，所以用 FieldValue.delete，連先前復原留在戶別上的一併清掉
+    householdRestoreData.parkingDetails = admin.firestore.FieldValue.delete();
+    if (conflictSpots.size > 0) {
+      Object.assign(householdRestoreData, householdFieldsWithoutSpots(cancelledData, conflictSpots));
+    }
     householdRestoreData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
     // 銷售人員（複選）：備份可能是舊單人字串或新陣列，復原時統一正規化為陣列
     householdRestoreData.salesperson = normalizeSalespersons(cancelledData.salesperson);
     householdRestoreData.salespersonUserKey = normalizeSalespersons(cancelledData.salespersonUserKey);
+    // 繳款紀錄：以備份為主，只保留該戶最近一次退戶之後新增的紀錄，避免併入舊版退戶留下的其他買方金額
+    // 兩個等值條件由單欄索引合併查詢，不需要複合索引
+    const currentPaymentRecords = householdSnapshot.exists ? householdSnapshot.data().paymentRecords : null;
+    const unitCancellations = await db.collection("cancelledPurchases")
+      .where("projectId", "==", projectId)
+      .where("unitId", "==", unitId)
+      .get();
+    const latestCancellation = latestCancellationMillis([
+      { id: cancelledDocId, data: cancelledData },
+      ...unitCancellations.docs.map(doc => ({ id: doc.id, data: doc.data() })),
+    ]);
+    if (Array.isArray(cancelledData.paymentRecords) || Array.isArray(currentPaymentRecords)) {
+      householdRestoreData.paymentRecords = mergeRestoredPaymentRecords(
+        cancelledData.paymentRecords,
+        currentPaymentRecords,
+        latestCancellation,
+      );
+    }
 
     // ✅ [備註留言] 復原時追加系統留言，留下完整軌跡（退戶＋復原都在留言串中）
     const restoredNotes = (Array.isArray(cancelledData.remarkNotes) ? cancelledData.remarkNotes : [])
@@ -4409,7 +4473,7 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
       noteId: `system-restore-${Date.now()}`,
       type: 'system',
       category: 'general',
-      content: '復原退戶記錄，戶別銷售資料已還原',
+      content: `復原退戶記錄，戶別銷售資料已還原${skippedParkingText}`,
       images: [],
       authorName: operatorName,
       authorKey: '',
@@ -4421,7 +4485,7 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
     householdRestoreData.remarks = buildRemarksSummaryFromNotes(restoredNotes);
 
     console.log(`[${functionName}] 準備復原 ${Object.keys(householdRestoreData).length} 個戶別欄位`);
-    console.log(`[${functionName}] 準備復原 ${parkingBackup.length} 筆車位資料`);
+    console.log(`[${functionName}] 準備復原 ${restorableParking.length} 筆車位資料`);
 
     // ========================================
     // 步驟 4：使用批次寫入執行復原
@@ -4432,12 +4496,15 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
     // 1. 回寫戶別資料
     batch.set(householdDocRef, householdRestoreData, { merge: true });
 
-    // 2. 復原車位資料
-    for (const parkingData of parkingBackup) {
+    // 2. 復原車位資料（沒有 spotId 的備份對應不到車位文件，不寫入也不計數）
+    let restoredParkingCount = 0;
+    for (const parkingData of restorableParking) {
       if (!parkingData.spotId) continue;
       const parkingDocId = `${projectId}_${parkingData.spotId}`;
       const parkingDocRef = db.collection("salesParkings").doc(parkingDocId);
       const parkingRestoreData = {
+        // 車位文件可能已不存在而在此新建；沒有 projectId 會查不到，之後也退不掉
+        projectId,
         buyerName: parkingData.buyerName || null,
         buyerUnitId: unitId,
         price_transaction: parkingData.price_transaction || null,
@@ -4449,7 +4516,9 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
       batch.set(parkingDocRef, parkingRestoreData, { merge: true });
+      restoredParkingCount += 1;
     }
+    restoreMoveOuts(db, batch, { projectId, unitId, cancelledData });
 
     // 3. 處理退戶備份：保留（標記已復原）或刪除
     const restoredAt = admin.firestore.Timestamp.now();
@@ -4487,16 +4556,18 @@ exports.restoreCancelledPurchase = onCall({ region: "asia-east1", memory: "512Mi
 
     console.log(`[${functionName}] 退戶復原完成！`);
     console.log(`[${functionName}] - 已回寫戶別資料: ${targetDocId}`);
-    console.log(`[${functionName}] - 已復原車位數量: ${parkingBackup.length}`);
+    console.log(`[${functionName}] - 已復原車位數量: ${restoredParkingCount}`);
     console.log(`[${functionName}] - 退戶備份 ${cancelledDocId}: ${keepRecord ? '已保留並標記為已復原' : '已刪除'}`);
 
     return {
       status: "success",
       message: keepRecord
-        ? `戶別 ${unitId} 已成功復原，退戶紀錄已保留（標記為已復原）。`
-        : `戶別 ${unitId} 已成功復原，退戶紀錄已一併刪除。`,
+        ? `戶別 ${unitId} 已成功復原${skippedParkingText}，退戶紀錄已保留（標記為已復原）。`
+        : `戶別 ${unitId} 已成功復原${skippedParkingText}，退戶紀錄已一併刪除。`,
       restoredUnitId: unitId,
-      restoredParkingCount: parkingBackup.length,
+      restoredParkingCount,
+      skippedOtherProjectParkingCount,
+      skippedParkingConflicts: parkingConflicts,
       keepRecord,
       restoredBy: operatorName,
       restoredAt,
@@ -6495,7 +6566,12 @@ exports.uploadAuthLetter = onCall({
 });
 //  END: 新增 uploadAuthLetter 雲端函式
 
-// ✓ START: 戶別繳款紀錄 - 繳款憑證（圖檔／PDF）Drive 上傳/改名 (SPEC_UnitPaymentRecords.md)
+// ✓ START: 戶別繳款紀錄 - 繳款憑證（圖檔／PDF）Drive 上傳/改名 (SPEC_UnitPaymentRecords.md、SPEC_PaymentDueReminder.md)
+const {
+  isUnpaidPaymentPayload, paymentPayloadError, unpaidUpdateError, buildPaymentRecord, applyPaymentRecordUpdate,
+  latestCancellationMillis, mergeRestoredPaymentRecords,
+} = require('./utils/paymentProofRecord');
+
 /**
  * [輔助] 組繳款憑證檔名：{YYYYMMDD}-{戶別}-{金額}-{備註}
  * 備註會移除檔名不合法字元與換行、截斷 30 字；備註為空時省略末段。
@@ -6539,17 +6615,12 @@ exports.paymentProofApi = onCall({
   if (!projectId || !unitId) {
     throw new HttpsError('invalid-argument', '缺少必要參數 (projectId, unitId)。');
   }
-  // deleteRecord 只需 recordId、trashFile 只需 fileId，不驗證日期/金額
-  const skipContentValidation = action === 'deleteRecord' || action === 'trashFile';
-  if (!skipContentValidation) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
-      throw new HttpsError('invalid-argument', '繳款日期格式必須為 YYYY-MM-DD。');
-    }
+  const payloadError = paymentPayloadError(request.data);
+  if (payloadError) {
+    throw new HttpsError('invalid-argument', payloadError);
   }
+  const isUnpaidPayload = isUnpaidPaymentPayload(request.data);
   const amountNum = Number(amount);
-  if (!skipContentValidation && (!Number.isInteger(amountNum) || amountNum <= 0)) {
-    throw new HttpsError('invalid-argument', '繳款金額必須為大於 0 的整數（元）。');
-  }
 
   try {
     const drive = getAuthenticatedDriveClient();
@@ -6683,15 +6754,11 @@ exports.paymentProofApi = onCall({
     // --- action: addRecord（快速新增：不經修改銷控，直接把紀錄附加進 paymentRecords）---
     if (action === 'addRecord') {
       const nowIso = new Date().toISOString();
-      const newRecord = {
+      const newRecord = buildPaymentRecord(request.data, {
         id: `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        date: String(date),
-        amount: amountNum,
-        note: String(note || ''),
+        nowIso,
         file: uploadedFileInfo,
-        createdAt: nowIso,
-        updatedAt: nowIso
-      };
+      });
       await db.runTransaction(async (tx) => {
         const snap = await tx.get(docRef);
         if (!snap.exists) {
@@ -6700,7 +6767,7 @@ exports.paymentProofApi = onCall({
         const existing = Array.isArray(snap.data().paymentRecords) ? snap.data().paymentRecords : [];
         tx.update(docRef, { paymentRecords: [...existing, newRecord] });
       });
-      console.log(`[${functionName}] 已新增繳款紀錄 ${newRecord.id} (${unitId}, ${amountNum} 元)`);
+      console.log(`[${functionName}] 已新增繳款紀錄 ${newRecord.id} (${unitId}, ${isUnpaidPayload ? '預計' : `${amountNum} 元`})`);
       return { status: 'success', record: newRecord };
     }
 
@@ -6714,6 +6781,12 @@ exports.paymentProofApi = onCall({
     const preRecord = preList.find(r => r && r.id === recordId);
     if (!preRecord) {
       throw new HttpsError('not-found', '找不到指定的繳款紀錄，可能已被其他人刪除，請重新整理。');
+    }
+    if (isUnpaidPayload) {
+      const unpaidError = unpaidUpdateError(preRecord, request.data);
+      if (unpaidError) {
+        throw new HttpsError('invalid-argument', unpaidError);
+      }
     }
 
     let nextFile = preRecord.file || null;
@@ -6766,14 +6839,7 @@ exports.paymentProofApi = onCall({
       if (idx === -1) {
         throw new HttpsError('not-found', '找不到指定的繳款紀錄，可能已被其他人刪除，請重新整理。');
       }
-      updatedRecord = {
-        ...existing[idx],
-        date: String(date),
-        amount: amountNum,
-        note: String(note || ''),
-        file: nextFile,
-        updatedAt: nowIso
-      };
+      updatedRecord = applyPaymentRecordUpdate(existing[idx], request.data, { nowIso, file: nextFile });
       const next = existing.slice();
       next[idx] = updatedRecord;
       tx.update(docRef, { paymentRecords: next });
@@ -6782,7 +6848,7 @@ exports.paymentProofApi = onCall({
     if (fileIdToTrash) {
       trashWarning = !(await trashPaymentProofFile(drive, fileIdToTrash, functionName));
     }
-    console.log(`[${functionName}] 已更新繳款紀錄 ${recordId} (${unitId}, ${amountNum} 元)`);
+    console.log(`[${functionName}] 已更新繳款紀錄 ${recordId} (${unitId}, ${isUnpaidPayload ? '預計' : `${amountNum} 元`})`);
     return { status: 'success', record: updatedRecord, renameWarning, trashWarning };
 
   } catch (error) {
@@ -28112,7 +28178,7 @@ const cancelledFieldDisplayNames = {
 
 // 退戶備份文件專用的內部欄位：不輸出到 Sheet（銷控 Sheet 沒有這些欄，避免兩張表欄位不一致）
 const CANCELLED_INTERNAL_FIELDS = [
-  'parkingData', 'parkingDetails', '_cancellationMeta', '_isDeleted', '_deletedMeta', 'docId'
+  'parkingData', 'parkingDetails', 'parkingMovedOut', '_cancellationMeta', '_isDeleted', '_deletedMeta', 'docId'
 ];
 
 // ✅ START: Sync Failure Notification Functions
@@ -28362,6 +28428,100 @@ function _generateDynamicSuggestion(errorMessage, serviceAccountEmail) {
 }
 // ✅ END: Sync Failure Notification Functions
 
+const { SHEET_SYNC_SKIP_FIELD, shouldSkipSheetSync } = require('./utils/sheetSyncSkip');
+
+// 欄號（1 起算）轉 A1 欄名：1 → A、27 → AA
+function _sheetColumnName(index) {
+  let name = '';
+  for (let n = index; n > 0; n = Math.floor((n - 1) / 26)) {
+    name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
+  }
+  return name;
+}
+
+// 全量同步清除範圍的右邊界：ZZ
+const SHEET_SYNC_MAX_COLUMNS = 702;
+
+/**
+ * [Helper] 清除已寫入範圍以外的舊內容：下方多出來的列，以及右側多出來的欄（舊的動態欄）。
+ * Why: 範圍起點超出工作表格線時 Sheets 會回 exceeds grid limits，所以先查格線大小，真的有多才清。
+ */
+async function _clearSheetOutsideWritten(sheets, { spreadsheetId, sheetName, rowCount, columnCount }) {
+  const res = await sheets.spreadsheets.get({
+    spreadsheetId,
+    ranges: [`'${sheetName}'!A1`],
+    fields: 'sheets.properties.gridProperties',
+  });
+  const grid = res.data.sheets?.[0]?.properties?.gridProperties;
+  if (!grid) throw new Error(`讀不到工作表「${sheetName}」的格線大小，無法清除舊資料`);
+
+  const ranges = [];
+  if (grid.rowCount > rowCount) ranges.push(`'${sheetName}'!A${rowCount + 1}:ZZ`);
+  if (grid.columnCount > columnCount && columnCount < SHEET_SYNC_MAX_COLUMNS) {
+    ranges.push(`'${sheetName}'!${_sheetColumnName(columnCount + 1)}1:ZZ`);
+  }
+  if (ranges.length > 0) {
+    await sheets.spreadsheets.values.batchClear({ spreadsheetId, resource: { ranges } });
+  }
+}
+
+/**
+ * [Helper] 把建案所有戶別整批寫入 Sheet，回傳同步筆數；沒有戶別時回傳 0 且不動 Sheet。
+ * 先寫入新資料，成功後才清除多出來的舊內容，寫入失敗時 Sheet 維持原資料。
+ * @param {object} params
+ * @param {Function} [params.beforeWrite] 取得 Sheet 權限後、寫入前要做的事（手動全量同步用來記下設定）
+ */
+async function _fullSyncSalesHouseholdsToSheet({ db, projectId, spreadsheetId, sheetName, beforeWrite }) {
+  // 假設是 root collection 'salesHouseholds' 並且有 projectId 欄位
+  const snapshot = await db.collection('salesHouseholds')
+    .where('projectId', '==', projectId)
+    .get();
+
+  if (snapshot.empty) return 0;
+
+  const households = [];
+  snapshot.forEach(doc => {
+    households.push({ _docId: doc.id, ...doc.data() });
+  });
+
+  const rows = households.map(h => _flattenSalesHouseholdForSheet(h));
+
+  // 固定欄 → 對照表欄 → 動態欄 → 地址合併欄
+  const headers = _buildSheetHeaderKeys(salesFieldDisplayNames, rows);
+
+  // 建立 Header Row (中文名稱)
+  const headerRow = headers.map(key => {
+    if (key === '_id') return '系統編號 (勿動)';
+    if (key === 'updatedAt') return '更新時間';
+    return salesFieldDisplayNames[key] || key;
+  });
+
+  const values = [headerRow];
+  rows.forEach(row => {
+    values.push(headers.map(key => _toSheetCellValue(key, row[key])));
+  });
+
+  const sheets = await _getSalesSyncGoogleSheetClient();
+
+  if (beforeWrite) await beforeWrite();
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `'${sheetName}'!A1`,
+    valueInputOption: 'USER_ENTERED',
+    resource: { values },
+  });
+
+  await _clearSheetOutsideWritten(sheets, {
+    spreadsheetId,
+    sheetName,
+    rowCount: values.length,
+    columnCount: headerRow.length,
+  });
+
+  return rows.length;
+}
+
 /**
  * [API] 銷控資料全量同步：將某個 Project 的所有 salesHouseholds 寫入 Sheet
  */
@@ -28385,67 +28545,24 @@ exports.syncSalesHouseholdsToSheet = onCall({
   try {
     console.log(`[${functionName}] 開始同步: Project=${projectId} -> Sheet=${spreadsheetId} (${sheetName})`);
 
-    // 1. Fetch all sales households
-    // 假設是 root collection 'salesHouseholds' 並且有 projectId 欄位
-    const snapshot = await db.collection('salesHouseholds')
-      .where('projectId', '==', projectId)
-      .get();
+    const count = await _fullSyncSalesHouseholdsToSheet({
+      db,
+      projectId,
+      spreadsheetId,
+      sheetName,
+      beforeWrite: () => db.collection('projects').doc(projectId).set({
+        salesSheetId: spreadsheetId,
+        salesSheetTabName: sheetName,
+        salesSheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=0` // 簡易 URL
+      }, { merge: true }),
+    });
 
-    if (snapshot.empty) {
+    if (count === 0) {
       return { status: 'success', message: '該專案尚無銷控資料' };
     }
 
-    const households = [];
-    snapshot.forEach(doc => {
-      households.push({ _docId: doc.id, ...doc.data() });
-    });
-
-    // 2. Flatten Data
-    const rows = households.map(h => _flattenSalesHouseholdForSheet(h));
-
-    // 3. Prepare Headers（固定欄 → 對照表欄 → 動態欄 → 地址合併欄）
-    const headers = _buildSheetHeaderKeys(salesFieldDisplayNames, rows);
-
-    // 建立 Header Row (中文名稱)
-    const headerRow = headers.map(key => {
-      if (key === '_id') return '系統編號 (勿動)';
-      if (key === 'updatedAt') return '更新時間';
-      return salesFieldDisplayNames[key] || key;
-    });
-
-    // 4. Transform Rows to Array relative to Headers
-    const values = [headerRow];
-    rows.forEach(row => {
-      const rowData = headers.map(key => _toSheetCellValue(key, row[key]));
-      values.push(rowData);
-    });
-
-    // 5. Write to Sheet
-    const sheets = await _getSalesSyncGoogleSheetClient();
-
-    // Save settings to Project
-    await db.collection('projects').doc(projectId).set({
-      salesSheetId: spreadsheetId,
-      salesSheetTabName: sheetName,
-      salesSheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=0` // 簡易 URL
-    }, { merge: true });
-
-    // Clear existing content
-    await sheets.spreadsheets.values.clear({
-      spreadsheetId,
-      range: `'${sheetName}'!A:ZZ`,
-    });
-
-    // Write new content
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `'${sheetName}'!A1`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values },
-    });
-
-    console.log(`[${functionName}] 同步完成，共 ${rows.length} 筆`);
-    return { status: 'success', message: `成功同步 ${rows.length} 筆銷控資料`, count: rows.length };
+    console.log(`[${functionName}] 同步完成，共 ${count} 筆`);
+    return { status: 'success', message: `成功同步 ${count} 筆銷控資料`, count };
 
   } catch (error) {
     console.error(`[${functionName}] 失敗:`, error);
@@ -28481,6 +28598,12 @@ exports.onSalesHouseholdWrite = onDocumentWritten({
   const projectId = newData?.projectId || oldData?.projectId;
 
   if (!projectId) {
+    return;
+  }
+
+  // 批次新增預計繳款結束時會全量同步一次，這裡不逐戶寫 Sheet，避免上百次 API 呼叫
+  if (shouldSkipSheetSync(oldData, newData)) {
+    console.log(`[${functionName}] 批次新增預計繳款，略過逐戶同步: ID=${docId}`);
     return;
   }
 
@@ -28631,6 +28754,10 @@ function _formatDateTaipei(date) {
  */
 function _flattenSalesHouseholdForSheet(h) {
   const flat = { ...h };
+  // 內部標記，不可變成 Sheet 的動態欄
+  delete flat[SHEET_SYNC_SKIP_FIELD];
+  // 退戶紀錄專用的車位明細（含買方姓名），先前復原可能留在戶別上，不可進 Sheet
+  delete flat.parkingDetails;
 
   // ID
   flat['_id'] = h._docId || h.id;
@@ -28718,11 +28845,8 @@ function _flattenSalesHouseholdForSheet(h) {
  *      再補上退戶專屬欄位（退戶日期 / 退戶原因 / 操作人員）。
  */
 function _flattenCancelledPurchaseForSheet(doc) {
-  // 車位來源：優先「持有車位」，退戶備份的 parkingData（salesParkings 完整文件）為 fallback
-  // 兩者的 spotId / price_floor / price_transaction 都能被銷控扁平化邏輯讀取
-  const parkingArr = Array.isArray(doc['持有車位']) && doc['持有車位'].length > 0
-    ? doc['持有車位']
-    : (Array.isArray(doc.parkingData) ? doc.parkingData : []);
+  // 與退戶記錄管理同一份車位清單；這些欄位是成交金額與明細，準備購買的車位不列入
+  const parkingArr = resolveCancelledParkings(doc).filter(p => p.countsToDeal);
 
   const flat = _flattenSalesHouseholdForSheet({ ...doc, '持有車位': parkingArr });
 
@@ -31641,11 +31765,20 @@ exports.lineAiHourly = lineAi.lineAiHourly;
 exports.lineAiDaily = lineAi.lineAiDaily;
 exports.lineAiDropboxCallback = lineAi.lineAiDropboxCallback;
 
+// 繳款到期：每小時排程與到期清單 API（docs/SPEC_PaymentDueReminder.md）
+const paymentDueReminderModule = require('./paymentDueReminder');
+paymentDueReminderModule.init({ syncSalesSheet: _fullSyncSalesHouseholdsToSheet });
+exports.paymentDueReminder = paymentDueReminderModule.paymentDueReminder;
+exports.paymentReminderApi = paymentDueReminderModule.paymentReminderApi;
+
 // 銷控圖片管理：新增／替換、更名（同步戶別引用）、批次刪除。
 const salesImages = require('./salesImages');
 exports.saveSalesImage = salesImages.saveSalesImage;
 exports.renameSalesImage = salesImages.renameSalesImage;
 exports.deleteSalesImages = salesImages.deleteSalesImages;
+
+// 車位轉到別戶時記錄，換戶退戶時帶進退戶紀錄。
+exports.onSalesParkingRebound = parkingMoveOut.onSalesParkingRebound;
 
 // 批次開放時同步開啟預約項目的客戶可見性。
 const bookingVisibility = require('./bookingVisibility');

@@ -8,6 +8,7 @@
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 import { isSpecialContractType } from '@/composables/usePriceFormula';
 import { getUnitDealParkings } from '@/utils/salesStatusGroups';
+import { resolveUnitPreferredPayment } from '@/utils/paymentTemplateMatch';
 
 /** Firestore Timestamp / Date / 字串 → Date（無效回 null） */
 export function toDateSafe(value) {
@@ -98,7 +99,8 @@ export function buildUnitLabel(unitData) {
  * 組出合約製作 Dialog 所需的完整戶別 context。
  * @param {object} unitData salesHouseholds 戶別資料（含 持有車位 enrich）
  * @param {object} opts { personnelList: 銷售人員清單（含 name/phone/order）, allParkings: 車位備援,
- *                        packageTypes: 建案設定 projects.packageContractTypes（配套判定；未傳採硬編碼 fallback） }
+ *                        packageTypes: 建案設定 projects.packageContractTypes（配套判定；未傳採硬編碼 fallback）,
+ *                        project: projects/{id} 文件（優付判定；未傳視為建案隱藏優付選項） }
  */
 export function buildUnitDocContext(unitData, opts = {}) {
   const d = unitData || {};
@@ -124,7 +126,7 @@ export function buildUnitDocContext(unitData, opts = {}) {
     doorplate: String(d.doorplate || '').trim(),
     contractType: d.contractType || '',
     isFirstTimeBuyer: d.isFirstTimeBuyer !== false,
-    usePreferredPayment: d.usePreferredPayment === true,
+    usePreferredPayment: resolveUnitPreferredPayment(d, opts.project),
     propertyType: d.propertyType || d.layout || '住家',
 
     buyerName: d.buyerName || '',

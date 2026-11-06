@@ -427,7 +427,6 @@
 </template>
 
 <script setup>
-import { getProjectQuoteDefaults } from '@/utils/quoteFieldVisibility';
 import { ref, computed, watch, defineProps, defineEmits } from 'vue';
 import { useDisplay } from 'vuetify';
 import ParkingEditModal from '@/components/ParkingEditModal.vue';
@@ -435,6 +434,7 @@ import ParkingEditModal from '@/components/ParkingEditModal.vue';
 import PaymentSchedulePreviewDialog from '@/components/PaymentSchedulePreviewDialog.vue';
 import { normalizeSalespersons, formatSalespersons } from '@/utils/salespersonUtils';
 import { getUnitDealParkings } from '@/utils/salesStatusGroups';
+import { isPreferredPaymentOptionEnabled, resolveUnitPreferredPayment } from '@/utils/paymentTemplateMatch';
 
 import { useProjectStore } from '@/store/projectStore';
 
@@ -581,10 +581,8 @@ const totalParkingBasePrice = (ownedParkingSpots.value || []).reduce((sum, p) =>
 });
 
 // ✅ [新增] Computed: 是否顯示優付選項 (依據專案設定)
-const showPreferredPaymentOption = computed(() => {
-    const project = projectStore.getProjectById?.(props.projectId) || projectStore.currentProject;
-    return getProjectQuoteDefaults(project).preferredPayment === true;
-});
+const paymentProject = computed(() => projectStore.getProjectById?.(props.projectId) || projectStore.currentProject);
+const showPreferredPaymentOption = computed(() => isPreferredPaymentOptionEnabled(paymentProject.value));
 
 // --- 監聽器 (Watchers) ---
 watch(() => props.show, (newVal) => {
@@ -610,11 +608,9 @@ watch(() => props.show, (newVal) => {
         // 正體中文註解：從 props.unitData (使用英文 key) 映射到 formData (使用中文 key)
         if (props.unitData) {
 
-            // ✅ [新增] 映射優付欄位 (假設 unitData 中有此欄位)
-            if (props.unitData.usePreferredPayment === true) {
-                initialData.usePreferredPayment = true;
-            }
-            
+            // 優付預設帶戶別的優付開關，建案隱藏優付選項時一律不用；這裡的勾選框只影響本次付款表，不寫回戶別
+            initialData.usePreferredPayment = resolveUnitPreferredPayment(props.unitData, paymentProject.value);
+
             // ✓ 修正「房屋底價」
             if (props.unitData.price_floor_house_total !== undefined) {
                 initialData['房屋總底價'] = props.unitData.price_floor_house_total;

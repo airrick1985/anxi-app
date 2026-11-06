@@ -894,9 +894,10 @@ export async function updateSalesData(payload) {
 }
 
 /**
- * 戶別繳款紀錄 - 繳款憑證圖檔上傳/改名與紀錄快速 CRUD (SPEC_UnitPaymentRecords.md)
+ * 戶別繳款紀錄 - 繳款憑證圖檔上傳/改名與紀錄快速 CRUD (SPEC_UnitPaymentRecords.md、SPEC_PaymentDueReminder.md)
  * @param {object} payload - { action: 'upload'|'rename'|'addRecord'|'updateRecord'|'deleteRecord',
- *   projectId, unitId, base64?, fileId?, recordId?, removeFile?, date?, amount?, note? }
+ *   projectId, unitId, base64?, fileId?, recordId?, removeFile?, date?, amount?, note?,
+ *   expectedDate?, expectedAmount?, planSource?, paidBy? }
  * @returns {Promise<object>} { status, file?|record?|removedId?, renameWarning? }
  */
 export async function paymentProofApi(payload) {
@@ -907,6 +908,23 @@ export async function paymentProofApi(payload) {
   } catch (error) {
     console.error("呼叫 paymentProofApi 雲端函式時發生錯誤:", error);
     return { status: "error", message: error.message };
+  }
+}
+
+/**
+ * 繳款到期：到期清單、批次新增、收件人預覽、測試通知、通知紀錄 (SPEC_PaymentDueReminder.md §8.2)
+ * @param {object} payload - { action: 'listDue'|'batchAddPlans'|'previewRecipients'|'sendTest'|'listLogs'|'runNow',
+ *   projectId, userKey, ... }
+ * @returns {Promise<object>} { status, ... }
+ */
+export async function paymentReminderApi(payload) {
+  try {
+    const fn = httpsCallable(functions, 'paymentReminderApi', { timeout: 120000 });
+    const result = await fn(payload);
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 paymentReminderApi 雲端函式時發生錯誤:", error);
+    return { status: "error", code: error.code, message: error.message };
   }
 }
 
@@ -1292,16 +1310,17 @@ export async function getCancelledPurchases(projectId, includeDeleted = true, in
  * @param {string} cancelledDocId - 退戶備份文件 ID
  * @param {string} operatorName - 操作者名稱
  * @param {boolean} keepRecord - true：保留這筆退戶紀錄並標記為已復原；false：復原後連同紀錄刪除
+ * @param {boolean} skipParkingConflicts - true：車位已有其他資料時，不含這些車位復原
  * @returns {Promise<object>}
  */
-export async function restoreCancelledPurchase(projectId, cancelledDocId, operatorName, keepRecord = false) {
+export async function restoreCancelledPurchase(projectId, cancelledDocId, operatorName, keepRecord = false, skipParkingConflicts = false) {
   clearCancelledPurchasesCache(); // 退戶資料異動 → 戶別資訊的退戶紀錄重抓
   if (!projectId || !cancelledDocId || !operatorName) {
     return { status: "error", message: "前端錯誤：缺少必要參數。" };
   }
   try {
     const func = httpsCallable(functions, 'restoreCancelledPurchase');
-    const result = await func({ projectId, cancelledDocId, operatorName, keepRecord: keepRecord === true });
+    const result = await func({ projectId, cancelledDocId, operatorName, keepRecord: keepRecord === true, skipParkingConflicts: skipParkingConflicts === true });
     return result.data;
   } catch (error) {
     console.error("呼叫 restoreCancelledPurchase 雲端函式時發生錯誤:", error);

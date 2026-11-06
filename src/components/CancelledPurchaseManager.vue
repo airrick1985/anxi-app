@@ -100,13 +100,10 @@
             @click:row="onRowClick"
             hover
           >
-            <!-- 戶別 + 車位 chips -->
+            <!-- 戶別 -->
             <template v-slot:item.unitId="{ item }">
               <div class="d-flex align-center gap-1 flex-wrap" :class="{ 'text-grey': item.isDeleted, 'deleted-text': item.isDeleted }">
                 <span class="font-weight-bold">{{ item.unitId }}</span>
-                <v-chip v-if="item.parkingCount > 0" size="x-small" color="info" variant="tonal">
-                  車位 {{ item.parkingCount }}
-                </v-chip>
                 <v-chip v-if="item.isDeleted" size="x-small" color="error" variant="tonal">
                   已刪除
                 </v-chip>
@@ -121,6 +118,17 @@
 
             <template v-slot:item.salesperson="{ item }">
               {{ formatSalespersons(item.salesperson, '、', '—') }}
+            </template>
+
+            <!-- 車位：每個車位一行 -->
+            <template v-slot:item.parkingDetails="{ item }">
+              <template v-if="item.parkingDetails && item.parkingDetails.length > 0">
+                <div v-for="p in item.parkingDetails" :key="p.spotId" class="parking-line" :class="{ 'text-grey': p.countsToDeal === false }">
+                  {{ parkingLineText(p) }}
+                  <span v-if="parkingStateLabel(p)" class="text-caption text-grey">{{ parkingStateLabel(p) }}</span>
+                </div>
+              </template>
+              <span v-else>—</span>
             </template>
 
             <!-- 退戶原因 chips -->
@@ -151,7 +159,7 @@
 
             <!-- 成交總價 -->
             <template v-slot:item.totalPrice="{ item }">
-              <span v-if="calculateTotalTransactionPrice(item) > 0" class="font-weight-bold text-success">
+              <span v-if="calculateTotalTransactionPrice(item) > 0" class="font-weight-bold text-success total-price">
                 {{ formatPrice(calculateTotalTransactionPrice(item)) }} 萬
               </span>
               <span v-else>—</span>
@@ -228,7 +236,7 @@ import CancelledPurchaseStatistics from './CancelledPurchaseStatistics.vue';
 import { formatSalespersons } from '@/utils/salespersonUtils';
 import CancelledPurchaseDetail from './CancelledPurchaseDetail.vue';
 import { resolveDisplayNotes } from '@/utils/remarkNotes';
-import { formatCancelDateTime as formatDate, formatDateOnly, formatPrice, calculateTotalTransactionPrice } from '@/utils/cancelledPurchaseUtils';
+import { formatCancelDateTime as formatDate, formatDateOnly, formatPrice, parkingLineText, parkingStateLabel, calculateTotalTransactionPrice } from '@/utils/cancelledPurchaseUtils';
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -252,6 +260,7 @@ const tableHeaders = [
   { title: '戶別', key: 'unitId', sortable: true, width: '120px' },
   { title: '買方', key: 'buyerName', sortable: true },
   { title: '業務員', key: 'salesperson', sortable: true },
+  { title: '車位', key: 'parkingDetails', sortable: false },
   { title: '成交總價', key: 'totalPrice', sortable: false },
   { title: '坪數', key: 'area_house_ping', sortable: true, width: '80px' },
   { title: '小訂日期', key: 'payment_deposit_date', sortable: true, width: '120px' },
@@ -285,6 +294,7 @@ const filteredItems = computed(() => {
     const searchFields = [
       item.unitId,
       item.buyerName,
+      (item.parkingDetails || []).map(p => p.spotId).join(' '),
       formatSalespersons(item.salesperson, ' ', ''),
       item.operatorName,
       item.area_house_ping,
@@ -383,5 +393,11 @@ watch(() => props.show, (newVal) => {
 
 .deleted-row:hover {
   background-color: #efefef !important;
+}
+
+.parking-line,
+.total-price,
+:deep(.v-data-table__th) {
+  white-space: nowrap;
 }
 </style>

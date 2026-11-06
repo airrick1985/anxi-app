@@ -364,6 +364,11 @@ a.mac-btn { text-decoration: none; }
 .mac-vfield.v-input .v-input__details { padding-inline: 4px; min-height: 18px; }
 .mac-vfield.v-input .v-messages { font-size: 12px; }
 .mac-vfield.v-textarea .v-field { --v-field-padding-top: 7px; --v-field-padding-bottom: 7px; }
+/* 日期欄：Vuetify 的 flex 會讓內部容器縮到內容寬；改用 grid 撐滿寬度，Chromium 的日曆圖示才能靠右，
+   align-items 讓 WebKit（含 iOS 的 LINE）的日期文字維持垂直置中 */
+.mac-vfield.v-input input[type="date"] { display: grid; align-items: center; }
+.mac-vfield.v-input input[type="date"]::-webkit-calendar-picker-indicator { margin-left: auto; }
+.mac-vfield.v-input input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 /* v-select 未選值時的 placeholder（Vuetify 以絕對定位 input 貼齊頂端）改為撐滿高度垂直置中 */
 .mac-vfield.v-select .v-field__input > input { top: 0; height: 100%; }
 .mac-vfield.v-textarea .v-field__input { -webkit-mask-image: none; mask-image: none; line-height: 1.55; }
@@ -564,6 +569,11 @@ a.mac-btn { text-decoration: none; }
   white-space: nowrap;
 }
 .mac-tag .v-icon { color: inherit; }
+.mac-tag--blue { --mac-tag-bg: rgba(0, 113, 227, 0.12); --mac-tag-color: #0058b0; }
+.mac-tag--green { --mac-tag-bg: rgba(52, 199, 89, 0.16); --mac-tag-color: #1f7a36; }
+.mac-tag--orange { --mac-tag-bg: rgba(255, 159, 10, 0.16); --mac-tag-color: #9a5b00; }
+.mac-tag--orange-fill { --mac-tag-bg: #c27400; --mac-tag-color: #fff; }
+.mac-tag--red { --mac-tag-bg: rgba(214, 45, 32, 0.11); --mac-tag-color: #b3261b; }
 
 /* 手機清單列：左側色條（--mac-row-accent）＋三行資訊 */
 .mac-list { border-top: 1px solid rgba(0, 0, 0, 0.08); }

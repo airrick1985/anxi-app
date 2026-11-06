@@ -33,7 +33,9 @@
               </span>
               <span class="cancel-row__buyer">{{ item.buyerName || '—' }}</span>
               <v-chip v-if="item.isRestored" size="x-small" color="success" variant="tonal" prepend-icon="mdi-check-circle-outline">已復原</v-chip>
-              <v-chip v-if="item.parkingCount > 0" size="x-small" color="info" variant="tonal">車位 {{ item.parkingCount }}</v-chip>
+              <v-chip v-for="p in item.parkingDetails || []" :key="p.spotId" size="x-small" :color="p.countsToDeal === false ? 'grey' : 'info'" variant="tonal">
+                {{ parkingLineText(p) }}<template v-if="parkingStateLabel(p)">（{{ parkingStateLabel(p) }}）</template>
+              </v-chip>
             </div>
             <div class="cancel-row__line cancel-row__meta">
               <span>業務 {{ formatSalespersons(item.salesperson, '、', '—') }}</span>
@@ -83,7 +85,7 @@ import { useDisplay } from 'vuetify';
 import { useToast, POSITION } from 'vue-toastification';
 import { getCancelledPurchasesCached } from '@/api';
 import { formatSalespersons } from '@/utils/salespersonUtils';
-import { formatDateOnly, formatPrice, calculateTotalTransactionPrice } from '@/utils/cancelledPurchaseUtils';
+import { formatDateOnly, formatPrice, parkingLineText, parkingStateLabel, calculateTotalTransactionPrice } from '@/utils/cancelledPurchaseUtils';
 import CancelledPurchaseDetail from './CancelledPurchaseDetail.vue';
 
 const props = defineProps({

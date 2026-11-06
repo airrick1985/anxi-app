@@ -71,9 +71,12 @@
             <th>車位編號</th>
             <th>樓層</th>
             <th>類型</th>
+            <th>形式</th>
+            <th>尺寸</th>
             <th>表價</th>
             <th>底價</th>
             <th>成交價</th>
+            <th>狀態</th>
           </tr>
         </thead>
         <tbody>
@@ -81,9 +84,12 @@
             <td class="font-weight-bold">{{ p.spotId || '—' }}</td>
             <td>{{ p.floor || '—' }}</td>
             <td>{{ p.type || '—' }}</td>
+            <td>{{ p.type2 || '—' }}</td>
+            <td>{{ p.size || '—' }}</td>
             <td>{{ formatPrice(p.price_list) }} 萬</td>
             <td class="text-red">{{ formatPrice(p.price_floor) }} 萬</td>
-            <td class="text-success font-weight-bold">{{ formatPrice(p.price_transaction) }} 萬</td>
+            <td :class="p.countsToDeal === false ? 'text-grey' : 'text-success font-weight-bold'">{{ formatPrice(p.price_transaction) }} 萬</td>
+            <td>{{ parkingStateLabel(p) || p.status_backend || p.status || '—' }}</td>
           </tr>
         </tbody>
       </v-table>
@@ -226,7 +232,7 @@
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn variant="text" @click="confirmDialog.show = false" :disabled="confirmDialog.loading">取消</v-btn>
-          <v-btn :color="confirmDialog.keepRecord ? 'success' : 'error'" variant="flat" @click="executeRestore" :loading="confirmDialog.loading">
+          <v-btn :color="confirmDialog.keepRecord ? 'success' : 'error'" variant="flat" @click="executeRestore()" :loading="confirmDialog.loading">
             {{ confirmDialog.keepRecord ? '復原並保留紀錄' : '復原並刪除紀錄' }}
           </v-btn>
         </v-card-actions>
@@ -250,6 +256,36 @@
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn variant="flat" color="primary" @click="conflictDialog.show = false">瞭解</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 車位已有其他資料 Dialog -->
+    <v-dialog v-model="parkingConflictDialog.show" max-width="500" :persistent="confirmDialog.loading">
+      <v-card>
+        <v-card-title class="bg-warning text-white d-flex align-center">
+          <v-icon color="white" class="mr-2">mdi-alert</v-icon>
+          車位已有其他資料
+        </v-card-title>
+        <v-card-text class="py-4">
+          <v-table density="compact" class="mb-3">
+            <thead>
+              <tr><th>車位</th><th>目前戶別</th><th>狀態</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="conflict in parkingConflictDialog.conflicts" :key="conflict.spotId">
+                <td>{{ conflict.spotId }}</td>
+                <td>{{ conflict.unitId || '—' }}</td>
+                <td>{{ conflict.status || '—' }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+          成交總價：<strong>{{ formatPrice(totalWithoutConflicts) }} 萬</strong>（不含上列車位）
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" :disabled="confirmDialog.loading" @click="parkingConflictDialog.show = false">取消</v-btn>
+          <v-btn color="warning" variant="flat" :loading="confirmDialog.loading" @click="executeRestore(true)">不含這些車位復原</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -392,14 +428,14 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { computed, ref, reactive } from 'vue';
 import { restoreCancelledPurchase, updateCancelReason, updateCancellationDate, updateRemarks, softDeleteCancelledPurchase, undoSoftDeleteCancelledPurchase, hardDeleteCancelledPurchase } from '@/api';
 import { useUserStore } from '@/store/user';
 import { useToast, POSITION } from 'vue-toastification';
 import { formatSalespersons } from '@/utils/salespersonUtils';
 import RemarkNotesPanel from './RemarkNotesPanel.vue';
 import CancelReasonSelector from './CancelReasonSelector.vue';
-import { formatCancelDateTime, formatPrice, formatNum, calculateTotalTransactionPrice, calculatePremiumPrice } from '@/utils/cancelledPurchaseUtils';
+import { formatCancelDateTime, formatPrice, formatNum, parkingStateLabel, calculateTotalTransactionPrice, calculatePremiumPrice } from '@/utils/cancelledPurchaseUtils';
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -417,6 +453,12 @@ const restoring = ref(false);
 
 const confirmDialog = reactive({ show: false, message: '', loading: false, keepRecord: true });
 const conflictDialog = reactive({ show: false, message: '', currentBuyerName: '', currentStatus: '' });
+const parkingConflictDialog = reactive({ show: false, conflicts: [] });
+const totalWithoutConflicts = computed(() => {
+  const conflictSpots = new Set(parkingConflictDialog.conflicts.map(conflict => conflict.spotId));
+  const parkingDetails = (props.item.parkingDetails || []).filter(p => !conflictSpots.has(p.spotId));
+  return calculateTotalTransactionPrice({ ...props.item, parkingDetails });
+});
 const editReasonsDialog = reactive({ show: false, loading: false, selectedReasons: [] });
 const editDateDialog = reactive({ show: false, loading: false, selectedDate: '' });
 const softDeleteDialog = reactive({ show: false, loading: false, inputDocId: '' });
@@ -431,16 +473,18 @@ function handleRestore() {
   }
   confirmDialog.keepRecord = true; // 每次開啟都回到預設「保留紀錄」
   const totalPrice = calculateTotalTransactionPrice(item);
+  const parkings = item.parkingDetails || [];
+  const movedOutCount = parkings.filter(p => p.movedOut).length;
   confirmDialog.message = `確定要將 <strong>【${item.unitId}】</strong> 的退戶資料復原嗎？<br><br>` +
     `買方：<strong>${item.buyerName || '—'}</strong><br>` +
     `銷售人員：<strong>${formatSalespersons(item.salesperson, '、', '—')}</strong><br>` +
     `成交總價：<strong>${formatPrice(totalPrice)} 萬</strong><br>` +
-    `車位：<strong>${item.parkingCount || 0} 個</strong><br><br>` +
+    `車位：<strong>${parkings.length - movedOutCount} 個</strong>${movedOutCount ? `（已轉出 ${movedOutCount} 個不恢復）` : ''}<br><br>` +
     `系統會將備份資料回寫至原始戶別，並恢復車位關聯。`;
   confirmDialog.show = true;
 }
 
-async function executeRestore() {
+async function executeRestore(skipParkingConflicts = false) {
   const item = props.item;
   confirmDialog.loading = true;
   restoring.value = true;
@@ -448,7 +492,8 @@ async function executeRestore() {
   const keepRecord = confirmDialog.keepRecord === true;
 
   try {
-    const result = await restoreCancelledPurchase(props.projectId, item.docId, name, keepRecord);
+    const result = await restoreCancelledPurchase(props.projectId, item.docId, name, keepRecord, skipParkingConflicts);
+    parkingConflictDialog.show = false;
 
     if (result.status === 'success') {
       toast.success(result.message, { position: POSITION.BOTTOM_CENTER });
@@ -490,6 +535,10 @@ async function executeRestore() {
       conflictDialog.currentBuyerName = result.currentBuyerName;
       conflictDialog.currentStatus = result.currentStatus;
       conflictDialog.show = true;
+    } else if (result.status === 'parking-conflict') {
+      confirmDialog.show = false;
+      parkingConflictDialog.conflicts = result.parkingConflicts;
+      parkingConflictDialog.show = true;
     } else {
       toast.error(`復原失敗：${result.message}`, { position: POSITION.BOTTOM_CENTER });
     }

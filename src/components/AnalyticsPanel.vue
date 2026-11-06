@@ -657,6 +657,7 @@ import {
 } from '@/utils/analyticsCalculations'
 import { normalizeSalespersons, formatSalespersons, salespersonShare } from '@/utils/salespersonUtils'
 import { getUnitDealParkings } from '@/utils/salesStatusGroups'
+import { calculateTotalTransactionPrice } from '@/utils/cancelledPurchaseUtils'
 import { fetchVipGuests, analyzeCustomerStatus, getCancelledPurchases } from '@/api'
 // html2canvas / docx / file-saver 只有輸出 AI 報告時才用到，改為下載時動態載入，
 // 避免首次開啟統計面板就得先下載這三個套件（合計約 300KB）
@@ -1395,9 +1396,7 @@ const applyCancelled = () => {
       })
 
   // 成交總金額（房屋成交價 + 各車位成交價）
-  const unitTotal = (item) =>
-    (Number(item.price_transaction_house) || 0) +
-    (item.parkingDetails || []).reduce((s, p) => s + (Number(p.price_transaction) || 0), 0)
+  const unitTotal = calculateTotalTransactionPrice
   const totalAmount = filtered.reduce((sum, item) => sum + unitTotal(item), 0)
 
   // 按業務員分組計算退戶數（複選：平均分配制，一戶 N 人各分攤 1/N）

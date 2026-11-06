@@ -126,6 +126,10 @@ export const UNIT_EXPORT_COMPUTED_COLUMNS = [
     { key: 'unit_price_transaction', title: '成交單價' },
     { key: 'paid_total', title: '已繳款金額(萬)' },
     { key: 'payment_ratio', title: '繳款比例(%)' },
+    { key: 'next_expected_date', title: '下次預計繳款日' },
+    { key: 'pending_total', title: '待繳金額(萬)' },
+    { key: 'overdue_count', title: '逾期筆數' },
+    { key: 'payment_due_state', title: '到期狀態' },
 ];
 
 /* ==========================================================
@@ -176,7 +180,7 @@ export const DRAWING_FIELD_GROUPS = [
   { key: 'payment', title: '內部：付款／銀行', expanded: false, internal: true, keys: [
     'payment_deposit_date', 'payment_supplement_date', 'payment_contract_date',
     'payment_deposit_amount', 'payment_supplement_amount', 'payment_contract_amount',
-    'paid_total', 'payment_ratio',
+    'paid_total', 'payment_ratio', 'next_expected_date', 'pending_total', 'overdue_count', 'payment_due_state',
     'landBankName', 'landBankAccount', 'landBankAccountName', 'houseBankName', 'houseBankAccount',
     'houseBankAccountName', 'packageBankName', 'packageBankAccount', 'packageBankAccountName',
   ] },

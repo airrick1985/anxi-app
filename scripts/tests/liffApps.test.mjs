@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { isLeadLiffLaunch, readLeadReportId, legacyLeadReportRedirect, pendingLeadReportCallback } from '../../src/utils/leadReportLink.js';
-import { findLiffLaunch, liffLaunchUrl, LIFF_IDS } from '../../src/utils/liffApps.js';
+import { findLiffLaunch, liffLaunchUrl, paymentDueLoginRedirectUri, LIFF_IDS } from '../../src/utils/liffApps.js';
 
 // LINE 內開啟賞屋預約：實際 Endpoint + LIFF 放在 hash 的登入憑證（假值）
 const inClientLaunch = 'https://anxismart.com/?liff_path=viewing-reservation-entry#access_token=fake&context_token=fake&feature_token=fake&id_token=fake&client_id=2008257338';
@@ -40,6 +40,11 @@ test('外部瀏覽器、登入回跳、通知連結帶建案也能對到 LIFF ID
     ['https://anxismart.com/?liff_path=viewing-reservation-entry#/viewing-reservation/p1', LIFF_IDS.viewingReservation, '/viewing-reservation-entry'],
     ['https://anxismart.com/?liff_path=viewing-reservation-entry&liff.state=%23%2Fviewing-reservation-entry&code=c&state=s', LIFF_IDS.viewingReservation, '/viewing-reservation-entry'],
     ['https://anxismart.com/?liff.state=%23%2Fvip-arbitration-entry%2Fp1%2Fd1&code=c&state=s', LIFF_IDS.customerManagement, '/vip-arbitration-entry/p1/d1'],
+    // 繳款到期通知 liff.line.me/{ID}?paymentDueProjectId=p1：primary（liff.line.me 實際回傳的編碼）、secondary redirect
+    ['https://anxismart.com/?liff_path=customer-management-entry&liff.state=%3FpaymentDueProjectId%3Dp1#access_token=fake&context_token=fake', LIFF_IDS.customerManagement, '/payment-due-entry/p1'],
+    ['https://anxismart.com/?liff_path=customer-management-entry&paymentDueProjectId=p1', LIFF_IDS.customerManagement, '/payment-due-entry/p1'],
+    ['https://anxismart.com/?liff_path=customer-management-entry&liff.state=%3FpaymentDueProjectId%3Dp%25201', LIFF_IDS.customerManagement, '/payment-due-entry/p%201'],
+    ['https://anxismart.com/?liff_path=customer-management-entry&paymentDueProjectId=p%201', LIFF_IDS.customerManagement, '/payment-due-entry/p%201'],
     ['https://anxismart.com/?liff_path=report-folder-manager/p1', LIFF_IDS.reportFolder, '/report-folder-manager/p1'],
     ['https://anxismart.com/?liff_path=inspection-console/p1', LIFF_IDS.inspectionConsole, '/inspection-console/p1'],
   ]) {
@@ -51,6 +56,8 @@ test('非 LIFF 開啟、名單回報、未登記路由不在啟動時載入 SDK'
   for (const href of [
     'https://anxismart.com/#/viewing-reservation-entry',
     'https://anxismart.com/#/customer-log-entry/p1/d1',
+    'https://anxismart.com/#/payment-due-entry/p1',
+    'https://anxismart.com/?paymentDueProjectId=p1',
     'https://anxismart.com/#/login',
     'https://anxismart.com/?liff_path=contact%3Fid%3Da',
     'https://anxismart.com/?liff.state=%3FleadReportId%3Da',
@@ -73,6 +80,38 @@ test('LIFF 初始化後 hash 不是具體路由才改指向目標路由', () => 
   assert.equal(new URL(liffLaunchUrl(inClientLaunch, route)).search, '?liff_path=viewing-reservation-entry');
   assert.equal(new URL(liffLaunchUrl('https://anxismart.com/?liff_path=report-folder-manager/p1', '/report-folder-manager/p1')).hash, '#/report-folder-manager/p1');
   assert.equal(liffLaunchUrl('https://anxismart.com/?liff_path=viewing-reservation-entry#/viewing-reservation/p1', route), null);
+});
+
+test('共用 LIFF 的 query 連結：secondary redirect 後不會被 App.vue 依 Endpoint 的 liff_path 導走', () => {
+  // SDK 依 liff.state 組出的網址（@liff/init decodeState）：Endpoint 路徑＋state query 接在 Endpoint query 後，仍是根目錄
+  const secondary = 'https://anxismart.com/?liff_path=customer-management-entry&paymentDueProjectId=p1';
+  const launch = findLiffLaunch(secondary);
+  assert.deepEqual(launch, { liffId: LIFF_IDS.customerManagement, route: '/payment-due-entry/p1' });
+
+  const url = new URL(liffLaunchUrl(secondary, launch.route));
+  assert.equal(url.pathname, '/');
+  assert.equal(url.hash, '#/payment-due-entry/p1');
+  assert.equal(url.searchParams.get('liff_path'), 'payment-due-entry/p1');
+
+  // 重新整理後網址已改寫，仍對到同一個 LIFF 與入口頁
+  assert.deepEqual(findLiffLaunch(url.toString().replace(/#.*$/, '')), { liffId: LIFF_IDS.customerManagement, route: '/payment-due-entry/p1' });
+});
+
+test('沒帶繳款到期參數時，共用 LIFF 仍進客資系統入口', () => {
+  assert.deepEqual(findLiffLaunch('https://anxismart.com/?liff_path=customer-management-entry'), { liffId: LIFF_IDS.customerManagement, route: '/customer-management-entry' });
+});
+
+test('登入回跳網址以 Endpoint 開頭、留在根目錄，回來後對到入口頁', () => {
+  const uri = paymentDueLoginRedirectUri('https://anxismart.com', 'p 1');
+  assert.ok(uri.startsWith('https://anxismart.com/?liff_path=customer-management-entry'));
+  assert.equal(new URL(uri).pathname, '/');
+  assert.equal(new URL(uri).searchParams.has('liff.state'), false);
+  const route = '/payment-due-entry/p%201';
+  assert.deepEqual(findLiffLaunch(`${uri}&code=c&state=s`), { liffId: LIFF_IDS.customerManagement, route });
+  // LINE 也可能把回跳網址的 query 包進 liff.state
+  const wrapped = new URL('https://anxismart.com/?liff_path=customer-management-entry');
+  wrapped.searchParams.set('liff.state', new URL(uri).search.replace('liff_path=customer-management-entry&', ''));
+  assert.deepEqual(findLiffLaunch(`${wrapped}&code=c&state=s`), { liffId: LIFF_IDS.customerManagement, route });
 });
 
 test('bootstrap 等 LINE 取走 hash 憑證後才改網址並建立主程式', async () => {

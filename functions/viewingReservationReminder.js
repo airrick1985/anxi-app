@@ -251,3 +251,4 @@ exports.normalizeOffsets = normalizeOffsets;
 exports.formatOffset = formatOffset;
 exports.buildReminderMessage = buildReminderMessage;
 exports.reservationActionFooter = reservationActionFooter;
+exports.resolveChannelToken = resolveChannelToken;

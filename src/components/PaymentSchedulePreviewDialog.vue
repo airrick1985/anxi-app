@@ -663,6 +663,8 @@ import {
     getTemplateMismatchReasons,
     isTemplateMatched,
     buildTemplateOptionList,
+    preferredPaymentCategory,
+    selectAutoPaymentTemplate,
     TEMPLATE_MENU_PROPS
 } from '@/utils/paymentTemplateMatch';
 import PaymentTemplateOptionItem from '@/components/PaymentTemplateOptionItem.vue';
@@ -776,7 +778,7 @@ const manualTemplateId = ref(null);
 const autoConditionText = computed(() => {
     const c = props.context || {};
     const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
-    const category = c.usePreferredPayment ? '優付期款' : '一般期款';
+    const category = preferredPaymentCategory(c.usePreferredPayment);
     return `${category}／${c.propertyType || '住家'}／${buyerType}／基準 ${formatNumber(mainBase.value)} 萬`;
 });
 
@@ -784,11 +786,7 @@ const autoConditionText = computed(() => {
 const autoTemplate = computed(() => {
     const c = props.context;
     if (!c || templates.value.length === 0) return null;
-    const targetCategory = c.usePreferredPayment ? '優付期款' : '一般期款';
-    const applicable = templates.value.filter(t =>
-        t.paymentCategory === targetCategory && isTemplateMatched(t, templateMatchCondition.value)
-    );
-    return applicable.length > 0 ? applicable[0] : null;
+    return selectAutoPaymentTemplate(templates.value, c.usePreferredPayment, templateMatchCondition.value);
 });
 
 const activeTemplate = computed(() => {

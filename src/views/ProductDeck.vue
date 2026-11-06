@@ -580,6 +580,7 @@ const slides = [
         ['重點戶別一眼看見', '文字標籤、邊框特效，總價／單價／簽約日自由切換'],
         ['統計分析即時算好', '資料透視、去化率統計、Excel 匯出匯入'],
         ['成交資料完整保存', '留言備註、繳款紀錄、介紹費與贈品、上傳文件、退戶紀錄'],
+        ['繳款到期自動提醒', '預計繳款日將到或逾期，Email、LINE 通知管理人員與該戶銷售'],
         ['權限分工', '櫃台、銷售、主管各看各的、各做各的'],
       ],
     },
@@ -774,7 +775,7 @@ const stages = [
   { icon: 'mdi-web', name: '預售行銷', items: ['形象網站', '電子表板', '留資通知'] },
   { icon: 'mdi-account-search-outline', name: '客戶開發', items: ['客資建檔', '名單分配', '賞屋預約', 'LINE AI'] },
   { icon: 'mdi-handshake-outline', name: '銷售成交', items: ['銷控', '報價', '車位', 'AI 助理'] },
-  { icon: 'mdi-file-document-multiple-outline', name: '成交管理', items: ['合約製作', '繳款紀錄', '請佣獎金'] },
+  { icon: 'mdi-file-document-multiple-outline', name: '成交管理', items: ['合約製作', '繳款紀錄', '到期提醒', '請佣獎金'] },
   { icon: 'mdi-key-variant', name: '交屋售後', items: ['線上預約', '驗屋修繕', '住戶專區'] },
 ];
 

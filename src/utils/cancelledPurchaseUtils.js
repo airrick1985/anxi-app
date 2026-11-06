@@ -40,9 +40,23 @@ export function formatNum(val) {
   return Number(val).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-// 車位成交價／底價加總
+// 車位狀態標示：已轉到別戶、或只是準備購買（不計入成交總價）
+export function parkingStateLabel(parking) {
+  if (parking?.movedOut) return parking.movedToUnitId ? `已轉 ${parking.movedToUnitId}` : '已轉出';
+  if (parking?.countsToDeal === false) return '準備購買';
+  return '';
+}
+
+// 列表用：車位編號 · 成交價
+export function parkingLineText(parking) {
+  const price = parking?.price_transaction;
+  if (price === null || price === undefined || price === '') return parking?.spotId || '';
+  return `${parking.spotId} · ${formatPrice(price)} 萬`;
+}
+
+// 車位成交價／底價加總：準備購買的車位不計入
 export function calculateParkingPrices(item) {
-  const parkingDetails = item?.parkingDetails || [];
+  const parkingDetails = (item?.parkingDetails || []).filter(p => p.countsToDeal !== false);
   const parkingTransactionSum = parkingDetails.reduce((sum, p) => sum + (Number(p.price_transaction) || 0), 0);
   const parkingFloorSum = parkingDetails.reduce((sum, p) => sum + (Number(p.price_floor) || 0), 0);
   return { parkingTransactionSum, parkingFloorSum };
