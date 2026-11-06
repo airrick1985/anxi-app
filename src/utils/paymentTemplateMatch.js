@@ -1,5 +1,5 @@
 /**
- * 期款方式範本條件比對（報價單設定 QuoteItem 與 製作付款表 PaymentSchedulePreviewDialog 共用）
+ * 期款方式範本條件比對（報價單設定 QuoteItem、製作付款表 PaymentSchedulePreviewDialog、合約製作 ContractDocDialog 共用）
  *
  * 比對規則對齊 api.selectApplicableTemplates：
  *  - 物件類型須相同（範本/戶別缺欄位皆視為「住家」）
@@ -66,7 +66,7 @@ export function isPreferredPaymentOptionEnabled(project) {
 }
 
 /**
- * 付款表、範本帶入、合約製作共用：這戶預設是否用優付期款。
+ * 付款表、合約製作共用：這戶預設是否用優付期款。
  * 建案隱藏優付選項時沒有勾選框可取消，一律視為非優付；
  * 拿不到建案設定時比照勾選框視為隱藏，仍可手動選範本。
  * @param {Object} unit
@@ -100,7 +100,7 @@ export function resolveSavedContractTemplateId(saved, templates, usePreferredPay
 }
 
 /**
- * 自動判斷總價期款範本（付款表第 1 頁、繳款紀錄範本帶入共用）：
+ * 自動判斷總價期款範本（付款表第 1 頁、合約製作共用）：
  * 依是否優付決定類別，取該類別第一個符合條件的範本。
  * 找不到回傳 null，不退回其他類別，由呼叫端提示並讓使用者手動選。
  * @param {Object[]} templates

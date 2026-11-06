@@ -862,7 +862,12 @@ import {
 } from '@/api.js';
 import { runNewCalculationEngine, recalcGroupChildren } from '@/utils/paymentCalculation';
 import { buildUnitDocContext, resolveBankSets } from '@/utils/unitDocContext';
-import { resolveSavedContractTemplateId } from '@/utils/paymentTemplateMatch';
+import {
+  isTemplateMatched,
+  preferredPaymentCategory,
+  resolveSavedContractTemplateId,
+  selectAutoPaymentTemplate,
+} from '@/utils/paymentTemplateMatch';
 import { getUnitDealParkings } from '@/utils/salesStatusGroups';
 import { normalizeReferralFees, normalizeGifts } from '@/utils/unitFeeGifts';
 import { PAGE_TYPE_MAP, isPackageOnlyPageType } from '@/utils/contractDocDefaults';
@@ -1086,19 +1091,21 @@ const autoConditionText = computed(() => {
   return `${category}／${c.propertyType || '住家'}／${buyerType}／基準 ${formatNumber(mainBase.value)} 萬`;
 });
 
+// 存檔時自動選到的範本：還符合條件就繼續用，已存合約的期款才不會因為有別的範本也符合而被換掉
+const savedAutoTemplateId = ref(null);
+
+function templateCondition(totalPrice) {
+  const c = unitCtx.value;
+  return { propertyType: c.propertyType || '住家', totalPrice, buyerType: c.isFirstTimeBuyer ? '首購' : '非首購' };
+}
+
+// 規則與付款表相同（paymentTemplateMatch）：上下限沒填視為不限
 const autoTemplate = computed(() => {
   const c = unitCtx.value;
-  if (templates.value.length === 0) return null;
-  const base = mainBase.value;
-  const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
-  const currentPropertyType = c.propertyType || '住家';
-  const targetCategory = c.usePreferredPayment ? '優付期款' : '一般期款';
-  const applicable = templates.value.filter(t => {
-    const tPropType = t.propertyType || '住家';
-    if (tPropType !== currentPropertyType) return false;
-    return t.paymentCategory === targetCategory && t.minPrice <= base && base <= t.maxPrice && t.buyerType === buyerType;
-  });
-  return applicable.length > 0 ? applicable[0] : null;
+  const cond = templateCondition(mainBase.value);
+  const saved = templates.value.find(t => t.id === savedAutoTemplateId.value);
+  if (saved && saved.paymentCategory === preferredPaymentCategory(c.usePreferredPayment) && isTemplateMatched(saved, cond)) return saved;
+  return selectAutoPaymentTemplate(templates.value, c.usePreferredPayment, cond);
 });
 
 const activeTemplate = computed(() => {
@@ -1205,20 +1212,16 @@ let decoRowsTemplateId = null;
 
 const decoTemplates = computed(() => templates.value.filter(t => t.paymentCategory === '配套期款'));
 
+const decoSavedAutoTemplateId = ref(null);
 const decoAutoTemplate = computed(() => {
-  const c = unitCtx.value;
-  if (!decoTemplates.value.length) return null;
+  const list = decoTemplates.value;
+  if (!list.length) return null;
   // 範本適用區間以「配套總價」比對（同付款表配套頁邏輯 PaymentSchedulePreviewDialog:777）
-  const base = mainBase.value;
-  const buyerType = c.isFirstTimeBuyer ? '首購' : '非首購';
-  const currentPropertyType = c.propertyType || '住家';
-  const applicable = decoTemplates.value.filter(t => {
-    const tPropType = t.propertyType || '住家';
-    if (tPropType !== currentPropertyType) return false;
-    return t.minPrice <= base && base <= t.maxPrice && t.buyerType === buyerType;
-  });
-  // 條件不中時退而求其次：只要有配套期款範本就取第一個（配套範本通常僅一套）
-  return applicable.length > 0 ? applicable[0] : decoTemplates.value[0];
+  const cond = templateCondition(mainBase.value);
+  // 條件不中時退而求其次：只要有配套期款範本就取第一個（配套範本通常僅一套）；存檔時用的若是這個退路，也不換掉
+  const saved = list.find(t => t.id === decoSavedAutoTemplateId.value);
+  if (saved && (isTemplateMatched(saved, cond) || saved === list[0])) return saved;
+  return list.find(t => isTemplateMatched(t, cond)) || list[0];
 });
 
 const decoActiveTemplate = computed(() => {
@@ -2047,6 +2050,7 @@ function restoreDocData(cfg, freshDocData) {
 
   // 期款範本手動覆蓋 + 手動調整列
   resetToAuto();
+  savedAutoTemplateId.value = saved.manualRowsTemplateId || null;
   manualTemplateId.value = resolveSavedContractTemplateId(saved, templates.value, unitCtx.value.usePreferredPayment);
   manualMode.value = saved.installmentManualMode === true
     && Array.isArray(saved.manualRows) && saved.manualRows.length > 0;
@@ -2084,6 +2088,7 @@ function restoreDocData(cfg, freshDocData) {
 
   // 裝修期款範本手動覆蓋 + 手動調整列（配套戶）
   decoResetToAuto();
+  decoSavedAutoTemplateId.value = saved.decorationManualRowsTemplateId || null;
   if (saved.decorationTemplateId && decoTemplates.value.some(t => t.id === saved.decorationTemplateId)) {
     decoManualTemplateId.value = saved.decorationTemplateId;
   }

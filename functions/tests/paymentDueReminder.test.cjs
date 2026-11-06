@@ -776,6 +776,10 @@ test('paymentProofApi 驗證：舊呼叫方式不變、預計紀錄改驗證預�
   assert.match(paymentPayloadError({ ...unpaid, base64: 'abc' }), /憑證/);
   assert.match(paymentPayloadError({ ...unpaid, planSource: 'x' }), /來源/);
   assert.equal(paymentPayloadError({ ...unpaid, planSource: 'balance' }), null);
+  assert.equal(paymentPayloadError({ ...unpaid, planSource: 'contract' }), null);
+  assert.equal(paymentPayloadError({ ...unpaid, period: '訂金' }), null);
+  assert.equal(paymentPayloadError({ ...unpaid, period: null }), null);
+  assert.match(paymentPayloadError({ ...unpaid, period: 123 }), /期別/);
   // updateRecord 未帶預計日要讀到紀錄才能判斷
   assert.equal(paymentPayloadError({ action: 'updateRecord', date: '', amount: null }), null);
 });
@@ -1683,4 +1687,52 @@ test('假 DB 與真 SDK 一樣對 undefined 丟錯、支援 array-contains', asy
   await assert.rejects(db.collection('c').add({ nested: { value: undefined } }));
   const snap = await db.collection('c').where('list', 'array-contains', 'x').get();
   assert.deepEqual(snap.docs.map(d => d.id), ['1']);
+});
+
+test('期別：新增時有值才寫入，編輯未帶保留、帶值或 null 才改', () => {
+  const options = { id: 'x', nowIso: 'now', file: null };
+  assert.equal('period' in buildPaymentRecord({ date: '2026-12-01', amount: 100, note: 'n' }, options), false);
+  assert.equal(buildPaymentRecord({ date: '2026-12-01', amount: 100, note: 'n', period: ' 訂金 ' }, options).period, '訂金');
+
+  const current = { id: 'x', date: '2026-12-01', amount: 100, note: '小訂', period: '訂金', file: null };
+  const fields = { date: '2026-12-01', amount: 100, note: '小訂' };
+  assert.equal(applyPaymentRecordUpdate(current, fields, options).period, '訂金');
+  assert.equal(applyPaymentRecordUpdate(current, { ...fields, period: '簽約金' }, options).period, '簽約金');
+  assert.equal(applyPaymentRecordUpdate(current, { ...fields, period: null }, options).period, '');
+});
+
+test('憑證檔名文字：期別加備註，缺一邊也可以', () => {
+  const { paymentProofFileLabel } = require('../utils/paymentProofRecord');
+  assert.equal(paymentProofFileLabel('訂金', '小訂'), '訂金 小訂');
+  assert.equal(paymentProofFileLabel('', '小訂'), '小訂');
+  assert.equal(paymentProofFileLabel('訂金', ''), '訂金');
+  assert.equal(paymentProofFileLabel(undefined, null), '');
+});
+
+test('批次新增：寫入期別與備註，同一天同一期別略過，舊資料比對備註', async () => {
+  const seed = {
+    'projects/p1': {},
+    'salesHouseholds/p1_A1': { unitId: 'A1', paymentRecords: [] },
+    'salesHouseholds/p1_A2': { unitId: 'A2', paymentRecords: [{ id: 'old', expectedDate: '2026-12-20', note: '第 3 期', date: '', amount: null }] },
+    'salesHouseholds/p1_A3': { unitId: 'A3', paymentRecords: [{ id: 'old', expectedDate: '2026-12-20', period: '第 3 期', note: '別的備註', date: '', amount: null }] },
+    'salesHouseholds/p1_A4': { unitId: 'A4', paymentRecords: [{ id: 'old', expectedDate: '2026-12-21', period: '第 3 期', date: '', amount: null }] },
+  };
+  const db = createFakeDb(seed);
+  const access = { canManage: true, isManager: true };
+  const result = await handleBatchAddPlans({
+    db, projectId: 'p1', access, expectedDate: '2026-12-20', period: '第 3 期', note: '備註文字',
+    entries: ['A1', 'A2', 'A3', 'A4'].map(unitId => ({ unitId, expectedAmount: 100000 })),
+  });
+  assert.deepEqual(result.added.sort(), ['A1', 'A4']);
+  assert.deepEqual(result.skipped.map(s => s.unitId).sort(), ['A2', 'A3']);
+  const added = db.store.get('salesHouseholds/p1_A1').paymentRecords[0];
+  assert.deepEqual([added.period, added.note], ['第 3 期', '備註文字']);
+});
+
+test('到期項目帶期別；通知文字顯示期別（備註），舊資料顯示備註', () => {
+  const { paymentPeriodLabel } = require('../utils/paymentRecordStatus');
+  assert.equal(paymentPeriodLabel({ period: '訂金', note: '小訂' }), '訂金（小訂）');
+  assert.equal(paymentPeriodLabel({ period: '訂金', note: '' }), '訂金');
+  assert.equal(paymentPeriodLabel({ note: '第 3 期工程款' }), '第 3 期工程款');
+  assert.equal(paymentPeriodLabel({}), '');
 });

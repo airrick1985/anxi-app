@@ -382,6 +382,8 @@
                   :total-price-wan="editingDealTotalWan"
                   :unit-id="editingData.unitId || ''"
                   :drive-folder-url="editingData.driveFolderUrl || ''"
+                  :project-id="projectId"
+                  :unit-data="editingData"
                 />
               </v-card>
 
@@ -1177,6 +1179,8 @@
                 :drive-folder-url="unitData.driveFolderUrl || ''"
                 :project-id="projectId"
                 :unit-data="unitData"
+                :contract-doc-open="contractDocDialog"
+                @open-contract-doc="openContractDoc"
                 @plans-saved="emit('data-updated')"
               />
             </div>
@@ -2954,6 +2958,7 @@ function resetPaymentRecordsBaseline(list) {
       .map(r => [r.id, {
         date: r.date,
         amount: r.amount,
+        period: r.period,
         note: r.note,
         updatedAt: r.updatedAt || '',
         fileId: (r.file && r.file.fileId) || null,
@@ -3431,7 +3436,8 @@ async function preparePaymentRecordsForSave() {
     if (!snap) continue;
     const changed = snap.date !== r.date
       || Number(snap.amount) !== Number(r.amount)
-      || (snap.note || '') !== (r.note || '');
+      || (snap.note || '') !== (r.note || '')
+      || (snap.period || '') !== (r.period || '');
     if (!changed) continue;
     const res = await paymentProofApi({
       action: 'rename',
@@ -3440,6 +3446,7 @@ async function preparePaymentRecordsForSave() {
       fileId: r.file.fileId,
       date: r.date,
       amount: Number(r.amount),
+      period: r.period || '',
       note: r.note || ''
     });
     if (res.status === 'success' && res.file) {
@@ -3462,6 +3469,7 @@ async function preparePaymentRecordsForSave() {
       base64,
       date: r.date,
       amount: Number(r.amount),
+      period: r.period || '',
       note: r.note || ''
     });
     if (res.status !== 'success' || !res.file) {

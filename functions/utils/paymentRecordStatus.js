@@ -112,6 +112,14 @@ function paymentBalance(record, paidAmount) {
   return expected > paid && paid > 0 ? expected - paid : 0;
 }
 
+// 期別與備註合併顯示：「期別（備註）」；舊資料只有備註
+function paymentPeriodLabel(record) {
+  const period = String(record?.period || '').trim();
+  const note = String(record?.note || '').trim();
+  if (period && note) return `${period}（${note}）`;
+  return period || note;
+}
+
 function balanceNote(note) {
   const text = String(note || '').trim();
   if (!text) return '尾款';
@@ -183,6 +191,7 @@ module.exports = {
   paidTimingNote,
   summarizePaymentRecords,
   paymentBalance,
+  paymentPeriodLabel,
   balanceNote,
   normalizePaymentReminderSettings,
   shouldRemind,

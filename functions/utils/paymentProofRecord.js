@@ -2,10 +2,12 @@
 //
 // 預計繳款（未繳）以 date:'' 且 amount:null 表示，只適用 addRecord／updateRecord。
 // 預計欄位在 updateRecord 未帶時保留原值、帶 null 時清除；舊呼叫方式不帶新欄位，紀錄內容維持原樣。
+// 期別（period）與備註（note）分開存，規則同預計欄位；舊資料只有 note。
 
 const { isValidYmd, isPaidRecord, isPlannedRecord } = require('./paymentRecordStatus');
 
-const PAYMENT_PLAN_SOURCES = ['manual', 'batch', 'template', 'balance'];
+// template 是改版前「範本帶入」留下的舊值，現在由 contract（帶入合約期款資料）取代
+const PAYMENT_PLAN_SOURCES = ['manual', 'batch', 'template', 'contract', 'balance'];
 
 function isUnpaidPaymentPayload({ action, date, amount }) {
   return (action === 'addRecord' || action === 'updateRecord')
@@ -14,7 +16,7 @@ function isUnpaidPaymentPayload({ action, date, amount }) {
 
 // 回傳錯誤訊息；沒有問題回傳 null
 function paymentPayloadError(payload) {
-  const { action, date, amount, base64, expectedDate, expectedAmount, planSource } = payload;
+  const { action, date, amount, base64, expectedDate, expectedAmount, planSource, period } = payload;
   // deleteRecord 只需 recordId、trashFile 只需 fileId，不驗證內容
   if (action === 'deleteRecord' || action === 'trashFile') return null;
 
@@ -34,6 +36,9 @@ function paymentPayloadError(payload) {
   if (planSource !== undefined && planSource !== null && !PAYMENT_PLAN_SOURCES.includes(planSource)) {
     return `未知的預計繳款來源: ${planSource}`;
   }
+  if (period !== undefined && period !== null && typeof period !== 'string') {
+    return '期別格式不正確。';
+  }
   if (isUnpaid && base64) return '尚未繳款的紀錄不可上傳憑證。';
   if (action === 'addRecord' && isUnpaid && !isValidYmd(expectedDate)) return '預計繳款日格式必須為 YYYY-MM-DD。';
   return null;
@@ -48,7 +53,7 @@ function unpaidUpdateError(current, { expectedDate, removeFile }) {
 }
 
 function buildPaymentRecord(payload, { id, nowIso, file = null }) {
-  const { date, amount, note, expectedDate, expectedAmount, planSource, paidBy } = payload;
+  const { date, amount, note, expectedDate, expectedAmount, planSource, paidBy, period } = payload;
   const isUnpaid = isUnpaidPaymentPayload({ ...payload, action: 'addRecord' });
   const record = {
     id,
@@ -59,6 +64,8 @@ function buildPaymentRecord(payload, { id, nowIso, file = null }) {
     createdAt: nowIso,
     updatedAt: nowIso,
   };
+  const periodText = String(period || '').trim();
+  if (periodText) record.period = periodText;
   if (expectedDate) record.expectedDate = String(expectedDate);
   if (expectedDate || expectedAmount !== undefined) {
     record.expectedAmount = expectedAmount === null || expectedAmount === undefined ? null : Number(expectedAmount);
@@ -75,7 +82,7 @@ function buildPaymentRecord(payload, { id, nowIso, file = null }) {
 }
 
 function applyPaymentRecordUpdate(current, payload, { nowIso, file }) {
-  const { date, amount, note, expectedDate, expectedAmount, planSource, paidBy } = payload;
+  const { date, amount, note, expectedDate, expectedAmount, planSource, paidBy, period } = payload;
   const isUnpaid = isUnpaidPaymentPayload({ ...payload, action: 'updateRecord' });
   const wasPaid = isPaidRecord(current);
   const wasPlanned = isPlannedRecord(current);
@@ -87,6 +94,7 @@ function applyPaymentRecordUpdate(current, payload, { nowIso, file }) {
     file,
     updatedAt: nowIso,
   };
+  if (period !== undefined) updated.period = String(period || '').trim();
   if (expectedDate !== undefined) updated.expectedDate = expectedDate === null ? null : String(expectedDate);
   if (expectedAmount !== undefined) updated.expectedAmount = expectedAmount === null ? null : Number(expectedAmount);
   if (planSource !== undefined) updated.planSource = planSource;
@@ -99,6 +107,11 @@ function applyPaymentRecordUpdate(current, payload, { nowIso, file }) {
     updated.paidBy = null;
   }
   return updated;
+}
+
+// 憑證檔名用的文字：期別加備註
+function paymentProofFileLabel(period, note) {
+  return [period, note].map(text => String(text || '').trim()).filter(Boolean).join(' ');
 }
 
 function toMillis(value) {
@@ -147,6 +160,7 @@ module.exports = {
   unpaidUpdateError,
   buildPaymentRecord,
   applyPaymentRecordUpdate,
+  paymentProofFileLabel,
   cancellationEventMillis,
   latestCancellationMillis,
   mergeRestoredPaymentRecords,

@@ -21,7 +21,7 @@
         class="mac-form mpd-body"
       >
         <div class="mpd-summary">
-          <span class="mpd-summary-note">{{ record?.note || '預計繳款' }}</span>
+          <span class="mpd-summary-note">{{ paymentPeriodLabel(record) || '預計繳款' }}</span>
           <span>預計 {{ formatYmd(record?.expectedDate) }}</span>
           <span v-if="expectedAmount > 0">{{ formatMoney(expectedAmount) }} 元</span>
         </div>
@@ -141,7 +141,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { balanceNote, isValidYmd, paymentBalance, taipeiToday } from '@/utils/paymentRecordStatus';
+import { balanceNote, isValidYmd, paymentBalance, paymentPeriodLabel, taipeiToday } from '@/utils/paymentRecordStatus';
 import { PROOF_ACCEPT_ATTR, isPdfLocalFile, proofFileError } from './paymentProofFile';
 
 const props = defineProps({
@@ -248,7 +248,7 @@ async function submit() {
       note: props.record?.note || '',
       file: file.value,
       balancePlan: needsBalance
-        ? { expectedDate: balanceDate.value, expectedAmount: balance.value, note: balanceNote(props.record?.note) }
+        ? { expectedDate: balanceDate.value, expectedAmount: balance.value, period: props.record?.period || '', note: balanceNote(props.record?.note) }
         : null,
     });
     emit('update:modelValue', false);

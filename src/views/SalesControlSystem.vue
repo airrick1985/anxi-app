@@ -1947,10 +1947,23 @@
             :drive-folder-url="paymentPopup.unit.driveFolderUrl || ''"
             :project-id="projectId"
             :unit-data="paymentPopup.unit"
+            :contract-doc-open="paymentPopup.contractDocOpen"
+            @open-contract-doc="paymentPopup.contractDocOpen = true"
           />
         </v-card-text>
       </v-card>
     </v-dialog>
+
+    <!-- 繳款紀錄「帶入合約期款資料」開啟的合約製作設定 -->
+    <ContractDocDialog
+      v-if="paymentPopup.contractDocOpen"
+      :show="paymentPopup.contractDocOpen"
+      :unit-data="popupContractUnit"
+      :project-name="project.name || ''"
+      :project-id="projectId"
+      :all-data="allDataForModal"
+      @update:show="paymentPopup.contractDocOpen = $event"
+    />
 
     <!-- 資料透視下鑽明細：點儲存格顯示對應戶別清單 -->
     <v-dialog v-model="isPivotDrillVisible" max-width="720px" scrollable>
@@ -2297,6 +2310,7 @@ import { isSpecialContractType } from '@/composables/usePriceFormula';
 // 模板本來就以 v-if 於開啟時建立，故非同步安全。銷控資料載入完成後會閒置預抓（見 loadCurrentProjectData），首次點開不會等下載。
 const loadUnitDetailModal = () => import('@/components/UnitDetailModal.vue');
 const UnitDetailModal = defineAsyncComponent(loadUnitDetailModal);
+const ContractDocDialog = defineAsyncComponent(() => import('@/components/contractDoc/ContractDocDialog.vue'));
 import MobileBottomSheet from '@/components/MobileBottomSheet.vue';
 import SalesFilterPanel from '@/components/SalesFilterPanel.vue';
 import RemarkNotesPanel from '@/components/RemarkNotesPanel.vue';
@@ -5500,7 +5514,13 @@ const summaryRow = computed(() => {
 });
 
 // ✅ [繳款紀錄] 列表模式：點繳款比例浮動顯示該戶繳款紀錄一覽（銷控模式可直接新增/編輯/刪除）
-const paymentPopup = reactive({ open: false, unit: null });
+const paymentPopup = reactive({ open: false, unit: null, contractDocOpen: false });
+// 給合約製作設定的戶別資料，口徑同戶別視窗：拿掉過時的持有車位快照，車位改由 salesParkings 判斷
+const popupContractUnit = computed(() => {
+  const unitId = paymentPopup.unit?.unitId;
+  const { 持有車位: _staleParkings, ...unit } = (salesHouseholds.value || []).find(u => u.unitId === unitId) || paymentPopup.unit || {};
+  return unit;
+});
 function openPaymentRecordsPopup(item) {
   paymentPopup.unit = item;
   paymentPopup.open = true;

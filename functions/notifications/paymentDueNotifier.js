@@ -5,7 +5,7 @@
 const crypto = require('crypto');
 const axios = require('axios');
 const nodemailer = require('nodemailer');
-const { formatMonthDay } = require('../utils/paymentRecordStatus');
+const { formatMonthDay, paymentPeriodLabel } = require('../utils/paymentRecordStatus');
 
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
 // 客資系統入口與洽談紀錄共用的 LIFF（src/utils/liffApps.js 的 customerManagement）
@@ -97,7 +97,7 @@ function buildFlexItem(item) {
           { type: 'text', text: item.label, weight: 'bold', size: 'sm', color: STATE_COLORS[item.state] || COLOR_MUTED, flex: 2, align: 'end', wrap: true },
         ],
       },
-      { type: 'text', text: clip(item.note, MAX_NOTE_LENGTH) || '未填期別', size: 'sm', color: '#1d1d1f', wrap: true },
+      { type: 'text', text: clip(paymentPeriodLabel(item), MAX_NOTE_LENGTH) || '未填期別', size: 'sm', color: '#1d1d1f', wrap: true },
       { type: 'text', text: `預計 ${formatMonthDay(item.expectedDate)}・${formatAmount(item.expectedAmount)}`, size: 'sm', color: COLOR_MUTED, wrap: true },
       buyerText,
     ],
@@ -172,7 +172,7 @@ function buildEmailRow(item) {
   return `<tr>
     <td style="${cell}color:${color};font-weight:600;white-space:nowrap;">${escapeHtml(item.label)}</td>
     <td style="${cell}font-weight:600;white-space:nowrap;">${escapeHtml(item.unitId)}${item.mine ? '<span style="color:#0071e3;font-weight:500;">（我的）</span>' : ''}</td>
-    <td style="${cell}">${escapeHtml(item.note) || '未填期別'}</td>
+    <td style="${cell}">${escapeHtml(paymentPeriodLabel(item)) || '未填期別'}</td>
     <td style="${cell}white-space:nowrap;">${escapeHtml(formatMonthDay(item.expectedDate))}</td>
     <td style="${cell}text-align:right;white-space:nowrap;">${escapeHtml(formatAmount(item.expectedAmount))}</td>
     <td style="${cell}">${escapeHtml(item.buyerName) || '—'}</td>

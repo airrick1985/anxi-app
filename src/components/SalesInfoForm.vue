@@ -703,7 +703,7 @@ import axios from 'axios';
 import { useDisplay } from 'vuetify';
 import TwCitiesData from '@/assets/TwCities.json' with { type: 'json' };
 import { normalizeSalespersons } from '@/utils/salespersonUtils';
-import { isPlannedRecord } from '@/utils/paymentRecordStatus';
+import { isPlannedRecord, paymentPeriodLabel } from '@/utils/paymentRecordStatus';
 import { dealTotalWan, parkingSaleTotal, resolveOwnedParkingSpots } from '@/utils/unitDealTotal';
 import UnitTagEditor from './UnitTagEditor.vue';
 import UnitEffectPicker from './UnitEffectPicker.vue';
@@ -1397,6 +1397,7 @@ const statusPrompt = ref({
   existingRecordId: '',
   existingAmount: null,
   existingPlanned: false,
+  existingLabel: '',
 });
 const statusPromptAmountRef = ref(null);
 
@@ -1404,7 +1405,7 @@ const statusPromptIsToday = computed(() => toYmd(statusPrompt.value.date) === to
 const statusPromptAmountHint = computed(() => {
   const p = statusPrompt.value;
   if (p.existingPlanned) {
-    return `已有預計繳款「${p.status}」，確認後轉為已繳；留空則不更動`;
+    return `已有預計繳款「${p.existingLabel}」，確認後轉為已繳；留空則不更動`;
   }
   if (p.existingRecordId) {
     const prev = p.existingAmount ? `${Number(p.existingAmount).toLocaleString('en-US')} 元` : '未填金額';
@@ -1417,7 +1418,11 @@ function findStatusPaymentRecord(status) {
   const list = editableData.value?.paymentRecords;
   if (!Array.isArray(list)) return null;
   const target = String(status || '').trim();
-  return list.find(r => String(r?.note || '').trim() === target) || null;
+  const sameNote = list.find(r => String(r?.note || '').trim() === target);
+  if (sameNote || !target.includes('簽約')) return sameNote || null;
+  // 帶入合約期款後期別叫「簽約金」等，名稱不同也是同一筆：轉這筆預計為已繳，不另外新增已繳款
+  const signing = list.filter(r => isPlannedRecord(r) && String(r?.period || r?.note || '').includes('簽約'));
+  return signing.length === 1 ? signing[0] : null;
 }
 
 function openStatusPrompt(cfg, status) {
@@ -1437,6 +1442,7 @@ function openStatusPrompt(cfg, status) {
     existingRecordId: existing?.id || '',
     existingAmount: existing?.amount ?? null,
     existingPlanned: isPlannedRecord(existing),
+    existingLabel: paymentPeriodLabel(existing) || status,
   };
   nextTick(() => {
     try { statusPromptAmountRef.value?.focus?.(); } catch (e) { /* noop */ }

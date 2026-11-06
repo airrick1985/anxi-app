@@ -92,7 +92,7 @@
         >
           <div class="mac-list-main">
             <div class="mac-list-line1">
-              <span class="mac-list-title">{{ item.unitId }} <small>{{ item.note }}</small></span>
+              <span class="mac-list-title">{{ item.unitId }} <small>{{ paymentPeriodLabel(item) }}</small></span>
               <span v-if="item.mine && canManage" class="mac-tag mac-tag--blue">我的</span>
               <span class="mac-tag" :class="tagClass(item.state)">{{ item.label }}</span>
             </div>
@@ -138,7 +138,7 @@
               {{ item.unitId }}
               <span v-if="item.mine && canManage" class="mac-tag mac-tag--blue">我的</span>
             </td>
-            <td>{{ item.note || '—' }}</td>
+            <td>{{ paymentPeriodLabel(item) || '—' }}</td>
             <td class="pd-nowrap">{{ displayDate(item.expectedDate) }}</td>
             <td class="text-right pd-amount">{{ item.expectedAmount ? formatMoney(item.expectedAmount) : '未填' }}</td>
             <td>{{ item.buyerName || '—' }}</td>
@@ -178,6 +178,7 @@
             :quick-delete-handler="canManage ? quickDelete : null"
             :unit-id="unitDialog.unitId"
             :drive-folder-url="unitDialog.driveFolderUrl"
+            :project-id="projectId"
             @plans-saved="load({ silent: true })"
           />
         </v-card-text>
@@ -214,7 +215,7 @@ import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
 import { paymentProofApi, paymentReminderApi } from '@/api';
 import { markPaymentRecordPaid, paymentProofFileToBase64 } from '@/utils/paymentRecordActions';
-import { formatMonthDay, taipeiToday } from '@/utils/paymentRecordStatus';
+import { formatMonthDay, paymentPeriodLabel, taipeiToday } from '@/utils/paymentRecordStatus';
 import MarkPaidDialog from '@/components/payment/MarkPaidDialog.vue';
 
 const PaymentRecordsPanel = defineAsyncComponent(() => import('@/components/PaymentRecordsPanel.vue'));
@@ -275,7 +276,7 @@ const visibleItems = computed(() => {
   }[filter.value] || items.value;
   const keyword = String(searchText.value || '').trim().toLowerCase();
   if (!keyword) return source;
-  return source.filter(i => [i.unitId, i.note, i.buyerName, i.buyerPhone, ...(i.salesperson || [])]
+  return source.filter(i => [i.unitId, i.period, i.note, i.buyerName, i.buyerPhone, ...(i.salesperson || [])]
     .some(v => String(v || '').toLowerCase().includes(keyword)));
 });
 
@@ -368,6 +369,7 @@ function openMarkPaid(item) {
     id: item.recordId,
     expectedDate: item.expectedDate,
     expectedAmount: item.expectedAmount,
+    period: item.period,
     note: item.note,
     date: '',
     amount: null,

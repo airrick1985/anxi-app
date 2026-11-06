@@ -84,6 +84,7 @@ function collectPlannedItems(households, today) {
         recordId: record.id,
         expectedDate: record.expectedDate,
         expectedAmount: record.expectedAmount ?? null,
+        period: record.period || '',
         note: record.note || '',
         state: due.state,
         daysLeft: due.daysLeft,
@@ -584,13 +585,20 @@ function validateBatchInput({ expectedDate, entries }) {
   });
 }
 
-async function addBatchPlan({ db, projectId, unitId, expectedDate, expectedAmount, note, nowIso, skipBatchId }) {
+// 同一天、同一期別就是同一筆（舊資料只有備註），重新送出時略過
+function isSameBatchPlan(record, expectedDate, period, note) {
+  if (!record || record.expectedDate !== expectedDate) return false;
+  const label = text => String(text || '').trim();
+  return (label(record.period) || label(record.note)) === (period || note);
+}
+
+async function addBatchPlan({ db, projectId, unitId, expectedDate, expectedAmount, period = '', note, nowIso, skipBatchId }) {
   const docRef = db.collection('salesHouseholds').doc(`${projectId}_${unitId}`);
   return db.runTransaction(async tx => {
     const snap = await tx.get(docRef);
     if (!snap.exists) return 'not-found';
     const existing = Array.isArray(snap.data().paymentRecords) ? snap.data().paymentRecords : [];
-    const duplicated = existing.some(r => r && r.expectedDate === expectedDate && String(r.note || '').trim() === note);
+    const duplicated = existing.some(r => isSameBatchPlan(r, expectedDate, period, note));
     if (duplicated) return 'exists';
     tx.update(docRef, {
       paymentRecords: [...existing, {
@@ -600,6 +608,7 @@ async function addBatchPlan({ db, projectId, unitId, expectedDate, expectedAmoun
         planSource: 'batch',
         date: '',
         amount: null,
+        ...(period ? { period } : {}),
         note,
         file: null,
         paidAt: null,
@@ -614,7 +623,7 @@ async function addBatchPlan({ db, projectId, unitId, expectedDate, expectedAmoun
 }
 
 // 逐戶交易：單戶失敗不影響其他戶；重新送出時已新增的戶別會以 exists 略過
-async function handleBatchAddPlans({ db, projectId, access, expectedDate, note, entries, now = new Date(), deps = defaultDeps }) {
+async function handleBatchAddPlans({ db, projectId, access, expectedDate, period, note, entries, now = new Date(), deps = defaultDeps }) {
   requireManage(access);
   validateBatchInput({ expectedDate, entries });
 
@@ -623,6 +632,7 @@ async function handleBatchAddPlans({ db, projectId, access, expectedDate, note, 
   const { salesSheetId, salesSheetTabName } = projectSnap.data() || {};
   const skipBatchId = salesSheetId && salesSheetTabName ? newSheetSyncBatchId(now) : null;
 
+  const periodText = String(period || '').trim();
   const noteText = String(note || '').trim();
   const nowIso = now.toISOString();
   const skipped = [];
@@ -643,7 +653,7 @@ async function handleBatchAddPlans({ db, projectId, access, expectedDate, note, 
   for (let i = 0; i < unique.length; i += BATCH_CONCURRENCY) {
     const chunk = unique.slice(i, i + BATCH_CONCURRENCY);
     const results = await Promise.allSettled(chunk.map(entry => addBatchPlan({
-      db, projectId, unitId: entry.unitId, expectedDate, expectedAmount: entry.expectedAmount, note: noteText, nowIso, skipBatchId,
+      db, projectId, unitId: entry.unitId, expectedDate, expectedAmount: entry.expectedAmount, period: periodText, note: noteText, nowIso, skipBatchId,
     })));
     results.forEach((result, index) => {
       const { unitId } = chunk[index];
@@ -850,7 +860,7 @@ const paymentReminderApi = onCall({
         return await handleListDue({ db, projectId, access });
       case 'batchAddPlans':
         return await handleBatchAddPlans({
-          db, projectId, access, expectedDate: data.expectedDate, note: data.note, entries: data.entries,
+          db, projectId, access, expectedDate: data.expectedDate, period: data.period, note: data.note, entries: data.entries,
         });
       case 'previewRecipients':
         return await handlePreviewRecipients({ db, projectId, access, settings: data.settings });

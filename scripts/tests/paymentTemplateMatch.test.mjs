@@ -160,22 +160,24 @@ test('已存合約：沒有存檔或當時沒有範本時走自動判斷，也�
   assert.equal(resolveSavedContractTemplateId({ paymentTemplateId: null, manualRowsTemplateId: 'general' }, undefined, true), null);
 });
 
-test('付款表、範本帶入、合約製作都走共用規則，不各自判斷', async () => {
+test('付款表、合約製作都走共用規則，不各自判斷；帶入合約期款只讀合約資料', async () => {
   const read = file => readFile(new URL(`../../src/${file}`, import.meta.url), 'utf8');
   const [settings, schedule, importDialog, contractDialog] = await Promise.all([
     read('views/PaymentSettings.vue'),
     read('components/PaymentSchedulePreviewDialog.vue'),
-    read('components/payment/PaymentTemplateImportDialog.vue'),
+    read('components/payment/PaymentContractImportDialog.vue'),
     read('components/contractDoc/ContractDocDialog.vue'),
   ]);
   assert.match(settings, /usePreferredPayment = resolveUnitPreferredPayment\(props\.unitData, paymentProject\.value\)/);
   assert.match(settings, /showPreferredPaymentOption = computed\(\(\) => isPreferredPaymentOptionEnabled\(paymentProject\.value\)\)/);
   assert.match(schedule, /selectAutoPaymentTemplate\(templates\.value, c\.usePreferredPayment,/);
-  assert.match(importDialog, /resolveUnitPreferredPayment\(props\.unitData, projectStore\.getProjectById\(props\.projectId\)\)/);
-  assert.match(importDialog, /selectAutoPaymentTemplate\(templates\.value, isPreferredUnit\.value,/);
+  assert.match(importDialog, /fetchContractDocData\(householdDocId\.value\)/);
+  assert.doesNotMatch(importDialog, /fetchPaymentTermTemplates|runNewCalculationEngine|selectAutoPaymentTemplate/);
   assert.match(contractDialog, /project: projectStore\.getProjectById\(props\.projectId\)/);
+  assert.match(contractDialog, /selectAutoPaymentTemplate\(templates\.value, c\.usePreferredPayment, cond\)/);
+  assert.doesNotMatch(contractDialog, /base <= t\.maxPrice/);
   assert.match(contractDialog, /manualTemplateId\.value = resolveSavedContractTemplateId\(saved, templates\.value, unitCtx\.value\.usePreferredPayment\)/);
-  for (const source of [settings, schedule, importDialog]) {
+  for (const source of [settings, schedule]) {
     assert.doesNotMatch(source, /isUnitPreferredPayment\(/);
     assert.doesNotMatch(source, /\?\s*'優付期款'\s*:\s*'一般期款'/);
   }

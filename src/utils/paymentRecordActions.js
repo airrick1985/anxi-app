@@ -19,11 +19,11 @@ function assertSuccess(res) {
 
 /**
  * 新增預計繳款。
- * @param {{ projectId: string, unitId: string, expectedDate: string, expectedAmount?: number|null, note?: string, planSource?: string }} plan
+ * @param {{ projectId: string, unitId: string, expectedDate: string, expectedAmount?: number|null, period?: string, note?: string, planSource?: string }} plan
  */
-export async function addPaymentPlan({ projectId, unitId, expectedDate, expectedAmount = null, note = '', planSource = 'manual' }) {
+export async function addPaymentPlan({ projectId, unitId, expectedDate, expectedAmount = null, period = '', note = '', planSource = 'manual' }) {
   const res = await paymentProofApi({
-    action: 'addRecord', projectId, unitId, date: '', amount: null, note, expectedDate, expectedAmount, planSource,
+    action: 'addRecord', projectId, unitId, date: '', amount: null, period, note, expectedDate, expectedAmount, planSource,
   });
   return assertSuccess(res).record;
 }

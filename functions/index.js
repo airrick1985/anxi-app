@@ -6568,7 +6568,7 @@ exports.uploadAuthLetter = onCall({
 
 // ✓ START: 戶別繳款紀錄 - 繳款憑證（圖檔／PDF）Drive 上傳/改名 (SPEC_UnitPaymentRecords.md、SPEC_PaymentDueReminder.md)
 const {
-  isUnpaidPaymentPayload, paymentPayloadError, unpaidUpdateError, buildPaymentRecord, applyPaymentRecordUpdate,
+  isUnpaidPaymentPayload, paymentPayloadError, unpaidUpdateError, buildPaymentRecord, applyPaymentRecordUpdate, paymentProofFileLabel,
   latestCancellationMillis, mergeRestoredPaymentRecords,
 } = require('./utils/paymentProofRecord');
 
@@ -6609,7 +6609,7 @@ exports.paymentProofApi = onCall({
   cors: true,
   secrets: driveSecrets
 }, async (request) => {
-  const { action, projectId, unitId, base64, fileId, date, amount, note, recordId, removeFile } = request.data;
+  const { action, projectId, unitId, base64, fileId, date, amount, note, period, recordId, removeFile } = request.data;
   const functionName = `paymentProofApi (Action: ${action})`;
 
   if (!projectId || !unitId) {
@@ -6643,7 +6643,7 @@ exports.paymentProofApi = onCall({
       const current = await drive.files.get({ fileId, fields: 'name' });
       const extMatch = String(current.data.name || '').match(/\.(\w+)$/);
       const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
-      const newName = buildPaymentProofFileName(date, unitId, amountNum, note, ext);
+      const newName = buildPaymentProofFileName(date, unitId, amountNum, paymentProofFileLabel(period, note), ext);
       const updated = await drive.files.update({
         fileId,
         requestBody: { name: newName },
@@ -6731,7 +6731,10 @@ exports.paymentProofApi = onCall({
       }
 
       // 3. 上傳至戶別資料夾
-      const fileName = buildPaymentProofFileName(date, unitId, amountNum, note, ext);
+      // 編輯時沒帶期別代表不變，檔名沿用紀錄上的期別
+      const recordsBefore = Array.isArray(householdDoc.data().paymentRecords) ? householdDoc.data().paymentRecords : [];
+      const periodBefore = action === 'updateRecord' ? recordsBefore.find(r => r && r.id === recordId)?.period : '';
+      const fileName = buildPaymentProofFileName(date, unitId, amountNum, paymentProofFileLabel(period === undefined ? periodBefore : period, note), ext);
       const uploadedFile = await drive.files.create({
         resource: { name: fileName, parents: [targetFolderId] },
         media: { mimeType, body: Readable.from(buffer) },
@@ -6799,16 +6802,18 @@ exports.paymentProofApi = onCall({
       nextFile = null;
       fileIdToTrash = (preRecord.file && preRecord.file.fileId) || null;
     } else if (preRecord.file && preRecord.file.fileId) {
-      // 無新圖且未移除 → 日期/金額/備註有異動時同步 Drive 檔名（失敗不中斷，僅回報警告）
+      // 無新圖且未移除 → 日期/金額/期別/備註有異動時同步 Drive 檔名（失敗不中斷，僅回報警告）
+      const nextPeriod = period === undefined ? preRecord.period : period;
       const changed = String(preRecord.date || '') !== String(date)
         || Number(preRecord.amount) !== amountNum
-        || String(preRecord.note || '') !== String(note || '');
+        || String(preRecord.note || '') !== String(note || '')
+        || String(preRecord.period || '') !== String(nextPeriod || '');
       if (changed) {
         try {
           const current = await drive.files.get({ fileId: preRecord.file.fileId, fields: 'name' });
           const extMatch = String(current.data.name || '').match(/\.(\w+)$/);
           const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
-          const newName = buildPaymentProofFileName(date, unitId, amountNum, note, ext);
+          const newName = buildPaymentProofFileName(date, unitId, amountNum, paymentProofFileLabel(nextPeriod, note), ext);
           const updated = await drive.files.update({
             fileId: preRecord.file.fileId,
             requestBody: { name: newName },

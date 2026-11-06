@@ -43,8 +43,8 @@
         <button type="button" class="mac-btn" @click="startAdd('paid')">
           <v-icon size="16" class="pr-icon-paid">mdi-check-circle-outline</v-icon>已繳款
         </button>
-        <button v-if="canImportTemplate" type="button" class="mac-btn" @click="templateImportOpen = true">
-          <v-icon size="16">mdi-file-import-outline</v-icon>範本帶入
+        <button v-if="canImportContract" type="button" class="mac-btn" @click="contractImportOpen = true">
+          <v-icon size="16">mdi-file-import-outline</v-icon>帶入合約期款資料
         </button>
       </div>
 
@@ -68,8 +68,12 @@
                 <span class="pr-field-label">預計金額</span>
                 <span class="pr-field-value pr-num">{{ Number(r.expectedAmount) > 0 ? `${formatMoney(r.expectedAmount)} 元` : '未填' }}</span>
               </div>
+              <div class="pr-field">
+                <span class="pr-field-label">期別</span>
+                <span class="pr-field-value">{{ r.period || '—' }}</span>
+              </div>
               <div class="pr-field pr-field--note">
-                <span class="pr-field-label">期別／備註</span>
+                <span class="pr-field-label">備註</span>
                 <span class="pr-field-value">{{ r.note || '—' }}</span>
               </div>
             </div>
@@ -110,10 +114,15 @@
                 <v-text-field aria-label="預計金額" :model-value="r.expectedAmount" type="number" min="1" inputmode="numeric" suffix="元" variant="solo" flat density="compact" hide-details class="mac-vfield"
                   @update:model-value="v => update(index, 'expectedAmount', amountInput(v))" />
               </div>
-              <div class="pr-edit-wide">
-                <span class="pr-label">期別／備註</span>
-                <v-text-field aria-label="期別／備註" :model-value="r.note" variant="solo" flat density="compact" hide-details class="mac-vfield"
-                  @update:model-value="v => update(index, 'note', v)" />
+              <div>
+                <span class="pr-label">期別</span>
+                <PaymentPeriodField :model-value="editPeriodNote(r).period" :options="periodOptions"
+                  @update:model-value="v => updatePeriodNote(index, 'period', v)" />
+              </div>
+              <div>
+                <span class="pr-label">備註</span>
+                <v-text-field aria-label="備註" :model-value="editPeriodNote(r).note" variant="solo" flat density="compact" hide-details class="mac-vfield"
+                  @update:model-value="v => updatePeriodNote(index, 'note', v)" />
               </div>
             </div>
             <div class="pr-edit-foot">
@@ -148,8 +157,12 @@
                   <v-icon v-if="isPaidRecord(r)" size="14" class="pr-icon-paid">mdi-check</v-icon>{{ paidAmountText(r) }}
                 </span>
               </div>
+              <div class="pr-field">
+                <span class="pr-field-label">期別</span>
+                <span class="pr-field-value">{{ r.period || '—' }}</span>
+              </div>
               <div class="pr-field pr-field--note">
-                <span class="pr-field-label">期別／備註</span>
+                <span class="pr-field-label">備註</span>
                 <span class="pr-field-value">{{ r.note || '—' }}</span>
                 <span v-if="paidTimingNote(r)" class="pr-field-sub">{{ paidTimingNote(r) }}</span>
               </div>
@@ -207,14 +220,19 @@
                   @update:model-value="v => update(index, 'amount', amountInput(v))" />
               </div>
               <div>
+                <span class="pr-label">期別</span>
+                <PaymentPeriodField :model-value="editPeriodNote(r).period" :options="periodOptions"
+                  @update:model-value="v => updatePeriodNote(index, 'period', v)" />
+              </div>
+              <div>
+                <span class="pr-label">備註</span>
+                <v-text-field aria-label="備註" :model-value="editPeriodNote(r).note" variant="solo" flat density="compact" hide-details class="mac-vfield"
+                  @update:model-value="v => updatePeriodNote(index, 'note', v)" />
+              </div>
+              <div>
                 <span class="pr-label">預計日</span>
                 <v-text-field aria-label="預計日" :model-value="r.expectedDate" type="date" variant="solo" flat density="compact" hide-details class="mac-vfield"
                   @update:model-value="v => update(index, 'expectedDate', v)" />
-              </div>
-              <div>
-                <span class="pr-label">期別／備註</span>
-                <v-text-field aria-label="期別／備註" :model-value="r.note" variant="solo" flat density="compact" hide-details class="mac-vfield"
-                  @update:model-value="v => update(index, 'note', v)" />
               </div>
               <div class="pr-edit-wide">
                 <span class="pr-label">憑證</span>
@@ -289,9 +307,13 @@
             <span class="pr-label">預計金額</span>
             <v-text-field aria-label="預計金額" v-model="quick.expectedAmount" type="number" min="1" inputmode="numeric" suffix="元" variant="solo" flat density="compact" hide-details class="mac-vfield" />
           </div>
-          <div class="pr-edit-wide">
-            <span class="pr-label">期別／備註</span>
-            <v-text-field aria-label="期別／備註" v-model="quick.note" variant="solo" flat density="compact" hide-details class="mac-vfield" />
+          <div>
+            <span class="pr-label">期別</span>
+            <PaymentPeriodField v-model="quick.period" :options="periodOptions" />
+          </div>
+          <div>
+            <span class="pr-label">備註</span>
+            <v-text-field aria-label="備註" v-model="quick.note" variant="solo" flat density="compact" hide-details class="mac-vfield" />
           </div>
         </div>
 
@@ -306,12 +328,16 @@
               <v-text-field aria-label="實繳金額" v-model="quick.amount" type="number" min="1" inputmode="numeric" suffix="元" variant="solo" flat density="compact" hide-details class="mac-vfield" />
             </div>
             <div>
-              <span class="pr-label">預計日</span>
-              <v-text-field aria-label="預計日" v-model="quick.expectedDate" type="date" variant="solo" flat density="compact" hide-details class="mac-vfield" />
+              <span class="pr-label">期別</span>
+              <PaymentPeriodField v-model="quick.period" :options="periodOptions" />
             </div>
             <div>
-              <span class="pr-label">期別／備註</span>
-              <v-text-field aria-label="期別／備註" v-model="quick.note" variant="solo" flat density="compact" hide-details class="mac-vfield" />
+              <span class="pr-label">備註</span>
+              <v-text-field aria-label="備註" v-model="quick.note" variant="solo" flat density="compact" hide-details class="mac-vfield" />
+            </div>
+            <div>
+              <span class="pr-label">預計日</span>
+              <v-text-field aria-label="預計日" v-model="quick.expectedDate" type="date" variant="solo" flat density="compact" hide-details class="mac-vfield" />
             </div>
           </div>
 
@@ -393,15 +419,17 @@
     :submit-handler="editable ? submitMarkPaidLocal : submitMarkPaidQuick"
   />
 
-  <!-- 範本帶入 -->
-  <PaymentTemplateImportDialog
-    v-if="templateImportOpen"
-    v-model="templateImportOpen"
+  <!-- 帶入合約期款資料 -->
+  <PaymentContractImportDialog
+    v-if="contractImportOpen"
+    v-model="contractImportOpen"
     :project-id="projectId"
     :unit-data="unitData"
     :deal-total-wan="Number(totalPriceWan) || 0"
     :existing-records="records"
-    :submit-handler="submitTemplatePlans"
+    :contract-doc-open="contractDocOpen"
+    :submit-handler="submitContractPlans"
+    @open-contract-doc="emit('open-contract-doc')"
   />
 
   <!-- 確認 -->
@@ -490,7 +518,7 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, onBeforeUnmount, reactive, ref } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useToast, POSITION } from 'vue-toastification';
 import {
   isPaidRecord,
@@ -501,7 +529,10 @@ import {
   summarizePaymentRecords,
   taipeiToday,
 } from '@/utils/paymentRecordStatus';
+import { splitPeriodAndNote } from '@/utils/contractPaymentPlan';
+import { usePaymentPeriodOptions } from '@/composables/usePaymentPeriodOptions';
 import MarkPaidDialog from './payment/MarkPaidDialog.vue';
+import PaymentPeriodField from './payment/PaymentPeriodField.vue';
 import { paymentRowKind as rowKind } from './payment/paymentEditRow';
 import {
   PROOF_ACCEPT_ATTR,
@@ -510,7 +541,7 @@ import {
   proofFileError,
 } from './payment/paymentProofFile';
 
-const PaymentTemplateImportDialog = defineAsyncComponent(() => import('./payment/PaymentTemplateImportDialog.vue'));
+const PaymentContractImportDialog = defineAsyncComponent(() => import('./payment/PaymentContractImportDialog.vue'));
 
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
@@ -526,13 +557,25 @@ const props = defineProps({
   showRatio: { type: Boolean, default: true },
   projectId: { type: String, default: '' },
   unitData: { type: Object, default: null },
+  contractDocOpen: { type: Boolean, default: false }, // 合約製作設定是否開著，關閉時帶入視窗重新讀取
 });
-const emit = defineEmits(['update:modelValue', 'plans-saved']);
+const emit = defineEmits(['update:modelValue', 'plans-saved', 'open-contract-doc']);
 
 const toast = useToast();
 
 const records = computed(() => props.modelValue || []);
 const today = taipeiToday();
+
+const {
+  options: periodOptions,
+  load: loadPeriodOptions,
+  ready: periodOptionsReady,
+} = usePaymentPeriodOptions(() => ({ projectId: props.projectId, unitId: props.unitId, unitData: props.unitData }));
+onMounted(loadPeriodOptions);
+// 合約製作設定存檔後，這戶的期別可能變了
+watch(() => props.contractDocOpen, (open, wasOpen) => {
+  if (wasOpen && !open) loadPeriodOptions();
+});
 const summary = computed(() => summarizePaymentRecords(records.value, today));
 
 const collapsible = computed(() => !props.defaultExpanded);
@@ -576,7 +619,8 @@ function dueTagClass(state) {
 
 const canAdd = computed(() => props.editable || (props.allowQuickAdd && typeof props.quickAddHandler === 'function'));
 const hasRowMenu = computed(() => typeof props.quickUpdateHandler === 'function' || typeof props.quickDeleteHandler === 'function');
-const canImportTemplate = computed(() => !props.editable && canAdd.value && !!props.projectId && !!props.unitData);
+const canImportContract = computed(() => !props.editable && canAdd.value
+  && typeof props.quickUpdateHandler === 'function' && !!props.projectId && !!props.unitData);
 
 function startAdd(kind) {
   if (props.editable) addRow(kind);
@@ -626,6 +670,7 @@ const quick = reactive({
   recordId: '',
   date: '',
   amount: null,
+  period: '',
   note: '',
   expectedDate: '',
   expectedAmount: null,
@@ -652,6 +697,7 @@ function openQuickAdd(kind) {
     recordId: '',
     date: taipeiToday(),
     amount: null,
+    period: '',
     note: '',
     expectedDate: '',
     expectedAmount: null,
@@ -660,8 +706,10 @@ function openQuickAdd(kind) {
     error: '',
   });
 }
-function openQuickEdit(r) {
+async function openQuickEdit(r) {
   removeQuickFile();
+  // 舊資料的備註等於期別名稱時，編輯畫面視為該期別，存檔後才真的分開
+  const { period, note } = splitPeriodAndNote(r, await periodOptionsReady());
   Object.assign(quick, {
     open: true,
     saving: false,
@@ -670,7 +718,8 @@ function openQuickEdit(r) {
     recordId: r.id,
     date: r.date || '',
     amount: r.amount,
-    note: r.note || '',
+    period,
+    note,
     expectedDate: r.expectedDate || '',
     expectedAmount: r.expectedAmount ?? null,
     existingFile: r.file || null,
@@ -721,6 +770,7 @@ function removeQuickFile() {
 
 function buildQuickPayload() {
   const note = String(quick.note || '');
+  const period = String(quick.period || '').trim();
   if (quick.kind === 'planned') {
     if (!isValidYmd(quick.expectedDate)) throw new Error('請選擇預計日');
     const expectedAmount = parsePositiveInt(quick.expectedAmount);
@@ -728,6 +778,7 @@ function buildQuickPayload() {
     return {
       date: '',
       amount: null,
+      period,
       note,
       file: null,
       removeFile: false,
@@ -743,6 +794,7 @@ function buildQuickPayload() {
   return {
     date: quick.date,
     amount,
+    period,
     note,
     file: quick.file,
     removeFile: quick.mode === 'edit' && quick.removeFile,
@@ -835,6 +887,7 @@ async function submitMarkPaidQuick({ record, date, amount, note, file, balancePl
       await props.quickAddHandler({
         date: '',
         amount: null,
+        ...(balancePlan.period ? { period: balancePlan.period } : {}),
         note: balancePlan.note,
         file: null,
         expectedDate: balancePlan.expectedDate,
@@ -858,6 +911,7 @@ function newRow(kind, fields = {}) {
     _kind: kind,
     date: kind === 'paid' ? taipeiToday() : '',
     amount: null,
+    period: '',
     note: '',
     file: null,
     createdAt: nowIso,
@@ -886,6 +940,7 @@ function submitMarkPaidLocal({ record, date, amount, note, file, balancePlan }) 
     next.push(newRow('planned', {
       expectedDate: balancePlan.expectedDate,
       expectedAmount: balancePlan.expectedAmount,
+      period: balancePlan.period || '',
       note: balancePlan.note,
       planSource: 'balance',
     }));
@@ -893,30 +948,40 @@ function submitMarkPaidLocal({ record, date, amount, note, file, balancePlan }) 
   commit(next);
 }
 
-// ── 範本帶入 ──
-const templateImportOpen = ref(false);
-async function submitTemplatePlans(plans, { onPlanSaved } = {}) {
-  // 逐筆寫入，中途失敗不會還原已寫入的筆數；以 onPlanSaved 回報成功的項目，對話框重試時才能略過，錯誤由對話框顯示
+// ── 帶入合約期款資料 ──
+const contractImportOpen = ref(false);
+async function submitContractPlans(plans, { onPlanSaved } = {}) {
+  // 逐筆寫入，先標已繳款的期別再寫預計；中途失敗不會還原已寫入的筆數，以 onPlanSaved 回報成功筆數，錯誤由對話框顯示
   let savedCount = 0;
   try {
     for (const plan of plans) {
-      await props.quickAddHandler({
-        date: '',
-        amount: null,
-        note: plan.note || '',
-        file: null,
-        expectedDate: plan.expectedDate,
-        expectedAmount: plan.expectedAmount ?? null,
-        planSource: 'template',
-        silent: true,
-      });
+      if (plan.kind === 'assign') {
+        await props.quickUpdateHandler({
+          recordId: plan.recordId, date: plan.date, amount: plan.amount, period: plan.period, note: plan.note, file: null, removeFile: false, silent: true,
+        });
+      } else {
+        const fields = {
+          date: '', amount: null, note: plan.note, file: null, expectedDate: plan.expectedDate, expectedAmount: plan.expectedAmount, silent: true,
+        };
+        if (plan.kind === 'update') await props.quickUpdateHandler({ ...fields, recordId: plan.recordId, removeFile: false });
+        else await props.quickAddHandler({ ...fields, period: plan.period, planSource: 'contract' });
+      }
       savedCount += 1;
       onPlanSaved?.(plan);
     }
   } finally {
     if (savedCount > 0) emit('plans-saved');
   }
-  toast.success(`已新增 ${plans.length} 筆預計繳款`, { position: POSITION.BOTTOM_CENTER });
+  const countOf = kind => plans.filter(plan => plan.kind === kind).length;
+  const planParts = [
+    countOf('add') && `新增 ${countOf('add')} 筆`,
+    countOf('update') && `更新 ${countOf('update')} 筆`,
+  ].filter(Boolean);
+  const parts = [
+    countOf('assign') && `對應 ${countOf('assign')} 筆已繳款`,
+    planParts.length && `${planParts.join('、')}預計繳款`,
+  ].filter(Boolean);
+  toast.success(`已${parts.join('、')}`, { position: POSITION.BOTTOM_CENTER });
 }
 
 // ── 燈箱 ──
@@ -1045,6 +1110,16 @@ function commit(next) {
 function update(idx, key, value) {
   const nowIso = new Date().toISOString();
   commit(records.value.map((r, i) => (i === idx ? { ...r, _kind: rowKind(r), [key]: value, updatedAt: nowIso } : r)));
+}
+// 舊資料的備註等於期別名稱時，編輯畫面視為該期別；動到其中一欄才真的分開
+function editPeriodNote(record) {
+  return splitPeriodAndNote(record, periodOptions.value);
+}
+function updatePeriodNote(idx, key, value) {
+  const nowIso = new Date().toISOString();
+  commit(records.value.map((r, i) => (i === idx
+    ? { ...r, _kind: rowKind(r), ...splitPeriodAndNote(r, periodOptions.value), [key]: value, updatedAt: nowIso }
+    : r)));
 }
 function addRow(kind) {
   manuallyOpen.value = true;
@@ -1242,7 +1317,7 @@ function formatYmd(value) {
   flex: 1 1 280px;
   min-width: 0;
   display: grid;
-  grid-template-columns: 96px 124px minmax(0, 1fr);
+  grid-template-columns: 96px 124px minmax(0, 0.8fr) minmax(0, 1fr);
   gap: 6px 12px;
 }
 .pr-field { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -1414,7 +1489,6 @@ function formatYmd(value) {
 
 @media (max-width: 600px) {
   .pr-fields { flex-basis: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pr-field--note { grid-column: 1 / -1; }
   .pr-edit-grid, .pr-dialog-grid { grid-template-columns: minmax(0, 1fr); }
   .pr-actions { justify-content: stretch; }
   .pr-actions .mac-btn { flex: 1 1 auto; }

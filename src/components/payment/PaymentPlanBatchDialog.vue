@@ -22,14 +22,18 @@
         <div v-if="step === 1" class="mac-form-group ppb-group">
           <div class="mac-form-pad">
             <div class="mac-sheet-label">期別</div>
+            <PaymentPeriodField v-model="content.period" :options="periodOptions" />
+          </div>
+          <div class="mac-form-pad">
+            <div class="mac-sheet-label">備註</div>
             <v-text-field
               v-model="content.note"
+              aria-label="備註"
               class="mac-vfield"
               variant="solo"
               flat
               density="compact"
               hide-details
-              placeholder="例：第 3 期工程款"
             ></v-text-field>
           </div>
           <div class="mac-form-pad">
@@ -160,7 +164,7 @@
         <!-- 3. 預覽確認 -->
         <template v-else>
           <div class="ppb-review-head">
-            <div class="ppb-review-title">{{ content.note.trim() }}・{{ content.expectedDate }}</div>
+            <div class="ppb-review-title">{{ reviewLabel }}・{{ content.expectedDate }}</div>
             <div class="ppb-review-sum">
               新增 {{ newRows.length }} 戶<template v-if="addedCount">・已新增 {{ addedCount }} 戶</template><template v-if="existingCount">・略過 {{ existingCount }} 戶</template><template v-if="totalAmount">・合計 {{ formatMoney(totalAmount) }} 元</template>
             </div>
@@ -215,7 +219,9 @@ import { db } from '@/firebase';
 import { useUserStore } from '@/store/user';
 import { fetchSalesHouseholdsOnce, paymentReminderApi } from '@/api';
 import { computeUnitFinance } from '@/utils/commissionCalculation';
-import { isValidYmd } from '@/utils/paymentRecordStatus';
+import { isValidYmd, paymentPeriodLabel } from '@/utils/paymentRecordStatus';
+import { usePaymentPeriodOptions } from '@/composables/usePaymentPeriodOptions';
+import PaymentPeriodField from './PaymentPeriodField.vue';
 import { classifySalesStatus } from '@/utils/salesStatusGroups';
 
 const props = defineProps({
@@ -242,7 +248,9 @@ const toast = useToast();
 const userStore = useUserStore();
 
 const step = ref(1);
-const content = reactive({ note: '', expectedDate: '', amountMode: 'none', fixedAmount: '', ratioPercent: '' });
+const content = reactive({ period: '', note: '', expectedDate: '', amountMode: 'none', fixedAmount: '', ratioPercent: '' });
+const { options: periodOptions, load: loadPeriodOptions } = usePaymentPeriodOptions(() => ({ projectId: props.projectId }));
+const reviewLabel = computed(() => paymentPeriodLabel(content));
 
 const units = ref([]);
 const unitsLoaded = ref(false);
@@ -271,7 +279,7 @@ const amountValid = computed(() => {
   if (content.amountMode === 'ratio') return ratioValue.value > 0 && ratioValue.value <= 100;
   return true;
 });
-const contentValid = computed(() => !!content.note.trim() && isValidYmd(content.expectedDate) && amountValid.value);
+const contentValid = computed(() => !!content.period.trim() && isValidYmd(content.expectedDate) && amountValid.value);
 
 const canNext = computed(() => (step.value === 1 ? contentValid.value : selectedIds.value.size > 0));
 
@@ -297,14 +305,15 @@ function amountForUnit(unit) {
 }
 
 const reviewRows = computed(() => {
-  const note = content.note.trim();
+  const period = content.period.trim();
   return units.value
     .filter(u => selectedIds.value.has(u.unitId))
     .map(u => {
       const amount = amountForUnit(u);
       const outcome = outcomes.value.get(u.unitId);
+      // 同一天、同一期別就是同一筆；舊資料只有備註
       const exists = (u.paymentRecords || []).some(r => r
-        && String(r.note || '').trim() === note
+        && (String(r.period || '').trim() || String(r.note || '').trim()) === period
         && r.expectedDate === content.expectedDate);
       return {
         unitId: u.unitId,
@@ -396,6 +405,7 @@ async function submit() {
       projectId: props.projectId,
       userKey: userStore.user?.key,
       expectedDate: content.expectedDate,
+      period: content.period.trim(),
       note: content.note.trim(),
       entries: entries.slice(i, i + API_BATCH_SIZE),
     });
@@ -449,7 +459,7 @@ async function submit() {
 }
 
 // 改了期別或預計日就是另一筆預計繳款，先前的結果不再適用
-watch(() => [content.note, content.expectedDate].join('|'), () => {
+watch(() => [content.period, content.expectedDate].join('|'), () => {
   outcomes.value = new Map();
   saveError.value = '';
   sheetSyncWarning.value = '';
@@ -458,7 +468,8 @@ watch(() => [content.note, content.expectedDate].join('|'), () => {
 watch(() => props.modelValue, open => {
   if (!open) return;
   step.value = 1;
-  Object.assign(content, { note: '', expectedDate: '', amountMode: 'none', fixedAmount: '', ratioPercent: '' });
+  loadPeriodOptions();
+  Object.assign(content, { period: '', note: '', expectedDate: '', amountMode: 'none', fixedAmount: '', ratioPercent: '' });
   selectedIds.value = new Set();
   buildingFilter.value = '';
   unitSearch.value = '';

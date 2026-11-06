@@ -210,7 +210,7 @@ async function submitBatch({ warning = '', responses }) {
     paymentReminderApi: async () => queue.shift(),
     props: { projectId: 'p1' },
     userStore: { user: { key: 'mgr' } },
-    content: { expectedDate: '2027-01-15', note: '第4期' },
+    content: { expectedDate: '2027-01-15', period: '第4期', note: '' },
     emit: () => {},
     addedCount: { value: 0 },
     existingCount: { value: 0 },
@@ -243,4 +243,14 @@ test('批次重送：請求失敗或全部失敗時提醒也留著', async () =>
   const allFailed = await submitBatch({ warning: '同步失敗 A', responses: [{ status: 'success', added: [], skipped: [], failed: [{ unitId: 'A1', reason: 'x' }] }] });
   assert.equal(allFailed.warning, '同步失敗 A');
   assert.match(allFailed.error, /1 戶失敗/);
+});
+
+test('期別標籤：期別（備註）；缺一邊顯示另一邊；前後端一致', () => {
+  for (const { paymentPeriodLabel } of [front, back]) {
+    assert.equal(paymentPeriodLabel({ period: '訂金', note: '小訂' }), '訂金（小訂）');
+    assert.equal(paymentPeriodLabel({ period: ' 訂金 ', note: '  ' }), '訂金');
+    assert.equal(paymentPeriodLabel({ note: '第 3 期' }), '第 3 期');
+    assert.equal(paymentPeriodLabel({}), '');
+    assert.equal(paymentPeriodLabel(null), '');
+  }
 });

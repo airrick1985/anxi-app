@@ -6,7 +6,7 @@
 //
 // 用法：node scripts/tests/payment-records-browser.mjs [輸出資料夾] [--only=T1,T7,visual]
 //   群組：T1 面板檢視、T2 新增編輯刪除改回、T3 標記已繳、T4 憑證、T5 編輯模式、T6 繳款提醒設定、T7 到期清單、
-//         T8 批次新增、T9 範本帶入、T10 計算欄位、T11 通知入口、T12 修改銷控（真實 UnitDetailModal）、
+//         T8 批次新增、T9 帶入合約期款資料、PERIOD 期別與備註、T10 計算欄位、T11 通知入口、T12 修改銷控（真實 UnitDetailModal）、
 //         T13 銷控系統（真實 SalesControlSystem）、T14 樣式修正、visual 畫面矩陣
 //   失敗項代表實際發現的問題，結束時 exit 1；已知問題（known）照常執行、列入報告但不影響結束碼，修好時會提示。明細在 <輸出資料夾>/results.json
 //   只跑部分畫面：--only=visual --screens=settings,list-manager
@@ -314,6 +314,10 @@ function createBackend() {
     backend.emptyData = !!opts.emptyData;
     backend.noTemplates = !!opts.noTemplates;
     backend.templates = opts.templates;
+    Object.entries(opts.contractDocs || {}).forEach(([unit, contractDocData]) => {
+      const key = `salesHouseholds/p1_${unit}`;
+      backend.db.store.set(key, { ...backend.db.store.get(key), contractDocData });
+    });
   };
 
   const households = () => [...backend.db.store.entries()]
@@ -437,7 +441,7 @@ function createBackend() {
       switch (action) {
         case 'listDue': return await reminder.handleListDue({ db, projectId, access, deps });
         case 'batchAddPlans': {
-          const batchResult = await reminder.handleBatchAddPlans({ db, projectId, access, expectedDate: data.expectedDate, note: data.note, entries: data.entries, deps });
+          const batchResult = await reminder.handleBatchAddPlans({ db, projectId, access, expectedDate: data.expectedDate, period: data.period, note: data.note, entries: data.entries, deps });
           backend.batchResults.push(batchResult);
           return batchResult;
         }
@@ -472,6 +476,11 @@ function createBackend() {
       case 'getDoc': return backend.db.store.get(payload.path) || null;
       case 'fetchContractDocConfig': return { pages: [] };
       case 'fetchContractDocData': return backend.db.store.get(`salesHouseholds/${payload.householdDocId}`)?.contractDocData ?? null;
+      case 'updateContractDocData': {
+        const key = `salesHouseholds/${payload.householdDocId}`;
+        backend.db.store.set(key, { ...backend.db.store.get(key), contractDocData: payload.data });
+        return { status: 'success' };
+      }
       case 'updateSalesData': {
         const key = `salesHouseholds/${payload.projectId}_${payload.unitId}`;
         backend.db.store.set(key, { ...backend.db.store.get(key), ...payload.data });
@@ -535,6 +544,7 @@ export const updateProjectSalesSettings = async (projectId, dataToUpdate) => {
 export const generatePaymentDocument = async () => ({ status: 'error', message: 'harness' });
 export const fetchContractDocConfig = projectId => raw('fetchContractDocConfig', { projectId });
 export const fetchContractDocData = householdDocId => raw('fetchContractDocData', { householdDocId });
+export const updateContractDocData = (householdDocId, data) => raw('updateContractDocData', { householdDocId, data });
 export const updateSalesData = payload => raw('updateSalesData', encode(payload));
 export const updateParkingLot = (docId, dataToUpdate) => raw('updateParkingLot', { docId, dataToUpdate });
 export const listenToSalesControlData = (projectId, onData, onError) => {
@@ -735,7 +745,7 @@ async function mountPanel() {
   const toast = useToast();
   const unitId = q.get('unit') || 'A1';
   const house = await window.__backendCall('household', { unitId });
-  const state = reactive({ records: house.paymentRecords || [] });
+  const state = reactive({ records: house.paymentRecords || [], contractDocOpen: false });
   window.__panelState = state;
   const operator = window.__user.name;
   // 與 UnitDetailModal 的 handleQuick* 相同的參數處理
@@ -778,6 +788,8 @@ async function mountPanel() {
     quickDeleteHandler: readonly || editable ? null : quickDelete,
     projectId: 'p1',
     unitData: house,
+    contractDocOpen: state.contractDocOpen,
+    onOpenContractDoc: () => window.__panelEvents.push('open-contract-doc'),
     onPlansSaved: () => window.__panelEvents.push('plans-saved'),
   });
 }
@@ -1186,6 +1198,18 @@ async function stats(page) {
     [...s.querySelectorAll('.pr-stat-value, .pr-stat-sub, .mac-tag')].map(x => x.innerText.trim()).join('|'),
   ])));
 }
+// 期別欄位：選下拉項目；「其他」再自行輸入
+const pickPeriod = async (scope, name) => {
+  const page = scope.page();
+  await scope.locator('.ppf-select .v-field').click();
+  await settle(page, 250);
+  await page.locator('.v-menu.v-overlay--active .v-list-item').filter({ hasText: new RegExp(`^\\s*${name}\\s*$`) }).first().click();
+  await settle(page, 150);
+};
+const fillOtherPeriod = async (scope, text) => {
+  await pickPeriod(scope, '其他');
+  await scope.locator('input[aria-label="其他期別"]').fill(text);
+};
 const rowsOf = locator => locator.locator('.pr-row').evaluateAll(rows => rows.map(r => ({
   fields: Object.fromEntries([...r.querySelectorAll('.pr-field')].map(f => [f.querySelector('.pr-field-label')?.innerText.trim(), f.querySelector('.pr-field-value')?.innerText.trim()])),
   sub: r.querySelector('.pr-field-sub')?.innerText.trim() || '',
@@ -1274,8 +1298,8 @@ group('T1', async () => {
   check(G, '預計區有標記已繳與更多', pl.every(r => r.buttons.includes('標記已繳') && r.buttons.includes('更多操作')), JSON.stringify(pl[0].buttons));
   eq(G, '區塊筆數', [await planned(page).locator('.pr-group-count').innerText(), await paid(page).locator('.pr-group-count').innerText()], ['4 筆', '5 筆']);
   const pd = await rowsOf(paid(page));
-  eq(G, '已繳區由新到舊，缺值舊資料排最後', pd.map(r => r.fields['期別／備註']), ['簽約款', '開工款', '訂金', '舊資料補足款', '舊資料缺值']);
-  eq(G, '舊資料只在已繳區', (await rowsOf(planned(page))).filter(r => /舊資料/.test(r.fields['期別／備註'])).length, 0);
+  eq(G, '已繳區由新到舊，缺值舊資料排最後', pd.map(r => r.fields['備註']), ['簽約款', '開工款', '訂金', '舊資料補足款', '舊資料缺值']);
+  eq(G, '舊資料只在已繳區', (await rowsOf(planned(page))).filter(r => /舊資料/.test(r.fields['備註'])).length, 0);
   eq(G, '遲繳／提前附註，同日不顯示', pd.map(r => r.sub), [`預計 ${md(addDays(-13))}・遲 3 天`, `預計 ${md(addDays(-38))}・提前 2 天`, '', '', '']);
   eq(G, '缺值舊資料顯示「—」', [pd[4].fields['繳款日'], pd[4].fields['實繳金額']], ['—', '—']);
   const checks = await paid(page).locator('.pr-row').evaluateAll(rows => rows.map(r => !!r.querySelector('.pr-field-value--strong .mdi-check')));
@@ -1301,7 +1325,7 @@ group('T1', async () => {
   eq(G, '舊資料內容與比例不變', (await stats(legacy.page))['繳款比例'], '3.0%');
   eq(G, '舊資料：預計區空', await planned(legacy.page).locator('.pr-empty').count(), 1);
   const legacyRows = await rowsOf(paid(legacy.page));
-  eq(G, '舊資料順序由新到舊', legacyRows.map(r => r.fields['期別／備註']), ['舊資料二', '舊資料一']);
+  eq(G, '舊資料順序由新到舊', legacyRows.map(r => r.fields['備註']), ['舊資料二', '舊資料一']);
   await paidRow(legacy.page, '舊資料一').locator('.pr-more').click();
   await settle(legacy.page);
   eq(G, '舊資料沒有「改回預計」', await legacy.page.locator('.v-menu.v-overlay--active .v-list-item').allInnerTexts(), ['編輯', '刪除']);
@@ -1352,7 +1376,7 @@ group('T2', async () => {
   await settle(page, 150);
   check(G, '新增預計：負數擋下', (await d.locator('.mac-callout--error').innerText()).includes('大於 0'), '');
   await d.locator('input[aria-label="預計金額"]').fill('350000');
-  await d.locator('input[aria-label="期別／備註"]').fill('第 6 期工程款');
+  await d.locator('input[aria-label="備註"]').fill('第 6 期工程款');
   await clickDialogButton(page, '儲存');
   await d.waitFor({ state: 'hidden' });
   const add = lastCall('paymentProofApi', 'addRecord');
@@ -1385,12 +1409,12 @@ group('T2', async () => {
   await settle(page, 150);
   check(G, '新增已繳：繳款日必填', (await d2.locator('.mac-callout--error').innerText()).includes('繳款日'), '');
   await d2.locator('input[aria-label="繳款日"]').fill(TODAY);
-  await d2.locator('input[aria-label="期別／備註"]').fill('臨時繳款');
+  await d2.locator('input[aria-label="備註"]').fill('臨時繳款');
   await clickDialogButton(page, '儲存');
   await d2.waitFor({ state: 'hidden' });
   const addPaid = lastCall('paymentProofApi', 'addRecord');
   eq(G, '新增已繳參數', { date: addPaid.date, amount: addPaid.amount, expectedDate: addPaid.expectedDate, expectedAmount: addPaid.expectedAmount, note: addPaid.note, removeFile: addPaid.removeFile }, { date: TODAY, amount: 100000, expectedDate: null, note: '臨時繳款', removeFile: false });
-  check(G, '新增已繳：在已繳區最上方', (await rowsOf(paid(page)))[0].fields['期別／備註'] === '臨時繳款', '');
+  check(G, '新增已繳：在已繳區最上方', (await rowsOf(paid(page)))[0].fields['備註'] === '臨時繳款', '');
   eq(G, '新增已繳：已繳增加', (await stats(page))['已繳'], `${money(1000000)} 元`);
 
   // 已繳補登預計日
@@ -1399,17 +1423,17 @@ group('T2', async () => {
   const d3 = dialog(page);
   await d3.locator('input[aria-label="實繳金額"]').fill('20000');
   await d3.locator('input[aria-label="預計日"]').fill(addDays(-2));
-  await d3.locator('input[aria-label="期別／備註"]').fill('補登預計日');
+  await d3.locator('input[aria-label="備註"]').fill('補登預計日');
   await clickDialogButton(page, '儲存');
   await d3.waitFor({ state: 'hidden' });
-  eq(G, '補登預計日：附註遲 2 天', (await rowsOf(paid(page)))[0].sub.includes('遲 2 天') || (await rowsOf(paid(page))).some(r => r.fields['期別／備註'] === '補登預計日' && r.sub.includes('遲 2 天')), true);
+  eq(G, '補登預計日：附註遲 2 天', (await rowsOf(paid(page)))[0].sub.includes('遲 2 天') || (await rowsOf(paid(page))).some(r => r.fields['備註'] === '補登預計日' && r.sub.includes('遲 2 天')), true);
 
   // 小數：標記已繳會擋下，新增／編輯對話框應一致，不可默默四捨五入改金額
   await page.locator('.pr-actions').getByRole('button', { name: '已繳款', exact: true }).click();
   await settle(page);
   const dDecimal = dialog(page);
   await dDecimal.locator('input[aria-label="實繳金額"]').fill('12.5');
-  await dDecimal.locator('input[aria-label="期別／備註"]').fill('小數測試');
+  await dDecimal.locator('input[aria-label="備註"]').fill('小數測試');
   await clickDialogButton(page, '儲存');
   await settle(page, 350);
   const decimalSaved = !(await dDecimal.isVisible());
@@ -1426,7 +1450,7 @@ group('T2', async () => {
   await d4.locator('.mac-form-seg-btn', { hasText: '已繳款' }).click();
   await settle(page, 150);
   await d4.locator('input[aria-label="實繳金額"]').fill('12345');
-  await d4.locator('input[aria-label="期別／備註"]').fill('切換測試');
+  await d4.locator('input[aria-label="備註"]').fill('切換測試');
   await clickDialogButton(page, '儲存');
   await settle(page, 400);
   const switchVisible = await d4.isVisible();
@@ -1444,7 +1468,7 @@ group('T2', async () => {
   await d5.locator('.mac-form-seg-btn', { hasText: '已繳款' }).click();
   await settle(page, 150);
   await d5.locator('input[aria-label="實繳金額"]').fill('5000');
-  await d5.locator('input[aria-label="期別／備註"]').fill('切換測試二');
+  await d5.locator('input[aria-label="備註"]').fill('切換測試二');
   await clickDialogButton(page, '儲存');
   await d5.waitFor({ state: 'hidden' });
   check(G, '切換類型：已繳紀錄不送預計金額', !('expectedAmount' in lastCall('paymentProofApi', 'addRecord')), JSON.stringify(lastCall('paymentProofApi', 'addRecord')));
@@ -1458,7 +1482,7 @@ group('T2', async () => {
   await d6.locator('.mac-form-seg-btn', { hasText: '預計繳款' }).click();
   await settle(page, 150);
   await d6.locator('input[aria-label="預計日"]').fill(addDays(33));
-  await d6.locator('input[aria-label="期別／備註"]').fill('切換憑證');
+  await d6.locator('input[aria-label="備註"]').fill('切換憑證');
   await clickDialogButton(page, '儲存');
   await d6.waitFor({ state: 'hidden' });
   eq(G, '切到預計後不帶憑證', lastCall('paymentProofApi', 'addRecord').base64, null);
@@ -1469,9 +1493,9 @@ group('T2', async () => {
   const e = await open({ view: 'panel', unit: 'A1', total: 2100 });
   await menu(e.page, plannedRow(e.page, '第 4 期工程款'), '編輯');
   const de = dialog(e.page);
-  eq(G, '編輯預計：帶入既有值', [await de.locator('input[aria-label="預計日"]').inputValue(), await de.locator('input[aria-label="預計金額"]').inputValue(), await de.locator('input[aria-label="期別／備註"]').inputValue()], [addDays(3), '300000', '第 4 期工程款']);
+  eq(G, '編輯預計：帶入既有值', [await de.locator('input[aria-label="預計日"]').inputValue(), await de.locator('input[aria-label="預計金額"]').inputValue(), await de.locator('input[aria-label="備註"]').inputValue()], [addDays(3), '300000', '第 4 期工程款']);
   check(G, '編輯預計：沒有類型切換', (await de.locator('.mac-form-seg').count()) === 0, '');
-  await de.locator('input[aria-label="期別／備註"]').fill('第 4 期工程款（改）');
+  await de.locator('input[aria-label="備註"]').fill('第 4 期工程款（改）');
   await clickDialogButton(e.page, '儲存');
   await de.waitFor({ state: 'hidden' });
   const up = lastCall('paymentProofApi', 'updateRecord');
@@ -1492,7 +1516,7 @@ group('T2', async () => {
   await menu(e.page, paidRow(e.page, '簽約款'), '編輯');
   const dp = dialog(e.page);
   eq(G, '編輯已繳：帶入既有值', [await dp.locator('input[aria-label="繳款日"]').inputValue(), await dp.locator('input[aria-label="實繳金額"]').inputValue(), await dp.locator('input[aria-label="預計日"]').inputValue()], [addDays(-10), '600000', addDays(-13)]);
-  await dp.locator('input[aria-label="期別／備註"]').fill('簽約款（改）');
+  await dp.locator('input[aria-label="備註"]').fill('簽約款（改）');
   await clickDialogButton(e.page, '儲存');
   await dp.waitFor({ state: 'hidden' });
   const upPaid = lastCall('paymentProofApi', 'updateRecord');
@@ -1505,7 +1529,7 @@ group('T2', async () => {
   await clickDialogButton(e.page, '儲存');
   await dialog(e.page).waitFor({ state: 'hidden' });
   const storedLegacy = backend.db.store.get('salesHouseholds/p1_A1').paymentRecords.find(r => r.id === 'legacy1');
-  check(G, '編輯舊資料：仍在已繳區且金額不變', (await rowsOf(paid(e.page))).some(r => r.fields['期別／備註'] === '舊資料補足款') && storedLegacy.amount === 50000, JSON.stringify(storedLegacy));
+  check(G, '編輯舊資料：仍在已繳區且金額不變', (await rowsOf(paid(e.page))).some(r => r.fields['備註'] === '舊資料補足款') && storedLegacy.amount === 50000, JSON.stringify(storedLegacy));
 
   // 編輯舊的缺值資料：金額空白時不可存
   await menu(e.page, paidRow(e.page, '舊資料缺值'), '編輯');
@@ -1910,7 +1934,7 @@ group('T5', async () => {
   const plannedCards = () => planned(page).locator('.pr-edit-card');
   const paidCards = () => paid(page).locator('.pr-edit-card');
   eq(G, '編輯模式分區筆數', [await plannedCards().count(), await paidCards().count()], [4, 5]);
-  check(G, '編輯模式沒有範本帶入', (await page.getByRole('button', { name: '範本帶入' }).count()) === 0, '');
+  check(G, '編輯模式沒有帶入合約期款資料', (await page.getByRole('button', { name: '帶入合約期款資料' }).count()) === 0, '');
 
   await page.locator('.pr-actions').getByRole('button', { name: '預計繳款', exact: true }).click();
   await settle(page, 120);
@@ -1918,7 +1942,7 @@ group('T5', async () => {
   const newCard = plannedCards().last();
   await newCard.locator('input[aria-label="預計日"]').fill(addDays(5));
   await newCard.locator('input[aria-label="預計金額"]').fill('123456');
-  await newCard.locator('input[aria-label="期別／備註"]').fill('編輯模式新增');
+  await newCard.locator('input[aria-label="備註"]').fill('編輯模式新增');
   await settle(page, 120);
   eq(G, '新增預計：狀態標籤即時', await plannedCards().last().locator('.mac-tag').innerText(), '剩 5 天');
   const rec = () => page.evaluate(() => JSON.parse(JSON.stringify(window.__panelState.records)));
@@ -1941,7 +1965,7 @@ group('T5', async () => {
   eq(G, '新增已繳預帶今天', await paidCard.locator('input[aria-label="繳款日"]').inputValue(), TODAY);
   await paidCard.locator('input[aria-label="實繳金額"]').fill('5000');
   await settle(page, 100);
-  await paidCards().last().locator('input[aria-label="期別／備註"]').fill('編輯已繳');
+  await paidCards().last().locator('input[aria-label="備註"]').fill('編輯已繳');
   await settle(page, 100);
   // 清空金額不跳區
   await paidCards().last().locator('input[aria-label="實繳金額"]').fill('');
@@ -1970,7 +1994,7 @@ group('T5', async () => {
   eq(G, '本地標記：後端沒被呼叫', calls('paymentProofApi').length, 0);
 
   // 改回預計（本地）
-  const lateCard = paidCards().filter({ has: page.locator('input[aria-label="期別／備註"]') }).nth(0);
+  const lateCard = paidCards().filter({ has: page.locator('input[aria-label="備註"]') }).nth(0);
   const revertCount = await paid(page).getByRole('button', { name: '改回預計' }).count();
   check(G, '有預計日的已繳卡片有改回預計', revertCount >= 3, String(revertCount));
   await lateCard.getByRole('button', { name: '改回預計' }).click();
@@ -2021,7 +2045,7 @@ group('SHEET', async () => {
     await page.getByRole('button', { name: '批次新增' }).click();
     await settle(page, 500);
     const d = dialog(page);
-    await d.locator('input[placeholder="例：第 3 期工程款"]').fill(note);
+    await fillOtherPeriod(d, note);
     await d.locator('input[type=date]').fill('2027-03-01');
     await settle(page, 80);
     await d.getByRole('button', { name: '下一步' }).click();
@@ -2140,102 +2164,28 @@ group('SHEET', async () => {
 });
 
 // ─────────────── 優付規則 ───────────────
+async function scheduleAmounts(context) {
+  const { page, close } = await open({ view: 'schedule', context: JSON.stringify(context) });
+  await settle(page, 900);
+  const rows = await page.evaluate(() => [...document.querySelectorAll('.edit-table')].map(table => [...table.querySelectorAll('.edit-row')].filter(r => !r.classList.contains('edit-row-head') && !r.classList.contains('edit-row-group') && !r.classList.contains('edit-row-total')).map(r => ({
+    name: r.querySelector('.col-name').innerText.trim().replace(/^\d+\.\s*/, ''),
+    amount: Number(r.querySelector('.col-amount input')?.value),
+  }))));
+  await close();
+  return rows;
+}
+
 group('PREF', async () => {
   const G = 'PREF 優付規則';
   const NO_PREF = () => templateFixtures().filter(t => t.paymentCategory !== '優付期款');
-  const openImport = async (unit, total = 2000) => {
-    const ctx = await open({ view: 'panel', unit, total, prefOption: 1 }, { width: 390 });
-    await ctx.page.getByRole('button', { name: '範本帶入' }).click();
-    await settle(ctx.page, 700);
-    return { ...ctx, d: dialog(ctx.page) };
-  };
-  const selected = async (d) => {
-    const text = d.locator('.v-select__selection-text');
-    return (await text.count()) ? (await text.innerText()).trim() : '';
-  };
   const baseContext = { contractType: '', isFirstTimeBuyer: true, propertyType: '住家', isPackageContract: false, packageDealPrice: 0, packagePrice: 0, parkingSpots: [], areas: {}, banks: [] };
-  const fillDates = async (d, page) => {
-    const inputs = d.locator('.pti-row input[aria-label="預計日"]:not([disabled])');
-    for (let i = 0; i < await inputs.count(); i += 1) await inputs.nth(i).fill(addDays(30 + i));
-    await settle(page, 150);
-  };
 
-  // 優付戶：範本帶入與付款表都選優付期款
+  // 付款表：優付戶用優付期款範本，一般戶用一般期款範本
   backend.reset();
-  const pref = await openImport('PREF');
-  eq(G, '優付戶：範本帶入預選優付期款範本', await selected(pref.d), '優付期款範本');
-  eq(G, '優付戶：沒有無範本提示', await pref.d.locator('.mac-callout--warning').count(), 0);
-  const prefRows = await pref.d.locator('.pti-row .pti-name').allInnerTexts();
   const prefSchedule = await scheduleAmounts({ ...baseContext, unitId: 'PREF', totalPrice: 2000, usePreferredPayment: true });
-  eq(G, '優付戶：範本帶入與付款表期別相同', prefRows.map(x => x.replace('已有', '').trim()), prefSchedule[0].filter(r => r.amount > 0).map(r => r.name));
   const generalSchedule = await scheduleAmounts({ ...baseContext, unitId: 'PREF', totalPrice: 2000, usePreferredPayment: false });
-  check(G, '對照有效：一般與優付期別不同', JSON.stringify(prefSchedule[0]) !== JSON.stringify(generalSchedule[0]), '');
-  // 手動選後可繼續
-  await pref.d.locator('.v-select .v-field').click();
-  await settle(pref.page, 300);
-  await pref.page.locator('.v-menu.v-overlay--active .v-list-item', { hasText: '一般期款範本' }).click();
-  await settle(pref.page, 400);
-  eq(G, '優付戶手動選一般範本：選取生效', await selected(pref.d), '一般期款範本');
-  await fillDates(pref.d, pref.page);
-  check(G, '優付戶手動選一般範本：期別更新、填日期後可帶入', (await pref.d.locator('.pti-row').count()) > 0 && !(await pref.d.locator('.mac-sheet-foot .mac-btn--primary').isDisabled()), '');
-  await pref.close();
-
-  // 一般戶不變
-  backend.reset();
-  const gen = await openImport('A1', 2100);
-  eq(G, '一般戶：預選一般期款範本', await selected(gen.d), '一般期款範本');
-  await gen.close();
-
-  // 開關關閉但有舊值：仍是一般
-  backend.reset();
-  const raw = backend.db.store.get('salesHouseholds/p1_A1');
-  backend.db.store.set('salesHouseholds/p1_A1', { ...raw, isPreferredPayment: false, usePreferredPayment: true });
-  const stale = await openImport('A1', 2100);
-  eq(G, '開關關閉但有舊 usePreferredPayment：仍是一般期款', await selected(stale.d), '一般期款範本');
-  await stale.close();
-
-  // 只有舊值、沒有開關欄位：沿用舊值
-  backend.reset();
-  const { isPreferredPayment: _drop, ...rawA1 } = backend.db.store.get('salesHouseholds/p1_A1');
-  backend.db.store.set('salesHouseholds/p1_A1', { ...rawA1, usePreferredPayment: true });
-  const legacyPref = await openImport('A1', 2100);
-  eq(G, '只有舊 usePreferredPayment：視為優付', await selected(legacyPref.d), '優付期款範本');
-  await legacyPref.close();
-
-  // 沒有優付範本：不預選、提示、不可帶入；手動選後可繼續
-  backend.reset({ templates: NO_PREF() });
-  const none = await openImport('PREF');
-  eq(G, '沒有優付範本：不預選', [await selected(none.d), await none.d.locator('.pti-row').count()], ['', 0]);
-  check(G, '沒有優付範本：有提示', (await none.d.locator('.mac-callout--warning').innerText()).includes('沒有符合此戶條件的優付期款範本'), '');
-  eq(G, '沒有優付範本：不可帶入', await none.d.locator('.mac-sheet-foot .mac-btn--primary').isDisabled(), true);
-  await none.d.locator('.v-select .v-field').click();
-  await settle(none.page, 300);
-  await none.page.locator('.v-menu.v-overlay--active .v-list-item', { hasText: '一般期款範本' }).click();
-  await settle(none.page, 400);
-  eq(G, '沒有優付範本：手動選一般期款後提示消失', [await selected(none.d), await none.d.locator('.mac-callout--warning').filter({ hasText: '沒有符合' }).count()], ['一般期款範本', 0]);
-  await fillDates(none.d, none.page);
-  check(G, '沒有優付範本：手動選後可列期別、填日期後可帶入', (await none.d.locator('.pti-row').count()) > 0 && !(await none.d.locator('.mac-sheet-foot .mac-btn--primary').isDisabled()), '');
-  await none.d.locator('.mac-sheet-foot .mac-btn--primary').click();
-  await settle(none.page, 600);
-  check(G, '沒有優付範本：手動選後帶入成功', calls('paymentProofApi', 'addRecord').length > 0, String(calls('paymentProofApi', 'addRecord').length));
-  await none.close();
-
-  // 建案隱藏優付選項（預設值）：一律視為非優付
-  const openHidden = async () => {
-    const ctx = await open({ view: 'panel', unit: 'PREF', total: 2000 }, { width: 390 });
-    await ctx.page.getByRole('button', { name: '範本帶入' }).click();
-    await settle(ctx.page, 700);
-    return { ...ctx, d: dialog(ctx.page) };
-  };
-  backend.reset();
-  const hidden = await openHidden();
-  eq(G, '建案隱藏優付：優付戶仍選一般期款範本', await selected(hidden.d), '一般期款範本');
-  eq(G, '建案隱藏優付：沒有無範本提示', await hidden.d.locator('.mac-callout--warning').count(), 0);
-  await hidden.close();
-  backend.reset({ templates: NO_PREF() });
-  const hiddenNoTpl = await openHidden();
-  eq(G, '建案隱藏優付、沒有優付範本：照常選一般、不提示', [await selected(hiddenNoTpl.d), await hiddenNoTpl.d.locator('.mac-callout--warning').count()], ['一般期款範本', 0]);
-  await hiddenNoTpl.close();
+  eq(G, '付款表：優付戶用優付期款範本', prefSchedule[0].map(r => r.name), ['優付訂金', '優付尾款']);
+  check(G, '付款表：一般戶用一般期款範本', generalSchedule[0].some(r => r.name === '頭期款'), JSON.stringify(generalSchedule[0]));
 
   // 付款表：沒有優付範本不退回一般
   backend.reset({ templates: NO_PREF() });
@@ -2274,7 +2224,6 @@ group('PREF', async () => {
 // ─────────────── 合約製作（真實 ContractDocDialog，只看期款範本選擇）───────────────
 group('CONTRACT', async () => {
   const G = 'CONTRACT 合約製作';
-  // 合約製作的自動判斷要求總價落在上下限內，範本要有上限
   const templates = () => templateFixtures().map(t => ({ ...t, maxPrice: t.maxPrice || 999999 }));
   const openContract = async (unit, extra = {}) => {
     const ctx = await open({ view: 'modal', unit, ...extra });
@@ -2311,7 +2260,7 @@ group('CONTRACT', async () => {
     console.log('合約製作未測：對話框掛不起來');
     return;
   }
-  eq(G, '優付戶：合約製作自動選優付期款範本（與範本帶入、付款表一致）', [first.preferred, first.active, first.manual], [true, '優付期款範本', null]);
+  eq(G, '優付戶：合約製作自動選優付期款範本（與付款表一致）', [first.preferred, first.active, first.manual], [true, '優付期款範本', null]);
 
   backend.reset({ templates: templates() });
   const prefOff = await openContract('PREF');
@@ -2344,11 +2293,77 @@ group('CONTRACT', async () => {
   eq(G, '手動指定的範本：還原', await contractState(manual.page), { preferred: true, active: '一般期款範本', manual: 'tpl-normal' });
   await manual.close();
 
-  // 範本沒填總價上限（設定頁存成 null）：付款表與範本帶入都視為不限，合約製作也要選得到
+  // 範本沒填總價上限（設定頁存成 null）：付款表視為不限，合約製作也要選得到
   backend.reset({ templates: templateFixtures().map(t => ({ ...t, maxPrice: null })) });
   const noMax = await openContract('A1', { prefOption: 1 });
   eq(G, '範本沒填總價上限：合約製作也選得到（與付款表一致）', (await contractState(noMax.page)).active, '一般期款範本');
   await noMax.close();
+
+  // 上限存成 0 也視為不限；下限照常判斷
+  backend.reset({ templates: templateFixtures().map(t => (t.id === 'tpl-normal' ? { ...t, maxPrice: 0 } : t)) });
+  const zeroMax = await openContract('A1', { prefOption: 1 });
+  eq(G, '範本上限 0：視為不限', (await contractState(zeroMax.page)).active, '一般期款範本');
+  await zeroMax.close();
+  backend.reset({ templates: templateFixtures().map(t => (t.id === 'tpl-normal' ? { ...t, minPrice: 99999, maxPrice: null } : t)) });
+  const highMin = await openContract('A1', { prefOption: 1 });
+  eq(G, '範本總價低於下限：不選', (await contractState(highMin.page)).active, null);
+  await highMin.close();
+
+  // 已存合約：排在前面的範本因為沒填上限而變成符合時，不可換掉存檔時用的範本
+  const openEnded = { id: 'tpl-open', projectId: 'p1', templateName: '沒填上限範本', paymentCategory: '一般期款', propertyType: '住家', buyerType: '首購', minPrice: 0, maxPrice: null, items: [it('開放頭款', '總價*10%', { id: 'op1' }), it('開放尾款', '總價-開放頭款', { id: 'op2' })] };
+  const bounded = { id: 'tpl-bounded', projectId: 'p1', templateName: '有上限範本', paymentCategory: '一般期款', propertyType: '住家', buyerType: '首購', minPrice: 1000, maxPrice: 3000, items: [it('有限頭款', '總價*20%', { id: 'bd1' }), it('有限尾款', '總價-有限頭款', { id: 'bd2' })] };
+  const savedRows = [
+    { key: 'bd1', name: '有限頭款', percent: 0, type: 'single', amount: 500, children: [] },
+    { key: 'bd2', name: '有限尾款', percent: 0, type: 'single', amount: 1600, children: [] },
+  ];
+  const contractRows = page => page.evaluate(() => {
+    for (const el of document.querySelectorAll('.v-overlay--active *')) {
+      let inst = el.__vueParentComponent;
+      while (inst) {
+        if (/ContractDocDialog\.vue$/.test(inst.type?.__file || '')) return inst.setupState.editRows.map(r => [r.name, r.amount]);
+        inst = inst.parent;
+      }
+    }
+    return null;
+  });
+  backend.reset({ templates: [openEnded, bounded] });
+  const untouched = await openContract('EMPTY');
+  eq(G, '沒有存檔：照順序選第一個符合的範本', (await contractState(untouched.page)).active, '沒填上限範本');
+  await untouched.close();
+  backend.reset({ templates: [openEnded, bounded] });
+  setContract('A1', { manualRowsTemplateId: 'tpl-bounded', paymentTemplateId: null, manualRowsBase: 2100, manualRows: savedRows });
+  const keepSaved = await openContract('A1');
+  eq(G, '已存合約：存檔時的範本還符合就不換', (await contractState(keepSaved.page)).active, '有上限範本');
+  eq(G, '已存合約：手動調過的金額還在', await contractRows(keepSaved.page), [['有限頭款', 500], ['有限尾款', 1600]]);
+  await keepSaved.close();
+  backend.reset({ templates: [openEnded, { ...bounded, minPrice: 5000, maxPrice: 6000 }] });
+  setContract('A1', { manualRowsTemplateId: 'tpl-bounded', paymentTemplateId: null, manualRowsBase: 2100, manualRows: savedRows });
+  const movedOut = await openContract('A1');
+  eq(G, '已存合約：存檔時的範本不符合了才跟著自動判斷', (await contractState(movedOut.page)).active, '沒填上限範本');
+  await movedOut.close();
+
+  // 裝修期款：存檔時用的範本不換掉；沒有存檔時選符合條件的範本
+  const decoState = page => page.evaluate(() => {
+    for (const el of document.querySelectorAll('.v-overlay--active *')) {
+      let inst = el.__vueParentComponent;
+      while (inst) {
+        if (/ContractDocDialog\.vue$/.test(inst.type?.__file || '')) return inst.setupState.decoActiveTemplate?.templateName || null;
+        inst = inst.parent;
+      }
+    }
+    return null;
+  });
+  const decoFirst = { id: 'deco-first', projectId: 'p1', templateName: '配套範本一', paymentCategory: '配套期款', propertyType: '住家', buyerType: '首購', minPrice: 5000, maxPrice: 6000, items: [it('配一', '配套金額', { id: 'df1' })] };
+  const decoOpen = { id: 'deco-open', projectId: 'p1', templateName: '配套範本二', paymentCategory: '配套期款', propertyType: '住家', buyerType: '首購', minPrice: 0, maxPrice: null, items: [it('配二', '配套金額', { id: 'do1' })] };
+  backend.reset({ templates: [decoFirst, decoOpen] });
+  const decoNew = await openContract('P1');
+  eq(G, '裝修期款：選符合條件的範本（沒填上限也算）', await decoState(decoNew.page), '配套範本二');
+  await decoNew.close();
+  backend.reset({ templates: [decoFirst, decoOpen] });
+  setContract('P1', { decorationManualRowsTemplateId: 'deco-first', decorationManualRowsBase: 200, decorationManualRows: [{ key: 'df1', name: '配一', percent: 0, type: 'single', amount: 200, children: [] }] });
+  const decoKeep = await openContract('P1');
+  eq(G, '裝修期款：存檔時用退路範本也不換掉', await decoState(decoKeep.page), '配套範本一');
+  await decoKeep.close();
 });
 
 // ─────────────── T6 建案設定 ───────────────
@@ -2681,7 +2696,7 @@ group('T7', async () => {
   const ud = dialog(page);
   check(G, '點列開啟戶別繳款紀錄', (await ud.locator('.mac-sheet-head').innerText()).includes('A1 繳款紀錄'), '');
   check(G, '清單的戶別面板：隱藏比例', (await ud.locator('.pr-stat').allInnerTexts()).every(x => !x.includes('繳款比例')), '');
-  eq(G, '清單的戶別面板：沒有範本帶入', await ud.getByRole('button', { name: '範本帶入' }).count(), 0);
+  eq(G, '清單的戶別面板：沒有帶入合約期款資料', await ud.getByRole('button', { name: '帶入合約期款資料' }).count(), 0);
   await ud.locator('section[aria-label="預計繳款"] .pr-row', { hasText: '第 3 期工程款' }).getByRole('button', { name: '標記已繳' }).click();
   await settle(page);
   await clickDialogButton(page, '確認已繳');
@@ -2693,7 +2708,7 @@ group('T7', async () => {
   await settle(page);
   const addD = dialog(page);
   await addD.locator('input[aria-label="預計日"]').fill(addDays(1));
-  await addD.locator('input[aria-label="期別／備註"]').fill('面板新增期');
+  await addD.locator('input[aria-label="備註"]').fill('面板新增期');
   await clickDialogButton(page, '儲存');
   await page.locator('.v-dialog.v-overlay--active .pr-dialog-body').waitFor({ state: 'hidden' });
   await settle(page, 400);
@@ -2850,7 +2865,7 @@ group('T8', async () => {
   eq(G, '步驟標示', await d.locator('.mac-page-count').innerText(), '1／3');
   const nextBtn = d.getByRole('button', { name: '下一步' });
   check(G, '第一步：內容未填不可下一步', await nextBtn.isDisabled(), '');
-  await d.locator('input[placeholder="例：第 3 期工程款"]').fill('第 9 期工程款');
+  await fillOtherPeriod(d, '第 9 期工程款');
   check(G, '第一步：只有期別不可下一步', await nextBtn.isDisabled(), '');
   await d.locator('input[type=date]').fill('2027-03-01');
   await settle(page, 80);
@@ -2891,7 +2906,7 @@ group('T8', async () => {
   if (!batchStillOpen) {
     await page.getByRole('button', { name: '批次新增' }).click();
     await settle(page, 400);
-    await d.locator('input[placeholder="例：第 3 期工程款"]').fill('第 9 期工程款');
+    await fillOtherPeriod(d, '第 9 期工程款');
     await d.locator('input[type=date]').fill('2027-03-01');
     await d.locator('.mac-form-seg-btn', { hasText: '成交總價比例' }).click();
     await settle(page, 80);
@@ -2962,7 +2977,7 @@ group('T8', async () => {
   await d.waitFor({ state: 'hidden' });
   await settle(page, 400);
   const call = lastCall('paymentReminderApi', 'batchAddPlans');
-  eq(G, '送出：期別、預計日', [call.expectedDate, call.note, call.userKey, call.projectId], ['2027-03-01', '第 9 期工程款', 'mgr1', 'p1']);
+  eq(G, '送出：期別、備註、預計日', [call.expectedDate, call.period, call.note, call.userKey, call.projectId], ['2027-03-01', '第 9 期工程款', '', 'mgr1', 'p1']);
   check(G, '送出：不含已存在戶', !call.entries.some(e => e.unitId === 'B4') && call.entries.some(e => e.unitId === 'A1' && e.expectedAmount === 50000), JSON.stringify(call.entries));
   const stored = backend.db.store.get('salesHouseholds/p1_A1').paymentRecords.at(-1);
   eq(G, '後端寫入', { source: stored.planSource, date: stored.date, amount: stored.amount, expectedAmount: stored.expectedAmount, expectedDate: stored.expectedDate }, { source: 'batch', date: '', amount: null, expectedAmount: 50000, expectedDate: '2027-03-01' });
@@ -2972,8 +2987,8 @@ group('T8', async () => {
   // 重複送出
   await page.getByRole('button', { name: '批次新增' }).click();
   await settle(page, 400);
-  eq(G, '重新開啟回到第一步', [await d.locator('.mac-page-count').innerText(), await d.locator('input[placeholder="例：第 3 期工程款"]').inputValue()], ['1／3', '']);
-  await d.locator('input[placeholder="例：第 3 期工程款"]').fill('第 9 期工程款');
+  eq(G, '重新開啟回到第一步', [await d.locator('.mac-page-count').innerText(), await d.locator('.ppf-select .v-select__selection-text').innerText()], ['1／3', '未指定']);
+  await fillOtherPeriod(d, '第 9 期工程款');
   await d.locator('input[type=date]').fill('2027-03-01');
   await settle(page, 80);
   await nextBtn.click();
@@ -2989,7 +3004,7 @@ group('T8', async () => {
   // 不填金額送 null
   await page.getByRole('button', { name: '批次新增' }).click();
   await settle(page, 400);
-  await d.locator('input[placeholder="例：第 3 期工程款"]').fill('  第 10 期  ');
+  await fillOtherPeriod(d, '  第 10 期  ');
   await d.locator('input[type=date]').fill('2027-04-01');
   await settle(page, 80);
   await nextBtn.click();
@@ -3000,14 +3015,14 @@ group('T8', async () => {
   await d.getByRole('button', { name: '確認新增' }).click();
   await d.waitFor({ state: 'hidden' });
   const noneCall = lastCall('paymentReminderApi', 'batchAddPlans');
-  eq(G, '不填金額：送 null 且備註去空白', [noneCall.note, noneCall.entries], ['第 10 期', [{ unitId: 'A2', expectedAmount: null }]]);
+  eq(G, '不填金額：送 null 且期別去空白', [noneCall.period, noneCall.entries], ['第 10 期', [{ unitId: 'A2', expectedAmount: null }]]);
 
   // 失敗
   backend.failures = { 'paymentReminderApi:batchAddPlans': '已新增 0 戶，1 戶失敗' };
   await settle(page, 300);
   await page.getByRole('button', { name: '批次新增' }).click();
   await settle(page, 400);
-  await d.locator('input[placeholder="例：第 3 期工程款"]').fill('失敗期');
+  await fillOtherPeriod(d, '失敗期');
   await d.locator('input[type=date]').fill('2027-05-01');
   await settle(page, 80);
   await nextBtn.click();
@@ -3042,7 +3057,7 @@ group('T8', async () => {
   await settle(partial.page, 600);
   eq(G, '部分失敗重送：只送失敗的戶別', lastCall('paymentReminderApi', 'batchAddPlans').entries.map(e => e.unitId), ['A2']);
   check(G, '部分失敗重送成功後關閉', !(await partial.page.locator('.ppb').isVisible().catch(() => false)), '');
-  const countOf = unitId => backend.db.store.get(`salesHouseholds/p1_${unitId}`).paymentRecords.filter(r => r.note === '第 9 期工程款').length;
+  const countOf = unitId => backend.db.store.get(`salesHouseholds/p1_${unitId}`).paymentRecords.filter(r => r.period === '第 9 期工程款').length;
   eq(G, '部分失敗重送：每戶只有一筆', [countOf('A1'), countOf('A2'), countOf('A3')], [1, 1, 1]);
   await partial.close();
 
@@ -3067,7 +3082,7 @@ group('T8', async () => {
   await lf.page.getByRole('button', { name: '批次新增' }).click();
   await settle(lf.page, 400);
   const ld = dialog(lf.page);
-  await ld.locator('input[placeholder="例：第 3 期工程款"]').fill('x');
+  await fillOtherPeriod(ld, 'x');
   await ld.locator('input[type=date]').fill('2027-05-01');
   await settle(lf.page, 80);
   await ld.getByRole('button', { name: '下一步' }).click();
@@ -3080,239 +3095,757 @@ group('T8', async () => {
   await lf.close();
 });
 
-// ─────────────── T9 範本帶入 ───────────────
-async function scheduleAmounts(context) {
-  const { page, close } = await open({ view: 'schedule', context: JSON.stringify(context) });
-  await settle(page, 900);
-  const rows = await page.evaluate(() => [...document.querySelectorAll('.edit-table')].map(table => [...table.querySelectorAll('.edit-row')].filter(r => !r.classList.contains('edit-row-head') && !r.classList.contains('edit-row-group') && !r.classList.contains('edit-row-total')).map(r => ({
-    name: r.querySelector('.col-name').innerText.trim().replace(/^\d+\.\s*/, ''),
-    amount: Number(r.querySelector('.col-amount input')?.value),
-  }))));
-  await close();
-  return rows;
-}
+// ─────────────── T9 帶入合約期款資料 ───────────────
+const contractSingle = (key, name, amount) => ({ key, name, percent: 0, type: 'single', amount, children: [] });
+const contractGroup = (key, name, children) => ({
+  key, name, percent: 0, type: 'group', verticalLabel: name,
+  children: children.map(([childKey, childName, amount], index) => ({ key: childKey, seq: index + 1, name: childName, amount })),
+});
+const contract2100 = () => ({
+  installmentManualMode: false,
+  manualRowsBase: 2100,
+  manualRows: [
+    contractSingle('i1', '頭期款', 63),
+    contractSingle('i2', '簽約款', 147),
+    contractGroup('g1', '工程期款', [['g1a', '開工期款', 139], ['g1b', '結構款', 139], ['g1c', '完工款', 142]]),
+    contractSingle('z0', '交屋款', 0),
+    contractSingle('n1', '回饋調整', -84),
+    contractSingle('i9', '銀行貸款', 1554),
+  ],
+});
 
 group('T9', async () => {
-  const G = 'T9 範本帶入';
-  backend.reset();
-  const paymentContext = { unitId: 'A1', contractType: '', isFirstTimeBuyer: true, usePreferredPayment: false, propertyType: '住家', totalPrice: 2100, isPackageContract: false, packageDealPrice: 0, packagePrice: 0, parkingSpots: [], areas: {}, banks: [] };
-  const schedule = await scheduleAmounts(paymentContext);
-  check(G, '付款表對照可讀取', schedule[0]?.length > 0, JSON.stringify(schedule));
-
-  const { page, close } = await open({ view: 'panel', unit: 'A1', total: 2100 });
-  await page.getByRole('button', { name: '範本帶入' }).click();
-  await settle(page, 700);
-  const d = dialog(page);
-  eq(G, '自動選範本', (await d.locator('.v-select__selection-text').innerText()).trim(), '一般期款範本');
-  eq(G, '基準', (await d.locator('.pti-list-label').innerText()).replace(/\s+/g, ' ').includes('基準 2,100 萬'), true);
-  const rows = () => d.locator('.pti-row').evaluateAll(l => l.map(r => ({
-    name: r.querySelector('.pti-name').innerText.replace('已有', '').trim(),
-    amount: Number(r.querySelector('.pti-amount').innerText.replace(/[^\d-]/g, '')),
+  const G = 'T9 帶入合約期款資料';
+  const setUnit = (unit, patch) => {
+    const key = `salesHouseholds/p1_${unit}`;
+    backend.db.store.set(key, { ...backend.db.store.get(key), ...patch });
+  };
+  const records = unit => backend.db.store.get(`salesHouseholds/p1_${unit}`).paymentRecords;
+  const openImport = async (unit, total, opts) => {
+    const ctx = await open({ view: 'panel', unit, total }, opts);
+    await ctx.page.locator('.pr-actions').getByRole('button', { name: '帶入合約期款資料' }).click();
+    await settle(ctx.page, 700);
+    return { ...ctx, d: dialog(ctx.page) };
+  };
+  const readRows = d => d.locator('.pti-row').evaluateAll(list => list.map(r => ({
+    name: r.querySelector('.pti-name').childNodes[0].textContent.trim(),
+    tag: r.querySelector('.mac-tag')?.innerText.trim() || '',
+    amount: r.querySelector('.pti-amount').innerText.replace(/\s+/g, ' ').trim(),
     checked: r.querySelector('input[type=checkbox]').checked,
-    exists: !!r.querySelector('.mac-tag'),
+    disabled: r.querySelector('input[type=checkbox]').disabled,
+    hasDate: !!r.querySelector('input[type=date]'),
+    dateText: r.querySelector('.pti-date-text')?.innerText.trim() || '',
+    detail: r.querySelector('.pti-detail')?.innerText.trim() || '',
   })));
-  const list = await rows();
-  const schedulePositive = schedule[0].filter(r => r.amount > 0);
-  eq(G, '金額與付款表一致（萬×10000，含子項）', list.map(r => [r.name, r.amount]), schedulePositive.map(r => [r.name, r.amount * 10000]));
-  check(G, '0 不帶入', !list.some(r => r.name === '交屋款'), list.map(r => r.name).join(','));
-  check(G, '負數不帶入', !list.some(r => r.name === '回饋調整'), list.map(r => r.name).join(','));
-  check(G, '付款表確實有 0 與負數列（對照有效）', schedule[0].some(r => r.name === '交屋款' && r.amount === 0) && schedule[0].some(r => r.name === '回饋調整' && r.amount < 0), JSON.stringify(schedule[0]));
+  const rowOf = (d, name) => d.locator('.pti-row').filter({ hasText: name });
+  const submitBtn = d => d.locator('.mac-sheet-foot .mac-btn--primary');
+  const reloadFromContract = async (page) => {
+    await page.evaluate(() => { window.__panelState.contractDocOpen = true; });
+    await settle(page, 150);
+    await page.evaluate(() => { window.__panelState.contractDocOpen = false; });
+    await settle(page, 600);
+  };
+  const keepOnly = async (d, kept) => {
+    for (const row of await readRows(d)) {
+      if (row.checked && !kept.includes(row.name)) await rowOf(d, row.name).locator('input[type=checkbox]').uncheck();
+    }
+  };
+
+  // 這戶沒有合約資料：引導去合約製作設定，儲存回來後自動讀取
+  backend.reset();
+  const none = await openImport('EMPTY', 2100);
+  eq(G, '沒有資料：提示尚未設定', (await none.d.locator('.pti-empty-title').innerText()).trim(), '尚未設定合約期款');
+  eq(G, '沒有資料：沒有範本選單', await none.d.locator('.v-select').count(), 0);
+  eq(G, '沒有資料：沒有帶入按鈕', await submitBtn(none.d).count(), 0);
+  eq(G, '沒有資料：標題為帶入合約期款資料', (await none.d.locator('.mac-sheet-head').innerText()).trim(), '帶入合約期款資料');
+  await evidence(none.page, 'contract-import-empty');
+  await none.d.getByRole('button', { name: '開啟合約製作設定' }).click();
+  await settle(none.page, 150);
+  eq(G, '沒有資料：按鈕開啟合約製作設定', await none.page.evaluate(() => window.__panelEvents), ['open-contract-doc']);
+  check(G, '開啟合約製作設定：帶入視窗留著', await none.page.locator('.pti').isVisible(), '');
+  setUnit('EMPTY', { contractDocData: contract2100() });
+  await reloadFromContract(none.page);
+  eq(G, '合約製作設定關閉後自動讀取', (await readRows(none.d)).length, 6);
+  await none.close();
+
+  // 一般流程
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: contract2100() });
+  const { page, d, close } = await openImport('EMPTY', 2100);
+  const list = await readRows(d);
+  eq(G, '金額來自合約（萬換算成元、列子項）', list.map(r => [r.name, r.amount]), [
+    ['頭期款', '630,000 元'], ['簽約款', '1,470,000 元'], ['開工期款', '1,390,000 元'], ['結構款', '1,390,000 元'], ['完工款', '1,420,000 元'], ['銀行貸款', '15,540,000 元'],
+  ]);
+  check(G, '0 與負數不帶入', !list.some(r => ['交屋款', '回饋調整'].includes(r.name)), list.map(r => r.name).join(','));
   check(G, '略過提示', (await d.locator('.pti-skip').innerText()).includes('2 期'), await d.locator('.pti-skip').innerText().catch(() => ''));
-  check(G, '有子項列子項，母項不列', !list.some(r => r.name === '工程期款') && list.some(r => r.name === '開工期款'), list.map(r => r.name).join(','));
   check(G, '分組標題', (await d.locator('.pti-group-head').allInnerTexts()).includes('工程期款'), '');
-  const signing = list.find(r => r.name === '簽約款');
-  check(G, '已有相同備註預設不勾且標示', signing.exists && !signing.checked, JSON.stringify(signing));
-  check(G, '其他預設勾選', list.filter(r => r.name !== '簽約款').every(r => r.checked), JSON.stringify(list));
-  const submit = d.locator('.mac-sheet-foot .mac-btn--primary');
-  check(G, '未填預計日不可帶入', await submit.isDisabled(), '');
-  check(G, '提示未填筆數', (await d.locator('.pti-missing').innerText()).includes(`${list.filter(r => r.checked).length} 筆`), await d.locator('.pti-missing').innerText());
-  // 只留兩筆
-  const rowLoc = d.locator('.pti-row');
-  for (let i = 0; i < list.length; i += 1) {
-    const name = list[i].name;
-    const row = rowLoc.filter({ hasText: name });
-    if (name === '頭期款') await row.locator('input[type=date]').fill(addDays(10));
-    else if (name === '開工期款') await row.locator('input[type=date]').fill(addDays(20));
-    else if (list[i].checked) await row.locator('input[type=checkbox]').uncheck();
-  }
+  eq(G, '區塊合計', (await d.locator('.pti-section-head').innerText()).replace(/\s+/g, ' '), '期款 合計 2,100 萬');
+  eq(G, '新期別預設勾選', list.every(r => r.checked && !r.disabled && r.hasDate), true);
+  eq(G, '合計相符時沒有警示', await d.locator('.mac-callout--warning').count(), 0);
+  eq(G, '金額不能在視窗內修改', await d.locator('.pti-amount input').count(), 0);
+  eq(G, '沒有範本選單', await d.locator('.v-select').count(), 0);
+  check(G, '有修改期款按鈕', await d.getByRole('button', { name: '修改期款' }).isVisible(), '');
+  check(G, '未填預計日不可帶入', await submitBtn(d).isDisabled(), '');
+  check(G, '提示未填筆數', (await d.locator('.pti-missing').innerText()).includes('6 筆'), await d.locator('.pti-missing').innerText());
+  await rowOf(d, '頭期款').locator('input[type=date]').fill(addDays(10));
+  await rowOf(d, '開工期款').locator('input[type=date]').fill(addDays(20));
+  await keepOnly(d, ['頭期款', '開工期款']);
   await settle(page, 100);
-  check(G, '勾選停用日期欄', await rowLoc.filter({ hasText: '銀行貸款' }).locator('input[type=date]').isDisabled(), '');
+  check(G, '取消勾選時停用日期欄', await rowOf(d, '銀行貸款').locator('input[type=date]').isDisabled(), '');
   await page.mouse.click(1420, 880);
   await settle(page, 300);
-  const templateStillOpen = await page.locator('.pti').isVisible().catch(() => false);
-  check(G, '範本帶入 persistent：點外面不關閉、日期保留', templateStillOpen && (await rowLoc.filter({ hasText: '頭期款' }).locator('input[type=date]').inputValue()) === addDays(10), '點對話框外面後視窗關閉或日期遺失');
-  if (!templateStillOpen) {
-    await page.locator('.pr-actions').getByRole('button', { name: '範本帶入' }).click();
-    await settle(page, 700);
-    for (let i = 0; i < list.length; i += 1) {
-      const name = list[i].name;
-      const row = rowLoc.filter({ hasText: name });
-      if (name === '頭期款') await row.locator('input[type=date]').fill(addDays(10));
-      else if (name === '開工期款') await row.locator('input[type=date]').fill(addDays(20));
-      else if (list[i].checked) await row.locator('input[type=checkbox]').uncheck();
-    }
-    await settle(page, 100);
-  }
-  eq(G, '按鈕顯示筆數', (await submit.innerText()).trim(), '帶入 2 筆');
-  await submit.click();
+  check(G, '點外面不關閉、日期保留', await page.locator('.pti').isVisible() && (await rowOf(d, '頭期款').locator('input[type=date]').inputValue()) === addDays(10), '點對話框外面後視窗關閉或日期遺失');
+  eq(G, '按鈕顯示筆數', (await submitBtn(d).innerText()).trim(), '帶入 2 筆');
+  await submitBtn(d).click();
   await d.waitFor({ state: 'hidden' });
   await settle(page, 300);
   const adds = calls('paymentProofApi', 'addRecord').map(c => c.payload);
-  const expectDeposit = schedule[0].find(r => r.name === '頭期款').amount * 10000;
-  const expectStart = schedule[0].find(r => r.name === '開工期款').amount * 10000;
-  eq(G, '寫入參數', adds.map(a => ({ date: a.date, amount: a.amount, note: a.note, expectedDate: a.expectedDate, expectedAmount: a.expectedAmount, planSource: a.planSource })), [
-    { date: '', amount: null, note: '頭期款', expectedDate: addDays(10), expectedAmount: expectDeposit, planSource: 'template' },
-    { date: '', amount: null, note: '開工期款', expectedDate: addDays(20), expectedAmount: expectStart, planSource: 'template' },
+  eq(G, '寫入參數（期別、來源為合約）', adds.map(a => ({ date: a.date, amount: a.amount, period: a.period, note: a.note, expectedDate: a.expectedDate, expectedAmount: a.expectedAmount, planSource: a.planSource })), [
+    { date: '', amount: null, period: '頭期款', note: '', expectedDate: addDays(10), expectedAmount: 630000, planSource: 'contract' },
+    { date: '', amount: null, period: '開工期款', note: '', expectedDate: addDays(20), expectedAmount: 1390000, planSource: 'contract' },
   ]);
+  eq(G, '後端接受合約來源', records('EMPTY').map(r => r.planSource), ['contract', 'contract']);
   check(G, '帶入後出現在預計區', await plannedRow(page, '頭期款').count() === 1 && await plannedRow(page, '開工期款').count() === 1, '');
-  check(G, '帶入成功提示', (await toasts(page)).some(t => t.message.includes('已新增 2 筆')), JSON.stringify(await toasts(page)));
-  eq(G, '帶入後已繳不變', (await stats(page))['已繳'], `${money(900000)} 元`);
+  check(G, '帶入成功提示', (await toasts(page)).some(t => t.message.includes('已新增 2 筆預計繳款')), JSON.stringify(await toasts(page)));
+  eq(G, '成功才 emit plans-saved', await page.evaluate(() => window.__panelEvents), ['plans-saved']);
 
-  // 再開一次：已有的不勾
-  await page.getByRole('button', { name: '範本帶入' }).click();
+  // 再開一次：已帶入的不能重複
+  await page.locator('.pr-actions').getByRole('button', { name: '帶入合約期款資料' }).click();
   await settle(page, 700);
-  const again = await dialog(page).locator('.pti-row').evaluateAll(l => l.map(r => [r.querySelector('.pti-name').innerText.replace('已有', '').trim(), r.querySelector('input[type=checkbox]').checked]));
-  check(G, '重開：已帶入的預設不勾', again.find(x => x[0] === '頭期款')[1] === false && again.find(x => x[0] === '開工期款')[1] === false, JSON.stringify(again));
-  // 切換條件外範本
-  await dialog(page).locator('.v-select .v-field').click();
+  const again = await readRows(dialog(page));
+  const deposit = again.find(r => r.name === '頭期款');
+  eq(G, '重開：已帶入不可勾選、顯示原預計日', [deposit.tag, deposit.checked, deposit.disabled, deposit.hasDate, deposit.dateText], ['已帶入', false, true, false, `預計 ${addDays(10)}`]);
+  eq(G, '重開：其他期別仍是新期別', again.filter(r => !['頭期款', '開工期款'].includes(r.name)).every(r => r.checked && r.hasDate), true);
+
+  // 到合約製作設定改金額：重新讀取，已填日期保留，金額不同預設不勾
+  const d2 = dialog(page);
+  await rowOf(d2, '銀行貸款').locator('input[type=date]').fill(addDays(40));
+  await d2.getByRole('button', { name: '修改期款' }).click();
+  await settle(page, 150);
+  eq(G, '修改期款開啟合約製作設定', (await page.evaluate(() => window.__panelEvents)).at(-1), 'open-contract-doc');
+  const edited = contract2100();
+  edited.manualRows[0].amount = 80;
+  setUnit('EMPTY', { contractDocData: edited });
+  await reloadFromContract(page);
+  const afterEdit = await readRows(d2);
+  const changed = afterEdit.find(r => r.name === '頭期款');
+  eq(G, '金額不同：標示差異、預設不勾、可勾選', [changed.tag, changed.amount, changed.checked, changed.disabled, changed.dateText], ['金額不同', '630,000 800,000 元', false, false, `預計 ${addDays(10)}`]);
+  eq(G, '重新讀取保留已填預計日', await rowOf(d2, '銀行貸款').locator('input[type=date]').inputValue(), addDays(40));
+  check(G, '合計不符：顯示警示', (await d2.locator('.mac-callout--warning').innerText()).includes('期款合計 2,117 萬，目前成交總價 2,100 萬'), await d2.locator('.mac-callout--warning').innerText());
+  await rowOf(d2, '頭期款').locator('input[type=checkbox]').check();
+  await keepOnly(d2, ['頭期款', '銀行貸款']);
+  await settle(page, 100);
+  eq(G, '同時有新增與更新：按鈕分開顯示', (await submitBtn(d2).innerText()).trim(), '帶入 1 筆、更新 1 筆');
+  await rowOf(d2, '銀行貸款').locator('input[type=checkbox]').uncheck();
+  await settle(page, 100);
+  eq(G, '只有更新：按鈕顯示更新筆數', (await submitBtn(d2).innerText()).trim(), '更新 1 筆');
+  const beforeUpdate = records('EMPTY').find(r => r.period === '頭期款');
+  await submitBtn(d2).click();
+  await d2.waitFor({ state: 'hidden' });
   await settle(page, 300);
-  const options = await page.locator('.v-menu.v-overlay--active .tpl-opt-title').allInnerTexts();
-  check(G, '範本選單不含配套（非配套合約）', !options.includes('配套期款範本') && options.includes('高總價範本') && options.includes('優付期款範本'), options.join(','));
-  await page.locator('.v-menu.v-overlay--active .v-list-item', { hasText: '高總價範本' }).click();
-  await settle(page, 400);
-  check(G, '條件外範本警示', (await dialog(page).locator('.mac-callout--warning').first().innerText()).includes('條件外'), '');
-  const highRows = await dialog(page).locator('.pti-row').evaluateAll(l => l.map(r => r.querySelector('.pti-name').innerText.trim()));
-  eq(G, '切換範本後列表更新', highRows, ['高總價頭款', '高總價尾款']);
-  await clickDialogButton(page, '取消');
-  await settle(page);
+  const update = calls('paymentProofApi', 'updateRecord').at(-1).payload;
+  eq(G, '更新只改預計金額', { recordId: update.recordId, date: update.date, amount: update.amount, note: update.note, expectedDate: update.expectedDate, expectedAmount: update.expectedAmount, hasSource: 'planSource' in update, hasPeriod: 'period' in update }, { recordId: beforeUpdate.id, date: '', amount: null, note: '', expectedDate: addDays(10), expectedAmount: 800000, hasSource: false, hasPeriod: false });
+  const afterUpdate = records('EMPTY').find(r => r.period === '頭期款');
+  eq(G, '更新後：金額新、期別、預計日與來源不變', [afterUpdate.expectedAmount, afterUpdate.period, afterUpdate.expectedDate, afterUpdate.planSource], [800000, '頭期款', addDays(10), 'contract']);
+  eq(G, '更新不新增紀錄', records('EMPTY').length, 2);
+  check(G, '更新成功提示', (await toasts(page)).some(t => t.message.includes('已更新 1 筆預計繳款')), JSON.stringify(await toasts(page)));
   await close();
 
-  // 成交總價有小數：基準四捨五入同付款表
+  // 既有紀錄的各種狀態
   backend.reset();
-  const decimalSchedule = await scheduleAmounts({ ...paymentContext, totalPrice: 2345.6 });
-  const dt = await open({ view: 'panel', unit: 'A1', total: 2345.6 });
-  await dt.page.locator('.pr-actions').getByRole('button', { name: '範本帶入' }).click();
-  await settle(dt.page, 700);
-  const decimalRows = await dialog(dt.page).locator('.pti-row').evaluateAll(l => l.map(r => [r.querySelector('.pti-name').innerText.replace('已有', '').trim(), Number(r.querySelector('.pti-amount').innerText.replace(/[^\d]/g, ''))]));
-  eq(G, '總價小數：金額與付款表一致', decimalRows, decimalSchedule[0].filter(r => r.amount > 0).map(r => [r.name, r.amount * 10000]));
-  await dt.close();
+  const paidAt = addDays(-10);
+  setUnit('EMPTY', {
+    contractDocData: { manualRows: [
+      contractSingle('a', '簽約款', 150), contractSingle('b', '銀行貸款', 1000), contractSingle('c', '舊尾款', 100), contractSingle('d', '未填金額期', 10), contractSingle('e', '新期別', 840),
+    ] },
+    paymentRecords: [
+      { id: 'paid1', date: paidAt, amount: 1500000, note: '簽約款', expectedDate: addDays(-13), expectedAmount: 1500000, planSource: 'manual', file: null },
+      plan('split1', 30, 5000000, '銀行貸款'),
+      plan('split2', 60, 5000000, '銀行貸款'),
+      { id: 'legacy', date: '', amount: null, note: '舊尾款', file: null },
+      plan('noamount', 5, null, '未填金額期'),
+    ],
+  });
+  const mix = await openImport('EMPTY', 2100);
+  const mixed = await readRows(mix.d);
+  const pick = name => mixed.find(r => r.name === name);
+  eq(G, '已繳清：不可勾選、顯示已繳金額', [pick('簽約款').tag, pick('簽約款').disabled, pick('簽約款').detail, pick('簽約款').hasDate], ['已繳清', true, '已繳 1,500,000 元', false]);
+  eq(G, '同名多筆：顯示筆數、不可勾選', [pick('銀行貸款').tag, pick('銀行貸款').disabled, pick('銀行貸款').hasDate], ['已有 2 筆', true, false]);
+  eq(G, '無法判斷的舊資料：不可勾選', [pick('舊尾款').tag, pick('舊尾款').disabled], ['已有', true]);
+  eq(G, '未填預計金額：顯示未填、可更新', [pick('未填金額期').tag, pick('未填金額期').amount, pick('未填金額期').disabled], ['金額不同', '未填 100,000 元', false]);
+  eq(G, '沒有同名：可帶入', [pick('新期別').tag, pick('新期別').checked, pick('新期別').hasDate], ['', true, true]);
+  await evidence(mix.page, 'contract-import-statuses');
+  await rowOf(mix.d, '未填金額期').locator('input[type=checkbox]').check();
+  await rowOf(mix.d, '新期別').locator('input[type=date]').fill(addDays(90));
+  await settle(mix.page, 100);
+  await submitBtn(mix.d).click();
+  await mix.d.waitFor({ state: 'hidden' });
+  await settle(mix.page, 300);
+  const afterMix = records('EMPTY');
+  eq(G, '已繳與多筆都沒有被改', [afterMix.find(r => r.id === 'paid1').amount, afterMix.find(r => r.id === 'split1').expectedAmount, afterMix.find(r => r.id === 'split2').expectedAmount], [1500000, 5000000, 5000000]);
+  eq(G, '混合送出：新增與更新各一筆', [calls('paymentProofApi', 'addRecord').length, calls('paymentProofApi', 'updateRecord').length, afterMix.find(r => r.id === 'noamount').expectedAmount], [1, 1, 100000]);
+  check(G, '混合送出提示', (await toasts(mix.page)).some(t => t.message.includes('已新增 1 筆、更新 1 筆預計繳款')), JSON.stringify(await toasts(mix.page)));
+  await mix.close();
 
-  // 配套合約
+  // 合約總價對不上：警告但可帶入
   backend.reset();
-  const pkgContext = { ...paymentContext, unitId: 'P1', contractType: '毛胚合約', totalPrice: 2000, isPackageContract: true, packageDealPrice: 1800, packagePrice: 200 };
-  const pkgSchedule = await scheduleAmounts(pkgContext);
-  const p = await open({ view: 'panel', unit: 'P1', total: 2000 });
-  await p.page.getByRole('button', { name: '範本帶入' }).click();
-  await settle(p.page, 700);
-  const pd = dialog(p.page);
-  eq(G, '配套合約：基準為配套總價', (await pd.locator('.pti-list-label').innerText()).replace(/\s+/g, ' ').includes('基準 1,800 萬'), true);
-  const pkgMain = await pd.locator('.pti-row').evaluateAll(l => l.map(r => [r.querySelector('.pti-name').innerText.trim(), Number(r.querySelector('.pti-amount').innerText.replace(/[^\d]/g, ''))]));
-  eq(G, '配套合約：第 1 頁金額與付款表一致', pkgMain, pkgSchedule[0].filter(r => r.amount > 0).map(r => [r.name, r.amount * 10000]));
-  await pd.locator('.v-select .v-field').click();
-  await settle(p.page, 300);
-  await p.page.locator('.v-menu.v-overlay--active .v-list-item', { hasText: '配套期款範本' }).click();
-  await settle(p.page, 400);
-  eq(G, '配套範本：基準為配套價', (await pd.locator('.pti-list-label').innerText()).replace(/\s+/g, ' ').includes('基準 200 萬'), true);
-  const pkgRows = await pd.locator('.pti-row').evaluateAll(l => l.map(r => [r.querySelector('.pti-name').innerText.trim(), Number(r.querySelector('.pti-amount').innerText.replace(/[^\d]/g, ''))]));
-  check(G, '配套範本：第 2 頁金額與付款表一致', pkgSchedule[1] && JSON.stringify(pkgRows) === JSON.stringify(pkgSchedule[1].filter(r => r.amount > 0).map(r => [r.name, r.amount * 10000])), `${JSON.stringify(pkgRows)} vs ${JSON.stringify(pkgSchedule[1])}`);
-  await p.close();
+  setUnit('EMPTY', { contractDocData: contract2100() });
+  const stale = await openImport('EMPTY', 2000);
+  check(G, '總價不符：顯示合約與目前總價', (await stale.d.locator('.mac-callout--warning').innerText()).includes('期款合計 2,100 萬，目前成交總價 2,000 萬'), await stale.d.locator('.mac-callout--warning').innerText());
+  await rowOf(stale.d, '頭期款').locator('input[type=date]').fill(addDays(10));
+  await keepOnly(stale.d, ['頭期款']);
+  await settle(stale.page, 100);
+  check(G, '總價不符：仍可帶入', !(await submitBtn(stale.d).isDisabled()), '');
+  await submitBtn(stale.d).click();
+  await stale.d.waitFor({ state: 'hidden' });
+  eq(G, '總價不符：照合約金額帶入', calls('paymentProofApi', 'addRecord').at(-1).payload.expectedAmount, 630000);
+  await stale.close();
 
-  // 優付：與付款表自動選範本一致
+  // 配套戶：期款與裝修期款都列出，同名時備註加前綴
   backend.reset();
-  const prefContext = { ...paymentContext, unitId: 'PREF', totalPrice: 2000, usePreferredPayment: true };
-  const prefSchedule = await scheduleAmounts(prefContext);
-  const pf = await open({ view: 'panel', unit: 'PREF', total: 2000, prefOption: 1 });
-  await pf.page.getByRole('button', { name: '範本帶入' }).click();
-  await settle(pf.page, 700);
-  const prefSelected = (await dialog(pf.page).locator('.v-select__selection-text').innerText()).trim();
-  const prefNames = await dialog(pf.page).locator('.pti-row').evaluateAll(l => l.map(r => r.querySelector('.pti-name').innerText.trim()));
-  check(G, '勾優付的戶別：範本帶入與付款表自動選的範本相同', JSON.stringify(prefNames) === JSON.stringify(prefSchedule[0].filter(r => r.amount > 0).map(r => r.name)), `範本帶入選「${prefSelected}」期別 ${prefNames.join('、')}；付款表（優付戶）期別 ${prefSchedule[0].map(r => r.name).join('、')}`);
-  await pf.close();
+  const packageContract = { manualRows: [contractSingle('m1', '訂金', 900), contractSingle('m2', '尾款', 900)], decorationManualRows: [contractSingle('d1', '訂金', 40), contractSingle('d2', '裝修尾款', 160)] };
+  setUnit('P1', { contractDocData: packageContract });
+  const pkg = await openImport('P1', 2000);
+  eq(G, '配套戶：兩區合計', (await pkg.d.locator('.pti-section-head').allInnerTexts()).map(x => x.replace(/\s+/g, ' ')), ['期款 合計 1,800 萬', '裝修期款 合計 200 萬']);
+  eq(G, '配套戶：合計相符沒有警示', await pkg.d.locator('.mac-callout--warning').count(), 0);
+  await evidence(pkg.page, 'contract-import-package');
+  const pkgDates = pkg.d.locator('.pti-row input[type=date]');
+  for (let i = 0; i < await pkgDates.count(); i += 1) await pkgDates.nth(i).fill(addDays(30 + i));
+  await settle(pkg.page, 100);
+  await submitBtn(pkg.d).click();
+  await pkg.d.waitFor({ state: 'hidden' });
+  await settle(pkg.page, 300);
+  eq(G, '配套戶：同名期別不衝突', calls('paymentProofApi', 'addRecord').map(c => [c.payload.period, c.payload.expectedAmount]), [['訂金', 9000000], ['尾款', 9000000], ['裝修－訂金', 400000], ['裝修尾款', 1600000]]);
+  await pkg.page.locator('.pr-actions').getByRole('button', { name: '帶入合約期款資料' }).click();
+  await settle(pkg.page, 700);
+  eq(G, '配套戶：重開時同名期別各自比對到自己', (await readRows(dialog(pkg.page))).map(r => r.tag), ['已帶入', '已帶入', '已帶入', '已帶入']);
+  await pkg.close();
 
-  // 無成交總價
   backend.reset();
-  const z = await open({ view: 'panel', unit: 'ZERO' });
-  await z.page.getByRole('button', { name: '範本帶入' }).click();
-  await settle(z.page, 700);
-  check(G, '無成交總價：警示且無法帶入', (await dialog(z.page).locator('.mac-callout--warning').allInnerTexts()).some(x => x.includes('尚無成交總價')) && await dialog(z.page).locator('.mac-sheet-foot .mac-btn--primary').isDisabled(), await dialog(z.page).locator('.mac-callout--warning').allInnerTexts().then(a => a.join('|')));
-  await z.close();
+  setUnit('P1', { contractDocData: { manualRows: packageContract.manualRows } });
+  const pkgMissing = await openImport('P1', 2000);
+  eq(G, '配套戶沒有裝修期款：提示尚未設定', (await pkgMissing.d.locator('.mac-callout--warning').innerText()).trim(), '裝修期款尚未設定');
+  await pkgMissing.close();
 
-  // 沒有範本
-  backend.reset({ noTemplates: true });
-  const nt = await open({ view: 'panel', unit: 'A1', total: 2100 });
-  await nt.page.getByRole('button', { name: '範本帶入' }).click();
-  await settle(nt.page, 700);
-  eq(G, '沒有範本畫面', (await dialog(nt.page).locator('.mac-list-empty').innerText()).trim(), '此建案尚未建立期款範本');
-  await nt.close();
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: { manualRows: [contractSingle('m1', '訂金', 2100)], decorationManualRows: [contractSingle('d1', '裝修款', 40)] } });
+  const notPkg = await openImport('EMPTY', 2100);
+  eq(G, '一般戶不讀裝修期款', (await readRows(notPkg.d)).map(r => r.name), ['訂金']);
+  await notPkg.close();
 
-  // 載入失敗
-  backend.reset({ failures: { fetchPaymentTermTemplates: '範本讀取失敗' } });
-  const lf = await open({ view: 'panel', unit: 'A1', total: 2100 });
-  await lf.page.getByRole('button', { name: '範本帶入' }).click();
-  await settle(lf.page, 700);
-  check(G, '範本載入失敗', (await dialog(lf.page).locator('.mac-callout--error').innerText()).includes('載入範本失敗'), '');
+  // 無成交總價：有合約資料仍列出並警告
+  backend.reset();
+  setUnit('ZERO', { contractDocData: { manualRows: [contractSingle('m1', '訂金', 100)] } });
+  const zero = await openImport('ZERO', 0);
+  check(G, '無成交總價：警示且可讀取', (await zero.d.locator('.mac-callout--warning').innerText()).includes('目前成交總價 0 萬') && (await readRows(zero.d)).length === 1, await zero.d.locator('.mac-callout--warning').innerText());
+  await zero.close();
+
+  // 全部期別都是 0
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: { manualRows: [contractSingle('m1', '訂金', 0)] } });
+  const allZero = await openImport('EMPTY', 0);
+  eq(G, '全部 0：提示沒有可帶入的期別、沒有帶入按鈕', [(await allZero.d.locator('.mac-list-empty').innerText()).trim(), await submitBtn(allZero.d).count()], ['沒有可帶入的期別', 0]);
+  await allZero.close();
+
+  // 讀取失敗可重試
+  backend.reset({ failures: { fetchContractDocData: '讀取失敗' } });
+  const lf = await openImport('EMPTY', 2100);
+  check(G, '讀取失敗：顯示錯誤', (await lf.d.locator('.mac-callout--error').innerText()).includes('載入合約期款失敗'), '');
+  eq(G, '讀取失敗：不會誤判成尚未設定', await lf.d.locator('.pti-empty-title').count(), 0);
+  backend.failures = {};
+  await lf.d.getByRole('button', { name: '重試' }).click();
+  await settle(lf.page, 500);
+  eq(G, '重試成功', (await lf.d.locator('.pti-empty-title').innerText()).trim(), '尚未設定合約期款');
   await lf.close();
 
   // 中途失敗：已完成筆數不重複
   backend.reset();
-  const mf = await open({ view: 'panel', unit: 'A1', total: 2100 });
-  await mf.page.getByRole('button', { name: '範本帶入' }).click();
-  await settle(mf.page, 700);
-  const md2 = dialog(mf.page);
-  const names = await md2.locator('.pti-row').evaluateAll(l => l.map(r => r.querySelector('.pti-name').innerText.replace('已有', '').trim()));
-  for (const name of names) {
-    const row = md2.locator('.pti-row').filter({ hasText: name });
-    if (name === '頭期款' || name === '開工期款') await row.locator('input[type=date]').fill(addDays(10));
-    else if (await row.locator('input[type=checkbox]').isChecked()) await row.locator('input[type=checkbox]').uncheck();
-  }
+  setUnit('EMPTY', { contractDocData: contract2100() });
+  const mf = await openImport('EMPTY', 2100);
+  await rowOf(mf.d, '頭期款').locator('input[type=date]').fill(addDays(10));
+  await rowOf(mf.d, '開工期款').locator('input[type=date]').fill(addDays(10));
+  await keepOnly(mf.d, ['頭期款', '開工期款']);
   await settle(mf.page, 100);
   const realDispatch = backend.dispatch;
-  let n = 0;
+  let addAttempts = 0;
   backend.dispatch = async (fn, payload) => {
     if (fn === 'paymentProofApi' && payload?.action === 'addRecord') {
-      n += 1;
-      if (n === 2) return { status: 'error', message: '第二筆失敗' };
+      addAttempts += 1;
+      if (addAttempts === 2) return { status: 'error', message: '第二筆失敗' };
     }
     return realDispatch(fn, payload);
   };
-  await md2.locator('.mac-sheet-foot .mac-btn--primary').click();
+  await submitBtn(mf.d).click();
   await settle(mf.page, 400);
   backend.dispatch = realDispatch;
-  check(G, '中途失敗：顯示已帶入筆數與錯誤', (await md2.locator('.mac-callout--error').innerText()).includes('已帶入 1 筆') && (await md2.locator('.mac-callout--error').innerText()).includes('第二筆失敗'), await md2.locator('.mac-callout--error').innerText());
+  const partialText = await mf.d.locator('.mac-callout--error').innerText();
+  check(G, '中途失敗：顯示完成筆數與錯誤', partialText.includes('已完成 1 筆') && partialText.includes('第二筆失敗'), partialText);
   eq(G, '中途失敗：至少成功一筆就 emit plans-saved', await mf.page.evaluate(() => window.__panelEvents), ['plans-saved']);
-  const importedRow = md2.locator('.pti-row').filter({ hasText: '頭期款' });
-  check(G, '中途失敗：成功列標「已帶入」、取消勾選且不可再勾', (await importedRow.locator('.mac-tag--green').innerText()) === '已帶入' && await importedRow.locator('input[type=checkbox]').isDisabled(), await importedRow.innerText());
-  eq(G, '中途失敗：按鈕只算未成功的筆數', (await md2.locator('.mac-sheet-foot .mac-btn--primary').innerText()).trim(), '帶入 1 筆');
-  const stored = backend.db.store.get('salesHouseholds/p1_A1').paymentRecords.filter(r => r.planSource === 'template');
-  eq(G, '中途失敗：第一筆已寫入', stored.map(r => r.note), ['頭期款']);
-  const depositChecked = await md2.locator('.pti-row').filter({ hasText: '頭期款' }).locator('input[type=checkbox]').isChecked();
-  await evidence(mf.page, 'template-partial-failure');
-  await md2.locator('.mac-sheet-foot .mac-btn--primary').click();
+  const doneRow = (await readRows(mf.d)).find(r => r.name === '頭期款');
+  eq(G, '中途失敗：成功列變已帶入、不可再勾', [doneRow.tag, doneRow.checked, doneRow.disabled], ['已帶入', false, true]);
+  eq(G, '中途失敗：按鈕只算未成功的筆數', (await submitBtn(mf.d).innerText()).trim(), '帶入 1 筆');
+  await evidence(mf.page, 'contract-import-partial-failure');
+  await submitBtn(mf.d).click();
   await settle(mf.page, 400);
-  const afterRetry = backend.db.store.get('salesHouseholds/p1_A1').paymentRecords.filter(r => r.planSource === 'template').map(r => r.note);
-  check(G, '中途失敗：重送不重複已寫入的那筆', !depositChecked && afterRetry.filter(x => x === '頭期款').length === 1 && afterRetry.filter(x => x === '開工期款').length === 1, `失敗後「頭期款」仍勾選=${depositChecked}；再按一次帶入後紀錄：${afterRetry.join('、')}`);
-  eq(G, '中途失敗重送：addRecord 只再送一筆', calls('paymentProofApi', 'addRecord').at(-1).payload.note, '開工期款');
+  eq(G, '中途失敗：重送不重複', records('EMPTY').map(r => r.period), ['頭期款', '開工期款']);
+  eq(G, '中途失敗重送：只再送一筆', calls('paymentProofApi', 'addRecord').at(-1).payload.period, '開工期款');
   check(G, '中途失敗重送成功後關閉', !(await mf.page.locator('.pti').isVisible().catch(() => false)), '');
   await mf.close();
 
-  // 第一筆就失敗：沒有成功就不 emit
+  // 第一筆就失敗
   backend.reset({ failures: { 'paymentProofApi:addRecord': '全部失敗' } });
-  const af = await open({ view: 'panel', unit: 'A1', total: 2100 });
-  await af.page.locator('.pr-actions').getByRole('button', { name: '範本帶入' }).click();
-  await settle(af.page, 700);
-  const afd = dialog(af.page);
-  const afNames = await afd.locator('.pti-row').evaluateAll(l => l.map(r => r.querySelector('.pti-name').innerText.replace('已有', '').trim()));
-  for (const name of afNames) {
-    const row = afd.locator('.pti-row').filter({ hasText: name });
-    if (name === '頭期款') await row.locator('input[type=date]').fill(addDays(10));
-    else if (await row.locator('input[type=checkbox]').isChecked()) await row.locator('input[type=checkbox]').uncheck();
-  }
+  setUnit('EMPTY', { contractDocData: contract2100() });
+  const af = await openImport('EMPTY', 2100);
+  await rowOf(af.d, '頭期款').locator('input[type=date]').fill(addDays(10));
+  await keepOnly(af.d, ['頭期款']);
   await settle(af.page, 100);
-  await afd.locator('.mac-sheet-foot .mac-btn--primary').click();
+  await submitBtn(af.d).click();
   await settle(af.page, 300);
   eq(G, '全部失敗：不 emit plans-saved', await af.page.evaluate(() => window.__panelEvents), []);
-  check(G, '全部失敗：訊息為帶入失敗，列仍勾選', (await afd.locator('.mac-callout--error').innerText()).includes('帶入失敗') && await afd.locator('.pti-row').filter({ hasText: '頭期款' }).locator('input[type=checkbox]').isChecked(), '');
+  check(G, '全部失敗：訊息為帶入失敗，列仍勾選', (await af.d.locator('.mac-callout--error').innerText()).includes('帶入失敗') && await rowOf(af.d, '頭期款').locator('input[type=checkbox]').isChecked(), '');
   await af.close();
+
+  // 更新失敗
+  backend.reset({ failures: { 'paymentProofApi:updateRecord': '更新失敗' } });
+  setUnit('EMPTY', { contractDocData: { manualRows: [contractSingle('m1', '訂金', 100)] }, paymentRecords: [plan('dep', 10, 500000, '訂金')] });
+  const uf = await openImport('EMPTY', 100);
+  await rowOf(uf.d, '訂金').locator('input[type=checkbox]').check();
+  await settle(uf.page, 100);
+  await submitBtn(uf.d).click();
+  await settle(uf.page, 300);
+  eq(G, '更新失敗：顯示錯誤、金額沒有變', [(await uf.d.locator('.mac-callout--error').innerText()).includes('更新失敗'), records('EMPTY')[0].expectedAmount], [true, 500000]);
+  await uf.close();
+
+  // 下訂先繳、簽約才帶入：預選對應，已繳滿不產生預計
+  const depositContract = () => ({ manualRows: [contractSingle('a', '訂金', 10), contractSingle('b', '簽約金', 100), contractSingle('c', '開工款', 220), contractSingle('d', '尾款', 1770)] });
+  const paidRecord = (id, days, amount, note, extra = {}) => ({ id, date: addDays(days), amount, note, file: null, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z', ...extra });
+  const assignRows = d => d.locator('.pti-assign-row').evaluateAll(list => list.map(r => ({
+    note: r.querySelector('.pti-assign-note').innerText.trim(),
+    amount: r.querySelector('.pti-amount').innerText.trim(),
+    choice: r.querySelector('.v-select__selection-text')?.innerText.trim() || '',
+  })));
+  const chooseAssign = async (d, note, name) => {
+    await d.locator('.pti-assign-row').filter({ hasText: note }).locator('.v-field').click();
+    await settle(d.page(), 250);
+    await d.page().locator('.v-menu.v-overlay--active .v-list-item').filter({ hasText: new RegExp(`^\\s*${name}\\s*$`) }).first().click();
+    await settle(d.page(), 200);
+  };
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: depositContract(), paymentRecords: [paidRecord('small', -20, 20000, '小訂', { file: { fileId: 'proofImg', fileName: 'a.jpg' } }), paidRecord('top', -10, 80000, '補足')] });
+  const flow = await openImport('EMPTY', 2100);
+  eq(G, '下訂已繳：列出尚未對應並預選訂金', await assignRows(flow.d), [{ note: '小訂', amount: '20,000 元', choice: '訂金' }, { note: '補足', amount: '80,000 元', choice: '訂金' }]);
+  check(G, '下訂已繳：區塊顯示合計', (await flow.d.locator('.pti-assign .pti-section-head').innerText()).includes('100,000 元'), await flow.d.locator('.pti-assign .pti-section-head').innerText());
+  const flowRows = await readRows(flow.d);
+  const flowDeposit = flowRows.find(r => r.name === '訂金');
+  eq(G, '下訂已繳：訂金已繳清、不產生預計', [flowDeposit.tag, flowDeposit.disabled, flowDeposit.hasDate, flowDeposit.detail], ['已繳清', true, false, '已繳 100,000 元']);
+  eq(G, '下訂已繳：其他期別帶全額', flowRows.filter(r => r.name !== '訂金').map(r => [r.name, r.amount, r.checked]), [['簽約金', '1,000,000 元', true], ['開工款', '2,200,000 元', true], ['尾款', '17,700,000 元', true]]);
+  eq(G, '下訂已繳：按鈕分開顯示對應與帶入', (await submitBtn(flow.d).innerText()).trim(), '對應 2 筆、帶入 3 筆');
+  await evidence(flow.page, 'contract-import-assign');
+  await rowOf(flow.d, '簽約金').locator('input[type=date]').fill(addDays(30));
+  await keepOnly(flow.d, ['簽約金']);
+  await settle(flow.page, 100);
+  await submitBtn(flow.d).click();
+  await flow.d.waitFor({ state: 'hidden' });
+  await settle(flow.page, 300);
+  const assignCalls = calls('paymentProofApi', 'updateRecord').map(c => c.payload);
+  eq(G, '下訂已繳：只標期別，日期金額備註不變', assignCalls.map(c => ({ recordId: c.recordId, date: c.date, amount: c.amount, note: c.note, period: c.period, removeFile: c.removeFile, base64: c.base64 })), [
+    { recordId: 'small', date: addDays(-20), amount: 20000, note: '小訂', period: '訂金', removeFile: false, base64: null },
+    { recordId: 'top', date: addDays(-10), amount: 80000, note: '補足', period: '訂金', removeFile: false, base64: null },
+  ]);
+  eq(G, '下訂已繳：先對應再帶入', backend.calls.filter(c => c.fn === 'paymentProofApi').map(c => c.action), ['updateRecord', 'updateRecord', 'addRecord']);
+  const flowStored = records('EMPTY');
+  eq(G, '下訂已繳：紀錄不合併、憑證保留', [flowStored.length, flowStored.find(r => r.id === 'small').file?.fileId, flowStored.filter(r => r.period === '訂金').length], [3, 'proofImg', 2]);
+  eq(G, '下訂已繳：簽約金新增一筆預計', [flowStored.at(-1).period, flowStored.at(-1).expectedAmount, flowStored.at(-1).note], ['簽約金', 1000000, '']);
+  check(G, '下訂已繳：提示筆數', (await toasts(flow.page)).some(t => t.message.includes('已對應 2 筆已繳款、新增 1 筆預計繳款')), JSON.stringify(await toasts(flow.page)));
+  await flow.page.locator('.pr-actions').getByRole('button', { name: '帶入合約期款資料' }).click();
+  await settle(flow.page, 700);
+  eq(G, '下訂已繳：重開後不再列為未對應', await dialog(flow.page).locator('.pti-assign-row').count(), 0);
+  eq(G, '下訂已繳：重開後訂金仍已繳清、簽約金已帶入', (await readRows(dialog(flow.page))).slice(0, 2).map(r => r.tag), ['已繳清', '已帶入']);
+  await flow.close();
+
+  // 只繳部分：帶差額，備註填差額
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: depositContract(), paymentRecords: [paidRecord('small', -20, 20000, '小訂')] });
+  const part = await openImport('EMPTY', 2100);
+  const partRow = (await readRows(part.d)).find(r => r.name === '訂金');
+  eq(G, '只繳部分：帶差額並顯示合約與已繳', [partRow.tag, partRow.amount, partRow.detail, partRow.checked, partRow.hasDate], ['差額', '80,000 元', '合約 100,000，已繳 20,000 元', true, true]);
+  await rowOf(part.d, '訂金').locator('input[type=date]').fill(addDays(5));
+  await keepOnly(part.d, ['訂金']);
+  await settle(part.page, 100);
+  await submitBtn(part.d).click();
+  await part.d.waitFor({ state: 'hidden' });
+  await settle(part.page, 300);
+  const partAdd = calls('paymentProofApi', 'addRecord').at(-1).payload;
+  eq(G, '只繳部分：預計金額為差額、備註差額', [partAdd.period, partAdd.note, partAdd.expectedAmount, partAdd.planSource], ['訂金', '差額', 80000, 'contract']);
+  await part.close();
+
+  // 改成不對應：恢復全額；只有對應沒有帶入也能送出
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: depositContract(), paymentRecords: [paidRecord('small', -20, 100000, '小訂')] });
+  const unassign = await openImport('EMPTY', 2100);
+  await chooseAssign(unassign.d, '小訂', '不對應');
+  const afterUnassign = (await readRows(unassign.d)).find(r => r.name === '訂金');
+  eq(G, '選不對應：訂金恢復全額且預設勾選', [afterUnassign.tag, afterUnassign.amount, afterUnassign.checked], ['', '100,000 元', true]);
+  check(G, '選不對應：按鈕不含對應', !(await submitBtn(unassign.d).innerText()).includes('對應'), await submitBtn(unassign.d).innerText());
+  await chooseAssign(unassign.d, '小訂', '簽約金');
+  eq(G, '手動改對應：簽約金算差額', (await readRows(unassign.d)).find(r => r.name === '簽約金').amount, '900,000 元');
+  await keepOnly(unassign.d, []);
+  await settle(unassign.page, 100);
+  eq(G, '只有對應：按鈕只顯示對應', (await submitBtn(unassign.d).innerText()).trim(), '對應 1 筆');
+  await submitBtn(unassign.d).click();
+  await unassign.d.waitFor({ state: 'hidden' });
+  await settle(unassign.page, 300);
+  eq(G, '只有對應：只標期別', [calls('paymentProofApi', 'updateRecord').at(-1).payload.period, calls('paymentProofApi', 'addRecord').length], ['簽約金', 0]);
+  check(G, '只有對應：提示', (await toasts(unassign.page)).some(t => t.message.includes('已對應 1 筆已繳款')), JSON.stringify(await toasts(unassign.page)));
+  await unassign.close();
+
+  // 比對不到：不預選
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: depositContract(), paymentRecords: [paidRecord('other', -5, 5000, '代收款'), paidRecord('blank', -6, 3000, '')] });
+  const noGuess = await openImport('EMPTY', 2100);
+  eq(G, '比對不到：不預選；沒有備註也列出', await assignRows(noGuess.d), [{ note: '代收款', amount: '5,000 元', choice: '不對應' }, { note: '未填備註', amount: '3,000 元', choice: '不對應' }]);
+  await noGuess.close();
+
+  // 溢繳：自動沖抵其他未繳期別
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: depositContract(), paymentRecords: [paidRecord('sign', -5, 1300000, '簽約', { period: '簽約金' })] });
+  const over = await openImport('EMPTY', 2100);
+  const overRows = await readRows(over.d);
+  const overBy = name => overRows.find(r => r.name === name);
+  eq(G, '溢繳：來源期別顯示超過', [overBy('簽約金').tag, overBy('簽約金').detail, overBy('簽約金').disabled], ['已繳清', '已繳 1,300,000，超過 300,000 元', true]);
+  eq(G, '溢繳：沖抵其他未繳期別', [overBy('訂金').tag, overBy('訂金').detail, overBy('訂金').disabled], ['已繳清', '由溢繳沖抵 100,000 元', true]);
+  eq(G, '溢繳：不足一期時帶差額', [overBy('開工款').tag, overBy('開工款').amount, overBy('開工款').detail], ['差額', '2,000,000 元', '合約 2,200,000，由溢繳沖抵 200,000 元']);
+  eq(G, '溢繳：之後的期別不受影響', [overBy('尾款').tag, overBy('尾款').amount], ['', '17,700,000 元']);
+  eq(G, '溢繳全部抵完：沒有超過警示', await over.d.locator('.mac-callout--warning').count(), 0);
+  await evidence(over.page, 'contract-import-offset');
+  await over.close();
+
+  // 沖抵完還有剩：警示
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: { manualRows: [contractSingle('a', '訂金', 10), contractSingle('b', '尾款', 10)] }, paymentRecords: [paidRecord('all', -5, 250000, '', { period: '訂金' })] });
+  const leftover = await openImport('EMPTY', 20);
+  check(G, '沖抵完還有剩：顯示超過金額', (await leftover.d.locator('.mac-callout--warning').innerText()).includes('期款已繳超過合約 50,000 元'), await leftover.d.locator('.mac-callout--warning').innerText());
+  eq(G, '全部已繳清：帶入按鈕不可按', await submitBtn(leftover.d).isDisabled(), true);
+  await leftover.close();
+
+  // 已繳清但還有預計：不刪除，標示
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: depositContract(), paymentRecords: [paidRecord('dep', -5, 100000, '', { period: '訂金' }), plan('extra', 5, 50000, '', { period: '訂金' })] });
+  const extra = await openImport('EMPTY', 2100);
+  const extraRow = (await readRows(extra.d)).find(r => r.name === '訂金');
+  eq(G, '已繳清另有預計：標示金額、不可勾選', [extraRow.tag, extraRow.detail, extraRow.disabled], ['已繳清', '已繳 100,000，另有預計 50,000 元', true]);
+  await extra.close();
+
+  // 對應失敗：不寫入預計
+  backend.reset({ failures: { 'paymentProofApi:updateRecord': '對應失敗' } });
+  setUnit('EMPTY', { contractDocData: depositContract(), paymentRecords: [paidRecord('small', -20, 20000, '小訂')] });
+  const assignFail = await openImport('EMPTY', 2100);
+  await rowOf(assignFail.d, '訂金').locator('input[type=date]').fill(addDays(5));
+  await keepOnly(assignFail.d, ['訂金']);
+  await settle(assignFail.page, 100);
+  await submitBtn(assignFail.d).click();
+  await settle(assignFail.page, 300);
+  eq(G, '對應失敗：顯示錯誤、不新增預計', [(await assignFail.d.locator('.pti-save-error').innerText()).includes('對應失敗'), calls('paymentProofApi', 'addRecord').length], [true, 0]);
+  await assignFail.close();
+
+  // 手機版：文字不截斷、沒有水平捲動
+  backend.reset();
+  setUnit('EMPTY', {
+    contractDocData: { manualRows: [contractSingle('a', '第 12 期工程款（含地下室結構體完成第三次追加變更設計款項）', 1000), contractSingle('b', '簽約款', 1100)] },
+    paymentRecords: [plan('long', 5, 123456789, '第 12 期工程款（含地下室結構體完成第三次追加變更設計款項）'), plan('new1', 5, 100000, '其他')],
+  });
+  const mobile = await openImport('EMPTY', 2000, { width: 390 });
+  await rowOf(mobile.d, '第 12 期').locator('input[type=checkbox]').check();
+  await settle(mobile.page, 150);
+  await evidence(mobile.page, 'contract-import-mobile');
+  const overflow = await mobile.page.evaluate(() => {
+    const over = el => el.scrollWidth - el.clientWidth;
+    return { page: over(document.documentElement), card: over(document.querySelector('.pti')), foot: over(document.querySelector('.pti .mac-sheet-foot')), rows: [...document.querySelectorAll('.pti-row')].map(over) };
+  });
+  check(G, '手機：沒有水平溢出', overflow.page <= 0 && overflow.card <= 0 && overflow.foot <= 0 && overflow.rows.every(x => x <= 0), JSON.stringify(overflow));
+  const buttonFits = await mobile.page.evaluate(() => {
+    const dialog = document.querySelector('.pti').getBoundingClientRect();
+    return [...document.querySelectorAll('.pti .mac-sheet-foot button')].every((btn) => { const r = btn.getBoundingClientRect(); return r.left >= dialog.left - 1 && r.right <= dialog.right + 1; });
+  });
+  eq(G, '手機：底部按鈕都在視窗內', buttonFits, true);
+  await clickDialogButton(mobile.page, '取消');
+  await settle(mobile.page);
+  const actionsFit = await mobile.page.evaluate(() => {
+    const box = document.querySelector('.pr-actions');
+    return box.scrollWidth <= box.clientWidth && document.documentElement.scrollWidth <= window.innerWidth;
+  });
+  eq(G, '手機：面板按鈕列沒有溢出', actionsFit, true);
+  await evidence(mobile.page, 'contract-import-mobile-panel');
+  await mobile.close();
+
+  // 360px（常見 Android 寬度）：勾選框跟名稱同一行、底部不溢出
+  backend.reset();
+  setUnit('EMPTY', {
+    contractDocData: { manualRows: [contractSingle('a', '第 12 期工程款（含地下室結構體完成第三次追加變更設計款項）', 1000), contractSingle('b', '簽約款', 1100)] },
+    paymentRecords: [plan('long', 5, 123456789, '第 12 期工程款（含地下室結構體完成第三次追加變更設計款項）')],
+  });
+  const narrow = await openImport('EMPTY', 2000, { width: 360 });
+  await rowOf(narrow.d, '第 12 期').locator('input[type=checkbox]').check();
+  await settle(narrow.page, 150);
+  await evidence(narrow.page, 'contract-import-360');
+  const narrowLayout = await narrow.page.evaluate(() => {
+    const longRow = document.querySelector('.pti-row');
+    const check = longRow.querySelector('input[type=checkbox]').getBoundingClientRect();
+    const name = longRow.querySelector('.pti-name').getBoundingClientRect();
+    const dialogBox = document.querySelector('.pti').getBoundingClientRect();
+    const over = el => el.scrollWidth - el.clientWidth;
+    return {
+      sameLine: name.top < check.bottom && name.left >= check.right,
+      overflow: [over(document.documentElement), over(document.querySelector('.pti')), over(document.querySelector('.pti .mac-sheet-foot'))].every(x => x <= 0),
+      buttons: [...document.querySelectorAll('.pti .mac-sheet-foot button')].every((btn) => { const r = btn.getBoundingClientRect(); return r.left >= dialogBox.left - 1 && r.right <= dialogBox.right + 1; }),
+      buttonsSameRow: new Set([...document.querySelectorAll('.pti .mac-sheet-foot button')].map(btn => Math.round(btn.getBoundingClientRect().top))).size === 1,
+    };
+  });
+  eq(G, '360px：勾選框與名稱同行、沒有溢出、按鈕同一行', narrowLayout, { sameLine: true, overflow: true, buttons: true, buttonsSameRow: true });
+  await clickDialogButton(narrow.page, '取消');
+  await settle(narrow.page);
+  const narrowActions = await narrow.page.evaluate(() => {
+    const box = document.querySelector('.pr-actions');
+    return box.scrollWidth <= box.clientWidth && document.documentElement.scrollWidth <= window.innerWidth;
+  });
+  eq(G, '360px：面板按鈕列沒有溢出', narrowActions, true);
+  await evidence(narrow.page, 'contract-import-360-panel');
+  await narrow.close();
+
+  // 真實戶別視窗與合約製作設定：沒有資料 → 開設定 → 儲存 → 回來帶入
+  backend.reset({ templates: templateFixtures().map(t => ({ ...t, maxPrice: t.maxPrice || 999999 })) });
+  const real = await open({ view: 'modal', unit: 'EMPTY' });
+  await real.page.waitForSelector('.v-dialog.v-overlay--active .v-tab', { timeout: 60000 });
+  await settle(real.page, 800);
+  await real.page.locator('.v-dialog.v-overlay--active .v-tab', { hasText: '繳款紀錄' }).click();
+  await settle(real.page, 500);
+  await real.page.getByRole('button', { name: '帶入合約期款資料' }).click();
+  await settle(real.page, 700);
+  const realDialog = real.page.locator('.pti');
+  eq(G, '戶別視窗：沒有資料時引導', (await realDialog.locator('.pti-empty-title').innerText()).trim(), '尚未設定合約期款');
+  await realDialog.getByRole('button', { name: '開啟合約製作設定' }).click();
+  await settle(real.page, 2000);
+  const contractTop = dialog(real.page);
+  check(G, '戶別視窗：合約製作設定開在帶入視窗上方', (await contractTop.innerText()).includes('合約製作設定 - EMPTY'), (await contractTop.innerText()).slice(0, 80));
+  await contractTop.getByRole('button', { name: '儲存', exact: true }).click();
+  await settle(real.page, 500);
+  const savedContract = backend.db.store.get('salesHouseholds/p1_EMPTY').contractDocData;
+  check(G, '戶別視窗：合約製作設定儲存後有期款', Array.isArray(savedContract?.manualRows) && savedContract.manualRows.length > 0, JSON.stringify(savedContract?.manualRows));
+  await contractTop.getByRole('button', { name: '關閉', exact: true }).last().click();
+  await settle(real.page, 1000);
+  const realRows = await readRows(dialog(real.page));
+  const expectedFirst = savedContract.manualRows.find(r => r.type !== 'group' && Number(r.amount) > 0);
+  check(G, '戶別視窗：關閉合約製作設定後列出已存的期款', realRows.length > 0 && realRows.find(r => r.name === expectedFirst.name)?.amount === `${money(expectedFirst.amount * 10000)} 元`, JSON.stringify(realRows));
+  await rowOf(dialog(real.page), expectedFirst.name).locator('input[type=date]').fill(addDays(15));
+  await keepOnly(dialog(real.page), [expectedFirst.name]);
+  await settle(real.page, 100);
+  await submitBtn(dialog(real.page)).click();
+  await settle(real.page, 800);
+  const realSaved = records('EMPTY').find(r => r.period === expectedFirst.name);
+  eq(G, '戶別視窗：帶入後寫入紀錄', [realSaved?.expectedAmount, realSaved?.expectedDate, realSaved?.planSource], [expectedFirst.amount * 10000, addDays(15), 'contract']);
+  check(G, '戶別視窗：帶入後出現在預計區', await plannedRow(real.page, expectedFirst.name).count() === 1, '');
+  await real.close();
+});
+
+// ─────────────── 期別與備註分欄 ───────────────
+group('PERIOD', async () => {
+  const G = 'PERIOD 期別與備註';
+  const setUnit = (unit, patch) => {
+    const key = `salesHouseholds/p1_${unit}`;
+    backend.db.store.set(key, { ...backend.db.store.get(key), ...patch });
+  };
+  const records = unit => backend.db.store.get(`salesHouseholds/p1_${unit}`).paymentRecords;
+  const openForm = async (page, kind) => {
+    await page.locator('.pr-actions').getByRole('button', { name: kind, exact: true }).click();
+    await settle(page);
+    return dialog(page);
+  };
+  const periodMenu = async (scope) => {
+    const page = scope.page();
+    await scope.locator('.ppf-select .v-field').first().click();
+    await settle(page, 250);
+    const items = (await page.locator('.v-menu.v-overlay--active .v-list-item').allInnerTexts()).map(x => x.trim());
+    await page.keyboard.press('Escape');
+    await settle(page, 200);
+    return items;
+  };
+  const selectionOf = scope => scope.locator('.ppf-select .v-select__selection-text').first().innerText().then(x => x.trim());
+
+  // 沒有合約資料：列建案範本的期別，一般戶不列配套
+  backend.reset();
+  const { page, close } = await open({ view: 'panel', unit: 'EMPTY', total: 2100 });
+  await settle(page, 400);
+  const d = await openForm(page, '預計繳款');
+  const templateOptions = await periodMenu(d);
+  eq(G, '選單頭尾：未指定與其他', [templateOptions[0], templateOptions.at(-1)], ['未指定', '其他']);
+  check(G, '沒有合約：列建案範本期別，有子項列子項', templateOptions.includes('頭期款') && templateOptions.includes('開工期款') && templateOptions.includes('優付訂金') && !templateOptions.includes('工程期款'), templateOptions.join(','));
+  check(G, '一般戶：不列配套期別', !templateOptions.includes('配套頭款'), templateOptions.join(','));
+  eq(G, '選單去重複', new Set(templateOptions).size, templateOptions.length);
+  eq(G, '預設未指定、沒有輸入框', [await selectionOf(d), await d.locator('input[aria-label="其他期別"]').count()], ['未指定', 0]);
+
+  // 新增：選期別＋備註分開存
+  await d.locator('input[aria-label="預計日"]').fill(addDays(10));
+  await d.locator('input[aria-label="預計金額"]').fill('100000');
+  await pickPeriod(d, '頭期款');
+  await d.locator('input[aria-label="備註"]').fill('客戶要求延後');
+  await evidence(page, 'period-form');
+  await clickDialogButton(page, '儲存');
+  await d.waitFor({ state: 'hidden' });
+  await settle(page, 200);
+  const added = calls('paymentProofApi', 'addRecord').at(-1).payload;
+  eq(G, '新增：期別與備註分開送出', [added.period, added.note], ['頭期款', '客戶要求延後']);
+  eq(G, '新增：分開寫入', [records('EMPTY')[0].period, records('EMPTY')[0].note], ['頭期款', '客戶要求延後']);
+  const shown = (await rowsOf(planned(page)))[0].fields;
+  eq(G, '列表：期別與備註各一欄', [shown['期別'], shown['備註']], ['頭期款', '客戶要求延後']);
+
+  // 其他：自行輸入
+  const d2 = await openForm(page, '已繳款');
+  await d2.locator('input[aria-label="實繳金額"]').fill('5000');
+  await pickPeriod(d2, '其他');
+  eq(G, '選其他：出現輸入框且先是空的', await d2.locator('input[aria-label="其他期別"]').inputValue(), '');
+  await d2.locator('input[aria-label="其他期別"]').fill('  額外工程款  ');
+  await evidence(page, 'period-form-other');
+  await clickDialogButton(page, '儲存');
+  await d2.waitFor({ state: 'hidden' });
+  await settle(page, 200);
+  eq(G, '其他：去空白後存成期別', [calls('paymentProofApi', 'addRecord').at(-1).payload.period, records('EMPTY').at(-1).period], ['額外工程款', '額外工程款']);
+
+  // 編輯：自訂期別回到「其他」，有選項的回到選項
+  await paidRow(page, '額外工程款').getByRole('button', { name: '更多操作' }).click();
+  await settle(page, 200);
+  await page.locator('.v-menu.v-overlay--active .v-list-item', { hasText: '編輯' }).click();
+  await settle(page, 300);
+  const d3 = dialog(page);
+  eq(G, '編輯自訂期別：顯示其他與原文字', [await selectionOf(d3), await d3.locator('input[aria-label="其他期別"]').inputValue()], ['其他', '額外工程款']);
+  await pickPeriod(d3, '銀行貸款');
+  eq(G, '改選選項：輸入框收起', await d3.locator('input[aria-label="其他期別"]').count(), 0);
+  await pickPeriod(d3, '其他');
+  eq(G, '選項改回其他：清空', await d3.locator('input[aria-label="其他期別"]').inputValue(), '');
+  await pickPeriod(d3, '未指定');
+  await clickDialogButton(page, '儲存');
+  await d3.waitFor({ state: 'hidden' });
+  await settle(page, 200);
+  eq(G, '改成未指定：清除期別', records('EMPTY').at(-1).period, '');
+  await close();
+
+  // 舊資料：備註等於期別名稱，編輯時視為期別，存檔才分開；沒存檔資料不動
+  backend.reset();
+  setUnit('EMPTY', { paymentRecords: [{ id: 'old1', date: addDays(-5), amount: 1000, note: '簽約款', file: null }, { id: 'old2', date: addDays(-6), amount: 2000, note: '其他文字', file: null }] });
+  const legacy = await open({ view: 'panel', unit: 'EMPTY', total: 2100 });
+  await settle(legacy.page, 400);
+  const legacyRows = await rowsOf(paid(legacy.page));
+  eq(G, '舊資料：列表內容留在備註', legacyRows.map(r => [r.fields['期別'], r.fields['備註']]), [['—', '簽約款'], ['—', '其他文字']]);
+  await paidRow(legacy.page, '簽約款').getByRole('button', { name: '更多操作' }).click();
+  await settle(legacy.page, 200);
+  await legacy.page.locator('.v-menu.v-overlay--active .v-list-item', { hasText: '編輯' }).click();
+  await settle(legacy.page, 300);
+  const ld = dialog(legacy.page);
+  eq(G, '舊資料編輯：備註等於期別名稱時視為期別', [await selectionOf(ld), await ld.locator('input[aria-label="備註"]').inputValue()], ['簽約款', '']);
+  eq(G, '舊資料開編輯沒存檔：資料不動', calls('paymentProofApi', 'updateRecord').length, 0);
+  await clickDialogButton(legacy.page, '儲存');
+  await ld.waitFor({ state: 'hidden' });
+  await settle(legacy.page, 200);
+  eq(G, '舊資料存檔後分開', [records('EMPTY')[0].period, records('EMPTY')[0].note], ['簽約款', '']);
+  await paidRow(legacy.page, '其他文字').getByRole('button', { name: '更多操作' }).click();
+  await settle(legacy.page, 200);
+  await legacy.page.locator('.v-menu.v-overlay--active .v-list-item', { hasText: '編輯' }).click();
+  await settle(legacy.page, 300);
+  const ld2 = dialog(legacy.page);
+  eq(G, '舊資料編輯：對不上的留在備註', [await selectionOf(ld2), await ld2.locator('input[aria-label="備註"]').inputValue()], ['未指定', '其他文字']);
+  await clickDialogButton(legacy.page, '取消');
+  await legacy.close();
+
+  // 有合約資料：只列該戶合約期別
+  backend.reset();
+  setUnit('EMPTY', { contractDocData: { manualRows: [contractSingle('a', '合約訂金', 10), contractSingle('z', '合約零元', 0)] } });
+  const withContract = await open({ view: 'panel', unit: 'EMPTY', total: 2100 });
+  await settle(withContract.page, 400);
+  const cd = await openForm(withContract.page, '預計繳款');
+  eq(G, '有合約：只列該戶金額大於 0 的期別', await periodMenu(cd), ['未指定', '合約訂金', '其他']);
+  await clickDialogButton(withContract.page, '取消');
+  await withContract.close();
+
+  // 配套戶列配套期別；範本讀取失敗不擋操作
+  backend.reset();
+  const pkg = await open({ view: 'panel', unit: 'P1', total: 2000 });
+  await settle(pkg.page, 400);
+  const pd = await openForm(pkg.page, '預計繳款');
+  check(G, '配套戶：列配套期別', (await periodMenu(pd)).includes('配套頭款'), '');
+  await clickDialogButton(pkg.page, '取消');
+  await pkg.close();
+  backend.reset({ failures: { fetchPaymentTermTemplates: '讀取失敗', fetchContractDocData: '讀取失敗' } });
+  const failed = await open({ view: 'panel', unit: 'EMPTY', total: 2100 });
+  await settle(failed.page, 400);
+  const fd = await openForm(failed.page, '預計繳款');
+  eq(G, '讀取失敗：仍可選其他自行輸入', await periodMenu(fd), ['未指定', '其他']);
+  await clickDialogButton(failed.page, '取消');
+  await failed.close();
+
+  // 標記已繳：期別保留，差額沿用同一期別
+  backend.reset();
+  setUnit('EMPTY', { paymentRecords: [plan('mark', 5, 100000, '客戶備註', { period: '訂金' })] });
+  const mark = await open({ view: 'panel', unit: 'EMPTY', total: 2100 });
+  await settle(mark.page, 400);
+  await plannedRow(mark.page, '訂金').getByRole('button', { name: '標記已繳' }).click();
+  await settle(mark.page);
+  const md3 = dialog(mark.page);
+  eq(G, '標記已繳：摘要顯示期別（備註）', (await md3.locator('.mpd-summary-note').innerText()).trim(), '訂金（客戶備註）');
+  await md3.locator('input[type=number]').first().fill('60000');
+  await settle(mark.page, 150);
+  await md3.locator('input[type=date]').last().fill(addDays(15));
+  await clickDialogButton(mark.page, '確認已繳');
+  await md3.waitFor({ state: 'hidden' });
+  await settle(mark.page, 300);
+  const markStored = records('EMPTY');
+  eq(G, '標記已繳：期別與備註不變', [markStored[0].period, markStored[0].note, markStored[0].amount], ['訂金', '客戶備註', 60000]);
+  eq(G, '差額：沿用期別', [markStored[1].period, markStored[1].note, markStored[1].expectedAmount, markStored[1].planSource], ['訂金', '客戶備註 尾款', 40000, 'balance']);
+  await mark.close();
+
+  // 到期清單：顯示期別（備註），可搜尋期別
+  backend.reset();
+  setUnit('A1', { paymentRecords: [plan('due', 3, 100000, '客戶備註', { period: '自訂期別名稱' })] });
+  const list = await open({ view: 'list', role: 'manager' });
+  await settle(list.page, 500);
+  check(G, '到期清單：顯示期別（備註）', (await listTexts(list.page)).some(r => r[2] === '自訂期別名稱（客戶備註）'), JSON.stringify((await listTexts(list.page)).slice(0, 3)));
+  await list.page.locator('.pd-search input').first().fill('自訂期別');
+  await settle(list.page, 400);
+  eq(G, '到期清單：可搜尋期別', (await listTexts(list.page)).length, 1);
+  await list.close();
+
+  // 修改銷控：編輯卡片分欄，舊資料動到才分開
+  backend.reset();
+  const edit = await open({ view: 'modal', unit: 'M1', editing: 1 });
+  await edit.page.waitForSelector('.v-dialog.v-overlay--active', { timeout: 60000 });
+  await settle(edit.page, 800);
+  await edit.page.locator('.edit-nav-item', { hasText: '戶別繳款紀錄' }).click();
+  await settle(edit.page, 500);
+  const summary = edit.page.locator('.pr-summary:visible').first();
+  if ((await edit.page.locator('.pr-edit-card:visible').count()) === 0) { await summary.click(); await settle(edit.page, 300); }
+  const editPaid = edit.page.locator('section[aria-label="已繳款"] .pr-edit-card');
+  const signingCard = editPaid.filter({ has: edit.page.locator('.ppf-select', { hasText: '簽約款' }) }).first();
+  eq(G, '修改銷控舊資料：備註等於期別名稱時視為期別', [await signingCard.locator('.ppf-select .v-select__selection-text').innerText(), await signingCard.locator('input[aria-label="備註"]').inputValue()], ['簽約款', '']);
+  await signingCard.locator('input[aria-label="備註"]').fill('改了備註');
+  await settle(edit.page, 150);
+  await edit.page.getByRole('button', { name: '儲存變更' }).first().click();
+  await settle(edit.page, 800);
+  const editSaved = backend.db.store.get('salesHouseholds/p1_M1').paymentRecords.find(r => r.id === 'd_late');
+  eq(G, '修改銷控：動到後分開寫入', [editSaved.period, editSaved.note], ['簽約款', '改了備註']);
+  await edit.close();
+
+  // 狀態改簽約：已有含「簽約」的預計時轉為已繳，不另外新增
+  backend.reset();
+  setUnit('M2', { paymentRecords: [plan('signplan', 5, 1000000, '', { period: '簽約金' })] });
+  const sign = await open({ view: 'modal', unit: 'M2', editing: 1 });
+  await sign.page.waitForSelector('.v-dialog.v-overlay--active', { timeout: 60000 });
+  await settle(sign.page, 800);
+  await sign.page.locator('.v-select', { hasText: '後台狀態' }).first().locator('.v-field').click();
+  await settle(sign.page, 300);
+  await sign.page.locator('.v-menu.v-overlay--active .v-list-item', { hasText: '簽約' }).first().click();
+  await settle(sign.page, 400);
+  const signPrompt = dialog(sign.page);
+  eq(G, '狀態改簽約：帶入預計金額', await signPrompt.locator('input[type=number]').first().inputValue(), '1000000');
+  check(G, '狀態改簽約：提示轉為已繳', (await signPrompt.innerText()).includes('已有預計繳款「簽約金」'), (await signPrompt.innerText()).slice(0, 160));
+  await sign.close();
 });
 
 // ─────────────── T10 列表計算欄位 ───────────────
@@ -3565,7 +4098,7 @@ group('T12', async () => {
   backend.reset();
   const legacyBlock = await openModal({ editing: 1, unit: 'A1' });
   await toPayments(legacyBlock.page);
-  await legacyBlock.page.locator('section[aria-label="預計繳款"] .pr-edit-card').first().locator('input[aria-label="期別／備註"]').fill('改備註');
+  await legacyBlock.page.locator('section[aria-label="預計繳款"] .pr-edit-card').first().locator('input[aria-label="備註"]').fill('改備註');
   await settle(legacyBlock.page, 150);
   await save(legacyBlock.page);
   check(G, '缺日期舊資料：提示指出是哪一筆', legacyBlock.alerts.some(a => a.includes('舊資料缺值')) && updates().length === 0, JSON.stringify(legacyBlock.alerts));
@@ -3581,7 +4114,7 @@ group('T12', async () => {
   const newCard = add.page.locator('section[aria-label="預計繳款"] .pr-edit-card').last();
   await newCard.locator('input[aria-label="預計日"]').fill(addDays(12));
   await newCard.locator('input[aria-label="預計金額"]').fill('456789');
-  await newCard.locator('input[aria-label="期別／備註"]').fill('修改銷控新增');
+  await newCard.locator('input[aria-label="備註"]').fill('修改銷控新增');
   await settle(add.page, 150);
   await save(add.page);
   const payload = updates().at(-1)?.payload?.data?.paymentRecords || [];
@@ -3598,7 +4131,7 @@ group('T12', async () => {
   await toPayments(missing.page);
   await missing.page.locator('.pr-actions').getByRole('button', { name: '預計繳款', exact: true }).click();
   await settle(missing.page, 200);
-  await missing.page.locator('section[aria-label="預計繳款"] .pr-edit-card').last().locator('input[aria-label="期別／備註"]').fill('缺日期');
+  await missing.page.locator('section[aria-label="預計繳款"] .pr-edit-card').last().locator('input[aria-label="備註"]').fill('缺日期');
   await settle(missing.page, 150);
   await save(missing.page);
   check(G, '預計日未填擋下', missing.alerts.some(a => a.includes('未選擇預計日')) && updates().length === 0, JSON.stringify(missing.alerts));
@@ -3631,7 +4164,7 @@ group('T12', async () => {
   const key = 'salesHouseholds/p1_M1';
   const doc = backend.db.store.get(key);
   backend.db.store.set(key, { ...doc, paymentRecords: doc.paymentRecords.map(r => (r.id === 'p_over' ? { ...r, date: TODAY, amount: 300000, updatedAt: new Date().toISOString() } : r)) });
-  await conflict.page.locator('section[aria-label="預計繳款"] .pr-edit-card').first().locator('input[aria-label="期別／備註"]').fill('我也改了');
+  await conflict.page.locator('section[aria-label="預計繳款"] .pr-edit-card').first().locator('input[aria-label="備註"]').fill('我也改了');
   await settle(conflict.page, 150);
   await save(conflict.page);
   check(G, '他人已標記已繳：中止儲存並提示', conflict.alerts.some(a => a.includes('其他人修改')) && updates().length === 0, JSON.stringify(conflict.alerts));
@@ -3801,7 +4334,7 @@ group('T12', async () => {
   await settle(self.page);
   const selfDialog = dialog(self.page);
   await selfDialog.locator('input[aria-label="預計日"]').fill(addDays(9));
-  await selfDialog.locator('input[aria-label="期別／備註"]').fill('自己先新增');
+  await selfDialog.locator('input[aria-label="備註"]').fill('自己先新增');
   await clickDialogButton(self.page, '儲存');
   await settle(self.page, 500);
   await self.page.locator('.v-dialog.v-overlay--active .v-tab', { hasText: '詳細資訊' }).click();
@@ -3809,7 +4342,7 @@ group('T12', async () => {
   await self.page.locator('.v-dialog.v-overlay--active').getByRole('button', { name: '修改銷控' }).first().click();
   await settle(self.page, 900);
   await toPayments(self.page);
-  await self.page.locator('section[aria-label="預計繳款"] .pr-edit-card').filter({ has: self.page.locator('input[aria-label="期別／備註"]') }).first().locator('input[aria-label="期別／備註"]').fill('改一筆');
+  await self.page.locator('section[aria-label="預計繳款"] .pr-edit-card').filter({ has: self.page.locator('input[aria-label="備註"]') }).first().locator('input[aria-label="備註"]').fill('改一筆');
   await settle(self.page, 150);
   await save(self.page);
   check(G, '§8.5 自己快速新增後再修改銷控：不誤報他人修改', !self.alerts.some(a => a.includes('其他人修改')) && updates().length === 1 && updates().at(-1).payload.data.paymentRecords?.some(r => r.note === '自己先新增'), JSON.stringify(self.alerts));
@@ -3833,7 +4366,7 @@ group('T12', async () => {
   const pk = await openModal({ editing: 1, unit: 'M3' });
   await toPayments(pk.page);
   const pkCards = () => pk.page.locator('section[aria-label="預計繳款"] .pr-edit-card');
-  await pkCards().first().locator('input[aria-label="期別／備註"]').fill('車位失敗測試');
+  await pkCards().first().locator('input[aria-label="備註"]').fill('車位失敗測試');
   await settle(pk.page, 150);
   backend.failures = { updateParkingLot: '車位寫入失敗' };
   await save(pk.page);
@@ -3854,13 +4387,13 @@ group('T12', async () => {
   const pk2 = await openModal({ editing: 1, unit: 'M3' });
   await toPayments(pk2.page);
   const pk2Cards = () => pk2.page.locator('section[aria-label="預計繳款"] .pr-edit-card');
-  await pk2Cards().first().locator('input[aria-label="期別／備註"]').fill('第一次');
+  await pk2Cards().first().locator('input[aria-label="備註"]').fill('第一次');
   await settle(pk2.page, 150);
   backend.failures = { updateParkingLot: '車位寫入失敗' };
   await save(pk2.page);
   backend.failures = {};
   pk2.alerts.length = 0;
-  await pk2Cards().first().locator('input[aria-label="期別／備註"]').fill('第二次');
+  await pk2Cards().first().locator('input[aria-label="備註"]').fill('第二次');
   await settle(pk2.page, 150);
   await save(pk2.page);
   check(G, '§8.5 車位失敗後再改繳款紀錄：不誤報且寫入', !pk2.alerts.some(a => a.includes('其他人修改')) && updates().length === 2 && updates().at(-1).payload.data.paymentRecords?.some(r => r.note === '第二次'), JSON.stringify(pk2.alerts));
@@ -4168,7 +4701,11 @@ group('T12', async () => {
   const cardByNote = async (page, sectionLabel, note) => {
     const cards = page.locator(`section[aria-label="${sectionLabel}"] .pr-edit-card`);
     for (let i = 0; i < await cards.count(); i += 1) {
-      if (await cards.nth(i).locator('input[aria-label="期別／備註"]').inputValue() === note) return cards.nth(i);
+      const card = cards.nth(i);
+      // 舊資料的備註等於期別名稱時，編輯畫面視為期別，備註欄是空的
+      const noteValue = await card.locator('input[aria-label="備註"]').inputValue();
+      const period = (await card.locator('.ppf-select .v-select__selection-text').innerText()).trim();
+      if (noteValue === note || period === note) return card;
     }
     throw new Error(`找不到 ${sectionLabel}「${note}」`);
   };
@@ -4187,7 +4724,7 @@ group('T12', async () => {
   const sameCard = sameEdit.page.locator('section[aria-label="預計繳款"] .pr-edit-card').last();
   await sameCard.locator('input[aria-label="預計日"]').fill(addDays(6));
   await sameCard.locator('input[aria-label="預計金額"]').fill('77000');
-  await sameCard.locator('input[aria-label="期別／備註"]').fill('同次新增');
+  await sameCard.locator('input[aria-label="備註"]').fill('同次新增');
   await settle(sameEdit.page, 150);
   await (await cardByNote(sameEdit.page, '預計繳款', '同次新增')).getByRole('button', { name: '標記已繳' }).click();
   await confirmMarkPaid(sameEdit.page);
@@ -4223,9 +4760,9 @@ group('T12', async () => {
   backend.reset();
   const plainEdit = await openModal({ editing: 1 });
   await toPayments(plainEdit.page);
-  await (await cardByNote(plainEdit.page, '已繳款', '訂金')).locator('input[aria-label="期別／備註"]').fill('訂金（改）');
+  await (await cardByNote(plainEdit.page, '已繳款', '訂金')).locator('input[aria-label="備註"]').fill('訂金（改）');
   await (await cardByNote(plainEdit.page, '已繳款', '舊資料補足款')).locator('input[aria-label="實繳金額"]').fill('60000');
-  await (await cardByNote(plainEdit.page, '已繳款', '簽約款')).locator('input[aria-label="期別／備註"]').fill('簽約款（改）');
+  await (await cardByNote(plainEdit.page, '已繳款', '簽約款')).locator('input[aria-label="備註"]').fill('簽約款（改）');
   await settle(plainEdit.page, 150);
   await save(plainEdit.page);
   const plainRecords = updates().at(-1)?.payload?.data?.paymentRecords || [];
@@ -4247,7 +4784,7 @@ group('T12', async () => {
   const qd = dialog(tabView.page);
   await qd.locator('input[aria-label="預計日"]').fill(addDays(15));
   await qd.locator('input[aria-label="預計金額"]').fill('111111');
-  await qd.locator('input[aria-label="期別／備註"]').fill('分頁新增');
+  await qd.locator('input[aria-label="備註"]').fill('分頁新增');
   await clickDialogButton(tabView.page, '儲存');
   await settle(tabView.page, 500);
   const tabAdd = lastCall('paymentProofApi', 'addRecord');
@@ -4378,7 +4915,7 @@ group('T13', async () => {
   await settle(page, 500);
   const popup = page.locator('.payment-popup-sheet');
   check(G, '點日期開啟浮動視窗', (await popup.locator('.mac-sheet-head').innerText()).includes('A2 繳款紀錄'), '');
-  check(G, '浮動視窗預設展開、有範本帶入', await popup.locator('.pr-body').isVisible() && (await popup.getByRole('button', { name: '範本帶入' }).count()) === 1, '');
+  check(G, '浮動視窗預設展開、有帶入合約期款資料', await popup.locator('.pr-body').isVisible() && (await popup.getByRole('button', { name: '帶入合約期款資料' }).count()) === 1, '');
 
   // 新增預計
   await popup.locator('.pr-actions').getByRole('button', { name: '預計繳款', exact: true }).click();
@@ -4386,7 +4923,7 @@ group('T13', async () => {
   const add = dialog(page);
   await add.locator('input[aria-label="預計日"]').fill(addDays(2));
   await add.locator('input[aria-label="預計金額"]').fill('70000');
-  await add.locator('input[aria-label="期別／備註"]').fill('浮動新增');
+  await add.locator('input[aria-label="備註"]').fill('浮動新增');
   await clickDialogButton(page, '儲存');
   await page.locator('.v-dialog.v-overlay--active .pr-dialog-body').waitFor({ state: 'hidden' });
   await settle(page, 300);
@@ -4423,16 +4960,36 @@ group('T13', async () => {
   await popup.locator('.mac-sheet-close').click();
   await settle(page, 300);
 
-  // 浮動視窗範本帶入：基準用含車位成交總價
+  // 浮動視窗帶入合約期款：沒有資料 → 開合約製作設定（真實）→ 儲存 → 回來；合約基準要含車位，才不會誤報總價不符
+  // 用各期合計剛好等於總價的範本：預設範本的「回饋調整」是負數，合計本來就不等於總價
+  backend.templates = [{
+    id: 'tpl-balanced', projectId: 'p1', templateName: '合計相符範本', paymentCategory: '一般期款', propertyType: '住家', buyerType: '首購', minPrice: 0, maxPrice: 999999,
+    items: [it('頭期款', '總價*10%', { id: 'b1' }), it('尾款', '總價-頭期款', { id: 'b2' })],
+  }];
   await page.locator('.list-view-container tbody tr', { hasText: 'A1' }).first().locator('.next-due-cell').click();
   await settle(page, 500);
-  await popup.getByRole('button', { name: '範本帶入' }).click();
+  await popup.getByRole('button', { name: '帶入合約期款資料' }).click();
   await settle(page, 700);
-  check(G, '浮動範本帶入：基準含車位 2,100 萬', (await page.locator('.pti-list-label').innerText()).replace(/\s+/g, ' ').includes('基準 2,100 萬'), await page.locator('.pti-list-label').innerText());
+  const importSheet = page.locator('.pti');
+  eq(G, '浮動帶入：沒有資料時引導', (await importSheet.locator('.pti-empty-title').innerText()).trim(), '尚未設定合約期款');
+  await importSheet.getByRole('button', { name: '開啟合約製作設定' }).click();
+  await settle(page, 2000);
+  const popupContract = dialog(page);
+  check(G, '浮動帶入：合約製作設定開在帶入視窗上方', (await popupContract.innerText()).includes('合約製作設定 - A1'), (await popupContract.innerText()).slice(0, 80));
+  await popupContract.getByRole('button', { name: '儲存', exact: true }).click();
+  await settle(page, 500);
+  const popupSaved = backend.db.store.get('salesHouseholds/p1_A1').contractDocData;
+  eq(G, '浮動帶入：合約基準含車位', popupSaved?.manualRowsBase, 2100);
+  await popupContract.getByRole('button', { name: '關閉', exact: true }).last().click();
+  await settle(page, 1000);
+  check(G, '浮動帶入：關閉合約製作設定後列出期款', (await importSheet.locator('.pti-row').count()) > 0, '');
+  eq(G, '浮動帶入：基準一致沒有總價不符警示', await importSheet.locator('.mac-callout--warning').count(), 0);
+  eq(G, '浮動帶入：區塊合計含車位', (await importSheet.locator('.pti-section-head').last().innerText()).replace(/\s+/g, ' '), '期款 合計 2,100 萬');
   await dialog(page).getByRole('button', { name: '取消' }).click();
   await settle(page, 300);
   await popup.locator('.mac-sheet-close').click();
   await settle(page, 300);
+  backend.templates = undefined;
 
   // 透視
   await page.locator('.toolbar').getByRole('button', { name: '功能' }).click();
@@ -4699,10 +5256,10 @@ group('T14', async () => {
   await list.close();
 
   const panel = await open({ view: 'panel', unit: 'A1', total: 2100 }, { width: 390 });
-  await panel.page.locator('.pr-actions').getByRole('button', { name: '範本帶入' }).click();
+  await panel.page.locator('.pr-actions').getByRole('button', { name: '帶入合約期款資料' }).click();
   await settle(panel.page, 700);
-  eq(G, '範本帶入標題不再多縮排', await headPadding(panel.page), '16px');
-  await clickDialogButton(panel.page, '取消');
+  eq(G, '帶入合約期款資料標題不再多縮排', await headPadding(panel.page), '16px');
+  await panel.page.locator('.pti .mac-sheet-foot').getByRole('button', { name: '關閉' }).click();
   await settle(panel.page, 300);
   await paidRow(panel.page, '簽約款').locator('.pr-thumb').click();
   await settle(panel.page, 500);
@@ -4828,7 +5385,16 @@ const SCREENS = [
   ['lightbox-image', { view: 'panel', unit: 'A1', total: 2100 }, async (page) => { await paidRow(page, '簽約款').locator('.pr-thumb').click(); await settle(page, 500); }],
   ['lightbox-pdf', { view: 'panel', unit: 'A1', total: 2100 }, async (page) => { await paidRow(page, '開工款').locator('.pr-thumb').click(); await settle(page, 500); }],
   ['panel-editable', { view: 'panel', unit: 'A1', total: 2100, editable: 1 }],
-  ['dlg-template', { view: 'panel', unit: 'A1', total: 2100 }, async (page) => { await page.getByRole('button', { name: '範本帶入' }).click(); await settle(page, 700); }],
+  ['dlg-contract-empty', { view: 'panel', unit: 'A1', total: 2100 }, async (page) => { await page.getByRole('button', { name: '帶入合約期款資料' }).click(); await settle(page, 700); }],
+  ['dlg-contract-import', { view: 'panel', unit: 'A1', total: 2100 }, async (page) => { await page.getByRole('button', { name: '帶入合約期款資料' }).click(); await settle(page, 700); }, {
+    contractDocs: { A1: { manualRows: [
+      contractSingle('i1', '簽約款', 147),
+      contractSingle('i2', '第 4 期工程款', 40),
+      contractSingle('i3', '第 2 期工程款', 30),
+      contractGroup('g1', '工程期款', [['g1a', '開工期款', 139], ['g1b', '結構款', 139], ['g1c', '完工款', 142]]),
+      contractSingle('i9', '銀行貸款', 1500),
+    ] } },
+  }],
   ['settings', { view: 'settings' }, async (page) => { await settle(page, 500); }],
   ['settings-issue', { view: 'settings' }, async (page) => {
     await settle(page, 500);
@@ -4868,12 +5434,6 @@ const SCREENS = [
   }],
   ['batch-2', { view: 'list', role: 'manager' }, async (page) => { await goBatch(page, 2); }],
   ['batch-3', { view: 'list', role: 'manager' }, async (page) => { await goBatch(page, 3); }],
-  ['dlg-template-menu', { view: 'panel', unit: 'A1', total: 2100 }, async (page) => {
-    await page.locator('.pr-actions').getByRole('button', { name: '範本帶入' }).click();
-    await settle(page, 700);
-    await dialog(page).locator('.v-select .v-field').click();
-    await settle(page, 400);
-  }],
   ['modal-tab-payments', { view: 'modal', unit: 'M1', tab: 'payments' }, async (page) => { await page.waitForSelector('.v-dialog.v-overlay--active .pr-summary'); await settle(page, 600); }],
   ['modal-edit-payments', { view: 'modal', unit: 'M1', editing: 1 }, async (page) => {
     await page.waitForSelector('.v-dialog.v-overlay--active');
@@ -4911,10 +5471,6 @@ const SCREENS = [
     await dialog(page).getByRole('button', { name: '確認新增' }).click();
     await settle(page, 600);
   }, { salesSheet: true, sheetSyncError: 'SheetsApiError: quota exceeded '.repeat(12).trim() }],
-  ['template-no-preferred', { view: 'panel', unit: 'PREF', total: 2000, prefOption: 1 }, async (page) => {
-    await page.getByRole('button', { name: '範本帶入' }).click();
-    await settle(page, 700);
-  }, { templates: templateFixtures().filter(t => t.paymentCategory !== '優付期款') }],
   ['modal-parking-retry', { view: 'modal', unit: 'M3', editing: 1 }, async (page) => {
     await page.waitForSelector('.v-dialog.v-overlay--active', { timeout: 60000 });
     await settle(page, 800);
@@ -4934,7 +5490,7 @@ async function goBatch(page, step, onlyUnits = null) {
   await page.getByRole('button', { name: '批次新增' }).click();
   await settle(page, 500);
   const d = dialog(page);
-  await d.locator('input[placeholder="例：第 3 期工程款"]').fill('第 9 期工程款');
+  await fillOtherPeriod(d, '第 9 期工程款');
   await d.locator('input[type=date]').fill('2027-03-01');
   await d.locator('.mac-form-seg-btn', { hasText: '成交總價比例' }).click();
   await settle(page, 80);
