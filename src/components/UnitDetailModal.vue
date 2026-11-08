@@ -1196,7 +1196,6 @@
                 :project-id="projectId"
                 :unit-id="unitData.unitId || ''"
                 :drive-folder-url="unitData.driveFolderUrl || ''"
-                :default-expanded="true"
                 :upload-handler="handleUploadUnitDocument"
                 :rename-handler="handleRenameUnitDocument"
                 :delete-handler="handleDeleteUnitDocument"

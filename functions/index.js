@@ -6927,6 +6927,35 @@ function resolveUnitDocumentType(docType, docTypeLabel) {
   return { docType: key, docTypeLabel: UNIT_DOCUMENT_TYPE_LABELS[key] };
 }
 
+/**
+ * 此戶已有同名（不含副檔名）文件時接續編號：{名稱} → {名稱}-{最大編號+1}。
+ * 名稱已帶 -N 結尾時以去掉編號的部分為基準，例：身分證-2 撞名 → 身分證-4（已有到 -3）。
+ */
+function resolveUniqueUnitDocumentBase(baseName, existingDocs) {
+  const existing = new Set((Array.isArray(existingDocs) ? existingDocs : [])
+    .map(d => {
+      const name = String((d && d.fileName) || '');
+      const ext = getUnitDocumentExt(name);
+      return ext ? name.slice(0, -(ext.length + 1)) : name;
+    })
+    .filter(Boolean));
+  if (!existing.has(baseName)) return baseName;
+  const root = baseName.replace(/-\d{1,3}$/, '') || baseName;
+  const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^${escaped}-(\\d+)$`);
+  let maxSeq = 0;
+  for (const name of existing) {
+    if (name === root) maxSeq = Math.max(maxSeq, 1);
+    else {
+      const m = name.match(pattern);
+      if (m) maxSeq = Math.max(maxSeq, Number(m[1]));
+    }
+  }
+  let seq = maxSeq + 1;
+  while (existing.has(`${root}-${seq}`)) seq += 1;
+  return `${root}-${seq}`;
+}
+
 /** 由 Firestore 戶別文件解析 Drive 資料夾 ID（不接受前端直接傳 folderId） */
 function resolveUnitDriveFolderId(householdData, unitId) {
   const folderUrl = householdData && householdData.driveFolderUrl;
@@ -7112,9 +7141,12 @@ exports.unitDocumentApi = onCall({
     if (!storagePath || typeof storagePath !== 'string' || !storagePath.startsWith(expectedPrefix) || storagePath.includes('..')) {
       throw new HttpsError('invalid-argument', 'storagePath 不合法。');
     }
-    const ext = getUnitDocumentExt(originalName) || getUnitDocumentExt(storagePath);
-    if (ext && UNIT_DOCUMENT_BLOCKED_EXTS.has(ext)) {
-      throw new HttpsError('invalid-argument', `不允許上傳 .${ext} 類型的檔案。`);
+    // 副檔名以實際上傳的暫存檔為準（前端可能已把 HEIC 轉成 JPG）；兩者都要過黑名單
+    const ext = getUnitDocumentExt(storagePath) || getUnitDocumentExt(originalName);
+    for (const e of [ext, getUnitDocumentExt(originalName)]) {
+      if (e && UNIT_DOCUMENT_BLOCKED_EXTS.has(e)) {
+        throw new HttpsError('invalid-argument', `不允許上傳 .${e} 類型的檔案。`);
+      }
     }
 
     // 1. 戶別資料夾
@@ -7143,7 +7175,12 @@ exports.unitDocumentApi = onCall({
     }
     const resolvedMime = (meta.contentType && meta.contentType !== 'application/octet-stream' ? meta.contentType : null)
       || (mimeType && String(mimeType).trim()) || UNIT_DOCUMENT_EXT_MIME[ext] || 'application/octet-stream';
-    const finalFileName = ext ? `${baseName}.${ext}` : baseName;
+    // 同戶已有同名文件 → 接續編號，避免兩人同時上傳或補傳時撞名
+    const uniqueBaseName = resolveUniqueUnitDocumentBase(baseName, householdDoc.data().unitDocuments);
+    if (uniqueBaseName !== baseName) {
+      console.log(`[${functionName}] 檔名 "${baseName}" 已存在，改為 "${uniqueBaseName}"`);
+    }
+    const finalFileName = ext ? `${uniqueBaseName}.${ext}` : uniqueBaseName;
 
     // 3. 串流上傳至 Drive（resumable）
     const driveFile = await uploadStreamToDriveResumable({

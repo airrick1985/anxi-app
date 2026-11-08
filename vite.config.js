@@ -66,7 +66,9 @@ export default defineConfig({
           // 大型第三方套件各自獨立成 vendor chunk：少變動、可長期快取，
           // 且頁面程式改動時不必重新下載整包套件。只有實際 import 的頁面才會載入。
           if (/\/node_modules\/ag-grid-/.test(id)) return 'ag-grid';
-          if (/\/node_modules\/(?:vue-pdf-embed|pdfjs-dist)\//.test(id)) return 'pdfjs';
+          // vue-pdf-embed 內含自己的 pdfjs；上傳文件預覽直接用 pdfjs-dist，兩者分開，避免用到其中一個就下載兩份
+          if (id.includes('/node_modules/vue-pdf-embed/')) return 'pdfjs';
+          if (id.includes('/node_modules/pdfjs-dist/')) return 'pdfjs-dist';
           if (/\/node_modules\/(?:xlsx|xlsx-js-style)\//.test(id)) return 'xlsx';
           if (id.includes('/node_modules/exceljs/')) return 'exceljs';
           if (/\/node_modules\/(?:jspdf|jspdf-autotable)\//.test(id)) return 'jspdf';

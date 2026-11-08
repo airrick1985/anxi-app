@@ -1,8 +1,8 @@
 # SPEC：戶別資訊「上傳文件」至戶別 Drive 資料夾
 
 > 建立日期：2026-09-05
-> 狀態：已實作（2026-09-05，待確認事項全部採建議預設；unitDocumentApi 已部署，Storage rules 與 GCS lifecycle 待人工確認）
-> 相關檔案：`src/components/UnitDetailModal.vue`、`src/views/SalesControlSystem.vue`、`src/api.js`、`functions/index.js`
+> 狀態：已實作（2026-09-05）；2026-11-08 改版：macOS 風格、上傳前縮圖與預覽、批次整理名稱、照片旋轉／壓縮、HEIC 轉 JPG（§10）
+> 相關檔案：`src/components/UnitDetailModal.vue`、`src/components/UnitDocumentsPanel.vue`、`src/components/unitDocuments/*`、`src/utils/unitDocuments.js`、`src/utils/filePreview.js`、`src/views/SalesControlSystem.vue`、`src/api.js`、`functions/index.js`
 > 參考樣板：[SPEC_UnitPaymentRecords.md](./SPEC_UnitPaymentRecords.md)（內嵌陣列 + Panel 元件 + Drive 上傳 API 模式）
 
 ## 1. 目標
@@ -28,9 +28,9 @@
 ### Out of scope
 - 不自動建立戶別 Drive 資料夾；未設定 `driveFolderUrl` 時停用上傳（見 §6）。
 - 不掃描 Drive 資料夾既有檔案回填列表（列表僅顯示經本功能上傳的文件；資料夾內其他檔案仍可由「戶別資料夾」按鈕開啟查看）。
-- 不做檔案內容預覽（點擊一律開 Drive `webViewLink` 新分頁）。
+- 已上傳的文件不做內容預覽（點擊一律開 Drive `webViewLink` 新分頁）；**上傳前**的縮圖與預覽見 §10。
 - 不納入銷控列表欄位／匯出／資料透視（後續可比照繳款紀錄加 `document_count` 計算欄位）。
-- 不做版本控管（同名檔案 Drive 允許並存，不覆蓋、不加流水號）。
+- 不做版本控管；同名時接續編號（§5.2），不覆蓋。
 
 ## 3. 資料模型（Firestore）
 
@@ -92,6 +92,8 @@ export const UNIT_DOCUMENT_TYPES = [
 前端放 `src/utils/unitDocuments.js`（同時提供 `buildUnitDocumentBaseName()` 與 `sanitizeFileNameSegment()`）；後端於 `functions/index.js` 以同名常數定義並用 `key` 驗證。
 
 ## 4. 前端 UI
+
+> 2026-11-08 起 §4.1、§4.2 的介面已由 §10 取代，以下保留原始設計脈絡。
 
 ### 4.1 新元件 `src/components/UnitDocumentsPanel.vue`
 
@@ -232,11 +234,13 @@ exports.unitDocumentApi = onCall({
 - 預設名稱由**前端**產生（使用者可改），後端只做 sanitize 與補副檔名，不重組。
 - sanitize：移除 `\ / : * ? " < > |` 與控制字元／換行，去頭尾空白與句點，最長 80 字；為空時 fallback `{YYYYMMDD}-{戶別}-{docTypeLabel}`。
 - 副檔名：取 `originalName` 最後一個 `.` 之後（小寫，≤ 10 字元）；無副檔名則不補。
-- Drive 允許同名並存，不加流水號（同批次前端已預補 `-2`、`-3`）。
+- 副檔名以**暫存檔路徑**為準（`storagePath` 由前端以最終副檔名組成，HEIC 轉 JPG 後為 `.jpg`），取不到才用 `originalName`；兩者都要過黑名單。
+- 同名保底（2026-11-08）：存到 Drive 前比對此戶 `unitDocuments` 的檔名（不含副檔名），撞名時以去掉結尾 `-N` 的名稱為基準，接續最大編號（`resolveUniqueUnitDocumentBase`）。前端已先依 §10.3 編號，這層防兩人同時上傳。
 
 ### 5.3 Storage 暫存路徑與規則
 
-- 路徑：`unitDocuments/temp/{projectId}/{unitId}/{uploadId}/{safeOriginalName}`。
+- 路徑：`unitDocuments/temp/{projectId}/{unitId}/{uploadId}/{safeOriginalName}`（2026-11-08 起檔名部分為 `{原檔名去副檔名，非英數改 _}.{最終副檔名}`）。
+- 2026-11-08 查核：正式環境 Storage rules 由 Console 管理，目前為全路徑 `allow read, write: if true`（開發測試用），尚未收斂；收斂時需涵蓋下方規則及其他前端直傳路徑。
 - **Storage Security Rules**：需確認現行規則允許已登入用戶對 `unitDocuments/temp/**` 寫入（既有 `unitDetails/**` 備註圖片為前端直傳，可比照）。若規則採白名單，需新增：
 
 ```
@@ -250,6 +254,7 @@ match /unitDocuments/temp/{projectId}/{unitId}/{uploadId}/{fileName} {
 
 - 正常流程 `commit` 完成即刪。
 - 兜底：於 GCS bucket 設定 **Lifecycle rule**：prefix `unitDocuments/temp/`、age 1 天自動刪除（Console 或 `gsutil lifecycle set`，一次性設定）。避免使用者中途關頁面留下孤兒檔。
+- 2026-11-08 查核：`gs://apps-script-api-443402.firebasestorage.app` 已有此規則（Delete，age 1，matchesPrefix `unitDocuments/temp/`）。
 
 ### 5.5 `updateSalesData` 配合
 
@@ -268,7 +273,7 @@ match /unitDocuments/temp/{projectId}/{unitId}/{uploadId}/{fileName} {
 |---|---|
 | Cloud Functions | `FUNCTIONS_DISCOVERY_TIMEOUT=120 firebase deploy --only functions:unitDocumentApi` |
 | Storage Rules | 確認／新增 §5.3 規則後 `firebase deploy --only storage`（若 rules 由 Console 管理則手動更新） |
-| GCS Lifecycle | 一次性設定 `unitDocuments/temp/` 1 天自動刪除（§5.4） |
+| GCS Lifecycle | 一次性設定 `unitDocuments/temp/` 1 天自動刪除（§5.4，已設定） |
 | 前端 | 依 commit-notes 流程更新 CHANGELOG 後 `npm run release:safe` |
 | Firestore 索引 | 不需要（內嵌陣列，無新查詢） |
 
@@ -297,3 +302,50 @@ match /unitDocuments/temp/{projectId}/{unitId}/{uploadId}/{fileName} {
 | 是否獨立權限 | 否，沿用修改銷控 | 若要限制特定人員上傳，需新增 systemFunctions 並同步超管 |
 | 列表是否納入銷控列表／匯出 | 否 | 後續可加 `document_count` 計算欄位與快速選單 badge |
 | 是否掃描 Drive 既有檔案 | 否 | 若需要可加 `action:'sync'` 用 `drive.files.list` 回填 |
+
+## 10. 2026-11-08 改版：macOS 風格與上傳前預覽
+
+### 10.1 元件
+
+| 檔案 | 職責 |
+|---|---|
+| `src/components/UnitDocumentsPanel.vue` | 已上傳文件列表（macOS 分組列表、種類篩選、編輯／刪除視窗）；整個面板也是拖放區，拖入檔案直接開上傳視窗 |
+| `src/components/unitDocuments/UnitDocumentUploadSheet.vue` | 上傳視窗：清單、批次種類、文件日期、拖曳排序、上傳流程 |
+| `src/components/unitDocuments/FilePreviewStage.vue` | 預覽區：圖片／PDF（翻頁）／Word，縮放、旋轉、放大檢視 |
+| `src/components/unitDocuments/UnitDocumentItemEditor.vue` | 單檔名稱與種類編輯（右欄與全螢幕預覽共用） |
+| `src/utils/filePreview.js` | 縮圖、PDF／Word 渲染、HEIC 轉檔、照片旋轉與壓縮 |
+| `src/styles/unitDocuments.css` | 種類標籤色（`tone`：合約書紫、身分證藍、客戶資料卡青、訂單橘、其他灰） |
+
+### 10.2 上傳視窗
+
+- 電腦版（≥ 960px）左右雙欄：左邊清單（勾選、縮圖、名稱、種類、大小、狀態、移除、拖曳把手），右邊預覽與名稱／種類編輯；‹ › 或 ↑↓ 切換檔案。
+- 手機版全螢幕清單，點檔案開全螢幕預覽（左右滑切換），標題列左側留 58px 避開全站漢堡鈕；多一顆「拍照」（`capture="environment"`）。
+- 尚未選檔時先選預設種類，再拖曳／選擇檔案；之後新增的檔案沿用最後套用的種類。
+- 工具列：全選、「設為種類／全部設為」（有勾選套用勾選的，否則全部；「其他」在選單內輸入自訂文字）、移除、文件日期（預設台北今天）、加入檔案。
+- 可拖曳、選擇、⌘V 貼上截圖；同一檔案（名稱＋大小＋修改時間）重複加入會略過；單批 20 個（`UNIT_DOCUMENT_MAX_BATCH`）。
+- 鍵盤：↑↓ 選檔、空白鍵全螢幕預覽（再按或 Esc 關閉）、⌘／Ctrl＋Enter 上傳；名稱欄按 Enter 跳下一個檔案。鍵盤事件在 window capture 階段處理。
+- 有未上傳的檔案時關閉要確認；上傳中不能關閉，離開頁面有 `beforeunload` 提醒。
+- 上傳中縮圖顯示進度環，完成打勾、失敗紅點；失敗的檔案可改名後按「重試 N 個檔案」。
+
+### 10.3 自動命名
+
+- 格式 `{文件日期}-{戶別}-{種類}`，文件日期可整批修改。
+- 依清單順序：同一個名稱本批只有一檔且此戶沒有同名 → 不加編號；否則 `-1、-2、-3`；此戶已有同名（含 `-N`）→ 從最大編號＋1 接續（`computeAutoNames`）。
+- 使用者改過的名稱（`nameTouched`）不再自動變動，名稱欄可按 ↺ 恢復自動名稱；拖曳排序、改種類、改日期後重新編號。
+
+### 10.4 預覽與檔案處理（都在瀏覽器端，套件用到才載入）
+
+| 類型 | 縮圖／預覽 | 上傳前處理 |
+|---|---|---|
+| JPG／PNG／WebP／GIF／BMP | 縮圖 240px；預覽可縮放 | 可旋轉 90°；超過 3MB 的 JPG 一律壓縮為長邊 2400px（品質 0.85），壓縮後反而更大則用原檔 |
+| HEIC／HEIF | 轉 JPG 後同上 | 一律轉 JPG（`heic2any`），轉檔失敗則上傳原檔並提示 |
+| PDF | 第 1 頁縮圖、頁數；預覽可翻頁縮放（`pdfjs-dist` legacy build） | 不動 |
+| Word .docx | 第 1 頁縮圖（`docx-preview`＋`html2canvas`）；預覽完整版面 | 不動 |
+| .doc／Excel／其他 | 檔案圖示 | 不動 |
+
+- 縮圖同時處理 2 個；超過 30MB 的 PDF／Word 不產生縮圖，預覽要按「載入預覽」。
+- 旋轉／壓縮／轉檔會重新編碼，EXIF（含 GPS）一併去除；canvas 像素上限 16M（iOS Safari 限制）。
+- 關閉視窗或移除檔案時釋放 object URL、銷毀 PDF 文件。
+- 上傳的 `mimeType`、`size` 與暫存路徑副檔名都依處理後的檔案；`originalName` 保留原始檔名。
+- 打包：`pdfjs-dist` 獨立 chunk（與 `vue-pdf-embed` 分開）；`heic2any`、`docx-preview`、`html2canvas` 各自延遲載入。
+
