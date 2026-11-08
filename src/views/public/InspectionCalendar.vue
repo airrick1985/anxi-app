@@ -915,25 +915,26 @@
       {{ snackbarText }}
     </v-snackbar>
 
-    <!-- 手機 PNG 預覽（瀏覽器不支援系統分享時的儲存方式） -->
-    <v-dialog :model-value="isPngPreviewVisible" @update:model-value="closePngPreview" max-width="560px" scrollable>
+    <!-- PNG 預覽：確認畫面後才下載（手機不支援分享時可長按圖片儲存） -->
+    <v-dialog :model-value="isPngPreviewVisible" @update:model-value="v => { if (!v) closePngPreview(); }"
+      max-width="1100px" :fullscreen="xs" scrollable>
       <v-card>
-        <v-card-title class="d-flex align-center bg-primary text-white py-3">
-          <v-icon start>mdi-image-area</v-icon>
-          <span class="text-subtitle-1">預約時間表圖片</span>
+        <v-card-title class="d-flex align-center bg-blue-grey-lighten-5 py-2" v-draggable-dialog>
+          <v-icon start>mdi-image-search-outline</v-icon>
+          <span class="text-subtitle-1 font-weight-bold">預覽</span>
           <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" variant="text" color="white" size="small" @click="closePngPreview"></v-btn>
+          <v-btn icon="mdi-close" variant="text" size="small" @click="closePngPreview"></v-btn>
         </v-card-title>
-        <v-card-text class="pa-3">
-          <v-alert type="info" variant="tonal" density="compact" class="mb-3">
-            <strong>長按下方圖片</strong>，選擇「儲存圖片 / 加入相簿」即可存到手機。
-          </v-alert>
-          <img :src="pngPreviewUrl" alt="預約時間表" style="width: 100%; border: 1px solid #e0e0e0; border-radius: 4px;" />
+        <v-divider></v-divider>
+        <v-card-text class="png-preview-body pa-3">
+          <img :src="pngPreviewUrl" alt="預覽" class="png-preview-img" />
         </v-card-text>
-        <v-card-actions class="pa-3 pt-0">
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-share-variant" @click="sharePngFromPreview">分享 / 儲存</v-btn>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-3 bg-grey-lighten-4">
+          <span v-if="isMobileLike()" class="text-caption text-medium-emphasis">可長按圖片儲存</span>
           <v-spacer></v-spacer>
-          <v-btn variant="text" @click="closePngPreview">關閉</v-btn>
+          <v-btn color="grey-darken-1" variant="text" @click="closePngPreview">返回</v-btn>
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-tray-arrow-down" @click="downloadPngFromPreview">下載</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1719,10 +1720,10 @@
         <v-card-actions class="pa-3 bg-grey-lighten-4">
           <v-spacer></v-spacer>
           <v-btn color="grey-darken-1" variant="text" :disabled="isDownloadingPdf" @click="isDatePngDialogVisible = false">取消</v-btn>
-          <v-btn color="primary" variant="flat" prepend-icon="mdi-tray-arrow-down"
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-image-search-outline"
             :disabled="!datePngRange.start || !datePngRange.end || datePngRange.start > datePngRange.end || isListExportFetching"
             :loading="isDownloadingPdf"
-            @click="handleDatePngDownload">下載PNG</v-btn>
+            @click="handleDatePngPreview">預覽</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -2014,9 +2015,9 @@ import { functions } from '@/firebase';
 import { useDisplay } from 'vuetify';
 import { format, startOfWeek, endOfWeek, addDays, isToday, isSaturday, isSunday, eachDayOfInterval, parseISO, startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-// ✅ [效能] html2canvas（PNG 下載）與 xlsx-js-style（EXCEL 下載，1.3MB）只在使用者按下載時才動態載入；
-// jspdf 原本引入但未使用，一併移除。時間表首載 JS 少約 2MB。
-const loadHtml2canvas = () => import('html2canvas').then(m => m.default);
+// ✅ [效能] xlsx-js-style（EXCEL 下載，1.3MB）只在使用者按下載時才動態載入；
+// PNG 由 utils/htmlToPng 以瀏覽器原生排版產生（html2canvas 僅作備援、同樣動態載入）。
+import { renderHtmlToPngBlob } from '@/utils/htmlToPng';
 const loadXLSX = () => import('xlsx-js-style');
 import { useClipboard } from '@vueuse/core';
 import { vDraggableDialog } from '@/directives/vDraggableDialog';
@@ -4487,11 +4488,13 @@ const getVisibleFields = (fields, isAdding = false) => {
     // ...
 };
 
-// --- 下載輔助（手機支援系統分享 / 長按儲存） ---
+// --- 下載輔助（PNG 先預覽再下載；手機支援系統分享 / 長按儲存） ---
+const PNG_PAGE_WIDTH = 1123;
 const isPngPreviewVisible = ref(false);
 const pngPreviewUrl = ref('');
 const pngPreviewBlob = ref(null);
 const pngPreviewFileName = ref('');
+const pngPreviewSource = ref(''); // 'date'：由「下載日期PNG」開啟，下載完一併關閉選日期的對話框
 
 function isMobileLike() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 600;
@@ -4542,23 +4545,46 @@ function triggerLinkDownload(url, fileName) {
 
 function closePngPreview() {
   isPngPreviewVisible.value = false;
-  if (pngPreviewUrl.value) {
-    URL.revokeObjectURL(pngPreviewUrl.value);
-    pngPreviewUrl.value = '';
-  }
+  const url = pngPreviewUrl.value;
+  // 延後釋放：剛觸發的下載可能還在讀這個網址
+  if (url) setTimeout(() => URL.revokeObjectURL(url), 10000);
+  pngPreviewUrl.value = '';
   pngPreviewBlob.value = null;
+  pngPreviewSource.value = '';
 }
 
-async function sharePngFromPreview() {
-  if (!pngPreviewBlob.value) return;
-  const ok = await shareFileViaSystem(pngPreviewBlob.value, pngPreviewFileName.value, 'image/png');
-  if (!ok) showSnackbar('此瀏覽器不支援分享，請直接長按圖片儲存', 'info');
+// 開啟 PNG 預覽（確認畫面後才下載／分享）
+function openPngPreview(blob, fileName, source = '') {
+  if (pngPreviewUrl.value) URL.revokeObjectURL(pngPreviewUrl.value);
+  pngPreviewBlob.value = blob;
+  pngPreviewFileName.value = fileName;
+  pngPreviewSource.value = source;
+  pngPreviewUrl.value = URL.createObjectURL(blob);
+  isPngPreviewVisible.value = true;
 }
 
-// rangeStart / rangeEnd 未指定時，使用時間表目前檢視範圍（「下載日期PNG」對話框會傳入自選區間）
-async function handleDownloadPng(rangeStart, rangeEnd) {
- isDownloadingPdf.value = true;
+// 預覽確認後下載：手機優先叫出系統分享面板（存相簿／傳 LINE），桌機直接下載
+async function downloadPngFromPreview() {
+  const blob = pngPreviewBlob.value;
+  if (!blob) return;
+  const fileName = pngPreviewFileName.value;
+  if (isMobileLike()) {
+    const shared = await shareFileViaSystem(blob, fileName, 'image/png');
+    if (!shared) {
+      // 不支援分享（如 LINE 內建瀏覽器）：嘗試直接下載，並保留預覽讓使用者長按儲存
+      triggerLinkDownload(pngPreviewUrl.value, fileName);
+      showSnackbar('若沒有開始下載，請長按圖片儲存', 'info');
+      return;
+    }
+  } else {
+    triggerLinkDownload(pngPreviewUrl.value, fileName);
+  }
+  if (pngPreviewSource.value === 'date') isDatePngDialogVisible.value = false;
+  closePngPreview();
+}
 
+// 產生日期區間的時間表 PNG，回傳 { blob, fileName }（由預覽視窗確認後才下載）
+async function buildSchedulePng(start, end) {
  const chunkArray = (array, size) => {
   const chunkedArr = [];
   for (let i = 0; i < array.length; i += size) {
@@ -4566,10 +4592,6 @@ async function handleDownloadPng(rangeStart, rangeEnd) {
   }
   return chunkedArr;
  };
-
- try {
-  const start = rangeStart instanceof Date ? rangeStart : startDate.value;
-  const end = rangeEnd instanceof Date ? rangeEnd : endDate.value;
 
   if (!start || !end) {
    throw new Error("請先選擇有效的開始與結束日期。");
@@ -4598,11 +4620,9 @@ async function handleDownloadPng(rangeStart, rangeEnd) {
     groupedEventsInRange[dateKey][timeKey].push(event);
   });
 
+  // 只用來組 HTML（全部 inline style），交給 renderHtmlToPngBlob 以瀏覽器原生排版轉圖
   const tempContainer = document.createElement('div');
-  Object.assign(tempContainer.style, {
-    position: 'absolute', left: '-9999px', width: '1123px',
-    padding: '20px', backgroundColor: 'white'
-  });
+  Object.assign(tempContainer.style, { padding: '20px', backgroundColor: 'white' });
 
   const dateStampElement = document.createElement('div');
   dateStampElement.textContent = `${getTaiwanTimestampStamp()} 更新`;
@@ -4616,7 +4636,7 @@ async function handleDownloadPng(rangeStart, rangeEnd) {
     const lastDate = chunk[chunk.length - 1];
     const titleElement = document.createElement('h3');
     Object.assign(titleElement.style, {
-      fontSize: '1.25rem', marginBottom: '1rem', marginTop: '2rem'
+      fontSize: '20px', marginBottom: '16px', marginTop: '32px'
     });
     titleElement.textContent = `${projectName.value} - 預約時間表: ${format(firstDate, 'yyyy/MM/dd')} - ${format(lastDate, 'yyyy/MM/dd')}`;
     tempContainer.appendChild(titleElement);
@@ -4772,42 +4792,9 @@ async function handleDownloadPng(rangeStart, rangeEnd) {
     tempContainer.appendChild(table);
   });
 
-  document.body.appendChild(tempContainer);
-
-  await new Promise(resolve => setTimeout(resolve, 100));
-
-  const html2canvas = await loadHtml2canvas();
-  const canvas = await html2canvas(tempContainer, { scale: 2, useCORS: true });
-
-  document.body.removeChild(tempContainer);
-
+  const blob = await renderHtmlToPngBlob(tempContainer.outerHTML, { width: PNG_PAGE_WIDTH });
   const fileName = `${projectName.value}_驗屋預約表_${format(start, 'yyyyMMdd')}-${format(end, 'yyyyMMdd')}.png`;
-  const blob = await new Promise((resolve, reject) =>
-    canvas.toBlob(b => (b ? resolve(b) : reject(new Error('圖片轉檔失敗'))), 'image/png')
-  );
-
-  if (isMobileLike()) {
-    // 手機：優先叫出系統分享面板（可儲存到相簿/檔案或分享到 LINE）
-    const shared = await shareFileViaSystem(blob, fileName, 'image/png');
-    if (!shared) {
-      // 不支援分享（如 LINE 內建瀏覽器）→ 顯示預覽，長按圖片即可儲存
-      pngPreviewBlob.value = blob;
-      pngPreviewFileName.value = fileName;
-      pngPreviewUrl.value = URL.createObjectURL(blob);
-      isPngPreviewVisible.value = true;
-    }
-  } else {
-    const url = URL.createObjectURL(blob);
-    triggerLinkDownload(url, fileName);
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-  }
-
- } catch (err) {
-  console.error("圖片產生失敗:", err);
-  error.value = `產生圖片失敗: ${err.message}`;
- } finally {
-  isDownloadingPdf.value = false;
- }
+  return { blob, fileName };
 }
 
 // ── 下載日期PNG：選擇日期區間後下載時間表圖檔 ──
@@ -4842,12 +4829,21 @@ const datePngCount = computed(() => {
   }).length;
 });
 
-async function handleDatePngDownload() {
+// 產生圖片後先開預覽，確認無誤再由預覽視窗下載
+async function handleDatePngPreview() {
   if (!datePngRange.start || !datePngRange.end || datePngRange.start > datePngRange.end) return;
   const start = parseISO(`${datePngRange.start}T00:00:00`);
   const end = parseISO(`${datePngRange.end}T00:00:00`);
-  await handleDownloadPng(start, end);
-  isDatePngDialogVisible.value = false;
+  isDownloadingPdf.value = true;
+  try {
+    const { blob, fileName } = await buildSchedulePng(start, end);
+    openPngPreview(blob, fileName, 'date');
+  } catch (err) {
+    console.error('圖片產生失敗:', err);
+    error.value = `產生圖片失敗: ${err.message}`;
+  } finally {
+    isDownloadingPdf.value = false;
+  }
 }
 
 // ── 下載人員行程表(PNG)：對話框勾選人員後下載，每人一張或合併一張 ──
@@ -4992,23 +4988,10 @@ function buildPersonPngBlockHTML(person, events, groupKey) {
 
 // 將 HTML 內容渲染成 PNG blob（頂部加紅字更新時間戳記）
 async function renderPersonPngBlob(innerHTML) {
-  const tempContainer = document.createElement('div');
-  Object.assign(tempContainer.style, {
-    position: 'absolute', left: '-9999px', width: '1123px',
-    padding: '20px', backgroundColor: 'white',
-  });
-  tempContainer.innerHTML = `<div style="font-size:3em;font-weight:bold;color:red;margin-bottom:8px;">${escapePngHtml(getTaiwanTimestampStamp())} 更新</div>` + innerHTML;
-  document.body.appendChild(tempContainer);
-  try {
-    await new Promise(resolve => setTimeout(resolve, 100));
-    const html2canvas = await loadHtml2canvas();
-    const canvas = await html2canvas(tempContainer, { scale: 2, useCORS: true });
-    return await new Promise((resolve, reject) =>
-      canvas.toBlob(b => (b ? resolve(b) : reject(new Error('圖片轉檔失敗'))), 'image/png')
-    );
-  } finally {
-    document.body.removeChild(tempContainer);
-  }
+  const html = `<div style="padding:20px;background:#fff;">`
+    + `<div style="font-size:3em;font-weight:bold;color:red;margin-bottom:8px;">${escapePngHtml(getTaiwanTimestampStamp())} 更新</div>`
+    + `${innerHTML}</div>`;
+  return renderHtmlToPngBlob(html, { width: PNG_PAGE_WIDTH });
 }
 
 // 已勾選的人員清單 [{ groupKey, person, events }]（依驗屋→銷售、各組原本排序）
@@ -5057,10 +5040,7 @@ async function handleDownloadPersonPngSeparate() {
       }
       // 不支援多檔分享：單張退回既有預覽（長按儲存），多張改逐張下載
       if (files.length === 1) {
-        pngPreviewBlob.value = files[0].blob;
-        pngPreviewFileName.value = files[0].fileName;
-        pngPreviewUrl.value = URL.createObjectURL(files[0].blob);
-        isPngPreviewVisible.value = true;
+        openPngPreview(files[0].blob, files[0].fileName);
         return;
       }
     }
@@ -5108,10 +5088,7 @@ async function handleDownloadPersonPngCombined() {
       // 手機：優先叫出系統分享面板（可儲存到相簿/檔案或分享到 LINE）
       const shared = await shareFileViaSystem(blob, fileName, 'image/png');
       if (!shared) {
-        pngPreviewBlob.value = blob;
-        pngPreviewFileName.value = fileName;
-        pngPreviewUrl.value = URL.createObjectURL(blob);
-        isPngPreviewVisible.value = true;
+        openPngPreview(blob, fileName);
         return;
       }
     } else {
@@ -5948,6 +5925,17 @@ function navigateToHouseholdGrid() {
   font-size: 0.95rem;
   width: 100%;
   color: #333;
+}
+/* PNG 預覽：灰底襯出圖片邊界，圖片依寬度縮放、可上下捲動 */
+.png-preview-body {
+  background: #eceff1;
+}
+.png-preview-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 .date-png-input:focus {
   outline: 2px solid #1976D2;

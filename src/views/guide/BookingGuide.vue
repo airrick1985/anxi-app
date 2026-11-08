@@ -589,7 +589,7 @@
           <div class="g-table-wrap">
             <table class="g-table">
               <tbody>
-                <tr><td class="g-nowrap">下載日期PNG</td><td>指定日期區間的時間表圖片</td></tr>
+                <tr><td class="g-nowrap">下載日期PNG</td><td>指定日期區間的時間表圖片，先預覽確認再下載</td></tr>
                 <tr><td class="g-nowrap">下載人員行程表 (PNG)</td><td>依驗屋或銷售人員，合併一張或每人一張</td></tr>
                 <tr><td class="g-nowrap">下載 (Excel)</td><td>行事曆格式</td></tr>
                 <tr><td class="g-nowrap">下載EXCEL(列表)</td><td>自選欄位與排序的清單</td></tr>
