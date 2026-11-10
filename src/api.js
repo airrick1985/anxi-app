@@ -4484,6 +4484,22 @@ export async function saveFieldDefinition(definitionData) {
 }
 
 /**
+ * 自訂欄位管理（新增／修改／刪除／排序），對應 Cloud Function manageFieldDefinition
+ * @param {object} payload { action: 'create'|'update'|'delete'|'reorder', projectId, collectionName, ... }
+ * @returns {Promise<object>} 成功回傳 Cloud Function 結果；失敗丟出 Error（訊息為中文）
+ */
+export async function manageFieldDefinition(payload) {
+  const fn = httpsCallable(functions, 'manageFieldDefinition');
+  try {
+    const result = await fn(payload);
+    return result.data;
+  } catch (error) {
+    console.error('自訂欄位操作失敗:', error);
+    throw new Error(error?.message || '操作失敗，請重試。');
+  }
+}
+
+/**
  * [Firestore 版] 根據建案 ID 獲取所有戶別資料，用於 AG Grid
  * @param {string} projectId 
  * @returns {Promise<Array>} 返回戶別資料陣列

@@ -5834,6 +5834,144 @@ exports.saveFieldDefinition = onCall(async (request) => {
   }
 });
 
+/**
+ * 自訂欄位管理（戶別資料總表）：create／update／delete／reorder
+ * - fieldName 為顯示名稱（可改名）；fieldKey 為各戶資料的 key，建立後固定（舊定義沒有 fieldKey 時 = fieldName）
+ * - fieldType：checkbox | text | select | number | percent；number／percent 另有 decimals（0–4），number 有 unit
+ * - 刪除只移除定義，各戶資料保留
+ */
+exports.manageFieldDefinition = onCall(async (request) => {
+  const { action, projectId } = request.data || {};
+  const collectionName = request.data?.collectionName || "households";
+  if (!projectId || !action) {
+    throw new HttpsError("invalid-argument", "缺少 projectId 或 action。");
+  }
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const col = db.collection("projectFieldDefinitions");
+  const VALID_TYPES = ["checkbox", "text", "select", "number", "percent"];
+  const keyOf = (d) => d.fieldKey || d.fieldName;
+
+  const loadDefs = async () => {
+    const snap = await col.where("projectId", "==", projectId).where("collectionName", "==", collectionName).get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  };
+
+  const sanitizeField = (raw) => {
+    const fieldName = String(raw?.fieldName || "").trim().slice(0, 40);
+    if (!fieldName) throw new HttpsError("invalid-argument", "欄位名稱不可空白。");
+    const fieldType = VALID_TYPES.includes(raw?.fieldType) ? raw.fieldType : "text";
+    const out = { fieldName, fieldType, options: [], decimals: 0, unit: "" };
+    if (fieldType === "select") {
+      const seen = new Set();
+      for (const o of Array.isArray(raw?.options) ? raw.options : []) {
+        const s = String(o ?? "").trim();
+        if (s && !seen.has(s)) { seen.add(s); out.options.push(s); }
+      }
+      if (out.options.length === 0) throw new HttpsError("invalid-argument", `下拉欄位 [${fieldName}] 至少要有一個選項。`);
+    }
+    if (fieldType === "number" || fieldType === "percent") {
+      const d = Math.round(Number(raw?.decimals));
+      out.decimals = Number.isFinite(d) ? Math.min(Math.max(d, 0), 4) : 0;
+    }
+    if (fieldType === "number") out.unit = String(raw?.unit || "").trim().slice(0, 10);
+    return out;
+  };
+
+  const sanitizeKey = (k) => {
+    let s = String(k || "").trim().replace(/[.\/\[\]*~`$#]/g, "_");
+    if (!s) s = "field";
+    if (/^__.*__$/.test(s)) s = `f${s}`;
+    return s;
+  };
+
+  const getOwnDef = async (id) => {
+    if (!id) throw new HttpsError("invalid-argument", "缺少欄位 ID。");
+    const ref = col.doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "找不到這個欄位，可能已被刪除。");
+    const data = snap.data();
+    if (data.projectId !== projectId || data.collectionName !== collectionName) {
+      throw new HttpsError("permission-denied", "欄位不屬於此建案。");
+    }
+    return { ref, data };
+  };
+
+  try {
+    if (action === "create") {
+      const fields = Array.isArray(request.data.fields) ? request.data.fields : [];
+      if (fields.length === 0) throw new HttpsError("invalid-argument", "沒有要新增的欄位。");
+      const defs = await loadDefs();
+      const names = new Set(defs.map((d) => d.fieldName));
+      const keys = new Set(defs.map(keyOf));
+      let order = defs.reduce((m, d) => Math.max(m, Number(d.order) || 0), 99);
+      const batch = db.batch();
+      const created = [];
+      for (const raw of fields) {
+        const f = sanitizeField(raw);
+        if (names.has(f.fieldName)) throw new HttpsError("already-exists", `欄位名稱 [${f.fieldName}] 已存在。`);
+        const base = sanitizeKey(raw?.fieldKey || f.fieldName);
+        let fieldKey = base;
+        for (let i = 2; keys.has(fieldKey); i++) fieldKey = `${base}_${i}`;
+        names.add(f.fieldName);
+        keys.add(fieldKey);
+        const docId = `${projectId}_${collectionName}_${fieldKey}`;
+        order += 1;
+        batch.set(col.doc(docId), {
+          projectId,
+          collectionName,
+          ...f,
+          fieldKey,
+          order,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        created.push({ id: docId, fieldKey, fieldName: f.fieldName });
+      }
+      await batch.commit();
+      return { status: "success", created };
+    }
+
+    if (action === "update") {
+      const { ref, data } = await getOwnDef(request.data.id);
+      const f = sanitizeField(request.data.field);
+      if (f.fieldName !== data.fieldName) {
+        const defs = await loadDefs();
+        if (defs.some((d) => d.id !== ref.id && d.fieldName === f.fieldName)) {
+          throw new HttpsError("already-exists", `欄位名稱 [${f.fieldName}] 已存在。`);
+        }
+      }
+      await ref.update({
+        ...f,
+        fieldKey: keyOf(data), // 改名不搬資料：key 固定為原本的 key
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return { status: "success" };
+    }
+
+    if (action === "delete") {
+      const { ref } = await getOwnDef(request.data.id);
+      await ref.delete();
+      return { status: "success" };
+    }
+
+    if (action === "reorder") {
+      const ids = Array.isArray(request.data.ids) ? request.data.ids.map(String) : [];
+      const defs = await loadDefs();
+      const own = new Set(defs.map((d) => d.id));
+      const batch = db.batch();
+      ids.filter((id) => own.has(id)).forEach((id, i) => batch.update(col.doc(id), { order: 100 + i }));
+      await batch.commit();
+      return { status: "success" };
+    }
+
+    throw new HttpsError("invalid-argument", `不支援的操作：${action}`);
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error(`[manageFieldDefinition] ${action} 失敗 (project ${projectId}):`, error);
+    throw new HttpsError("internal", `寫入資料庫時發生錯誤：${error.message}`);
+  }
+});
+
 
 
 

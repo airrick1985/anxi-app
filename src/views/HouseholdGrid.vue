@@ -34,7 +34,7 @@
   </div>
   <div class="hg-actions">
     <template v-if="activeSheet === 'grid'">
-      <button type="button" class="mac-icon-btn" title="新增資料欄位" aria-label="新增資料欄位" @click="openFieldDefinitionDialog">
+      <button type="button" class="mac-icon-btn" title="自訂欄位" aria-label="自訂欄位" @click="openFieldDefinitionDialog">
         <v-icon size="20">mdi-table-column-plus-after</v-icon>
       </button>
       <button type="button" class="mac-icon-btn" title="下載戶別資料" aria-label="下載戶別資料" @click="exportToExcel">
@@ -193,66 +193,17 @@
    </v-card>
  </v-dialog>
 
- <v-dialog v-model="fieldDialog.show" max-width="500px" persistent>
-   <v-card>
-          <v-form ref="fieldForm" @submit.prevent="handleSaveFieldDefinition">
-       <v-card-title class="bg-blue-darken-2">
-         <span class="text-h5">新增自訂欄位</span>
-       </v-card-title>
-       <v-card-text class="pt-4">
-         <v-text-field
-           v-model="fieldDialog.data.fieldName"
-           label="欄位顯示名稱"
-           :rules="[v => !!v || '此為必填欄位']"
-           required
-           variant="outlined"
-           density="compact"
-         ></v-text-field>
-
-         <v-select
-           v-model="fieldDialog.data.fieldType"
-           :items="fieldDialogItems"
-           label="欄位格式"
-           item-title="title"
-           item-value="value"
-           :rules="[v => !!v || '請選擇一種格式']"
-           required
-           variant="outlined"
-           density="compact"
-         ></v-select>
-
-         <v-combobox
-           v-if="fieldDialog.data.fieldType === 'select'"
-           v-model="fieldDialog.data.options"
-           label="請輸入下拉選單的選項 (按 Enter 新增)"
-           multiple
-           chips
-           variant="outlined"
-           density="compact"
-                      :rules="[v => (v && v.length > 0) || '請至少輸入一個選項']"
-           required
-         ></v-combobox>
-
-         <v-alert v-if="fieldDialog.error" type="error" variant="tonal" density="compact" class="mt-2">
-           {{ fieldDialog.error }}
-         </v-alert>
-
-       </v-card-text>
-       <v-card-actions>
-         <v-spacer></v-spacer>
-         <v-btn color="grey" variant="text" @click="fieldDialog.show = false">取消</v-btn>
-         <v-btn
-           type="submit"
-           color="blue"
-           variant="flat"
-           :loading="fieldDialog.loading"
-         >
-           儲存
-         </v-btn>
-       </v-card-actions>
-     </v-form>
-   </v-card>
- </v-dialog>
+ <!-- 自訂欄位管理（新增／修改／刪除／排序／匯入資料） -->
+ <CustomFieldManager
+   v-if="customFieldManagerMounted"
+   v-model="isCustomFieldManagerOpen"
+   :project-id="projectId"
+   :defs="customFieldDefs"
+   :households="rowData"
+   :reserved-names="reservedFieldInfo.names"
+   :reserved-keys="reservedFieldInfo.keys"
+   @notify="showCustomFieldNotice"
+ />
 
 
  <!-- Customer Message View Dialog -->
@@ -352,22 +303,6 @@
           </button>
        </div>
     </v-card>
- </v-dialog>
-
-  <v-dialog v-model="isConfirmingSave" width="auto" persistent>
-   <v-card>
-     <v-card-title class="text-h5">
-       ⚠️ 請注意
-     </v-card-title>
-     <v-card-text>
-       新增欄位後不可刪除或修改欄位名稱，確定要繼續嗎？
-     </v-card-text>
-     <v-card-actions>
-       <v-spacer></v-spacer>
-       <v-btn color="grey-darken-1" variant="text" @click="isConfirmingSave = false">取消</v-btn>
-       <v-btn color="warning" variant="flat" @click="confirmAndSave">確認新增</v-btn>
-     </v-card-actions>
-   </v-card>
  </v-dialog>
 
 
@@ -1068,7 +1003,7 @@ import { ref, onMounted, onUnmounted, computed, reactive, watch, defineAsyncComp
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user';
-import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, saveFieldDefinition, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments, cancelAppointment, updateAppointment } from '@/api';
+import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments, cancelAppointment, updateAppointment } from '@/api';
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
 import BookingGuideButton from '@/components/BookingGuideButton.vue';
 import SwitchHeaderRenderer from '@/components/household/SwitchHeaderRenderer.vue';
@@ -1095,6 +1030,8 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { Timestamp } from 'firebase/firestore';
 import { AREA_FIELDS, isAreaNumberField, toNumber as toAreaNumber, fmtFixed, fmtMoney } from '@/utils/areaSettlement';
 import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue';
+import CustomFieldManager from '@/components/household/CustomFieldManager.vue';
+import { buildCustomFieldColDef, customFieldKey, isNumericFieldType, excelNumberFormat, parseNumberInput, coerceCellForField } from '@/utils/customFields';
 // 交屋控管表：切換到該分頁才載入
 const HandoverControlBoard = defineAsyncComponent(() => import('@/components/household/HandoverControlBoard.vue'));
 // 面積找補：切換到該分頁才載入
@@ -1279,27 +1216,9 @@ const executeMarkDownloaded = async () => {
 const projectConfig = ref(null); // [新增] 用於查找客戶回傳功能的設定
 const customFieldDefs = ref([]);
 const hasFieldsLoaded = ref(false);
-const fieldDialog = reactive({
-  show: false,
-  loading: false,
-  error: '',
-  data: {
-    fieldName: '',
-    fieldType: 'checkbox',
-    options: []
-  }
-});
-
-// 1. 新增一個靜態陣列來定義選項，取代 fieldTypeLabels
-const fieldDialogItems = [
-  { value: 'checkbox', title: '核取/開關' },
-  { value: 'text', title: '純文字' },
-  { value: 'select', title: '下拉選單' },
-];
-
-// 用於表單驗證與確認對話框
-const fieldForm = ref(null);
-const isConfirmingSave = ref(false);
+// 自訂欄位管理視窗（第一次開啟才建立）
+const isCustomFieldManagerOpen = ref(false);
+const customFieldManagerMounted = ref(false);
 
 // --- 處理預約資料的函數 ---
 /**
@@ -2629,36 +2548,11 @@ const baseColDefs = computed(() => {
 
 // 2. 根據從 Firestore 獲取的自訂欄位定義，動態生成 AG-Grid 欄位
 const dynamicColDefs = computed(() => {
-  const _customFieldCols = customFieldDefs.value.map(def => {
-    const colDef = {
-      headerName: def.fieldName,
-      field: def.fieldName, // 直接使用中文欄位名作為 field key
-      editable: true,
-      valueGetter: params => { // 「延遲更新」策略核心
-        if (params.data && params.data.hasOwnProperty(def.fieldName)) {
-          return params.data[def.fieldName];
-        }
-        return def.fieldType === 'checkbox' ? false : ""; // 提供預設值
-      }
-    };
-
-    switch (def.fieldType) {
-      case 'checkbox':
-        colDef.cellRenderer = SwitchRenderer;
-        break;
-      case 'select':
-        colDef.cellEditor = 'agSelectCellEditor';
-        colDef.cellEditorParams = {
-          values: def.options || [],
-        };
-        break;
-      case 'text':
-      default:
-        // 使用預設的文字編輯器
-        break;
-    }
-    return colDef;
-  });
+  // 自訂欄位：資料 key 用 fieldKey（舊欄位＝fieldName），數字／％ 依格式顯示並解析輸入
+  const _customFieldCols = customFieldDefs.value.map(def => buildCustomFieldColDef(def, {
+    switchRenderer: SwitchRenderer,
+    onInvalidInput: onInvalidCustomNumber,
+  }));
 
   // [新增] 根據專案設定中的預約項目，動態產生對應的自訂批次欄位
   const _customBatchCols = [];
@@ -2944,6 +2838,24 @@ const exportToExcel = () => {
     }
   }
 
+  // 5-2. 自訂數字／％ 欄：寫成真數字（可加總），顯示千分位、小數、單位或 %
+  customFieldDefs.value.forEach(def => {
+    if (!isNumericFieldType(def.fieldType)) return;
+    const C = exportFields.indexOf(customFieldKey(def));
+    if (C === -1) return;
+    const numFmt = excelNumberFormat(def);
+    for (let R = 2; R <= range.e.r; ++R) {
+      const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+      if (!cell || cell.v === null || cell.v === undefined || cell.v === '') continue;
+      const r = parseNumberInput(cell.v);
+      if (!r.ok) continue; // 讀不出數字的舊資料照原文
+      cell.t = 'n';
+      cell.v = r.value;
+      cell.z = numFmt;
+      cell.s = { ...(cell.s || {}), numFmt };
+    }
+  });
+
   // 6. 產生並下載檔案
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '戶別資料總表');
@@ -3019,6 +2931,16 @@ const handleFileChange = () => {
       const dataRows = dataAsArrays.slice(1);
       const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
 
+      // 自訂開關／數字／％ 欄：依格式轉換；％ 需要 Excel 顯示文字判斷是 5 還是 0.05
+      const typedCustomDefs = new Map(customFieldDefs.value
+        .filter(d => d.fieldType === 'checkbox' || isNumericFieldType(d.fieldType))
+        .map(d => [customFieldKey(d), d]));
+      const formattedArrays = typedCustomDefs.size
+        ? XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1, raw: false })
+        : [];
+      const formattedByRow = new Map(dataRows.map((row, i) => [row, formattedArrays[i + 1] || []]));
+      let invalidCustomCells = 0;
+
       const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
         const newRow = {};
         uploadedHeaders.forEach((header, index) => {
@@ -3056,6 +2978,14 @@ const handleFileChange = () => {
               }
             }
 
+            const customDef = typedCustomDefs.get(key);
+            if (customDef) {
+              const r = coerceCellForField(customDef, { v: val, w: formattedByRow.get(rowArray)?.[index] });
+              if (r.empty) val = null;
+              else if (r.ok) val = r.value;
+              else { invalidCustomCells++; return; } // 讀不出數字：這格不更新
+            }
+
             if (key === '_docId' && (val === null || val === undefined || val === '')) {
                  newRow[key] = null;
             } else if (key.includes('.')) {
@@ -3087,6 +3017,7 @@ const handleFileChange = () => {
       const newRowCount = jsonDataWithEnglishKeys.filter(r => !r._docId).length;
       if (newRowCount > 0) msgLines.push(`其中 ${newRowCount} 筆為「新增」戶別（無文件ID）。`);
       if (ignoredHeaders.length > 0) msgLines.push(`已忽略唯讀或無法辨識的欄位：${ignoredHeaders.join('、')}`);
+      if (invalidCustomCells > 0) msgLines.push(`自訂欄位有 ${invalidCustomCells} 格格式不符，這些格子不更新。`);
       uploadMessage.value = msgLines.join('\n');
     } catch (err) {
       uploadMessageType.value = 'error';
@@ -3128,55 +3059,40 @@ const uploadData = async () => {
   }
 };
 
-// 「動態欄位」相關方法 ---
+// 「自訂欄位」管理 ---
 const openFieldDefinitionDialog = () => {
-  // 重置對話框狀態
-  fieldDialog.data.fieldName = '';
-  fieldDialog.data.fieldType = 'checkbox';
-  fieldDialog.data.options = [];
-  fieldDialog.error = '';
-  fieldDialog.loading = false;
-  fieldDialog.show = true;
+  customFieldManagerMounted.value = true;
+  isCustomFieldManagerOpen.value = true;
 };
 
-const handleSaveFieldDefinition = async () => {
-  if (!fieldForm.value) return;
-
-  const { valid } = await fieldForm.value.validate();
-  if (valid) {
-    // 表單驗證通過後，開啟確認對話框
-    isConfirmingSave.value = true;
-  }
+const showCustomFieldNotice = (text, color = 'success') => {
+  snackbar.text = text;
+  snackbar.color = color;
+  snackbar.show = true;
 };
 
- // 3. 新增一個函式，用於處理使用者確認後真正的儲存邏輯
-const confirmAndSave = async () => {
-  isConfirmingSave.value = false; // 先關閉確認框
-  fieldDialog.loading = true;
-  fieldDialog.error = '';
-  
-  try {
-    const payload = {
-      ...fieldDialog.data,
-      projectId: projectId.value,
-      collectionName: 'households',
-      order: 100 + (customFieldDefs.value.length || 0),
-    };
-    const result = await saveFieldDefinition(payload);
-
-    if (result.status === 'success') {
-      snackbar.text = result.message;
-      snackbar.color = 'success';
-      snackbar.show = true;
-      fieldDialog.show = false; // 成功後關閉主對話框
-    } else {
-      throw new Error(result.message);
-    }
-  } catch (err) {
-    fieldDialog.error = err.message || '儲存失敗，請重試。';
-  } finally {
-    fieldDialog.loading = false;
+// 系統欄位的名稱與資料 key：自訂欄位不可同名，新欄位的 key 也要避開
+const reservedFieldInfo = computed(() => {
+  const customKeys = new Set(customFieldDefs.value.map(customFieldKey));
+  const names = new Set(['文件ID', '戶號', '棟別', '驗屋報告資料夾', '驗屋文件']);
+  const keys = new Set(['_docId', '_bookingInfo', 'projectId', 'unitId', 'building', 'inspectionReportFolderUrl', 'inspectionDocsUrl', 'customBatches', 'customerMessages']);
+  for (const col of finalColDefs.value) {
+    if (!col) continue;
+    const key = col.field || col.colId;
+    if (key && customKeys.has(key)) continue;
+    if (col.headerName) names.add(col.headerName);
+    if (key) keys.add(key);
   }
+  return { names: [...names], keys: [...keys] };
+});
+
+// 數字／％ 欄打了讀不出數字的內容
+let invalidNumberNoticeTimer = null;
+const onInvalidCustomNumber = (def) => {
+  clearTimeout(invalidNumberNoticeTimer);
+  invalidNumberNoticeTimer = setTimeout(() => {
+    showCustomFieldNotice(`「${def.fieldName}」請輸入數字`, 'warning');
+  }, 50);
 };
 
 
@@ -3341,7 +3257,11 @@ async function onCellValueChanged(event) {
   if (!householdDocId) return;
 
   // 銷售人員：輸入字串（空白/逗號/頓號分隔多人）→ 解析為陣列後儲存
-  const valueToSave = field === 'salesperson' ? parseSalespersonsInput(newValue) : newValue;
+  // 自訂數字／％ 欄：事件帶的是輸入原文（例 "5%"），存 valueSetter 解析後寫回 data 的數字
+  const isNumericCustom = customFieldDefs.value.some(d => isNumericFieldType(d.fieldType) && customFieldKey(d) === field);
+  const valueToSave = field === 'salesperson'
+    ? parseSalespersonsInput(newValue)
+    : (isNumericCustom ? (data[field] ?? null) : newValue);
 
   // 如果是貼上動作
   if (source === 'paste') {

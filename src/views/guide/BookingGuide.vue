@@ -456,9 +456,23 @@
           </ul>
           <div class="g-warn">不要改第二列的標題，也不要改第一欄「文件ID」。上傳前建議先下載一份備份。</div>
 
-          <h3>新增自訂欄位</h3>
-          <p>按 <i class="mdi mdi-table-column-plus-after"></i>「新增資料欄位」，選格式：核取/開關、純文字、下拉選單。</p>
-          <div class="g-warn">自訂欄位新增後<b>不能刪除或改名</b>。</div>
+          <h3>自訂欄位</h3>
+          <p>按 <i class="mdi mdi-table-column-plus-after"></i>「自訂欄位」，左側是欄位清單，右側編輯。</p>
+          <div class="g-table-wrap">
+            <table class="g-table">
+              <tbody>
+                <tr><td class="g-nowrap">格式</td><td>開關、文字、下拉、數字（千分位、小數位數、單位）、％（輸入 5 顯示 5%）</td></tr>
+                <tr><td class="g-nowrap">修改／刪除</td><td>可改名稱、格式、選項；刪除只移除欄位，各戶資料保留，重建同名欄位會帶回</td></tr>
+                <tr><td class="g-nowrap">排序</td><td>拖曳 <i class="mdi mdi-drag-vertical"></i> 調整，表格欄位順序跟著變</td></tr>
+                <tr><td class="g-nowrap">匯入資料</td><td>貼上從 Excel 複製的資料或選檔案（第一列是標題），選戶號欄，勾選要匯入的欄，一次建立欄位並寫入各戶</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <ul class="g-list">
+            <li>戶號要跟系統<b>完全一致</b>才會對到，對不到的會列出來</li>
+            <li>標題跟既有自訂欄位同名，會覆蓋該欄資料；空白格子不動舊值</li>
+            <li>編輯既有欄位時，也可以按「匯入資料」只更新這一欄</li>
+          </ul>
         </section>
 
         <!-- ═════════ 4. 預約頁面內容 ═════════ -->
