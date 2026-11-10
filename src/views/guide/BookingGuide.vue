@@ -57,6 +57,7 @@
               <div class="mk-sub">預約管理</div>
               <div class="mk-nav active"><i class="mdi mdi-table-large"></i>戶別資料管理</div>
               <div class="mk-nav"><i class="mdi mdi-view-grid-outline"></i>交屋控管表</div>
+              <div class="mk-nav"><i class="mdi mdi-ruler-square"></i>面積找補</div>
               <div class="mk-nav"><i class="mdi mdi-calendar-month-outline"></i>預約時間表</div>
               <div class="mk-nav"><i class="mdi mdi-folder-outline"></i>驗屋報告管理</div>
               <div class="mk-sub">系統</div>
@@ -71,6 +72,7 @@
               <tbody>
                 <tr><td>戶別資料管理</td><td>各戶批次、開關、買方資料</td><td>驗屋預約管理-修改</td></tr>
                 <tr><td>交屋控管表</td><td>全案每戶進度、統計</td><td>驗屋預約管理-修改</td></tr>
+                <tr><td>面積找補</td><td>權狀與合約面積差異、找補單</td><td>驗屋預約管理-修改</td></tr>
                 <tr><td>預約時間表</td><td>查看、新增、修改預約</td><td>驗屋預約管理-修改／檢視</td></tr>
                 <tr><td>驗屋報告管理</td><td>查看客戶上傳的報告</td><td>驗屋報告管理</td></tr>
                 <tr><td>批次及系統管理</td><td>項目、批次、頁面、提醒設定</td><td>驗屋預約管理-修改</td></tr>
@@ -305,7 +307,7 @@
             <span class="g-sec-no">3</span>
             <div>
               <h2>戶別資料管理</h2>
-              <p class="g-lead">每戶的批次代號、開關、買方資料都在這張總表，改完自動存檔；切到「交屋控管表」可看全案進度。</p>
+              <p class="g-lead">每戶的批次代號、開關、買方資料都在這張總表，改完自動存檔；切到「交屋控管表」可看全案進度，「面積找補」產生每戶找補單。</p>
             </div>
           </div>
           <div class="g-path"><span>預約管理</span><span>戶別資料管理</span></div>
@@ -323,7 +325,7 @@
             <div class="mk">
               <div class="mk-row mk-between mk-pad">
                 <span class="mk-strong">範例建案 <span class="mk-muted">戶別資料總表</span></span>
-                <span class="mk-seg sm"><span class="on">戶別資料總表</span><span>交屋控管表</span></span>
+                <span class="mk-seg sm"><span class="on">戶別資料總表</span><span>交屋控管表</span><span>面積找補</span></span>
                 <span class="mk-icons"><i class="mdi mdi-table-column-plus-after"></i><i class="mdi mdi-download"></i><i class="mdi mdi-upload"></i></span>
               </div>
               <div class="mk-table">
@@ -355,7 +357,7 @@
             <div class="mk">
               <div class="mk-row mk-between mk-pad">
                 <span class="mk-strong">範例建案 <span class="mk-muted">交屋控管表</span></span>
-                <span class="mk-seg sm"><span>戶別資料總表</span><span class="on">交屋控管表</span></span>
+                <span class="mk-seg sm"><span>戶別資料總表</span><span class="on">交屋控管表</span><span>面積找補</span></span>
               </div>
               <div class="mk-row mk-wrap mk-pad mk-hb-legend">
                 <span><i style="background:#e5e5ea"></i>未售</span><span><i style="background:#fff1d2"></i>未驗</span><span><i style="background:#9dc6ff"></i>已初驗<b class="pin">1</b></span><span><i style="background:#d9f3df"></i>已約交屋</span><span><i style="background:#7fd992"></i>已交屋</span>
@@ -388,6 +390,48 @@
             <li>「<b>下載 Excel</b>」：依控管表版型匯出，含統計與圖例</li>
           </ul>
           <div class="g-tip">進度項目預設為名稱有「驗」或「交屋」的預約項目；對保等項目要列入，到「設定」勾選。</div>
+
+          <h3>面積找補</h3>
+          <p>左側選單「<b>面積找補</b>」，或在戶別資料管理標題列切換。依每戶的合約面積、權狀面積與房地總價計算找補金額，產生 A4 分戶坪數單。</p>
+          <GuideFigure :src="shot('area-settlement')" :width="520" caption="面積找補">
+            <div class="mk">
+              <div class="mk-row mk-between mk-pad">
+                <span class="mk-strong">範例建案 <span class="mk-muted">面積找補</span></span>
+                <span class="mk-seg sm"><span>戶別資料總表</span><span>交屋控管表</span><span class="on">面積找補</span></span>
+              </div>
+              <div class="mk-table">
+                <div class="mk-tr mk-th"><span>戶號<b class="pin">1</b></span><span>買方</span><span>找補金額</span><span>單據<b class="pin">2</b></span></div>
+                <div class="mk-tr"><span class="mk-link">A1-2F</span><span>王小明</span><span>+54,846</span><span>主建物 60.12 → 60.50</span></div>
+                <div class="mk-tr"><span class="mk-link">A1-3F</span><span>陳美華</span><span style="color:#d70015">-155,941</span><span>公設 30.20 → 29.60</span></div>
+                <div class="mk-tr"><span class="mk-link">A2-2F</span><span>林志強</span><span style="color:#9a5b00">資料不足</span><span>缺：權狀主建物</span></div>
+              </div>
+            </div>
+          </GuideFigure>
+          <div class="mk-legend"><b class="pin">1</b>左側清單點戶別　<b class="pin">2</b>點單據上的數字直接修改</div>
+
+          <p>需要的資料在總表最右邊的「面積找補」欄位（淡藍色標題），可直接填，或用 Excel 上傳：</p>
+          <div class="g-table-wrap">
+            <table class="g-table">
+              <tbody>
+                <tr><td class="g-nowrap"><b>合約主建物／陽台／公設(㎡)</b></td><td>預售合約面積</td></tr>
+                <tr><td class="g-nowrap"><b>權狀主建物／陽台／公設(㎡)</b></td><td>地政權狀面積</td></tr>
+                <tr><td class="g-nowrap"><b>房地總價(元)、車位價(元)</b></td><td>房屋價款＝(房地總價－車位價)×房屋價款比例</td></tr>
+                <tr><td class="g-nowrap"><b>建號、公設持分</b></td><td>印在單據上</td></tr>
+                <tr><td class="g-nowrap"><b>找補備註</b></td><td>單據上方黃色提醒，不會印出</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>門牌用總表「門牌」欄，產權名義人用「買方姓名」。</p>
+          <ul class="g-list">
+            <li>每項差異＝權狀－合約；權狀<b>較小</b>全額找補，<b>較大</b>最多算到合約面積的 2%（上限，可在設定修改）</li>
+            <li>找補金額＝合約單價 × 找補面積；陽台、公設價款依面積比例折算（預設 0.95）</li>
+            <li>單據上的數字、門牌、建號、大公面積都可以直接點一下修改，按 Enter 存回</li>
+            <li>「<b>設定</b>」：單據標題、大公面積、持分分母、房屋價款比例、陽台公設折算、找補上限、實收比例</li>
+            <li>「<b>複製圖片</b>」：這一戶的單據複製成圖片，直接貼到 LINE、Email、文件</li>
+            <li>「<b>下載 PDF</b>」：這一戶，或清單上全部資料齊全的戶別（每戶一頁）</li>
+            <li>「<b>下載 Excel</b>」：全部戶別一覽表，含各項差異、找補金額與合計</li>
+          </ul>
+          <div class="g-warn">缺房地總價、合約或權狀主建物，或合約有陽台／公設但權狀沒填時，清單會標「資料不足」，不會計算，以免空白被當成 0。</div>
 
           <h3>戶別整合資訊</h3>
           <p>點藍色<b>戶號</b>（或交屋控管表的格子）開啟，可看這戶的預約、報告、授權書與客戶回傳。電腦版從左側選項目，手機版全螢幕顯示。</p>

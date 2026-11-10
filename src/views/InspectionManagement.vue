@@ -232,6 +232,7 @@ const primaryNav = computed(() => {
     { name: 'HouseholdGrid',              title: '戶別資料管理', icon: 'mdi-table-large' },
     // 交屋控管表是戶別資料管理頁的另一個分頁（?sheet=handover）
     { key: 'handover', name: 'HouseholdGrid', query: { sheet: 'handover' }, title: '交屋控管表', icon: 'mdi-view-grid-outline' },
+    { key: 'area', name: 'HouseholdGrid', query: { sheet: 'area' }, title: '面積找補', icon: 'mdi-ruler-square' },
     { name: 'InternalInspectionCalendar', title: '預約時間表', icon: 'mdi-calendar-month-outline' },
   ];
   // 驗屋報告管理已獨立為專屬權限，具權限者才顯示此導覽項目
@@ -241,7 +242,7 @@ const primaryNav = computed(() => {
   return nav;
 });
 
-// 同一路由的不同分頁（戶別資料管理／交屋控管表）以 ?sheet 區分選中狀態
+// 同一路由的不同分頁（戶別資料管理／交屋控管表／面積找補）以 ?sheet 區分選中狀態
 const isNavActive = (item) => route.name === item.name
   && (item.query?.sheet || '') === (route.query.sheet || '');
 

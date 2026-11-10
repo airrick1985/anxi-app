@@ -4,7 +4,7 @@
 <div class="hg-head">
   <div class="hg-title">
     <span class="hg-title-project">{{ projectName }}</span>
-    <span class="hg-title-sheet">{{ activeSheet === 'handover' ? '交屋控管表' : '戶別資料總表' }}</span>
+    <span class="hg-title-sheet">{{ activeSheet === 'handover' ? '交屋控管表' : activeSheet === 'area' ? '面積找補' : '戶別資料總表' }}</span>
   </div>
   <div class="mac-form-seg hg-seg" role="tablist" aria-label="切換工作表">
     <button
@@ -23,6 +23,14 @@
       :aria-selected="activeSheet === 'handover'"
       @click="activeSheet = 'handover'"
     ><v-icon size="15">mdi-view-grid-outline</v-icon>交屋控管表</button>
+    <button
+      type="button"
+      role="tab"
+      class="mac-form-seg-btn"
+      :class="{ 'is-active': activeSheet === 'area' }"
+      :aria-selected="activeSheet === 'area'"
+      @click="activeSheet = 'area'"
+    ><v-icon size="15">mdi-ruler-square</v-icon>面積找補</button>
   </div>
   <div class="hg-actions">
     <template v-if="activeSheet === 'grid'">
@@ -117,6 +125,17 @@
   :custom-field-defs="customFieldDefs"
   @open-unit="openHouseholdDetail"
   @update:settings="onBoardSettingsUpdate"
+  @notify="notify"
+/>
+
+<!-- 面積找補：第一次切換時才建立 -->
+<AreaSettlementBoard
+  v-if="areaMounted && !isLoading && !error && hasInitialDataLoaded"
+  v-show="activeSheet === 'area'"
+  :project-id="projectId"
+  :project-name="projectName"
+  :project-config="projectConfig"
+  :households="rowData"
   @notify="notify"
 />
 
@@ -1074,9 +1093,12 @@ import { functions, storage } from '@/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Timestamp } from 'firebase/firestore';
+import { AREA_FIELDS, isAreaNumberField, toNumber as toAreaNumber, fmtFixed, fmtMoney } from '@/utils/areaSettlement';
 import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue';
 // 交屋控管表：切換到該分頁才載入
 const HandoverControlBoard = defineAsyncComponent(() => import('@/components/household/HandoverControlBoard.vue'));
+// 面積找補：切換到該分頁才載入
+const AreaSettlementBoard = defineAsyncComponent(() => import('@/components/household/AreaSettlementBoard.vue'));
 
 
 // --- Store 和路由 ---
@@ -1103,12 +1125,14 @@ const notify = (text, color = 'success') => {
 
 // --- 工作表切換：戶別資料總表 / 交屋控管表（寫在網址 ?sheet=<key>，重新整理仍停在同一張） ---
 // 新增分頁：把 key 加進 SHEET_KEYS；grid 為預設，不寫入網址
-const SHEET_KEYS = ['grid', 'handover'];
+const SHEET_KEYS = ['grid', 'handover', 'area'];
 const normalizeSheet = (value) => (SHEET_KEYS.includes(value) ? value : 'grid');
 const activeSheet = ref(normalizeSheet(route.query.sheet));
 const boardMounted = ref(activeSheet.value === 'handover'); // 第一次切換才建立控管表
+const areaMounted = ref(activeSheet.value === 'area'); // 第一次切換才建立面積找補
 watch(activeSheet, (sheet) => {
   if (sheet === 'handover') boardMounted.value = true;
+  if (sheet === 'area') areaMounted.value = true;
   if (normalizeSheet(route.query.sheet) === sheet) return; // 已由網址切換（例：左側選單）
   const query = { ...route.query };
   if (sheet === 'grid') delete query.sheet;
@@ -2470,6 +2494,38 @@ const getFieldDisplayValue = (msg, fieldKey, value) => {
    return matched?.label || value;
 };
 
+// 面積找補欄位（放在總表最後；欄名即 Excel 上傳表頭，數字欄存成數字）
+const areaSettleColDefs = AREA_FIELDS.map((f) => {
+  const numeric = isAreaNumberField(f.key);
+  const def = {
+    headerName: f.label,
+    field: f.key,
+    editable: true,
+    width: f.key === 'areaSettleNote' ? 200 : 130,
+    headerClass: 'hg-area-head',
+    headerTooltip: '面積找補',
+  };
+  if (!numeric) return def;
+  return {
+    ...def,
+    type: 'rightAligned',
+    filter: 'agNumberColumnFilter',
+    valueParser: (p) => {
+      const s = String(p.newValue ?? '').trim();
+      if (s === '') return null;
+      const n = toAreaNumber(s);
+      return n === null ? p.oldValue : n;
+    },
+    valueFormatter: (p) => {
+      const n = toAreaNumber(p.value);
+      if (n === null) return p.value ?? '';
+      if (f.kind === 'money') return fmtMoney(n);
+      if (f.kind === 'sqm') return fmtFixed(n, 2);
+      return String(n);
+    },
+  };
+});
+
 const baseColDefs = computed(() => {
   const isUserAdmin = isAdmin.value;
 
@@ -2565,6 +2621,7 @@ const baseColDefs = computed(() => {
     },
 
     { headerName: '允許重複預約', field: 'allowMultipleBookings', width: 140, editable: true, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
+    ...areaSettleColDefs,
   ];
 
   return cols;
@@ -3442,6 +3499,8 @@ onUnmounted(() => {
 .hg-seg .mac-form-seg-btn { height: 28px; padding: 0 14px; }
 .hg-actions { display: flex; align-items: center; gap: 2px; }
 .hg-actions .mac-icon-btn { width: 32px; height: 32px; color: #1d1d1f; }
+/* 面積找補欄位：表頭淡藍底，和其他欄位區分 */
+:deep(.ag-header-cell.hg-area-head) { background: #eaf3ff; }
 
 /* ───────── 戶別整合資訊：macOS 視窗 ───────── */
 .household-detail-modal {
@@ -3765,6 +3824,7 @@ onUnmounted(() => {
    .hg-title-project { font-size: 18px; }
    .hg-seg { order: 3; display: flex; width: 100%; }
    .hg-seg .mac-form-seg-btn { flex: 1 1 0; min-width: 0; padding: 0 8px; height: 30px; }
+   .hg-seg .mac-form-seg-btn .v-icon { display: none; } /* 三個分頁，手機版只留文字避免擠壓 */
 
    .household-detail-modal.hdm-mobile {
       top: 0;
