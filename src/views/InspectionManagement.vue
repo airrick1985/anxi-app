@@ -108,14 +108,15 @@
           預約管理
         </v-list-subheader>
 
-        <template v-for="item in primaryNav" :key="item.name">
+        <template v-for="item in primaryNav" :key="item.key || item.name">
           <v-tooltip location="end" :text="item.title" :disabled="!isRail">
             <template v-slot:activator="{ props }">
               <v-list-item
                 v-bind="props"
                 :prepend-icon="item.icon"
                 :title="item.title"
-                :to="{ name: item.name, params: { projectId } }"
+                :to="{ name: item.name, params: { projectId }, query: item.query }"
+                :active="isNavActive(item)"
                 exact-path
                 color="primary"
                 rounded="lg"
@@ -229,6 +230,8 @@ const guideHref = router.resolve({ name: 'BookingGuide' }).href;
 const primaryNav = computed(() => {
   const nav = [
     { name: 'HouseholdGrid',              title: '戶別資料管理', icon: 'mdi-table-large' },
+    // 交屋控管表是戶別資料管理頁的另一個分頁（?sheet=handover）
+    { key: 'handover', name: 'HouseholdGrid', query: { sheet: 'handover' }, title: '交屋控管表', icon: 'mdi-view-grid-outline' },
     { name: 'InternalInspectionCalendar', title: '預約時間表', icon: 'mdi-calendar-month-outline' },
   ];
   // 驗屋報告管理已獨立為專屬權限，具權限者才顯示此導覽項目
@@ -238,9 +241,13 @@ const primaryNav = computed(() => {
   return nav;
 });
 
+// 同一路由的不同分頁（戶別資料管理／交屋控管表）以 ?sheet 區分選中狀態
+const isNavActive = (item) => route.name === item.name
+  && (item.query?.sheet || '') === (route.query.sheet || '');
+
 // 手機頂欄顯示的目前頁面名稱
 const currentNavTitle = computed(() => {
-  const found = primaryNav.value.find(item => item.name === route.name);
+  const found = primaryNav.value.find(isNavActive);
   if (found) return found.title;
   if (route.name === 'BookingRuleManager') return '批次及系統管理';
   return '驗屋預約管理';

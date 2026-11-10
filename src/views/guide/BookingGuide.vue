@@ -56,6 +56,7 @@
               </div>
               <div class="mk-sub">預約管理</div>
               <div class="mk-nav active"><i class="mdi mdi-table-large"></i>戶別資料管理</div>
+              <div class="mk-nav"><i class="mdi mdi-view-grid-outline"></i>交屋控管表</div>
               <div class="mk-nav"><i class="mdi mdi-calendar-month-outline"></i>預約時間表</div>
               <div class="mk-nav"><i class="mdi mdi-folder-outline"></i>驗屋報告管理</div>
               <div class="mk-sub">系統</div>
@@ -69,6 +70,7 @@
               <thead><tr><th>選單</th><th>用途</th><th>需要權限</th></tr></thead>
               <tbody>
                 <tr><td>戶別資料管理</td><td>各戶批次、開關、買方資料</td><td>驗屋預約管理-修改</td></tr>
+                <tr><td>交屋控管表</td><td>全案每戶進度、統計</td><td>驗屋預約管理-修改</td></tr>
                 <tr><td>預約時間表</td><td>查看、新增、修改預約</td><td>驗屋預約管理-修改／檢視</td></tr>
                 <tr><td>驗屋報告管理</td><td>查看客戶上傳的報告</td><td>驗屋報告管理</td></tr>
                 <tr><td>批次及系統管理</td><td>項目、批次、頁面、提醒設定</td><td>驗屋預約管理-修改</td></tr>
@@ -303,7 +305,7 @@
             <span class="g-sec-no">3</span>
             <div>
               <h2>戶別資料管理</h2>
-              <p class="g-lead">每戶的批次代號、開關、買方資料都在這張總表，改完自動存檔。</p>
+              <p class="g-lead">每戶的批次代號、開關、買方資料都在這張總表，改完自動存檔；切到「交屋控管表」可看全案進度。</p>
             </div>
           </div>
           <div class="g-path"><span>預約管理</span><span>戶別資料管理</span></div>
@@ -320,7 +322,8 @@
           <GuideFigure :src="shot('households-grid')" :width="520" caption="戶別資料總表">
             <div class="mk">
               <div class="mk-row mk-between mk-pad">
-                <span class="mk-strong mk-primary">範例建案 - 戶別資料總表</span>
+                <span class="mk-strong">範例建案 <span class="mk-muted">戶別資料總表</span></span>
+                <span class="mk-seg sm"><span class="on">戶別資料總表</span><span>交屋控管表</span></span>
                 <span class="mk-icons"><i class="mdi mdi-table-column-plus-after"></i><i class="mdi mdi-download"></i><i class="mdi mdi-upload"></i></span>
               </div>
               <div class="mk-table">
@@ -346,8 +349,48 @@
           </div>
           <div class="g-warn">欄位標題上的「全選」開關會<b>立即套用到全建案所有戶別</b>，不只篩選出來的戶。</div>
 
+          <h3>交屋控管表</h3>
+          <p>左側選單「<b>交屋控管表</b>」，或在戶別資料管理標題列切換，依樓層 × 棟別顯示每戶目前進度，資料來自戶別資料與預約，隨時自動更新。</p>
+          <GuideFigure :src="shot('handover-board')" :width="520" caption="交屋控管表">
+            <div class="mk">
+              <div class="mk-row mk-between mk-pad">
+                <span class="mk-strong">範例建案 <span class="mk-muted">交屋控管表</span></span>
+                <span class="mk-seg sm"><span>戶別資料總表</span><span class="on">交屋控管表</span></span>
+              </div>
+              <div class="mk-row mk-wrap mk-pad mk-hb-legend">
+                <span><i style="background:#e5e5ea"></i>未售</span><span><i style="background:#fff1d2"></i>未驗</span><span><i style="background:#9dc6ff"></i>已初驗<b class="pin">1</b></span><span><i style="background:#d9f3df"></i>已約交屋</span><span><i style="background:#7fd992"></i>已交屋</span>
+              </div>
+              <div class="mk-hb">
+                <span class="h"></span><span class="h">A1</span><span class="h">A2</span><span class="h">B1</span>
+                <span class="h">3F</span><span style="background:#d9f3df">已約交屋<small>11/20</small></span><span style="background:#e5e5ea">未售</span><span style="background:#7fd992">已交屋<b class="pin">2</b></span>
+                <span class="h">2F</span><span style="background:#9dc6ff">已初驗</span><span style="background:#fff1d2">未驗</span><span style="background:#7fd992">已交屋</span>
+              </div>
+            </div>
+          </GuideFigure>
+          <div class="mk-legend"><b class="pin">1</b>點名稱篩選、點色塊換顏色　<b class="pin">2</b>點格子開啟戶別整合資訊</div>
+          <div class="g-table-wrap">
+            <table class="g-table">
+              <tbody>
+                <tr><td class="g-nowrap"><b>未售</b></td><td>沒有買方姓名，也沒有任何預約</td></tr>
+                <tr><td class="g-nowrap"><b>未驗</b></td><td>已售，進度項目都還沒預約</td></tr>
+                <tr><td class="g-nowrap"><b>已約○○</b></td><td>該項目已預約、日期還沒到，格子下方顯示預約日</td></tr>
+                <tr><td class="g-nowrap"><b>已○○</b></td><td>該項目預約日已到（已完成）</td></tr>
+                <tr><td class="g-nowrap"><b>已交屋</b></td><td>交屋預約已完成，或「交屋」開關已打開</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>每戶顯示<b>進度最後</b>的項目，例如初驗完成、已約交屋 → 顯示「已約交屋」。</p>
+          <ul class="g-list">
+            <li>搜尋框可找戶號或買方；點圖例名稱只看該狀態（可多選）</li>
+            <li>點圖例色塊直接換顏色，整個建案共用</li>
+            <li>「<b>設定</b>」：狀態顏色、哪些預約項目列入進度與順序、附加統計（已撥款、自訂欄位）</li>
+            <li>「<b>複製圖片</b>」：整張控管表（含統計）複製成圖片，直接貼到 LINE、Email、文件；有篩選時圖上也會標示。瀏覽器不能複製時會開預覽，長按或右鍵即可複製、下載</li>
+            <li>「<b>下載 Excel</b>」：依控管表版型匯出，含統計與圖例</li>
+          </ul>
+          <div class="g-tip">進度項目預設為名稱有「驗」或「交屋」的預約項目；對保等項目要列入，到「設定」勾選。</div>
+
           <h3>戶別整合資訊</h3>
-          <p>點藍色<b>戶號</b>開啟，可看這戶的預約、報告、授權書與客戶回傳。</p>
+          <p>點藍色<b>戶號</b>（或交屋控管表的格子）開啟，可看這戶的預約、報告、授權書與客戶回傳。電腦版從左側選項目，手機版全螢幕顯示。</p>
           <ul class="g-list">
             <li>要修改：按「<b>進入編輯</b>」→ 改完按「<b>儲存並退出</b>」；直接按 <i class="mdi mdi-close"></i> 會捨棄變更</li>
             <li>「<b>新增預約</b>」：直接替這戶預約</li>
@@ -845,7 +888,7 @@ import { useRoute, useRouter } from 'vue-router';
 import GuideFigure from './GuideFigure.vue';
 import { bookingGuideShotSrc as shot } from './bookingGuideShots';
 
-const UPDATED_AT = '2026-11-03';
+const UPDATED_AT = '2026-11-10';
 
 const sections = [
   { id: 'start', no: '', title: '開始之前' },
@@ -1675,6 +1718,30 @@ onBeforeUnmount(() => {
   background: var(--g-primary);
   color: #fff;
 }
+.mk-hb-legend { gap: 10px; font-size: 12px; }
+.mk-hb-legend > span { display: inline-flex; align-items: center; gap: 4px; }
+.mk-hb-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.2); }
+.mk-hb {
+  display: grid;
+  grid-template-columns: 34px repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 4px 10px 10px;
+  font-size: 11.5px;
+  text-align: center;
+}
+.mk-hb > span {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: 5px;
+  color: #1d1d1f;
+  font-weight: 600;
+}
+.mk-hb > span small { font-size: 10px; font-weight: 500; opacity: 0.8; }
+.mk-hb > span.h { min-height: 20px; color: #6e6e73; background: none; }
 .mk-seg {
   display: inline-flex;
   border: 1px solid var(--g-primary);

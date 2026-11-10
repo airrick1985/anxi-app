@@ -1,51 +1,44 @@
 <template>
 <v-container fluid>
-<v-card class="pa-4">
-<v-card-title class="d-flex align-center justify-space-between text-h6 text-primary" >
-  <span>{{ pageTitle }}</span>
-  <div class="d-flex align-center ga-2">
-
-
-    <v-tooltip text="新增資料欄位" location="bottom">
-
-  <template v-slot:activator="{ props }">
-    <v-btn 
-      v-bind="props"
-      color="black" 
-      variant="text" 
-      icon="mdi-table-column-plus-after"
-      @click="openFieldDefinitionDialog"
-    ></v-btn>
-  </template>
-</v-tooltip>
-
-<v-tooltip text="下載戶別資料" location="bottom">
-  <template v-slot:activator="{ props }">
-    <v-btn 
-      v-bind="props"
-      color="black" 
-      variant="text" 
-      icon="mdi-download"
-      @click="exportToExcel"
-    ></v-btn>
-  </template>
-</v-tooltip>
-
-<v-tooltip text="上傳戶別資料" location="bottom">
-  <template v-slot:activator="{ props }">
-    <v-btn 
-      v-bind="props"
-      color="black" 
-      variant="text" 
-      icon="mdi-upload"
-      @click="uploadDialog = true"
-    ></v-btn>
-  </template>
-</v-tooltip>
-
-<BookingGuideButton section="households" color="black" />
+<v-card class="pa-4 hg-card">
+<div class="hg-head">
+  <div class="hg-title">
+    <span class="hg-title-project">{{ projectName }}</span>
+    <span class="hg-title-sheet">{{ activeSheet === 'handover' ? '交屋控管表' : '戶別資料總表' }}</span>
   </div>
-</v-card-title>
+  <div class="mac-form-seg hg-seg" role="tablist" aria-label="切換工作表">
+    <button
+      type="button"
+      role="tab"
+      class="mac-form-seg-btn"
+      :class="{ 'is-active': activeSheet === 'grid' }"
+      :aria-selected="activeSheet === 'grid'"
+      @click="activeSheet = 'grid'"
+    ><v-icon size="15">mdi-table-large</v-icon>戶別資料總表</button>
+    <button
+      type="button"
+      role="tab"
+      class="mac-form-seg-btn"
+      :class="{ 'is-active': activeSheet === 'handover' }"
+      :aria-selected="activeSheet === 'handover'"
+      @click="activeSheet = 'handover'"
+    ><v-icon size="15">mdi-view-grid-outline</v-icon>交屋控管表</button>
+  </div>
+  <div class="hg-actions">
+    <template v-if="activeSheet === 'grid'">
+      <button type="button" class="mac-icon-btn" title="新增資料欄位" aria-label="新增資料欄位" @click="openFieldDefinitionDialog">
+        <v-icon size="20">mdi-table-column-plus-after</v-icon>
+      </button>
+      <button type="button" class="mac-icon-btn" title="下載戶別資料" aria-label="下載戶別資料" @click="exportToExcel">
+        <v-icon size="20">mdi-download</v-icon>
+      </button>
+      <button type="button" class="mac-icon-btn" title="上傳戶別資料" aria-label="上傳戶別資料" @click="uploadDialog = true">
+        <v-icon size="20">mdi-upload</v-icon>
+      </button>
+    </template>
+    <BookingGuideButton section="households" color="black" size="small" />
+  </div>
+</div>
 
 <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error"></v-alert>
 
@@ -54,6 +47,7 @@
   <div class="mt-4">戶別資料載入中...</div>
 </div>
 
+<div v-show="activeSheet === 'grid'">
 <!-- 資料數量統計列：篩選後即時更新 -->
 <div v-if="!isLoading && !error && hasInitialDataLoaded" class="d-flex align-center flex-wrap ga-2 mb-2">
   <v-chip color="primary" size="small" label variant="tonal">
@@ -110,6 +104,21 @@
   >
   </ag-grid-vue>
 </div>
+</div>
+
+<!-- 交屋控管表：第一次切換時才建立，之後以 v-show 保留篩選狀態 -->
+<HandoverControlBoard
+  v-if="boardMounted && !isLoading && !error && hasInitialDataLoaded"
+  v-show="activeSheet === 'handover'"
+  :project-id="projectId"
+  :project-name="projectName"
+  :project-config="projectConfig"
+  :households="rowData"
+  :custom-field-defs="customFieldDefs"
+  @open-unit="openHouseholdDetail"
+  @update:settings="onBoardSettingsUpdate"
+  @notify="notify"
+/>
 
 </v-card>
 <v-dialog v-model="uploadDialog" max-width="600px" persistent>
@@ -228,150 +237,101 @@
 
 
  <!-- Customer Message View Dialog -->
- <v-dialog v-model="isMessageDialogVisible" max-width="800px">
-    <v-card>
-       <v-card-title class="bg-info text-white d-flex justify-space-between align-center">
-          <span>戶別 {{ selectedHouseholdUnit }} - 客戶回傳訊息 ({{ activeMessageCount }})</span>
-          <div class="d-flex align-center">
-             <v-switch
-                v-model="showDeletedMessages"
-                label="顯示已刪除"
-                color="white"
-                hide-details
-                density="compact"
-                class="mr-2"
-             ></v-switch>
-             <v-btn icon="mdi-close" variant="text" color="white" @click="isMessageDialogVisible = false"></v-btn>
+ <v-dialog v-model="isMessageDialogVisible" max-width="800px" scrollable content-class="mac-dialog-fit">
+    <v-card class="mac-sheet">
+       <div class="mac-sheet-head">
+          <v-icon size="18">mdi-message-text-outline</v-icon>
+          <span class="hg-sheet-title">戶別 {{ selectedHouseholdUnit }} 客戶回傳訊息（{{ activeMessageCount }}）</span>
+          <label class="hg-inline-switch">
+             <input v-model="showDeletedMessages" type="checkbox" class="mac-switch">
+             <span>顯示已刪除</span>
+          </label>
+          <button type="button" class="mac-sheet-close hg-close" title="關閉" @click="isMessageDialogVisible = false"><v-icon size="18">mdi-close</v-icon></button>
+       </div>
+       <div class="mac-form hg-sheet-body">
+          <div v-if="filteredMessages.length === 0" class="hg-empty">
+             <v-icon size="40" color="#c7c7cc">mdi-email-open-outline</v-icon>
+             <div>{{ showDeletedMessages ? '沒有任何訊息' : '沒有有效訊息' }}</div>
           </div>
-       </v-card-title>
-       <v-card-text class="pa-0" style="max-height: 80vh; overflow-y: auto; background-color: #f5f5f5;">
-          <v-container>
-             <div v-if="filteredMessages.length === 0" class="text-center pa-6 text-grey">
-                <v-icon size="48" class="mb-2">mdi-email-open-outline</v-icon>
-                <div>{{ showDeletedMessages ? '沒有任何訊息' : '沒有有效訊息' }}</div>
-             </div>
-             <v-card
-                v-for="msg in filteredMessages"
-                :key="msg.id"
-                class="mb-4"
-                border
-                variant="outlined"
-                :style="msg.isDeleted ? 'opacity: 0.5; border-left: 4px solid #e53935;' : ''"
-             >
-                <v-card-item>
-                   <template v-slot:default>
-                      <v-card-title class="text-subtitle-1 font-weight-bold" :class="msg.isDeleted ? 'text-grey text-decoration-line-through' : 'text-primary'">
-                         {{ msg.functionName || '未命名功能' }}
-                         <v-chip v-if="msg.isDeleted" color="error" size="x-small" variant="flat" class="ml-2">已刪除</v-chip>
-                      </v-card-title>
-                      <v-card-subtitle>
-                         {{ formatMessageDate(msg.createdAt) }}
-                         <span v-if="msg.isDeleted && msg.deletedAt" class="text-error ml-2">
-                            (刪除於 {{ formatMessageDate(msg.deletedAt) }})
-                         </span>
-                      </v-card-subtitle>
-                   </template>
-                   <template v-slot:append>
-                      <v-chip v-if="!msg.isDeleted && msg.status === 'new'" color="error" size="small" class="mr-2">新訊息</v-chip>
-                      <v-chip v-if="msg.createdByAdmin" color="grey" size="small" variant="tonal" class="mr-2">後台建立</v-chip>
-                      <!-- 冷刪除按鈕 -->
-                      <v-btn
-                         v-if="!msg.isDeleted"
-                         icon="mdi-delete-outline"
-                         variant="text"
-                         color="error"
-                         size="small"
-                         :loading="messageActionLoading === msg.id"
-                         @click.stop="softDeleteMessage(msg)"
-                      >
-                         <v-icon>mdi-delete-outline</v-icon>
-                         <v-tooltip activator="parent" location="top">刪除此訊息</v-tooltip>
-                      </v-btn>
-                      <!-- 復原按鈕 -->
-                      <v-btn
-                         v-if="msg.isDeleted"
-                         icon="mdi-undo-variant"
-                         variant="text"
-                         color="success"
-                         size="small"
-                         :loading="messageActionLoading === msg.id"
-                         @click.stop="restoreMessage(msg)"
-                      >
-                         <v-icon>mdi-undo-variant</v-icon>
-                         <v-tooltip activator="parent" location="top">復原此訊息</v-tooltip>
-                      </v-btn>
-                      <!-- 硬刪除按鈕 -->
-                      <v-btn
-                         v-if="msg.isDeleted"
-                         icon="mdi-delete-forever-outline"
-                         variant="text"
-                         color="error"
-                         size="small"
-                         :loading="messageActionLoading === msg.id"
-                         @click.stop="confirmHardDeleteMessage(msg)"
-                      >
-                         <v-icon>mdi-delete-forever-outline</v-icon>
-                         <v-tooltip activator="parent" location="top">永久刪除</v-tooltip>
-                      </v-btn>
-                   </template>
-                </v-card-item>
-                <v-divider></v-divider>
-                
-                <v-card-text class="pt-3">
-                   <!-- Dynamic Data Key-Values -->
-                   <v-table density="compact" class="mb-3 border rounded">
-                      <tbody>
-                         <tr v-for="(value, key) in msg.data" :key="key">
-                            <td class="bg-grey-lighten-4 font-weight-bold" style="width: 150px;">{{ getFieldLabel(msg, key) }}</td>
-                            <td>{{ getFieldDisplayValue(msg, key, value) }}</td>
-                         </tr>
-                      </tbody>
-                   </v-table>
-
-                   <!-- Attachments -->
-                   <div v-if="msg.attachments && msg.attachments.length > 0">
-                      <div class="text-subtitle-2 font-weight-bold mb-1">附件 ({{ msg.attachments.length }})</div>
-                      <div class="d-flex flex-wrap gap-2">
-                         <v-chip
-                            v-for="file in msg.attachments"
-                            :key="file.path"
-                            prepend-icon="mdi-paperclip"
-                            :href="file.url"
-                            target="_blank"
-                            color="primary"
-                            variant="outlined"
-                            label
-                         >
-                            {{ file.name }}
-                         </v-chip>
-                      </div>
+          <div
+             v-for="msg in filteredMessages"
+             :key="msg.id"
+             class="mac-form-group hg-msg-card"
+             :class="{ 'is-deleted': msg.isDeleted }"
+          >
+             <div class="mac-form-row hg-msg-head">
+                <div class="mac-form-row-main">
+                   <div class="hg-msg-title">
+                      <span>{{ msg.functionName || '未命名功能' }}</span>
+                      <span v-if="msg.isDeleted" class="mac-tag mac-tag--red">已刪除</span>
+                      <span v-if="!msg.isDeleted && msg.status === 'new'" class="mac-tag mac-tag--red">新訊息</span>
+                      <span v-if="msg.createdByAdmin" class="mac-tag">後台建立</span>
                    </div>
-                </v-card-text>
-             </v-card>
-          </v-container>
-       </v-card-text>
+                   <div class="hg-msg-date">
+                      {{ formatMessageDate(msg.createdAt) }}
+                      <span v-if="msg.isDeleted && msg.deletedAt">（刪除於 {{ formatMessageDate(msg.deletedAt) }}）</span>
+                   </div>
+                </div>
+                <button
+                   v-if="!msg.isDeleted"
+                   type="button"
+                   class="mac-icon-btn mac-icon-btn--danger"
+                   title="刪除此訊息"
+                   :disabled="messageActionLoading === msg.id"
+                   @click.stop="softDeleteMessage(msg)"
+                ><v-icon size="18">mdi-delete-outline</v-icon></button>
+                <button
+                   v-if="msg.isDeleted"
+                   type="button"
+                   class="mac-icon-btn hdm-ok-btn"
+                   title="復原此訊息"
+                   :disabled="messageActionLoading === msg.id"
+                   @click.stop="restoreMessage(msg)"
+                ><v-icon size="18">mdi-undo-variant</v-icon></button>
+                <button
+                   v-if="msg.isDeleted"
+                   type="button"
+                   class="mac-icon-btn mac-icon-btn--danger"
+                   title="永久刪除"
+                   :disabled="messageActionLoading === msg.id"
+                   @click.stop="confirmHardDeleteMessage(msg)"
+                ><v-icon size="18">mdi-delete-forever-outline</v-icon></button>
+             </div>
+             <div class="mac-form-pad">
+                <div v-for="(value, key) in msg.data" :key="key" class="hdm-kv">
+                   <span class="hdm-kv-key">{{ getFieldLabel(msg, key) }}</span>
+                   <span class="hdm-kv-val">{{ getFieldDisplayValue(msg, key, value) }}</span>
+                </div>
+                <div v-if="msg.attachments && msg.attachments.length > 0" class="hdm-attachments">
+                   <a v-for="file in msg.attachments" :key="file.path" :href="file.url" target="_blank" rel="noopener noreferrer" class="mac-tag mac-tag--blue hdm-attachment">
+                      <v-icon size="12">mdi-paperclip</v-icon>{{ file.name }}
+                   </a>
+                </div>
+             </div>
+          </div>
+       </div>
     </v-card>
  </v-dialog>
 
  <!-- 永久刪除確認 Dialog -->
- <v-dialog v-model="isConfirmingHardDeleteMsg" width="auto" persistent>
-    <v-card>
-       <v-card-title class="text-h5 text-error">
-          ⚠️ 確認永久刪除訊息
-       </v-card-title>
-       <v-card-text>
-          您確定要永久刪除此訊息嗎？<br><br>
-          <strong>功能名稱：</strong>{{ hardDeleteMsgTarget?.functionName || '未命名' }}<br>
-          <strong>提交時間：</strong>{{ formatMessageDate(hardDeleteMsgTarget?.createdAt) }}<br><br>
-          <v-alert type="error" variant="tonal" density="compact">
-             此操作無法復原，訊息將被完全移除。
-          </v-alert>
-       </v-card-text>
-       <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="grey-darken-1" variant="text" @click="isConfirmingHardDeleteMsg = false" :disabled="messageActionLoading !== null">取消</v-btn>
-          <v-btn color="error" variant="flat" @click="executeHardDeleteMessage" :loading="messageActionLoading !== null">確認永久刪除</v-btn>
-       </v-card-actions>
+ <v-dialog v-model="isConfirmingHardDeleteMsg" max-width="420" persistent content-class="mac-dialog-fit">
+    <v-card class="mac-sheet">
+       <div class="mac-sheet-head">
+          <v-icon size="18" color="#d62d20">mdi-delete-forever-outline</v-icon>
+          <span>永久刪除訊息</span>
+       </div>
+       <div class="mac-sheet-section">
+          <div class="hdm-kv"><span class="hdm-kv-key">功能名稱</span><span class="hdm-kv-val">{{ hardDeleteMsgTarget?.functionName || '未命名' }}</span></div>
+          <div class="hdm-kv"><span class="hdm-kv-key">提交時間</span><span class="hdm-kv-val">{{ formatMessageDate(hardDeleteMsgTarget?.createdAt) }}</span></div>
+          <div class="mac-callout mac-callout--error mt-3"><v-icon size="16">mdi-alert-circle-outline</v-icon><span>刪除後無法復原。</span></div>
+       </div>
+       <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn" :disabled="messageActionLoading !== null" @click="isConfirmingHardDeleteMsg = false">取消</button>
+          <button type="button" class="mac-btn mac-btn--danger-fill" :disabled="messageActionLoading !== null" @click="executeHardDeleteMessage">
+             {{ messageActionLoading !== null ? '刪除中…' : '永久刪除' }}
+          </button>
+       </div>
     </v-card>
  </v-dialog>
 
@@ -392,41 +352,49 @@
  </v-dialog>
 
 
-  <v-dialog v-model="isConfirmingDeleteReport" width="auto" persistent>
-   <v-card>
-     <v-card-title class="text-h5 text-error">
-       ⚠️ 確認刪除驗屋報告
-     </v-card-title>
-     <v-card-text>
-       您確定要將戶別 <strong>{{ deleteReportRowData?.unitId }}</strong> 的驗屋報告「{{ deleteReportTarget?.name }}」作廢嗎？<br><br>
-       此操作會：<br>
-       1. 將 Google Drive 上的資料夾名稱加上(作廢)標記以保留檔案。<br>
-       2. 報告將從清單中移除，無法復原。
-     </v-card-text>
-     <v-card-actions>
-       <v-spacer></v-spacer>
-       <v-btn color="grey-darken-1" variant="text" @click="isConfirmingDeleteReport = false" :disabled="isDeletingReport">取消</v-btn>
-       <v-btn color="error" variant="flat" @click="executeDeleteReport" :loading="isDeletingReport">確認作廢</v-btn>
-     </v-card-actions>
+  <v-dialog v-model="isConfirmingDeleteReport" max-width="440" persistent content-class="mac-dialog-fit">
+   <v-card class="mac-sheet">
+     <div class="mac-sheet-head">
+       <v-icon size="18" color="#d62d20">mdi-file-remove-outline</v-icon>
+       <span>作廢驗屋報告</span>
+     </div>
+     <div class="mac-sheet-section">
+       <div class="hg-confirm-target">戶別 <b>{{ deleteReportRowData?.unitId }}</b>「{{ deleteReportTarget?.name }}」</div>
+       <ul class="hg-confirm-list">
+         <li>雲端資料夾名稱加註（作廢），檔案保留</li>
+         <li>報告從清單移除，無法復原</li>
+       </ul>
+     </div>
+     <div class="mac-sheet-foot">
+       <span class="mac-spacer"></span>
+       <button type="button" class="mac-btn" :disabled="isDeletingReport" @click="isConfirmingDeleteReport = false">取消</button>
+       <button type="button" class="mac-btn mac-btn--danger-fill" :disabled="isDeletingReport" @click="executeDeleteReport">
+         {{ isDeletingReport ? '處理中…' : '確認作廢' }}
+       </button>
+     </div>
    </v-card>
  </v-dialog>
 
-  <v-dialog v-model="isConfirmingMarkDownloaded" width="auto" persistent>
-   <v-card>
-     <v-card-title class="text-h5 text-success">
-       ✅ 標記驗屋報告為已下載
-     </v-card-title>
-     <v-card-text>
-       您確定要將戶別 <strong>{{ markDownloadedRowData?.unitId }}</strong> 的驗屋報告「{{ markDownloadedTarget?.name }}」標記為已下載嗎？<br><br>
-       此操作會：<br>
-       1. 將 Google Drive 上的檔案加註(已下載)。<br>
-       2. LINE小助理將不再提醒未下載<br>
-     </v-card-text>
-     <v-card-actions>
-       <v-spacer></v-spacer>
-       <v-btn color="grey-darken-1" variant="text" @click="isConfirmingMarkDownloaded = false" :disabled="isMarkingDownloaded">取消</v-btn>
-       <v-btn color="success" variant="flat" @click="executeMarkDownloaded" :loading="isMarkingDownloaded">確認標記</v-btn>
-     </v-card-actions>
+  <v-dialog v-model="isConfirmingMarkDownloaded" max-width="440" persistent content-class="mac-dialog-fit">
+   <v-card class="mac-sheet">
+     <div class="mac-sheet-head">
+       <v-icon size="18" color="#1f7a36">mdi-check-circle-outline</v-icon>
+       <span>標記驗屋報告為已下載</span>
+     </div>
+     <div class="mac-sheet-section">
+       <div class="hg-confirm-target">戶別 <b>{{ markDownloadedRowData?.unitId }}</b>「{{ markDownloadedTarget?.name }}」</div>
+       <ul class="hg-confirm-list">
+         <li>雲端檔案加註（已下載）</li>
+         <li>LINE 小助理不再提醒未下載</li>
+       </ul>
+     </div>
+     <div class="mac-sheet-foot">
+       <span class="mac-spacer"></span>
+       <button type="button" class="mac-btn" :disabled="isMarkingDownloaded" @click="isConfirmingMarkDownloaded = false">取消</button>
+       <button type="button" class="mac-btn mac-btn--primary" :disabled="isMarkingDownloaded" @click="executeMarkDownloaded">
+         {{ isMarkingDownloaded ? '處理中…' : '確認標記' }}
+       </button>
+     </div>
    </v-card>
  </v-dialog>
 
@@ -434,53 +402,48 @@
   {{ snackbar.text }}
 </v-snackbar>
 
-<!-- 戶別整合資訊 Modal（可拖移、不阻擋 grid 背景操作） -->
+<!-- 戶別整合資訊 Modal（macOS 視窗風格；電腦版可拖移、不阻擋 grid 背景操作；手機全螢幕） -->
 <div
    v-if="isHouseholdDetailVisible && selectedHouseholdForDetail"
    class="household-detail-modal"
-   :class="{ 'is-edit-mode': isModalEditMode, 'hdm-wide': isHdmDesktopLayout }"
-   :style="{ top: detailModalPos.y + 'px', left: detailModalPos.x + 'px' }"
+   :class="{ 'is-edit-mode': isModalEditMode, 'hdm-wide': isHdmDesktopLayout, 'hdm-mobile': isHdmMobile }"
+   :style="isHdmMobile ? null : { top: detailModalPos.y + 'px', left: detailModalPos.x + 'px' }"
+   role="dialog"
+   aria-label="戶別整合資訊"
 >
    <div class="hdm-header" @mousedown="startDetailDrag">
-      <v-icon size="small" class="mr-2">mdi-drag</v-icon>
-      <span class="hdm-title">
-         {{ projectName }}
-         <span v-if="selectedHouseholdForDetail.unitId" class="title-sep">-</span>
-         <span v-if="selectedHouseholdForDetail.unitId">{{ selectedHouseholdForDetail.unitId }}</span>
-         <span v-if="selectedHouseholdForDetail.buyerName" class="title-sep">-</span>
-         <span v-if="selectedHouseholdForDetail.buyerName">{{ selectedHouseholdForDetail.buyerName }}</span>
-         <span class="hdm-subtitle">戶別整合資訊</span>
-      </span>
-      <v-spacer></v-spacer>
-      <v-btn
-         class="mr-2"
-         size="small"
-         :variant="isModalEditMode ? 'flat' : 'outlined'"
-         :color="isModalEditMode ? 'warning' : 'white'"
-         :prepend-icon="isModalEditMode ? 'mdi-content-save-outline' : 'mdi-pencil-outline'"
-         :loading="_isSavingModalEdits"
-         @click.stop="isModalEditMode ? exitModalEditMode() : enterModalEditMode()"
-         @mousedown.stop
-         :title="isModalEditMode ? '點此儲存所有變更並退出編輯' : '點此進入編輯模式'"
-      >
-         {{ isModalEditMode ? '儲存並退出' : '進入編輯' }}
-      </v-btn>
-      <v-btn
-         class="mr-2"
-         size="small"
-         variant="flat"
-         color="success"
-         prepend-icon="mdi-calendar-plus"
-         @click.stop="openAdminAddBookingForCurrentHousehold"
-         @mousedown.stop
-         title="為此戶別新增預約（後台代填）"
-      >
-         新增預約
-      </v-btn>
-      <v-btn icon="mdi-close" variant="text" size="small" color="white" @click.stop="closeHouseholdDetail" @mousedown.stop></v-btn>
+      <div class="hdm-titles">
+         <div class="hdm-title-main">
+            <span class="hdm-unit">{{ selectedHouseholdForDetail.unitId }}</span>
+            <span v-if="selectedHouseholdForDetail.buyerName" class="hdm-buyer">{{ selectedHouseholdForDetail.buyerName }}</span>
+            <span v-if="isModalEditMode" class="mac-tag mac-tag--orange">編輯中</span>
+         </div>
+         <div class="hdm-title-sub">{{ projectName }} · 戶別整合資訊</div>
+      </div>
+      <div class="hdm-actions" @mousedown.stop>
+         <button
+            type="button"
+            class="mac-btn"
+            :class="{ 'mac-btn--primary': isModalEditMode }"
+            :disabled="_isSavingModalEdits"
+            :title="isModalEditMode ? '儲存所有變更並退出編輯' : '進入編輯模式'"
+            @click.stop="isModalEditMode ? exitModalEditMode() : enterModalEditMode()"
+         >
+            <v-progress-circular v-if="_isSavingModalEdits" indeterminate size="14" width="2"></v-progress-circular>
+            <v-icon v-else size="16">{{ isModalEditMode ? 'mdi-content-save-outline' : 'mdi-pencil-outline' }}</v-icon>
+            <span>{{ isModalEditMode ? '儲存並退出' : '進入編輯' }}</span>
+         </button>
+         <button type="button" class="mac-btn" title="為此戶別新增預約（後台代填）" @click.stop="openAdminAddBookingForCurrentHousehold">
+            <v-icon size="16">mdi-calendar-plus</v-icon><span>新增預約</span>
+         </button>
+      </div>
+      <button type="button" class="mac-sheet-close hdm-close" title="關閉" aria-label="關閉" @click.stop="closeHouseholdDetail" @mousedown.stop>
+         <v-icon size="18">mdi-close</v-icon>
+      </button>
    </div>
+
    <div class="hdm-body" :class="{ 'hdm-body-split': isHdmDesktopLayout }">
-      <!-- 電腦版左側「項目」導覽（點選後右側顯示對應內容；窄螢幕隱藏、內容直向堆疊） -->
+      <!-- 電腦版左側「項目」導覽（系統設定風格）；窄螢幕隱藏、內容直向堆疊 -->
       <nav v-if="isHdmDesktopLayout" class="hdm-nav">
          <button
             v-for="s in hdmSections"
@@ -491,10 +454,9 @@
             @click.stop="hdmActiveSection = s.id"
             @mousedown.stop
          >
-            <v-icon size="small" class="hdm-nav-icon">{{ s.icon }}</v-icon>
+            <span class="hdm-icon" :style="{ background: s.color }"><v-icon size="15" color="#fff">{{ s.icon }}</v-icon></span>
             <span class="hdm-nav-texts">
                <span class="hdm-nav-label">{{ s.label }}</span>
-               <!-- 預約項目：最新預約日期 / 未預約 -->
                <span v-if="s.bookingType" class="hdm-nav-caption" :class="{ 'is-empty': detailBookingsForType(s.bookingType).length === 0 }">
                   {{ detailBookingsForType(s.bookingType).length > 0
                      ? (formatDetailDate(detailBookingInfo[s.bookingType]?.date) || '未填日期')
@@ -510,7 +472,6 @@
                   {{ inspectionReports.length > 0 ? `報告 ${inspectionReports.length} 份` : '無報告' }}
                </span>
             </span>
-            <!-- 同一項目多筆重複預約：醒目筆數徽章 -->
             <span
                v-if="s.bookingType && detailBookingsForType(s.bookingType).length > 1"
                class="hdm-nav-badge"
@@ -519,471 +480,417 @@
             </span>
          </button>
       </nav>
+
       <div class="hdm-content">
       <!-- 功能開關 -->
-      <v-card v-show="isHdmSectionVisible('switches')" variant="outlined" class="mb-3">
-         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-green-lighten-5">
-            <v-icon size="small" class="mr-1" color="success">mdi-toggle-switch-outline</v-icon>功能開關
-         </v-card-title>
-         <v-card-text class="pt-2 pb-2">
-            <div class="hdm-switch-row">
-               <label>預約系統開關</label>
-               <v-switch v-model="selectedHouseholdForDetail.showInMenu"
-                  color="success" inset hide-details density="compact"
-               ></v-switch>
-            </div>
-            <div class="hdm-switch-row">
-               <label>交屋</label>
-               <v-switch v-model="selectedHouseholdForDetail['交屋']"
-                  color="success" inset hide-details density="compact"
-               ></v-switch>
-            </div>
-            <div class="hdm-switch-row">
-               <label>初驗報告上傳</label>
-               <v-switch v-model="selectedHouseholdForDetail.initialReportUploadSwitch"
-                  color="success" inset hide-details density="compact"
-               ></v-switch>
-            </div>
-            <div class="hdm-switch-row">
-               <label>複驗報告上傳</label>
-               <v-switch v-model="selectedHouseholdForDetail.reInspectionReportUploadSwitch"
-                  color="success" inset hide-details density="compact"
-               ></v-switch>
-            </div>
-            <div class="hdm-switch-row">
-               <label>允許重複預約</label>
-               <v-switch v-model="selectedHouseholdForDetail.allowMultipleBookings"
-                  color="success" inset hide-details density="compact"
-               ></v-switch>
-            </div>
-         </v-card-text>
-      </v-card>
+      <section v-show="isHdmSectionVisible('switches')" class="hdm-section">
+         <div class="hdm-sec-head">
+            <span class="hdm-icon" :style="{ background: HDM_SECTION_COLORS.switches }"><v-icon size="15" color="#fff">mdi-toggle-switch-outline</v-icon></span>
+            <span class="hdm-sec-title">功能開關</span>
+         </div>
+         <div class="mac-form-group">
+            <label v-for="sw in HDM_SWITCHES" :key="sw.field" class="mac-form-row hdm-switch-row">
+               <span class="mac-form-row-main">{{ sw.label }}</span>
+               <input
+                  v-model="selectedHouseholdForDetail[sw.field]"
+                  type="checkbox"
+                  class="mac-switch"
+                  :disabled="!isModalEditMode"
+               >
+            </label>
+         </div>
+      </section>
 
       <!-- 基本資料 -->
-      <v-card v-show="isHdmSectionVisible('basic')" variant="outlined" class="mb-3">
-         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-grey-lighten-4">
-            <v-icon size="small" class="mr-1" color="primary">mdi-account-outline</v-icon>基本資料
-         </v-card-title>
-         <v-card-text class="pt-2 pb-2">
-            <div class="hdm-row hdm-row-edit">
-               <label>目前狀態</label>
-               <v-text-field v-model="selectedHouseholdForDetail.currentStatus"
-                  :readonly="!isModalEditMode"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
+      <section v-show="isHdmSectionVisible('basic')" class="hdm-section">
+         <div class="hdm-sec-head">
+            <span class="hdm-icon" :style="{ background: HDM_SECTION_COLORS.basic }"><v-icon size="15" color="#fff">mdi-account-outline</v-icon></span>
+            <span class="hdm-sec-title">基本資料</span>
+         </div>
+         <div class="mac-form-group">
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">目前狀態</span>
+               <input v-if="isModalEditMode" v-model="selectedHouseholdForDetail.currentStatus" class="hdm-input" placeholder="—">
+               <span v-else class="hdm-value" :class="{ 'is-empty': !selectedHouseholdForDetail.currentStatus }">{{ selectedHouseholdForDetail.currentStatus || '—' }}</span>
             </div>
-            <div class="hdm-row hdm-row-edit">
-               <label>銷售人員</label>
-               <v-text-field v-if="isModalEditMode" v-model="_salespersonEditText"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="多位請以空白或逗號分隔"></v-text-field>
-               <v-text-field v-else
-                  :model-value="formatSalespersons(selectedHouseholdForDetail.salesperson, '、', '')"
-                  readonly
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">銷售人員</span>
+               <input v-if="isModalEditMode" v-model="_salespersonEditText" class="hdm-input" placeholder="多位請以空白或逗號分隔">
+               <span v-else class="hdm-value" :class="{ 'is-empty': !formatSalespersons(selectedHouseholdForDetail.salesperson, '、', '') }">{{ formatSalespersons(selectedHouseholdForDetail.salesperson, '、', '') || '—' }}</span>
             </div>
-            <div class="hdm-row hdm-row-edit">
-               <label>買方姓名</label>
-               <v-text-field v-model="selectedHouseholdForDetail.buyerName"
-                  :readonly="!isModalEditMode"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">買方姓名</span>
+               <input v-if="isModalEditMode" v-model="selectedHouseholdForDetail.buyerName" class="hdm-input" placeholder="—">
+               <span v-else class="hdm-value" :class="{ 'is-empty': !selectedHouseholdForDetail.buyerName }">{{ selectedHouseholdForDetail.buyerName || '—' }}</span>
             </div>
-            <div class="hdm-row hdm-row-edit">
-               <label>買方電話</label>
-               <v-text-field v-model="selectedHouseholdForDetail.buyerPhone"
-                  :readonly="!isModalEditMode"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">買方電話</span>
+               <input v-if="isModalEditMode" v-model="selectedHouseholdForDetail.buyerPhone" class="hdm-input" type="tel" placeholder="—">
+               <span v-else class="hdm-value" :class="{ 'is-empty': !selectedHouseholdForDetail.buyerPhone }">{{ selectedHouseholdForDetail.buyerPhone || '—' }}</span>
             </div>
-            <div class="hdm-row hdm-row-edit">
-               <label>買方 Email</label>
-               <v-text-field v-model="selectedHouseholdForDetail.buyerEmail"
-                  :readonly="!isModalEditMode"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">買方 Email</span>
+               <input v-if="isModalEditMode" v-model="selectedHouseholdForDetail.buyerEmail" class="hdm-input" type="email" placeholder="—">
+               <span v-else class="hdm-value" :class="{ 'is-empty': !selectedHouseholdForDetail.buyerEmail }">{{ selectedHouseholdForDetail.buyerEmail || '—' }}</span>
             </div>
-            <div class="hdm-row hdm-row-edit">
-               <label>買方身分證(驗證碼)</label>
-               <v-text-field v-model="selectedHouseholdForDetail.buyerIdNumber"
-                  :readonly="!isModalEditMode"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">買方身分證(驗證碼)</span>
+               <input v-if="isModalEditMode" v-model="selectedHouseholdForDetail.buyerIdNumber" class="hdm-input" placeholder="—">
+               <span v-else class="hdm-value" :class="{ 'is-empty': !selectedHouseholdForDetail.buyerIdNumber }">{{ selectedHouseholdForDetail.buyerIdNumber || '—' }}</span>
             </div>
-            <div class="hdm-row hdm-row-edit">
-               <label>車位</label>
-               <v-text-field v-model="selectedHouseholdForDetail.parkingLots"
-                  :readonly="!isModalEditMode"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">車位</span>
+               <input v-if="isModalEditMode" v-model="selectedHouseholdForDetail.parkingLots" class="hdm-input" placeholder="—">
+               <span v-else class="hdm-value" :class="{ 'is-empty': !selectedHouseholdForDetail.parkingLots }">{{ selectedHouseholdForDetail.parkingLots || '—' }}</span>
             </div>
-            <div class="hdm-row hdm-row-edit">
-               <label>門牌</label>
-               <v-text-field v-model="selectedHouseholdForDetail.address"
-                  :readonly="!isModalEditMode"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">門牌</span>
+               <input v-if="isModalEditMode" v-model="selectedHouseholdForDetail.address" class="hdm-input" placeholder="—">
+               <span v-else class="hdm-value" :class="{ 'is-empty': !selectedHouseholdForDetail.address }">{{ selectedHouseholdForDetail.address || '—' }}</span>
             </div>
-            <div class="hdm-row hdm-row-edit">
-               <label>撥款日</label>
-               <v-text-field type="date"
-                  :model-value="toDateInputValue(selectedHouseholdForDetail.appropriationDate)"
-                  @update:model-value="(v) => selectedHouseholdForDetail.appropriationDate = v"
-                  :readonly="!isModalEditMode"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"></v-text-field>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">撥款日</span>
+               <input
+                  v-if="isModalEditMode"
+                  type="date"
+                  class="hdm-input hdm-input--date"
+                  :value="toDateInputValue(selectedHouseholdForDetail.appropriationDate)"
+                  @input="(e) => selectedHouseholdForDetail.appropriationDate = e.target.value"
+               >
+               <span v-else class="hdm-value" :class="{ 'is-empty': !formatDetailDate(selectedHouseholdForDetail.appropriationDate) }">
+                  {{ formatDetailDate(selectedHouseholdForDetail.appropriationDate) || '—' }}
+               </span>
             </div>
-            <div class="hdm-remarks-block">
-               <div class="hdm-remarks-label">
-                  <v-icon size="small" color="grey-darken-1" class="mr-1">mdi-note-text-outline</v-icon>
-                  備註
-               </div>
-               <v-textarea v-model="selectedHouseholdForDetail.remarks"
-                  :readonly="!isModalEditMode"
-                  :variant="isModalEditMode ? 'outlined' : 'plain'"
-                  :rows="isModalEditMode ? 4 : 2"
-                  auto-grow hide-details density="compact"
-                  :placeholder="isModalEditMode ? '請輸入備註…' : '—'"
-                  class="hdm-edit-textarea"></v-textarea>
+            <div class="mac-form-pad hdm-remarks">
+               <span class="hdm-label">備註</span>
+               <textarea
+                  v-if="isModalEditMode"
+                  v-model="selectedHouseholdForDetail.remarks"
+                  class="mac-form-textarea hdm-textarea"
+                  rows="4"
+                  placeholder="請輸入備註…"
+               ></textarea>
+               <div v-else class="hdm-remarks-text" :class="{ 'is-empty': !selectedHouseholdForDetail.remarks }">{{ selectedHouseholdForDetail.remarks || '—' }}</div>
             </div>
-         </v-card-text>
-      </v-card>
+         </div>
+      </section>
 
       <!-- 預約資訊（依 type） -->
-      <v-card
+      <section
          v-for="type in detailBookingTypes"
          v-show="isHdmSectionVisible(`booking:${type}`)"
          :key="`bt-${type}`"
-         variant="outlined"
-         class="mb-3"
+         class="hdm-section"
       >
-         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-blue-lighten-5 d-flex align-center">
-            <v-icon size="small" class="mr-1" color="primary">mdi-calendar-clock-outline</v-icon>
-            <span>{{ type }} 預約資訊</span>
-            <v-chip
+         <div class="hdm-sec-head">
+            <span class="hdm-icon" :style="{ background: HDM_SECTION_COLORS.booking }"><v-icon size="15" color="#fff">mdi-calendar-clock-outline</v-icon></span>
+            <span class="hdm-sec-title">{{ type }} 預約資訊</span>
+            <span
                v-if="detailBookingsForType(type).length > 1"
-               size="x-small" color="deep-orange" variant="flat" class="ml-2 font-weight-bold"
+               class="mac-tag mac-tag--orange-fill"
                title="此項目同時有多筆有效預約">
-               <v-icon start size="x-small">mdi-alert-circle-outline</v-icon>
-               {{ detailBookingsForType(type).length }} 筆預約
-            </v-chip>
-            <v-spacer></v-spacer>
-            <v-btn
+               <v-icon size="12">mdi-alert-circle-outline</v-icon>{{ detailBookingsForType(type).length }} 筆預約
+            </span>
+            <span class="mac-spacer"></span>
+            <button
                v-if="detailBookingsForType(type).length === 1"
-               size="x-small" variant="tonal" color="error"
-               prepend-icon="mdi-calendar-remove"
+               type="button"
+               class="mac-btn mac-btn--sm mac-btn--danger"
+               title="取消此筆預約（將通知預約人）"
                @click.stop="openCancelApptDialog(type, detailBookingsForType(type)[0])" @mousedown.stop
-               title="取消此筆預約（將通知預約人）">
-               取消預約
-            </v-btn>
-         </v-card-title>
-         <v-card-text class="pt-2 pb-2">
-            <!-- 無有效預約 -->
-            <div v-if="detailBookingsForType(type).length === 0" class="hdm-row">
-               <label>預約狀態</label>
-               <span class="text-grey">尚無有效預約</span>
+            ><v-icon size="15">mdi-calendar-remove</v-icon>取消預約</button>
+         </div>
+
+         <div v-if="detailBookingsForType(type).length === 0" class="mac-form-group">
+            <div class="mac-form-row mac-form-empty">尚無有效預約</div>
+         </div>
+
+         <!-- 每筆有效預約一個群組（同一項目重複預約時全部並列） -->
+         <div
+            v-for="(bk, bkIdx) in detailBookingsForType(type)"
+            :key="bk.appointmentId || `bk-${type}-${bkIdx}`"
+            class="mac-form-group hdm-booking"
+            :class="{ 'hdm-booking-multi': detailBookingsForType(type).length > 1 }"
+         >
+            <div v-if="detailBookingsForType(type).length > 1" class="mac-form-row hdm-booking-head">
+               <span class="mac-tag mac-tag--orange">第 {{ bkIdx + 1 }} 筆</span>
+               <span class="mac-tag" :class="bk.status === '已完成' ? 'mac-tag--green' : 'mac-tag--blue'">{{ bk.status || '預約中' }}</span>
+               <span class="hdm-booking-head-date">
+                  {{ formatDetailDate(bk.date) || '未填日期' }}<template v-if="bk.timeSlot">・{{ bk.timeSlot }}</template>
+               </span>
+               <span class="mac-spacer"></span>
+               <button
+                  v-if="bk.appointmentId"
+                  type="button"
+                  class="mac-btn mac-btn--sm mac-btn--danger"
+                  title="取消這一筆預約（將通知預約人）"
+                  @click.stop="openCancelApptDialog(type, bk)" @mousedown.stop
+               ><v-icon size="15">mdi-calendar-remove</v-icon>取消</button>
             </div>
-            <!-- 每筆有效預約一個區塊（同一項目重複預約時全部並列） -->
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">預約日期</span>
+               <span class="hdm-value">
+                  {{ formatDetailDate(bk.date) || '—' }}
+                  <span v-if="detailBookingsForType(type).length === 1 && bk.status" class="mac-tag hdm-inline-tag" :class="bk.status === '已完成' ? 'mac-tag--green' : 'mac-tag--blue'">{{ bk.status }}</span>
+               </span>
+            </div>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">時段</span>
+               <span class="hdm-value">{{ bk.timeSlot || '—' }}</span>
+            </div>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">選擇方式</span>
+               <span class="hdm-value">{{ bk.method || '—' }}</span>
+            </div>
+            <div v-if="typesWithSubOptions.has(type)" class="mac-form-row hdm-field">
+               <span class="hdm-label">子項目</span>
+               <span class="hdm-value">{{ bk.subOption || '—' }}</span>
+            </div>
             <div
-               v-for="(bk, bkIdx) in detailBookingsForType(type)"
-               :key="bk.appointmentId || `bk-${type}-${bkIdx}`"
-               class="hdm-booking-block"
-               :class="{ 'hdm-booking-multi': detailBookingsForType(type).length > 1 }"
+               v-for="f in (detailExtraFieldsByType[type] || [])"
+               :key="`mf-${bk.appointmentId || bkIdx}-${f.id}`"
+               class="mac-form-row hdm-field"
             >
-               <!-- 多筆時：每筆的序號 / 狀態 / 取消按鈕 -->
-               <div v-if="detailBookingsForType(type).length > 1" class="hdm-booking-head">
-                  <v-chip size="x-small" color="deep-orange" variant="tonal" class="font-weight-bold">
-                     第 {{ bkIdx + 1 }} 筆
-                  </v-chip>
-                  <v-chip
-                     size="x-small" variant="tonal"
-                     :color="bk.status === '已完成' ? 'success' : 'primary'">
-                     {{ bk.status || '預約中' }}
-                  </v-chip>
-                  <span class="hdm-booking-head-date">
-                     {{ formatDetailDate(bk.date) || '未填日期' }}<template v-if="bk.timeSlot">・{{ bk.timeSlot }}</template>
-                  </span>
-                  <v-spacer></v-spacer>
-                  <v-btn
-                     v-if="bk.appointmentId"
-                     size="x-small" variant="text" color="error" density="comfortable"
-                     prepend-icon="mdi-calendar-remove"
-                     @click.stop="openCancelApptDialog(type, bk)" @mousedown.stop
-                     title="取消這一筆預約（將通知預約人）">
-                     取消
-                  </v-btn>
-               </div>
-               <div class="hdm-row">
-                  <label>預約日期</label>
-                  <span>{{ formatDetailDate(bk.date) || '—' }}</span>
-               </div>
-               <div class="hdm-row">
-                  <label>時段</label>
-                  <span>{{ bk.timeSlot || '—' }}</span>
-               </div>
-               <div class="hdm-row">
-                  <label>選擇方式</label>
-                  <span>{{ bk.method || '—' }}</span>
-               </div>
-               <div v-if="typesWithSubOptions.has(type)" class="hdm-row">
-                  <label>子項目</label>
-                  <span>{{ bk.subOption || '—' }}</span>
-               </div>
-               <div
-                  v-for="f in (detailExtraFieldsByType[type] || [])"
-                  :key="`mf-${bk.appointmentId || bkIdx}-${f.id}`"
-                  class="hdm-row"
-                  :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[bk.appointmentId] }"
+               <span class="hdm-label">{{ f.label }}</span>
+               <input
+                  v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
+                  v-model="_bookingEditDrafts[bk.appointmentId].bookingMethodDetails[f.id]"
+                  class="hdm-input"
+                  placeholder="—"
                >
-                  <label>{{ f.label }}</label>
-                  <v-text-field v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
-                     v-model="_bookingEditDrafts[bk.appointmentId].bookingMethodDetails[f.id]"
-                     variant="plain" density="compact" hide-details class="hdm-edit-field"
-                     placeholder="—"></v-text-field>
-                  <span v-else>{{ bk.bookingMethodDetails?.[f.id] || '—' }}</span>
+               <span v-else class="hdm-value">{{ bk.bookingMethodDetails?.[f.id] || '—' }}</span>
+            </div>
+            <!-- 預約人聯絡資訊 -->
+            <div class="mac-form-row hdm-field hdm-row-sep">
+               <span class="hdm-label">預約人姓名</span>
+               <input
+                  v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
+                  v-model="_bookingEditDrafts[bk.appointmentId].bookerName"
+                  class="hdm-input"
+                  placeholder="—"
+               >
+               <span v-else class="hdm-value" :class="{ 'is-empty': !bk.bookerName }">{{ bk.bookerName || '—' }}</span>
+            </div>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">預約人電話</span>
+               <input
+                  v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
+                  v-model="_bookingEditDrafts[bk.appointmentId].bookerPhone"
+                  class="hdm-input"
+                  type="tel"
+                  placeholder="—"
+               >
+               <span v-else class="hdm-value" :class="{ 'is-empty': !bk.bookerPhone }">
+                  <a v-if="bk.bookerPhone" :href="`tel:${bk.bookerPhone}`">{{ bk.bookerPhone }}</a>
+                  <template v-else>—</template>
+               </span>
+            </div>
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">預約人 Email</span>
+               <input
+                  v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
+                  v-model="_bookingEditDrafts[bk.appointmentId].bookerEmail"
+                  class="hdm-input"
+                  type="email"
+                  placeholder="—"
+               >
+               <span v-else class="hdm-value" :class="{ 'is-empty': !bk.bookerEmail }">
+                  <a v-if="bk.bookerEmail" :href="`mailto:${bk.bookerEmail}`">{{ bk.bookerEmail }}</a>
+                  <template v-else>—</template>
+               </span>
+            </div>
+            <!-- 驗屋報告未上傳提醒通知：未上傳天數 + 發送 + 寄出紀錄（逐筆預約獨立） -->
+            <div v-if="shouldShowReminderBlock(type, bk)" class="mac-form-pad hdm-reminder">
+               <div class="hdm-reminder-title">
+                  <v-icon size="16" color="#c27400">mdi-email-alert-outline</v-icon>
+                  <span>未上傳驗屋報告提醒</span>
+                  <span v-if="getReminderRecords(bk).length > 0" class="mac-tag mac-tag--orange">已寄 {{ getReminderRecords(bk).length }} 次</span>
                </div>
-               <!-- 預約人聯絡資訊 -->
-               <div class="hdm-booker-divider"></div>
-               <div class="hdm-row" :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[bk.appointmentId] }">
-                  <label>預約人姓名</label>
-                  <v-text-field v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
-                     v-model="_bookingEditDrafts[bk.appointmentId].bookerName"
-                     variant="plain" density="compact" hide-details class="hdm-edit-field"
-                     placeholder="—"></v-text-field>
-                  <span v-else :class="{ 'text-grey': !bk.bookerName }">
-                     {{ bk.bookerName || '—' }}
-                  </span>
-               </div>
-               <div class="hdm-row" :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[bk.appointmentId] }">
-                  <label>預約人電話</label>
-                  <v-text-field v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
-                     v-model="_bookingEditDrafts[bk.appointmentId].bookerPhone"
-                     variant="plain" density="compact" hide-details class="hdm-edit-field"
-                     placeholder="—"></v-text-field>
-                  <span v-else :class="{ 'text-grey': !bk.bookerPhone }">
-                     <a v-if="bk.bookerPhone" :href="`tel:${bk.bookerPhone}`">
-                        {{ bk.bookerPhone }}
-                     </a>
-                     <template v-else>—</template>
-                  </span>
-               </div>
-               <div class="hdm-row" :class="{ 'hdm-row-edit': isModalEditMode && _bookingEditDrafts[bk.appointmentId] }">
-                  <label>預約人 Email</label>
-                  <v-text-field v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
-                     v-model="_bookingEditDrafts[bk.appointmentId].bookerEmail"
-                     variant="plain" density="compact" hide-details class="hdm-edit-field"
-                     placeholder="—"></v-text-field>
-                  <span v-else :class="{ 'text-grey': !bk.bookerEmail }">
-                     <a v-if="bk.bookerEmail" :href="`mailto:${bk.bookerEmail}`">
-                        {{ bk.bookerEmail }}
-                     </a>
-                     <template v-else>—</template>
-                  </span>
-               </div>
-               <!-- 驗屋報告未上傳提醒通知：未上傳天數 + 發送 + 寄出紀錄（逐筆預約獨立） -->
-               <div v-if="shouldShowReminderBlock(type, bk)" class="hdm-row hdm-row-block">
-                  <label>
-                     <v-icon size="small" color="orange-darken-2" class="mr-1">mdi-email-alert-outline</v-icon>
-                     未上傳驗屋報告提醒
-                     <v-chip
-                        v-if="getReminderRecords(bk).length > 0"
-                        size="x-small" color="orange-darken-2" variant="tonal" class="ml-1">
-                        已寄 {{ getReminderRecords(bk).length }} 次
-                     </v-chip>
-                  </label>
-
-                  <!-- 未上傳天數 + 發送按鈕 -->
-                  <div v-if="daysSinceNoUpload(bk) !== null" class="hdm-reminder-head">
-                     <div class="hdm-reminder-days">
-                        <v-icon size="small" :color="daysSinceNoUpload(bk) >= 0 ? 'red-darken-1' : 'grey'" class="mr-1">mdi-clock-alert-outline</v-icon>
-                        <template v-if="daysSinceNoUpload(bk) >= 0">
-                           驗屋後 <strong class="mx-1">{{ daysSinceNoUpload(bk) }}</strong> 天未上傳報告
-                        </template>
-                        <template v-else>尚未到驗屋日</template>
-                     </div>
-                     <v-btn
-                        v-if="isTypeReminderEligible(type, bk)"
-                        size="x-small" variant="flat" color="orange-darken-2"
-                        prepend-icon="mdi-email-fast-outline"
-                        @click.stop="openReminderDialog(type, bk)" @mousedown.stop
-                        title="預覽通知內容後寄送給預約人">
-                        發送提醒通知
-                     </v-btn>
+               <div v-if="daysSinceNoUpload(bk) !== null" class="hdm-reminder-head">
+                  <div class="hdm-reminder-days" :class="{ 'is-overdue': daysSinceNoUpload(bk) >= 0 }">
+                     <v-icon size="15">mdi-clock-alert-outline</v-icon>
+                     <template v-if="daysSinceNoUpload(bk) >= 0">
+                        驗屋後 <strong>{{ daysSinceNoUpload(bk) }}</strong> 天未上傳報告
+                     </template>
+                     <template v-else>尚未到驗屋日</template>
                   </div>
-
-                  <!-- 寄出紀錄 -->
-                  <div class="hdm-reminder-list">
-                     <div
-                        v-if="getReminderRecords(bk).length === 0"
-                        class="text-caption text-grey">
-                        {{ bk.reportUploaded ? '報告已上傳，無提醒紀錄' : '尚未寄送提醒' }}
-                     </div>
-                     <div
-                        v-for="(sentAt, idx) in getReminderRecords(bk)"
-                        :key="`rmd-${bk.appointmentId || bkIdx}-${idx}`"
-                        class="hdm-reminder-item">
-                        <v-icon size="x-small" color="orange-darken-2" class="mr-1">mdi-email-fast-outline</v-icon>
-                        <span>{{ sentAt }}</span>
-                     </div>
+                  <button
+                     v-if="isTypeReminderEligible(type, bk)"
+                     type="button"
+                     class="mac-btn mac-btn--sm"
+                     title="預覽通知內容後寄送給預約人"
+                     @click.stop="openReminderDialog(type, bk)" @mousedown.stop
+                  ><v-icon size="15">mdi-email-fast-outline</v-icon>發送提醒通知</button>
+               </div>
+               <div class="hdm-reminder-list">
+                  <div v-if="getReminderRecords(bk).length === 0" class="hdm-reminder-empty">
+                     {{ bk.reportUploaded ? '報告已上傳，無提醒紀錄' : '尚未寄送提醒' }}
+                  </div>
+                  <div
+                     v-for="(sentAt, idx) in getReminderRecords(bk)"
+                     :key="`rmd-${bk.appointmentId || bkIdx}-${idx}`"
+                     class="hdm-reminder-item">
+                     <v-icon size="13">mdi-email-fast-outline</v-icon>
+                     <span>{{ sentAt }}</span>
                   </div>
                </div>
             </div>
-            <!-- 批次（戶別層級，每個項目一組，與筆數無關） -->
-            <div class="hdm-row hdm-row-edit">
-               <label>{{ type }}批次</label>
-               <v-text-field
-                  :model-value="getBatchCodeForType(type)"
-                  @update:model-value="(v) => setBatchCodeForType(type, v)"
-                  :readonly="!isModalEditMode"
-                  variant="plain" density="compact" hide-details class="hdm-edit-field"
-                  placeholder="—"></v-text-field>
+         </div>
+
+         <!-- 批次（戶別層級，每個項目一組，與筆數無關） -->
+         <div class="mac-form-group">
+            <div class="mac-form-row hdm-field">
+               <span class="hdm-label">{{ type }}批次</span>
+               <input
+                  v-if="isModalEditMode"
+                  class="hdm-input"
+                  :value="getBatchCodeForType(type)"
+                  placeholder="—"
+                  @input="(e) => setBatchCodeForType(type, e.target.value)"
+               >
+               <span v-else class="hdm-value" :class="{ 'is-empty': !getBatchCodeForType(type) }">{{ getBatchCodeForType(type) || '—' }}</span>
             </div>
-         </v-card-text>
-      </v-card>
+         </div>
+      </section>
 
       <!-- 報告 / 其他 -->
-      <v-card v-show="isHdmSectionVisible('reports')" variant="outlined" class="mb-3">
-         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-grey-lighten-4">
-            <v-icon size="small" class="mr-1" color="primary">mdi-file-document-outline</v-icon>報告 / 其他
-         </v-card-title>
-         <v-card-text class="pt-2 pb-2">
-            <!-- 驗屋報告（多筆）-->
-            <div class="hdm-row hdm-row-block">
-               <label>
-                  驗屋報告
-                  <v-chip v-if="inspectionReports.length > 0" size="x-small" color="red" variant="tonal" class="ml-1">{{ inspectionReports.length }}</v-chip>
-               </label>
-               <div class="hdm-report-list">
-                  <div v-if="inspectionReports.length === 0" class="text-grey">—</div>
-                  <div v-for="(file, idx) in inspectionReports" :key="`rpt-${idx}`" class="hdm-report-item">
-                     <a :href="file.url" target="_blank" rel="noopener noreferrer" class="hdm-report-link" :class="{ 'is-downloaded': file.isDownloaded }">
-                        <v-icon size="small" :color="file.isDownloaded ? 'grey' : 'red'" class="mr-1">mdi-file-pdf-box</v-icon>
-                        <span>{{ file.name }}</span>
-                     </a>
-                     <div class="hdm-report-actions">
-                        <v-btn v-if="!file.isDownloaded" icon="mdi-check-circle-outline"
-                           variant="text" color="success" size="x-small" density="comfortable"
-                           @click.stop="onModalMarkReportDownloaded(file)" title="標記為已下載"></v-btn>
-                        <v-icon v-else color="success" size="small" class="mx-2" title="已下載">mdi-check-circle</v-icon>
-                        <v-btn icon="mdi-delete-outline"
-                           variant="text" color="error" size="x-small" density="comfortable"
-                           @click.stop="onModalDeleteReport(file)" title="刪除"></v-btn>
-                     </div>
-                  </div>
-               </div>
+      <section v-show="isHdmSectionVisible('reports')" class="hdm-section">
+         <div class="hdm-sec-head">
+            <span class="hdm-icon" :style="{ background: HDM_SECTION_COLORS.reports }"><v-icon size="15" color="#fff">mdi-file-document-outline</v-icon></span>
+            <span class="hdm-sec-title">報告 / 其他</span>
+         </div>
+         <div class="hdm-group-label">驗屋報告<span v-if="inspectionReports.length > 0" class="hdm-group-count">{{ inspectionReports.length }}</span></div>
+         <div class="mac-form-group">
+            <div v-if="inspectionReports.length === 0" class="mac-form-row mac-form-empty">尚無驗屋報告</div>
+            <div v-for="(file, idx) in inspectionReports" :key="`rpt-${idx}`" class="mac-form-row hdm-file-row">
+               <a :href="file.url" target="_blank" rel="noopener noreferrer" class="hdm-file-link" :class="{ 'is-downloaded': file.isDownloaded }">
+                  <v-icon size="18" :color="file.isDownloaded ? '#8e8e93' : '#d62d20'">mdi-file-pdf-box</v-icon>
+                  <span>{{ file.name }}</span>
+               </a>
+               <button
+                  v-if="!file.isDownloaded"
+                  type="button"
+                  class="mac-icon-btn hdm-ok-btn"
+                  title="標記為已下載"
+                  aria-label="標記為已下載"
+                  @click.stop="onModalMarkReportDownloaded(file)"
+               ><v-icon size="18">mdi-check-circle-outline</v-icon></button>
+               <span v-else class="mac-tag mac-tag--green" title="已下載"><v-icon size="12">mdi-check</v-icon>已下載</span>
+               <button
+                  type="button"
+                  class="mac-icon-btn mac-icon-btn--danger"
+                  title="刪除"
+                  aria-label="刪除"
+                  @click.stop="onModalDeleteReport(file)"
+               ><v-icon size="18">mdi-delete-outline</v-icon></button>
             </div>
-            <div v-if="selectedHouseholdForDetail.inspectionReportFolderUrl" class="hdm-row">
-               <label>報告資料夾</label>
-               <span><a :href="selectedHouseholdForDetail.inspectionReportFolderUrl" target="_blank" rel="noopener">開啟</a></span>
+         </div>
+         <template v-if="selectedHouseholdForDetail.inspectionReportFolderUrl || selectedHouseholdForDetail.inspectionDocsUrl">
+            <div class="hdm-group-label">連結</div>
+            <div class="mac-form-group">
+               <a
+                  v-if="selectedHouseholdForDetail.inspectionReportFolderUrl"
+                  :href="selectedHouseholdForDetail.inspectionReportFolderUrl"
+                  target="_blank" rel="noopener"
+                  class="mac-form-row mac-form-link hdm-link-row"
+               >
+                  <v-icon size="18" color="#0a84ff">mdi-folder-outline</v-icon>
+                  <span class="mac-form-row-main">報告資料夾</span>
+                  <v-icon size="16" color="#8e8e93">mdi-open-in-new</v-icon>
+               </a>
+               <a
+                  v-if="selectedHouseholdForDetail.inspectionDocsUrl"
+                  :href="selectedHouseholdForDetail.inspectionDocsUrl"
+                  target="_blank" rel="noopener"
+                  class="mac-form-row mac-form-link hdm-link-row"
+               >
+                  <v-icon size="18" color="#0a84ff">mdi-file-document-multiple-outline</v-icon>
+                  <span class="mac-form-row-main">驗屋文件</span>
+                  <v-icon size="16" color="#8e8e93">mdi-open-in-new</v-icon>
+               </a>
             </div>
-            <div v-if="selectedHouseholdForDetail.inspectionDocsUrl" class="hdm-row">
-               <label>驗屋文件</label>
-               <span><a :href="selectedHouseholdForDetail.inspectionDocsUrl" target="_blank" rel="noopener">開啟</a></span>
-            </div>
-         </v-card-text>
-      </v-card>
+         </template>
+      </section>
 
       <!-- 驗屋授權書 -->
-      <v-card v-show="isHdmSectionVisible('auth')" variant="outlined" class="mb-3">
-         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-teal-lighten-5 d-flex align-center">
-            <v-icon size="small" class="mr-1" color="teal-darken-2">mdi-file-sign</v-icon>
-            <span>驗屋授權書</span>
-            <v-chip size="x-small" :color="authLetters.length > 0 ? 'teal' : 'grey'" variant="tonal" class="ml-2">
+      <section v-show="isHdmSectionVisible('auth')" class="hdm-section">
+         <div class="hdm-sec-head">
+            <span class="hdm-icon" :style="{ background: HDM_SECTION_COLORS.auth }"><v-icon size="15" color="#fff">mdi-file-sign</v-icon></span>
+            <span class="hdm-sec-title">驗屋授權書</span>
+            <span class="mac-tag" :class="authLetters.length > 0 ? 'mac-tag--green' : ''">
                {{ authLetters.length > 0 ? `已授權 ${authLetters.length}` : '未授權' }}
-            </v-chip>
-         </v-card-title>
-         <v-card-text class="pt-2 pb-2">
-            <div v-if="authLetters.length === 0" class="text-caption text-grey text-center py-3">
-               尚未上傳驗屋授權書（受託人完成簽署後將自動歸檔於此）
-            </div>
-            <div v-else class="hdm-auth-list">
-               <div v-for="(file, idx) in authLetters" :key="`al-${idx}`" class="hdm-auth-item">
-                  <a :href="file.url" target="_blank" rel="noopener noreferrer" class="hdm-auth-link">
-                     <v-icon size="small" color="teal-darken-2" class="mr-1">mdi-file-sign</v-icon>
-                     <span>{{ formatAuthLetterName(file, selectedHouseholdForDetail.unitId) }}</span>
-                     <v-icon size="x-small" color="grey" class="ml-1">mdi-open-in-new</v-icon>
-                  </a>
-                  <div class="hdm-auth-meta">
-                     <div class="hdm-auth-meta-row">
-                        <label>受託人姓名</label>
-                        <span :class="{ 'text-grey': !file.agentName }">{{ file.agentName || '—' }}</span>
-                     </div>
-                     <div class="hdm-auth-meta-row">
-                        <label>與委託人關係</label>
-                        <span :class="{ 'text-grey': !file.agentRelationship }">{{ file.agentRelationship || '—' }}</span>
-                     </div>
-                     <div class="hdm-auth-meta-row">
-                        <label>受託人電話</label>
-                        <span :class="{ 'text-grey': !file.agentPhone }">
-                           <a v-if="file.agentPhone" :href="`tel:${file.agentPhone}`">{{ file.agentPhone }}</a>
-                           <template v-else>—</template>
-                        </span>
-                     </div>
+            </span>
+         </div>
+         <div class="mac-form-group">
+            <div v-if="authLetters.length === 0" class="mac-form-row mac-form-empty">尚未上傳驗屋授權書</div>
+            <div v-for="(file, idx) in authLetters" :key="`al-${idx}`" class="mac-form-pad hdm-auth-item">
+               <a :href="file.url" target="_blank" rel="noopener noreferrer" class="hdm-file-link">
+                  <v-icon size="18" color="#30b0c7">mdi-file-sign</v-icon>
+                  <span>{{ formatAuthLetterName(file, selectedHouseholdForDetail.unitId) }}</span>
+                  <v-icon size="14" color="#8e8e93">mdi-open-in-new</v-icon>
+               </a>
+               <div class="hdm-auth-meta">
+                  <div class="hdm-auth-meta-row">
+                     <span>受託人姓名</span>
+                     <b :class="{ 'is-empty': !file.agentName }">{{ file.agentName || '—' }}</b>
+                  </div>
+                  <div class="hdm-auth-meta-row">
+                     <span>與委託人關係</span>
+                     <b :class="{ 'is-empty': !file.agentRelationship }">{{ file.agentRelationship || '—' }}</b>
+                  </div>
+                  <div class="hdm-auth-meta-row">
+                     <span>受託人電話</span>
+                     <b :class="{ 'is-empty': !file.agentPhone }">
+                        <a v-if="file.agentPhone" :href="`tel:${file.agentPhone}`">{{ file.agentPhone }}</a>
+                        <template v-else>—</template>
+                     </b>
                   </div>
                </div>
             </div>
-         </v-card-text>
-      </v-card>
+         </div>
+      </section>
 
       <!-- 客戶回傳訊息 -->
-      <v-card v-show="isHdmSectionVisible('messages')" variant="outlined" class="mb-3">
-         <v-card-title class="text-subtitle-2 font-weight-bold py-2 bg-info-lighten-5 d-flex align-center">
-            <v-icon size="small" class="mr-1" color="info">mdi-message-text-outline</v-icon>
-            <span>客戶回傳訊息</span>
-            <v-chip size="x-small" :color="modalCustomerMessages.length > 0 ? 'info' : 'grey'" variant="tonal" class="ml-2">
-               {{ modalCustomerMessages.length }}
-            </v-chip>
-            <v-spacer></v-spacer>
-            <v-btn size="x-small" variant="text" color="info"
-               prepend-icon="mdi-message-plus-outline"
-               @click="openAddMessageDialog">
-               新增
-            </v-btn>
-            <v-btn v-if="modalCustomerMessages.length > 0" size="x-small" variant="text" color="info"
-               prepend-icon="mdi-open-in-new"
-               @click="openMessageDialog(selectedHouseholdForDetail)">
-               完整檢視
-            </v-btn>
-         </v-card-title>
-         <v-card-text class="pt-2 pb-2">
-            <div v-if="modalCustomerMessages.length === 0" class="text-caption text-grey text-center py-3">
-               尚無客戶回傳訊息
-            </div>
-            <v-expansion-panels v-else variant="accordion" multiple density="compact">
-               <v-expansion-panel v-for="msg in modalCustomerMessages" :key="msg.id">
-                  <v-expansion-panel-title class="py-2">
-                     <div class="d-flex align-center flex-grow-1 ga-2">
-                        <span class="font-weight-bold text-body-2">{{ msg.functionName || '未命名功能' }}</span>
-                        <v-chip v-if="msg.status === 'new'" size="x-small" color="error" variant="flat">新</v-chip>
-                        <v-chip v-if="msg.createdByAdmin" size="x-small" color="grey" variant="tonal">後台建立</v-chip>
-                        <v-chip v-if="msg.attachments && msg.attachments.length > 0" size="x-small" color="primary" variant="outlined">
-                           <v-icon size="x-small">mdi-paperclip</v-icon>{{ msg.attachments.length }}
-                        </v-chip>
-                        <v-spacer></v-spacer>
-                        <span class="text-caption text-grey">{{ formatMessageDate(msg.createdAt) }}</span>
-                     </div>
-                  </v-expansion-panel-title>
-                  <v-expansion-panel-text>
-                     <v-table density="compact" class="hdm-msg-table">
-                        <tbody>
-                           <tr v-for="(value, key) in msg.data" :key="key">
-                              <td class="bg-grey-lighten-4 font-weight-bold" style="width: 140px;">{{ getFieldLabel(msg, key) }}</td>
-                              <td>{{ getFieldDisplayValue(msg, key, value) }}</td>
-                           </tr>
-                        </tbody>
-                     </v-table>
-                     <div v-if="msg.attachments && msg.attachments.length > 0" class="mt-2 d-flex flex-wrap ga-1">
-                        <v-chip v-for="file in msg.attachments" :key="file.path"
-                           size="x-small" :href="file.url" target="_blank" rel="noopener noreferrer"
-                           color="primary" variant="outlined" prepend-icon="mdi-paperclip">
-                           {{ file.name }}
-                        </v-chip>
-                     </div>
-                  </v-expansion-panel-text>
-               </v-expansion-panel>
-            </v-expansion-panels>
-         </v-card-text>
-      </v-card>
+      <section v-show="isHdmSectionVisible('messages')" class="hdm-section">
+         <div class="hdm-sec-head">
+            <span class="hdm-icon" :style="{ background: HDM_SECTION_COLORS.messages }"><v-icon size="15" color="#fff">mdi-message-text-outline</v-icon></span>
+            <span class="hdm-sec-title">客戶回傳訊息</span>
+            <span class="mac-tag" :class="modalCustomerMessages.length > 0 ? 'mac-tag--blue' : ''">{{ modalCustomerMessages.length }}</span>
+            <span class="mac-spacer"></span>
+            <button type="button" class="mac-btn mac-btn--sm" @click="openAddMessageDialog">
+               <v-icon size="15">mdi-message-plus-outline</v-icon>新增
+            </button>
+            <button v-if="modalCustomerMessages.length > 0" type="button" class="mac-btn mac-btn--sm" @click="openMessageDialog(selectedHouseholdForDetail)">
+               <v-icon size="15">mdi-open-in-new</v-icon>完整檢視
+            </button>
+         </div>
+         <div class="mac-form-group">
+            <div v-if="modalCustomerMessages.length === 0" class="mac-form-row mac-form-empty">尚無客戶回傳訊息</div>
+            <details v-for="msg in modalCustomerMessages" :key="msg.id" class="hdm-msg">
+               <summary class="hdm-msg-sum">
+                  <v-icon size="16" class="hdm-msg-chev">mdi-chevron-right</v-icon>
+                  <span class="hdm-msg-title">{{ msg.functionName || '未命名功能' }}</span>
+                  <span v-if="msg.status === 'new'" class="mac-tag mac-tag--red">新</span>
+                  <span v-if="msg.createdByAdmin" class="mac-tag">後台建立</span>
+                  <span v-if="msg.attachments && msg.attachments.length > 0" class="mac-tag mac-tag--blue">
+                     <v-icon size="12">mdi-paperclip</v-icon>{{ msg.attachments.length }}
+                  </span>
+                  <span class="hdm-msg-date">{{ formatMessageDate(msg.createdAt) }}</span>
+               </summary>
+               <div class="hdm-msg-body">
+                  <div v-for="(value, key) in msg.data" :key="key" class="hdm-kv">
+                     <span class="hdm-kv-key">{{ getFieldLabel(msg, key) }}</span>
+                     <span class="hdm-kv-val">{{ getFieldDisplayValue(msg, key, value) }}</span>
+                  </div>
+                  <div v-if="msg.attachments && msg.attachments.length > 0" class="hdm-attachments">
+                     <a v-for="file in msg.attachments" :key="file.path" :href="file.url" target="_blank" rel="noopener noreferrer" class="mac-tag mac-tag--blue hdm-attachment">
+                        <v-icon size="12">mdi-paperclip</v-icon>{{ file.name }}
+                     </a>
+                  </div>
+               </div>
+            </details>
+         </div>
+      </section>
       </div>
    </div>
 </div>
@@ -998,42 +905,41 @@
 />
 
 <!-- 後台代客戶建立回傳訊息對話框（從戶別整合資訊 Modal 觸發） -->
-<v-dialog v-model="isAddMessageDialogOpen" max-width="640px" persistent scrollable>
-   <v-card>
-      <v-card-title class="bg-info text-white d-flex align-center py-3">
-         <v-icon start>mdi-message-plus-outline</v-icon>
-         <span class="text-h6">新增客戶回傳訊息</span>
-         <v-spacer></v-spacer>
-         <v-btn icon="mdi-close" variant="text" size="small" color="white"
-            :disabled="isSavingNewMessage" @click="isAddMessageDialogOpen = false"></v-btn>
-      </v-card-title>
-      <v-card-text class="pt-4" style="max-height: 75vh; overflow-y: auto;">
-         <v-alert v-if="customerMessageConfigList.length === 0" type="warning" variant="tonal" density="compact">
-            此建案尚未設定任何「客戶回傳功能」，請先到預約設定建立後再使用。
-         </v-alert>
+<v-dialog v-model="isAddMessageDialogOpen" max-width="640px" persistent scrollable content-class="mac-dialog-fit">
+   <v-card class="mac-sheet">
+      <div class="mac-sheet-head">
+         <v-icon size="18">mdi-message-plus-outline</v-icon>
+         <span>新增客戶回傳訊息</span>
+         <button type="button" class="mac-sheet-close" title="關閉" :disabled="isSavingNewMessage" @click="isAddMessageDialogOpen = false"><v-icon size="18">mdi-close</v-icon></button>
+      </div>
+      <div class="mac-sheet-section hg-sheet-body">
+         <div v-if="customerMessageConfigList.length === 0" class="mac-callout mac-callout--warning">
+            <v-icon size="16">mdi-alert-outline</v-icon>
+            <span>此建案尚未設定「客戶回傳功能」，請先到預約設定建立。</span>
+         </div>
          <template v-else>
-            <div class="text-caption text-medium-emphasis mb-3">
-               為戶別 <strong>{{ selectedHouseholdForDetail?.unitId }}</strong> 代客戶建立一筆回傳訊息（不會通知客戶）。
-            </div>
+            <div class="mac-sheet-note mb-3">戶別 <b>{{ selectedHouseholdForDetail?.unitId }}</b>・不會通知客戶</div>
+            <div class="mac-sheet-label">回傳功能</div>
             <v-select
                v-model="addMessageConfigId"
                :items="customerMessageConfigList"
                item-title="functionName"
                item-value="id"
-               label="回傳功能"
-               variant="outlined" density="comfortable" class="mb-3" hide-details></v-select>
+               variant="solo" flat density="compact" class="mac-vfield mb-3" hide-details
+               :menu-props="{ contentClass: 'mac-menu' }"></v-select>
             <v-form ref="addMessageFormRef">
                <DynamicFormRenderer
                   v-if="addMessageSelectedConfig && addMessageSelectedConfig.customFields && addMessageSelectedConfig.customFields.length > 0"
                   :key="addMessageConfigId"
                   :fields="addMessageSelectedConfig.customFields"
                   v-model="addMessageDynamicData" />
-               <div v-else class="text-caption text-grey mb-2">此功能沒有需要填寫的欄位。</div>
+               <div v-else class="mac-sheet-note mb-2">此功能沒有需要填寫的欄位。</div>
 
                <div v-if="addMessageSelectedConfig && addMessageSelectedConfig.enableFileUpload" class="mt-2">
-                  <p class="text-subtitle-2 font-weight-bold mb-1">附件上傳（最多10個，單檔30MB）</p>
-                  <v-file-input v-model="addMessageFiles" label="選擇檔案（圖片或PDF）" multiple chips show-size counter
-                     variant="outlined" density="comfortable" accept="image/*,.pdf"
+                  <div class="mac-sheet-label">附件（最多 10 個，單檔 30MB）</div>
+                  <v-file-input v-model="addMessageFiles" placeholder="選擇圖片或 PDF" multiple chips show-size counter
+                     prepend-icon="" prepend-inner-icon="mdi-paperclip"
+                     variant="solo" flat density="compact" class="mac-vfield" accept="image/*,.pdf"
                      :rules="[
                         v => !v || v.length <= 10 || '最多上傳 10 個檔案',
                         v => !v || v.every(f => f.size <= 30 * 1024 * 1024) || '單一檔案不可超過 30MB'
@@ -1041,101 +947,97 @@
                </div>
             </v-form>
          </template>
-      </v-card-text>
-      <v-divider></v-divider>
-      <v-card-actions class="pa-4">
-         <v-spacer></v-spacer>
-         <v-btn variant="text" :disabled="isSavingNewMessage" @click="isAddMessageDialogOpen = false">取消</v-btn>
-         <v-btn color="info" variant="flat" prepend-icon="mdi-content-save"
-            :loading="isSavingNewMessage"
-            :disabled="!addMessageSelectedConfig"
-            @click="saveNewCustomerMessage">儲存</v-btn>
-      </v-card-actions>
+      </div>
+      <div class="mac-sheet-foot">
+         <span class="mac-spacer"></span>
+         <button type="button" class="mac-btn" :disabled="isSavingNewMessage" @click="isAddMessageDialogOpen = false">取消</button>
+         <button type="button" class="mac-btn mac-btn--primary" :disabled="!addMessageSelectedConfig || isSavingNewMessage" @click="saveNewCustomerMessage">
+            <v-icon size="16">mdi-content-save-outline</v-icon>{{ isSavingNewMessage ? '儲存中…' : '儲存' }}
+         </button>
+      </div>
    </v-card>
 </v-dialog>
 
 <!-- 未上傳驗屋報告提醒：預覽後送出 -->
-<v-dialog v-model="reminderDialog.show" max-width="900px" persistent scrollable>
-   <v-card>
-      <v-card-title class="bg-orange-darken-2 text-white d-flex align-center py-3">
-         <v-icon start>mdi-email-fast-outline</v-icon>
-         <span class="text-h6">發送「未上傳驗屋報告」提醒</span>
-         <v-spacer></v-spacer>
-         <v-btn icon="mdi-close" variant="text" size="small" color="white"
-            :disabled="reminderDialog.sending" @click="reminderDialog.show = false"></v-btn>
-      </v-card-title>
-      <v-card-text class="pt-4">
-         <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-            收件人（預約人）：<strong>{{ reminderDialog.bookerName || '—' }}</strong>
-            <span v-if="reminderDialog.bookerEmail"> &lt;{{ reminderDialog.bookerEmail }}&gt;</span>
-            <span v-else class="text-error">（缺少 Email，無法寄送）</span>
-            <br>預約項目：<strong>{{ reminderDialog.type }}</strong>
-            <span v-if="reminderDialog.appointmentDate">　驗屋日：{{ reminderDialog.appointmentDate }}</span>
-            <div class="text-caption mt-1">副本收件人由系統設定，並以密件副本(BCC)寄出、不會顯示給客戶。</div>
-         </v-alert>
+<v-dialog v-model="reminderDialog.show" max-width="900px" persistent scrollable content-class="mac-dialog-fit">
+   <v-card class="mac-sheet">
+      <div class="mac-sheet-head">
+         <v-icon size="18">mdi-email-fast-outline</v-icon>
+         <span>發送「未上傳驗屋報告」提醒</span>
+         <button type="button" class="mac-sheet-close" title="關閉" :disabled="reminderDialog.sending" @click="reminderDialog.show = false"><v-icon size="18">mdi-close</v-icon></button>
+      </div>
+      <div class="mac-sheet-section hg-sheet-body">
+         <div class="mac-callout mb-4">
+            <v-icon size="16">mdi-account-outline</v-icon>
+            <div>
+               收件人（預約人）：<b>{{ reminderDialog.bookerName || '—' }}</b>
+               <span v-if="reminderDialog.bookerEmail"> &lt;{{ reminderDialog.bookerEmail }}&gt;</span>
+               <span v-else class="hg-text-danger">（缺少 Email，無法寄送）</span>
+               <br>預約項目：<b>{{ reminderDialog.type }}</b>
+               <span v-if="reminderDialog.appointmentDate">　驗屋日：{{ reminderDialog.appointmentDate }}</span>
+               <div class="mac-sheet-note">副本以密件副本（BCC）寄出，不會顯示給客戶。</div>
+            </div>
+         </div>
 
          <v-row>
             <!-- 編輯區 -->
             <v-col cols="12" md="6">
-               <div class="text-subtitle-2 font-weight-bold mb-2">編輯內容</div>
-               <label class="text-caption text-medium-emphasis">主旨</label>
-               <v-text-field v-model="reminderDialog.subject" variant="outlined" density="compact"
-                  class="mt-1 mb-3" hide-details></v-text-field>
-               <label class="text-caption text-medium-emphasis">內文</label>
-               <RichTextEditor v-model="reminderDialog.body" class="mt-1 mb-3" :placeholders="reminderEmailPlaceholders" />
-               <label class="text-caption text-medium-emphasis">提醒事項</label>
-               <RichTextEditor v-model="reminderDialog.reminder" class="mt-1" :placeholders="reminderEmailPlaceholders" />
+               <div class="mac-sheet-label">主旨</div>
+               <v-text-field v-model="reminderDialog.subject" variant="solo" flat density="compact"
+                  class="mac-vfield mb-3" hide-details></v-text-field>
+               <div class="mac-sheet-label">內文</div>
+               <RichTextEditor v-model="reminderDialog.body" class="mb-3" :placeholders="reminderEmailPlaceholders" />
+               <div class="mac-sheet-label">提醒事項</div>
+               <RichTextEditor v-model="reminderDialog.reminder" :placeholders="reminderEmailPlaceholders" />
             </v-col>
             <!-- 預覽區 -->
             <v-col cols="12" md="6">
-               <div class="text-subtitle-2 font-weight-bold mb-2">即時預覽</div>
-               <div class="text-caption text-medium-emphasis mb-1">主旨：{{ reminderPreviewSubject }}</div>
+               <div class="mac-sheet-label">即時預覽</div>
+               <div class="mac-sheet-note mb-1">主旨：{{ reminderPreviewSubject }}</div>
                <div class="reminder-preview-frame" v-html="reminderPreviewHtml"></div>
             </v-col>
          </v-row>
-      </v-card-text>
-      <v-divider></v-divider>
-      <v-card-actions class="pa-4">
-         <v-spacer></v-spacer>
-         <v-btn variant="text" :disabled="reminderDialog.sending" @click="reminderDialog.show = false">取消</v-btn>
-         <v-btn color="orange-darken-2" variant="flat" prepend-icon="mdi-send"
-            :loading="reminderDialog.sending"
-            :disabled="!reminderDialog.bookerEmail"
-            @click="sendReminderNow">確認送出</v-btn>
-      </v-card-actions>
+      </div>
+      <div class="mac-sheet-foot">
+         <span class="mac-spacer"></span>
+         <button type="button" class="mac-btn" :disabled="reminderDialog.sending" @click="reminderDialog.show = false">取消</button>
+         <button type="button" class="mac-btn mac-btn--primary" :disabled="!reminderDialog.bookerEmail || reminderDialog.sending" @click="sendReminderNow">
+            <v-icon size="16">mdi-send</v-icon>{{ reminderDialog.sending ? '寄送中…' : '確認送出' }}
+         </button>
+      </div>
    </v-card>
 </v-dialog>
 
 <!-- 取消預約確認 -->
-<v-dialog v-model="cancelApptDialog.show" max-width="460px" persistent>
-   <v-card>
-      <v-card-title class="bg-error text-white d-flex align-center py-3">
-         <v-icon start>mdi-calendar-remove</v-icon>
-         <span class="text-h6">確認取消預約</span>
-      </v-card-title>
-      <v-card-text class="pt-4">
-         <v-alert type="warning" variant="tonal" density="compact" class="mb-3">
-            此操作會將預約狀態改為「取消」、清除戶別對應的驗屋日期/方式，並依下方勾選對象寄送取消通知信，無法復原。
-         </v-alert>
-         <div class="hdm-row"><label>預約項目</label><span>{{ cancelApptDialog.type }}</span></div>
-         <div class="hdm-row"><label>預約日期</label><span>{{ cancelApptDialog.date }}</span></div>
-         <div class="hdm-row"><label>時段</label><span>{{ cancelApptDialog.timeSlot }}</span></div>
-         <div class="hdm-row"><label>預約人</label><span>{{ cancelApptDialog.bookerName || '—' }}</span></div>
-         <v-divider class="my-3"></v-divider>
+<v-dialog v-model="cancelApptDialog.show" max-width="480px" persistent scrollable content-class="mac-dialog-fit">
+   <v-card class="mac-sheet">
+      <div class="mac-sheet-head">
+         <v-icon size="18" color="#d62d20">mdi-calendar-remove</v-icon>
+         <span>確認取消預約</span>
+      </div>
+      <div class="mac-sheet-section hg-sheet-body">
+         <div class="mac-callout mac-callout--warning mb-3">
+            <v-icon size="16">mdi-alert-outline</v-icon>
+            <span>預約改為「取消」並清除戶別的驗屋日期／方式，依下方勾選寄送取消通知，無法復原。</span>
+         </div>
+         <div class="mac-form-group mb-3">
+            <div class="mac-form-row hdm-field"><span class="hdm-label">預約項目</span><span class="hdm-value">{{ cancelApptDialog.type }}</span></div>
+            <div class="mac-form-row hdm-field"><span class="hdm-label">預約日期</span><span class="hdm-value">{{ cancelApptDialog.date }}</span></div>
+            <div class="mac-form-row hdm-field"><span class="hdm-label">時段</span><span class="hdm-value">{{ cancelApptDialog.timeSlot }}</span></div>
+            <div class="mac-form-row hdm-field"><span class="hdm-label">預約人</span><span class="hdm-value">{{ cancelApptDialog.bookerName || '—' }}</span></div>
+         </div>
          <CancelNotifyPicker v-if="cancelApptDialog.show && cancelApptDialog.appointmentId"
             :project-id="projectId"
             :appointment-id="cancelApptDialog.appointmentId"
             v-model="cancelNotifySelection" />
-      </v-card-text>
-      <v-divider></v-divider>
-      <v-card-actions class="pa-4">
-         <v-spacer></v-spacer>
-         <v-btn variant="text" :disabled="cancelApptDialog.cancelling" @click="cancelApptDialog.show = false">返回</v-btn>
-         <v-btn color="error" variant="flat" prepend-icon="mdi-calendar-remove"
-            :loading="cancelApptDialog.cancelling"
-            :disabled="!cancelNotifySelection.ready"
-            @click="confirmCancelAppt">確認取消預約</v-btn>
-      </v-card-actions>
+      </div>
+      <div class="mac-sheet-foot">
+         <span class="mac-spacer"></span>
+         <button type="button" class="mac-btn" :disabled="cancelApptDialog.cancelling" @click="cancelApptDialog.show = false">返回</button>
+         <button type="button" class="mac-btn mac-btn--danger-fill" :disabled="!cancelNotifySelection.ready || cancelApptDialog.cancelling" @click="confirmCancelAppt">
+            <v-icon size="16">mdi-calendar-remove</v-icon>{{ cancelApptDialog.cancelling ? '取消中…' : '確認取消預約' }}
+         </button>
+      </div>
    </v-card>
 </v-dialog>
 </v-container>
@@ -1143,7 +1045,7 @@
 
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, reactive, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, reactive, watch, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user';
@@ -1173,6 +1075,8 @@ import { httpsCallable } from 'firebase/functions';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Timestamp } from 'firebase/firestore';
 import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue';
+// 交屋控管表：切換到該分頁才載入
+const HandoverControlBoard = defineAsyncComponent(() => import('@/components/household/HandoverControlBoard.vue'));
 
 
 // --- Store 和路由 ---
@@ -1191,6 +1095,34 @@ const hasInitialDataLoaded = ref(false); // ✓ 用此旗標控制 Grid 的渲�
 const isLoading = ref(true);
 const error = ref(null);
 const snackbar = reactive({ show: false, text: '', color: 'success' });
+const notify = (text, color = 'success') => {
+  snackbar.text = text;
+  snackbar.color = color;
+  snackbar.show = true;
+};
+
+// --- 工作表切換：戶別資料總表 / 交屋控管表（寫在網址 ?sheet=<key>，重新整理仍停在同一張） ---
+// 新增分頁：把 key 加進 SHEET_KEYS；grid 為預設，不寫入網址
+const SHEET_KEYS = ['grid', 'handover'];
+const normalizeSheet = (value) => (SHEET_KEYS.includes(value) ? value : 'grid');
+const activeSheet = ref(normalizeSheet(route.query.sheet));
+const boardMounted = ref(activeSheet.value === 'handover'); // 第一次切換才建立控管表
+watch(activeSheet, (sheet) => {
+  if (sheet === 'handover') boardMounted.value = true;
+  if (normalizeSheet(route.query.sheet) === sheet) return; // 已由網址切換（例：左側選單）
+  const query = { ...route.query };
+  if (sheet === 'grid') delete query.sheet;
+  else query.sheet = sheet;
+  router.replace({ query });
+});
+// 左側選單「交屋控管表」／「戶別資料管理」是同一頁，只改網址 ?sheet，頁面不重建，這裡跟著切換
+watch(() => route.query.sheet, (sheet) => {
+  activeSheet.value = normalizeSheet(sheet);
+});
+// 控管表設定（顏色、進度項目）變更：同步本地建案設定，控管表即時重算
+const onBoardSettingsUpdate = (settings) => {
+  projectConfig.value = { ...(projectConfig.value || {}), handoverBoard: settings };
+};
 let unsubscribeHouseholds = null;
 let unsubscribeFields = null;
 let unsubscribeAppointments = null;
@@ -1506,6 +1438,7 @@ const detailModalPos = ref({ x: 120, y: 80 });
 const _hdmViewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280);
 const _onHdmResize = () => { _hdmViewportWidth.value = window.innerWidth; };
 const isHdmDesktopLayout = computed(() => _hdmViewportWidth.value >= 900);
+const isHdmMobile = computed(() => _hdmViewportWidth.value < 600); // 手機：全螢幕、不可拖移
 const hdmActiveSection = ref('basic');
 const isModalEditMode = ref(false); // 編輯模式總開關（預設關閉，避免誤觸修改）
 const _editModeSnapshot = ref(null); // 進入編輯時的原值快照（用於退出時 diff）
@@ -1598,7 +1531,7 @@ const onDetailDragEnd = () => {
    window.removeEventListener('mouseup', onDetailDragEnd);
 };
 const startDetailDrag = (e) => {
-   if (!e || e.button !== 0) return; // 只接受左鍵
+   if (!e || e.button !== 0 || isHdmMobile.value) return; // 只接受左鍵；手機全螢幕不拖移
    _detailDragStart = {
       mouseX: e.clientX,
       mouseY: e.clientY,
@@ -1678,16 +1611,34 @@ const detailExtraFieldsByType = computed(() => {
    return result;
 });
 
+// 各區塊圖示底色（macOS 系統設定風格的彩色圓角圖示）
+const HDM_SECTION_COLORS = {
+   switches: '#34C759',
+   basic: '#0A84FF',
+   booking: '#FF9F0A',
+   reports: '#FF453A',
+   auth: '#30B0C7',
+   messages: '#5E5CE6',
+};
+// 功能開關（檢視模式唯讀，進入編輯才可切換；退出編輯時一併寫入）
+const HDM_SWITCHES = [
+   { field: 'showInMenu', label: '預約系統開關' },
+   { field: '交屋', label: '交屋' },
+   { field: 'initialReportUploadSwitch', label: '初驗報告上傳' },
+   { field: 'reInspectionReportUploadSwitch', label: '複驗報告上傳' },
+   { field: 'allowMultipleBookings', label: '允許重複預約' },
+];
+
 // 電腦版左右分欄：左側導覽的「項目」清單（固定區塊 + 動態預約項目）
 const hdmSections = computed(() => ([
-   { id: 'switches', label: '功能開關', icon: 'mdi-toggle-switch-outline' },
-   { id: 'basic', label: '基本資料', icon: 'mdi-account-outline' },
+   { id: 'switches', label: '功能開關', icon: 'mdi-toggle-switch-outline', color: HDM_SECTION_COLORS.switches },
+   { id: 'basic', label: '基本資料', icon: 'mdi-account-outline', color: HDM_SECTION_COLORS.basic },
    ...detailBookingTypes.value.map(t => ({
-      id: `booking:${t}`, label: `${t} 預約`, icon: 'mdi-calendar-clock-outline', bookingType: t
+      id: `booking:${t}`, label: `${t} 預約`, icon: 'mdi-calendar-clock-outline', color: HDM_SECTION_COLORS.booking, bookingType: t
    })),
-   { id: 'reports', label: '報告 / 其他', icon: 'mdi-file-document-outline' },
-   { id: 'auth', label: '驗屋授權書', icon: 'mdi-file-sign' },
-   { id: 'messages', label: '客戶回傳訊息', icon: 'mdi-message-text-outline' },
+   { id: 'reports', label: '報告 / 其他', icon: 'mdi-file-document-outline', color: HDM_SECTION_COLORS.reports },
+   { id: 'auth', label: '驗屋授權書', icon: 'mdi-file-sign', color: HDM_SECTION_COLORS.auth },
+   { id: 'messages', label: '客戶回傳訊息', icon: 'mdi-message-text-outline', color: HDM_SECTION_COLORS.messages },
 ]));
 
 // 目前選中的項目（若因 bookingMenu 變動導致 id 失效，退回「基本資料」）
@@ -3464,447 +3415,378 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ───────── 頁首：標題＋工作表切換＋動作 ───────── */
+.hg-card {
+   border-radius: 14px !important;
+   box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+}
+.hg-head {
+   display: flex;
+   align-items: center;
+   flex-wrap: wrap;
+   gap: 10px 14px;
+   margin-bottom: 14px;
+   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+   color: #1d1d1f;
+}
+.hg-title {
+   display: flex;
+   align-items: baseline;
+   flex-wrap: wrap;
+   gap: 2px 8px;
+   min-width: 0;
+   margin-right: auto;
+}
+.hg-title-project { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+.hg-title-sheet { font-size: 14px; font-weight: 500; color: #6e6e73; white-space: nowrap; }
+.hg-seg .mac-form-seg-btn { height: 28px; padding: 0 14px; }
+.hg-actions { display: flex; align-items: center; gap: 2px; }
+.hg-actions .mac-icon-btn { width: 32px; height: 32px; color: #1d1d1f; }
+
+/* ───────── 戶別整合資訊：macOS 視窗 ───────── */
 .household-detail-modal {
+   --hdm-text: #1d1d1f;
+   --hdm-sub: #6e6e73;
+   --hdm-line: #ececf0;
+   --hdm-accent: #0071e3;
    position: fixed;
    width: 720px;
    max-width: calc(100vw - 24px);
    max-height: calc(100vh - 100px);
-   background: #ffffff;
-   border-radius: 8px;
-   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.25);
-   z-index: 2400; /* 在 ag-grid 之上、Vuetify v-overlay 之下（v-overlay 預設 2400 開始，個別 dialog overlay 開到 ~2400+） */
-   overflow: hidden;
    display: flex;
    flex-direction: column;
+   overflow: hidden;
+   background: #f5f5f7;
+   border-radius: 12px;
+   box-shadow: 0 22px 70px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(0, 0, 0, 0.2);
+   z-index: 2400; /* 在 ag-grid 之上、Vuetify v-overlay 之下（v-overlay 預設 2400 開始，個別 dialog overlay 開到 ~2400+） */
+   color: var(--hdm-text);
+   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+   font-size: 13px;
 }
-.hdm-header {
-   background: linear-gradient(90deg, #1976d2 0%, #1565c0 100%);
-   color: #ffffff;
-   padding: 8px 12px;
-   cursor: move;
-   user-select: none;
-   display: flex;
-   align-items: center;
-}
-.hdm-title {
-   font-weight: 600;
-   font-size: 0.95rem;
-}
-.hdm-subtitle {
-   font-weight: 400;
-   font-size: 0.8rem;
-   opacity: 0.85;
-   margin-left: 8px;
-}
-.hdm-title .title-sep {
-   opacity: 0.6;
-   margin: 0 4px;
-   font-weight: 400;
-}
-.hdm-body {
-   padding: 12px;
-   overflow-y: auto;
-   background: #fafafa;
-   flex: 1 1 auto;
-   min-height: 0;
-}
-/* 電腦版：Modal 加寬 + 左右分欄（左側項目導覽、右側選中項目的內容） */
+/* 電腦版：加寬＋固定高度，左右分欄切換項目時視窗不跳動 */
 .household-detail-modal.hdm-wide {
    width: 1000px;
+   height: min(720px, calc(100vh - 100px));
 }
-.hdm-body-split {
+.hdm-header {
    display: flex;
-   align-items: stretch;
-   padding: 0;
-   overflow: hidden;
+   align-items: center;
+   gap: 10px;
+   min-height: 56px;
+   padding: 8px 10px 8px 18px;
+   flex-shrink: 0;
+   background: #f6f6f8;
+   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+   cursor: move;
+   user-select: none;
 }
-.hdm-body-split .hdm-content {
-   flex: 1 1 auto;
-   min-width: 0;
-   overflow-y: auto;
-   padding: 12px;
-}
+.hdm-titles { flex: 1 1 auto; min-width: 0; }
+.hdm-title-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; }
+.hdm-unit { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.hdm-buyer { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.hdm-title-main .mac-tag { align-self: center; }
+.hdm-title-sub { margin-top: 1px; font-size: 12px; color: var(--hdm-sub); overflow-wrap: anywhere; }
+.hdm-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; cursor: default; }
+.hdm-close { margin-left: 0; flex-shrink: 0; }
+
+.hdm-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.hdm-body-split { display: flex; overflow: hidden; }
+.hdm-body-split .hdm-content { flex: 1 1 auto; min-width: 0; overflow-y: auto; }
+.hdm-content { padding: 2px 20px 20px; }
+
+/* 左側項目導覽（系統設定側欄） */
 .hdm-nav {
-   flex: 0 0 200px;
-   overflow-y: auto;
-   background: #f4f6fa;
-   border-right: 1px solid #e0e0e0;
-   padding: 10px 8px;
+   flex: 0 0 216px;
    display: flex;
    flex-direction: column;
-   gap: 4px;
+   gap: 2px;
+   padding: 10px 8px;
+   overflow-y: auto;
+   background: #ececf0;
+   border-right: 1px solid rgba(0, 0, 0, 0.08);
 }
 .hdm-nav-item {
    display: flex;
    align-items: center;
-   gap: 8px;
+   gap: 9px;
    width: 100%;
-   padding: 8px 10px;
-   border: 1px solid transparent;
-   border-radius: 8px;
+   padding: 6px 8px;
+   border: 0;
+   border-radius: 7px;
    background: transparent;
-   cursor: pointer;
+   color: var(--hdm-text);
+   font-family: inherit;
    text-align: left;
-   font: inherit;
-   color: #37474f;
-   transition: background 0.15s ease, border-color 0.15s ease;
+   cursor: pointer;
+   transition: background-color 0.12s;
 }
-.hdm-nav-item:hover {
-   background: #e8eef7;
+.hdm-nav-item:hover { background: rgba(0, 0, 0, 0.05); }
+.hdm-nav-item.is-active { background: var(--hdm-accent); color: #fff; }
+.hdm-icon {
+   display: inline-grid;
+   place-content: center;
+   width: 24px;
+   height: 24px;
+   flex-shrink: 0;
+   border-radius: 6px;
+   box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 0.5px 1px rgba(0, 0, 0, 0.1);
 }
-.hdm-nav-item.is-active {
-   background: #ffffff;
-   border-color: #90caf9;
-   box-shadow: 0 1px 4px rgba(21, 101, 192, 0.15);
-   color: #1565c0;
-}
-.hdm-nav-item.is-active .hdm-nav-label {
-   font-weight: 700;
-}
-.hdm-nav-icon {
-   flex: 0 0 auto;
-}
-.hdm-nav-texts {
-   display: flex;
-   flex-direction: column;
-   min-width: 0;
-   flex: 1 1 auto;
-}
-.hdm-nav-label {
-   font-size: 0.85rem;
-   font-weight: 500;
-   line-height: 1.3;
-   white-space: nowrap;
-   overflow: hidden;
-   text-overflow: ellipsis;
-}
-.hdm-nav-caption {
-   font-size: 0.72rem;
-   color: #78909c;
-   line-height: 1.3;
-   white-space: nowrap;
-   overflow: hidden;
-   text-overflow: ellipsis;
-}
-.hdm-nav-caption.is-empty {
-   color: #b0bec5;
-}
+.hdm-nav-texts { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.hdm-nav-label { font-size: 13px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
+.hdm-nav-caption { font-size: 11.5px; line-height: 1.3; color: var(--hdm-sub); }
+.hdm-nav-caption.is-empty { color: #a1a1a6; }
+.hdm-nav-item.is-active .hdm-nav-caption { color: rgba(255, 255, 255, 0.82); }
 .hdm-nav-badge {
-   flex: 0 0 auto;
+   display: inline-grid;
+   place-content: center;
    min-width: 20px;
    height: 20px;
+   padding: 0 6px;
+   flex-shrink: 0;
    border-radius: 10px;
-   background: #ff7043;
-   color: #ffffff;
-   font-size: 0.72rem;
+   background: #ff9f0a;
+   color: #fff;
+   font-size: 11.5px;
    font-weight: 700;
-   display: inline-flex;
+}
+.hdm-nav-item.is-active .hdm-nav-badge { background: #fff; color: var(--hdm-accent); }
+
+/* 區塊標題 */
+.hdm-sec-head {
+   display: flex;
    align-items: center;
-   justify-content: center;
+   flex-wrap: wrap;
+   gap: 6px 8px;
+   min-height: 30px;
+   margin: 16px 2px 8px;
+}
+.hdm-sec-title { font-size: 15px; font-weight: 700; }
+.hdm-sec-head .mac-spacer { flex: 1 1 auto; }
+.hdm-group-label {
+   display: flex;
+   align-items: center;
+   gap: 6px;
+   margin: 12px 4px 6px;
+   font-size: 11.5px;
+   font-weight: 600;
+   color: var(--hdm-sub);
+   letter-spacing: 0.02em;
+}
+.hdm-group-count {
+   min-width: 18px;
    padding: 0 5px;
+   border-radius: 9px;
+   background: rgba(0, 0, 0, 0.07);
+   text-align: center;
 }
-.hdm-row {
-   display: flex;
-   align-items: flex-start;
-   padding: 4px 0;
-   border-bottom: 1px dashed #e0e0e0;
-   font-size: 0.875rem;
-   line-height: 1.5;
+.hdm-section .mac-form-group + .mac-form-group { margin-top: 10px; }
+
+/* 欄位列：左標籤、右內容 */
+.hdm-field { gap: 12px; }
+.hdm-label {
+   flex: 0 0 128px;
+   color: var(--hdm-sub);
+   font-size: 13px;
+   line-height: 1.35;
+   overflow-wrap: anywhere;
 }
-.hdm-row:last-child {
-   border-bottom: none;
-}
-.hdm-row label {
-   flex: 0 0 110px;
-   color: #616161;
-   font-weight: 500;
-}
-.hdm-row span {
-   flex: 1 1 auto;
-   word-break: break-all;
-   color: #212121;
-}
-/* 驗屋報告 list（多筆） */
-.hdm-row-block {
-   align-items: stretch;
-   flex-direction: column;
-}
-.hdm-row-block > label {
-   flex: 0 0 auto;
-   margin-bottom: 4px;
-   display: flex;
-   align-items: center;
-}
-.hdm-report-list {
-   display: flex;
-   flex-direction: column;
-   gap: 4px;
-   width: 100%;
-}
-.hdm-report-item {
-   display: flex;
-   align-items: center;
-   justify-content: space-between;
-   padding: 4px 6px;
-   background: #ffffff;
-   border: 1px solid #e0e0e0;
-   border-radius: 4px;
-}
-.hdm-report-link {
-   display: flex;
-   align-items: center;
+.hdm-value {
    flex: 1 1 auto;
    min-width: 0;
-   color: #1976d2;
+   line-height: 1.45;
+   overflow-wrap: anywhere;
+}
+.hdm-value.is-empty, .is-empty { color: #a1a1a6; }
+.hdm-value a, .hdm-auth-meta-row a { color: var(--hdm-accent); text-decoration: none; }
+.hdm-value a:hover, .hdm-auth-meta-row a:hover { text-decoration: underline; }
+.hdm-inline-tag { margin-left: 6px; vertical-align: 1px; }
+.hdm-row-sep { border-top: 1px solid #dcdce1 !important; }
+
+.hdm-input {
+   flex: 1 1 auto;
+   min-width: 0;
+   height: 28px;
+   padding: 0 9px;
+   border: 1px solid transparent;
+   border-radius: 6px;
+   background: transparent;
+   color: var(--hdm-text);
+   font-family: inherit;
+   font-size: 13px;
+   outline: none;
+   transition: border-color 0.12s, box-shadow 0.12s, background-color 0.12s;
+}
+.hdm-input:read-only { padding-left: 0; cursor: default; }
+.hdm-input::placeholder { color: #a1a1a6; }
+.household-detail-modal.is-edit-mode .hdm-input:not(:read-only) {
+   border-color: rgba(0, 0, 0, 0.14);
+   background: #fff;
+   box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.05);
+}
+.household-detail-modal.is-edit-mode .hdm-input:not(:read-only):focus {
+   border-color: var(--hdm-accent);
+   box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.22);
+}
+.hdm-input--date { max-width: 200px; }
+
+/* 開關：檢視模式不可點，但保留顏色狀態（綠色=開、灰色=關） */
+.hdm-switch-row { cursor: default; }
+.household-detail-modal:not(.is-edit-mode) .hdm-switch-row .mac-switch:disabled { opacity: 1; cursor: default; }
+.household-detail-modal.is-edit-mode .hdm-switch-row { cursor: pointer; }
+
+/* 備註 */
+.hdm-remarks .hdm-label { display: block; margin-bottom: 6px; }
+.hdm-remarks-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.hdm-textarea { min-height: 100px; }
+
+/* 預約（多筆時每筆一個群組，左側橘色標示） */
+.hdm-booking-multi {
+   box-shadow: inset 3px 0 0 #ff9f0a, 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 0.5px 1.5px rgba(0, 0, 0, 0.05);
+}
+.hdm-booking-head { flex-wrap: wrap; gap: 6px; background: #fffaf2; }
+.hdm-booking-head-date { font-weight: 600; font-variant-numeric: tabular-nums; }
+.hdm-booking-head .mac-spacer { flex: 1 1 auto; }
+
+/* 未上傳驗屋報告提醒 */
+.hdm-reminder { background: #fffaf0; }
+.hdm-reminder-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; font-weight: 600; }
+.hdm-reminder-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.hdm-reminder-days { display: flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--hdm-sub); }
+.hdm-reminder-days.is-overdue { color: #b3261b; }
+.hdm-reminder-days strong { font-size: 14px; }
+.hdm-reminder-list { display: flex; flex-direction: column; gap: 3px; }
+.hdm-reminder-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--hdm-sub); font-variant-numeric: tabular-nums; }
+.hdm-reminder-empty { font-size: 12px; color: #8e8e93; }
+
+/* 報告／授權書檔案列 */
+.hdm-file-row { gap: 6px; }
+.hdm-file-link {
+   display: flex;
+   align-items: center;
+   gap: 6px;
+   flex: 1 1 auto;
+   min-width: 0;
+   color: var(--hdm-accent);
    text-decoration: none;
-   font-size: 0.875rem;
+   line-height: 1.4;
+   overflow-wrap: anywhere;
 }
-.hdm-report-link:hover { text-decoration: underline; }
-.hdm-report-link.is-downloaded { color: #9e9e9e; }
-.hdm-report-link span {
-   overflow: hidden;
-   text-overflow: ellipsis;
+.hdm-file-link > span { min-width: 0; }
+.hdm-file-link:hover > span { text-decoration: underline; }
+.hdm-file-link.is-downloaded { color: var(--hdm-sub); }
+.hdm-file-link .v-icon { flex-shrink: 0; }
+.hdm-ok-btn { color: #1f7a36; }
+.hdm-ok-btn:hover { background: rgba(52, 199, 89, 0.12); color: #1f7a36; }
+.hdm-link-row { color: var(--hdm-text); text-decoration: none; }
+.hdm-auth-item + .hdm-auth-item { border-top: 1px solid var(--hdm-line); }
+.hdm-auth-meta {
+   display: grid;
+   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+   gap: 6px 14px;
+   margin-top: 8px;
+   padding-left: 24px;
+}
+.hdm-auth-meta-row { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.hdm-auth-meta-row > span { font-size: 11.5px; color: var(--hdm-sub); }
+.hdm-auth-meta-row > b { font-weight: 500; overflow-wrap: anywhere; }
+
+/* 客戶回傳訊息：展開列 */
+.hdm-msg + .hdm-msg { border-top: 1px solid var(--hdm-line); }
+.hdm-msg-sum {
+   display: flex;
+   align-items: center;
+   flex-wrap: wrap;
+   gap: 6px 8px;
+   min-height: 44px;
+   padding: 8px 14px;
+   list-style: none;
+   cursor: pointer;
+}
+.hdm-msg-sum::-webkit-details-marker { display: none; }
+.hdm-msg-sum:hover { background: #f7f7f9; }
+.hdm-msg-chev { color: #8e8e93; transition: transform 0.15s; }
+.hdm-msg[open] .hdm-msg-chev { transform: rotate(90deg); }
+.hdm-msg-title { font-weight: 600; overflow-wrap: anywhere; }
+.hdm-msg-date { margin-left: auto; color: var(--hdm-sub); font-size: 12px; font-variant-numeric: tabular-nums; }
+.hdm-msg-body { padding: 0 14px 12px 36px; }
+.hdm-kv {
+   display: flex;
+   gap: 12px;
+   padding: 6px 0;
+   border-top: 1px solid #f0f0f3;
+   font-size: 12.5px;
+   line-height: 1.5;
+}
+.hdm-kv:first-child { border-top: 0; }
+.hdm-kv-key { flex: 0 0 128px; color: #6e6e73; overflow-wrap: anywhere; }
+.hdm-kv-val { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hdm-attachments { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.hdm-attachment { text-decoration: none; white-space: normal; overflow-wrap: anywhere; }
+.hdm-attachment:hover { filter: brightness(0.96); }
+
+/* ───────── 子視窗（訊息檢視、確認框、提醒） ───────── */
+.hg-sheet-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.hg-close { margin-left: 4px; }
+.hg-inline-switch {
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+   font-size: 12.5px;
+   font-weight: 500;
+   color: #1d1d1f;
    white-space: nowrap;
+   cursor: pointer;
 }
-.hdm-report-actions {
-   display: flex;
-   align-items: center;
-   flex: 0 0 auto;
-   margin-left: 8px;
-}
-/* 驗屋報告未上傳提醒通知：未上傳天數 + 發送按鈕 */
-.hdm-reminder-head {
-   display: flex;
-   align-items: center;
-   justify-content: space-between;
-   gap: 8px;
-   margin-bottom: 6px;
-}
-.hdm-reminder-days {
-   display: flex;
-   align-items: center;
-   font-size: 0.8125rem;
-   color: #424242;
-}
+.hg-sheet-body { max-height: 75vh; overflow-y: auto; }
+.mac-form.hg-sheet-body { padding: 4px 16px 16px; }
+.hg-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px; color: #8e8e93; }
+.hg-msg-card { margin-top: 12px; }
+.hg-msg-card.is-deleted { opacity: 0.6; box-shadow: inset 3px 0 0 #d62d20, 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.hg-msg-card.is-deleted .hg-msg-title > span:first-child { text-decoration: line-through; }
+.hg-msg-head { gap: 4px; }
+.hg-msg-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-weight: 600; overflow-wrap: anywhere; }
+.hg-msg-date { margin-top: 2px; font-size: 12px; color: #6e6e73; }
+.hg-confirm-target { line-height: 1.6; overflow-wrap: anywhere; }
+.hg-confirm-list { margin: 8px 0 0 18px; color: #6e6e73; font-size: 12.5px; line-height: 1.7; }
+.hg-text-danger { color: #d62d20; }
+
 /* Email 預覽框 */
 .reminder-preview-frame {
    border: 1px solid #e0e0e0;
-   border-radius: 6px;
+   border-radius: 8px;
    max-height: 60vh;
    overflow-y: auto;
    background: #f4f4f7;
 }
-/* 驗屋報告未上傳提醒通知：寄送紀錄清單 */
-.hdm-reminder-list {
-   display: flex;
-   flex-direction: column;
-   gap: 4px;
-   width: 100%;
-}
-.hdm-reminder-item {
-   display: flex;
-   align-items: center;
-   padding: 3px 8px;
-   background: #fff8e1;
-   border: 1px solid #ffe0b2;
-   border-left: 3px solid #f57c00;
-   border-radius: 4px;
-   font-size: 0.8125rem;
-   color: #5d4037;
-}
-/* 預約資訊卡片內：將預約人聯絡資訊與上方欄位視覺區隔 */
-.hdm-booker-divider {
-   height: 1px;
-   background: #eeeeee;
-   margin: 6px 0 4px;
-}
-/* 同一預約項目有多筆重複預約時：每筆預約獨立成一個可辨識的區塊 */
-.hdm-booking-block + .hdm-booking-block {
-   margin-top: 10px;
-}
-.hdm-booking-multi {
-   padding: 6px 10px 8px;
-   background: #fffdf9;
-   border: 1px solid #ffe0b2;
-   border-left: 3px solid #ff7043;
-   border-radius: 6px;
-}
-.hdm-booking-head {
-   display: flex;
-   align-items: center;
-   gap: 6px;
-   padding-bottom: 4px;
-   margin-bottom: 4px;
-   border-bottom: 1px dashed #ffe0b2;
-}
-.hdm-booking-head-date {
-   font-size: 0.8125rem;
-   font-weight: 600;
-   color: #5d4037;
-}
-.hdm-row a {
-   color: #1976d2;
-   text-decoration: none;
-}
-.hdm-row a:hover { text-decoration: underline; }
-/* 驗屋授權書清單（每筆含受託人 meta 區塊） */
-.hdm-auth-list {
-   display: flex;
-   flex-direction: column;
-   gap: 8px;
-   width: 100%;
-}
-.hdm-auth-item {
-   padding: 8px 10px;
-   background: #ffffff;
-   border: 1px solid #e0e0e0;
-   border-left: 3px solid #00796b;
-   border-radius: 4px;
-}
-.hdm-auth-link {
-   display: flex;
-   align-items: center;
-   color: #00695c;
-   text-decoration: none;
-   font-size: 0.875rem;
-   font-weight: 500;
-   margin-bottom: 4px;
-}
-.hdm-auth-link:hover { text-decoration: underline; }
-.hdm-auth-meta {
-   display: grid;
-   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-   gap: 2px 12px;
-   padding-left: 22px;
-   padding-top: 4px;
-   border-top: 1px dashed #eeeeee;
-   margin-top: 4px;
-}
-.hdm-auth-meta-row {
-   display: flex;
-   align-items: center;
-   font-size: 0.8125rem;
-   gap: 6px;
-}
-.hdm-auth-meta-row label {
-   color: #757575;
-   min-width: 90px;
-   flex-shrink: 0;
-}
-.hdm-auth-meta-row span,
-.hdm-auth-meta-row a {
-   color: #424242;
-   word-break: break-all;
-}
-.hdm-auth-meta-row a {
-   color: #1976d2;
-   text-decoration: none;
-}
-.hdm-auth-meta-row a:hover { text-decoration: underline; }
-/* 開關 row */
-.hdm-switch-row {
-   display: flex;
-   align-items: center;
-   padding: 2px 0;
-   font-size: 0.875rem;
-}
-.hdm-switch-row label {
-   flex: 0 0 140px;
-   color: #424242;
-   font-weight: 500;
-}
-.hdm-switch-row :deep(.v-switch) {
-   margin: 0;
-}
-/* 客戶回傳訊息表格內部稍微緊湊 */
-.hdm-msg-table :deep(td) {
-   font-size: 0.825rem !important;
-   padding: 6px 8px !important;
-}
-/* inline 編輯欄位（plain variant 視覺接近純文字，hover/focus 時加底線提示） */
-.hdm-row-edit {
-   align-items: center;
-}
-.hdm-row-edit > label {
-   align-self: center;
-}
-.hdm-edit-field {
-   flex: 1 1 auto;
-   font-size: 0.875rem;
-}
-.hdm-edit-field :deep(.v-field) {
-   padding: 0;
-}
-.hdm-edit-field :deep(.v-field__input) {
-   min-height: 28px;
-   padding: 0;
-   font-size: 0.875rem;
-   color: #212121;
-}
-/* 只在「編輯模式」下顯示 hover/focus 的可編輯提示，避免檢視模式誤以為可點 */
-.household-detail-modal.is-edit-mode .hdm-edit-field :deep(.v-field__input:hover) {
-   background: rgba(25, 118, 210, 0.04);
-   border-radius: 3px;
-}
-.household-detail-modal.is-edit-mode .hdm-edit-field :deep(.v-field--focused) {
-   background: rgba(25, 118, 210, 0.07);
-   border-radius: 3px;
-}
-/* 檢視模式下文字顏色稍深、cursor 預設、視覺接近純文字 */
-.household-detail-modal:not(.is-edit-mode) .hdm-edit-field :deep(.v-field__input) {
-   cursor: default;
-}
-/* 檢視模式：開關不可點，但保留顏色狀態（綠色=開、灰色=關），不要整顆變灰 */
-.household-detail-modal:not(.is-edit-mode) .hdm-switch-row :deep(.v-switch),
-.household-detail-modal:not(.is-edit-mode) .hdm-switch-row :deep(.v-switch__control) {
-   pointer-events: none;
-}
-.household-detail-modal:not(.is-edit-mode) .hdm-switch-row :deep(.v-selection-control) {
-   opacity: 1;
-}
-.hdm-row-block.hdm-row-edit > label {
-   align-self: flex-start;
-   margin-top: 4px;
-}
-/* 備註區塊：獨立 block，標籤在上、textarea 佔滿全寬 */
-.hdm-remarks-block {
-   padding: 8px 0 4px;
-   border-top: 1px dashed #e0e0e0;
-   margin-top: 4px;
-}
-.hdm-remarks-label {
-   display: flex;
-   align-items: center;
-   color: #616161;
-   font-weight: 500;
-   font-size: 0.85rem;
-   margin-bottom: 6px;
-}
-.hdm-edit-textarea {
-   width: 100%;
-   font-size: 0.875rem;
-}
-.hdm-edit-textarea :deep(.v-field) {
-   width: 100%;
-}
-.hdm-edit-textarea :deep(.v-field--variant-outlined) {
-   border-radius: 6px;
-}
-.hdm-edit-textarea :deep(.v-field--variant-outlined .v-field__input) {
-   min-height: 110px;
-   padding: 10px 12px;
-   font-size: 0.9rem;
-   color: #212121;
-   line-height: 1.6;
-}
-.hdm-edit-textarea :deep(.v-field--variant-outlined textarea) {
-   min-height: 90px;
-}
-.hdm-edit-textarea :deep(.v-field--variant-plain .v-field__input) {
-   padding: 4px 0;
-   min-height: 24px;
-   line-height: 1.6;
-   color: #212121;
-   white-space: pre-wrap;
+
+/* ───────── 手機 ───────── */
+@media (max-width: 599.98px) {
+   .hg-title-project { font-size: 18px; }
+   .hg-seg { order: 3; display: flex; width: 100%; }
+   .hg-seg .mac-form-seg-btn { flex: 1 1 0; min-width: 0; padding: 0 8px; height: 30px; }
+
+   .household-detail-modal.hdm-mobile {
+      top: 0;
+      left: 0;
+      width: 100vw;
+      max-width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      max-height: none;
+      border-radius: 0;
+   }
+   .hdm-header { flex-wrap: wrap; padding: 8px 8px 8px 14px; cursor: default; }
+   .hdm-close { order: 2; }
+   .hdm-actions { order: 3; width: 100%; justify-content: flex-end; }
+   .hdm-content { padding: 0 12px 28px; }
+   .hdm-field { flex-wrap: wrap; gap: 2px 12px; }
+   .hdm-field > .hdm-label { flex-basis: 100%; font-size: 12px; }
+   .hdm-input { height: 36px; font-size: 16px; }
+   .hdm-input:read-only { height: auto; min-height: 24px; }
+   .hdm-textarea { font-size: 16px; }
+   .hdm-msg-body { padding-left: 14px; }
+   .hdm-kv-key { flex-basis: 96px; }
+   .hdm-auth-meta { padding-left: 0; }
 }
 </style>
