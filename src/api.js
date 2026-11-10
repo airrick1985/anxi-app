@@ -929,6 +929,23 @@ export async function paymentReminderApi(payload) {
 }
 
 /**
+ * 排程更新（指定時間更新資料）：調價排程、Excel 排程、取消、還原
+ * @param {object} payload - { action: 'list'|'recipients'|'savePrice'|'previewExcel'|'createExcel'|'cancel'|'detail'|'revert',
+ *   projectId, userKey, ... }
+ * @returns {Promise<object>} { status, ... }；失敗回 { status: 'error', message }
+ */
+export async function scheduledUpdateApi(payload) {
+  try {
+    const fn = httpsCallable(functions, 'scheduledUpdateApi', { timeout: 300000 });
+    const result = await fn(payload);
+    return result.data;
+  } catch (error) {
+    console.error("呼叫 scheduledUpdateApi 雲端函式時發生錯誤:", error);
+    return { status: "error", code: error.code, message: error.message };
+  }
+}
+
+/**
  * 戶別上傳文件 - Storage 暫存轉存至戶別 Drive 資料夾、改名、刪除 (SPEC_UnitDocumentUpload.md)
  * @param {object} payload - { action: 'commit'|'rename'|'delete', projectId, unitId,
  *   storagePath?, fileName?, docType?, docTypeLabel?, originalName?, mimeType?, size?, uploadedBy?, docId?, trashDriveFile? }

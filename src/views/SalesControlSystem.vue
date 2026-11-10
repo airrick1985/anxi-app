@@ -2230,6 +2230,17 @@
       :price-mode="priceDisplayMode"
     />
 
+    <!-- 排程更新：指定時間調價／套用 Excel（首次開啟才掛載，之後常駐） -->
+    <ScheduledUpdateDialog
+      v-if="scheduledUpdateMounted"
+      v-model="isScheduledUpdateVisible"
+      :project-id="projectId"
+      :households="salesHouseholds"
+      :parkings="salesParkings"
+      :parameters="salesParameters"
+      :parse-excel="parseHouseholdExcelFile"
+    />
+
     <!-- 房車比速覽面板（首次開啟才掛載，之後常駐） -->
     <ParkingRatioDialog
       v-if="parkingRatioMounted"
@@ -2349,6 +2360,7 @@ const ParkingRatioDialog = defineAsyncComponent(() => import('@/components/Parki
 const ActivityMessageViewer = defineAsyncComponent(() => import('@/components/ActivityMessageViewer.vue'));
 const UnitDataExportDialog = defineAsyncComponent(() => import('@/components/UnitDataExportDialog.vue'));
 const SalesGridDownloadDialog = defineAsyncComponent(() => import('@/components/SalesGridDownloadDialog.vue'));
+const ScheduledUpdateDialog = defineAsyncComponent(() => import('@/components/scheduledUpdate/ScheduledUpdateDialog.vue'));
 import { useUserStore } from '@/store/user';
 import { useSalesAiStore } from '@/store/salesAiStore';
 import SalesAiFab from '@/components/salesAi/SalesAiFab.vue';
@@ -2439,6 +2451,7 @@ const moreToolGroups = computed(() => {
       title: '管理',
       tools: [
         { icon: 'mdi-account-cancel', label: '退戶記錄', action: () => { isCancelledPurchaseDialogVisible.value = true; } },
+        ...(canScheduleUpdates.value ? [{ icon: 'mdi-calendar-clock', label: '排程更新', action: openScheduledUpdate }] : []),
         ...(canUseSalesAi.value ? [{ icon: 'mdi-robot-outline', label: 'AI 智能助理', action: () => { aiStore.open(); } }] : []),
         { icon: 'mdi-cog-outline', label: '更多設定', action: navigateToSalesSettings },
       ],
@@ -2499,6 +2512,7 @@ const desktopToolGroups = computed(() => {
   const manageTools = [
     { icon: 'mdi-account-cancel', label: '退戶記錄管理', action: () => { isCancelledPurchaseDialogVisible.value = true; } },
   ];
+  if (canScheduleUpdates.value) manageTools.push({ icon: 'mdi-calendar-clock', label: '排程更新', action: openScheduledUpdate });
   if (canManageAnnouncements.value) manageTools.push({ icon: 'mdi-bullhorn-variant-outline', label: '公告管理', action: openAnnouncementManager });
   if (canUseSalesAi.value) manageTools.push({ icon: 'mdi-robot-outline', label: 'AI 智能助理', action: () => { aiStore.open(); } });
   if (canAccessCommission.value) {
@@ -4806,6 +4820,16 @@ const isAnalyticsPanelVisible = ref(false);
 // 統計直接以 salesDataStore 的戶別／車位即時計算，資料異動時徽章顏色會自動更新
 const isParkingRatioVisible = ref(false);
 const parkingRatioMounted = ref(false);
+// 排程更新（指定時間更新資料）：限超管／系管或該案「銷控系統」權限
+const isScheduledUpdateVisible = ref(false);
+const scheduledUpdateMounted = ref(false);
+watch(isScheduledUpdateVisible, (v) => { if (v) scheduledUpdateMounted.value = true; });
+const canScheduleUpdates = computed(() => {
+  const roles = userStore.user?.roles || [];
+  if (roles.includes('超級管理員') || roles.includes('系統管理員')) return true;
+  return userStore.hasProjectPermission('銷控系統', project.value?.name);
+});
+const openScheduledUpdate = () => { isScheduledUpdateVisible.value = true; };
 watch(isParkingRatioVisible, (v) => { if (v) parkingRatioMounted.value = true; });
 const {
   level: parkingRatioLevel,
@@ -6610,7 +6634,198 @@ const closeUploadDialog = () => {
     uploadMessage.value = '';
 };
 
-const handleFileChange = () => {
+// 解析戶別 Excel（「上傳戶別EXCEL」與「排程更新」共用）：回傳 { rows, message, messageType }，格式錯誤時丟出錯誤
+const parseHouseholdExcelFile = async (file) => {
+    const XLSX = await loadXLSX();
+    const headerToKeyMap = new Map(COLUMN_DEFINITIONS.map(col => [col.title.trim(), col.key]));
+    const data = new Uint8Array(await file.arrayBuffer());
+    const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+    // Sheet 1 戶別資料：優先以名稱查找，fallback 為首工作表（向後相容舊檔）
+    const sheetName = workbook.SheetNames.includes(HOUSEHOLDS_SHEET_NAME)
+        ? HOUSEHOLDS_SHEET_NAME
+        : workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    // ✅ [優化] 部分欄位上傳：不再要求所有欄位標頭齊備，只需「戶別」+ 至少一個可更新欄位。
+    // 標頭列自動偵測（前 5 列內含「戶別」儲存格者），相容系統範本（標頭在第 2 列，第 1 列為警語）
+    // 與自製精簡檔（標頭在第 1 列）；檔案中未包含的欄位不會被異動（後端 merge 寫入保留既有值）
+    const allRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    const headerRowIndex = allRows.findIndex((row, i) =>
+        i < 5 && Array.isArray(row) && row.some(c => String(c || '').trim() === '戶別')
+    );
+    if (headerRowIndex === -1) {
+        throw new Error('找不到標頭列：檔案前 5 列中必須有「戶別」欄位標頭。');
+    }
+    const uploadedHeaders = allRows[headerRowIndex].map(h => String(h || '').trim());
+    const indexToKeyMap = new Map();
+    uploadedHeaders.forEach((headerTitle, index) => {
+        const englishKey = headerToKeyMap.get(headerTitle);
+        if (englishKey) {
+            indexToKeyMap.set(index, englishKey);
+        }
+    });
+    const updatableKeys = [...indexToKeyMap.values()].filter(k => k !== 'unitId');
+    if (updatableKeys.length === 0) {
+        throw new Error('除了「戶別」外，未偵測到任何可更新的欄位標頭，請確認欄位名稱與系統匯出範本一致。');
+    }
+    const dataRows = allRows.slice(headerRowIndex + 1);
+    const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
+    // ✅ [新增] 可選方案：名稱反查失敗的收集器（不擋整批，解析完成後警示）
+    const unknownPlanNames = new Set();
+    // ✅ [新增] 文字標籤：色碼格式警示收集器
+    const tagWarnings = [];
+    const TAG_IMPORT_KEYS = ['unitTags_text', 'unitTags_bgColor', 'unitTags_textColor'];
+    const EFFECT_IMPORT_KEYS = ['unitEffect_preset', 'unitEffect_color'];
+    const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
+        const newRow = {};
+        for (const [colIndex, englishKey] of indexToKeyMap.entries()) {
+            let value = rowArray[colIndex] ?? null;
+
+            // ✅ [新增] 針對布林值欄位進行轉換
+            if (['isPreferredPayment', 'isFirstTimeBuyer'].includes(englishKey)) {
+                if (typeof value === 'string') {
+                    const upperVal = value.toUpperCase().trim();
+                    if (upperVal === 'TRUE') value = true;
+                    if (upperVal === 'FALSE') value = false;
+                }
+            }
+
+            // ✅ [新增] 針對 buyerDateOfBirth 進行民國年解析
+            if (englishKey === 'buyerDateOfBirth' && typeof value === 'string') {
+                // 嘗試解析 "114年5月4日" 或 "114/5/4" 等格式
+                const rocDateRegex = /^(\d{2,3})[年/](\d{1,2})[月/](\d{1,2})日?$/;
+                const match = value.match(rocDateRegex);
+                if (match) {
+                    value = {
+                        year: Number(match[1]),
+                        month: Number(match[2]),
+                        day: Number(match[3])
+                    };
+                }
+            }
+
+            // ✅ [新增] 銷售人員（複選）：逗號分隔字串解析回陣列
+            if (englishKey === 'salesperson' || englishKey === 'salespersonUserKey') {
+                value = normalizeSalespersons(value);
+            }
+
+            // ✅ [新增] 可選方案：方案名稱（逗號/頓號分隔）反查回方案 id 陣列；
+            // 查不到的名稱收集警示後略過；空儲存格 → 清空該戶設定
+            if (englishKey === 'availablePlans') {
+                const raw = (value === null || value === undefined) ? '' : String(value);
+                const names = raw.split(/[,、]/).map(s => s.trim()).filter(Boolean);
+                const ids = [];
+                names.forEach(n => {
+                    const id = planNameToId.value.get(n);
+                    if (id) ids.push(id);
+                    else unknownPlanNames.add(n);
+                });
+                value = ids;
+            }
+
+            newRow[englishKey] = value;
+        }
+
+        // ✅ [新增] 文字標籤：三個虛擬欄位合併回 unitTags 陣列（任一欄存在即處理；
+        // 「文字標籤」欄空白 → 清空該戶標籤；顏色缺漏/不合法 → 回退預設並收集警示）
+        if (TAG_IMPORT_KEYS.some(k => k in newRow)) {
+            const parsed = parseUnitTagsFromExport(
+                newRow.unitTags_text, newRow.unitTags_bgColor, newRow.unitTags_textColor, String(newRow.unitId || '')
+            );
+            newRow.unitTags = parsed.tags;
+            tagWarnings.push(...parsed.warnings);
+            for (const k of TAG_IMPORT_KEYS) delete newRow[k];
+        }
+        // ✅ [新增] 網格邊框特效：兩個虛擬欄位合併回 unitEffect（任一欄存在即處理；
+        // 「邊框特效」欄空白 → 清除該戶特效；範本查不到／顏色不合法 → 警示、不擋整批）
+        if (EFFECT_IMPORT_KEYS.some(k => k in newRow)) {
+            const parsedFx = parseUnitEffectFromExport(newRow.unitEffect_preset, newRow.unitEffect_color, String(newRow.unitId || ''));
+            newRow.unitEffect = parsedFx.effect;
+            tagWarnings.push(...parsedFx.warnings);
+            for (const k of EFFECT_IMPORT_KEYS) delete newRow[k];
+        }
+        return newRow;
+    });
+    if (jsonDataWithEnglishKeys.some(row => !row.unitId)) {
+        throw new Error("資料驗證失敗：每一列都必須包含『戶別』。請檢查上傳的檔案。");
+    }
+
+    // ── 解析 Sheet 2「土地標的清冊」(可選工作表) ──
+    const landSheet = workbook.Sheets[LAND_PARCEL_SHEET_NAME];
+    const landParcelsByUnit = new Map(); // unitId -> landParcel[]
+    if (landSheet) {
+        const landRowsJson = XLSX.utils.sheet_to_json(landSheet, { defval: '' });
+        // 驗證標頭：若工作表存在則所有欄位標頭必須齊備
+        const sampleRow = landRowsJson[0] || {};
+        const presentHeaders = new Set(Object.keys(sampleRow));
+        const missingLandHeaders = LAND_PARCEL_COLUMNS
+            .map(c => c.title)
+            .filter(t => !presentHeaders.has(t));
+        if (landRowsJson.length > 0 && missingLandHeaders.length > 0) {
+            throw new Error(
+                `「${LAND_PARCEL_SHEET_NAME}」工作表缺少欄位標頭：${missingLandHeaders.join('、')}`
+            );
+        }
+
+        // 行號在 Excel 中從第 2 列開始（第 1 列是標頭）
+        const errors = [];
+        const unitIdSet = new Set(jsonDataWithEnglishKeys.map(r => String(r.unitId || '').trim()));
+
+        landRowsJson.forEach((row, i) => {
+            // 整列全空白則跳過（不計入錯誤）
+            const hasAnyValue = Object.values(row).some(v => v !== null && v !== undefined && String(v).trim() !== '');
+            if (!hasAnyValue) return;
+
+            const excelRowNo = i + 2;
+            const { parcel, unitId, errors: rowErrors } = rowToLandParcel(row, excelRowNo);
+            errors.push(...rowErrors);
+
+            if (unitId && !unitIdSet.has(unitId)) {
+                errors.push(`第 ${excelRowNo} 列：戶別「${unitId}」不存在於「${HOUSEHOLDS_SHEET_NAME}」工作表`);
+                return;
+            }
+            if (!unitId) return; // 已在 rowToLandParcel 回報
+
+            if (!landParcelsByUnit.has(unitId)) landParcelsByUnit.set(unitId, []);
+            landParcelsByUnit.get(unitId).push(parcel);
+        });
+
+        if (errors.length > 0) {
+            throw new Error(
+                `「${LAND_PARCEL_SHEET_NAME}」工作表驗證失敗（整批拒絕）：\n- ${errors.join('\n- ')}`
+            );
+        }
+    }
+
+    // ── 合併 landParcels 至戶別資料 ──
+    // 規則：檔案「含」土地標的清冊工作表 → 該戶有列則覆寫、無列則清空；
+    //      檔案「沒有」該工作表 → 完全不異動 landParcels（merge 寫入保留既有值，支援部分欄位上傳）
+    if (landSheet) {
+        for (const row of jsonDataWithEnglishKeys) {
+            const key = String(row.unitId || '').trim();
+            row.landParcels = landParcelsByUnit.get(key) || [];
+        }
+    }
+
+    const landCount = [...landParcelsByUnit.values()].reduce((s, a) => s + a.length, 0);
+    let messageType = 'success';
+    let message = landSheet
+        ? `成功解析 ${jsonDataWithEnglishKeys.length} 筆戶別資料（將更新 ${updatableKeys.length} 個欄位），含 ${landCount} 筆土地標的，可以開始上傳。`
+        : `成功解析 ${jsonDataWithEnglishKeys.length} 筆戶別資料（將更新 ${updatableKeys.length} 個欄位；檔案未包含的欄位不會被異動），可以開始上傳。`;
+    // ✅ [新增] 可選方案名稱反查失敗警示（不擋上傳，該名稱已略過）
+    if (unknownPlanNames.size > 0) {
+        messageType = 'warning';
+        message += `\n注意：以下方案名稱不存在，已略過：${[...unknownPlanNames].join('、')}`;
+    }
+    // ✅ [新增] 文字標籤色碼格式警示（不擋上傳，已回退預設色）
+    if (tagWarnings.length > 0) {
+        messageType = 'warning';
+        const shown = tagWarnings.slice(0, 5);
+        message += `\n標籤／特效提醒：${shown.join('；')}${tagWarnings.length > 5 ? `…（共 ${tagWarnings.length} 筆）` : ''}`;
+    }
+    return { rows: jsonDataWithEnglishKeys, message, messageType };
+};
+
+const handleFileChange = async () => {
     uploadMessage.value = '';
     const file = uploadedFile.value;
     if (!file) {
@@ -6618,205 +6833,18 @@ const handleFileChange = () => {
         return;
     }
     isParsing.value = true;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        try {
-            const XLSX = await loadXLSX();
-            const headerToKeyMap = new Map(COLUMN_DEFINITIONS.map(col => [col.title.trim(), col.key]));
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-            // Sheet 1 戶別資料：優先以名稱查找，fallback 為首工作表（向後相容舊檔）
-            const sheetName = workbook.SheetNames.includes(HOUSEHOLDS_SHEET_NAME)
-                ? HOUSEHOLDS_SHEET_NAME
-                : workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[sheetName];
-            // ✅ [優化] 部分欄位上傳：不再要求所有欄位標頭齊備，只需「戶別」+ 至少一個可更新欄位。
-            // 標頭列自動偵測（前 5 列內含「戶別」儲存格者），相容系統範本（標頭在第 2 列，第 1 列為警語）
-            // 與自製精簡檔（標頭在第 1 列）；檔案中未包含的欄位不會被異動（後端 merge 寫入保留既有值）
-            const allRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-            const headerRowIndex = allRows.findIndex((row, i) =>
-                i < 5 && Array.isArray(row) && row.some(c => String(c || '').trim() === '戶別')
-            );
-            if (headerRowIndex === -1) {
-                throw new Error('找不到標頭列：檔案前 5 列中必須有「戶別」欄位標頭。');
-            }
-            const uploadedHeaders = allRows[headerRowIndex].map(h => String(h || '').trim());
-            const indexToKeyMap = new Map();
-            uploadedHeaders.forEach((headerTitle, index) => {
-                const englishKey = headerToKeyMap.get(headerTitle);
-                if (englishKey) {
-                    indexToKeyMap.set(index, englishKey);
-                }
-            });
-            const updatableKeys = [...indexToKeyMap.values()].filter(k => k !== 'unitId');
-            if (updatableKeys.length === 0) {
-                throw new Error('除了「戶別」外，未偵測到任何可更新的欄位標頭，請確認欄位名稱與系統匯出範本一致。');
-            }
-            const dataRows = allRows.slice(headerRowIndex + 1);
-            const nonEmptyRows = dataRows.filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== ''));
-            // ✅ [新增] 可選方案：名稱反查失敗的收集器（不擋整批，解析完成後警示）
-            const unknownPlanNames = new Set();
-            // ✅ [新增] 文字標籤：色碼格式警示收集器
-            const tagWarnings = [];
-            const TAG_IMPORT_KEYS = ['unitTags_text', 'unitTags_bgColor', 'unitTags_textColor'];
-            const EFFECT_IMPORT_KEYS = ['unitEffect_preset', 'unitEffect_color'];
-          const jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
-                const newRow = {};
-                for (const [colIndex, englishKey] of indexToKeyMap.entries()) {
-                    let value = rowArray[colIndex] ?? null;
-
-                    // ✅ [新增] 針對布林值欄位進行轉換
-                    if (['isPreferredPayment', 'isFirstTimeBuyer'].includes(englishKey)) {
-                        if (typeof value === 'string') {
-                            const upperVal = value.toUpperCase().trim();
-                            if (upperVal === 'TRUE') value = true;
-                            if (upperVal === 'FALSE') value = false;
-                        }
-                    }
-
-                    // ✅ [新增] 針對 buyerDateOfBirth 進行民國年解析
-                    if (englishKey === 'buyerDateOfBirth' && typeof value === 'string') {
-                        // 嘗試解析 "114年5月4日" 或 "114/5/4" 等格式
-                        const rocDateRegex = /^(\d{2,3})[年/](\d{1,2})[月/](\d{1,2})日?$/;
-                        const match = value.match(rocDateRegex);
-                        if (match) {
-                            value = {
-                                year: Number(match[1]),
-                                month: Number(match[2]),
-                                day: Number(match[3])
-                            };
-                        }
-                    }
-
-                    // ✅ [新增] 銷售人員（複選）：逗號分隔字串解析回陣列
-                    if (englishKey === 'salesperson' || englishKey === 'salespersonUserKey') {
-                        value = normalizeSalespersons(value);
-                    }
-
-                    // ✅ [新增] 可選方案：方案名稱（逗號/頓號分隔）反查回方案 id 陣列；
-                    // 查不到的名稱收集警示後略過；空儲存格 → 清空該戶設定
-                    if (englishKey === 'availablePlans') {
-                        const raw = (value === null || value === undefined) ? '' : String(value);
-                        const names = raw.split(/[,、]/).map(s => s.trim()).filter(Boolean);
-                        const ids = [];
-                        names.forEach(n => {
-                            const id = planNameToId.value.get(n);
-                            if (id) ids.push(id);
-                            else unknownPlanNames.add(n);
-                        });
-                        value = ids;
-                    }
-
-                    newRow[englishKey] = value;
-                }
-
-                // ✅ [新增] 文字標籤：三個虛擬欄位合併回 unitTags 陣列（任一欄存在即處理；
-                // 「文字標籤」欄空白 → 清空該戶標籤；顏色缺漏/不合法 → 回退預設並收集警示）
-                if (TAG_IMPORT_KEYS.some(k => k in newRow)) {
-                    const parsed = parseUnitTagsFromExport(
-                        newRow.unitTags_text, newRow.unitTags_bgColor, newRow.unitTags_textColor, String(newRow.unitId || '')
-                    );
-                    newRow.unitTags = parsed.tags;
-                    tagWarnings.push(...parsed.warnings);
-                    for (const k of TAG_IMPORT_KEYS) delete newRow[k];
-                }
-                // ✅ [新增] 網格邊框特效：兩個虛擬欄位合併回 unitEffect（任一欄存在即處理；
-                // 「邊框特效」欄空白 → 清除該戶特效；範本查不到／顏色不合法 → 警示、不擋整批）
-                if (EFFECT_IMPORT_KEYS.some(k => k in newRow)) {
-                    const parsedFx = parseUnitEffectFromExport(newRow.unitEffect_preset, newRow.unitEffect_color, String(newRow.unitId || ''));
-                    newRow.unitEffect = parsedFx.effect;
-                    tagWarnings.push(...parsedFx.warnings);
-                    for (const k of EFFECT_IMPORT_KEYS) delete newRow[k];
-                }
-                return newRow;
-            });
-            if (jsonDataWithEnglishKeys.some(row => !row.unitId)) {
-                throw new Error("資料驗證失敗：每一列都必須包含『戶別』。請檢查上傳的檔案。");
-            }
-
-            // ── 解析 Sheet 2「土地標的清冊」(可選工作表) ──
-            const landSheet = workbook.Sheets[LAND_PARCEL_SHEET_NAME];
-            const landParcelsByUnit = new Map(); // unitId -> landParcel[]
-            if (landSheet) {
-                const landRowsJson = XLSX.utils.sheet_to_json(landSheet, { defval: '' });
-                // 驗證標頭：若工作表存在則所有欄位標頭必須齊備
-                const sampleRow = landRowsJson[0] || {};
-                const presentHeaders = new Set(Object.keys(sampleRow));
-                const missingLandHeaders = LAND_PARCEL_COLUMNS
-                    .map(c => c.title)
-                    .filter(t => !presentHeaders.has(t));
-                if (landRowsJson.length > 0 && missingLandHeaders.length > 0) {
-                    throw new Error(
-                        `「${LAND_PARCEL_SHEET_NAME}」工作表缺少欄位標頭：${missingLandHeaders.join('、')}`
-                    );
-                }
-
-                // 行號在 Excel 中從第 2 列開始（第 1 列是標頭）
-                const errors = [];
-                const unitIdSet = new Set(jsonDataWithEnglishKeys.map(r => String(r.unitId || '').trim()));
-
-                landRowsJson.forEach((row, i) => {
-                    // 整列全空白則跳過（不計入錯誤）
-                    const hasAnyValue = Object.values(row).some(v => v !== null && v !== undefined && String(v).trim() !== '');
-                    if (!hasAnyValue) return;
-
-                    const excelRowNo = i + 2;
-                    const { parcel, unitId, errors: rowErrors } = rowToLandParcel(row, excelRowNo);
-                    errors.push(...rowErrors);
-
-                    if (unitId && !unitIdSet.has(unitId)) {
-                        errors.push(`第 ${excelRowNo} 列：戶別「${unitId}」不存在於「${HOUSEHOLDS_SHEET_NAME}」工作表`);
-                        return;
-                    }
-                    if (!unitId) return; // 已在 rowToLandParcel 回報
-
-                    if (!landParcelsByUnit.has(unitId)) landParcelsByUnit.set(unitId, []);
-                    landParcelsByUnit.get(unitId).push(parcel);
-                });
-
-                if (errors.length > 0) {
-                    throw new Error(
-                        `「${LAND_PARCEL_SHEET_NAME}」工作表驗證失敗（整批拒絕）：\n- ${errors.join('\n- ')}`
-                    );
-                }
-            }
-
-            // ── 合併 landParcels 至戶別資料 ──
-            // 規則：檔案「含」土地標的清冊工作表 → 該戶有列則覆寫、無列則清空；
-            //      檔案「沒有」該工作表 → 完全不異動 landParcels（merge 寫入保留既有值，支援部分欄位上傳）
-            if (landSheet) {
-                for (const row of jsonDataWithEnglishKeys) {
-                    const key = String(row.unitId || '').trim();
-                    row.landParcels = landParcelsByUnit.get(key) || [];
-                }
-            }
-
-            parsedData.value = jsonDataWithEnglishKeys;
-            uploadMessageType.value = 'success';
-            const landCount = [...landParcelsByUnit.values()].reduce((s, a) => s + a.length, 0);
-            uploadMessage.value = landSheet
-                ? `成功解析 ${jsonDataWithEnglishKeys.length} 筆戶別資料（將更新 ${updatableKeys.length} 個欄位），含 ${landCount} 筆土地標的，可以開始上傳。`
-                : `成功解析 ${jsonDataWithEnglishKeys.length} 筆戶別資料（將更新 ${updatableKeys.length} 個欄位；檔案未包含的欄位不會被異動），可以開始上傳。`;
-            // ✅ [新增] 可選方案名稱反查失敗警示（不擋上傳，該名稱已略過）
-            if (unknownPlanNames.size > 0) {
-                uploadMessageType.value = 'warning';
-                uploadMessage.value += `\n注意：以下方案名稱不存在，已略過：${[...unknownPlanNames].join('、')}`;
-            }
-            // ✅ [新增] 文字標籤色碼格式警示（不擋上傳，已回退預設色）
-            if (tagWarnings.length > 0) {
-                uploadMessageType.value = 'warning';
-                const shown = tagWarnings.slice(0, 5);
-                uploadMessage.value += `\n標籤／特效提醒：${shown.join('；')}${tagWarnings.length > 5 ? `…（共 ${tagWarnings.length} 筆）` : ''}`;
-            }
-        } catch (err) {
-            uploadMessageType.value = 'error';
-            uploadMessage.value = err.message || '解析檔案失敗，請使用系統匯出的範本。';
-            parsedData.value = [];
-        } finally {
-            isParsing.value = false;
-        }
-    };
-    reader.readAsArrayBuffer(file);
+    try {
+        const result = await parseHouseholdExcelFile(file);
+        parsedData.value = result.rows;
+        uploadMessageType.value = result.messageType;
+        uploadMessage.value = result.message;
+    } catch (err) {
+        uploadMessageType.value = 'error';
+        uploadMessage.value = err.message || '解析檔案失敗，請使用系統匯出的範本。';
+        parsedData.value = [];
+    } finally {
+        isParsing.value = false;
+    }
 };
 
 const uploadData = async () => {
