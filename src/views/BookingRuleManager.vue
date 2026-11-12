@@ -1934,116 +1934,10 @@
                       </v-col>
                     </v-row>
 
-                    <!-- Customer Message Config Dialog -->
-                    <v-dialog v-model="isCustomerMessageDialogOpen" max-width="900px" persistent>
-                      <v-card>
-                        <v-card-title class="bg-primary text-white">
-                          {{ editedCustomerMessageConfig.id ? '編輯' : '新增' }}客戶回傳功能
-                        </v-card-title>
-                        <v-card-text class="pa-4" style="max-height: 80vh; overflow-y: auto;">
-                          <v-row>
-                            <v-col cols="12" md="6">
-                              <v-text-field v-model="editedCustomerMessageConfig.functionName" label="功能名稱 (辨識用)"
-                                placeholder="例如：自覓銀行回傳" variant="outlined" density="compact"
-                                :rules="[v => !!v || '必填']"></v-text-field>
-                            </v-col>
-                            <v-col cols="12" md="6">
-                              <v-text-field v-model="editedCustomerMessageConfig.buttonText" label="按鈕顯示文字 (前端顯示)"
-                                placeholder="回傳自覓銀行資訊" variant="outlined" density="compact"
-                                :rules="[v => !!v || '必填']"></v-text-field>
-                            </v-col>
-                            <v-col cols="12" md="6">
-                              <v-text-field v-model="editedCustomerMessageConfig.dialogTitle" label="對話框標題"
-                                placeholder="填寫銀行資訊" variant="outlined" density="compact"></v-text-field>
-                            </v-col>
-                          </v-row>
-
-                          <div class="text-subtitle-1 font-weight-bold mb-2 mt-2">功能開關</div>
-                          <v-sheet border rounded class="pa-3 mb-4">
-                            <v-row dense>
-                              <v-col cols="12" sm="6">
-                                <v-switch v-model="editedCustomerMessageConfig.enableBuildingSelect" label="啟用棟別選單 (必要)"
-                                  color="success" density="compact" hide-details></v-switch>
-                              </v-col>
-                              <v-col cols="12" sm="6">
-                                <v-switch v-model="editedCustomerMessageConfig.enableUnitSelect" label="啟用戶別選單 (必要)"
-                                  color="success" density="compact" hide-details></v-switch>
-                              </v-col>
-                              <v-col cols="12" sm="6">
-                                <v-switch v-model="editedCustomerMessageConfig.enableIdVerification" label="啟用身分證或驗證碼"
-                                  color="success" density="compact" hide-details hint="啟用後需輸入身分證或驗證碼並比對後端權限"
-                                  persistent-hint></v-switch>
-                              </v-col>
-                              <v-col cols="12" sm="6">
-                                <v-switch v-model="editedCustomerMessageConfig.enableFileUpload" label="啟用附件上傳"
-                                  color="success" density="compact" hide-details hint="單檔30MB，最多10個"
-                                  persistent-hint></v-switch>
-                              </v-col>
-                            </v-row>
-                          </v-sheet>
-
-                          <div class="text-subtitle-1 font-weight-bold mb-2 mt-4">自定義欄位</div>
-                          <DynamicFieldEditor v-model:fields="editedCustomerMessageConfig.customFields" />
-
-                        </v-card-text>
-                        <v-card-actions class="pa-4 border-t">
-                          <v-btn color="info" variant="tonal" prepend-icon="mdi-eye"
-                            @click="isCustomerMessagePreviewDialogOpen = true">預覽畫面</v-btn>
-                          <v-spacer></v-spacer>
-                          <v-btn variant="text" @click="isCustomerMessageDialogOpen = false">取消</v-btn>
-                          <v-btn color="primary" variant="elevated" @click="saveCustomerMessageConfig">儲存設定</v-btn>
-                        </v-card-actions>
-                      </v-card>
-                    </v-dialog>
-
-                    <!-- Customer Message Preview Dialog -->
-                    <v-dialog v-model="isCustomerMessagePreviewDialogOpen" max-width="600px">
-                      <v-card>
-                        <v-card-title class="bg-info text-white d-flex align-center">
-                          <v-icon start>mdi-eye</v-icon>
-                          預覽：{{ editedCustomerMessageConfig.dialogTitle || editedCustomerMessageConfig.buttonText }}
-                          <v-spacer></v-spacer>
-                          <v-btn icon variant="text" @click="isCustomerMessagePreviewDialogOpen = false">
-                            <v-icon>mdi-close</v-icon>
-                          </v-btn>
-                        </v-card-title>
-                        <v-card-text class="pa-6" style="max-height: 70vh; overflow-y: auto;">
-                          <div class="mb-4 text-center">
-                            <v-chip color="info" variant="tonal" size="small">這是預覽畫面，樣式與實際使用時一致</v-chip>
-                          </div>
-
-                          <div
-                            v-if="editedCustomerMessageConfig.enableBuildingSelect || editedCustomerMessageConfig.enableUnitSelect"
-                            class="bg-grey-lighten-4 pa-3 rounded mb-4">
-                            <div class="text-caption text-grey-darken-1 mb-2">預設欄位 (已啟用)</div>
-                            <v-row dense>
-                              <v-col v-if="editedCustomerMessageConfig.enableBuildingSelect" cols="12" sm="6">
-                                <v-select label="棟別" variant="outlined" density="comfortable" disabled></v-select>
-                              </v-col>
-                              <v-col v-if="editedCustomerMessageConfig.enableUnitSelect" cols="12" sm="6">
-                                <v-select label="戶別" variant="outlined" density="comfortable" disabled></v-select>
-                              </v-col>
-                            </v-row>
-                          </div>
-
-                          <DynamicFormRenderer :fields="editedCustomerMessageConfig.customFields"
-                            v-model="customerMessagePreviewData" />
-
-                          <div v-if="editedCustomerMessageConfig.enableFileUpload"
-                            class="mt-4 pa-3 border rounded border-dashed text-center bg-blue-lighten-5">
-                            <v-icon color="primary" class="mb-1">mdi-cloud-upload</v-icon>
-                            <div class="text-subtitle-2 text-primary font-weight-bold">附件上傳功能已啟用</div>
-                            <div class="text-caption text-grey-darken-1">預覽模式下不提供實際檔案上傳</div>
-                          </div>
-                        </v-card-text>
-                        <v-divider></v-divider>
-                        <v-card-actions class="pa-4">
-                          <v-spacer></v-spacer>
-                          <v-btn color="primary" variant="tonal"
-                            @click="isCustomerMessagePreviewDialogOpen = false">關閉預覽</v-btn>
-                        </v-card-actions>
-                      </v-card>
-                    </v-dialog>
+                    <!-- 客戶回傳功能編輯視窗（含即時預覽） -->
+                    <CustomerMessageConfigDialog v-model="isCustomerMessageDialogOpen"
+                      :config="editedCustomerMessageConfig" :is-new="editedCustomerMessageType === 'add'"
+                      @save="onCustomerMessageDialogSave" />
                   </v-window-item>
 
                 </v-window>
@@ -3751,7 +3645,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
 import DynamicFieldEditor from '@/components/DynamicFieldEditor.vue';
-import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue';
+import CustomerMessageConfigDialog from '@/components/CustomerMessageConfigDialog.vue';
 import QrCodeGenerator from '@/components/QrCodeGenerator.vue'; // QR Code 產生器
 import BookingGuideButton from '@/components/BookingGuideButton.vue';
 import InspProjectSettings from '@/views/admin/InspProjectSettings.vue';
@@ -5837,8 +5731,6 @@ const editedCustomerMessageConfig = ref({
   enableFileUpload: false,
   customFields: []
 });
-const isCustomerMessagePreviewDialogOpen = ref(false);
-const customerMessagePreviewData = ref({});
 
 
 const openCustomerMessageDialog = (config = null, index = -1) => {
@@ -5863,6 +5755,12 @@ const openCustomerMessageDialog = (config = null, index = -1) => {
     };
   }
   isCustomerMessageDialogOpen.value = true;
+};
+
+// 編輯視窗按「儲存」：視窗只改自己的副本，這裡才寫回設定
+const onCustomerMessageDialogSave = (config) => {
+  editedCustomerMessageConfig.value = config;
+  return saveCustomerMessageConfig();
 };
 
 const saveCustomerMessageConfig = async () => {

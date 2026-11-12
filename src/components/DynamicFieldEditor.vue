@@ -1,405 +1,240 @@
 <template>
-  <div class="dynamic-field-editor">
-    <div class="d-flex align-center flex-wrap mb-4 bg-white py-2 toolbar-gap" :class="{ 'position-sticky top-0 z-index-10 border-b': !isNested }">
-       <v-menu>
-        <template v-slot:activator="{ props }">
-          <v-btn
-            color="primary"
-            variant="flat"
-            prepend-icon="mdi-plus"
-            v-bind="props"
-            class="font-weight-bold"
-          >
-            新增元件
-          </v-btn>
-        </template>
-        <v-list density="compact">
-          <v-list-subheader>基本欄位</v-list-subheader>
-          <v-list-item @click="addField('text')" prepend-icon="mdi-form-textbox" title="單行文字"></v-list-item>
-          <v-list-item @click="addField('textarea')" prepend-icon="mdi-form-textarea" title="多行文字"></v-list-item>
-          <v-list-item @click="addField('radio')" prepend-icon="mdi-radiobox-marked" title="單選題"></v-list-item>
-          <v-list-item @click="addField('checkbox')" prepend-icon="mdi-checkbox-marked" title="多選題"></v-list-item>
-          <v-list-item @click="addField('date')" prepend-icon="mdi-calendar" title="日期"></v-list-item>
-          <v-list-item @click="addField('address')" prepend-icon="mdi-map-marker-radius" title="地址"></v-list-item>
-          
-          <v-divider class="my-2"></v-divider>
-          <v-list-subheader>版面元件</v-list-subheader>
-          <v-list-item @click="addField('header')" prepend-icon="mdi-format-header-1" title="標題"></v-list-item>
-          <v-list-item @click="addField('description')" prepend-icon="mdi-text" title="說明文字"></v-list-item>
-          <v-list-item @click="addField('divider')" prepend-icon="mdi-minus" title="分隔線"></v-list-item>
-          <v-list-item @click="addField('link')" prepend-icon="mdi-link" title="插入連結"></v-list-item>
-
-          <template v-if="allowSystemFields">
-            <v-divider class="my-2"></v-divider>
-            <v-list-subheader>系統欄位 (自動帶入)</v-list-subheader>
-            <v-list-item @click="addSystemField('unitId')" prepend-icon="mdi-home" title="戶別"></v-list-item>
-            <v-list-item @click="addSystemField('buyerName')" prepend-icon="mdi-account" title="買方姓名"></v-list-item>
-            <v-list-item @click="addSystemField('buyerPhone')" prepend-icon="mdi-phone" title="買方電話"></v-list-item>
-            <v-list-item @click="addSystemField('buyerAddress')" prepend-icon="mdi-map-marker" title="買方地址"></v-list-item>
-            <v-list-item @click="addSystemField('buyerIdNumber')" prepend-icon="mdi-card-account-details" title="身分證字號"></v-list-item>
-            <v-list-item @click="addSystemField('buyerEmail')" prepend-icon="mdi-email-outline" title="EMAIL"></v-list-item>
-            <v-list-item @click="addSystemField('buyerDateOfBirth')" prepend-icon="mdi-cake-variant" title="出生年月日"></v-list-item>
-            <v-list-item @click="addSystemField('buyerMailingAddress')" prepend-icon="mdi-email-open-outline" title="買方通訊地址"></v-list-item>
-             <v-list-item @click="addSystemField('salesPerson')" prepend-icon="mdi-badge-account" title="銷售人員"></v-list-item>
-          </template>
-        </v-list>
-      </v-menu>
-      
-      <v-spacer></v-spacer>
-
-      <!-- ✅ [新增] 全部收合/展開：收合後卡片變小，主列表拖曳更容易 -->
-      <v-btn
-        v-if="localFields.length > 1"
-        size="small"
-        variant="text"
-        color="grey-darken-2"
-        :prepend-icon="allCollapsed ? 'mdi-arrow-expand-vertical' : 'mdi-arrow-collapse-vertical'"
-        @click="toggleCollapseAll"
-      >{{ allCollapsed ? '展開' : '收合' }}</v-btn>
-
-      <!-- ✅ [新增] 調整順序：精簡列表模式，長距離移動免拖整張卡片 -->
-      <v-btn
-        v-if="localFields.length > 1"
-        size="small"
-        variant="tonal"
-        color="primary"
-        prepend-icon="mdi-swap-vertical"
-        @click="reorderDialog = true"
-      >調整順序</v-btn>
-
-      <div class="text-caption text-grey d-none d-sm-block">
-        共 {{ localFields.length }} 個元件
+  <!-- 表單欄位編輯器（macOS 風格）：左＝欄位大綱、右＝編輯選中的欄位。
+       資料結構與舊版完全相同（id／type／label／required／placeholder／hint／content／url／options[].subFields…），
+       已上線的表單不需轉換。 -->
+  <div ref="rootEl" class="dfe" :class="{ 'dfe--compact': compact, 'dfe--fill': fill, 'dfe--detail': compact && pane === 'detail' }">
+    <!-- 左：欄位大綱 -->
+    <aside class="dfe-side">
+      <div class="dfe-side-head">
+        <span>欄位</span>
+        <span class="dfe-side-count">{{ localFields.length }}</span>
       </div>
-    </div>
+      <div class="dfe-side-scroll">
+        <DynamicFieldOutline
+          :list="localFields"
+          :selected-id="selectedId"
+          @select="id => selectField(id)"
+          @add="(evt, option) => openTypeMenu(evt, option)"
+        />
+        <div v-if="localFields.length === 0" class="dfe-side-empty">尚無欄位</div>
+      </div>
+      <div v-if="undoState" class="dfe-undo">
+        <span class="dfe-undo-text">已刪除「{{ undoState.item.label || '未命名' }}」</span>
+        <button type="button" class="mac-link-btn" @click="undoRemove">復原</button>
+      </div>
+      <div class="dfe-side-foot">
+        <button type="button" class="mac-btn mac-btn--block dfe-add-btn" @click="openTypeMenu($event)">
+          <v-icon size="16">mdi-plus</v-icon><span>加入欄位</span>
+        </button>
+      </div>
+    </aside>
 
-    <draggable 
-      v-model="localFields" 
-      item-key="id"
-      handle=".drag-handle"
-      @end="updateFields"
-      animation="200"
-    >
-      <template #item="{ element: field, index }">
-        <v-card
-          variant="outlined"
-          class="mb-3 field-card"
-          :id="`field-card-${field.id}`"
-          :class="{ 'system-field': field.type === 'system', 'layout-field': ['header', 'description', 'divider'].includes(field.type) }"
-        >
-          <div class="d-flex align-center px-4 py-3 bg-grey-lighten-5 cursor-pointer" @click="field.expanded = !field.expanded">
-            <v-icon class="drag-handle cursor-move mr-3 text-grey-darken-1">mdi-drag-vertical</v-icon>
-            
-            <v-icon 
-              v-if="field.type === 'system'" 
-              color="indigo" 
-              class="mr-2"
-              size="small"
-            >mdi-database</v-icon>
-            <v-icon 
-              v-else-if="['header', 'description', 'divider'].includes(field.type)" 
-              color="grey-darken-2" 
-              class="mr-2"
-              size="small"
-            >mdi-view-dashboard-outline</v-icon>
-            
-            <div class="font-weight-bold flex-grow-1 text-truncate">
-              {{ field.label || '未命名欄位' }}
-              <span v-if="field.required" class="text-error ml-1">*</span>
-            </div>
+    <!-- 右：編輯選中的欄位 -->
+    <section class="dfe-main mac-form">
+      <template v-if="selection">
+        <div class="dfe-main-head">
+          <button v-if="compact" type="button" class="mac-btn mac-btn--sm dfe-back" @click="pane = 'list'">
+            <v-icon size="16">mdi-chevron-left</v-icon><span>清單</span>
+          </button>
+          <span class="mac-tag dfe-type-tag"><v-icon size="14">{{ fieldTypeIcon(selection.field) }}</v-icon>{{ fieldTypeName(selection.field) }}</span>
+          <span class="dfe-pos">{{ selection.index + 1 }} / {{ selection.list.length }}</span>
+          <span class="dfe-spacer"></span>
+          <button type="button" class="mac-icon-btn" title="上移" aria-label="上移" :disabled="selection.index === 0" @click="moveSelected(-1)">
+            <v-icon size="18">mdi-arrow-up</v-icon>
+          </button>
+          <button type="button" class="mac-icon-btn" title="下移" aria-label="下移" :disabled="selection.index === selection.list.length - 1" @click="moveSelected(1)">
+            <v-icon size="18">mdi-arrow-down</v-icon>
+          </button>
+          <button type="button" class="mac-icon-btn" title="複製" aria-label="複製" @click="duplicateSelected">
+            <v-icon size="17">mdi-content-copy</v-icon>
+          </button>
+          <button type="button" class="mac-icon-btn mac-icon-btn--danger" title="刪除" aria-label="刪除" @click="removeSelected">
+            <v-icon size="18">mdi-trash-can-outline</v-icon>
+          </button>
+        </div>
 
-            <!-- 手機空間有限：型別 chip 僅桌機顯示 -->
-            <v-chip size="x-small" class="mr-2 d-none d-sm-flex" variant="tonal">
-              {{ getFieldTypeName(field) }}
-            </v-chip>
-
-            <!-- ✅ [新增] 上移/下移：小幅調整免拖曳（手機尤其好按） -->
-            <v-btn icon variant="text" size="small" color="grey-darken-1" :disabled="index === 0" @click.stop="moveField(index, -1)">
-              <v-icon>mdi-arrow-up-thin</v-icon>
-            </v-btn>
-            <v-btn icon variant="text" size="small" color="grey-darken-1" :disabled="index === localFields.length - 1" @click.stop="moveField(index, 1)">
-              <v-icon>mdi-arrow-down-thin</v-icon>
-            </v-btn>
-
-            <v-btn icon variant="text" size="small" @click.stop="removeField(index)" color="grey">
-              <v-icon>mdi-trash-can-outline</v-icon>
-            </v-btn>
-            <v-icon size="small" class="ml-1" :class="{ 'rotate-180': field.expanded }">mdi-chevron-down</v-icon>
-          </div>
-
-          <v-expand-transition>
-            <div v-show="field.expanded !== false">
-              <v-divider></v-divider>
-              <v-card-text class="pa-4">
-                
-                <!-- Common Properties -->
-                <v-row dense>
-                  <v-col cols="12" md="8">
-                     <v-text-field
-                      v-model="field.label"
-                      :label="field.type === 'link' ? '顯示文字' : '欄位標題'"
-                      density="compact"
-                      variant="outlined"
-                      :disabled="field.type === 'divider'"
-                    ></v-text-field>
-                  </v-col>
-                  <v-col cols="12" md="4" v-if="!['header', 'description', 'divider', 'link'].includes(field.type)">
-                    <v-checkbox
-                      v-model="field.required"
-                      label="必填"
-                      density="compact"
-                      hide-details
-                      color="primary"
-                    ></v-checkbox>
-                  </v-col>
-                </v-row>
-
-                 <!-- Hint & Placeholder -->
-                 <v-row dense>
-                   <v-col cols="12" v-if="!['header', 'description', 'divider', 'link', 'radio', 'checkbox', 'system'].includes(field.type)">
-                      <v-text-field
-                        v-model="field.placeholder"
-                        label="提示文字 (Placeholder)"
-                        density="compact"
-                        variant="outlined"
-                        hide-details
-                      ></v-text-field>
-                   </v-col>
-                   <v-col cols="12" v-if="!['header', 'description', 'divider'].includes(field.type)">
-                      <v-text-field
-                        v-model="field.hint"
-                        label="輔助說明 (Hint)"
-                        placeholder="顯示在欄位下方的說明文字"
-                        density="compact"
-                        variant="outlined"
-                        hide-details
-                      ></v-text-field>
-                   </v-col>
-                 </v-row>
-                 
-                 <div class="mt-2"></div>
- 
-                 <v-text-field
-                   v-if="field.type === 'link'"
-                   v-model="field.url"
-                  label="連結網址 (URL)"
-                  placeholder="https://example.com"
-                  density="compact"
-                  variant="outlined"
-                  class="mb-2"
-                  prepend-inner-icon="mdi-link"
-                ></v-text-field>
-                
-                <v-textarea
-                  v-if="field.type === 'description'"
-                  v-model="field.content"
-                  label="說明內容"
-                  rows="3"
-                  variant="outlined"
-                  density="compact"
-                ></v-textarea>
-
-                <!-- System Field Specifics -->
-                <div v-if="field.type === 'system'" class="bg-indigo-lighten-5 pa-3 rounded mb-3">
-                  <div class="d-flex align-center mb-2">
-                    <v-icon start size="small" color="indigo">mdi-information</v-icon>
-                    <span class="text-caption text-indigo-darken-2 font-weight-bold">
-                      系統欄位設定
-                    </span>
-                  </div>
-                  <v-row dense>
-                    <v-col cols="12">
-                       <v-select
-                        v-model="field.systemKey"
-                        :items="systemKeyOptions"
-                        label="綁定資料來源"
-                        density="compact"
-                        variant="outlined"
-                        bg-color="white"
-                      ></v-select>
-                    </v-col>
-                    <v-col cols="6">
-                      <v-checkbox
-                        v-model="field.autoFill"
-                        label="自動帶入值"
-                        density="compact"
-                        hide-details
-                        class="mt-0"
-                      ></v-checkbox>
-                    </v-col>
-                     <v-col cols="6">
-                      <v-checkbox
-                        v-model="field.readOnly"
-                        label="唯讀 (不可修改)"
-                        density="compact"
-                        hide-details
-                         class="mt-0"
-                      ></v-checkbox>
-                    </v-col>
-                     <v-col cols="12">
-                      <v-text-field
-                        v-model="field.placeholder"
-                        label="提示文字 (Placeholder)"
-                        density="compact"
-                        variant="outlined"
-                        bg-color="white"
-                        hide-details
-                      ></v-text-field>
-                    </v-col>
-                  </v-row>
-                </div>
-
-                <!-- Options Editor for Radio/Checkbox -->
-                <div v-if="['radio', 'checkbox'].includes(field.type)" class="mt-2">
-                 
-                  <draggable 
-                    v-model="field.options" 
-                    item-key="id" 
-                    handle=".option-drag"
-                    animation="200"
-                    class="d-flex flex-column w-100"
-                  >
-                    <template #item="{ element: option, index: optIndex }">
-                      <div class="w-100 mb-2">
-                        <div class="d-flex align-center">
-                          <v-icon class="option-drag cursor-move mr-2 text-grey-lighten-1">mdi-drag</v-icon>
-                          <!-- 透過 :key="option.id" 確保輸入時不會因 value 改變而重繪 -->
-                          <v-text-field
-                            v-model="option.label"
-                            label="選項文字"
-                            density="compact"
-                            hide-details
-                            variant="outlined"
-                            class="flex-grow-1 mr-2"
-                            @update:model-value="val => option.value = String(val)" 
-                          ></v-text-field>
-                          <v-btn icon variant="text" color="error" size="small" @click="removeOption(field, optIndex)">
-                            <v-icon>mdi-close</v-icon>
-                          </v-btn>
-                        </div>
-                        
-                         <!-- Nested Sub-fields trigger -->
-                         <!-- Nested Sub-fields trigger -->
-                         <div class="ml-8 mt-1">
-                            <v-btn 
-                              v-if="!option.subFields"
-                              size="x-small" 
-                              variant="text" 
-                              color="primary"
-                              prepend-icon="mdi-plus"
-                              @click="initSubFields(option)"
-                            >
-                            新增子欄位
-                            </v-btn>
-                            
-                            <div v-else class="pl-3 border-s-md mt-2" style="border-color: #e0e0e0;">
-                              <div class="d-flex justify-space-between align-center mb-1">
-                                <span class="text-caption text-grey">子欄位 (當選中 "{{ option.label }}" 時顯示)</span>
-                                <v-btn icon="mdi-delete" variant="text" size="x-small" color="error" @click="removeSubFields(option)"></v-btn>
-                              </div>
-                              <DynamicFieldEditor 
-                                :fields="option.subFields"
-                                :isNested="true"
-                                @update:fields="(val) => { option.subFields = val; updateFields(); }"
-                              />
-                            </div>
-                         </div>
-
-                      </div>
-                    </template>
-                  </draggable>
-                  <v-btn
-                    variant="outlined"
-                    size="small"
-                    border
-                    prepend-icon="mdi-plus"
-                    class="mt-2"
-                    block
-                    @click="addOption(field)"
-                  >
-                    新增選項
-                  </v-btn>
-                </div>
-
-              </v-card-text>
-            </div>
-          </v-expand-transition>
-        </v-card>
-      </template>
-    </draggable>
-    
-    <div v-if="localFields.length === 0" class="text-center pa-8 border dashed rounded text-grey">
-      <v-icon size="48" class="mb-2">mdi-form-select</v-icon>
-      <p>點擊上方「新增元件」</p>
-    </div>
-
-    <!-- ✅ [新增] 調整順序 Dialog：精簡單行列表，拖曳距離短；手機全螢幕、桌機置中 -->
-    <v-dialog
-      v-model="reorderDialog"
-      :fullscreen="isMobile"
-      :max-width="isMobile ? undefined : 520"
-      scrollable
-      :transition="isMobile ? 'dialog-bottom-transition' : 'dialog-transition'"
-    >
-      <v-card>
-        <v-toolbar color="primary" density="compact">
-          <v-toolbar-title class="text-subtitle-1">
-            <v-icon start size="small">mdi-swap-vertical</v-icon>調整欄位順序
-          </v-toolbar-title>
-          <v-spacer></v-spacer>
-          <v-btn variant="text" class="font-weight-bold" @click="reorderDialog = false">完成</v-btn>
-        </v-toolbar>
-        <v-card-text class="pa-2">
-          <div class="text-caption text-grey px-2 pb-2 d-flex align-center">
-            <v-icon size="x-small" class="mr-1">mdi-information-outline</v-icon>
-            拖曳 <v-icon size="x-small" class="mx-1">mdi-drag</v-icon> 或點箭頭調整位置，變更即時生效
-          </div>
-          <draggable
-            v-model="localFields"
-            item-key="id"
-            handle=".reorder-drag"
-            animation="200"
-            ghost-class="reorder-ghost"
-          >
-            <template #item="{ element: field, index }">
-              <div class="reorder-row d-flex align-center px-1">
-                <v-icon class="reorder-drag cursor-move text-grey-darken-1 pa-4">mdi-drag</v-icon>
-                <span class="reorder-index text-caption text-grey mr-2">{{ index + 1 }}</span>
-                <v-icon v-if="field.type === 'system'" color="indigo" size="x-small" class="mr-1">mdi-database</v-icon>
-                <v-icon v-else-if="['header', 'description', 'divider'].includes(field.type)" color="grey-darken-2" size="x-small" class="mr-1">mdi-view-dashboard-outline</v-icon>
-                <div class="flex-grow-1 text-truncate">
-                  <span class="text-body-2">{{ field.label || '未命名欄位' }}</span>
-                  <span class="text-caption text-grey ml-1 d-none d-sm-inline">{{ getFieldTypeName(field) }}</span>
-                </div>
-                <!-- 移到最頂/最底：桌機顯示；手機以短距離拖曳取代 -->
-                <v-btn icon variant="text" size="small" density="comfortable" class="d-none d-sm-inline-flex" :disabled="index === 0" @click="moveFieldTo(index, 'top')" title="移到最上面">
-                  <v-icon size="small">mdi-chevron-double-up</v-icon>
-                </v-btn>
-                <v-btn icon variant="text" size="small" density="comfortable" :disabled="index === 0" @click="moveField(index, -1)" title="上移一格">
-                  <v-icon size="small">mdi-chevron-up</v-icon>
-                </v-btn>
-                <v-btn icon variant="text" size="small" density="comfortable" :disabled="index === localFields.length - 1" @click="moveField(index, 1)" title="下移一格">
-                  <v-icon size="small">mdi-chevron-down</v-icon>
-                </v-btn>
-                <v-btn icon variant="text" size="small" density="comfortable" class="d-none d-sm-inline-flex" :disabled="index === localFields.length - 1" @click="moveFieldTo(index, 'bottom')" title="移到最下面">
-                  <v-icon size="small">mdi-chevron-double-down</v-icon>
-                </v-btn>
-              </div>
+        <div class="dfe-main-scroll">
+          <!-- 所在位置：追問欄位才顯示，點上層可跳回 -->
+          <nav v-if="selection.crumbs.length" class="dfe-crumbs" aria-label="所在位置">
+            <template v-for="(crumb, ci) in selection.crumbs" :key="ci">
+              <button type="button" class="mac-link-btn dfe-crumb" @click="selectField(crumb.field.id)">{{ crumb.field.label || '未命名' }}</button>
+              <span class="dfe-crumb-opt">選「{{ crumb.option.label }}」時</span>
+              <v-icon size="14" class="dfe-crumb-sep">mdi-chevron-right</v-icon>
             </template>
-          </draggable>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
+            <span class="dfe-crumb-here">{{ selection.field.label || '未命名' }}</span>
+          </nav>
 
+          <div v-if="selection.field.type === 'divider'" class="dfe-note">分隔線不需設定</div>
+
+          <div v-else class="mac-form-group">
+            <label class="mac-form-row">
+              <span class="mac-form-row-label">{{ selection.field.type === 'link' ? '顯示文字' : '標題' }}</span>
+              <input ref="labelInput" v-model="selection.field.label" type="text" class="mac-form-input" />
+            </label>
+            <label v-if="hasRequired(selection.field)" class="mac-form-row">
+              <span class="mac-form-row-label">必填</span>
+              <span class="dfe-spacer"></span>
+              <input v-model="selection.field.required" type="checkbox" class="mac-switch" />
+            </label>
+            <label v-if="selection.field.type === 'link'" class="mac-form-row">
+              <span class="mac-form-row-label">網址</span>
+              <input v-model="selection.field.url" type="url" inputmode="url" class="mac-form-input" placeholder="https://" />
+            </label>
+            <div v-if="selection.field.type === 'description'" class="mac-form-pad">
+              <div class="mac-sheet-label">內容</div>
+              <textarea v-model="selection.field.content" rows="4" class="mac-form-textarea"></textarea>
+            </div>
+            <label v-if="hasPlaceholder(selection.field)" class="mac-form-row">
+              <span class="mac-form-row-label">框內提示</span>
+              <input v-model="selection.field.placeholder" type="text" class="mac-form-input" />
+            </label>
+            <label v-if="hasHint(selection.field)" class="mac-form-row">
+              <span class="mac-form-row-label">下方說明</span>
+              <input v-model="selection.field.hint" type="text" class="mac-form-input" />
+            </label>
+          </div>
+
+          <!-- 系統欄位 -->
+          <template v-if="selection.field.type === 'system'">
+            <div class="mac-form-label">自動帶入</div>
+            <div class="mac-form-group">
+              <label class="mac-form-row">
+                <span class="mac-form-row-label">資料來源</span>
+                <select v-model="selection.field.systemKey" class="mac-form-input mac-form-select">
+                  <option v-for="opt in SYSTEM_FIELD_KEYS" :key="opt.value" :value="opt.value">{{ opt.title }}</option>
+                </select>
+              </label>
+              <label class="mac-form-row">
+                <span class="mac-form-row-label">自動帶入</span>
+                <span class="dfe-spacer"></span>
+                <input v-model="selection.field.autoFill" type="checkbox" class="mac-switch" />
+              </label>
+              <label class="mac-form-row">
+                <span class="mac-form-row-label">唯讀</span>
+                <span class="dfe-spacer"></span>
+                <input v-model="selection.field.readOnly" type="checkbox" class="mac-switch" />
+              </label>
+            </div>
+          </template>
+
+          <!-- 選項（單選／多選） -->
+          <template v-if="hasOptions(selection.field)">
+            <div class="mac-form-label">選項</div>
+            <div class="mac-form-group dfe-opts">
+              <draggable
+                v-if="selection.field.options"
+                :list="selection.field.options"
+                item-key="id"
+                handle=".dfe-opt-grip"
+                :animation="160"
+                ghost-class="dfe-opt-ghost"
+              >
+                <template #item="{ element: option, index: optIndex }">
+                  <div class="dfe-opt">
+                    <span class="dfe-opt-grip" title="拖曳排序"><v-icon size="16">mdi-drag-vertical</v-icon></span>
+                    <v-icon size="16" class="dfe-opt-mark">{{ selection.field.type === 'radio' ? 'mdi-radiobox-blank' : 'mdi-checkbox-blank-outline' }}</v-icon>
+                    <input
+                      v-model="option.label"
+                      type="text"
+                      class="mac-form-input dfe-opt-input"
+                      :class="{ 'is-error': isOptionInvalid(selection.field, option) }"
+                      aria-label="選項文字"
+                      @input="syncOptionValue(option)"
+                      @compositionend="syncOptionValue(option)"
+                      @keydown.enter="onOptionEnter($event)"
+                    />
+                    <button
+                      type="button"
+                      class="mac-btn mac-btn--sm dfe-follow"
+                      :class="{ 'is-active': subCount(option) > 0 }"
+                      title="選這個選項後要再填的欄位"
+                      @click="onFollowUp($event, option)"
+                    >
+                      <v-icon size="14">mdi-subdirectory-arrow-right</v-icon><span>追問</span><span v-if="subCount(option) > 0" class="mac-filter-count">{{ subCount(option) }}</span>
+                    </button>
+                    <button type="button" class="mac-icon-btn" title="移除選項" aria-label="移除選項" @click="removeOption(selection.field, optIndex)">
+                      <v-icon size="17">mdi-close</v-icon>
+                    </button>
+                  </div>
+                </template>
+              </draggable>
+              <div class="dfe-opt dfe-opt--new">
+                <span class="dfe-opt-grip dfe-opt-grip--off"></span>
+                <v-icon size="16" class="dfe-opt-mark">mdi-plus</v-icon>
+                <input
+                  ref="newOptionInput"
+                  v-model="newOptionText"
+                  type="text"
+                  class="mac-form-input dfe-opt-input"
+                  placeholder="輸入選項後按 Enter"
+                  aria-label="加入選項"
+                  enterkeyhint="done"
+                  @keydown.enter="commitNewOption($event)"
+                  @blur="commitNewOption()"
+                />
+              </div>
+            </div>
+            <div v-if="hasInvalidOption(selection.field)" class="dfe-opt-error">選項不可空白或重複</div>
+          </template>
+        </div>
+      </template>
+
+      <!-- 未選欄位：直接列出可加入的類型 -->
+      <div v-else class="dfe-main-scroll dfe-palette">
+        <div class="dfe-palette-title">{{ localFields.length ? '點左側欄位編輯，或加入欄位' : '選一種欄位開始' }}</div>
+        <div class="dfe-palette-grid">
+          <button v-for="t in INPUT_FIELD_TYPES" :key="t.type" type="button" class="dfe-tile" @click="addField(t.type)">
+            <v-icon size="20">{{ t.icon }}</v-icon><span>{{ t.title }}</span>
+          </button>
+        </div>
+        <div class="mac-form-label">版面</div>
+        <div class="dfe-palette-grid">
+          <button v-for="t in LAYOUT_FIELD_TYPES" :key="t.type" type="button" class="dfe-tile" @click="addField(t.type)">
+            <v-icon size="20">{{ t.icon }}</v-icon><span>{{ t.title }}</span>
+          </button>
+        </div>
+        <template v-if="allowSystemFields">
+          <div class="mac-form-label">自動帶入</div>
+          <div class="dfe-palette-grid">
+            <button v-for="s in SYSTEM_FIELD_KEYS" :key="s.value" type="button" class="dfe-tile" @click="addField('system', s.value)">
+              <v-icon size="20">{{ s.icon }}</v-icon><span>{{ s.title }}</span>
+            </button>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <!-- 欄位類型選單（加入欄位／追問共用一個） -->
+    <v-menu v-model="typeMenuOpen" :target="typeMenuTarget" content-class="mac-menu dfe-type-menu" location="top start" :close-on-content-click="true">
+      <v-list density="compact">
+        <v-list-subheader class="dfe-menu-head">{{ typeMenuOption ? `選「${typeMenuOption.label}」時要填` : '加入欄位' }}</v-list-subheader>
+        <v-list-item v-for="t in INPUT_FIELD_TYPES" :key="t.type" :prepend-icon="t.icon" :title="t.title" @click="addField(t.type)"></v-list-item>
+        <v-divider class="my-1"></v-divider>
+        <v-list-item v-for="t in LAYOUT_FIELD_TYPES" :key="t.type" :prepend-icon="t.icon" :title="t.title" @click="addField(t.type)"></v-list-item>
+        <template v-if="allowSystemFields">
+          <v-divider class="my-1"></v-divider>
+          <v-list-subheader class="dfe-menu-head">自動帶入</v-list-subheader>
+          <v-list-item v-for="s in SYSTEM_FIELD_KEYS" :key="s.value" :prepend-icon="s.icon" :title="s.title" @click="addField('system', s.value)"></v-list-item>
+        </template>
+      </v-list>
+    </v-menu>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, nextTick } from 'vue';
-import { useDisplay } from 'vuetify';
+import { ref, shallowRef, watch, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import draggable from 'vuedraggable';
+import DynamicFieldOutline from '@/components/DynamicFieldOutline.vue';
+import {
+  INPUT_FIELD_TYPES,
+  LAYOUT_FIELD_TYPES,
+  SYSTEM_FIELD_KEYS,
+  fieldTypeIcon,
+  fieldTypeName,
+} from '@/utils/dynamicFieldTypes';
 
 // Use native browser UUID generator to avoid 'stream' module issues with uuid package
 const uuidv4 = () => crypto.randomUUID();
-import draggable from 'vuedraggable';
 
 export interface DynamicField {
   id: string;
@@ -407,44 +242,48 @@ export interface DynamicField {
   label: string;
   required?: boolean;
   placeholder?: string;
-  hint?: string; // Added hint support
+  hint?: string;
   content?: string; // For description
-  url?: string; // For url
+  url?: string; // For link
   options?: FieldOption[];
   systemKey?: string;
   autoFill?: boolean;
   readOnly?: boolean;
-  expanded?: boolean;
+  expanded?: boolean; // 舊版編輯器的展開狀態，已不使用；舊資料上的值原樣保留
 }
 
 export interface FieldOption {
-  id: string; // ✅ Added unique ID for draggable key
+  id: string;
   label: string;
   value: string;
   subFields?: DynamicField[];
 }
 
+interface Crumb { field: DynamicField; option: FieldOption }
+interface Selection { field: DynamicField; list: DynamicField[]; index: number; crumbs: Crumb[] }
+
 const props = defineProps<{
   fields: DynamicField[];
   allowSystemFields?: boolean;
-  isNested?: boolean;
+  isNested?: boolean; // 舊版遞迴用，保留相容，不再使用
+  fill?: boolean; // 撐滿父層高度（放在固定高度的視窗裡時用）
 }>();
 
 const emit = defineEmits(['update:fields']);
 
 const localFields = ref<DynamicField[]>([]);
 
-// Initialize fields ensuring options have IDs, WITHOUT mutating props
-const initializeFields = (fields: DynamicField[]) => {
+// 複製一份並替沒有 id 的選項補 id（拖曳排序需要），各層追問欄位一併處理；不更動 props
+const initializeFields = (fields: DynamicField[]): DynamicField[] => {
   if (!fields || !Array.isArray(fields)) return [];
-  // Deep clone to avoid mutation of props and return new structure with ensured IDs
   return fields.map(field => {
-    const newField = { ...field }; // Shallow copy field
-    if (newField.options) {
-      newField.options = newField.options.map(opt => ({
-        ...opt,
-        id: opt.id || uuidv4() // Ensure ID exists without mutating original if possible (though map creates new array)
-      }));
+    const newField = { ...field };
+    if (Array.isArray(newField.options)) {
+      newField.options = newField.options.map(opt => {
+        const newOpt = { ...opt, id: opt.id || uuidv4() };
+        if (Array.isArray(newOpt.subFields)) newOpt.subFields = initializeFields(newOpt.subFields);
+        return newOpt;
+      });
     }
     return newField;
   });
@@ -453,230 +292,425 @@ const initializeFields = (fields: DynamicField[]) => {
 localFields.value = initializeFields(props.fields);
 
 watch(() => props.fields, (newVal) => {
-  const processedNewVal = initializeFields(newVal);
-  // Deep compare using JSON stringify to avoid recursive updates if content is identical
-  // (ignoring minor object reference changes from parent)
-  if (JSON.stringify(processedNewVal) !== JSON.stringify(localFields.value)) {
-    localFields.value = processedNewVal;
+  // 內容相同就不重設，避免父層回寫造成循環更新
+  if (JSON.stringify(newVal || []) !== JSON.stringify(localFields.value)) {
+    localFields.value = initializeFields(newVal);
   }
 }, { deep: true });
 
-// Initial emit ensures parent gets initial structure with IDs if needed
-// updateFields(); // No, don't emit on mount, might trigger form dirty check prematurely
-
-// Watch localFields deeply to emit changes
+// 只在內容真的變動時才通知父層（掛載當下不發，避免父層誤判為已修改）
 watch(localFields, () => {
   emit('update:fields', localFields.value);
 }, { deep: true });
 
-const updateFields = () => {
-  // Emit event, but do not update localFields again here immediately if watcher handles it
-  // The emit will cause parent to update prop, triggering watcher.
-  emit('update:fields', localFields.value);
+// ── 選取與所在位置 ──
+const selectedId = ref<string | null>(null);
+
+const locate = (id: string, list: DynamicField[], crumbs: Crumb[] = []): Selection | null => {
+  for (let index = 0; index < list.length; index++) {
+    const field = list[index];
+    if (field.id === id) return { field, list, index, crumbs };
+    for (const option of field.options || []) {
+      if (Array.isArray(option.subFields) && option.subFields.length) {
+        const found = locate(id, option.subFields, [...crumbs, { field, option }]);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
 };
 
-// ✅ [新增] 排序輔助：調整順序 Dialog、全部收合/展開、上下移
-const { mobile } = useDisplay();
-const isMobile = computed(() => mobile.value);
-const reorderDialog = ref(false);
-
-// expanded 預設 undefined 視為展開（v-show="field.expanded !== false"）
-const allCollapsed = computed(() =>
-  localFields.value.length > 0 && localFields.value.every(f => f.expanded === false)
+const selection = computed<Selection | null>(() =>
+  selectedId.value ? locate(selectedId.value, localFields.value) : null
 );
 
-const toggleCollapseAll = () => {
-  const target = allCollapsed.value; // 全收合 → 展開；否則收合
-  localFields.value.forEach(f => { f.expanded = target; });
-};
+// ── 版面：寬度不足時改為「清單 ⇄ 編輯」兩頁切換 ──
+const rootEl = ref<HTMLElement | null>(null);
+const compact = ref(false);
+const pane = ref<'list' | 'detail'>('list');
+let resizeObserver: ResizeObserver | null = null;
 
-const moveField = (index: number, delta: number) => {
-  const to = index + delta;
-  if (to < 0 || to >= localFields.value.length) return;
-  const [item] = localFields.value.splice(index, 1);
-  localFields.value.splice(to, 0, item);
-};
+onMounted(() => {
+  if (!rootEl.value || typeof ResizeObserver === 'undefined') return;
+  resizeObserver = new ResizeObserver(entries => {
+    const width = entries[0]?.contentRect.width || 0;
+    if (width > 0) compact.value = width < 640;
+  });
+  resizeObserver.observe(rootEl.value);
+});
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+  if (undoTimer) clearTimeout(undoTimer);
+});
 
-const moveFieldTo = (index: number, position: 'top' | 'bottom') => {
-  const [item] = localFields.value.splice(index, 1);
-  if (position === 'top') localFields.value.unshift(item);
-  else localFields.value.push(item);
-};
+const labelInput = ref<HTMLInputElement | null>(null);
+const newOptionInput = ref<HTMLInputElement | null>(null);
+const newOptionText = ref('');
 
-// 新增元件後捲動至該卡片（列表很長時，新元件加在底部容易「看不到」）
-const scrollToField = (id: string) => {
+const selectField = (id: string | null, focusLabel = false) => {
+  commitNewOption();
+  selectedId.value = id;
+  pane.value = id ? 'detail' : 'list';
+  if (!id) return;
   nextTick(() => {
-    document.getElementById(`field-card-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // 清單很長時，把選中的那一列捲進可視範圍（新欄位常加在最底下）
+    rootEl.value?.querySelector('.dfo-row.is-active')?.scrollIntoView({ block: 'nearest' });
+    if (focusLabel) {
+      labelInput.value?.focus();
+      labelInput.value?.select();
+    }
   });
 };
 
-const systemKeyOptions = [
-  { title: '戶別', value: 'unitId' },
-  { title: '買方姓名', value: 'buyerName' },
-  { title: '買方電話', value: 'buyerPhone' },
-  { title: '買方戶籍地址', value: 'buyerAddress' },
-  { title: '身分證字號', value: 'buyerIdNumber' },
-  // ✅ [新增] 客戶資料卡導入銷控：EMAIL / 出生年月日 / 通訊地址（對應 salesHouseholds 欄位）
-  { title: 'EMAIL', value: 'buyerEmail' },
-  { title: '出生年月日', value: 'buyerDateOfBirth' },
-  { title: '買方通訊地址', value: 'buyerMailingAddress' },
-  { title: '銷售人員', value: 'salesPerson' },
-];
+watch(selection, (sel) => {
+  // 選中的欄位被外部移除（父層重設）時回到清單
+  if (!sel && selectedId.value) {
+    selectedId.value = null;
+    pane.value = 'list';
+  }
+});
 
-const getFieldTypeName = (field: DynamicField) => {
-  if (field.type === 'system') return '系統自動帶入';
-  const typeMap: Record<string, string> = {
-    text: '單行文字',
-    textarea: '多行文字',
-    radio: '單選',
-    checkbox: '多選',
-    date: '日期',
-    header: '標題',
-    description: '說明',
-    divider: '分隔線',
-    link: '超連結',
-    phone: '電話',
-    address: '地址'
-  };
-  return typeMap[field.type] || field.type;
+// ── 各類型顯示哪些設定（與舊版規則相同） ──
+const hasRequired = (f: DynamicField) => !['header', 'description', 'divider', 'link'].includes(f.type);
+const hasPlaceholder = (f: DynamicField) => !['header', 'description', 'divider', 'link', 'radio', 'checkbox'].includes(f.type);
+const hasHint = (f: DynamicField) => !['header', 'description', 'divider'].includes(f.type);
+const hasOptions = (f: DynamicField) => ['radio', 'checkbox'].includes(f.type);
+
+// ── 加入欄位 ──
+const typeMenuOpen = ref(false);
+const typeMenuTarget = shallowRef<any>(undefined);
+const typeMenuOption = shallowRef<FieldOption | null>(null); // 有值＝加到該選項底下（追問）；null＝加到表單
+
+const openTypeMenu = (evt: Event, option: FieldOption | null = null) => {
+  typeMenuTarget.value = evt.currentTarget as HTMLElement;
+  typeMenuOption.value = option;
+  typeMenuOpen.value = true;
 };
 
-const addField = (type: string) => {
-  const newField: DynamicField = {
+watch(typeMenuOpen, (open) => {
+  // 關閉後清掉目的地，之後從類型面板加入的欄位一律加到表單
+  if (!open) setTimeout(() => { if (!typeMenuOpen.value) typeMenuOption.value = null; }, 0);
+});
+
+const makeField = (type: string, systemKey?: string): DynamicField => {
+  if (type === 'system') {
+    return {
+      id: uuidv4(),
+      type: 'system',
+      label: SYSTEM_FIELD_KEYS.find(o => o.value === systemKey)?.title || '系統欄位',
+      systemKey,
+      required: true,
+      autoFill: true,
+      readOnly: true,
+      placeholder: '',
+    };
+  }
+  const field: DynamicField = {
     id: uuidv4(),
-    type: type as any,
+    type,
     label: type === 'divider' ? '分隔線' : (type === 'header' ? '新標題' : (type === 'link' ? '點擊前往' : '新欄位')),
     required: false,
-    expanded: true
   };
-  
-  if (type === 'link') {
-    newField.url = ''; 
+  if (type === 'link') field.url = '';
+  if (hasOptions(field)) {
+    field.options = ['選項 1', '選項 2'].map(label => ({ id: uuidv4(), label, value: label, subFields: [] }));
   }
-
-  if (['radio', 'checkbox'].includes(type)) {
-    newField.options = [{ id: uuidv4(), label: '選項 1', value: '選項 1', subFields: [] }];
-  }
-
-  localFields.value.push(newField);
-  scrollToField(newField.id);
-  // updateFields();
+  return field;
 };
 
-const addSystemField = (key: string) => {
-  const option = systemKeyOptions.find(o => o.value === key);
-  const newField: DynamicField = {
-    id: uuidv4(),
-    type: 'system',
-    label: option?.title || '系統欄位',
-    systemKey: key,
-    required: true,
-    autoFill: true,
-    readOnly: true,
-    placeholder: '',
-    expanded: true
+const addField = (type: string, systemKey?: string) => {
+  const field = makeField(type, systemKey);
+  const option = typeMenuOption.value;
+  typeMenuOption.value = null;
+  if (option) {
+    if (!Array.isArray(option.subFields)) option.subFields = [];
+    option.subFields.push(field);
+  } else {
+    // 選中的是表單第一層欄位時插在它後面，否則加到最後
+    const sel = selection.value;
+    if (sel && sel.crumbs.length === 0) localFields.value.splice(sel.index + 1, 0, field);
+    else localFields.value.push(field);
+  }
+  selectField(field.id, type !== 'divider');
+};
+
+// ── 移動／複製／刪除 ──
+const moveSelected = (delta: number) => {
+  const sel = selection.value;
+  if (!sel) return;
+  const to = sel.index + delta;
+  if (to < 0 || to >= sel.list.length) return;
+  const [item] = sel.list.splice(sel.index, 1);
+  sel.list.splice(to, 0, item);
+};
+
+const cloneWithNewIds = (source: DynamicField): DynamicField => {
+  const copy: DynamicField = JSON.parse(JSON.stringify(source));
+  const renew = (field: DynamicField) => {
+    field.id = uuidv4();
+    (field.options || []).forEach(option => {
+      option.id = uuidv4();
+      (option.subFields || []).forEach(renew);
+    });
   };
-  localFields.value.push(newField);
-  scrollToField(newField.id);
-  // updateFields(); // handled by watcher now
+  renew(copy);
+  return copy;
 };
 
-const removeField = (index: number) => {
-  localFields.value.splice(index, 1);
-  // updateFields();
+const duplicateSelected = () => {
+  const sel = selection.value;
+  if (!sel) return;
+  const copy = cloneWithNewIds(sel.field);
+  sel.list.splice(sel.index + 1, 0, copy);
+  selectField(copy.id, true);
 };
 
-const addOption = (field: DynamicField) => {
-  if (!field.options) field.options = [];
-  field.options.push({
-    id: uuidv4(), // ✅ Generate ID
-    label: '新選項',
-    value: '新選項',
-    subFields: []
+const undoState = shallowRef<{ list: DynamicField[]; index: number; item: DynamicField } | null>(null);
+let undoTimer: ReturnType<typeof setTimeout> | null = null;
+
+const removeSelected = () => {
+  const sel = selection.value;
+  if (!sel) return;
+  const [item] = sel.list.splice(sel.index, 1);
+  undoState.value = { list: sel.list, index: sel.index, item };
+  if (undoTimer) clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => { undoState.value = null; }, 10000);
+  // 留在同一層：選下一個（沒有就上一個），整層空了就回到上層欄位
+  const next = sel.list[sel.index] || sel.list[sel.index - 1] || sel.crumbs[sel.crumbs.length - 1]?.field || null;
+  selectedId.value = next ? next.id : null;
+  if (compact.value || !next) pane.value = 'list';
+};
+
+const undoRemove = () => {
+  const state = undoState.value;
+  if (!state) return;
+  state.list.splice(Math.min(state.index, state.list.length), 0, state.item);
+  undoState.value = null;
+  if (undoTimer) clearTimeout(undoTimer);
+  // 追問欄位的上層若已被刪掉，復原後找不到就不選
+  nextTick(() => {
+    if (locate(state.item.id, localFields.value)) selectedId.value = state.item.id;
   });
-  // updateFields(); // Ensure deep reactivity triggers update if needed
+};
+
+// ── 選項 ──
+const subCount = (option: FieldOption) => (Array.isArray(option.subFields) ? option.subFields.length : 0);
+
+// 選項的儲存值跟著文字走（與舊版相同）；等 v-model 寫入後再同步，中文輸入法選字中不會寫入半成品
+const syncOptionValue = (option: FieldOption) => {
+  nextTick(() => { option.value = String(option.label ?? ''); });
+};
+
+const isOptionInvalid = (field: DynamicField, option: FieldOption) => {
+  const label = String(option.label ?? '').trim();
+  if (!label) return true;
+  return (field.options || []).filter(o => String(o.label ?? '').trim() === label).length > 1;
+};
+const hasInvalidOption = (field: DynamicField) => (field.options || []).some(o => isOptionInvalid(field, o));
+
+const commitNewOption = (evt?: KeyboardEvent) => {
+  if (evt?.isComposing) return; // 輸入法選字的 Enter
+  const text = newOptionText.value.trim();
+  const field = selection.value?.field;
+  newOptionText.value = '';
+  if (!text || !field || !hasOptions(field)) return;
+  if (!Array.isArray(field.options)) field.options = [];
+  field.options.push({ id: uuidv4(), label: text, value: text, subFields: [] });
+};
+
+const onOptionEnter = (evt: KeyboardEvent) => {
+  if (evt.isComposing) return;
+  newOptionInput.value?.focus();
 };
 
 const removeOption = (field: DynamicField, index: number) => {
-  if (field.options) {
-    field.options.splice(index, 1);
-    // updateFields();
-  }
+  const option = field.options?.[index];
+  if (!option) return;
+  const count = subCount(option);
+  if (count > 0 && !confirm(`「${option.label}」底下的 ${count} 個追問欄位會一起移除，確定嗎？`)) return;
+  field.options!.splice(index, 1);
 };
 
-const initSubFields = (option: FieldOption) => {
-  if (!option.subFields) option.subFields = [];
-  // updateFields();
+const onFollowUp = (evt: Event, option: FieldOption) => {
+  if (subCount(option) > 0) selectField(option.subFields![0].id);
+  else openTypeMenu(evt, option);
 };
-
-const removeSubFields = (option: FieldOption) => {
-  delete option.subFields;
-  // updateFields();
-};
-
 </script>
 
 <style scoped>
-.field-card {
-  border-left: 4px solid #BDBDBD !important;
-  transition: box-shadow 0.2s;
+.dfe {
+  position: relative;
+  display: flex;
+  height: min(58vh, 600px);
+  min-height: 380px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+  text-align: left;
 }
-.field-card:hover {
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important;
-}
-.system-field {
-  border-left-color: #3F51B5 !important;
-}
-.layout-field {
-  border-left-color: #757575 !important;
-  background-color: #FAFAFA;
-}
+.dfe--fill { height: 100%; min-height: 0; border: 0; border-radius: 0; }
 
-.cursor-move {
-  cursor: move;
-  cursor: grab;
+/* 左：大綱 */
+.dfe-side {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 264px;
+  min-width: 0;
+  background: #f2f2f5;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
 }
-/* ✅ 拖曳把手：阻止觸控時觸發頁面捲動（手機拖曳穩定的關鍵），並放大觸控範圍 */
-.drag-handle,
-.reorder-drag {
+.dfe-side-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 14px 6px;
+  color: #6e6e73;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.dfe-side-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.08);
+  color: #48484a;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+.dfe-side-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 6px 8px; }
+.dfe-side-empty { padding: 28px 12px; text-align: center; color: #8e8e93; font-size: 13px; }
+.dfe-side-foot { padding: 8px 10px 10px; border-top: 1px solid rgba(0, 0, 0, 0.06); }
+.dfe-undo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 10px 8px;
+  padding: 6px 6px 6px 10px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-size: 12.5px;
+}
+.dfe-undo-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
+/* 右：編輯 */
+.dfe-main { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.dfe-main-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 6px 10px 6px 14px;
+  background: #fff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.dfe-type-tag { gap: 4px; }
+.dfe-pos { margin-left: 4px; color: #8e8e93; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dfe-spacer { flex: 1 1 auto; }
+.dfe-main-head .mac-icon-btn { width: 30px; height: 30px; }
+.dfe-main-head .mac-icon-btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
+.dfe-back { margin-right: 4px; padding: 0 8px 0 4px; }
+.dfe-main-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 16px 20px; }
+
+.dfe-crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  color: #6e6e73;
+}
+.dfe-crumb { padding: 2px 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.dfe-crumb-opt { overflow-wrap: anywhere; }
+.dfe-crumb-sep { color: #c7c7cc; }
+.dfe-crumb-here { color: #1d1d1f; font-weight: 600; overflow-wrap: anywhere; }
+.dfe-note { padding: 28px 12px; text-align: center; color: #8e8e93; font-size: 13px; }
+
+.dfe .mac-form-row { flex-wrap: nowrap; cursor: default; }
+.dfe .mac-form-row-label { width: 76px; color: #1d1d1f; }
+.dfe .mac-form-row > .mac-form-input { flex: 1 1 0; max-width: none; margin-left: 0; height: 30px; }
+.dfe .mac-form-label:first-child { margin-top: 0; }
+
+/* 選項 */
+.dfe-opts { padding: 4px 0; }
+.dfe-opt { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 4px 8px 4px 4px; }
+.dfe-opt-grip {
+  display: inline-grid;
+  place-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 28px;
+  color: #b0b0b6;
+  cursor: grab;
   touch-action: none;
 }
-.drag-handle {
-  padding: 8px 4px;
-  margin: -8px 0 -8px -4px;
-}
-/* ✅ 工具列按鈕換行時保持間距 */
-.toolbar-gap {
-  gap: 8px 4px;
-}
-/* ✅ 調整順序 Dialog 列 */
-.reorder-row {
-  min-height: 44px;
-  border-bottom: 1px solid #f0f0f0;
+.dfe-opt-grip--off { cursor: default; }
+.dfe-opt-mark { flex-shrink: 0; color: #8e8e93; }
+.dfe-opt-input { height: 30px; }
+.dfe-opt-input.is-error { border-color: #d62d20; box-shadow: 0 0 0 3px rgba(214, 45, 32, 0.12); }
+.dfe-opt--new .dfe-opt-input { border-style: dashed; background: transparent; box-shadow: none; }
+.dfe-opt--new .dfe-opt-input:focus { border-style: solid; background: #fff; }
+.dfe-follow { flex-shrink: 0; gap: 3px; }
+.dfe-follow .mac-filter-count { min-width: 16px; height: 16px; margin-left: 1px; font-size: 10.5px; }
+.dfe-opt-ghost { opacity: 0.4; }
+.dfe-opt-error { margin: 6px 4px 0; color: #d62d20; font-size: 12px; }
+
+/* 類型面板 */
+.dfe-palette-title { margin: 2px 4px 10px; color: #6e6e73; font-size: 13px; }
+.dfe-palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.dfe-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 68px;
+  padding: 10px 6px;
+  border: 0;
+  border-radius: 10px;
   background: #fff;
+  color: #1d1d1f;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 0.5px 1.5px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.12s, transform 0.12s;
 }
-.reorder-row:last-child {
-  border-bottom: none;
-}
-.reorder-index {
-  min-width: 20px;
-  text-align: right;
-}
-.reorder-ghost {
-  opacity: 0.5;
-  background: #E3F2FD;
-}
-.rotate-180 {
-  transform: rotate(180deg);
-  transition: transform 0.2s;
-}
-.z-index-10 {
-  z-index: 10;
-}
-.position-sticky {
-  position: sticky;
-}
-.border-b {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
-}
+.dfe-tile .v-icon { color: #0071e3; }
+.dfe-tile:hover { box-shadow: 0 0 0 1px rgba(0, 113, 227, 0.55), 0 2px 6px rgba(0, 0, 0, 0.08); }
+.dfe-tile:active { transform: translateY(0.5px); }
+.dfe-menu-head { min-height: 26px !important; padding-inline: 10px !important; color: #6e6e73; font-size: 11.5px; font-weight: 600; }
+
+/* 窄版：清單與編輯各佔一頁 */
+.dfe--compact .dfe-side { flex: 1 1 auto; border-right: 0; }
+.dfe--compact .dfe-main { display: none; }
+.dfe--compact.dfe--detail .dfe-side { display: none; }
+.dfe--compact.dfe--detail .dfe-main { display: flex; }
+.dfe--compact .dfe-main-scroll { padding: 12px 12px 20px; }
+.dfe--compact .dfe-main-head { padding-left: 10px; }
+.dfe--compact .mac-form-input,
+.dfe--compact .mac-form-textarea { font-size: 16px; }
+.dfe--compact .mac-form-row > .mac-form-input,
+.dfe--compact .dfe-opt-input { height: 36px; }
+.dfe--compact .dfe-add-btn { height: 38px; font-size: 14px; }
+.dfe--compact .dfe-opt { flex-wrap: wrap; }
+.dfe--compact .dfe-opt-input { flex: 1 1 140px; }
+.dfe--compact .dfe-follow { height: 32px; }
+.dfe--compact .dfe-opt .mac-icon-btn { width: 32px; height: 32px; }
+</style>
+
+<style>
+/* 類型選單內容被 teleport 到 body，需用非 scoped 樣式 */
+.dfe-type-menu .v-list-item__prepend > .v-icon { font-size: 18px; opacity: 1; color: #6e6e73; }
+.dfe-type-menu .v-list-item__prepend > .v-icon ~ .v-list-item__spacer { width: 10px; }
+.dfe-type-menu .v-list-item:hover .v-list-item__prepend > .v-icon,
+.dfe-type-menu .v-list-item:focus-visible .v-list-item__prepend > .v-icon { color: #fff; }
 </style>

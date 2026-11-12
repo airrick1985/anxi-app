@@ -850,10 +850,10 @@
 
           <ol class="g-steps">
             <li>按「<b>新增功能</b>」。</li>
-            <li>填「功能名稱」「按鈕顯示文字」「對話框標題」。</li>
-            <li>選功能開關：棟別選單、戶別選單、身分證或驗證碼、附件上傳（最多 10 個、單檔 30MB）。</li>
-            <li>在「自定義欄位」加入要客戶填的欄位。</li>
-            <li>按「預覽畫面」確認，再按「<b>儲存設定</b>」。</li>
+            <li>「<b>基本設定</b>」填功能名稱、按鈕文字、視窗標題，並選客戶要填的項目：棟別、戶別、身分證(驗證碼)、附件上傳（最多 10 個、單檔 30MB）。</li>
+            <li>切到「<b>表單欄位</b>」，按「<b>加入欄位</b>」選類型。左側是欄位清單，點一下在右側編輯，拖曳可排序。</li>
+            <li>單選、多選的選項旁按「<b>追問</b>」，可設定客戶選了這個選項後要再填的欄位。</li>
+            <li>右側即時顯示客戶看到的畫面（手機在「預覽」分頁），確認後按「<b>儲存</b>」。</li>
           </ol>
 
           <GuideFigure :src="shot('feedback-editor')" caption="預約首頁出現回傳按鈕">
@@ -946,7 +946,7 @@ import { useRoute, useRouter } from 'vue-router';
 import GuideFigure from './GuideFigure.vue';
 import { bookingGuideShotSrc as shot } from './bookingGuideShots';
 
-const UPDATED_AT = '2026-11-10';
+const UPDATED_AT = '2026-11-12';
 
 const sections = [
   { id: 'start', no: '', title: '開始之前' },
