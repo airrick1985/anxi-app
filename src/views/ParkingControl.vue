@@ -481,6 +481,8 @@ const COLUMN_DEFINITIONS = [
     { key: 'spotId', title: '車位編號' },
     { key: 'type', title: '車位類型' },
     { key: 'type2', title: '車位形式' },
+    // 合約套印用（有獨立權狀／無獨立權狀）；空白時採建案設定的預設值。匯入時可省略此欄
+    { key: 'deed_type', title: '車位權狀', optional: true },
     { key: 'size', title: '車位尺寸' },
     { key: 'area', title: '車位面積(m²)', align: 'end' },
     { key: 'area_ping', title: '車位面積_坪', align: 'end' },
@@ -949,8 +951,8 @@ const handleFileChange = () => {
                 console.log('使用管理員格式驗證，核心必要欄位:', requiredHeaders);
                 console.log('檢測到的所有欄位:', uploadedHeaders);
             } else {
-                // 一般格式：使用中文標頭驗證
-                requiredHeaders = chineseHeaders.value;
+                // 一般格式：使用中文標頭驗證（optional 欄位可省略，相容新增欄位前匯出的舊檔）
+                requiredHeaders = exportableColumns.filter(c => !c.optional).map(c => c.title);
                 headerMapping = exportOrder.value.reduce((map, field, index) => {
                     map[chineseHeaders.value[index]] = index;
                     return map;
@@ -976,7 +978,7 @@ const handleFileChange = () => {
                 console.log(`✓ 管理員格式驗證通過，包含 ${uploadedHeaders.length} 個欄位`);
             } else {
                 // 一般格式：嚴格檢查標頭完全匹配
-                const extraHeaders = uploadedHeaders.filter(h => h && !requiredHeaders.includes(h));
+                const extraHeaders = uploadedHeaders.filter(h => h && !chineseHeaders.value.includes(h));
                 
                 if (missingHeaders.length > 0 || extraHeaders.length > 0) {
                     let errorMessage = `檔案標頭不符（檢測為一般格式）。`;
@@ -1016,13 +1018,15 @@ const handleFileChange = () => {
                 
                 console.log(`管理員格式解析完成，共 ${jsonDataWithEnglishKeys.length} 筆資料，包含 ${uploadedHeaders.length} 個欄位`);
             } else {
-                // 一般格式：中文標頭轉英文欄位名
+                // 一般格式：中文標頭轉英文欄位名（依標頭名稱對應欄位，檔案沒有的 optional 欄位不送出，保留既有值）
+                const columnIndexByKey = exportableColumns
+                    .map(c => [c.key, uploadedHeaders.indexOf(c.title)])
+                    .filter(([, index]) => index >= 0);
                 jsonDataWithEnglishKeys = nonEmptyRows.map(rowArray => {
                     const newRow = {};
-                    exportOrder.value.forEach((englishKey, index) => {
-                        // 使用中文標頭的索引來取得對應的資料
+                    for (const [englishKey, index] of columnIndexByKey) {
                         newRow[englishKey] = rowArray[index] ?? null;
-                    });
+                    }
                     return newRow;
                 });
                 

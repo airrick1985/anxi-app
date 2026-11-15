@@ -12,6 +12,10 @@
             </span>
           </v-col>
           <v-col cols="auto" class="text-right">
+            <v-btn v-if="isMobile" icon="mdi-printer-outline" variant="text" title="合約套印"
+              @click="contractPrintDialog = true" />
+            <v-btn v-else variant="tonal" color="primary" prepend-icon="mdi-printer-outline" class="mr-2"
+              @click="contractPrintDialog = true">合約套印</v-btn>
             <v-btn v-if="isMobile" icon="mdi-file-cog-outline" variant="text" title="合約製作範本"
               @click="templateEditorDialog = true" />
             <v-btn v-else variant="tonal" color="secondary" prepend-icon="mdi-file-cog-outline" class="mr-2"
@@ -843,6 +847,11 @@
       </v-card-text>
     </v-card>
   </v-dialog>
+
+  <!-- 合約套印：以本戶資料（含本視窗算好的價款與期款）套印建設公司空白合約 -->
+  <ContractPrintDialog v-if="contractPrintDialog" v-model:show="contractPrintDialog" :project-id="projectId"
+    :unit-data="unitData" :price-model="priceModel" :split-model="splitModel"
+    :all-parkings="allData?.['車位'] || []" />
 </template>
 
 <script setup>
@@ -893,6 +902,9 @@ import ContractNumberTablePreview from './ContractNumberTablePreview.vue';
 const ContractDocConfigEditor = defineAsyncComponent(() => import('@/components/ContractDocConfigEditor.vue'));
 // 自訂表單管理（於 Dialog 內開啟，取用表單連結；lazy 載入避免拖慢開啟）
 const CustomFormManager = defineAsyncComponent(() => import('@/components/CustomFormManager.vue'));
+// 合約套印（含 pdf-lib／pdfjs，開啟時才載入）
+const ContractPrintDialog = defineAsyncComponent(() => import('@/components/contractPrint/ContractPrintDialog.vue'));
+const contractPrintDialog = ref(false);
 // PDF 預覽（歷史檔案檢視；lazy 載入）
 const VuePdfEmbed = defineAsyncComponent(() => import('vue-pdf-embed'));
 

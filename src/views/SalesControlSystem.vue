@@ -3008,6 +3008,7 @@ const PIVOT_BINNED_DIM_KEYS = new Set([
   'area_house_sqm', 'area_house_ping', 'area_main_sqm', 'area_main_ping',
   'area_ancillary_sqm', 'area_ancillary_ping', 'area_common_sqm', 'area_common_ping',
   'area_terrace_ping', 'common_area_ratio', 'land_share_sqm', 'land_share_ping',
+  'area_reg_main_sqm', 'area_reg_ancillary_sqm',
   'price_list_house_only', 'price_list_terrace', 'price_list_terrace_unit', 'price_list_ancillary', 'price_list_house_total',
   'price_floor_house_only', 'price_floor_terrace', 'price_floor_ancillary', 'price_floor_house_total', 'price_transaction_house',
   'housePriceRatio', 'landPriceRatio', 'price_package_deal', 'price_package',
@@ -6687,6 +6688,16 @@ const parseHouseholdExcelFile = async (file) => {
                     if (upperVal === 'TRUE') value = true;
                     if (upperVal === 'FALSE') value = false;
                 }
+            }
+
+            // 合約套印欄位：建號／共有部分持分存文字（Excel 可能讀成數字）；登記面積存數字
+            if (englishKey === 'build_no' || englishKey === 'common_share') {
+                value = value === null || value === undefined || String(value).trim() === '' ? null : String(value).trim();
+            }
+            if (englishKey === 'area_reg_main_sqm' || englishKey === 'area_reg_ancillary_sqm') {
+                const n = value === null || value === undefined || String(value).trim() === ''
+                    ? NaN : Number(String(value).replace(/,/g, ''));
+                value = Number.isFinite(n) ? n : null;
             }
 
             // ✅ [新增] 針對 buyerDateOfBirth 進行民國年解析

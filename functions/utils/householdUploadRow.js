@@ -14,7 +14,8 @@ const numericFields = [
   'price_floor_house_total', 'price_list_ancillary', 'price_list_terrace', 'price_list_terrace_unit',
   'price_list_house_only', 'price_list_house_total', 'price_package_deal', 'price_package',
   'price_transaction_house', 'price_transaction_total',
-  'housePriceRatio', 'landPriceRatio'
+  'housePriceRatio', 'landPriceRatio',
+  'area_reg_main_sqm', 'area_reg_ancillary_sqm'
 ];
 const dateFields = ['payment_contract_date', 'payment_deposit_date', 'payment_supplement_date', 'payment_complete_date'];
 
@@ -96,6 +97,14 @@ function normalizeHouseholdUploadRow(row, ctx = {}) {
   if (Object.prototype.hasOwnProperty.call(dataToSave, 'contractDrawingFolderUrl')) {
     const rawUrl = String(dataToSave.contractDrawingFolderUrl ?? '').trim();
     dataToSave.contractDrawingFolderUrl = rawUrl === '' ? null : rawUrl;
+  }
+
+  // 建號、共有部分持分（合約套印）：Excel 可能讀成數字，一律存 trim 後字串；空儲存格 → null
+  for (const field of ['build_no', 'common_share']) {
+    if (Object.prototype.hasOwnProperty.call(dataToSave, field)) {
+      const raw = String(dataToSave[field] ?? '').trim();
+      dataToSave[field] = raw === '' ? null : raw;
+    }
   }
 
   // 門牌（銷售端，與驗屋 households.address 無關）：trim 後字串；沒有此欄位不寫入、空儲存格 → null

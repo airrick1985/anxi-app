@@ -54,6 +54,11 @@ export const COLUMN_DEFINITIONS = [
     { key: 'land_share_sqm', title: '土地持分面積(平方公尺)' },
     { key: 'land_share_ping', title: '土地持分面積(坪)' },
     { key: 'land_share_ratio', title: '土地持分' },
+    // 合約套印（成屋合約建物標示）：登記資料
+    { key: 'build_no', title: '建號' },
+    { key: 'area_reg_main_sqm', title: '登記主建物面積(平方公尺)' },
+    { key: 'area_reg_ancillary_sqm', title: '登記附屬建物面積(平方公尺)' },
+    { key: 'common_share', title: '共有部分持分' },
     { key: 'price_list_house_only', title: '房屋表價' },
     { key: 'price_list_terrace', title: '露臺表價' },
     { key: 'price_list_terrace_unit', title: '露臺單價(表價)' },
@@ -155,6 +160,7 @@ export const DRAWING_FIELD_GROUPS = [
     'area_house_ping', 'area_house_sqm', 'area_main_ping', 'area_main_sqm', 'area_ancillary_ping', 'area_ancillary_sqm',
     'area_common_ping', 'area_common_sqm', 'area_terrace_ping', 'common_area_ratio',
     'land_share_ping', 'land_share_sqm', 'land_share_ratio',
+    'build_no', 'area_reg_main_sqm', 'area_reg_ancillary_sqm', 'common_share',
   ] },
   { key: 'listPrice', title: '表價', expanded: true, keys: [
     'price_list_house_total', 'price_list_house_only', 'price_list_terrace', 'price_list_terrace_unit',

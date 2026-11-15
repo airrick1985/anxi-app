@@ -33,6 +33,7 @@ import {
   uploadBytes,
   uploadBytesResumable,
   getDownloadURL,
+  getBytes,
   deleteObject
 } from "firebase/storage";
 
@@ -6302,6 +6303,114 @@ export const deleteContractDocFile = async (projectId, unitId, path) => {
   const func = httpsCallable(functions, 'generateContractDocument');
   const result = await func({ action: 'delete', projectId, unitId, path });
   return result.data;
+};
+
+/* ==========================================================
+ * 合約套印（docs/合約套印-spec.md）
+ * contractPrintTemplates/{templateId}：範本（物件位置與欄位綁定）
+ *   空白合約 PDF 存 Storage：contractPrint/{projectId}/{templateId}.pdf
+ * contractPrintConfigs/{projectId}：建案層級設定（共有部分、車位權狀預設、期款對應、自訂欄位）
+ * ========================================================== */
+const CONTRACT_PRINT_TEMPLATES = 'contractPrintTemplates';
+const CONTRACT_PRINT_CONFIGS = 'contractPrintConfigs';
+const contractPrintEditor = () => {
+  const userStore = useUserStore();
+  return userStore.user?.key || userStore.user?.name || '';
+};
+// Firestore 不接受 undefined：存檔前去掉
+const firestoreSafe = (value) => JSON.parse(JSON.stringify(value ?? null));
+
+/** 建案的合約套印範本清單（不含 PDF；含物件數與待設定數） */
+export const listContractPrintTemplates = async (projectId) => {
+  const snap = await getDocs(query(collection(db, CONTRACT_PRINT_TEMPLATES), where('projectId', '==', projectId)));
+  return snap.docs
+    .map(d => {
+      const t = d.data();
+      const removed = new Set(Array.isArray(t.removedPages) ? t.removedPages : []);
+      const objects = (Array.isArray(t.objects) ? t.objects : []).filter(o => !removed.has(o?.page));
+      return {
+        id: d.id,
+        name: t.name || '',
+        pdfName: t.pdfName || '',
+        pdfPath: t.pdfPath || '',
+        pages: Math.max(0, (t.pages || 0) - removed.size),
+        count: objects.length,
+        todo: objects.filter(o => o?.todo).length,
+        updatedAt: t.updatedAt?.toDate?.() || null,
+      };
+    })
+    .sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
+};
+
+/** 讀取單一範本（含物件） */
+export const getContractPrintTemplate = async (templateId) => {
+  const snap = await getDoc(doc(db, CONTRACT_PRINT_TEMPLATES, templateId));
+  if (!snap.exists()) throw new Error('範本不存在');
+  return { id: snap.id, ...snap.data() };
+};
+
+/** 下載範本的空白合約 PDF */
+export const getContractPrintTemplatePdf = async (template) => {
+  if (!template?.pdfPath) throw new Error('範本缺少 PDF');
+  return new Uint8Array(await getBytes(ref(storage, template.pdfPath)));
+};
+
+/** 新增範本：先上傳空白 PDF 再建立文件 */
+export const createContractPrintTemplate = async ({ projectId, name, pdfName, pages, bytes }) => {
+  const docRef = doc(collection(db, CONTRACT_PRINT_TEMPLATES));
+  const pdfPath = `contractPrint/${projectId}/${docRef.id}.pdf`;
+  await uploadBytes(ref(storage, pdfPath), new Blob([bytes], { type: 'application/pdf' }), { contentType: 'application/pdf' });
+  const data = {
+    projectId,
+    name: String(name || '未命名').slice(0, 80),
+    pdfName: String(pdfName || 'blank.pdf').slice(0, 200),
+    pdfPath,
+    pages: Number(pages) || 0,
+    objects: [],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    updatedBy: contractPrintEditor(),
+  };
+  await setDoc(docRef, data);
+  return { id: docRef.id, ...data };
+};
+
+/** 更新範本（objects／name／removedPages 已刪除頁碼） */
+export const saveContractPrintTemplate = (templateId, patch) => {
+  const data = { updatedAt: serverTimestamp(), updatedBy: contractPrintEditor() };
+  if (Array.isArray(patch?.objects)) data.objects = firestoreSafe(patch.objects);
+  if (Array.isArray(patch?.removedPages)) data.removedPages = patch.removedPages.map(Number).filter(Number.isInteger);
+  if (typeof patch?.name === 'string' && patch.name.trim()) data.name = patch.name.trim().slice(0, 80);
+  return updateDoc(doc(db, CONTRACT_PRINT_TEMPLATES, templateId), data);
+};
+
+/** 刪除範本與其 PDF */
+export const deleteContractPrintTemplate = async (template) => {
+  await deleteDoc(doc(db, CONTRACT_PRINT_TEMPLATES, template.id));
+  if (template.pdfPath) {
+    try {
+      await deleteObject(ref(storage, template.pdfPath));
+    } catch (e) {
+      console.warn('[api.js] 合約套印 PDF 刪除失敗（文件已刪除）:', e?.message || e);
+    }
+  }
+};
+
+/** 讀取建案的合約套印設定（不存在回 null） */
+export const fetchContractPrintConfig = async (projectId) => {
+  const snap = await getDoc(doc(db, CONTRACT_PRINT_CONFIGS, projectId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+};
+
+/** 儲存建案的合約套印設定（整份覆蓋） */
+export const saveContractPrintConfig = (projectId, configData) => {
+  const { id, updatedAt, updatedBy, ...rest } = configData || {};
+  return setDoc(doc(db, CONTRACT_PRINT_CONFIGS, projectId), {
+    ...firestoreSafe(rest),
+    projectId,
+    updatedBy: contractPrintEditor(),
+    updatedAt: serverTimestamp(),
+  });
 };
 
 /**
