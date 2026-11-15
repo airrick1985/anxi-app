@@ -158,6 +158,8 @@
       <v-btn color="primary" variant="flat" :loading="submitting" @click="openPreview">{{ isBonus ? '預覽並送出獎金' : '預覽並送出請佣' }}</v-btn>
     </div>
 
+    <UnitRemarksDialog v-model="remarkOpen" :unit-id="remarkUnitId" :buyer-name="remarkBuyer" :items="remarkItems" :loading="cancelledLoading" />
+
     <!-- 作廢退獎金 -->
     <v-dialog :model-value="!!voidRefundTarget" max-width="420" persistent @update:model-value="v => { if (!v) voidRefundTarget = null; }">
       <v-card v-if="voidRefundTarget">
@@ -217,6 +219,10 @@
                   <v-chip size="x-small" variant="tonal" :color="contractTypeColor(u.contractType)">{{ u.contractType }}</v-chip>
                   <v-chip v-if="u.released" size="x-small" color="error" variant="tonal" class="ml-1">{{ u.statusText }}</v-chip>
                   <span v-else class="text-caption ml-1 text-medium-emphasis">{{ u.statusText }}</span>
+                  <button v-if="remarkCounts[u.unitId]" type="button" class="remark-btn" :aria-label="`${u.unitId} 備註 ${remarkCounts[u.unitId]} 則`"
+                    @mousedown.stop @click.stop="openRemarks(u.unitId)">
+                    <v-icon size="13">mdi-comment-text-outline</v-icon>備註 {{ remarkCounts[u.unitId] }}
+                  </button>
                 </v-list-item-title>
                 <v-list-item-subtitle class="text-caption">
                   <span v-if="u.buyerName" class="mr-2">{{ u.buyerName }}</span>
@@ -248,6 +254,10 @@
                     （{{ isBonus ? '已送獎金' : '已請佣' }} {{ u.claimedPct }}%）
                   </span>
                   <span v-if="u.claimPct !== null && u.claimPct < 100" class="fee-mark" title="請佣比例不足 100%"><v-icon size="16" color="error">mdi-alert-circle</v-icon>請佣 {{ u.claimPct }}%</span>
+                  <button v-if="remarkCounts[u.unitId]" type="button" class="remark-btn" :aria-label="`${u.unitId} 備註 ${remarkCounts[u.unitId]} 則`"
+                    @mousedown.stop @click.stop="openRemarks(u.unitId)">
+                    <v-icon size="13">mdi-comment-text-outline</v-icon>備註 {{ remarkCounts[u.unitId] }}
+                  </button>
                 </v-list-item-title>
                 <v-list-item-subtitle class="text-caption">
                   <span v-if="u.buyerName" class="mr-2">{{ u.buyerName }}</span>
@@ -407,8 +417,10 @@ import CommissionUnitCard from './CommissionUnitCard.vue';
 import DateFieldTW from './DateFieldTW.vue';
 import CommissionRefundCard from './CommissionRefundCard.vue';
 import CommissionGridPreview from './CommissionGridPreview.vue';
+import UnitRemarksDialog from './UnitRemarksDialog.vue';
 import { refundableRecordsByUnit, buildRefundEntryPlan } from './refundEntry';
-import { submitCommissionEntriesAPI, fetchCommissionExportConfigs, setBonusPeriodNotes, voidCommissionRecordAPI } from '@/api';
+import { submitCommissionEntriesAPI, fetchCommissionExportConfigs, setBonusPeriodNotes, voidCommissionRecordAPI, getCancelledPurchasesCached } from '@/api';
+import { buildUnitRemarkTimeline } from '@/utils/unitRemarkTimeline';
 import { buildClaimModel, buildBonusModel, buildPeriodResultModel, buildPeriodUnitModel, defaultClaimConfig, defaultBonusConfig, exportProjectNameOf, makePersonSorter } from '@/utils/commissionExportModel';
 import { buildClaimGrid, buildBonusGrids, buildPeriodResultGrid, buildPeriodUnitGrid, mergeColumnOrder } from '@/services/commissionExcelService';
 import { draftClaimRecord, draftRefundRecord, normalizeSalesNames } from '@/utils/commissionDraftRecords';
@@ -441,6 +453,8 @@ const props = defineProps({
   nextPeriod: { type: Number, default: 1 },
   records: { type: Array, default: () => [] },        // 全建案請佣紀錄（退佣來源）
   bonusRecords: { type: Array, default: () => [] },   // 全建案獎金明細（退佣追回原數）
+  remarkRecords: { type: Array, default: null },      // 戶別備註視窗：全方案請佣＋獎金紀錄（未傳則用本方案紀錄）
+  remarkBonusRows: { type: Array, default: null },    // 戶別備註視窗：全方案獎金明細（每人備註）
 });
 
 const showSummary = ref(false);
@@ -647,6 +661,7 @@ function openPicker() {
   Object.keys(pickSel).forEach(k => delete pickSel[k]);
   pickerSearch.value = '';
   pickerOpen.value = true;
+  loadCancelled();   // 選單的戶別備註含退戶紀錄
 }
 watch(pickerTab, () => { Object.keys(pickSel).forEach(k => delete pickSel[k]); });
 
@@ -1063,6 +1078,73 @@ async function focusEditor() {
   });
 }
 
+
+// ---------- 新增戶別：戶別備註視窗（銷控備註＋退戶紀錄＋請佣／獎金紀錄＋介紹費／贈品，一則一段） ----------
+const cancelledList = ref([]);
+const cancelledLoading = ref(false);
+let cancelledSeq = 0;
+/** 退戶紀錄：每次開啟新增戶別時讀取（同建案 60 秒內共用快取）；含已復原、不含冷刪除，與戶別資訊的退戶紀錄一致 */
+async function loadCancelled() {
+  const projectId = props.projectId;
+  if (!projectId) return;
+  const seq = ++cancelledSeq;
+  cancelledLoading.value = true;
+  let res = null;
+  try {
+    res = await getCancelledPurchasesCached(projectId, false, true);
+  } catch (e) {
+    res = { status: 'error', message: e.message };
+  }
+  if (seq !== cancelledSeq) return;
+  cancelledLoading.value = false;
+  if (res?.status === 'success') cancelledList.value = res.data || [];
+  else console.warn('[CommissionWorkbench] 讀取退戶紀錄失敗:', res?.message);
+}
+watch(() => props.projectId, () => {
+  cancelledSeq++;
+  cancelledList.value = [];
+  cancelledLoading.value = false;
+});
+
+function groupBy(list, key) {
+  const map = new Map();
+  (list || []).forEach(x => {
+    const k = x?.[key];
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(x);
+  });
+  return map;
+}
+// 先依戶別／紀錄分組，選單一次算全部戶別的則數也不會逐戶掃描全建案紀錄
+const remarkRecordsByUnit = computed(() => groupBy(props.remarkRecords || [...props.records, ...props.claimRecords], 'unitId'));
+const remarkBonusByRecord = computed(() => groupBy(props.remarkBonusRows || props.bonusRecords, 'commissionRecordId'));
+const cancelledByUnit = computed(() => groupBy(cancelledList.value, 'unitId'));
+const householdByUnit = computed(() => new Map(props.households.map(u => [u.unitId, u])));
+function remarkTimelineOf(unitId) {
+  const records = remarkRecordsByUnit.value.get(unitId) || [];
+  return buildUnitRemarkTimeline({
+    unitId,
+    unit: householdByUnit.value.get(unitId) || null,
+    cancelled: cancelledByUnit.value.get(unitId) || [],
+    records,
+    bonusRows: records.flatMap(r => remarkBonusByRecord.value.get(r.id) || []),
+  });
+}
+/** 新增戶別選單「備註 N」：unitId → 則數 */
+const remarkCounts = computed(() => {
+  const map = {};
+  new Set([...props.households.map(u => u.unitId), ...Object.keys(refundableByUnit.value)])
+    .forEach(id => { map[id] = remarkTimelineOf(id).length; });
+  return map;
+});
+const remarkOpen = ref(false);
+const remarkUnitId = ref('');
+const remarkItems = computed(() => (remarkUnitId.value ? remarkTimelineOf(remarkUnitId.value) : []));
+const remarkBuyer = computed(() => householdByUnit.value.get(remarkUnitId.value)?.buyerName || '');
+function openRemarks(unitId) {
+  remarkUnitId.value = unitId;
+  remarkOpen.value = true;
+}
 
 async function toggleSummary() {
   showSummary.value = !showSummary.value;
@@ -1631,6 +1713,11 @@ defineExpose({ hasDraft: computed(() => entries.value.length > 0 || refunds.valu
 .commission-workbench :deep(input[type="number"]::-webkit-inner-spin-button) { -webkit-appearance: none; margin: 0; }
 .commission-workbench :deep(input[type="number"]) { -moz-appearance: textfield; appearance: textfield; }
 .picker-list { max-height: 50vh; overflow-y: auto; border: 1px solid rgba(0,0,0,.08); border-radius: 8px; }
+/* 新增戶別選單：戶別備註鈕（已加入／已請畢等停用列也可查看）；標題換行時不裁切按鈕 */
+.picker-list .v-list-item-title { overflow: visible; }
+.picker-list .remark-btn { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 8px; margin-left: 2px; border: 1px solid #c9d3e3; border-radius: 10px; background: #fff; color: #2f4a73; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; pointer-events: auto; }
+.picker-list .remark-btn:hover { background: #eef3fb; border-color: rgb(var(--v-theme-primary)); }
+.picker-list .remark-btn:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 1px; }
 .sum-item { background: #f5f5f5; border-radius: 8px; padding: 8px 12px; }
 .sum-item label { font-size: 11px; color: #789; display: block; }
 .sum-item div { font-size: 17px; font-weight: 700; color: #263238; }
@@ -1676,6 +1763,7 @@ defineExpose({ hasDraft: computed(() => entries.value.length > 0 || refunds.valu
 .fee-mark { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 700; color: #c62828; }
 .list-row .b { font-size: 12px; color: #66707f; }
 .list-row .note-mark { font-size: 11px; color: #8a5a00; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .list-row .amt { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .list-row .amt small { display: block; font-weight: 400; font-size: 11px; color: #66707f; }
 .list-row .meta { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: #66707f; margin-top: 2px; }

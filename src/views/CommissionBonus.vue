@@ -72,6 +72,8 @@
           :next-period="nextPeriod"
           :records="records"
           :bonus-records="bonusRecords"
+          :remark-records="remarkRecords"
+          :remark-bonus-rows="allBonusRecords"
           :person-order="personOrder"
           :unit-sort="unitSort"
           @update:unit-sort="saveUnitSort"
@@ -100,6 +102,8 @@
           :bonus-records="bonusRecords"
           :all-bonus-records="allBonusRecords"
           :all-bonus-sources="allBonusSources"
+          :remark-records="remarkRecords"
+          :remark-bonus-rows="allBonusRecords"
           :period-notes="periodNotes"
           @notes-saved="loadPeriodNotes"
           :person-order="personOrder"
@@ -262,6 +266,7 @@ const allBonusEntries = ref([]);
 const periodNotes = ref([]);
 const allBonusSources = computed(() => bonusSourceRecords(allRecords.value, allBonusEntries.value, allBonusRecords.value));
 const planBonusSources = computed(() => allBonusSources.value.filter(r => planIdOf(r) === selectedPlanId.value));
+const remarkRecords = computed(() => [...allRecords.value, ...allBonusEntries.value]);   // 工作台戶別備註視窗：全方案請佣＋獎金紀錄
 const planBonusEntries = computed(() => allBonusEntries.value.filter(r => planIdOf(r) === selectedPlanId.value));
 const bonusLedgerMap = computed(() => {
   const map = {};
