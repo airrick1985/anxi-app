@@ -181,7 +181,7 @@ async function save() {
       </fieldset>
       <div class="mac-sheet-foot">
         <span v-if="error" class="cps-error">{{ error }}</span>
-        <span v-else-if="!canEdit" class="cps-dim">僅管理員可修改</span>
+        <span v-else-if="!canEdit" class="cps-dim">需銷控系統權限</span>
         <span class="mac-spacer" />
         <button class="mac-btn" @click="emit('close')">取消</button>
         <button class="mac-btn mac-btn--primary" :disabled="!canEdit || saving" @click="save">{{ saving ? '儲存中…' : '儲存' }}</button>

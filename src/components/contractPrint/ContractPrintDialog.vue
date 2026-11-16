@@ -1,6 +1,6 @@
 <script setup>
 // 合約套印（從「合約製作設定」開啟）：範本清單 → 以本戶資料預覽／列印／存 PDF；
-// 管理員可新增與編輯範本、修改建案設定。金額與期款沿用合約製作已算好的價款與期款拆分。
+// 有本建案銷控系統權限者可新增與編輯範本、修改建案設定。金額與期款沿用合約製作已算好的價款與期款拆分。
 import { computed, ref, watch } from 'vue'
 import { fetchContractPrintConfig } from '@/api'
 import { useUserStore } from '@/store/user'
@@ -19,10 +19,12 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:show'])
 
-// 範本與建案設定的寫入權限（Firestore 規則同步限制）
-const EDIT_ROLES = ['超級管理員', '系統管理員']
+// 範本與建案設定的寫入權限：有本建案「銷控系統」權限即可（超管／系管免勾）
+const ADMIN_ROLES = ['超級管理員', '系統管理員']
 const userStore = useUserStore()
-const canEdit = computed(() => (userStore.currentUserRoles || []).some((r) => EDIT_ROLES.includes(r)))
+const canEdit = computed(() =>
+  (userStore.currentUserRoles || []).some((r) => ADMIN_ROLES.includes(r)) ||
+  (userStore.user?.permissions?.[props.projectId]?.systems || []).includes('銷控系統'))
 
 const config = ref(null)
 const view = ref({ name: 'list' }) // { name: 'list' } | { name: 'editor', templateId, detect }

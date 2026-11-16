@@ -6,8 +6,8 @@
 
 - 入口：銷控系統 › 戶別 › **合約製作設定** 視窗標題列「合約套印」按鈕（`ContractDocDialog.vue`）。
 - 開啟後先看到本建案的範本清單；點範本進入預覽（本戶資料）。
-- **超級管理員／系統管理員**：新增／改名／刪除範本、編輯範本（拖曳位置、字型字級、綁定欄位、顯示條件、自動偵測）、修改建案設定。
-- 其他使用者：只能預覽、列印、存 PDF（工具列不顯示編輯工具，物件不可選取）。
+- **有本建案「銷控系統」權限者**（超管／系管免勾）：新增／改名／刪除範本、編輯範本（拖曳位置、字型字級、綁定欄位、顯示條件、自動偵測）、修改建案設定。
+- 沒有銷控系統權限者（例如從報價系統開啟）：只能預覽、列印、存 PDF（工具列不顯示編輯工具，物件不可選取）。
 
 ## 2. 資料模型
 
@@ -19,12 +19,12 @@
 
 `objects[]` 每個物件：`page`、`x`、`y`（基線）、`size`、`font`（PostScript 名稱）、`color`、`anchor`（start/middle/end）、`maxW`（最大寬度，超過自動縮小）、`group`、`text`（固定文字）、`bind: { field, fmt, place?, lead?, index? }`、`when: { field, value, index? }`、`todo`（自動偵測到但未設定，不輸出）。
 
-### Firestore 規則（Console 手動新增，比照 `contractDocConfigs`）
+### Firestore 規則（Console 手動新增；前端未用 Firebase Auth，寫入權限由前端依銷控系統權限判斷）
 
 | Collection | 讀 | 寫 |
 |---|---|---|
-| `contractPrintTemplates` | 已登入 | roles 含 超級管理員／系統管理員 |
-| `contractPrintConfigs` | 已登入 | roles 含 超級管理員／系統管理員 |
+| `contractPrintTemplates` | 已登入 | 已登入 |
+| `contractPrintConfigs` | 已登入 | 已登入 |
 
 Storage：`contractPrint/**` 需允許已登入讀寫（目前正式環境 Storage 規則為全開，收斂時要涵蓋此路徑）。
 
