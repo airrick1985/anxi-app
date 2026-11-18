@@ -9,7 +9,7 @@
   >
     <v-card class="mac-sheet siu">
       <div class="mac-sheet-head">
-        <v-icon size="18">mdi-tray-arrow-up</v-icon>上傳圖片
+        <v-icon size="18">mdi-tray-arrow-up</v-icon>{{ title }}
         <span v-if="items.length" class="mac-page-count">{{ items.length }} 張</span>
         <button type="button" class="mac-sheet-close" title="關閉" :disabled="isUploading" @click="close">
           <v-icon size="18">mdi-close</v-icon>
@@ -67,7 +67,7 @@
       </v-card-text>
 
       <div class="mac-sheet-foot">
-        <label class="siu-switch">
+        <label v-if="allowReplace" class="siu-switch">
           <input v-model="replaceExisting" type="checkbox" class="mac-switch" :disabled="isUploading" />同名時取代
         </label>
         <span class="mac-spacer"></span>
@@ -89,13 +89,16 @@ import { saveSalesImage } from '@/api.js';
 import { shrinkImageToLimit } from '@/utils/canvasCompress';
 import {
   SALES_IMAGE_ACCEPT, SALES_IMAGE_MAX_BYTES, SALES_IMAGE_NAME_MAX,
-  normalizeImageName, imageNameError, fileBaseName, formatBytes, readImageSize, fileToBase64,
+  normalizeImageName, imageNameError, fileBaseName, formatBytes, readImageSize, fileToBase64, uniqueImageName,
 } from '@/utils/salesImages';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   projectId: { type: String, required: true },
   existingNames: { type: Array, default: () => [] },
+  title: { type: String, default: '上傳圖片' },
+  // 戶別圖片區：不提供「同名時取代」（會改到其他戶的圖），預設名稱自動避開重複
+  allowReplace: { type: Boolean, default: true },
 });
 const emit = defineEmits(['update:modelValue', 'uploaded']);
 
@@ -152,21 +155,33 @@ async function prepare(item) {
   }
 }
 
+function defaultName(file) {
+  const base = fileBaseName(file.name);
+  if (props.allowReplace) return base;
+  const taken = new Set(props.existingNames);
+  items.value.forEach(i => taken.add(normalizeImageName(i.name)));
+  return uniqueImageName(base, taken);
+}
+
 /** 加入待上傳檔案；presetName：缺圖補上傳時指定名稱 */
 function addFiles(files, presetName = '') {
-  const added = Array.from(files || []).map((file, i) => ({
-    id: ++seq,
-    file,
-    upload: null,
-    previewUrl: URL.createObjectURL(file),
-    name: i === 0 && presetName ? presetName : fileBaseName(file.name),
-    compressed: false,
-    width: 0,
-    height: 0,
-    status: 'processing',
-    error: '',
-  }));
-  items.value.push(...added);
+  const added = [];
+  Array.from(files || []).forEach((file, i) => {
+    const item = {
+      id: ++seq,
+      file,
+      upload: null,
+      previewUrl: URL.createObjectURL(file),
+      name: i === 0 && presetName ? presetName : defaultName(file),
+      compressed: false,
+      width: 0,
+      height: 0,
+      status: 'processing',
+      error: '',
+    };
+    added.push(item);
+    items.value.push(item);
+  });
   // 取 reactive proxy 再處理，狀態變更才會反映到畫面
   added.forEach(a => prepare(items.value.find(i => i.id === a.id)));
 }
@@ -222,7 +237,7 @@ async function uploadAll() {
 
   const done = items.value.filter(i => i.status === 'done');
   const failed = items.value.filter(i => i.status === 'error');
-  if (done.length) emit('uploaded', done.length);
+  if (done.length) emit('uploaded', done.length, done.map(i => normalizeImageName(i.name)));
   if (failed.length) {
     toast.error(`${failed.length} 張上傳失敗`);
     done.forEach(i => removeItem(i.id));

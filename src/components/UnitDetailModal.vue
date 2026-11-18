@@ -395,26 +395,17 @@
               <div v-if="unitData" class="pa-2">
                 <v-row>
                   <v-col cols="12" md="4">
-                    <div v-if="qf('images') && householdImages.length > 0" class="carousel-viewer-container">
-                      <v-carousel v-model="currentImageIndex" height="auto" hide-delimiters show-arrows="hover">
-                        <v-carousel-item v-for="image in householdImages" :key="image.id">
-                          <v-img :src="image.downloadURL" class="main-carousel-image" contain
-                            @load="thumbsReady = true" @error="thumbsReady = true"
-                            @click="openFullscreenViewer" style="cursor: zoom-in;"></v-img>
-                        </v-carousel-item>
-                      </v-carousel>
-                      <div class="small-thumbnails-strip">
-                        <div v-for="(image, index) in householdImages" :key="image.id" class="small-thumbnail-wrapper"
-                          :class="{ 'thumbnail-active': index === currentImageIndex }"
-                          @click="currentImageIndex = index">
-                          <!-- 縮圖與主圖同一原檔：等主圖載入完才載入，避免開啟時同時下載多張大圖 -->
-                          <v-img :src="thumbsReady ? image.downloadURL : undefined" aspect-ratio="16/9" cover></v-img>
-                        </div>
-                      </div>
-                    </div>
+                    <!-- 戶別圖片：銷控模式可就地新增／更換／移除／拖曳排序（即時寫入，不必進修改銷控） -->
+                    <UnitImageGallery v-if="qf('images') && projectId && unitData.unitId"
+                      :names="viewSalesImages" v-model:index="currentImageIndex"
+                      :project-id="projectId" :unit-id="String(unitData.unitId)"
+                      :library="allProjectImages" :households="allData['戶別'] || []"
+                      :editable="viewMode === 'sales'"
+                      @update:names="onSalesImagesSaved"
+                      @open-fullscreen="openFullscreenViewer" />
                     <div v-else class="info-section d-flex align-center justify-center text-grey-darken-1"
                       style="height: 100%; min-height: 250px;">
-                      <span><v-icon class="mr-2">mdi-image-multiple-outline</v-icon>{{ qf('images') ? '此戶別尚無圖片' : '不提供戶別圖片' }}</span>
+                      <span><v-icon class="mr-2">mdi-image-multiple-outline</v-icon>不提供戶別圖片</span>
                     </div>
                   </v-col>
 
@@ -1471,6 +1462,7 @@
 
 <script setup>
 import UnitImageFullscreenViewer from './UnitImageFullscreenViewer.vue';
+import UnitImageGallery from './salesImages/UnitImageGallery.vue';
 import { ref, reactive, watch, computed, defineProps, defineEmits, onUnmounted, onMounted, nextTick, defineAsyncComponent } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
@@ -1992,56 +1984,22 @@ const canUseSalesAi = computed(() => {
 
 const currentImageIndex = ref(0);
 const fullscreenViewerDialog = ref(false);
-// 縮圖延後載入：主圖載入完（或最多 1.5 秒）才給縮圖 src，避免開啟時同時下載多張原圖
-const thumbsReady = ref(false);
-let thumbsReadyTimer = null;
-watch(() => props.unitData?.unitId, () => {
-  thumbsReady.value = false;
-  clearTimeout(thumbsReadyTimer);
-  thumbsReadyTimer = setTimeout(() => { thumbsReady.value = true; }, 1500);
-}, { immediate: true });
-onUnmounted(() => clearTimeout(thumbsReadyTimer));
 const allProjectImages = computed(() => props.allData['銷控圖片'] || []);
 
+// 本戶圖片名稱（檢視模式就地增刪改後立即反映；父層即時監聽更新時同步）
+const viewSalesImages = ref([]);
+watch(() => props.unitData?.salesImages, (val) => {
+  viewSalesImages.value = Array.isArray(val) ? val.slice() : [];
+}, { immediate: true });
+function onSalesImagesSaved(names) {
+  viewSalesImages.value = names.slice();
+  // 同步父層傳入的物件快照，修改銷控整包儲存時才不會寫回舊值
+  if (props.unitData) Object.assign(props.unitData, { salesImages: names.slice() });
+}
+
 const householdImages = computed(() => {
-  // 🛠️ DEBUG: 添加調試信息
-  if (import.meta.env.DEV) {
-    console.log('🖼️ [UnitDetailModal] 圖片調試信息:', {
-      unitId: props.unitData?.unitId,
-      unitSalesImages: props.unitData?.salesImages,
-      allProjectImagesCount: allProjectImages.value.length,
-      allProjectImagesSample: allProjectImages.value.slice(0, 3).map(img => ({
-        imageName: img.imageName,
-        hasDownloadURL: !!img.downloadURL
-      }))
-    });
-  }
-
-  if (!props.unitData?.salesImages?.length || !allProjectImages.value.length) {
-    if (import.meta.env.DEV) {
-      console.log('🖼️ [UnitDetailModal] 圖片載入條件不滿足:', {
-        hasSalesImages: !!props.unitData?.salesImages?.length,
-        hasAllProjectImages: !!allProjectImages.value.length
-      });
-    }
-    return [];
-  }
-
   const imageMap = new Map(allProjectImages.value.map(img => [img.imageName, img]));
-  const matchedImages = props.unitData.salesImages
-    .map(name => imageMap.get(name))
-    .filter(Boolean);
-
-  // 🛠️ DEBUG: 記錄匹配結果
-  if (import.meta.env.DEV) {
-    console.log('🖼️ [UnitDetailModal] 圖片匹配結果:', {
-      requestedImages: props.unitData.salesImages,
-      matchedCount: matchedImages.length,
-      matchedImages: matchedImages.map(img => img.imageName)
-    });
-  }
-
-  return matchedImages;
+  return viewSalesImages.value.map(name => imageMap.get(name)).filter(img => img?.downloadURL);
 });
 
 const currentImage = computed(() => {

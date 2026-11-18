@@ -22,6 +22,15 @@ export function imageNameError(value, taken = new Set()) {
   return '';
 }
 
+/** 名稱已被使用時依序加上 (2)、(3)…；不合法字元換成空白並截到長度上限 */
+export function uniqueImageName(value, taken = new Set()) {
+  const base = normalizeImageName(String(value ?? '').replace(/[/\\,，]/g, ' ')) || '圖片';
+  const fit = (name, suffix = '') => `${name.slice(0, SALES_IMAGE_NAME_MAX - suffix.length).trim()}${suffix}`;
+  let name = fit(base);
+  for (let n = 2; taken.has(name); n += 1) name = fit(base, ` (${n})`);
+  return name;
+}
+
 export function fileBaseName(fileName) {
   const name = String(fileName || '');
   const dot = name.lastIndexOf('.');
