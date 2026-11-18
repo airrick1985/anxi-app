@@ -1,0 +1,130 @@
+/* 產品介紹頁 /product 共用樣式（由 ProductPage.vue 載入；docs/SPEC_ProductPage.md §7）*/
+
+/* PublicLayout 的 v-layout 有行內 overflow:hidden，會讓頂欄與模組列的 sticky 失效；
+   只在本頁改用 clip（同 BookingGuide 做法；離開本頁 :has 不再成立即恢復），行內樣式需 !important 才蓋得過 */
+.v-layout:has(> .v-main .pp) {
+  overflow: clip !important;
+}
+/* 鍵盤 Tab 捲動時，焦點不要落在頂欄與模組列底下 */
+html:has(.pp) { scroll-padding-top: 112px; }
+@media (max-width: 767.98px) {
+  html:has(.pp) { scroll-padding-top: 64px; scroll-padding-bottom: 72px; }
+}
+
+/* ───── 本頁共用元件樣式（子元件共用）─────
+   以 :where(.pp) 限定在本頁、且特異度只有一個 class，子元件的 scoped 樣式可直接覆寫 */
+:where(.pp) .pp-wrap { width: min(1200px, 100% - 48px); margin-inline: auto; }
+:where(.pp) .pp-sec { padding: 112px 0; }
+:where(.pp) [data-sec] { scroll-margin-top: 112px; }
+:where(.pp) .pp-line { display: block; }
+/* 說明文字用一般換行：Safari 的 text-wrap: pretty 會重排整段，第一行常只用一半寬；標題另用 balance */
+:where(.pp) p { text-wrap: wrap; line-break: strict; }
+:where(.pp) .pp-nw { white-space: nowrap; }
+:where(.pp) .pp-head { max-width: 760px; margin-bottom: 48px; }
+:where(.pp) .pp-head--center { margin-inline: auto; text-align: center; }
+:where(.pp) .pp-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  letter-spacing: 0.06em;
+  color: #1F4FD1;
+}
+:where(.pp) .pp-eyebrow::before { content: ''; width: 20px; height: 1px; background: currentColor; }
+:where(.pp) .pp-eyebrow--light { color: rgba(255, 255, 255, 0.78); }
+:where(.pp) .pp-eyebrow--light::before { background: #2F6BFF; }
+:where(.pp) .pp-h2 {
+  margin: 0;
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  color: inherit;
+}
+:where(.pp) .pp-ibox {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(47, 107, 255, 0.08);
+  color: #2F6BFF;
+}
+:where(.pp) .pp-card {
+  border: 1px solid #E5E7EB;
+  border-radius: 20px;
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px rgba(15, 23, 42, 0.06);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+:where(.pp) button.pp-card:hover { transform: translateY(-2px); border-color: #2F6BFF; }
+:where(.pp) .pp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 0 22px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+:where(.pp) .pp-btn--sm { min-height: 40px; padding: 0 16px; font-size: 15px; }
+:where(.pp) .pp-btn--lg { min-height: 52px; padding: 0 28px; font-size: 17px; }
+:where(.pp) .pp-btn--block { width: 100%; }
+:where(.pp) .pp-btn--primary { background: #2F6BFF; color: #fff; }
+:where(.pp) .pp-btn--primary:hover { background: #1F4FD1; }
+:where(.pp) .pp-btn--ghost { background: #fff; color: #111827; border-color: #E5E7EB; }
+:where(.pp) .pp-btn--ghost:hover { border-color: #111827; }
+:where(.pp) .pp-btn--outline-light { background: transparent; color: #fff; border-color: rgba(255, 255, 255, 0.5); }
+:where(.pp) .pp-btn--outline-light:hover { background: rgba(255, 255, 255, 0.1); border-color: #fff; }
+:where(.pp) :is(button, a, [tabindex]):focus-visible { outline: 2px solid #2F6BFF; outline-offset: 2px; }
+:where(.pp) h2[tabindex='-1']:focus, :where(.pp) h3[tabindex='-1']:focus, :where(.pp) h1[tabindex='-1']:focus { outline: none; }
+
+/* 進場：位移 16px＋淡入、0.6s、只播一次（v-reveal 指令加 .reveal／.is-visible） */
+:where(.pp) .reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.6s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+:where(.pp) .reveal.is-visible { opacity: 1; transform: none; }
+
+@media (max-width: 1099.98px) {
+  :where(.pp) .pp-wrap { width: min(1200px, 100% - 64px); }
+}
+@media (max-width: 767.98px) {
+  :where(.pp) .pp-wrap { width: calc(100% - 40px); }
+  :where(.pp) .pp-sec { padding: 64px 0; }
+  :where(.pp) [data-sec] { scroll-margin-top: 64px; }
+  :where(.pp) .pp-head { margin-bottom: 28px; }
+  :where(.pp) .pp-eyebrow { margin-bottom: 10px; font-size: 13px; }
+  :where(.pp) .pp-h2 { font-size: 28px; }
+  :where(.pp) .pp-btn { min-height: 48px; padding: 0 18px; }
+  :where(.pp) .pp-btn--sm { min-height: 40px; padding: 0 14px; font-size: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(.pp) .reveal, :where(.pp) .reveal.is-visible { opacity: 1; transform: none; transition: none; }
+  :where(.pp) .pp-card, :where(.pp) .pp-btn { transition: none; }
+  :where(.pp) button.pp-card:hover { transform: none; }
+}
+/* 手機橫拿（矮螢幕）：頂欄不 sticky，只扣模組列高度 */
+@media (max-height: 500px) {
+  :where(.pp) .pp-sec { padding-top: 48px; }
+  :where(.pp) [data-sec] { scroll-margin-top: 48px; }
+  html:has(.pp) { scroll-padding-top: 48px; }
+}
+@media print {
+  :where(.pp) .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+}

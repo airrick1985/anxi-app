@@ -66,6 +66,18 @@ const routes = [
     }
   },
 
+  // 產品介紹（公開，完整功能型錄；:section 為章節 id，例如 /product/commission 直接定位到請佣獎金）
+  {
+    path: '/product/:section?',
+    name: 'ProductPage',
+    component: () => import('@/views/ProductPage.vue'),
+    meta: {
+      requiresAuth: false,
+      layout: PublicLayout,
+      title: 'ANXI 安熙智慧 - 產品介紹'
+    }
+  },
+
   // ✅ 試用留資管理（超級管理員；docs/SPEC_LandingTrialLeadsOnboarding.md §5）
   {
     path: '/admin/trial-leads',

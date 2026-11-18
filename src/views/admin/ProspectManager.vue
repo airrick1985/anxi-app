@@ -7,6 +7,7 @@
         <v-icon size="15">mdi-calendar-alert</v-icon>今日待追蹤<b>{{ dueCount }}</b>
       </button>
       <div class="pm-spacer" />
+      <button type="button" class="mac-btn mac-btn--icon" title="產品介紹連結" aria-label="產品介紹連結" @click="copyProductLink"><v-icon size="18">mdi-link-variant</v-icon></button>
       <button type="button" class="mac-btn" @click="harvestOpen = true">
         <v-progress-circular v-if="harvestActive" indeterminate size="14" width="2" color="primary" />
         <v-icon v-else size="16">mdi-web</v-icon>網路蒐集
@@ -493,7 +494,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, reactive } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useDisplay } from 'vuetify';
 import { formatInTimeZone } from 'date-fns-tz';
 import * as XLSX from 'xlsx';
@@ -549,8 +550,17 @@ import {
 } from '@/services/prospectService';
 import { onUnmounted } from 'vue';
 import { arrayUnion } from 'firebase/firestore';
+import { copyText } from '@/utils/copyText';
 
 const route = useRoute();
+const router = useRouter();
+
+// 產品介紹頁連結（業務寄信、傳 LINE 用；utm_source=prospect 方便試用名單追蹤來源）
+const copyProductLink = async () => {
+  const href = router.resolve({ name: 'ProductPage', query: { utm_source: 'prospect' } }).href;
+  const ok = await copyText(new URL(href, window.location.href).href);
+  uiStore.showSnackbar(ok ? '已複製' : '複製失敗', ok ? 'success' : 'error');
+};
 const { mdAndUp } = useDisplay();
 const userStore = useUserStore();
 const uiStore = useUiStore();

@@ -538,6 +538,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router';
 import QRCode from 'qrcode';
 import { PRODUCT_PLANS } from '@/constants/productPlans';
+import { PRODUCT_MODULES as M, PAINS, STAGES, REASONS, TRIAL_STEPS, PLAN_TABS, LINE_URL, PHONE } from '@/constants/productModules';
 import { COMPANY_PROFILE } from '@/constants/companyProfile';
 import { appVersion } from '@/version';
 import logoUrl from '@/assets/landing/anxi-logo.webp';
@@ -556,8 +557,6 @@ import website2 from '@/assets/landing/website/website-2.webp';
 const route = useRoute();
 const router = useRouter();
 
-const LINE_URL = 'https://lin.ee/rBZmaUG';
-const PHONE = '0980-371-014';
 const STAGE_W = 1600;
 const STAGE_H = 900;
 const VISUAL_W = 720; // 功能頁右側示意圖設計寬度（手機閱讀模式依此等比縮放）
@@ -571,160 +570,18 @@ const slides = [
   { id: 'numbers', nav: '用數字認識我們', theme: 'dark' },
   { id: 'pain', nav: '案場痛點' },
   { id: 'platform', nav: '平台總覽', theme: 'soft' },
-  {
-    id: 'sales', nav: '雲端銷控',
-    feature: {
-      eyebrow: '雲端銷控系統', icon: 'mdi-home-analytics', title: '即時同步的雲端銷控表',
-      points: [
-        ['一張表，全團隊同步', '櫃台改價、銷售報價，所有人看到同一份最新資料'],
-        ['重點戶別一眼看見', '文字標籤、邊框特效，總價／單價／簽約日自由切換'],
-        ['統計分析即時算好', '資料透視、去化率統計、Excel 匯出匯入'],
-        ['成交資料完整保存', '留言備註、繳款紀錄、介紹費與贈品、上傳文件、退戶紀錄'],
-        ['繳款到期自動提醒', '預計繳款日將到或逾期，Email、LINE 通知管理人員與該戶銷售'],
-        ['指定時間自動調價', '設好時間與調幅，未售戶表價、底價準時更新，LINE 通知、可一鍵還原'],
-      ],
-    },
-  },
-  {
-    id: 'quote', nav: '報價與期款', theme: 'soft',
-    feature: {
-      eyebrow: '報價系統', icon: 'mdi-calculator-variant', title: '報價自動算，議價有把關',
-      points: [
-        ['期款自動計算', '依物件類型、總價、首購條件帶出適用的期款範本'],
-        ['公司借貸報價單', '借款金額、利率、期數現場試算，費用與攤還表一鍵列印'],
-        ['低於底價先通知主管', '自動核對底價，可設定銷售議價授權額度'],
-        ['平面圖丈量工具', '任意距離、面積，現場量給客戶看'],
-        ['報價單一鍵輸出', '預覽、列印、下載 PDF'],
-      ],
-    },
-  },
-  {
-    id: 'parking', nav: '車位與銷售圖面',
-    feature: {
-      eyebrow: '車位銷控・銷售圖面', icon: 'mdi-car-multiple', title: '車位、圖面，同樣即時銷控',
-      points: [
-        ['車位圖面化管理', '依樓層、類型、狀態篩選，配車一目了然'],
-        ['房車比速覽', '自動算出車位缺口或餘裕，充足／吃緊／不足即時提示'],
-        ['保留車位到期提醒', '記錄保留人與到期日，逾期紅字標示'],
-        ['銷售圖面編輯器', '全區平面圖疊上即時戶別資訊卡，匯出 PNG／PDF'],
-      ],
-    },
-  },
-  {
-    id: 'ai', nav: 'AI 智能助理', theme: 'dark',
-    feature: {
-      eyebrow: 'AI 智能助理', icon: 'mdi-robot-outline', title: '一句話，查銷控也改銷控',
-      points: [
-        ['自然語言查詢', '「A-3 賣了嗎」「本案成交總額」立刻回答'],
-        ['口語就能改銷控', '狀態、車位、成交價一句話完成，缺資料會主動詢問'],
-        ['確認後才寫入', '逐欄列出修改前 → 修改後，一眼核對'],
-      ],
-    },
-  },
-  {
-    id: 'lineAi', nav: 'LINE AI 助理',
-    feature: {
-      eyebrow: 'LINE AI 助理', icon: 'mdi-chat-processing-outline', title: '客戶在 LINE 問，AI 幫你想怎麼回',
-      points: [
-        ['群組、官方帳號都記得', '官方帳號加入公司群、客戶群，對話自動整理成摘要與重點'],
-        ['一鍵建議回覆、潤稿', '參考對話、客資與雲端資料撰稿，風格隨選：親切、正式、促成交'],
-        ['人確認後才送出', '自己複製分享，或由官方帳號代發'],
-        ['客戶私訊即時通知', 'LINE 通知負責業務，附上 AI 草稿'],
-      ],
-    },
-  },
-  {
-    id: 'contract', nav: '合約製作', theme: 'soft',
-    feature: {
-      eyebrow: '合約製作', icon: 'mdi-file-sign', title: '成交後的文件，一鍵產出',
-      points: [
-        ['戶別資料自動帶入', '付款明細表、拆款表、繳款帳戶、合約附圖'],
-        ['合約數字對照表', '價款國字大寫、面積、契約常數自動填好'],
-        ['配套／裝修合約', '兩頁付款表、裝修會辦單同步產出'],
-        ['自動防呆', '比例、金額、房土款不符即時標示，完全手動也照樣檢核'],
-        ['PDF／EXCEL 下載', '產製過的檔案自動保存在戶別'],
-      ],
-    },
-  },
-  {
-    id: 'commission', nav: '請佣獎金',
-    feature: {
-      eyebrow: '請佣獎金', icon: 'mdi-cash-multiple', title: '請佣、獎金，每期自動結算',
-      points: [
-        ['戶別請佣試算', '墊低法、墊高法、成交價、底價多種計算基準'],
-        ['獎金彈性分配', '比例與金額並行，支援跨建案人員'],
-        ['自動扣除', '介紹費、贈品逐筆帶入，保留款、稅金、二代健保依人員設定計算'],
-        ['歷期紀錄可追溯', '表格連點即改、拉回編輯、作廢重建、退佣追回都留紀錄'],
-        ['報表版型自訂', 'Excel／PDF 即時預覽，直接拖曳調整'],
-      ],
-    },
-  },
-  {
-    id: 'customer', nav: '客戶管理', theme: 'soft',
-    feature: {
-      eyebrow: '客戶管理系統', icon: 'mdi-account-group', title: '客資自己填，歸屬不再吵',
-      points: [
-        ['掃碼自主填寫', '客戶用手機填貴賓資料表，資料直接進系統'],
-        ['銷售專屬 QR Code', '掃哪位銷售的碼，就自動歸屬誰'],
-        ['重複客戶即時裁決', '系統比對重複客源，LINE 通知櫃台裁決並留紀錄'],
-        ['洽談紀錄完整追蹤', '每次來訪、需求、預算都有紀錄，換人接手也不漏'],
-        ['客資儀表板與資料透視', '來訪趨勢、銷售排行一頁看完，客戶與洽談紀錄可自由交叉統計，久未聯絡的高意願客戶自動列出'],
-        ['報表同步 Google Sheet', '客資異動自動更新試算表，也可一鍵立即同步'],
-      ],
-    },
-  },
-  {
-    id: 'leads', nav: '名單分配',
-    feature: {
-      eyebrow: '名單分配・賞屋預約', icon: 'mdi-account-arrow-right', title: '廣告名單，進來就分好',
-      points: [
-        ['Excel 名單匯入', '重複電話自動辨識，可跨建案交叉比對，上千筆也能快速匯入'],
-        ['一鍵平均分配', '顯示每位銷售本週、上週、本月已分配數量'],
-        ['LINE 推送與回報', '銷售在 LINE 回報聯絡狀況，未回報定時提醒'],
-        ['名單資料透視', '名單與回報紀錄自由交叉統計，例：各來源 × 聯絡狀況筆數'],
-        ['賞屋預約連動', '新客預約自動建立名單並分配給銷售，掃碼即加入手機行事曆，預約前 LINE 提醒銷售，訊息可直接查看或取消'],
-        ['跨建案個人行事曆', '銷售一頁看完所有建案的賞屋預約，排時間即時提醒撞期'],
-      ],
-    },
-  },
-  {
-    id: 'booking', nav: '線上預約', theme: 'soft',
-    feature: {
-      eyebrow: '線上預約系統', icon: 'mdi-calendar-check', title: '客變、對保、驗交屋，客戶線上自己約',
-      points: [
-        ['客戶自助預約', '手機就能預約、修改、取消，免來回電話'],
-        ['批次、時段、名額', '自訂開放批次、時段與名額上限'],
-        ['自動通知', 'Email 即時通知客戶與後台人員'],
-        ['完整時間表', '日／週／月檢視、每日名額、人員排休'],
-        ['LINE 也能看', '在 LINE 內查看時間表、下載行程'],
-      ],
-    },
-  },
-  {
-    id: 'inspection', nav: '驗屋修繕',
-    feature: {
-      eyebrow: '雲端驗屋／修繕系統', icon: 'mdi-clipboard-check', title: '驗屋拍照標記，修繕一路追蹤',
-      points: [
-        ['數位驗屋紀錄', '手機平板拍照標記，自動產生缺失單'],
-        ['修繕進度燈號', '待修繕、已安排、修繕中，廠商派工一目了然'],
-        ['一鍵 PDF 報告', '專業驗屋報告自動產出'],
-        ['住戶線上專區', '住戶掃碼查詢進度與修繕照片'],
-        ['電子簽名點交', '現場簽名確認，無紙化交屋'],
-      ],
-    },
-  },
-  {
-    id: 'website', nav: '形象網站', theme: 'soft',
-    feature: {
-      eyebrow: '形象網站／電子表板', icon: 'mdi-web', title: '從線上第一眼，到案場解說',
-      points: [
-        ['專屬主視覺', '依建案風格量身設計'],
-        ['RWD 響應式', '手機、平板、電腦完美呈現'],
-        ['留資即時通知', '預約表單送出即推送 LINE／Email'],
-        ['互動電子表板', '周邊環境、建材工法、樓層規劃，雲端同步更新'],
-      ],
-    },
-  },
+  { id: 'sales', nav: M.sales.nav, feature: M.sales },
+  { id: 'quote', theme: 'soft', nav: M.quote.nav, feature: M.quote },
+  { id: 'parking', nav: M.parking.nav, feature: M.parking },
+  { id: 'ai', theme: 'dark', nav: M.ai.nav, feature: M.ai },
+  { id: 'lineAi', nav: M.lineAi.nav, feature: M.lineAi },
+  { id: 'contract', theme: 'soft', nav: M.contract.nav, feature: M.contract },
+  { id: 'commission', nav: M.commission.nav, feature: M.commission },
+  { id: 'customer', theme: 'soft', nav: M.customer.nav, feature: M.customer },
+  { id: 'leads', nav: M.leads.nav, feature: M.leads },
+  { id: 'booking', theme: 'soft', nav: M.booking.nav, feature: M.booking },
+  { id: 'inspection', nav: M.inspection.nav, feature: M.inspection },
+  { id: 'website', theme: 'soft', nav: M.website.nav, feature: M.website },
   { id: 'why', nav: '為什麼選 ANXI' },
   { id: 'pricing', nav: '方案價格', theme: 'soft' },
   { id: 'trial', nav: '開始試用', theme: 'dark' },
@@ -762,22 +619,9 @@ const statFoot = [
 
 const coverModules = ['雲端銷控', '自動報價', '客戶管理', '名單分配', '線上預約', '驗屋修繕', '請佣獎金', '形象網站'];
 
-const pains = [
-  { icon: 'mdi-file-document-alert-outline', title: '價目表改了好幾版', desc: '紙本、Excel 各自更新，櫃台和銷售看到的價格不一樣' },
-  { icon: 'mdi-calculator-variant-outline', title: '報價全靠手算', desc: '期款、車位、議價算錯一次，就是一次客訴' },
-  { icon: 'mdi-account-multiple-remove-outline', title: '撞客說不清', desc: '客資散在各自手機，歸屬爭議沒有紀錄可查' },
-  { icon: 'mdi-phone-alert-outline', title: '預約全靠電話', desc: '客變、對保、驗屋排程，一通一通打電話確認' },
-  { icon: 'mdi-clipboard-alert-outline', title: '驗屋缺失難追', desc: '紙本缺失單、照片散落，修繕進度沒人說得清' },
-  { icon: 'mdi-cash-clock', title: '請佣對帳耗時', desc: '每期佣金、獎金重拉 Excel，核對到半夜' },
-];
+const pains = PAINS;
 
-const stages = [
-  { icon: 'mdi-web', name: '預售行銷', items: ['形象網站', '電子表板', '留資通知'] },
-  { icon: 'mdi-account-search-outline', name: '客戶開發', items: ['客資建檔', '名單分配', '賞屋預約', 'LINE AI'] },
-  { icon: 'mdi-handshake-outline', name: '銷售成交', items: ['銷控', '報價', '車位', 'AI 助理'] },
-  { icon: 'mdi-file-document-multiple-outline', name: '成交管理', items: ['合約製作', '繳款紀錄', '到期提醒', '請佣獎金'] },
-  { icon: 'mdi-key-variant', name: '交屋售後', items: ['線上預約', '驗屋修繕', '住戶專區'] },
-];
+const stages = STAGES;
 
 const quoteRows = [
   ['訂金', '3%', '107.0 萬'],
@@ -835,28 +679,11 @@ const repairRows = [
   { label: '已完成', count: 63, color: '#22C55E' },
 ];
 
-const reasons = [
-  { icon: 'mdi-cloud-check-outline', title: '雲端免安裝', desc: '手機、平板、電腦打開瀏覽器就能用' },
-  { icon: 'mdi-chat-processing-outline', title: 'LINE 深度整合', desc: '通知、裁決、名單回報，在 LINE 直接完成' },
-  { icon: 'mdi-account-key-outline', title: '權限分工', desc: '櫃台、銷售、主管各看各的資料' },
-  { icon: 'mdi-puzzle-outline', title: '模組自由組合', desc: '只訂需要的系統，資料彼此互通' },
-  { icon: 'mdi-home-city-outline', title: '案場出身', desc: '懂第一線流程，功能照案場真實需求打造' },
-  { icon: 'mdi-face-agent', title: '專人服務', desc: '專人協助建置開通，LINE 即時諮詢' },
-];
+const reasons = REASONS;
 
-const planProducts = [
-  { id: 'sales', name: '雲端銷控／報價', icon: 'mdi-home-analytics' },
-  { id: 'customer', name: '客戶管理', icon: 'mdi-account-group' },
-  { id: 'booking', name: '線上預約', icon: 'mdi-calendar-check' },
-  { id: 'inspection', name: '驗屋／修繕', icon: 'mdi-clipboard-check' },
-  { id: 'website', name: '形象網站／電子表板', icon: 'mdi-web' },
-].map((p) => ({ ...p, plans: PRODUCT_PLANS[p.id].pricing }));
+const planProducts = PLAN_TABS.map((p) => ({ ...p, plans: PRODUCT_PLANS[p.id].pricing }));
 
-const trialSteps = [
-  { title: '掃碼留資', desc: '30 秒填寫基本資料' },
-  { title: '立即體驗', desc: '自動登入範例建案，直接操作' },
-  { title: '專人導入', desc: '確認需求後協助建置開通' },
-];
+const trialSteps = TRIAL_STEPS;
 
 const pad = (n) => String(n).padStart(2, '0');
 const titleLines = (t) => t.replace(/，/g, '，\n').split('\n'); // 標題於逗號後斷行，避免單字孤行

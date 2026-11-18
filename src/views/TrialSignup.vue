@@ -234,7 +234,7 @@ const submit = async () => {
       useType: form.useType,
       interests: form.interests,
       website: form.website,
-      source: 'trial-page',
+      source: utm.entry || 'trial-page',
       utm,
       userAgent: navigator.userAgent,
       referrer: document.referrer || '',

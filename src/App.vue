@@ -134,7 +134,7 @@ window.addEventListener(ACCOUNT_DISABLED_EVENT, handleAccountDisabled);
 onBeforeUnmount(() => window.removeEventListener(ACCOUNT_DISABLED_EVENT, handleAccountDisabled));
 
 // 系統問題回報浮動按鈕：不顯示於 Landing Page（首頁）
-const showBugReport = computed(() => !!route.name && !['LandingPage', 'ProductDeck'].includes(route.name));
+const showBugReport = computed(() => !!route.name && !['LandingPage', 'ProductDeck', 'ProductPage'].includes(route.name));
 
 const layoutComponent = computed(() => route.meta.layout || DefaultLayout);
 const finishStartup = () => window.__anxiStartup?.finish();
@@ -160,7 +160,7 @@ onMounted(() => {
 
 // 靜態公開頁與登入頁不需要全建案列表；切到需要資料的頁面後再載入。
 watch(() => route.name, (name) => {
-  if (name && !['LandingPage', 'Login', 'PrivacyPolicy', 'TermsOfService', 'LeadReport', 'LeadDistributionEntry'].includes(name)) {
+  if (name && !['LandingPage', 'Login', 'PrivacyPolicy', 'TermsOfService', 'LeadReport', 'LeadDistributionEntry', 'ProductPage', 'ProductDeck'].includes(name)) {
     projectStore.fetchProjects();
   }
 }, { immediate: true });

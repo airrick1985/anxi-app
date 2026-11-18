@@ -143,6 +143,9 @@
             </div>
           </article>
         </div>
+        <div class="lp-more">
+          <router-link :to="{ name: 'ProductPage' }" class="lp-link-arrow lp-more__link">完整功能介紹 <v-icon size="18">mdi-arrow-right</v-icon></router-link>
+        </div>
       </div>
     </section>
 
@@ -524,7 +527,7 @@ const scrollTo = (id) => {
 const goLogin = () => { mobileMenu.value = false; router.push({ name: 'Login' }); };
 const goTrial = (position) => {
   mobileMenu.value = false;
-  router.push({ name: 'TrialSignup', query: { source: position } });
+  router.push({ name: 'TrialSignup', query: { source: `landing-${position}` } });
 };
 const goPricing = (productId) => { activeTab.value = productId; scrollTo('pricing'); };
 
@@ -725,6 +728,9 @@ onBeforeUnmount(() => {
 .lp-card__head h3 { font-size: 1.15rem; font-weight: 700; margin: 0 0 8px; line-height: 1.4; }
 .lp-card__head p { margin: 0; color: var(--lp-muted); font-size: .92rem; line-height: 1.7; }
 .lp-card__shot { margin: auto -26px 0; padding: 18px 18px 0; background: var(--lp-bg-soft); border-top: 1px solid var(--lp-border); }
+.lp-more { display: flex; justify-content: center; margin-top: 32px; }
+.lp-more__link { min-height: 44px; padding: 0 8px; color: var(--lp-primary); text-decoration: none; }
+.lp-more__link:hover { color: var(--lp-primary-dark); text-decoration: underline; }
 
 /* =============================================================
    截圖外框（規則見檔尾非 scoped 區塊）
