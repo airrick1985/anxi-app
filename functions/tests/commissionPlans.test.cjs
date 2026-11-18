@@ -144,6 +144,8 @@ function harness() {
   const exports = {};
   const requireMock = id => {
     if (id === 'firebase-functions/v2/https') return { onCall: (_, handler) => handler, HttpsError };
+    // onCall 改由帳號停用守衛提供（utils/accountGuard），測試直接取 handler
+    if (id === './utils/accountGuard') return { onCall: (_, handler) => handler };
     if (id === '@google-cloud/firestore') return { Firestore: function () { return db; }, FieldValue: { serverTimestamp: () => ({ seconds: 1000 + auto++ }), delete: () => DELETE } };
     if (id === 'date-fns-tz') return { formatInTimeZone: () => '20260919000000' };
     if (id === 'nodemailer') return {};

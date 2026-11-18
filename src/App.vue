@@ -43,13 +43,27 @@
     </v-card>
   </v-dialog>
 
+  <!-- 帳號已停用（人員管理一鍵停用）：登入中被停用、或由 LINE 入口進入時顯示 -->
+  <v-dialog v-model="accountDisabledDialog" max-width="360" persistent content-class="mac-dialog-fit">
+    <v-card class="mac-sheet">
+      <div class="account-disabled-body">
+        <v-icon size="44" color="#d62d20">mdi-account-cancel-outline</v-icon>
+        <div class="account-disabled-title">帳號已停用</div>
+        <div class="mac-sheet-note">此帳號目前無法使用，請聯絡管理員。</div>
+      </div>
+      <div class="mac-sheet-foot">
+        <button type="button" class="mac-btn mac-btn--primary mac-btn--lg mac-btn--block" @click="acknowledgeAccountDisabled">確定</button>
+      </div>
+    </v-card>
+  </v-dialog>
+
   <!-- 系統問題回報（全域浮動按鈕，不顯示於 Landing Page） -->
   <SystemBugReport v-if="showBugReport" />
   </template>
 
 <script setup>
 // ✓ 步驟一：在 import 區域加入 useRouter
-import { computed, defineAsyncComponent, onMounted, watch, ref } from 'vue'; 
+import { computed, defineAsyncComponent, onMounted, onBeforeUnmount, watch, ref } from 'vue'; 
 import { useRoute, useRouter } from 'vue-router'; // <--- 修改此行，加入 useRouter
 import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user'; 
@@ -60,6 +74,7 @@ import { DefaultLayout } from './layouts';
 const SystemBugReport = defineAsyncComponent(() => import('@/components/SystemBugReport.vue'));
 const UpdateDialog = defineAsyncComponent(() => import('@/components/UpdateDialog.vue'));
 import { useVersionCheck } from '@/composables/useVersionCheck';
+import { ACCOUNT_DISABLED_EVENT } from '@/utils/accountDisabled';
 
 // ✓ 步驟二：建立 router 實例
 const router = useRouter(); // <--- 新增此行
@@ -88,6 +103,35 @@ const reloadPage = () => {
   window.location.hash = '#/login';
   window.location.reload();
 };
+
+// ✅ 帳號已停用（人員管理一鍵停用）
+// 來源：users/{key}.disabled 即時監聽、Cloud Function 回報停用、LINE 入口查到停用帳號
+const accountDisabledDialog = ref(false);
+
+const handleAccountDisabled = () => {
+  // 登入頁自己會在表單上顯示錯誤訊息，不再多跳一層對話框
+  if (route.name === 'Login') return;
+  // 同步清掉本機登入狀態：不等 logoutUser 的 RTDB 回應，確保停用後畫面上的資料無法再操作
+  try {
+    userStore.clearUser();
+    sessionStorage.removeItem('anxi-user-session');
+  } catch (e) {
+    console.warn('[Account Disabled] 清除本機登入狀態失敗:', e);
+  }
+  accountDisabledDialog.value = true;
+};
+
+const acknowledgeAccountDisabled = () => {
+  accountDisabledDialog.value = false;
+  // 主系統頁面回登入頁並重新整理，清掉記憶體內殘留的資料；LINE 內開啟的公開頁留在原頁
+  if (route.meta.requiresAuth) {
+    window.location.hash = '#/login';
+    window.location.reload();
+  }
+};
+
+window.addEventListener(ACCOUNT_DISABLED_EVENT, handleAccountDisabled);
+onBeforeUnmount(() => window.removeEventListener(ACCOUNT_DISABLED_EVENT, handleAccountDisabled));
 
 // 系統問題回報浮動按鈕：不顯示於 Landing Page（首頁）
 const showBugReport = computed(() => !!route.name && !['LandingPage', 'ProductDeck'].includes(route.name));
@@ -146,11 +190,9 @@ watch(() => userStore.user, (newUser) => {
     unsubscribe();
     unsubscribe = null;
   }
-  
-  // ✅ 加上本地環境除外判斷，開發時不要檢查 activeSessionId，避免頻繁登出
-  if (window.location.hostname === 'localhost') {
-    return;
-  }
+
+  // ✅ 本地環境不比對 activeSessionId，避免開發時頻繁登出；帳號停用仍照常檢查
+  const skipSessionCheck = window.location.hostname === 'localhost';
 
   if (newUser && newUser.key) {
     const userDocRef = doc(db, 'users', newUser.key);
@@ -180,6 +222,20 @@ watch(() => userStore.user, (newUser) => {
       }
 
       if (docSnap.exists()) {
+        // ✅ 帳號被停用（人員管理一鍵停用）：立即登出並顯示「帳號已停用」；優先於重複登入判斷
+        if (docSnap.data().disabled === true) {
+          if (unsubscribe) {
+            unsubscribe();
+            unsubscribe = null;
+          }
+          handleAccountDisabled();
+          return;
+        }
+
+        if (skipSessionCheck) {
+          return;
+        }
+
         // ✅ 指定帳號可不受重複登入限制（多裝置同時在線），跳過 Session 比對
         if (docSnap.data().allowMultiLogin === true) {
           return;
@@ -191,7 +247,7 @@ watch(() => userStore.user, (newUser) => {
         if (serverSessionId && clientSessionId && serverSessionId !== clientSessionId) {
           forceLogout('Session ID mismatch!');
         }
-      } else {
+      } else if (!skipSessionCheck) {
         // 使用者被刪除
         forceLogout('User document no longer exists.');
       }
@@ -204,6 +260,16 @@ watch(() => userStore.user, (newUser) => {
 </script>
 
 <style>
+.account-disabled-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 26px 20px 20px;
+  text-align: center;
+}
+.account-disabled-title { font-size: 17px; font-weight: 700; color: #1d1d1f; }
+
 /* 您原本在 App.vue 中的全局 CSS 樣式可以保留在這裡 */
 html {
   overflow-y: auto !important;

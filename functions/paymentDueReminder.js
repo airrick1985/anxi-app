@@ -9,7 +9,9 @@
  * 當日通知紀錄 paymentDue_{YYYYMMDD} 同時是防重複鎖，並記錄每人每管道的結果供重試。
  */
 
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('firebase-functions/v2/https');
+// onCall 執行前先擋下已停用的操作者（人員管理一鍵停用）
+const { onCall } = require('./utils/accountGuard');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { Firestore, FieldPath } = require('@google-cloud/firestore');
 const {

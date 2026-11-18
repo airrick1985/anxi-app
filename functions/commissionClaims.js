@@ -14,7 +14,9 @@
  * 比例累計以各方案的 commissionUnitLedgers 為準（一般方案沿用 {projectId}_{unitId}）（transaction 內讀寫，防並發超額）。
  */
 
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { HttpsError } = require("firebase-functions/v2/https");
+// onCall 執行前先擋下已停用的操作者（人員管理一鍵停用）
+const { onCall } = require("./utils/accountGuard");
 const { Firestore, FieldValue } = require("@google-cloud/firestore");
 const { formatInTimeZone } = require("date-fns-tz");
 const nodemailer = require("nodemailer");

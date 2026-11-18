@@ -23,6 +23,12 @@
               </v-btn>
             </div>
 
+            <div v-else-if="pageStep === 5" class="text-center">
+              <v-icon size="80" color="error" class="mb-4">mdi-account-cancel-outline</v-icon>
+              <p class="text-h6 mb-2">帳號已停用</p>
+              <p>此帳號目前無法使用，請聯絡管理員。</p>
+            </div>
+
             <div v-else-if="pageStep === 1">
               <p class="text-subtitle-1 mb-4">請輸入您在系統中登記的手機號碼，以進行身分驗證。</p>
               <v-form ref="phoneForm" @submit.prevent="verifyPhoneNumber">
@@ -141,6 +147,9 @@ onMounted(async () => {
     if (statusResult.status === 'found') {
       foundUserName.value = statusResult.name;
       pageStep.value = 0;
+    } else if (statusResult.status === 'disabled') {
+      // 綁定的帳號已被管理員停用：不引導重新綁定
+      pageStep.value = 5;
     } else {
       pageStep.value = 1;
     }

@@ -39,9 +39,23 @@ import {
 
 import { ref as dbRef, set, onDisconnect, serverTimestamp as rtdbServerTimestamp, remove } from 'firebase/database';
 
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getFunctions, httpsCallable as firebaseHttpsCallable } from 'firebase/functions';
+import { isAccountDisabledError, notifyAccountDisabled } from '@/utils/accountDisabled';
 import { getAuth } from 'firebase/auth';
 import { useUserStore } from '@/store/user';
+
+// 帳號被停用時後端會擋下所有呼叫：在這裡統一通知 App.vue 顯示「帳號已停用」，各頁不必個別處理
+const httpsCallable = (instance, name, options) => {
+  const callable = firebaseHttpsCallable(instance, name, options);
+  return async (data) => {
+    try {
+      return await callable(data);
+    } catch (error) {
+      if (isAccountDisabledError(error)) notifyAccountDisabled();
+      throw error;
+    }
+  };
+};
 
 // 1. 在頂部定義【並匯出】新的路由函數
 export const bookingApiRouter = httpsCallable(functions, 'bookingApi');
@@ -6912,6 +6926,23 @@ export const unbindLineIdByAdmin = async (payload) => {
   }
 };
 
+/**
+ * [API] 一鍵停用／啟用帳號（人員管理用，限超級管理員、系統管理員）
+ * 停用後該帳號無法登入、所有功能與 LINE 入口／通知都失效；權限保留，啟用後恢復。
+ * @param {object} payload - { adminKey, sessionId, targetUserKey, disabled }
+ * @returns {Promise<object>} - { status, disabled, unchanged, lineSuspended, lineRestored, lineConflict }
+ */
+export const setUserAccountStatus = async (payload) => {
+  try {
+    const callable = httpsCallable(functions, 'setUserAccountStatus');
+    const result = await callable(payload);
+    return result.data;
+  } catch (error) {
+    console.error("API Error in setUserAccountStatus:", error);
+    throw new Error(error.message);
+  }
+};
+
 // ✓ END
 
 // ✓ START: 新增 - LIFF 查詢功能所需的 API 函式
@@ -6929,6 +6960,8 @@ export const getLiffUserData = async (payload) => {
       action: 'getLiffUserData', //  對應後端的 action
       data: payload
     });
+    // 綁定的帳號已被停用：統一顯示「帳號已停用」，各 LIFF 頁照「未綁定」流程收尾
+    if (result.data?.status === 'disabled') notifyAccountDisabled();
     return result.data;
   } catch (error) {
     console.error("API Error in getLiffUserData:", error);
@@ -8756,7 +8789,8 @@ export const fetchUserManagementInitialData = async (adminKey) => {
   } catch (error) {
     console.error(`API Error in ${functionName}:`, error);
     // 將 HttpsError 的 message 或其他錯誤訊息包裝回傳
-    const message = (error instanceof HttpsError || error.code) ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error.message || error}`;
+    // 前端沒有 HttpsError 類別（原本的 instanceof 會丟 ReferenceError 蓋掉真正的錯誤訊息）；後端錯誤一律帶 code
+    const message = error?.code ? error.message : `呼叫後端 ${functionName} 時發生錯誤: ${error?.message || error}`;
     return { status: "error", message: message }; // ✓ 回傳錯誤狀態
   }
 };

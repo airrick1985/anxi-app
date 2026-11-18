@@ -46,7 +46,8 @@ async function getEligibleRecipients(projectId, dbInstance, options = {}) {
   }
 
   return userDocs
-    .filter(d => d.exists)
+    // 已停用的帳號不列入通知候選（人員管理一鍵停用）
+    .filter(d => d.exists && d.data()?.disabled !== true)
     .map(d => {
       const data = d.data() || {};
       const lineId = typeof data.lineId === 'string' ? data.lineId : '';

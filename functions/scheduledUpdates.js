@@ -8,7 +8,9 @@
 //
 // 未售判斷、尾數規則見 utils/scheduledPricePlan.js；Excel 衝突與還原規則見 utils/scheduledUpdateDiff.js
 
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('firebase-functions/v2/https');
+// onCall 執行前先擋下已停用的操作者（人員管理一鍵停用）
+const { onCall } = require('./utils/accountGuard');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { Firestore, FieldPath, FieldValue, Timestamp } = require('@google-cloud/firestore');
 const axios = require('axios');

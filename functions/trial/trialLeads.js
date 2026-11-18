@@ -8,7 +8,9 @@
  * - trackTrialLeadEvent：寫入 events 並依事件類型更新統計欄位
  */
 
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { HttpsError } = require("firebase-functions/v2/https");
+// onCall 執行前先擋下已停用的操作者（人員管理一鍵停用）
+const { onCall } = require("../utils/accountGuard");
 const { Firestore, FieldValue, Timestamp } = require("@google-cloud/firestore");
 const nodemailer = require("nodemailer");
 const { getTrialSettings } = require("../utils/trialGuard");

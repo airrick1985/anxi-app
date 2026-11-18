@@ -319,6 +319,17 @@ a.mac-btn { text-decoration: none; }
   transform: translateY(-1px) rotate(-45deg);
 }
 .mac-check:focus-visible { outline: 2px solid rgba(0, 113, 227, 0.4); outline-offset: 1px; }
+/* 部分選取（全選框）：<input class="mac-check" :indeterminate.prop="true"> 顯示橫線 */
+.mac-check:indeterminate { background: var(--mac-check-color); border-color: var(--mac-check-color); }
+.mac-check:indeterminate::after {
+  content: '';
+  width: 8px;
+  height: 2px;
+  border: 0;
+  border-radius: 1px;
+  background: #fff;
+  transform: none;
+}
 
 /* 提示框：淡色底＋圖示，文字可換行 */
 .mac-callout {

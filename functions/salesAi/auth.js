@@ -11,6 +11,7 @@ async function authenticate(db, { userKey, sessionId }) {
   const snap = await db.collection('users').doc(String(userKey)).get();
   if (!snap.exists) throw new HttpsError('unauthenticated', '找不到使用者帳號。');
   const u = snap.data() || {};
+  if (u.disabled === true) throw new HttpsError('permission-denied', '此帳號已停用，請聯絡管理員。');
   if (u.allowMultiLogin !== true && u.activeSessionId !== sessionId) {
     throw new HttpsError('unauthenticated', 'Session 已過期或無效，請重新登入。');
   }

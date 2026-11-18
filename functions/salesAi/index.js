@@ -5,7 +5,8 @@
 //   exports.salesAiAgent = salesAi.salesAiAgent;
 //   exports.salesAiAdmin = salesAi.salesAiAdmin;
 
-const { onCall } = require('firebase-functions/v2/https');
+// onCall 執行前先擋下已停用的操作者（人員管理一鍵停用）
+const { onCall } = require('../utils/accountGuard');
 const agent = require('./agent');
 const admin = require('./admin');
 

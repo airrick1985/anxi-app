@@ -46,21 +46,22 @@ export const useAdminStore = defineStore('admin', {
   actions: {
     /**
      * 獲取所有管理資料，如果已載入則使用快取
+     * options.silent：背景更新，不先清空舊資料、不顯示載入中（儲存後重新整理列表用，畫面不閃爍）
      */
-    async loadAdminData(adminKey, forceReload = false) {
+    async loadAdminData(adminKey, forceReload = false, { silent = false } = {}) {
       // 1. 檢查快取
       if (this.isLoaded && !forceReload) {
         console.log('[AdminStore] 從快取載入管理資料...');
         return;
       }
 
-      // 如果強制重新載入，先清空舊資料
-      if (forceReload) {
+      // 如果強制重新載入，先清空舊資料（背景更新時保留舊資料，取得新資料後直接替換）
+      if (forceReload && !silent) {
         this.invalidateCache();
       }
 
       console.log('[AdminStore] 正在從後端獲取管理資料...');
-      this.isLoading = true;
+      if (!silent) this.isLoading = true;
       const projectStore = useProjectStore();
 
       try {
@@ -109,7 +110,7 @@ export const useAdminStore = defineStore('admin', {
         console.error('[AdminStore] 載入管理資料失敗:', error);
         throw error; // 讓 Vue 元件的 catch 區塊可以捕捉到
       } finally {
-        this.isLoading = false;
+        if (!silent) this.isLoading = false;
       }
     },
 

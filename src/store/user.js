@@ -4,6 +4,7 @@ import { collection, query, where, getDocs, doc, getDoc } from "firebase/firesto
 import { goOffline, saveUserPreferencesToBackend, fetchUserPreferencesFromBackend, manageUserPresence, getLiffUserData } from '@/api';
 import router from '@/router';
 import { useQuoteStore } from '@/store/quoteStore';
+import { notifyAccountDisabled } from '@/utils/accountDisabled';
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -80,6 +81,12 @@ export const useUserStore = defineStore('user', {
         // 1. 呼叫 API 驗證綁定 (維持原樣，這是為了確認 LIFF 身份)
         const liffData = await getLiffUserData({ lineId: lineId });
 
+        // 帳號已停用（人員管理）：getLiffUserData 已通知 App.vue 顯示「帳號已停用」
+        if (liffData.status === 'disabled') {
+          this.clearUser();
+          return false;
+        }
+
         if (liffData.status === 'not_bound') {
           console.warn(`[UserStore] LIFF ID [${lineId}] 尚未綁定。`);
           this.clearUser();
@@ -104,6 +111,11 @@ export const useUserStore = defineStore('user', {
         const userDoc = userSnapshot.docs[0];
         const userData = userDoc.data();
         const userKey = userDoc.id;
+        if (userData.disabled === true) {
+          notifyAccountDisabled();
+          this.clearUser();
+          return false;
+        }
 
         // ✅ [關鍵升級] 直接從資料庫讀取完整權限，不依賴 API 回傳的簡略版
         console.log(`[UserStore] 正在讀取權限資料: userPermissions/${userKey}`);
@@ -168,6 +180,12 @@ export const useUserStore = defineStore('user', {
         }
 
         const userData = userSnap.data();
+        // 帳號已停用（人員管理）：不建立登入狀態
+        if (userData.disabled === true) {
+          notifyAccountDisabled();
+          this.clearUser();
+          return false;
+        }
 
         console.log(`[UserStore] 正在讀取權限資料: userPermissions/${userKey}`);
         const permRef = doc(db, "userPermissions", userKey);

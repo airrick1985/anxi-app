@@ -1,1242 +1,1218 @@
 <template>
-  <v-container>
-    <v-card class="mx-auto">
-      <v-toolbar color="indigo" dark>
-        <v-toolbar-title>
-          <v-icon left>mdi-account-cog</v-icon>
-          人員管理
-        </v-toolbar-title>
-      </v-toolbar>
+  <div class="mac-page um-page">
+    <!-- 標題列：右側主要動作依分頁切換 -->
+    <div class="mac-page-bar um-bar">
+      <div class="mac-page-title">
+        <span class="mac-page-title-main">人員管理</span>
+        <span v-if="tabCountText" class="mac-page-count">{{ tabCountText }}</span>
+      </div>
+      <div class="mac-page-actions">
+        <button type="button" class="mac-icon-btn" title="重新整理" :disabled="refreshing || adminStore.isLoading" @click="refresh">
+          <v-icon size="18" :class="{ 'um-spin': refreshing }">mdi-refresh</v-icon>
+        </button>
+        <template v-if="['users', 'projects'].includes(currentTab)">
+          <button v-if="canBatchGrant" type="button" class="mac-btn" @click="openBatchGrantDialog">
+            <v-icon size="16">mdi-account-multiple-plus-outline</v-icon><span>批次授權</span>
+          </button>
+          <button type="button" class="mac-btn mac-btn--primary" @click="openCreateDialog()">
+            <v-icon size="16">mdi-plus</v-icon><span>新增人員</span>
+          </button>
+        </template>
+        <button v-else-if="currentTab === 'roles'" type="button" class="mac-btn mac-btn--primary" @click="createNewRole">
+          <v-icon size="16">mdi-plus</v-icon><span>新增角色</span>
+        </button>
+        <button v-else-if="currentTab === 'functions'" type="button" class="mac-btn mac-btn--primary" @click="openFunctionDialog()">
+          <v-icon size="16">mdi-plus</v-icon><span>新增權限功能</span>
+        </button>
+      </div>
+    </div>
 
-      <v-tabs v-model="currentTab" bg-color="transparent" grow :touch="false">
-        <v-tab value="users">人員列表</v-tab>
-        <v-tab value="projects">建案列表</v-tab>
-        <v-tab v-if="isSuperAdmin" value="roles">角色設定</v-tab>
-        <v-tab v-if="isSuperAdmin" value="functions">權限功能管理</v-tab>
-      </v-tabs>
-      <v-divider></v-divider>
+    <!-- 分頁切換 -->
+    <div class="um-tabs">
+      <div class="mac-form-seg" :class="{ 'mac-form-seg--block': !mdAndUp }">
+        <button
+          v-for="tab in tabOptions"
+          :key="tab.value"
+          type="button"
+          class="mac-form-seg-btn"
+          :class="{ 'is-active': currentTab === tab.value }"
+          @click="currentTab = tab.value"
+        >{{ tab.label }}</button>
+      </div>
+    </div>
 
-      <v-card-text class="pb-0" v-if="['users', 'projects'].includes(currentTab)">
-        <v-row>
-          <v-col cols="12" md="6">
-            <v-text-field
-              v-model="searchPhone"
-              label="輸入姓名、手機、公司或建案名稱篩選"
-              variant="outlined"
-              hide-details
-              prepend-inner-icon="mdi-magnify"
-              clearable
+    <!-- 搜尋＋狀態篩選 -->
+    <div v-if="['users', 'projects'].includes(currentTab)" class="mac-searchbar um-searchbar">
+      <v-text-field
+        v-model="searchPhone"
+        variant="solo"
+        flat
+        density="compact"
+        hide-details
+        clearable
+        class="mac-vfield mac-vfield--search"
+        prepend-inner-icon="mdi-magnify"
+        placeholder="搜尋姓名、手機、公司、建案"
+      ></v-text-field>
+      <div v-if="currentTab === 'users'" class="mac-form-seg um-status-seg">
+        <button
+          v-for="option in statusOptions"
+          :key="option.value"
+          type="button"
+          class="mac-form-seg-btn"
+          :class="{ 'is-active': statusFilter === option.value }"
+          @click="statusFilter = option.value"
+        >{{ option.label }}<span class="um-seg-count">{{ option.count }}</span></button>
+      </div>
+    </div>
+
+    <div v-if="errorMessage && showErrorAlert" class="um-error">
+      <div class="mac-callout mac-callout--error">
+        <v-icon size="16">mdi-alert-circle-outline</v-icon><span>{{ errorMessage }}</span>
+      </div>
+      <button type="button" class="mac-btn" @click="loadInitialData()">重試</button>
+    </div>
+
+    <div v-if="adminStore.isLoading" class="mac-list-loading">
+      <v-progress-circular indeterminate size="24" width="2" color="grey"></v-progress-circular>
+    </div>
+
+    <template v-else>
+      <!-- ===== 人員 ===== -->
+      <template v-if="currentTab === 'users'">
+        <v-data-table
+          v-if="mdAndUp"
+          class="mac-table um-table"
+          :headers="tableHeaders"
+          :items="filteredUsers"
+          item-value="phone"
+          :items-per-page="25"
+          :items-per-page-options="[25, 50, 100, { value: -1, title: '全部' }]"
+          :row-props="userRowProps"
+          no-data-text="找不到符合條件的人員"
+          items-per-page-text="每頁筆數"
+          :page-text="'{0}-{1} / 共 {2} 筆'"
+        >
+          <template v-slot:item.name="{ item }">
+            <button type="button" class="um-person" title="編輯" @click="openEditDialog(item.phone)">
+              <span class="um-avatar">{{ initialOf(item.name) }}</span>
+              <span class="um-person-text">
+                <span class="um-person-name">{{ item.name }}<span v-if="item.phone === selfKey" class="mac-tag mac-tag--blue">我</span></span>
+                <span v-if="item.email" class="um-person-sub">{{ item.email }}</span>
+              </span>
+            </button>
+          </template>
+          <template v-slot:item.companyName="{ item }">
+            <span v-if="item.companyName">{{ item.companyName }}</span>
+            <span v-else class="mac-form-empty">—</span>
+          </template>
+          <template v-slot:item.lineId="{ item }">
+            <span class="mac-tag" :class="lineMetaOf(item).tagClass">{{ lineMetaOf(item).label }}</span>
+          </template>
+          <template v-slot:item.projects="{ item }">
+            <div class="um-tags" :title="item.projects.length > PROJECT_TAG_LIMIT ? item.projects.join('、') : undefined">
+              <span v-for="project in item.projects.slice(0, PROJECT_TAG_LIMIT)" :key="project" class="mac-tag">{{ project }}</span>
+              <span v-if="item.projects.length > PROJECT_TAG_LIMIT" class="mac-tag um-tag-more">+{{ item.projects.length - PROJECT_TAG_LIMIT }}</span>
+              <span v-if="item.projects.length === 0" class="mac-form-empty">—</span>
+            </div>
+          </template>
+          <template v-slot:item.roles="{ item }">
+            <button
+              type="button"
+              class="um-role-btn"
+              :disabled="item.phone === selfKey"
+              :title="item.phone === selfKey ? '不可變更自己的角色' : '指派角色'"
+              @click="openRoleMenu($event, item)"
             >
-            </v-text-field>
-          </v-col>
-          <v-col cols="12" md="6" class="d-flex justify-end align-center">
-            <v-btn v-if="canBatchGrant" color="teal-darken-1" class="mr-2" @click="openBatchGrantDialog">
-              <v-icon left>mdi-account-multiple-plus</v-icon>
-              批次授權
-            </v-btn>
-            <v-btn color="primary" @click="openCreateDialog()">
-              <v-icon left>mdi-plus</v-icon>
-              新增人員
-            </v-btn>
-          </v-col>
-        </v-row>
-        <v-alert v-if="errorMessage" type="error" class="mt-4" dense closable v-model="showErrorAlert">
-          {{ errorMessage }}
-        </v-alert>
-      </v-card-text>
-
-      <v-window v-model="currentTab" :touch="false">
-        <v-window-item value="users">
-          <v-card-text>
-            <div class="d-none d-md-block mt-2">
-              <v-data-table
-                :headers="tableHeaders"
-                :items="filteredUsers"
-                :loading="adminStore.isLoading"
-                item-value="phone"
-                class="elevation-1"
-                no-data-text="沒有可管理的人員資料"
-                loading-text="正在載入資料..."
-                items-per-page-text="每頁筆數："
-                :page-text="'{0}-{1} 筆 / 共 {2} 筆'"
+              <span v-for="role in item.roles" :key="role" class="mac-tag mac-tag--blue">{{ role }}</span>
+              <span v-if="!item.roles || item.roles.length === 0" class="mac-form-empty">未指派</span>
+              <v-icon v-if="item.phone !== selfKey" size="14" class="um-role-caret">mdi-chevron-down</v-icon>
+            </button>
+          </template>
+          <template v-slot:item.disabled="{ item }">
+            <div class="um-status">
+              <input
+                v-if="canViewAndEditRoles"
+                type="checkbox"
+                class="mac-switch"
+                :checked="!item.disabled"
+                :disabled="!!statusLockReason(item) || !!statusSaving[item.phone]"
+                :title="statusLockReason(item) || (item.disabled ? '啟用帳號' : '停用帳號')"
+                :aria-label="`${item.name} 帳號啟用`"
+                @change="toggleAccountStatus(item, $event)"
               >
-                <template v-slot:item.lineId="{ item }">
-                  <div class="d-flex align-center justify-center ga-1">
-                    <v-chip :color="item.lineId ? 'green' : 'grey'" small label>
-                      {{ item.lineId ? '已綁定' : '未綁定' }}
-                    </v-chip>
-                    <v-btn
-                      v-if="isSuperAdmin && item.lineId"
-                      icon="mdi-link-variant-off"
-                      size="x-small"
-                      color="error"
-                      variant="text"
-                      title="解除 LINE 綁定"
-                      @click="openUnbindLineDialog(item)"
-                    ></v-btn>
+              <span class="mac-tag" :class="item.disabled ? 'mac-tag--red' : 'mac-tag--green'">{{ item.disabled ? '已停用' : '啟用中' }}</span>
+            </div>
+          </template>
+          <template v-slot:item.actions="{ item }">
+            <div class="um-actions">
+              <button
+                v-if="isSuperAdmin && lineStateOf(item) !== 'none'"
+                type="button"
+                class="mac-icon-btn um-unlink"
+                title="解除 LINE 綁定"
+                @click="openUnbindLineDialog(item)"
+              ><v-icon size="17">mdi-link-variant-off</v-icon></button>
+              <button v-if="canViewAndEditRoles" type="button" class="mac-icon-btn" title="寄送通知信" @click="openEmailDialog(item)">
+                <v-icon size="17">mdi-email-outline</v-icon>
+              </button>
+              <button type="button" class="mac-icon-btn" title="編輯" @click="openEditDialog(item.phone)">
+                <v-icon size="17">mdi-pencil-outline</v-icon>
+              </button>
+            </div>
+          </template>
+        </v-data-table>
+
+        <!-- 手機：清單列，點列編輯、右側開關一鍵停用／啟用 -->
+        <div v-else class="mac-list um-list">
+          <div
+            v-for="item in filteredUsers"
+            :key="item.phone"
+            class="mac-list-row um-user-row"
+            :class="{ 'is-off': item.disabled }"
+            role="button"
+            tabindex="0"
+            @click="openEditDialog(item.phone)"
+            @keydown.enter="openEditDialog(item.phone)"
+          >
+            <span class="um-avatar">{{ initialOf(item.name) }}</span>
+            <div class="mac-list-main">
+              <div class="mac-list-line1">
+                <span class="mac-list-title">{{ item.name }}</span>
+                <span v-if="item.disabled" class="mac-tag mac-tag--red">已停用</span>
+              </div>
+              <div class="mac-list-meta">{{ item.phone }}<template v-if="item.companyName">・{{ item.companyName }}</template></div>
+              <div class="um-tags">
+                <span class="mac-tag" :class="lineMetaOf(item).tagClass">LINE {{ lineMetaOf(item).label }}</span>
+                <span v-for="role in item.roles" :key="role" class="mac-tag mac-tag--blue">{{ role }}</span>
+              </div>
+              <div v-if="item.projects.length" class="mac-list-preview">{{ item.projects.join('、') }}</div>
+            </div>
+            <div v-if="canViewAndEditRoles" class="um-row-side" @click.stop>
+              <input
+                type="checkbox"
+                class="mac-switch"
+                :checked="!item.disabled"
+                :disabled="!!statusLockReason(item) || !!statusSaving[item.phone]"
+                :aria-label="`${item.name} 帳號啟用`"
+                @change="toggleAccountStatus(item, $event)"
+              >
+            </div>
+            <v-icon v-else size="18" class="um-row-chevron">mdi-chevron-right</v-icon>
+          </div>
+          <div v-if="filteredUsers.length === 0" class="mac-list-empty">找不到符合條件的人員</div>
+        </div>
+      </template>
+
+      <!-- ===== 建案 ===== -->
+      <template v-else-if="currentTab === 'projects'">
+        <div v-if="groupedProjects.length === 0" class="mac-list-empty">找不到符合條件的建案或人員</div>
+        <div v-else class="um-split">
+          <aside v-if="mdAndUp" class="um-sidebar">
+            <button
+              v-for="group in groupedProjects"
+              :key="group.id"
+              type="button"
+              class="um-side-item"
+              :class="{ 'is-active': group.id === activeProjectGroup.id }"
+              @click="selectedProjectId = group.id"
+            >
+              <span class="um-side-name">{{ group.name }}</span>
+              <span class="um-side-count">{{ group.users.length }}</span>
+            </button>
+          </aside>
+          <section class="um-detail">
+            <v-select
+              v-if="!mdAndUp"
+              :model-value="activeProjectGroup.id"
+              :items="groupedProjects"
+              item-title="name"
+              item-value="id"
+              variant="solo"
+              flat
+              density="compact"
+              hide-details
+              class="mac-vfield um-detail-select"
+              :menu-props="{ contentClass: 'mac-menu' }"
+              @update:model-value="selectedProjectId = $event"
+            ></v-select>
+            <div class="um-detail-head">
+              <span class="um-detail-title">{{ activeProjectGroup.name }}</span>
+              <span class="mac-page-count">{{ activeProjectGroup.users.length }} 人</span>
+            </div>
+            <div class="mac-form-group">
+              <div v-for="user in activeProjectGroup.users" :key="user.phone" class="um-member" :class="{ 'is-off': user.disabled }">
+                <button type="button" class="um-person um-member-person" title="編輯" @click="openEditDialog(user.phone)">
+                  <span class="um-avatar">{{ initialOf(user.name) }}</span>
+                  <span class="um-person-text">
+                    <span class="um-person-name">{{ user.name }}<span v-if="user.disabled" class="mac-tag mac-tag--red">已停用</span></span>
+                    <span class="um-person-sub">{{ user.phone }}</span>
+                  </span>
+                </button>
+                <div class="um-member-perms">
+                  <div
+                    v-for="category in getGroupedUserPermissions(user.projectSystems)"
+                    :key="category.id"
+                    class="um-perm-line"
+                    :style="{ '--um-tone': category.tone }"
+                  >
+                    <span class="um-perm-cat"><v-icon size="13">{{ category.icon }}</v-icon>{{ category.label }}</span>
+                    <span v-for="sys in category.permissions" :key="sys" class="mac-tag um-perm-tag">{{ sys }}</span>
                   </div>
-                </template>
-                <template v-slot:item.projects="{ item }">
-                  <div style="max-width: 300px; display: flex; flex-wrap: wrap; gap: 4px;" class="py-2">
-                    <v-chip
-                      v-for="project in item.projects"
-                      :key="project"
-                      color="blue-grey"
-                      size="x-small"
-                      label
-                    >
-                      {{ project }}
-                    </v-chip>
-                    <span v-if="!item.projects || item.projects.length === 0" class="text-grey-lighten-1">
-                      -
-                    </span>
-                  </div>
-                </template>
-                <template v-if="canViewAndEditRoles" v-slot:item.roles="{ item }">
-                  <v-combobox
-                    :model-value="item.roles"
-                    @update:model-value="newRoles => handleRolesChange(item, newRoles)"
-                    :items="availableRolesForAssignment"
+                  <span v-if="user.projectSystems.length === 0" class="mac-form-empty">無權限</span>
+                </div>
+                <div class="um-actions">
+                  <button v-if="canViewAndEditRoles" type="button" class="mac-icon-btn" title="寄送通知信" @click="openEmailDialog(user)">
+                    <v-icon size="17">mdi-email-outline</v-icon>
+                  </button>
+                  <button type="button" class="mac-icon-btn" title="編輯" @click="openEditDialog(user.phone)">
+                    <v-icon size="17">mdi-pencil-outline</v-icon>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </template>
+
+      <!-- ===== 角色 ===== -->
+      <template v-else-if="currentTab === 'roles' && isSuperAdmin">
+        <div class="um-split">
+          <aside v-if="mdAndUp" class="um-sidebar">
+            <button
+              v-for="(role, index) in adminStore.roles"
+              :key="role.id"
+              type="button"
+              class="um-side-item"
+              :class="{ 'is-active': selectedRoleIndex === index }"
+              @click="selectedRoleIndex = index"
+            >
+              <span class="um-side-name">{{ role.name }}</span>
+            </button>
+          </aside>
+          <section class="um-detail um-detail--form mac-form">
+            <v-select
+              v-if="!mdAndUp"
+              v-model="selectedRoleIndex"
+              :items="adminStore.roles.map((role, index) => ({ title: role.name, value: index }))"
+              variant="solo"
+              flat
+              density="compact"
+              hide-details
+              placeholder="選擇角色"
+              class="mac-vfield um-detail-select"
+              :menu-props="{ contentClass: 'mac-menu' }"
+            ></v-select>
+
+            <template v-if="selectedRole">
+              <div class="mac-form-label">基本設定</div>
+              <div class="mac-form-group">
+                <div class="mac-form-row">
+                  <span class="mac-form-row-label">角色名稱</span>
+                  <input
+                    v-model="selectedRole.name"
+                    type="text"
+                    class="mac-form-input"
+                    :readonly="isBuiltInRole"
+                    aria-label="角色名稱"
+                  >
+                </div>
+                <div class="mac-form-row um-row-wrap">
+                  <span class="mac-form-row-label">可指派的角色</span>
+                  <v-select
+                    v-model="selectedRole.grantableRoles"
+                    :items="allRoleNames"
                     multiple
                     chips
                     closable-chips
-                    variant="outlined"
-                    
-                    hide-details
-                    placeholder="點此新增角色"
-                    :loading="item.rolesLoading"
-                    class="py-2"
-                  >
-                    <template v-slot:selection="{ item: chipItem, index }">
-                      <v-chip :key="index" closable @click:close="removeRole(item, chipItem.title)">
-                        {{ chipItem.title }}
-                      </v-chip>
-                    </template>
-                  </v-combobox>
-                </template>
-                <template v-slot:item.actions="{ item }">
-                  <v-btn small color="primary" @click="openEditDialog(item.phone)" class="mr-2">編輯</v-btn>
-                  <v-btn 
-                    v-if="canViewAndEditRoles" 
-                    icon="mdi-email" 
-                    size="small" 
-                    color="indigo" 
-                    variant="tonal" 
-                    @click="openEmailDialog(item)"
-                    title="傳送確認信"
-                  ></v-btn>
-                </template>
-              </v-data-table>
-            </div>
-            <div class="d-md-none mt-2">
-              <div v-if="adminStore.isLoading" class="text-center pa-10">
-                <v-progress-circular indeterminate color="primary"></v-progress-circular>
-                <p class="mt-2 text-grey">正在載入資料...</p>
-              </div>
-              <div v-else>
-                <v-card
-                    v-for="item in filteredUsers"
-                    :key="item.phone"
-                    class="mb-3"
-                    variant="outlined"
-                  >
-                    <v-card-title class="text-h6 pb-0">{{ item.name }}</v-card-title>
-                    
-                    <v-card-text class="pt-2 pb-2">
-                      <div v-for="field in displayFields" :key="field.key" class="mb-1">
-                        <strong>{{ field.label }}: </strong>
-
-                        <template v-if="field.type === 'chip'">
-                          <v-chip :color="item[field.key] ? field.options.trueColor : field.options.falseColor" small label class="ml-2">
-                            {{ item[field.key] ? field.options.trueText : field.options.falseText }}
-                          </v-chip>
-                          <v-btn
-                            v-if="field.key === 'lineId' && isSuperAdmin && item.lineId"
-                            size="x-small"
-                            color="error"
-                            variant="tonal"
-                            class="ml-2"
-                            prepend-icon="mdi-link-variant-off"
-                            @click="openUnbindLineDialog(item)"
-                          >解除綁定</v-btn>
-                        </template>
-                        <template v-else-if="field.type === 'projects'">
-                          <div style="display: flex; flex-wrap: wrap; gap: 4px;" class="mt-1">
-                            <v-chip
-                              v-for="project in item.projects"
-                              :key="project"
-                              color="blue-grey"
-                              size="x-small"
-                              label
-                            >
-                              {{ project }}
-                            </v-chip>
-                            <span v-if="!item.projects || item.projects.length === 0" class="text-grey-lighten-1">
-                              -
-                            </span>
-                          </div>
-                        </template>
-                        <template v-else-if="field.key === 'roles'">
-                           <div v-if="canViewAndEditRoles" class="mt-1">
-                            <v-combobox
-                              :model-value="item.roles"
-                              @update:model-value="newRoles => handleRolesChange(item, newRoles)"
-                              :items="availableRolesForAssignment"
-                              multiple
-                              chips
-                              closable-chips
-                              variant="outlined"
-                              density="compact"
-                              hide-details
-                              placeholder="點此新增角色"
-                              :loading="item.rolesLoading"
-                            >
-                             <template v-slot:selection="{ item: chipItem, index }">
-                                <v-chip :key="index" closable size="small" @click:close="removeRole(item, chipItem.title)">
-                                  {{ chipItem.title }}
-                                </v-chip>
-                              </template>
-                            </v-combobox>
-                           </div>
-                           <span v-else class="ml-2">{{ item.roles ? item.roles.join(', ') : 'N/A' }}</span>
-                        </template>
-                        <template v-else>
-                          <span class="ml-2">{{ item[field.key] || 'N/A' }}</span>
-                        </template>
-                      </div>
-                    </v-card-text>
-                    <v-card-actions>
-                    <v-spacer></v-spacer>
-                    <v-btn
-                      v-if="canViewAndEditRoles"
-                      icon="mdi-email"
-                      color="indigo"
-                      variant="text"
-                      @click="openEmailDialog(item)"
-                      class="mr-2"
-                    ></v-btn>
-                    <v-btn color="primary" variant="tonal" @click="openEditDialog(item.phone)">
-                      編輯
-                    </v-btn>
-                  </v-card-actions>
-                    </v-card>
-
-                <div v-if="filteredUsers.length === 0" class="text-center text-grey py-10">
-                  <p>找不到符合條件的人員</p>
-                </div>
-              </div>
-            </div>
-          </v-card-text>
-        </v-window-item>
-
-        <v-window-item value="projects">
-          <v-card-text>
-            <div v-if="adminStore.isLoading" class="text-center pa-10">
-              <v-progress-circular indeterminate color="primary"></v-progress-circular>
-              <p class="mt-2 text-grey">正在載入資料...</p>
-            </div>
-            
-            <div v-else-if="groupedProjects.length === 0" class="text-center pa-10 text-grey">
-              <v-icon size="48" color="grey-lighten-2">mdi-office-building-off</v-icon>
-              <p class="mt-4">找不到符合條件的建案或人員</p>
-            </div>
-
-            <v-expansion-panels v-else variant="accordion" multiple>
-              <v-expansion-panel
-                v-for="group in groupedProjects"
-                :key="group.id"
-              >
-                <v-expansion-panel-title>
-                  <div class="d-flex align-center w-100">
-                    <span class="text-h6 font-weight-bold mr-3">{{ group.name }}</span>
-                    <v-chip size="small" color="blue-grey-lighten-4" variant="flat">
-                      {{ group.users.length }} 人
-                    </v-chip>
-                  </div>
-                </v-expansion-panel-title>
-                <v-expansion-panel-text class="bg-grey-lighten-5 pa-2">
-                  <v-row dense>
-                    <v-col
-                      v-for="user in group.users"
-                      :key="user.phone"
-                      cols="12" sm="6" md="4" lg="3"
-                    >
-                      <v-card variant="outlined" class="fill-height bg-white hover-card">
-                        <v-card-item>
-                          <template v-slot:title>
-                            <div class="d-flex align-center justify-space-between">
-                              <span class="text-subtitle-1 font-weight-medium text-truncate">{{ user.name }}</span>
-                              <div class="d-flex align-center">
-                                <v-btn
-                                  v-if="canViewAndEditRoles"
-                                  icon="mdi-email"
-                                  size="x-small"
-                                  variant="text"
-                                  color="indigo"
-                                  title="傳送確認信"
-                                  @click="openEmailDialog(user)"
-                                ></v-btn>
-                                <v-btn
-                                  icon="mdi-pencil"
-                                  size="x-small"
-                                  variant="text"
-                                  color="primary"
-                                  title="編輯人員"
-                                  @click="openEditDialog(user.phone)"
-                                ></v-btn>
-                              </div>
-                            </div>
-                          </template>
-                          <template v-slot:subtitle>
-                            <div class="d-flex align-center mt-1">
-                              <v-icon size="small" class="mr-1">mdi-phone</v-icon>
-                              <span class="text-body-2">{{ user.phone }}</span>
-                            </div>
-                          </template>
-                        </v-card-item>
-                        
-                        <v-divider></v-divider>
-                        
-                        <v-card-text class="pt-2">
-                          <div v-if="user.projectSystems.length > 0">
-                            <div 
-                              v-for="category in getGroupedUserPermissions(user.projectSystems)" 
-                              :key="category.id" 
-                              class="mb-3"
-                            >
-                              <div class="d-flex align-center mb-1">
-                                <v-icon size="14" class="mr-1" :color="category.color">{{ category.icon }}</v-icon>
-                                <span class="text-caption font-weight-bold" :class="`text-${category.color}`">
-                                  {{ category.label }}
-                                </span>
-                              </div>
-                              
-                              <div class="d-flex flex-wrap gap-1" style="gap: 4px;">
-                                <v-chip
-                                  v-for="sys in category.permissions"
-                                  :key="sys"
-                                  size="x-small"
-                                  :color="category.color"
-                                  variant="tonal"
-                                  label
-                                  class="ma-0"
-                                >
-                                  {{ sys }}
-                                </v-chip>
-                              </div>
-                            </div>
-                          </div>
-                          <div v-else class="text-caption text-grey-lighten-1 py-2">無權限</div>
-                        </v-card-text>
-                      </v-card>
-                    </v-col>
-                  </v-row>
-                </v-expansion-panel-text>
-              </v-expansion-panel>
-            </v-expansion-panels>
-          </v-card-text>
-        </v-window-item>
-
-        <v-window-item v-if="isSuperAdmin" value="roles">
-          <v-card-text>
-            <v-row>
-              <v-col cols="12" md="4">
-                <v-card outlined>
-                  <v-list dense>
-                    <v-list-subheader>所有角色</v-list-subheader>
-                    <v-list-item
-                      v-for="(role, index) in adminStore.roles"
-                      :key="role.id"
-                      @click="selectedRoleIndex = index"
-                      :active="selectedRoleIndex === index"
-                      color="primary"
-                    >
-                      <v-list-item-title>{{ role.name }}</v-list-item-title>
-                    </v-list-item>
-                  </v-list>
-                  <v-divider></v-divider>
-                  <v-card-actions>
-                    <v-btn block color="primary" @click="createNewRole">
-                      <v-icon left>mdi-plus</v-icon>
-                      新增角色
-                    </v-btn>
-                  </v-card-actions>
-                </v-card>
-              </v-col>
-
-              <v-col cols="12" md="8">
-                <v-card v-if="selectedRole" :key="selectedRole.id" flat border>
-                  <v-card-text>
-                    <v-text-field
-                      v-model="selectedRole.name"
-                      label="角色名稱"
-                      variant="outlined"
-                      
-                      class="mb-4"
-                      :rules="[v => !!v || '角色名稱為必填']"
-                      :readonly="['超級管理員', '系統管理員'].includes(selectedRole.id)"
-                    ></v-text-field>
-
-                    <v-select
-                      v-model="selectedRole.grantableRoles"
-                      :items="allRoleNames"
-                      label="可指派的角色"
-                      multiple
-                      chips
-                      closable-chips
-                      variant="outlined"
-                      
-                      class="mb-4"
-                    ></v-select>
-
-                    <v-expansion-panels variant="accordion">
-                      <v-expansion-panel>
-                        <v-expansion-panel-title>
-                          <v-icon start>mdi-account-edit-outline</v-icon>
-                          人員管理頁面 欄位權限
-                        </v-expansion-panel-title>
-                        <v-expansion-panel-text class="pa-4">
-                          <div v-for="field in userManagementFields" :key="field.key" class="field-permission-row mb-3">
-                            <div class="font-weight-medium text-subtitle-2 mb-1">{{ field.label }}</div>
-                            <v-chip-group
-                              v-model="selectedRole.fieldPermissions.UserManagement[field.key]"
-                              filter
-                              mandatory
-                            >
-                              <v-chip
-                                v-for="option in fieldPermissionOptions"
-                                :key="option.value"
-                                :value="option.value"
-                                :color="option.color"
-                                label
-                                small
-                              >
-                                {{ option.title }}
-                              </v-chip>
-                            </v-chip-group>
-                          </div>
-                        </v-expansion-panel-text>
-                      </v-expansion-panel>
-                    </v-expansion-panels>
-
-                  </v-card-text>
-                  <v-divider></v-divider>
-                  <v-card-actions class="pa-4">
-                    <v-btn
-                      v-if="!['超級管理員', '系統管理員'].includes(selectedRole.id)"
-                      color="error"
-                      variant="text"
-                      @click="confirmDeleteRole(selectedRole)"
-                    >刪除角色</v-btn>
-                    <v-spacer></v-spacer>
-                    <v-btn color="indigo" variant="flat" @click="saveRole" :loading="savingRole">儲存角色設定</v-btn>
-                  </v-card-actions>
-                </v-card>
-                 <v-alert v-else type="info" class="fill-height">
-                    請從左側選擇一個角色進行編輯，或新增一個角色。
-                </v-alert>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-window-item>
-
-        <v-window-item v-if="isSuperAdmin" value="functions">
-          <v-card-text>
-            <div class="d-flex justify-end mb-4">
-              <v-btn color="primary" @click="openFunctionDialog()">
-                <v-icon left>mdi-plus</v-icon>
-                新增權限功能
-              </v-btn>
-            </div>
-            <v-data-table
-              :headers="functionTableHeaders"
-              :items="adminStore.systemFunctions"
-              :loading="adminStore.isLoading"
-              item-value="functionId"
-              class="elevation-1"
-              no-data-text="沒有權限功能資料"
-              loading-text="正在載入資料..."
-            >
-              <template v-slot:item.isCore="{ value }">
-                <v-chip :color="value ? 'red' : 'grey'" small label>{{ value ? '是' : '否' }}</v-chip>
-              </template>
-              <template v-slot:item.quotaSummary="{ item }">
-                <div v-if="item.quotaPerProject && Object.keys(item.quotaPerProject).length > 0" class="d-flex flex-wrap" style="gap: 4px;">
-                  <v-chip
-                    v-for="(limit, projectId) in item.quotaPerProject"
-                    :key="projectId"
-                    size="x-small"
-                    label
-                    color="deep-purple-lighten-4"
-                    variant="flat"
-                  >
-                    {{ projectStore.idToNameMap[projectId] || projectId }}: {{ limit }}人
-                  </v-chip>
-                </div>
-                <span v-else class="text-grey-lighten-1 text-body-2">未設定</span>
-              </template>
-              <template v-slot:item.actions="{ item }">
-                <v-btn small color="primary" @click="openFunctionDialog(item)">編輯</v-btn>
-              </template>
-            </v-data-table>
-          </v-card-text>
-        </v-window-item>
-      </v-window>
-    </v-card>
-
-<v-dialog v-model="isFunctionDialogVisible" persistent max-width="750px">
-      <v-card>
-        <v-card-title class="bg-indigo text-white">
-          <span class="text-h5">{{ isNewFunction ? '新增權限功能' : '編輯權限功能' }}</span>
-        </v-card-title>
-        <v-card-text class="pt-4">
-          <v-form ref="functionForm">
-            <v-text-field
-              v-model="editedFunction.functionId"
-              label="功能 ID (內部代號，建立後不可修改)"
-              variant="outlined"
-              :readonly="!isNewFunction"
-              :rules="[v => !!v || '必填']"
-              hint="請使用英文駝峰式命名，例如: newPermission"
-            ></v-text-field>
-            <v-text-field
-              v-model="editedFunction.name"
-              label="顯示名稱"
-              variant="outlined"
-              :rules="[v => !!v || '必填']"
-              class="mt-4"
-            ></v-text-field>
-            <v-textarea
-              v-model="editedFunction.description"
-              label="功能描述 (可選)"
-              variant="outlined"
-              rows="3"
-              class="mt-4"
-            ></v-textarea>
-             <v-checkbox
-                v-model="editedFunction.isCore"
-                label="設為核心功能 (保護)"
-                :disabled="!isNewFunction"
-              ></v-checkbox>
-
-            <!-- 每個建案人數上限設定 -->
-            <v-divider class="my-4"></v-divider>
-            <h4 class="mb-3 d-flex align-center">
-              <v-icon class="mr-2" color="deep-purple">mdi-account-check</v-icon>
-              每個建案名額上限設定
-            </h4>
-            <p class="text-body-2 text-grey mb-3">
-              設定此權限功能在每個建案中可指派的最大人數。角色為「超級管理員」或「系統管理員」不計入名額。
-              留空或設為 0 表示不限制。
-            </p>
-            <div class="quota-settings-container">
-              <v-row dense v-for="project in projectStore.projectsList" :key="project.id" class="align-center mb-1">
-                <v-col cols="7" sm="8">
-                  <span class="text-body-2 font-weight-medium">{{ project.name }}</span>
-                </v-col>
-                <v-col cols="5" sm="4">
-                  <v-text-field
-                    :model-value="editedFunction.quotaPerProject?.[project.id] || ''"
-                    @update:model-value="val => setQuota(project.id, val)"
-                    type="number"
-                    variant="outlined"
+                    variant="solo"
+                    flat
                     density="compact"
                     hide-details
-                    placeholder="不限"
-                    min="0"
-                    suffix="人"
-                  ></v-text-field>
-                </v-col>
-              </v-row>
+                    placeholder="未設定"
+                    class="mac-vfield um-grow"
+                    :menu-props="{ contentClass: 'mac-menu' }"
+                  ></v-select>
+                </div>
+              </div>
+
+              <div class="mac-form-label">人員管理欄位權限</div>
+              <div class="mac-form-group">
+                <div v-for="field in userManagementFields" :key="field.key" class="mac-form-row um-row-wrap">
+                  <span class="mac-form-row-label">{{ field.label }}</span>
+                  <div class="mac-form-seg um-field-seg">
+                    <button
+                      v-for="option in fieldPermissionOptions"
+                      :key="option.value"
+                      type="button"
+                      class="mac-form-seg-btn"
+                      :class="{ 'is-active': selectedRole.fieldPermissions.UserManagement[field.key] === option.value }"
+                      @click="selectedRole.fieldPermissions.UserManagement[field.key] = option.value"
+                    >{{ option.title }}</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="um-detail-foot">
+                <button v-if="!isBuiltInRole" type="button" class="mac-btn mac-btn--danger" @click="confirmDeleteRole(selectedRole)">
+                  <v-icon size="16">mdi-trash-can-outline</v-icon><span>刪除角色</span>
+                </button>
+                <span class="mac-spacer"></span>
+                <button type="button" class="mac-btn mac-btn--primary" :disabled="savingRole" @click="saveRole">
+                  {{ savingRole ? '儲存中…' : '儲存' }}
+                </button>
+              </div>
+            </template>
+            <div v-else class="mac-list-empty">選擇角色</div>
+          </section>
+        </div>
+      </template>
+
+      <!-- ===== 權限功能 ===== -->
+      <template v-else-if="currentTab === 'functions' && isSuperAdmin">
+        <v-data-table
+          v-if="mdAndUp"
+          class="mac-table um-table"
+          :headers="functionTableHeaders"
+          :items="adminStore.systemFunctions"
+          item-value="functionId"
+          :items-per-page="25"
+          :items-per-page-options="[25, 50, 100, { value: -1, title: '全部' }]"
+          no-data-text="沒有權限功能資料"
+          items-per-page-text="每頁筆數"
+          :page-text="'{0}-{1} / 共 {2} 筆'"
+        >
+          <template v-slot:item.name="{ item }">
+            <span class="um-fn-name">{{ item.name }}</span>
+          </template>
+          <template v-slot:item.functionId="{ item }">
+            <code class="um-code">{{ item.functionId }}</code>
+          </template>
+          <template v-slot:item.description="{ item }">
+            <span v-if="item.description" class="um-fn-desc">{{ item.description }}</span>
+            <span v-else class="mac-form-empty">—</span>
+          </template>
+          <template v-slot:item.isCore="{ value }">
+            <span v-if="value" class="mac-tag mac-tag--red">核心</span>
+            <span v-else class="mac-form-empty">—</span>
+          </template>
+          <template v-slot:item.quotaSummary="{ item }">
+            <div v-if="item.quotaPerProject && Object.keys(item.quotaPerProject).length > 0" class="um-tags">
+              <span v-for="(limit, projectId) in item.quotaPerProject" :key="projectId" class="mac-tag">
+                {{ projectStore.idToNameMap[projectId] || projectId }} {{ limit }} 人
+              </span>
             </div>
-          </v-form>
-        </v-card-text>
-        <v-card-actions class="pa-4">
-          <v-spacer></v-spacer>
-          <v-btn color="grey" text @click="isFunctionDialogVisible = false">取消</v-btn>
-          <v-btn color="primary" @click="saveSystemFunction" :loading="savingFunction">儲存</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+            <span v-else class="mac-form-empty">不限</span>
+          </template>
+          <template v-slot:item.actions="{ item }">
+            <div class="um-actions">
+              <button type="button" class="mac-icon-btn" title="編輯" @click="openFunctionDialog(item)">
+                <v-icon size="17">mdi-pencil-outline</v-icon>
+              </button>
+            </div>
+          </template>
+        </v-data-table>
 
+        <div v-else class="mac-list um-list">
+          <button
+            v-for="item in adminStore.systemFunctions"
+            :key="item.functionId"
+            type="button"
+            class="mac-list-row"
+            @click="openFunctionDialog(item)"
+          >
+            <div class="mac-list-main">
+              <div class="mac-list-line1">
+                <span class="mac-list-title">{{ item.name }}</span>
+                <span v-if="item.isCore" class="mac-tag mac-tag--red">核心</span>
+              </div>
+              <div class="mac-list-meta">{{ item.functionId }}</div>
+              <div v-if="item.description" class="mac-list-meta">{{ item.description }}</div>
+              <div v-if="item.quotaPerProject && Object.keys(item.quotaPerProject).length > 0" class="um-tags">
+                <span v-for="(limit, projectId) in item.quotaPerProject" :key="projectId" class="mac-tag">
+                  {{ projectStore.idToNameMap[projectId] || projectId }} {{ limit }} 人
+                </span>
+              </div>
+            </div>
+            <v-icon size="18" class="um-row-chevron">mdi-chevron-right</v-icon>
+          </button>
+          <div v-if="adminStore.systemFunctions.length === 0" class="mac-list-empty">沒有權限功能資料</div>
+        </div>
+      </template>
+    </template>
 
+    <!-- 角色指派選單：整頁共用一個 -->
+    <v-menu
+      v-model="roleMenu.open"
+      :activator="roleMenu.activator || undefined"
+      :close-on-content-click="false"
+      location="bottom start"
+      offset="4"
+    >
+      <div class="um-pop">
+        <div class="mac-sheet-label">{{ roleMenuUser?.name }} 的角色</div>
+        <label
+          v-for="option in roleMenuOptions"
+          :key="option.name"
+          class="um-check-row"
+          :class="{ 'is-disabled': option.locked || roleMenuUser?.rolesLoading }"
+        >
+          <input
+            type="checkbox"
+            class="mac-check"
+            :checked="(roleMenuUser?.roles || []).includes(option.name)"
+            :disabled="option.locked || roleMenuUser?.rolesLoading"
+            @change="toggleRole(option.name)"
+          >
+          <span class="um-check-text">{{ option.name }}</span>
+        </label>
+        <div v-if="roleMenuOptions.length === 0" class="mac-form-empty um-pop-empty">沒有可指派的角色</div>
+      </div>
+    </v-menu>
+
+    <!-- ===== 新增／編輯人員 ===== -->
     <v-dialog
       v-model="dialogVisible"
       persistent
-      :max-width="isMobile ? '100%' : '1440px'"
-      :fullscreen="isMobile"
       scrollable
+      :fullscreen="!mdAndUp"
+      :max-width="mdAndUp ? 1080 : undefined"
     >
-      <v-card>
-        <v-card-title class="bg-indigo text-white d-flex align-center">
-      <span class="text-h5">{{ isNewUser ? '新增人員' : '編輯人員權限' }}</span>
-      <v-spacer></v-spacer>
-      <v-btn icon="mdi-close" variant="text" @click="closeDialog"></v-btn>
-    </v-card-title>
+      <v-card class="mac-sheet um-sheet" :class="{ 'um-sheet--full': !mdAndUp, 'um-sheet--tall': mdAndUp }">
+        <div class="mac-sheet-head">
+          <span>{{ isNewUser ? '新增人員' : '編輯人員' }}</span>
+          <span v-if="!isNewUser && !loadingDetails && targetAccount.disabled" class="mac-tag mac-tag--red">已停用</span>
+          <button type="button" class="mac-sheet-close" title="關閉" @click="closeDialog"><v-icon size="18">mdi-close</v-icon></button>
+        </div>
 
-
-      
-       <v-card-text class="pa-4">
-          <div v-if="loadingDetails">
-            <v-row>
-              <v-col cols="12" sm="6">
-                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
-              </v-col>
-              <v-col cols="12" sm="6">
-                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
-              </v-col>
-               <v-col cols="12" sm="6">
-                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
-              </v-col>
-               <v-col cols="12" sm="6">
-                <v-skeleton-loader type="list-item-two-line"></v-skeleton-loader>
-              </v-col>
-            </v-row>
-            <v-skeleton-loader type="heading, divider, actions, table-heading, list-item-three-line@3"></v-skeleton-loader>
+        <div class="um-sheet-body mac-form">
+          <div v-if="loadingDetails" class="mac-list-loading">
+            <v-progress-circular indeterminate size="24" width="2" color="grey"></v-progress-circular>
           </div>
 
-          <div v-if="!loadingDetails">
-            <v-row>
-              <!-- 左欄：基本資料 -->
-              <v-col cols="12" md="4" class="edit-basic-col">
-                <div class="d-flex align-center mb-3">
-                  <v-icon color="indigo" size="small" class="mr-2">mdi-account-box-outline</v-icon>
-                  <span class="text-subtitle-1 font-weight-bold">基本資料</span>
-                  <v-divider class="ml-3 flex-grow-1"></v-divider>
-                </div>
-            <v-form ref="basicInfoForm" v-model="isFormValid">
-              <v-row v-if="targetUser" dense>
-                <v-col v-if="getFieldPermission('phone') !== 'H'" cols="12" sm="6" md="12">
-                  <v-text-field
-                    v-model="targetUser.basicInfo.phone"
-                    label="手機號碼 (登入帳號)"
-                    hint="手機號碼為帳號，建立後不可修改"
-                  :rules="rules.required"
-                  :readonly="!isNewUser"
-                  variant="outlined"
-                  
-                  @blur="validatePhoneNumber"
-                  :loading="phoneValidationLoading"
-                  :error-messages="phoneValidationError"
-                  :success-messages="phoneValidationSuccess"
-                  ></v-text-field>
-                </v-col>
-                <v-col v-if="getFieldPermission('name') !== 'H'" cols="12" sm="6" md="12">
-                  <v-text-field
-                    v-model="targetUser.basicInfo.name"
-                    label="姓名"
-                  :rules="rules.required"
-                  :readonly="getFieldPermission('name') === 'R'"
-                  variant="outlined"
-                   
-                  ></v-text-field>
-                </v-col>
-                <v-col v-if="getFieldPermission('email') !== 'H'" cols="12" sm="6" md="12">
-                  <v-text-field
-                    v-model="targetUser.basicInfo.email"
-                    label="Email"
-                  :readonly="getFieldPermission('email') === 'R'"
-                  variant="outlined"
-                  
-                ></v-text-field>
-              </v-col>
-               <v-col v-if="getFieldPermission('password') !== 'H'" cols="12" sm="6" md="12">
-                   <v-text-field
-                      v-if="!isNewUser && getFieldPermission('password') === 'C'"
-                    label="密碼"
-                    variant="outlined"
-                    
-                    readonly
-                    value="******** (僅供建立)"
-                  ></v-text-field>
-                 <v-text-field
-                    v-else
-                    v-model="targetUser.basicInfo.password"
-                    label="密碼"
-                    :rules="isNewUser ? rules.required : []"
-                    :readonly="getFieldPermission('password') === 'R'"
-                    variant="outlined"
-                    
-                    :placeholder="isNewUser ? '' : '若不修改請留空'"
-                  ></v-text-field>
-                </v-col>
-                <v-col v-if="getFieldPermission('companyName') !== 'H'" cols="12" sm="6" md="12">
-                  <v-text-field
-                    v-model="targetUser.basicInfo.companyName"
-                  label="公司名稱"
-                  :readonly="getFieldPermission('companyName') === 'R'"
-                  variant="outlined"
-                  
-                  ></v-text-field>
-                </v-col>
-                <v-col v-if="getFieldPermission('companyTaxId') !== 'H'" cols="12" sm="6" md="12">
-                  <v-text-field
-                    v-model="targetUser.basicInfo.companyTaxId"
-                    label="統一編號"
-                  :readonly="getFieldPermission('companyTaxId') === 'R'"
-                  variant="outlined"
-
-                ></v-text-field>
-              </v-col>
-              <v-col v-if="isSuperAdmin" cols="12">
-                <v-checkbox
-                  v-model="targetUser.basicInfo.allowMultiLogin"
-                  color="primary"
-                  hide-details
-                  density="comfortable"
-                  label="允許重複登入（不受單一裝置限制）"
-                ></v-checkbox>
-                <div class="text-caption text-medium-emphasis ml-2">
-                  勾選後，此帳號可在多個裝置／瀏覽器同時登入，不會互相強制登出。
-                </div>
-              </v-col>
-            </v-row>
-            </v-form>
-              </v-col>
-
-              <!-- 右欄：系統權限設定 -->
-              <v-col v-if="getFieldPermission('permissions') !== 'H'" cols="12" md="8">
-                <v-divider class="mb-4 d-md-none"></v-divider>
-                <div class="d-flex align-center mb-3">
-                  <v-icon color="indigo" size="small" class="mr-2">mdi-shield-key-outline</v-icon>
-                  <span class="text-subtitle-1 font-weight-bold">系統權限設定</span>
-                  <v-divider class="ml-3 flex-grow-1"></v-divider>
-                </div>
-                <div class="d-flex align-center mb-3 flex-wrap ga-2">
-                  <v-text-field
-                    v-model="projectSearchQuery"
-                    label="搜尋建案"
-                    variant="outlined"
-                    density="compact"
-                    hide-details
-                    prepend-inner-icon="mdi-magnify"
-                    clearable
-                    class="flex-grow-1"
-                    style="min-width: 200px;"
-                  ></v-text-field>
-                  <v-btn @click="expandAll" variant="tonal" size="small">全部展開</v-btn>
-                  <v-btn @click="collapseAll" variant="tonal" size="small">全部收合</v-btn>
-                </div>
-
-            <div v-if="targetUser && permissionMatrix" class="permission-panels-container">
-                <v-expansion-panels multiple v-model="panels">
-                  <v-expansion-panel
-                    v-for="project in filteredManagedProjects"
-                  :key="project"
-                  :value="project"
-                  :readonly="getFieldPermission('permissions') === 'R'"
-                >
-                   <v-expansion-panel-title>
-                 <v-checkbox
-                   :model-value="isAllSelectedForProject(project)"
-                   :indeterminate="isIndeterminateForProject(project)"
-                   @update:model-value="toggleAllForProject(project, $event)"
-                   @click.stop
-                   hide-details
-                   class="mr-4"
-                   :disabled="getFieldPermission('permissions') === 'R' || /* 通用欄位唯讀 */
-                              (!isGodModeAdmin && !adminStore.adminScope[project]?.includes('人員管理')) /* 非超管/系管 且 在此建案無 '人員管理' 權限 */
-                             "
-                 ></v-checkbox>
-                 {{ project }}
-               </v-expansion-panel-title>
-               <v-expansion-panel-text>
-                  <div v-for="group in groupedPermissions" :key="group.id" class="mb-4">
-                    <div class="d-flex align-center mb-2 mt-2">
-                    <v-icon :color="group.color" class="mr-2">{{ group.icon }}</v-icon>
-                    
-                    <span class="text-subtitle-2 font-weight-bold text-no-wrap" :style="{ color: group.color }">
-                      {{ group.label }}
-                    </span>
-                    
-                    <v-divider class="ml-3 flex-grow-1"></v-divider>
-                    </div>
-
-                    <v-row dense>
-                      <v-col
-                        v-for="system in group.items"
-                        :key="system"
-                        cols="12" sm="6" md="4" lg="3"
-                      >
-                        <v-tooltip
-                            location="top"
-                            :text="getQuotaTooltip(system, project) || functionDescriptionMap[system]"
-                            :disabled="!getQuotaTooltip(system, project) && !functionDescriptionMap[system]"
-                          >
-                          <template v-slot:activator="{ props }">
-                            <div v-bind="props">
-                            <v-checkbox
-                              :model-value="permissionMatrix[system][project]"
-                              @update:model-value="val => handlePermissionToggle(system, project, val)"
-                              :label="system"
-                              hide-details
-                              density="compact"
-                              :disabled="(isEditingSelf && !isGodModeAdmin) || /* 不能編輯自己 (除非是超管/系管) */
-                                          (isGodModeAdmin
-                                            ? (getFieldPermission('permissions') === 'R') /* 超管/系管 只看通用欄位權限 */
-                                            : ( /* 非超管/系管 的禁用條件 */
-                                                getFieldPermission('permissions') === 'R' || /* 1. 通用欄位唯讀 */
-                                                !adminStore.adminScope[project]?.includes('人員管理') || /* 2. 管理員在此建案沒有 '人員管理' 權限 */
-                                                !adminStore.adminScope[project]?.includes(system)      /* 3. 管理員自己沒有要指派的這個 'system' 權限 */
-                                              )
-                                          )"
-                              :color="isQuotaFull(system, project) && !permissionMatrix[system][project] ? 'grey' : undefined"
-                            ></v-checkbox>
-                            <div v-if="isQuotaFull(system, project) && !permissionMatrix[system][project]" class="quota-full-hint">
-                              <v-icon size="12" color="warning" class="mr-1">mdi-alert-circle</v-icon>
-                              <span>已達上限 {{ getQuotaLimit(system, project) }} 人</span>
-                            </div>
-                            </div>
-                          </template>
-                        </v-tooltip>
-                      </v-col>
-                    </v-row>
+          <div v-else-if="targetUser" class="um-edit" :class="{ 'um-edit--single': getFieldPermission('permissions') === 'H' }">
+            <!-- 左欄：基本資料＋帳號 -->
+            <div class="um-edit-side">
+              <v-form ref="basicInfoForm" v-model="isFormValid">
+                <div class="mac-form-label um-label-first">基本資料</div>
+                <div class="mac-form-group mac-form-pad um-fields">
+                  <div v-if="getFieldPermission('phone') !== 'H'" class="um-field">
+                    <label class="mac-sheet-label">手機號碼（登入帳號）</label>
+                    <v-text-field
+                      v-model="targetUser.basicInfo.phone"
+                      variant="solo"
+                      flat
+                      density="compact"
+                      class="mac-vfield"
+                      inputmode="tel"
+                      :rules="rules.required"
+                      :readonly="!isNewUser"
+                      :loading="phoneValidationLoading"
+                      :error-messages="phoneValidationError"
+                      :messages="phoneValidationSuccess"
+                      :hide-details="isNewUser ? false : 'auto'"
+                      @blur="validatePhoneNumber"
+                    ></v-text-field>
                   </div>
-                </v-expansion-panel-text>
-                </v-expansion-panel>
-                </v-expansion-panels>
-                 <div v-if="filteredManagedProjects.length === 0" class="text-center text-grey py-4">
-                    找不到符合條件的建案
+                  <div v-if="getFieldPermission('name') !== 'H'" class="um-field">
+                    <label class="mac-sheet-label">姓名</label>
+                    <v-text-field
+                      v-model="targetUser.basicInfo.name"
+                      variant="solo"
+                      flat
+                      density="compact"
+                      class="mac-vfield"
+                      hide-details="auto"
+                      :rules="rules.required"
+                      :readonly="getFieldPermission('name') === 'R'"
+                    ></v-text-field>
+                  </div>
+                  <div v-if="getFieldPermission('email') !== 'H'" class="um-field">
+                    <label class="mac-sheet-label">Email</label>
+                    <v-text-field
+                      v-model="targetUser.basicInfo.email"
+                      variant="solo"
+                      flat
+                      density="compact"
+                      class="mac-vfield"
+                      hide-details="auto"
+                      inputmode="email"
+                      :readonly="getFieldPermission('email') === 'R'"
+                    ></v-text-field>
+                  </div>
+                  <div v-if="getFieldPermission('password') !== 'H'" class="um-field">
+                    <label class="mac-sheet-label">密碼</label>
+                    <v-text-field
+                      v-if="!isNewUser && getFieldPermission('password') === 'C'"
+                      model-value="********"
+                      variant="solo"
+                      flat
+                      density="compact"
+                      class="mac-vfield"
+                      hide-details
+                      readonly
+                    ></v-text-field>
+                    <v-text-field
+                      v-else
+                      v-model="targetUser.basicInfo.password"
+                      variant="solo"
+                      flat
+                      density="compact"
+                      class="mac-vfield"
+                      hide-details="auto"
+                      :rules="isNewUser ? rules.required : []"
+                      :readonly="getFieldPermission('password') === 'R'"
+                      :placeholder="isNewUser ? '' : '不修改請留空'"
+                    ></v-text-field>
+                  </div>
+                  <div v-if="getFieldPermission('companyName') !== 'H'" class="um-field">
+                    <label class="mac-sheet-label">公司名稱</label>
+                    <v-text-field
+                      v-model="targetUser.basicInfo.companyName"
+                      variant="solo"
+                      flat
+                      density="compact"
+                      class="mac-vfield"
+                      hide-details="auto"
+                      :readonly="getFieldPermission('companyName') === 'R'"
+                    ></v-text-field>
+                  </div>
+                  <div v-if="getFieldPermission('companyTaxId') !== 'H'" class="um-field">
+                    <label class="mac-sheet-label">統一編號</label>
+                    <v-text-field
+                      v-model="targetUser.basicInfo.companyTaxId"
+                      variant="solo"
+                      flat
+                      density="compact"
+                      class="mac-vfield"
+                      hide-details="auto"
+                      inputmode="numeric"
+                      :readonly="getFieldPermission('companyTaxId') === 'R'"
+                    ></v-text-field>
+                  </div>
                 </div>
-              </div>
-              </v-col>
-            </v-row>
-          </div>
-        </v-card-text>
 
-        <v-divider></v-divider>
-        <v-card-actions class="pa-4 bg-grey-lighten-5">
-          <v-spacer></v-spacer>
-          <v-btn color="grey-darken-1" variant="text" @click="closeDialog">取消</v-btn>
-          <v-btn
-            color="indigo"
-            variant="flat"
+                <div v-if="isSuperAdmin" class="mac-form-group um-group-gap">
+                  <label class="mac-form-row um-switch-row">
+                    <span class="mac-form-row-main">
+                      <span class="mac-form-row-title">允許重複登入</span>
+                      <span class="um-row-sub">多個裝置可同時登入</span>
+                    </span>
+                    <input v-model="targetUser.basicInfo.allowMultiLogin" type="checkbox" class="mac-switch">
+                  </label>
+                </div>
+              </v-form>
+
+              <template v-if="!isNewUser">
+                <div class="mac-form-label">帳號</div>
+                <div class="mac-form-group">
+                  <label class="mac-form-row um-switch-row">
+                    <span class="mac-form-row-main">
+                      <span class="mac-form-row-title">帳號狀態</span>
+                      <span class="um-row-sub" :class="{ 'is-danger': targetAccount.disabled }">{{ accountStatusText }}</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      class="mac-switch"
+                      :checked="!targetAccount.disabled"
+                      :disabled="!!targetStatusLockReason || !!statusSaving[targetUser.basicInfo.phone]"
+                      :title="targetStatusLockReason || undefined"
+                      aria-label="帳號啟用"
+                      @change="toggleTargetAccountStatus($event)"
+                    >
+                  </label>
+                  <div v-if="canViewAndEditRoles && editingListUser" class="mac-form-row">
+                    <span class="mac-form-row-main">
+                      <span class="mac-form-row-title">角色</span>
+                    </span>
+                    <button
+                      type="button"
+                      class="um-role-btn um-role-btn--end"
+                      :disabled="editingListUser.phone === selfKey"
+                      :title="editingListUser.phone === selfKey ? '不可變更自己的角色' : '指派角色'"
+                      @click="openRoleMenu($event, editingListUser)"
+                    >
+                      <span v-for="role in editingListUser.roles" :key="role" class="mac-tag mac-tag--blue">{{ role }}</span>
+                      <span v-if="!editingListUser.roles || editingListUser.roles.length === 0" class="mac-form-empty">未指派</span>
+                      <v-icon v-if="editingListUser.phone !== selfKey" size="14" class="um-role-caret">mdi-chevron-down</v-icon>
+                    </button>
+                  </div>
+                  <div class="mac-form-row">
+                    <span class="mac-form-row-main">
+                      <span class="mac-form-row-title">LINE</span>
+                    </span>
+                    <span class="mac-tag" :class="lineMetaOf(targetAccount).tagClass">{{ lineMetaOf(targetAccount).label }}</span>
+                    <button
+                      v-if="isSuperAdmin && lineStateOf(targetAccount) !== 'none'"
+                      type="button"
+                      class="mac-btn mac-btn--sm mac-btn--danger"
+                      @click="openUnbindLineDialog({ phone: targetUser.basicInfo.phone, name: targetUser.basicInfo.name })"
+                    >解除綁定</button>
+                  </div>
+                  <button
+                    v-if="canViewAndEditRoles"
+                    type="button"
+                    class="mac-form-row mac-form-link um-link-row"
+                    @click="openEmailDialog({ phone: targetUser.basicInfo.phone })"
+                  >
+                    <span class="mac-form-row-main"><span class="mac-form-row-title">寄送通知信</span></span>
+                    <v-icon size="18" class="um-row-chevron">mdi-chevron-right</v-icon>
+                  </button>
+                </div>
+              </template>
+            </div>
+
+            <!-- 右欄：系統權限 -->
+            <div v-if="getFieldPermission('permissions') !== 'H'" class="um-edit-main">
+              <div class="mac-form-label um-label-first">
+                <span>系統權限</span>
+                <span class="mac-spacer"></span>
+                <button type="button" class="mac-link-btn" @click="expandAll">全部展開</button>
+                <button type="button" class="mac-link-btn" @click="collapseAll">全部收合</button>
+              </div>
+              <v-text-field
+                v-model="projectSearchQuery"
+                variant="solo"
+                flat
+                density="compact"
+                hide-details
+                clearable
+                class="mac-vfield mac-vfield--search um-panel-search"
+                prepend-inner-icon="mdi-magnify"
+                placeholder="搜尋建案"
+              ></v-text-field>
+
+              <div v-if="permissionMatrix" class="um-panels">
+                <div v-for="project in editProjects" :key="project" class="mac-form-group um-panel">
+                  <div class="um-panel-head" role="button" tabindex="0" @click="togglePanel(project)" @keydown.enter="togglePanel(project)">
+                    <input
+                      type="checkbox"
+                      class="mac-check"
+                      :checked="isAllSelectedForProject(project)"
+                      :indeterminate.prop="isIndeterminateForProject(project)"
+                      :disabled="isProjectToggleDisabled(project)"
+                      :aria-label="`${project} 全選`"
+                      @click.stop
+                      @change="onProjectToggleChange(project, $event)"
+                    >
+                    <span class="um-panel-name">{{ project }}</span>
+                    <span v-if="projectSelectedCount(project) > 0" class="mac-filter-count">{{ projectSelectedCount(project) }}</span>
+                    <v-icon size="18" class="um-chevron" :class="{ 'is-open': isPanelOpen(project) }">mdi-chevron-right</v-icon>
+                  </div>
+                  <div v-if="isPanelOpen(project)" class="um-panel-body">
+                    <div v-for="group in groupedPermissions" :key="group.id" class="um-perm-group" :style="{ '--um-tone': group.tone }">
+                      <div class="um-perm-cat"><v-icon size="13">{{ group.icon }}</v-icon>{{ group.label }}</div>
+                      <div class="um-perm-grid">
+                        <label
+                          v-for="system in group.items"
+                          :key="system"
+                          class="um-check-row"
+                          :class="{ 'is-disabled': isPermissionDisabled(system, project) }"
+                          :title="functionDescriptionMap[system] || undefined"
+                        >
+                          <input
+                            type="checkbox"
+                            class="mac-check"
+                            :checked="!!permissionMatrix[system]?.[project]"
+                            :disabled="isPermissionDisabled(system, project)"
+                            @change="onPermissionChange(system, project, $event)"
+                          >
+                          <span class="um-check-text">
+                            {{ system }}
+                            <small
+                              v-if="getQuotaLimit(system, project) > 0"
+                              class="um-quota"
+                              :class="{ 'is-full': isQuotaFull(system, project) && !permissionMatrix[system]?.[project] }"
+                            >名額 {{ getQuotaUsed(system, project) }}/{{ getQuotaLimit(system, project) }}</small>
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="editProjects.length === 0" class="mac-list-empty">找不到符合條件的建案</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn mac-btn--lg" @click="closeDialog">取消</button>
+          <button
+            type="button"
+            class="mac-btn mac-btn--primary mac-btn--lg"
+            :disabled="saving || loadingDetails || !isFormValid"
             @click="handleSave"
-            :loading="saving"
-            :disabled="!isFormValid"
-            size="large"
-          >
-            {{ isNewUser ? '建立新人員' : '儲存變更' }}
-          </v-btn>
-        </v-card-actions>
+          >{{ saving ? '儲存中…' : (isNewUser ? '建立人員' : '儲存') }}</button>
+        </div>
       </v-card>
     </v-dialog>
 
-    <!-- 批次授權對話框 -->
+    <!-- ===== 批次授權 ===== -->
     <v-dialog
       v-model="batchDialogVisible"
       persistent
-      :max-width="isMobile ? '100%' : '1360px'"
-      :fullscreen="isMobile"
       scrollable
+      :fullscreen="!mdAndUp"
+      :max-width="mdAndUp ? 1080 : undefined"
     >
-      <v-card>
-        <v-card-title class="bg-teal-darken-1 text-white d-flex align-center">
-          <v-icon start>mdi-account-multiple-plus</v-icon>
-          <span class="text-h6">批次授權</span>
-          <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" variant="text" @click="closeBatchDialog" :disabled="batchSaving"></v-btn>
-        </v-card-title>
+      <v-card class="mac-sheet um-sheet" :class="{ 'um-sheet--full': !mdAndUp, 'um-sheet--tall': mdAndUp && !batchResult }">
+        <div class="mac-sheet-head">
+          <span>批次授權</span>
+          <button type="button" class="mac-sheet-close" title="關閉" :disabled="batchSaving" @click="closeBatchDialog"><v-icon size="18">mdi-close</v-icon></button>
+        </div>
 
-        <v-card-text class="pa-4">
+        <div class="um-sheet-body mac-form">
           <!-- 執行結果 -->
-          <div v-if="batchResult">
-            <v-alert v-if="batchResult.granted.length > 0" type="success" variant="tonal" class="mb-3">
-              <div class="font-weight-bold mb-1">成功授權 {{ batchResult.granted.length }} 人</div>
-              <div v-for="g in batchResult.granted" :key="g.name" class="text-caption">
-                {{ g.name }}：{{ g.detail }}
+          <div v-if="batchResult" class="um-result">
+            <div v-if="batchResult.granted.length > 0" class="mac-callout um-callout--success">
+              <v-icon size="16">mdi-check-circle-outline</v-icon>
+              <div>
+                <div class="um-callout-title">成功授權 {{ batchResult.granted.length }} 人</div>
+                <div v-for="g in batchResult.granted" :key="g.name">{{ g.name }}：{{ g.detail }}</div>
               </div>
-            </v-alert>
-            <v-alert v-if="batchResult.unchanged.length > 0" type="info" variant="tonal" class="mb-3">
-              <div class="font-weight-bold mb-1">{{ batchResult.unchanged.length }} 人已具備所選權限，未變更</div>
-              <div class="text-caption">{{ batchResult.unchanged.join('、') }}</div>
-            </v-alert>
-            <v-alert v-if="Object.keys(batchResult.quotaSkipped).length > 0" type="warning" variant="tonal" class="mb-3">
-              <div class="font-weight-bold mb-1">以下權限因名額不足，部分人員未授予</div>
-              <div v-for="(names, sys) in batchResult.quotaSkipped" :key="sys" class="text-caption">
-                {{ sys }}：{{ names.join('、') }}
+            </div>
+            <div v-if="batchResult.unchanged.length > 0" class="mac-callout">
+              <v-icon size="16">mdi-information-outline</v-icon>
+              <div>
+                <div class="um-callout-title">{{ batchResult.unchanged.length }} 人已具備所選權限</div>
+                <div>{{ batchResult.unchanged.join('、') }}</div>
               </div>
-            </v-alert>
-            <v-alert v-if="batchResult.failed.length > 0" type="error" variant="tonal" class="mb-3">
-              <div class="font-weight-bold mb-1">{{ batchResult.failed.length }} 人授權失敗</div>
-              <div v-for="f in batchResult.failed" :key="f.name" class="text-caption">
-                {{ f.name }}：{{ f.message }}
+            </div>
+            <div v-if="Object.keys(batchResult.quotaSkipped).length > 0" class="mac-callout mac-callout--warning">
+              <v-icon size="16">mdi-alert-outline</v-icon>
+              <div>
+                <div class="um-callout-title">名額不足，以下未授予</div>
+                <div v-for="(names, sys) in batchResult.quotaSkipped" :key="sys">{{ sys }}：{{ names.join('、') }}</div>
               </div>
-            </v-alert>
+            </div>
+            <div v-if="batchResult.failed.length > 0" class="mac-callout mac-callout--error">
+              <v-icon size="16">mdi-alert-circle-outline</v-icon>
+              <div>
+                <div class="um-callout-title">{{ batchResult.failed.length }} 人授權失敗</div>
+                <div v-for="f in batchResult.failed" :key="f.name">{{ f.name }}：{{ f.message }}</div>
+              </div>
+            </div>
+            <div
+              v-if="batchResult.granted.length === 0 && batchResult.unchanged.length === 0 && batchResult.failed.length === 0 && Object.keys(batchResult.quotaSkipped).length === 0"
+              class="mac-list-empty"
+            >沒有變更</div>
           </div>
 
           <!-- 設定畫面 -->
-          <div v-else>
-            <v-row>
-              <!-- 左欄：選擇建案與權限 -->
-              <v-col cols="12" md="6" class="batch-col batch-left-col">
-            <!-- 步驟一：選擇建案（可複選） -->
-            <div class="text-subtitle-1 font-weight-bold mb-2">
-              <v-icon size="small" color="teal-darken-1" class="mr-1">mdi-numeric-1-circle</v-icon>
-              選擇建案
-              <span v-if="batchProjects.length > 0" class="text-caption text-teal-darken-1">（已選 {{ batchProjects.length }} 個建案）</span>
-            </div>
-            <v-select
-              v-model="batchProjects"
-              :items="batchGrantableProjects"
-              label="建案（可複選）"
-              variant="outlined"
-              density="comfortable"
-              multiple
-              chips
-              closable-chips
-              hide-details
-              class="mb-4 flex-shrink-0"
-              :disabled="batchSaving"
-            ></v-select>
+          <div v-else class="um-edit um-edit--even">
+            <div class="um-edit-side">
+              <div class="mac-form-label um-label-first">
+                <span class="um-step">1</span><span>建案</span>
+                <span v-if="batchProjects.length > 0" class="um-label-note">已選 {{ batchProjects.length }}</span>
+              </div>
+              <v-select
+                v-model="batchProjects"
+                :items="batchGrantableProjects"
+                multiple
+                chips
+                closable-chips
+                variant="solo"
+                flat
+                density="compact"
+                hide-details
+                placeholder="選擇建案"
+                class="mac-vfield"
+                :disabled="batchSaving"
+                :menu-props="{ contentClass: 'mac-menu' }"
+              ></v-select>
 
-            <!-- 步驟二：各建案分別選擇權限 -->
-            <div class="text-subtitle-1 font-weight-bold mb-2">
-              <v-icon size="small" color="teal-darken-1" class="mr-1">mdi-numeric-2-circle</v-icon>
-              選擇要授予的權限
-              <span v-if="batchTotalSelectedCount > 0" class="text-caption text-teal-darken-1">（共 {{ batchTotalSelectedCount }} 項）</span>
-            </div>
-            <div v-if="batchProjects.length === 0" class="batch-section-container mb-4 d-flex align-center justify-center text-grey text-body-2">請先選擇建案</div>
-            <div v-else class="batch-section-container mb-4">
-              <v-expansion-panels v-model="batchOpenPanels" multiple>
-                <v-expansion-panel
-                  v-for="pp in batchProjectPanels"
-                  :key="pp.project"
-                  :value="pp.project"
-                >
-                  <v-expansion-panel-title>
-                    <span class="font-weight-bold mr-2">{{ pp.project }}</span>
-                    <v-chip
-                      v-if="(batchSystemsByProject[pp.project] || []).length > 0"
-                      size="x-small" color="teal-darken-1" label
-                    >已選 {{ batchSystemsByProject[pp.project].length }} 項</v-chip>
-                    <v-chip v-else size="x-small" color="warning" variant="tonal" label>未選權限</v-chip>
-                    <v-spacer></v-spacer>
-                    <v-btn
+              <div class="mac-form-label">
+                <span class="um-step">2</span><span>權限</span>
+                <span v-if="batchTotalSelectedCount > 0" class="um-label-note">已選 {{ batchTotalSelectedCount }}</span>
+              </div>
+              <div v-if="batchProjects.length === 0" class="mac-form-group mac-form-pad mac-form-empty">請先選擇建案</div>
+              <div v-else class="um-panels">
+                <div v-for="pp in batchProjectPanels" :key="pp.project" class="mac-form-group um-panel">
+                  <div class="um-panel-head" role="button" tabindex="0" @click="toggleBatchPanel(pp.project)" @keydown.enter="toggleBatchPanel(pp.project)">
+                    <span class="um-panel-name">{{ pp.project }}</span>
+                    <span v-if="(batchSystemsByProject[pp.project] || []).length > 0" class="mac-filter-count">{{ batchSystemsByProject[pp.project].length }}</span>
+                    <button
                       v-if="batchProjects.length > 1 && (batchSystemsByProject[pp.project] || []).length > 0"
-                      size="x-small"
-                      variant="tonal"
-                      color="teal-darken-1"
-                      class="mr-3"
+                      type="button"
+                      class="mac-link-btn"
                       :disabled="batchSaving"
                       @click.stop="applyBatchSystemsToAll(pp.project)"
-                    >套用到其他建案</v-btn>
-                  </v-expansion-panel-title>
-                  <v-expansion-panel-text>
-                    <div v-for="group in pp.groups" :key="group.id" class="mb-3">
-                      <div class="d-flex align-center mb-1">
-                        <v-icon :color="group.color" size="small" class="mr-2">{{ group.icon }}</v-icon>
-                        <span class="text-subtitle-2 font-weight-bold" :style="{ color: group.color }">{{ group.label }}</span>
-                        <v-divider class="ml-3 flex-grow-1"></v-divider>
-                      </div>
-                      <v-row dense>
-                        <v-col v-for="system in group.items" :key="system" cols="12" sm="6" md="4">
-                          <v-checkbox
+                    >套用到其他建案</button>
+                    <v-icon size="18" class="um-chevron" :class="{ 'is-open': isBatchPanelOpen(pp.project) }">mdi-chevron-right</v-icon>
+                  </div>
+                  <div v-if="isBatchPanelOpen(pp.project)" class="um-panel-body">
+                    <div v-for="group in pp.groups" :key="group.id" class="um-perm-group" :style="{ '--um-tone': group.tone }">
+                      <div class="um-perm-cat"><v-icon size="13">{{ group.icon }}</v-icon>{{ group.label }}</div>
+                      <div class="um-perm-grid um-perm-grid--2">
+                        <label v-for="system in group.items" :key="system" class="um-check-row" :class="{ 'is-disabled': batchSaving }">
+                          <input
                             v-model="batchSystemsByProject[pp.project]"
+                            type="checkbox"
+                            class="mac-check"
                             :value="system"
-                            :label="system"
-                            hide-details
-                            density="compact"
                             :disabled="batchSaving"
-                          ></v-checkbox>
-                          <div v-if="getQuotaLimit(system, pp.project) > 0" class="batch-quota-hint">
-                            名額 {{ getQuotaUsed(system, pp.project) }}/{{ getQuotaLimit(system, pp.project) }} 人
-                          </div>
-                        </v-col>
-                      </v-row>
+                          >
+                          <span class="um-check-text">
+                            {{ system }}
+                            <small v-if="getQuotaLimit(system, pp.project) > 0" class="um-quota">名額 {{ getQuotaUsed(system, pp.project) }}/{{ getQuotaLimit(system, pp.project) }}</small>
+                          </span>
+                        </label>
+                      </div>
                     </div>
-                  </v-expansion-panel-text>
-                </v-expansion-panel>
-              </v-expansion-panels>
-            </div>
-
-              </v-col>
-
-              <!-- 右欄：勾選人員 -->
-              <v-col cols="12" md="6" class="batch-col">
-                <v-divider class="mb-4 d-md-none"></v-divider>
-            <!-- 步驟三：勾選人員 -->
-            <div class="text-subtitle-1 font-weight-bold mb-2">
-              <v-icon size="small" color="teal-darken-1" class="mr-1">mdi-numeric-3-circle</v-icon>
-              勾選被授權的人員
-              <span v-if="batchSelectedUsers.length > 0" class="text-caption text-teal-darken-1">（已選 {{ batchSelectedUsers.length }} 人）</span>
-            </div>
-            <div class="d-flex align-center mb-2 flex-wrap ga-2">
-              <v-text-field
-                v-model="batchUserSearch"
-                label="搜尋姓名或手機"
-                variant="outlined"
-                density="compact"
-                hide-details
-                prepend-inner-icon="mdi-magnify"
-                clearable
-                style="max-width: 260px;"
-                :disabled="batchSaving"
-              ></v-text-field>
-              <v-select
-                v-model="batchCompanyFilter"
-                :items="batchCompanyOptions"
-                label="依公司篩選"
-                variant="outlined"
-                density="compact"
-                hide-details
-                prepend-inner-icon="mdi-domain"
-                clearable
-                style="max-width: 260px;"
-                :disabled="batchSaving"
-              ></v-select>
-              <v-btn size="small" variant="tonal" @click="selectAllBatchUsers" :disabled="batchSaving">全選</v-btn>
-              <v-btn size="small" variant="tonal" @click="batchSelectedUsers = []" :disabled="batchSaving">清除</v-btn>
-            </div>
-            <div class="batch-user-list">
-              <div
-                v-for="u in batchUserList"
-                :key="u.phone"
-                class="d-flex align-center px-2 batch-user-row"
-              >
-                <v-checkbox
-                  v-model="batchSelectedUsers"
-                  :value="u.phone"
-                  hide-details
-                  density="compact"
-                  :disabled="!!u.disabledReason || batchSaving"
-                >
-                  <template v-slot:label>
-                    <span class="mr-2">{{ u.name }}</span>
-                    <span class="text-caption text-grey mr-2">{{ u.phone }}</span>
-                    <span v-if="u.companyName" class="text-caption text-blue-grey">{{ u.companyName }}</span>
-                  </template>
-                </v-checkbox>
-                <v-spacer></v-spacer>
-                <v-chip v-if="u.disabledReason" size="x-small" color="grey" label class="ml-1">{{ u.disabledReason }}</v-chip>
-                <v-chip v-else-if="u.hasAll" size="x-small" color="green" label class="ml-1">已具備所選權限</v-chip>
-                <v-chip v-else-if="batchTotalSelectedCount > 0 && u.ownedCount > 0" size="x-small" color="blue-grey" label class="ml-1">
-                  已有 {{ u.ownedCount }}/{{ batchTotalSelectedCount }} 項
-                </v-chip>
+                  </div>
+                </div>
               </div>
-              <div v-if="batchUserList.length === 0" class="text-center text-grey py-4">找不到符合條件的人員</div>
             </div>
 
-            <div v-if="batchSaving" class="text-center mt-2">
-              <v-progress-circular indeterminate color="teal-darken-1" size="24" class="mr-2"></v-progress-circular>
-              <span class="text-body-2">{{ batchProgress }}</span>
+            <div class="um-edit-main">
+              <div class="mac-form-label um-label-first">
+                <span class="um-step">3</span><span>人員</span>
+                <span v-if="batchSelectedUsers.length > 0" class="um-label-note">已選 {{ batchSelectedUsers.length }}</span>
+                <span class="mac-spacer"></span>
+                <button type="button" class="mac-link-btn" :disabled="batchSaving" @click="selectAllBatchUsers">全選</button>
+                <button type="button" class="mac-link-btn" :disabled="batchSaving" @click="batchSelectedUsers = []">清除</button>
+              </div>
+              <div class="um-batch-filters">
+                <v-text-field
+                  v-model="batchUserSearch"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  hide-details
+                  clearable
+                  class="mac-vfield mac-vfield--search"
+                  prepend-inner-icon="mdi-magnify"
+                  placeholder="搜尋姓名、手機"
+                  :disabled="batchSaving"
+                ></v-text-field>
+                <v-select
+                  v-model="batchCompanyFilter"
+                  :items="batchCompanyOptions"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  hide-details
+                  clearable
+                  class="mac-vfield"
+                  placeholder="全部公司"
+                  :disabled="batchSaving"
+                  :menu-props="{ contentClass: 'mac-menu' }"
+                ></v-select>
+              </div>
+              <div class="mac-form-group um-batch-users">
+                <label
+                  v-for="u in batchUserList"
+                  :key="u.phone"
+                  class="um-batch-user"
+                  :class="{ 'is-disabled': !!u.disabledReason || batchSaving }"
+                >
+                  <input
+                    v-model="batchSelectedUsers"
+                    type="checkbox"
+                    class="mac-check"
+                    :value="u.phone"
+                    :disabled="!!u.disabledReason || batchSaving"
+                  >
+                  <span class="um-batch-user-main">
+                    <span class="um-batch-user-name">{{ u.name }}<span v-if="u.accountDisabled" class="mac-tag mac-tag--red">已停用</span></span>
+                    <span class="um-batch-user-sub">{{ u.phone }}<template v-if="u.companyName">・{{ u.companyName }}</template></span>
+                  </span>
+                  <span v-if="u.disabledReason" class="mac-tag">{{ u.disabledReason }}</span>
+                  <span v-else-if="u.hasAll" class="mac-tag mac-tag--green">已具備</span>
+                  <span v-else-if="batchTotalSelectedCount > 0 && u.ownedCount > 0" class="mac-tag">已有 {{ u.ownedCount }}/{{ batchTotalSelectedCount }}</span>
+                </label>
+                <div v-if="batchUserList.length === 0" class="mac-list-empty">找不到符合條件的人員</div>
+              </div>
             </div>
-              </v-col>
-            </v-row>
           </div>
-        </v-card-text>
+        </div>
 
-        <v-divider></v-divider>
-        <v-card-actions class="pa-4 bg-grey-lighten-5">
-          <v-spacer></v-spacer>
+        <div class="mac-sheet-foot">
           <template v-if="!batchResult">
-            <v-btn color="grey-darken-1" variant="text" @click="closeBatchDialog" :disabled="batchSaving">取消</v-btn>
-            <v-btn
-              color="teal-darken-1"
-              variant="flat"
-              size="large"
-              :loading="batchSaving"
-              :disabled="batchTotalSelectedCount === 0 || batchSelectedUsers.length === 0"
+            <span v-if="batchSaving" class="um-progress">
+              <v-progress-circular indeterminate size="16" width="2" color="grey"></v-progress-circular>
+              <span>{{ batchProgress }}</span>
+            </span>
+            <span class="mac-spacer"></span>
+            <button type="button" class="mac-btn mac-btn--lg" :disabled="batchSaving" @click="closeBatchDialog">取消</button>
+            <button
+              type="button"
+              class="mac-btn mac-btn--primary mac-btn--lg"
+              :disabled="batchSaving || batchTotalSelectedCount === 0 || batchSelectedUsers.length === 0"
               @click="handleBatchGrant"
-            >
-              批次授權（{{ batchSelectedUsers.length }} 人）
-            </v-btn>
+            >{{ batchSaving ? '授權中…' : `授權 ${batchSelectedUsers.length} 人` }}</button>
           </template>
-          <v-btn v-else color="teal-darken-1" variant="flat" @click="closeBatchDialog">完成</v-btn>
-        </v-card-actions>
+          <template v-else>
+            <span class="mac-spacer"></span>
+            <button type="button" class="mac-btn mac-btn--primary mac-btn--lg" @click="closeBatchDialog">完成</button>
+          </template>
+        </div>
       </v-card>
     </v-dialog>
 
-    <!-- 郵件發送對話框 -->
-    <v-dialog v-model="emailDialogVisible" max-width="800px" persistent>
-      <v-card>
-        <v-card-title class="bg-indigo text-white d-flex align-center">
-          <v-icon start>mdi-email-fast</v-icon>
-          傳送系統通知郵件
-          <v-spacer></v-spacer>
-          <v-btn icon="mdi-close" variant="text" @click="emailDialogVisible = false"></v-btn>
-        </v-card-title>
-        
-        <v-card-text class="pa-4">
-          <v-row>
-            <v-col cols="12" md="6">
+    <!-- ===== 權限功能 ===== -->
+    <v-dialog v-model="isFunctionDialogVisible" persistent scrollable max-width="560" content-class="mac-dialog-fit">
+      <v-card class="mac-sheet um-sheet">
+        <div class="mac-sheet-head">
+          <span>{{ isNewFunction ? '新增權限功能' : '編輯權限功能' }}</span>
+          <button type="button" class="mac-sheet-close" title="關閉" @click="isFunctionDialogVisible = false"><v-icon size="18">mdi-close</v-icon></button>
+        </div>
+        <div class="um-sheet-body mac-form um-sheet-pad">
+          <v-form ref="functionForm">
+            <div class="mac-form-group mac-form-pad um-fields">
+              <div class="um-field">
+                <label class="mac-sheet-label">功能 ID</label>
+                <v-text-field
+                  v-model="editedFunction.functionId"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  class="mac-vfield"
+                  hide-details="auto"
+                  placeholder="newPermission"
+                  :readonly="!isNewFunction"
+                  :rules="[v => !!v || '必填']"
+                ></v-text-field>
+              </div>
+              <div class="um-field">
+                <label class="mac-sheet-label">顯示名稱</label>
+                <v-text-field
+                  v-model="editedFunction.name"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  class="mac-vfield"
+                  hide-details="auto"
+                  :rules="[v => !!v || '必填']"
+                ></v-text-field>
+              </div>
+              <div class="um-field">
+                <label class="mac-sheet-label">描述</label>
+                <v-textarea
+                  v-model="editedFunction.description"
+                  variant="solo"
+                  flat
+                  density="compact"
+                  class="mac-vfield"
+                  hide-details
+                  rows="2"
+                  auto-grow
+                ></v-textarea>
+              </div>
+            </div>
+
+            <div class="mac-form-group um-group-gap">
+              <label class="mac-form-row um-switch-row">
+                <span class="mac-form-row-main"><span class="mac-form-row-title">核心功能</span></span>
+                <input v-model="editedFunction.isCore" type="checkbox" class="mac-switch" :disabled="!isNewFunction">
+              </label>
+            </div>
+
+            <div class="mac-form-label">各建案名額上限</div>
+            <div class="mac-form-group um-quota-list">
+              <div v-for="project in projectStore.projectsList" :key="project.id" class="mac-form-row um-quota-row">
+                <span class="mac-form-row-main">{{ project.name }}</span>
+                <span class="mac-form-input mac-form-unit um-quota-input">
+                  <input
+                    type="number"
+                    min="0"
+                    inputmode="numeric"
+                    placeholder="不限"
+                    :value="editedFunction.quotaPerProject?.[project.id] || ''"
+                    :aria-label="`${project.name} 名額上限`"
+                    @input="setQuota(project.id, $event.target.value)"
+                  >
+                  <span>人</span>
+                </span>
+              </div>
+              <div v-if="projectStore.projectsList.length === 0" class="mac-form-pad mac-form-empty">沒有建案</div>
+            </div>
+          </v-form>
+        </div>
+        <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn mac-btn--lg" @click="isFunctionDialogVisible = false">取消</button>
+          <button type="button" class="mac-btn mac-btn--primary mac-btn--lg" :disabled="savingFunction" @click="saveSystemFunction">
+            {{ savingFunction ? '儲存中…' : '儲存' }}
+          </button>
+        </div>
+      </v-card>
+    </v-dialog>
+
+    <!-- ===== 寄送通知信 ===== -->
+    <v-dialog v-model="emailDialogVisible" persistent scrollable max-width="760" content-class="mac-dialog-fit">
+      <v-card class="mac-sheet um-sheet">
+        <div class="mac-sheet-head">
+          <span>寄送通知信</span>
+          <button type="button" class="mac-sheet-close" title="關閉" @click="emailDialogVisible = false"><v-icon size="18">mdi-close</v-icon></button>
+        </div>
+        <div class="um-sheet-body um-sheet-pad um-mail">
+          <div class="um-mail-grid">
+            <div class="um-field">
+              <label class="mac-sheet-label">範本</label>
               <v-select
                 v-model="selectedTemplateKey"
-                :items="Object.entries(emailTemplates).map(([key, t]) => ({ title: t.name, value: key }))"
-                label="選擇郵件範本"
-                variant="outlined"
+                :items="emailTemplateOptions"
+                variant="solo"
+                flat
                 density="compact"
                 hide-details
-                class="mb-4"
+                class="mac-vfield"
+                :menu-props="{ contentClass: 'mac-menu' }"
               ></v-select>
-            </v-col>
-            <v-col cols="12" md="6">
+            </div>
+            <div class="um-field">
+              <label class="mac-sheet-label">收件人</label>
               <v-text-field
                 v-model="emailData.to"
-                label="收件人 Email"
-                variant="outlined"
+                variant="solo"
+                flat
                 density="compact"
                 hide-details
-                class="mb-4"
+                class="mac-vfield"
+                inputmode="email"
               ></v-text-field>
-            </v-col>
-            <v-col cols="12">
-              <v-text-field
+            </div>
+            <div class="um-field um-field--wide">
+              <label class="mac-sheet-label">主旨</label>
+              <!-- 用可換行的欄位：手機上長主旨不被截斷 -->
+              <v-textarea
                 v-model="emailData.subject"
-                label="郵件主旨"
-                variant="outlined"
+                variant="solo"
+                flat
                 density="compact"
-                class="mb-2"
-              ></v-text-field>
-            </v-col>
-            <v-col cols="12">
+                hide-details
+                rows="1"
+                auto-grow
+                no-resize
+                class="mac-vfield"
+              ></v-textarea>
+            </div>
+            <div class="um-field um-field--wide">
+              <label class="mac-sheet-label">附件</label>
               <v-file-input
                 v-model="attachments"
-                label="上傳附件 (可多選)"
-                variant="outlined"
+                variant="solo"
+                flat
                 density="compact"
+                hide-details
                 multiple
-                prepend-icon="mdi-paperclip"
-                show-size
                 chips
+                show-size
+                prepend-icon=""
+                prepend-inner-icon="mdi-paperclip"
                 placeholder="選取檔案"
+                class="mac-vfield"
               ></v-file-input>
-            </v-col>
-          </v-row>
- 
-          <div class="editor-container mt-2">
-            <!-- Tiptap 工具列 -->
-            <div v-if="editor" class="editor-toolbar d-flex flex-wrap pa-1">
-                <v-btn 
-                  icon="mdi-format-bold" 
-                  size="small"
-                  variant="text"
-                  :active="editor.isActive('bold')" 
-                  @click="editor.chain().focus().toggleBold().run()"
-                  class="mr-1 mb-1"
-                ></v-btn>
-                <v-btn 
-                  icon="mdi-format-italic" 
-                  size="small"
-                  variant="text"
-                  :active="editor.isActive('italic')" 
-                  @click="editor.chain().focus().toggleItalic().run()"
-                  class="mr-1 mb-1"
-                ></v-btn>
-                <v-btn 
-                  icon="mdi-format-list-bulleted" 
-                  size="small"
-                  variant="text"
-                  :active="editor.isActive('bulletList')" 
-                  @click="editor.chain().focus().toggleBulletList().run()"
-                  class="mr-1 mb-1"
-                ></v-btn>
-                <v-btn 
-                  icon="mdi-format-align-left" 
-                  size="small"
-                  variant="text"
-                  :active="editor.isActive({ textAlign: 'left' })" 
-                  @click="editor.chain().focus().setTextAlign('left').run()"
-                  class="mr-1 mb-1"
-                ></v-btn>
-                <v-btn 
-                  icon="mdi-format-align-center" 
-                  size="small"
-                  variant="text"
-                  :active="editor.isActive({ textAlign: 'center' })" 
-                  @click="editor.chain().focus().setTextAlign('center').run()"
-                  class="mr-1 mb-1"
-                ></v-btn>
-                <v-btn 
-                  icon="mdi-palette" 
-                  size="small"
-                  variant="text"
-                  title="選擇文字顏色"
-                  class="mr-1 mb-1 position-relative"
-                >
-                  <v-icon>mdi-palette</v-icon>
-                  <input
-                    type="color"
-                    @input="editor.chain().focus().setColor($event.target.value).run()"
-                    class="color-picker-input"
-                  />
-                </v-btn>
             </div>
-            
-            <!-- Tiptap 編輯區域 -->
-            <editor-content :editor="editor" class="tiptap-editor" />
           </div>
-        </v-card-text>
- 
-        <v-divider></v-divider>
-        <v-card-actions class="pa-4 bg-grey-lighten-5">
-          <v-spacer></v-spacer>
-          <v-btn color="grey" variant="text" @click="emailDialogVisible = false">取消</v-btn>
-          <v-btn 
-            color="indigo" 
-            variant="flat" 
-            @click="handleSendEmail" 
-            :loading="sendingEmail"
-            prepend-icon="mdi-send"
-          >
-            立即發送
-          </v-btn>
-        </v-card-actions>
+
+          <div class="um-editor">
+            <div v-if="editor" class="um-editor-bar">
+              <button type="button" class="mac-icon-btn" :class="{ 'is-on': editor.isActive('bold') }" title="粗體" @click="editor.chain().focus().toggleBold().run()">
+                <v-icon size="17">mdi-format-bold</v-icon>
+              </button>
+              <button type="button" class="mac-icon-btn" :class="{ 'is-on': editor.isActive('italic') }" title="斜體" @click="editor.chain().focus().toggleItalic().run()">
+                <v-icon size="17">mdi-format-italic</v-icon>
+              </button>
+              <button type="button" class="mac-icon-btn" :class="{ 'is-on': editor.isActive('bulletList') }" title="項目清單" @click="editor.chain().focus().toggleBulletList().run()">
+                <v-icon size="17">mdi-format-list-bulleted</v-icon>
+              </button>
+              <span class="um-editor-sep"></span>
+              <button type="button" class="mac-icon-btn" :class="{ 'is-on': editor.isActive({ textAlign: 'left' }) }" title="靠左" @click="editor.chain().focus().setTextAlign('left').run()">
+                <v-icon size="17">mdi-format-align-left</v-icon>
+              </button>
+              <button type="button" class="mac-icon-btn" :class="{ 'is-on': editor.isActive({ textAlign: 'center' }) }" title="置中" @click="editor.chain().focus().setTextAlign('center').run()">
+                <v-icon size="17">mdi-format-align-center</v-icon>
+              </button>
+              <span class="um-editor-sep"></span>
+              <label class="mac-icon-btn um-color-btn" title="文字顏色">
+                <v-icon size="17">mdi-palette-outline</v-icon>
+                <input type="color" aria-label="文字顏色" @input="editor.chain().focus().setColor($event.target.value).run()">
+              </label>
+            </div>
+            <editor-content :editor="editor" class="um-editor-content" />
+          </div>
+        </div>
+        <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn mac-btn--lg" @click="emailDialogVisible = false">取消</button>
+          <button type="button" class="mac-btn mac-btn--primary mac-btn--lg" :disabled="sendingEmail" @click="handleSendEmail">
+            <v-icon size="16">mdi-send</v-icon><span>{{ sendingEmail ? '寄送中…' : '寄出' }}</span>
+          </button>
+        </div>
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="deleteRoleDialog" persistent max-width="400px">
-        <v-card>
-            <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
-              <v-icon start color="red-darken-2">mdi-alert-circle-outline</v-icon>
-              確認刪除角色
-            </v-card-title>
-            <v-card-text>
-                您確定要刪除「{{ roleToDelete.name }}」這個角色嗎？此操作無法復原。
-            </v-card-text>
-            <v-card-actions>
-                <v-spacer></v-spacer>
-                <v-btn color="grey" text @click="deleteRoleDialog = false">取消</v-btn>
-                <v-btn color="error" text @click="executeDeleteRole" :loading="deletingRole">確認刪除</v-btn>
-            </v-card-actions>
-        </v-card>
-    </v-dialog>
-
-    <!-- 解除 LINE 綁定確認（僅超級管理員） -->
-    <v-dialog v-model="isUnbindLineDialogVisible" persistent max-width="440px">
-      <v-card v-if="unbindLineTarget">
-        <v-card-title class="text-h6 d-flex align-center bg-red-lighten-4">
-          <v-icon start color="red-darken-2">mdi-link-variant-off</v-icon>
-          解除 LINE 綁定
-        </v-card-title>
-        <v-card-text class="pt-4">
-          <p class="text-body-2 mb-3">
-            確定要解除
-            <strong>{{ unbindLineTarget.name || unbindLineTarget.phone }}</strong>
-            （{{ unbindLineTarget.phone }}）的 LINE 綁定嗎？
-          </p>
-          <v-alert type="warning" variant="tonal" density="compact" class="text-caption">
-            解除後該用戶將無法透過 LINE 進入各項系統，也不會再收到 LINE 通知，需由本人重新完成綁定流程。
-          </v-alert>
-        </v-card-text>
-        <v-card-actions class="pa-3 pt-0">
-          <v-spacer></v-spacer>
-          <v-btn variant="text" color="grey" :disabled="isUnbindingLine" @click="isUnbindLineDialogVisible = false">取消</v-btn>
-          <v-btn color="error" variant="flat" :loading="isUnbindingLine" @click="handleUnbindLine">確認解除</v-btn>
-        </v-card-actions>
+    <!-- ===== 新增角色 ===== -->
+    <v-dialog v-model="newRoleDialog" max-width="380" content-class="mac-dialog-fit">
+      <v-card class="mac-sheet">
+        <div class="mac-sheet-head">
+          <span>新增角色</span>
+          <button type="button" class="mac-sheet-close" title="關閉" @click="newRoleDialog = false"><v-icon size="18">mdi-close</v-icon></button>
+        </div>
+        <form class="um-sheet-pad" @submit.prevent="confirmCreateRole">
+          <label class="mac-sheet-label">角色名稱</label>
+          <v-text-field
+            v-model="newRoleName"
+            variant="solo"
+            flat
+            density="compact"
+            hide-details
+            autofocus
+            class="mac-vfield"
+          ></v-text-field>
+        </form>
+        <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn mac-btn--lg" @click="newRoleDialog = false">取消</button>
+          <button type="button" class="mac-btn mac-btn--primary mac-btn--lg" :disabled="!newRoleName.trim()" @click="confirmCreateRole">新增</button>
+        </div>
       </v-card>
     </v-dialog>
-  </v-container>
+
+    <!-- ===== 刪除角色 ===== -->
+    <v-dialog v-model="deleteRoleDialog" persistent max-width="380" content-class="mac-dialog-fit">
+      <v-card v-if="roleToDelete" class="mac-sheet">
+        <div class="um-alert">
+          <v-icon size="40" color="#d62d20">mdi-alert-circle-outline</v-icon>
+          <div class="um-alert-title">刪除「{{ roleToDelete.name }}」？</div>
+          <div class="mac-sheet-note">刪除後無法復原。</div>
+        </div>
+        <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn mac-btn--lg" :disabled="deletingRole" @click="deleteRoleDialog = false">取消</button>
+          <button type="button" class="mac-btn mac-btn--danger-fill mac-btn--lg" :disabled="deletingRole" @click="executeDeleteRole">
+            {{ deletingRole ? '刪除中…' : '刪除' }}
+          </button>
+        </div>
+      </v-card>
+    </v-dialog>
+
+    <!-- ===== 解除 LINE 綁定（僅超級管理員） ===== -->
+    <v-dialog v-model="isUnbindLineDialogVisible" persistent max-width="380" content-class="mac-dialog-fit">
+      <v-card v-if="unbindLineTarget" class="mac-sheet">
+        <div class="um-alert">
+          <v-icon size="40" color="#d62d20">mdi-link-variant-off</v-icon>
+          <div class="um-alert-title">解除 {{ unbindLineTarget.name || unbindLineTarget.phone }} 的 LINE 綁定？</div>
+          <div class="mac-sheet-note">解除後需由本人重新綁定。</div>
+        </div>
+        <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn mac-btn--lg" :disabled="isUnbindingLine" @click="isUnbindLineDialogVisible = false">取消</button>
+          <button type="button" class="mac-btn mac-btn--danger-fill mac-btn--lg" :disabled="isUnbindingLine" @click="handleUnbindLine">
+            {{ isUnbindingLine ? '解除中…' : '解除綁定' }}
+          </button>
+        </div>
+      </v-card>
+    </v-dialog>
+  </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useUserStore } from '@/store/user';
 import { useProjectStore } from '@/store/projectStore';
@@ -1252,6 +1228,7 @@ import {
   createSystemFunction,
   updateSystemFunction,
   unbindLineIdByAdmin,
+  setUserAccountStatus,
   // fetchUserManagementInitialData, // 由 adminStore 處理
 } from '@/api.js';
 import { useToast } from 'vue-toastification';
@@ -1264,7 +1241,7 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { TextAlign } from '@tiptap/extension-text-align';
 
 
-const { mobile: isMobile } = useDisplay();
+const { mdAndUp } = useDisplay();
 const userStore = useUserStore();
 const projectStore = useProjectStore();
 const toast = useToast();
@@ -1287,11 +1264,11 @@ const editedFunction = ref({
 });
 const functionTableHeaders = [
   { title: '顯示名稱', key: 'name' },
-  { title: '功能 ID (內部代號)', key: 'functionId' },
+  { title: '功能 ID', key: 'functionId' },
   { title: '描述', key: 'description', sortable: false },
-  { title: '核心功能', key: 'isCore' },
-  { title: '名額設定', key: 'quotaSummary', sortable: false },
-  { title: '操作', key: 'actions', sortable: false, align: 'center' },
+  { title: '核心', key: 'isCore' },
+  { title: '名額', key: 'quotaSummary', sortable: false },
+  { title: '', key: 'actions', sortable: false, align: 'end', width: '56px' },
 ];
 
 
@@ -1303,6 +1280,8 @@ const saving = ref(false);
 const errorMessage = ref('');
 const showErrorAlert = ref(false);
 const searchPhone = ref('');
+const statusFilter = ref('all'); // all | active | disabled
+const refreshing = ref(false);
 
 // --- Data (本地 state 已被 store 取代) ---
 // const adminScope = ref({}); // 由 store 取代
@@ -1382,6 +1361,8 @@ const emailTemplates = {
     content: '<p>{NAME} 您好：</p><p>請在此輸入郵件內容...</p>'
   }
 };
+
+const emailTemplateOptions = Object.entries(emailTemplates).map(([key, t]) => ({ title: t.name, value: key }));
 
 // 初始化 Tiptap 編輯器
 const editor = useEditor({
@@ -1482,7 +1463,7 @@ const initiallyVisibleUsers = computed(() => {
 // --- END: 修改 initiallyVisibleUsers ---
 
 
-const filteredUsers = computed(() => {
+const searchedUsers = computed(() => {
   const lowerQuery = searchPhone.value?.toLowerCase().trim();
 
   // 1. 決定基礎列表
@@ -1506,6 +1487,25 @@ const filteredUsers = computed(() => {
     (user.companyName && user.companyName.toLowerCase().includes(lowerQuery)) ||
     user.projectsText.toLowerCase().includes(lowerQuery)
   );
+});
+
+// 狀態篩選（全部／啟用中／已停用）疊在搜尋結果上
+const statusCounts = computed(() => {
+  const list = searchedUsers.value;
+  const disabled = list.filter(u => u.disabled).length;
+  return { all: list.length, active: list.length - disabled, disabled };
+});
+
+const statusOptions = computed(() => [
+  { value: 'all', label: '全部', count: statusCounts.value.all },
+  { value: 'active', label: '啟用中', count: statusCounts.value.active },
+  { value: 'disabled', label: '已停用', count: statusCounts.value.disabled },
+]);
+
+const filteredUsers = computed(() => {
+  if (statusFilter.value === 'active') return searchedUsers.value.filter(u => !u.disabled);
+  if (statusFilter.value === 'disabled') return searchedUsers.value.filter(u => u.disabled);
+  return searchedUsers.value;
 });
 
 // ✓ 新增：建案分組計算屬性
@@ -1567,6 +1567,12 @@ const groupedProjects = computed(() => {
 });
 
 
+// 建案分頁：左側選建案、右側列出成員；搜尋後選取的建案不在結果內時改選第一個
+const selectedProjectId = ref(null);
+const activeProjectGroup = computed(() =>
+  groupedProjects.value.find(g => g.id === selectedProjectId.value) || groupedProjects.value[0] || null
+);
+
 const userManagementFields = [
     { key: 'phone', label: '手機號碼' },
     { key: 'name', label: '姓名' },
@@ -1592,6 +1598,7 @@ const permissionCategories = [
     label: '銷售系統',
     icon: 'mdi-home-city',
     color: 'blue-darken-2',
+    tone: '#0071e3',
     keywords: ['銷控', '報價', '銷售StandBy', '請佣']
   },
   {
@@ -1599,6 +1606,7 @@ const permissionCategories = [
     label: '驗屋系統',
     icon: 'mdi-clipboard-check',
     color: 'teal-darken-2',
+    tone: '#0f8a7e',
     keywords: ['驗屋', '客變']
   },
   {
@@ -1606,6 +1614,7 @@ const permissionCategories = [
     label: '客資管理',
     icon: 'mdi-account-group',
     color: 'purple-darken-2',
+    tone: '#8a3ffc',
     keywords: ['客資系統', '貴賓', '客戶管理']
   },
   {
@@ -1613,6 +1622,7 @@ const permissionCategories = [
     label: '後台管理',
     icon: 'mdi-cog',
     color: 'blue-grey',
+    tone: '#5b6472',
     keywords: ['人員', '訂閱', '資料庫']
   },
   {
@@ -1620,6 +1630,7 @@ const permissionCategories = [
     label: '訊息通知',
     icon: 'mdi-email',
     color: 'amber-darken-4',
+    tone: '#b86a00',
     keywords: ['訊息', '寄信', '收信', 'LINE AI']
   }
 ];
@@ -1639,6 +1650,7 @@ const getGroupedUserPermissions = (userSystems) => {
     label: '其他功能',
     icon: 'mdi-dots-horizontal',
     color: 'grey-darken-1',
+    tone: '#6e6e73',
     permissions: []
   };
 
@@ -1679,6 +1691,7 @@ const groupedPermissions = computed(() => {
     label: '其他功能',
     icon: 'mdi-dots-horizontal',
     color: 'grey-darken-1',
+    tone: '#6e6e73',
     items: []
   };
 
@@ -1738,9 +1751,11 @@ async function handleUnbindLine() {
     }
     isUnbindLineDialogVisible.value = false;
     unbindLineTarget.value = null;
-    // 重新載入人員列表，讓「已綁定／未綁定」狀態即時更新
-    adminStore.invalidateCache();
-    await loadInitialData();
+    if (targetUser.value?.basicInfo.phone === target.phone) {
+      targetAccount.value = { ...targetAccount.value, lineBound: false, lineSuspended: false };
+    }
+    // 背景更新人員列表，讓「已綁定／未綁定」狀態即時更新
+    await loadInitialData({ silent: true });
   } catch (err) {
     console.error('解除 LINE 綁定失敗:', err);
     toast.error(`解除失敗：${err?.message || '未知錯誤'}`);
@@ -1748,6 +1763,173 @@ async function handleUnbindLine() {
     isUnbindingLine.value = false;
   }
 }
+
+// --- 帳號停用／啟用（一鍵切換；限超級管理員、系統管理員） ---
+// 停用後該帳號無法登入、所有功能與 LINE 入口／通知都失效；權限保留，啟用後恢復。
+const selfKey = computed(() => userStore.user?.key);
+const statusSaving = reactive({}); // { [phone]: true } 送出中的列
+const targetAccount = ref({ disabled: false, disabledAt: null, disabledByName: '', lineBound: false, lineSuspended: false });
+
+const statusLockReason = (user) => {
+  if (!user) return '無法變更';
+  if (!canViewAndEditRoles.value) return '僅限管理員變更';
+  if (user.phone === selfKey.value) return '不可停用自己';
+  if (user.isTrial) return '試用帳號';
+  if ((user.roles || []).includes('超級管理員') && !isSuperAdmin.value) return '僅限超級管理員變更';
+  return '';
+};
+
+// event：開關的 change 事件。原生開關點下去就先切換，處理完再把畫面同步回實際狀態
+// （不可用 click.prevent：瀏覽器會在事件結束後把勾選狀態還原，蓋掉 Vue 的更新）
+const toggleAccountStatus = async (user, event) => {
+  const phone = user?.phone;
+  const findStoreUser = () => adminStore.manageableUsers.find(u => u.phone === phone);
+  const syncSwitch = () => {
+    const el = event?.target;
+    if (el?.isConnected) el.checked = !findStoreUser()?.disabled;
+  };
+  if (!user || statusSaving[phone] || statusLockReason(user)) {
+    syncSwitch();
+    return;
+  }
+  const name = user.name || phone;
+  const nextDisabled = !user.disabled;
+  const before = findStoreUser();
+  if (!before) return;
+  const previous = { disabled: before.disabled, lineId: before.lineId, lineSuspended: before.lineSuspended };
+  const applyToDialog = (state) => {
+    if (targetUser.value?.basicInfo.phone !== phone) return;
+    targetAccount.value = {
+      ...targetAccount.value,
+      disabled: state.disabled === true,
+      disabledAt: state.disabled ? Date.now() : null,
+      disabledByName: state.disabled ? (userStore.user?.name || '') : '',
+      lineBound: !!state.lineId,
+      lineSuspended: state.lineSuspended === true,
+    };
+  };
+
+  // 先更新畫面，失敗再還原
+  statusSaving[phone] = true;
+  before.disabled = nextDisabled;
+  if (nextDisabled && before.lineId) {
+    before.lineId = null;
+    before.lineSuspended = true;
+  }
+  applyToDialog(before);
+
+  try {
+    const res = await setUserAccountStatus({
+      adminKey: adminKey.value,
+      sessionId: userStore.sessionId,
+      targetUserKey: phone,
+      disabled: nextDisabled,
+    });
+    const current = findStoreUser();
+    if (current) {
+      current.disabled = res.disabled === true;
+      current.lineId = res.lineId || null;
+      current.lineSuspended = res.lineSuspended === true;
+      applyToDialog(current);
+    }
+    toast.success(res.disabled ? `已停用 ${name}` : `已啟用 ${name}`);
+    if (res.lineConflict) toast.warning(`${name} 的 LINE 已綁定其他帳號，需重新綁定。`);
+  } catch (err) {
+    const current = findStoreUser();
+    if (current) {
+      Object.assign(current, previous);
+      applyToDialog(current);
+    }
+    toast.error(`變更失敗：${err?.message || '未知錯誤'}`);
+  } finally {
+    delete statusSaving[phone];
+    await nextTick();
+    syncSwitch();
+  }
+};
+
+// 編輯視窗內的帳號狀態、角色：以列表上的同一筆資料為準（立即生效，不等「儲存」）
+const editingListUser = computed(() => {
+  const phone = targetUser.value?.basicInfo.phone;
+  return (phone && !isNewUser.value && usersWithProjectData.value.find(u => u.phone === phone)) || null;
+});
+
+const toggleTargetAccountStatus = (event) => {
+  if (editingListUser.value) toggleAccountStatus(editingListUser.value, event);
+  else if (event?.target) event.target.checked = !targetAccount.value.disabled;
+};
+
+const targetStatusLockReason = computed(() => statusLockReason(editingListUser.value));
+
+const formatDateTime = (ms) => {
+  if (!ms) return '';
+  const d = new Date(ms);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+const accountStatusText = computed(() => {
+  const account = targetAccount.value;
+  if (!account.disabled) return '啟用中';
+  const parts = [account.disabledByName, formatDateTime(account.disabledAt)].filter(Boolean);
+  return parts.length ? `已停用・${parts.join(' ')}` : '已停用';
+});
+
+// --- 顯示用小工具 ---
+const initialOf = (name) => {
+  const text = String(name || '').trim();
+  if (!text || text === 'N/A') return '?';
+  // 中文姓名取最後一個字（名），英文取第一個字母
+  return /^[\x00-\x7f]/.test(text) ? text[0].toUpperCase() : text.slice(-1);
+};
+
+/** LINE 綁定狀態：bound 已綁定／suspended 停用期間暫停／none 未綁定 */
+const lineStateOf = (user) => {
+  if (user?.lineId || user?.lineBound) return 'bound';
+  if (user?.lineSuspended) return 'suspended';
+  return 'none';
+};
+const LINE_STATE_META = {
+  bound: { label: '已綁定', tagClass: 'mac-tag--green' },
+  suspended: { label: '暫停', tagClass: 'mac-tag--orange' },
+  none: { label: '未綁定', tagClass: '' },
+};
+const lineMetaOf = (user) => LINE_STATE_META[lineStateOf(user)];
+
+const userRowProps = ({ item }) => ({ class: item.disabled ? 'um-row--off' : '' });
+
+// 表格內的建案標籤最多顯示幾個，其餘收成「+N」
+const PROJECT_TAG_LIMIT = 3;
+
+// --- 角色指派選單（整頁共用一個，點哪一列就掛到哪一列） ---
+const roleMenu = reactive({ open: false, activator: null, phone: null });
+const roleMenuUser = computed(() =>
+  roleMenu.phone ? usersWithProjectData.value.find(u => u.phone === roleMenu.phone) || null : null
+);
+const roleMenuOptions = computed(() => {
+  const owned = roleMenuUser.value?.roles || [];
+  const assignable = availableRolesForAssignment.value;
+  return [
+    ...assignable.map(name => ({ name, locked: false })),
+    // 已擁有但操作者無權指派的角色：只顯示、不可變更
+    ...owned.filter(r => !assignable.includes(r)).map(name => ({ name, locked: true })),
+  ];
+});
+const openRoleMenu = async (event, user) => {
+  const activator = event.currentTarget;
+  roleMenu.open = false;
+  await nextTick();
+  roleMenu.activator = activator;
+  roleMenu.phone = user.phone;
+  roleMenu.open = true;
+};
+const toggleRole = (roleName) => {
+  const user = roleMenuUser.value;
+  if (!user || user.rolesLoading) return;
+  const roles = user.roles || [];
+  const next = roles.includes(roleName) ? roles.filter(r => r !== roleName) : [...roles, roleName];
+  handleRolesChange(user, next);
+};
 
 // --- Computed Properties ---
 const isSuperAdmin = computed(() => userStore.currentUserRoles.includes('超級管理員'));
@@ -1793,34 +1975,41 @@ const availableRolesForAssignment = computed(() => {
   return Array.from(grantableSet);
 });
 
-// --- START: 修改 displayFields (步驟 5) ---
-const displayFields = ref([
-  { key: 'phone', label: '手機號碼' },
-  { key: 'email', label: 'Email' },
-  { key: 'companyName', label: '公司' },
-  { key: 'lineId', label: 'LINE綁定', type: 'chip', options: { trueColor: 'green', falseColor: 'grey', trueText: '已綁定', falseText: '未綁定' } },
-  { key: 'projects', label: '所屬建案', type: 'projects' },
-  { key: 'roles', label: '角色' },
-]);
-// --- END: 修改 displayFields ---
-
-// --- START: 修改 tableHeaders (步驟 4) ---
 const tableHeaders = computed(() => {
   const headers = [
-    { title: '姓名', align: 'start', key: 'name', width: '12%' },
-    { title: '手機號碼', key: 'phone', width: '12%' },
-    { title: 'Email', key: 'email', width: '16%' },
-    { title: '公司', key: 'companyName', width: '12%' },
-    { title: 'LINE綁定', key: 'lineId', sortable: false, align: 'center', width: '8%' },
-    { title: '所屬建案', key: 'projects', sortable: false, width: '20%' },
+    { title: '姓名', align: 'start', key: 'name', minWidth: '200px' },
+    { title: '手機', key: 'phone' },
+    { title: '公司', key: 'companyName' },
+    { title: 'LINE', key: 'lineId', sortable: false },
+    { title: '建案', key: 'projects', sortable: false },
   ];
   if (canViewAndEditRoles.value) {
-    headers.push({ title: '角色', key: 'roles', sortable: false, width: '20%' });
+    headers.push({ title: '角色', key: 'roles', sortable: false });
   }
-  headers.push({ title: '操作', key: 'actions', sortable: false, align: 'center', width: '10%' });
+  headers.push({ title: '狀態', key: 'disabled', width: '136px' });
+  headers.push({ title: '', key: 'actions', sortable: false, align: 'end', width: '108px' });
   return headers;
 });
-// --- END: 修改 tableHeaders ---
+
+// --- 分頁 ---
+const tabOptions = computed(() => {
+  const tabs = [
+    { value: 'users', label: '人員' },
+    { value: 'projects', label: '建案' },
+  ];
+  if (isSuperAdmin.value) {
+    tabs.push({ value: 'roles', label: '角色' }, { value: 'functions', label: '權限功能' });
+  }
+  return tabs;
+});
+
+const tabCountText = computed(() => {
+  if (adminStore.isLoading) return '';
+  if (currentTab.value === 'users') return `${filteredUsers.value.length} 人`;
+  if (currentTab.value === 'projects') return `${groupedProjects.value.length} 個建案`;
+  if (currentTab.value === 'roles') return `${adminStore.roles.length} 個角色`;
+  return `${adminStore.systemFunctions.length} 項`;
+});
 
 const currentUserFieldPermissions = computed(() => {
     if (isSuperAdmin.value) {
@@ -1856,7 +2045,11 @@ const isTargetUserAdmin = computed(() => {
 
 
 // --- Watchers ---
-watch(selectedRoleIndex, (newIndex) => {
+const BUILT_IN_ROLES = ['超級管理員', '系統管理員'];
+const isBuiltInRole = computed(() => BUILT_IN_ROLES.includes(selectedRole.value?.id));
+
+const loadSelectedRole = () => {
+  const newIndex = selectedRoleIndex.value;
   if (newIndex != null && adminStore.roles[newIndex]) {
     selectedRole.value = JSON.parse(JSON.stringify(adminStore.roles[newIndex]));
     
@@ -1875,17 +2068,26 @@ watch(selectedRoleIndex, (newIndex) => {
   } else {
     selectedRole.value = null;
   }
-});
+};
+watch(selectedRoleIndex, loadSelectedRole);
+
+/** 重新載入後依名稱重新選取角色（改名或排序變動後索引會變） */
+const reselectRole = (name) => {
+  const index = adminStore.roles.findIndex(r => r.name === name);
+  selectedRoleIndex.value = index >= 0 ? index : null;
+  loadSelectedRole();
+};
 
 watch(filteredManagedProjects, (newVal) => {
   if (projectSearchQuery.value) {
-    panels.value = newVal;
+    panels.value = [...newVal];
   }
 });
 
 // --- Core Logic ---
-const loadInitialData = async () => {
-  loading.value = true;
+// silent：儲存後背景更新，不清空列表、不顯示載入中
+const loadInitialData = async ({ silent = false } = {}) => {
+  loading.value = !silent;
   errorMessage.value = '';
   showErrorAlert.value = false;
   try {
@@ -1893,7 +2095,7 @@ const loadInitialData = async () => {
     await projectStore.fetchProjects();
     
     // 呼叫 adminStore (強制重新載入以避免身分切換時的資料殘留)
-    await adminStore.loadAdminData(adminKey.value, true);
+    await adminStore.loadAdminData(adminKey.value, true, { silent });
 
   } catch (error) {
     console.error('[UserManagement.vue] loadInitialData 失敗:', error);
@@ -1904,7 +2106,17 @@ const loadInitialData = async () => {
   }
 };
 
-onMounted(loadInitialData);
+onMounted(() => loadInitialData());
+
+const refresh = async () => {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  try {
+    await loadInitialData({ silent: adminStore.isLoaded });
+  } finally {
+    refreshing.value = false;
+  }
+};
 
 // ✅ 新增：權限檢查 - 防止非管理員通過滑動切換進入受保護TAB
 watch(currentTab, (newTab) => {
@@ -1914,6 +2126,10 @@ watch(currentTab, (newTab) => {
     // 非超級管理員試圖進入管理員專用區域，強制重定向回用戶列表
     currentTab.value = 'users';
     return;
+  }
+  // 進入角色分頁時預設選第一個角色，右側不留白
+  if (newTab === 'roles' && selectedRoleIndex.value == null && adminStore.roles.length > 0) {
+    selectedRoleIndex.value = 0;
   }
 });
 
@@ -1933,7 +2149,16 @@ const openEditDialog = async (phone) => {
     const result = await fetchUserDetailsForAdmin(phone, adminKey.value);
     if (result.status === 'success') {
       targetUser.value = result.data;
+      const listUser = usersWithProjectData.value.find(u => u.phone === phone);
+      targetAccount.value = {
+        disabled: (result.data.account?.disabled ?? listUser?.disabled) === true,
+        disabledAt: result.data.account?.disabledAt || null,
+        disabledByName: result.data.account?.disabledByName || '',
+        lineBound: result.data.account ? result.data.account.lineBound === true : !!listUser?.lineId,
+        lineSuspended: (result.data.account?.lineSuspended ?? listUser?.lineSuspended) === true,
+      };
       buildPermissionMatrix(result.data.permissions);
+      prepareEditPanels(result.data.permissions);
     } else { throw new Error(result.message); }
   } catch (error) {
     toast.error(`載入用戶資料失敗: ${error.message}`);
@@ -1947,7 +2172,9 @@ const openCreateDialog = (phone = '') => {
   resetPhoneValidation();
   isNewUser.value = true;
   targetUser.value = { basicInfo: { phone, name: '', email: '', password: '', companyName: '', companyTaxId: '', roles: [], allowMultiLogin: false }, permissions: {} };
+  targetAccount.value = { disabled: false, disabledAt: null, disabledByName: '', lineBound: false, lineSuspended: false };
   buildPermissionMatrix({});
+  prepareEditPanels({});
   dialogVisible.value = true;
 };
 
@@ -1956,6 +2183,7 @@ const closeDialog = () => {
   targetUser.value = null;
   permissionMatrix.value = {};
   panels.value = [];
+  ownedProjectsAtOpen.value = [];
   projectSearchQuery.value = '';
 };
 
@@ -1995,8 +2223,60 @@ const buildPermissionMatrix = (permissionsObject) => {
   permissionMatrix.value = matrix;
 };
 
-const expandAll = () => { panels.value = filteredManagedProjects.value; };
+const expandAll = () => { panels.value = [...filteredManagedProjects.value]; };
 const collapseAll = () => { panels.value = []; };
+
+// 開啟編輯時：已有權限的建案排最前面並自動展開（最多 4 個），之後勾選不再重新排序
+const ownedProjectsAtOpen = ref([]);
+const prepareEditPanels = (permissionsObject) => {
+  const owned = Object.values(permissionsObject || {})
+    .filter(p => p && Array.isArray(p.systems) && p.systems.length > 0)
+    .map(p => p.projectName)
+    .filter(name => managedProjects.value.includes(name));
+  ownedProjectsAtOpen.value = owned;
+  panels.value = owned.length > 0
+    ? owned.slice(0, 4)
+    : (managedProjects.value.length === 1 ? [...managedProjects.value] : []);
+};
+const editProjects = computed(() => {
+  const owned = new Set(ownedProjectsAtOpen.value);
+  const list = filteredManagedProjects.value;
+  return [...list.filter(p => owned.has(p)), ...list.filter(p => !owned.has(p))];
+});
+
+const isPanelOpen = (project) => panels.value.includes(project);
+const togglePanel = (project) => {
+  panels.value = isPanelOpen(project)
+    ? panels.value.filter(p => p !== project)
+    : [...panels.value, project];
+};
+
+const projectSelectedCount = (project) =>
+  allFunctionNames.value.filter(system => permissionMatrix.value[system]?.[project]).length;
+
+// 建案整批勾選：欄位唯讀，或非超管／系管且在此建案沒有「人員管理」權限時不可用
+const isProjectToggleDisabled = (project) =>
+  getFieldPermission('permissions') === 'R' ||
+  (!isGodModeAdmin.value && !adminStore.adminScope[project]?.includes('人員管理'));
+
+// 單一權限：不能編輯自己（超管／系管除外）；一般管理員需在該建案有「人員管理」且自己擁有該權限
+const isPermissionDisabled = (system, project) => {
+  if (isEditingSelf.value && !isGodModeAdmin.value) return true;
+  if (getFieldPermission('permissions') === 'R') return true;
+  if (isGodModeAdmin.value) return false;
+  const scope = adminStore.adminScope[project];
+  return !scope?.includes('人員管理') || !scope?.includes(system);
+};
+
+// 原生勾選框：名額已滿等情況會拒絕勾選，處理完把畫面同步回實際狀態
+const onPermissionChange = (system, project, event) => {
+  handlePermissionToggle(system, project, event.target.checked);
+  event.target.checked = !!permissionMatrix.value[system]?.[project];
+};
+const onProjectToggleChange = (project, event) => {
+  toggleAllForProject(project, event.target.checked);
+  event.target.checked = isAllSelectedForProject(project);
+};
 
 const isAllSelectedForProject = (project) => {
   const systemsAdminCanManage = adminStore.adminScope[project] || [];
@@ -2101,8 +2381,7 @@ const handleSave = async () => {
       toast.success(isNewUser.value ? '新人員建立成功！' : '人員資料更新成功！');
       closeDialog();
       // 儲存成功後，清除快取並重新載入
-      adminStore.invalidateCache();
-      await loadInitialData();
+      await loadInitialData({ silent: true });
     } else {
       throw new Error(result.message || '發生未知的錯誤');
     }
@@ -2146,6 +2425,8 @@ const handleRolesChange = async (user, newRoles) => {
   try {
     await updateUserRoles(user.phone, newRoles);
     userInTable.roles = newRoles;
+    // 編輯視窗開著時同步，避免按「儲存」把舊角色寫回去
+    if (targetUser.value?.basicInfo.phone === user.phone) targetUser.value.basicInfo.roles = [...newRoles];
     toast.success(`已更新 ${user.name} 的角色`);
     // 更改角色後，清除快取 (因為權限可能已改變)
     // adminStore.invalidateCache(); // Remove this line to prevent data clearing
@@ -2161,35 +2442,40 @@ const handleRolesChange = async (user, newRoles) => {
   }
 };
 
-const removeRole = (user, roleToRemove) => {
-  const newRoles = user.roles.filter(r => r !== roleToRemove);
-  handleRolesChange(user, newRoles);
-};
+// 新增角色：輸入名稱後先加入列表，按「儲存」才寫入
+const newRoleDialog = ref(false);
+const newRoleName = ref('');
 
 const createNewRole = () => {
-    const newRoleName = prompt("請輸入新角色的名稱：");
-    if (newRoleName && !adminStore.roles.some(r => r.name === newRoleName)) {
-        const newRole = {
-            id: newRoleName,
-            name: newRoleName,
-            grantableRoles: [],
-            fieldPermissions: { UserManagement: {} }
-        };
-        userManagementFields.forEach(field => {
-            if (field.key === 'phone') {
-                newRole.fieldPermissions.UserManagement[field.key] = 'R';
-            } else if (field.key === 'password') {
-                newRole.fieldPermissions.UserManagement[field.key] = 'C';
-            }
-            else {
-                newRole.fieldPermissions.UserManagement[field.key] = 'RU';
-            }
-        });
-        adminStore.roles.push(newRole);
-        selectedRoleIndex.value = adminStore.roles.length - 1;
-    } else if (newRoleName) {
-        toast.error("角色名稱已存在！");
+  newRoleName.value = '';
+  newRoleDialog.value = true;
+};
+
+const confirmCreateRole = () => {
+  const name = newRoleName.value.trim();
+  if (!name) return;
+  if (adminStore.roles.some(r => r.name === name)) {
+    toast.error('角色名稱已存在！');
+    return;
+  }
+  const newRole = {
+    id: name,
+    name: name,
+    grantableRoles: [],
+    fieldPermissions: { UserManagement: {} }
+  };
+  userManagementFields.forEach(field => {
+    if (field.key === 'phone') {
+      newRole.fieldPermissions.UserManagement[field.key] = 'R';
+    } else if (field.key === 'password') {
+      newRole.fieldPermissions.UserManagement[field.key] = 'C';
+    } else {
+      newRole.fieldPermissions.UserManagement[field.key] = 'RU';
     }
+  });
+  adminStore.roles.push(newRole);
+  selectedRoleIndex.value = adminStore.roles.length - 1;
+  newRoleDialog.value = false;
 };
 
 const saveRole = async () => {
@@ -2209,11 +2495,12 @@ const saveRole = async () => {
             await deleteRole(selectedRole.value.id);
         }
         
-        await updateRole(selectedRole.value.name, roleDataToSave);
-        toast.success(`角色「${selectedRole.value.name}」已成功儲存！`);
-        // 儲存角色後，清除快取並重載
-        adminStore.invalidateCache();
-        await loadInitialData();
+        const savedName = selectedRole.value.name;
+        await updateRole(savedName, roleDataToSave);
+        toast.success(`角色「${savedName}」已成功儲存！`);
+        // 儲存角色後背景重載，並依名稱重新選取
+        await loadInitialData({ silent: true });
+        reselectRole(savedName);
     } catch (error) {
         toast.error(`儲存角色失敗：${error.message}`);
     } finally {
@@ -2235,8 +2522,7 @@ const executeDeleteRole = async () => {
         selectedRole.value = null;
         selectedRoleIndex.value = null;
         // 刪除角色後，清除快取並重載
-        adminStore.invalidateCache();
-        await loadInitialData();
+        await loadInitialData({ silent: true });
     } catch (error) {
         toast.error(`刪除角色失敗：${error.message}`);
     } finally {
@@ -2404,7 +2690,7 @@ const batchGrantableSystemsFor = (projectName) => {
 
 const groupSystemsForBatch = (systems) => {
   const groups = permissionCategories.map(cat => ({ ...cat, items: [] }));
-  const otherGroup = { id: 'other', label: '其他功能', icon: 'mdi-dots-horizontal', color: 'grey-darken-1', items: [] };
+  const otherGroup = { id: 'other', label: '其他功能', icon: 'mdi-dots-horizontal', color: 'grey-darken-1', tone: '#6e6e73', items: [] };
   systems.forEach(funcName => {
     const group = groups.find(g => g.keywords.some(k => funcName.includes(k)));
     (group || otherGroup).items.push(funcName);
@@ -2486,6 +2772,7 @@ const batchUserList = computed(() => {
       phone: u.phone,
       name: u.name,
       companyName: u.companyName || '',
+      accountDisabled: u.disabled === true,
       ownedCount,
       hasAll: batchSelectedPairs.value.length > 0 && ownedCount === batchSelectedPairs.value.length,
       disabledReason
@@ -2515,6 +2802,13 @@ const openBatchGrantDialog = () => {
   batchResult.value = null;
   batchProgress.value = '';
   batchDialogVisible.value = true;
+};
+
+const isBatchPanelOpen = (project) => batchOpenPanels.value.includes(project);
+const toggleBatchPanel = (project) => {
+  batchOpenPanels.value = isBatchPanelOpen(project)
+    ? batchOpenPanels.value.filter(p => p !== project)
+    : [...batchOpenPanels.value, project];
 };
 
 const closeBatchDialog = () => {
@@ -2645,8 +2939,7 @@ const handleBatchGrant = async () => {
 
     if (granted.length > 0) {
       toast.success(`批次授權完成：成功 ${granted.length} 人`);
-      adminStore.invalidateCache();
-      await loadInitialData();
+      await loadInitialData({ silent: true });
     } else if (failed.length === 0 && Object.keys(quotaSkipped).length === 0) {
       toast.info('所選人員均已具備所選權限，未進行任何變更。');
     }
@@ -2676,8 +2969,7 @@ const saveSystemFunction = async () => {
       toast.success(`權限功能「${editedFunction.value.name}」已儲存。`);
       isFunctionDialogVisible.value = false;
       // 儲存功能後，清除快取並重載
-      adminStore.invalidateCache();
-      await loadInitialData();
+      await loadInitialData({ silent: true });
     } else {
       throw new Error(result.message);
     }
@@ -2779,7 +3071,7 @@ const handleSendEmail = async () => {
     
     const result = await sendCustomEmail({
       to: emailData.value.to,
-      subject: emailData.value.subject,
+      subject: String(emailData.value.subject || '').replace(/\s*\n\s*/g, ' ').trim(),
       htmlContent: editor.value.getHTML(),
       adminKey: userStore.user?.key,
       sessionId: userStore.sessionId,
@@ -2804,137 +3096,384 @@ const handleSendEmail = async () => {
 </script>
 
 <style scoped>
-.permission-panels-container {
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  height: 55vh;
-  overflow-y: auto;
-  padding: 8px;
-}
-.quota-settings-container {
-  max-height: 300px;
-  overflow-y: auto;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 12px;
-  background: #fafafa;
-}
-.batch-section-container {
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  max-height: 35vh;
-  overflow-y: auto;
-  padding: 8px 12px;
-}
-.batch-user-list {
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  max-height: 35vh;
-  overflow-y: auto;
-}
-.batch-user-row {
-  border-bottom: 1px solid #f0f0f0;
-}
-.batch-user-row:last-child {
-  border-bottom: none;
-}
-.batch-quota-hint {
-  font-size: 11px;
-  color: #607d8b;
-  padding-left: 32px;
-  margin-top: -4px;
-  margin-bottom: 4px;
-}
-.quota-full-hint {
+/* 人員管理：沿用 macosUi.css 共用樣式，這裡只放本頁版面（um- 前綴） */
+.um-page { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+/* 避開左上角全站漢堡鈕 */
+.um-bar { padding-left: 58px; }
+.um-tabs { padding: 2px 16px 10px; }
+.um-searchbar { flex-wrap: wrap; }
+.um-searchbar > .mac-vfield { flex: 1 1 240px; }
+.um-status-seg .mac-form-seg-btn { gap: 6px; }
+.um-seg-count { font-size: 11.5px; font-weight: 500; color: #6e6e73; font-variant-numeric: tabular-nums; }
+.um-error { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 0 16px 10px; }
+.um-spin { animation: um-spin 0.9s linear infinite; }
+@keyframes um-spin { to { transform: rotate(360deg); } }
+
+/* ----- 人員表格 ----- */
+.um-table :deep(.v-table__wrapper > table > tbody > tr > td) { padding-top: 6px !important; padding-bottom: 6px !important; }
+.um-table :deep(tr.um-row--off > td) { color: #8e8e93; }
+.um-table :deep(tr.um-row--off .um-avatar) { opacity: 0.5; }
+.um-table :deep(tr.um-row--off .um-person-name) { color: #8e8e93; }
+
+.um-person {
   display: flex;
   align-items: center;
-  font-size: 11px;
-  color: #e65100;
-  padding-left: 32px;
-  margin-top: -4px;
-  margin-bottom: 4px;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-/* 電腦版：編輯人員權限 / 批次授權 改為左右雙欄橫向配置 */
-@media (min-width: 960px) {
-  .edit-basic-col {
-    border-right: 1px solid #e0e0e0;
-  }
-  .permission-panels-container {
-    height: 62vh;
-  }
-  .batch-col {
-    display: flex;
-    flex-direction: column;
-    height: 62vh;
-  }
-  .batch-left-col {
-    border-right: 1px solid #e0e0e0;
-  }
-  .batch-col .batch-section-container {
-    flex: 1 1 auto;
-    max-height: none;
-    min-height: 0;
-  }
-  .batch-col .batch-user-list {
-    flex: 1 1 auto;
-    max-height: none;
-    min-height: 0;
-  }
+.um-avatar {
+  display: grid;
+  place-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #b9bcc4, #8e929c);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
 }
-.field-permission-row {
-  border-bottom: 1px solid #eee;
-  padding-bottom: 8px;
+.um-person-text { display: flex; flex-direction: column; min-width: 0; }
+.um-person-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1d1d1f;
+  overflow-wrap: anywhere;
 }
-.field-permission-row:last-child {
-  border-bottom: none;
-}
-.hover-card:hover {
-  border-color: #3f51b5; /* primary color */
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important;
-  transition: all 0.2s ease-in-out;
-}
-.gap-1 {
+.um-person:hover .um-person-name { color: #0071e3; }
+.um-person-sub { font-size: 12px; color: #6e6e73; overflow-wrap: anywhere; }
+
+.um-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.um-tag-more { --mac-tag-bg: transparent; --mac-tag-color: #6e6e73; padding-inline: 2px; }
+.um-role-btn {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
+  min-height: 26px;
+  padding: 2px 4px 2px 2px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+.um-role-btn:hover:not(:disabled) { background: rgba(0, 0, 0, 0.05); }
+.um-role-btn:disabled { cursor: default; }
+.um-role-btn--end { justify-content: flex-end; max-width: 70%; }
+.um-role-caret { color: #8e8e93; }
+.um-status { display: flex; align-items: center; gap: 8px; }
+.um-actions { display: flex; align-items: center; justify-content: flex-end; gap: 2px; flex-shrink: 0; }
+/* 解除綁定：平常與其他圖示同色，滑過才轉紅，避免整欄紅色圖示 */
+.um-unlink:hover { background: rgba(214, 45, 32, 0.08); color: #d62d20; }
+
+/* ----- 手機清單 ----- */
+.um-user-row { align-items: center; }
+.um-user-row .um-avatar { width: 36px; height: 36px; font-size: 15px; }
+.um-user-row.is-off .um-avatar { opacity: 0.5; }
+.um-user-row.is-off .mac-list-title { color: #8e8e93; }
+.um-user-row .mac-list-title { flex: 0 1 auto; }
+.um-row-side { display: flex; align-items: center; flex-shrink: 0; padding: 10px 0 10px 10px; }
+.um-row-chevron { flex-shrink: 0; color: #c7c7cc; }
+.um-list .mac-list-row { align-items: center; }
+
+/* ----- 左側清單＋右側內容（建案、角色） ----- */
+.um-split { display: flex; flex: 1 1 auto; align-items: stretch; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+.um-sidebar {
+  flex-shrink: 0;
+  width: 232px;
+  padding: 10px 8px;
+  background: #f6f6f8;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  overflow-y: auto;
+}
+.um-side-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #1d1d1f;
+  font: 500 13px/1.35 inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.um-side-item:hover { background: rgba(0, 0, 0, 0.05); }
+.um-side-item.is-active { background: #0071e3; color: #fff; }
+.um-side-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.um-side-count { font-size: 12px; color: #6e6e73; font-variant-numeric: tabular-nums; }
+.um-side-item.is-active .um-side-count { color: rgba(255, 255, 255, 0.85); }
+
+.um-detail { flex: 1 1 auto; min-width: 0; padding: 14px 16px 24px; background: #f5f5f7; }
+.um-detail--form > * { max-width: 720px; }
+.um-detail-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 0 4px 10px; }
+.um-detail-title { font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.um-detail-select { margin-bottom: 12px; }
+.um-detail-foot { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+.um-detail-foot .mac-spacer { flex: 1 1 auto; }
+
+.um-member { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; }
+.um-member + .um-member { border-top: 1px solid #ececf0; }
+.um-member.is-off .um-avatar { opacity: 0.5; }
+.um-member.is-off .um-member-perms { opacity: 0.55; }
+.um-member-person { flex-shrink: 0; width: 200px; }
+.um-member-perms { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 5px; padding-top: 3px; font-size: 13px; }
+.um-perm-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.um-perm-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--um-tone, #6e6e73);
+  white-space: nowrap;
+}
+.um-perm-cat .v-icon { color: inherit; }
+.um-perm-tag {
+  --mac-tag-bg: color-mix(in srgb, var(--um-tone, #6e6e73) 11%, transparent);
+  --mac-tag-color: var(--um-tone, #48484a);
+  font-weight: 500;
+  white-space: normal;
 }
 
-/* Tiptap 編輯器樣式 */
-.editor-container {
-  border: 1px solid #ccc;
+.um-row-wrap { flex-wrap: wrap; }
+.um-grow { flex: 1 1 220px; min-width: 0; max-width: 360px; margin-left: auto; }
+.um-field-seg { margin-left: auto; }
+.um-fn-name { font-weight: 600; }
+.um-fn-desc { display: block; max-width: 440px; white-space: normal; color: #3a3a3c; line-height: 1.45; }
+.um-code {
+  padding: 1px 6px;
   border-radius: 4px;
+  background: rgba(0, 0, 0, 0.05);
+  color: #48484a;
+  font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ----- 勾選列（權限、角色） ----- */
+.um-pop {
+  min-width: 200px;
+  max-width: 280px;
+  max-height: 60vh;
+  padding: 10px 10px 8px;
+  border-radius: 10px;
+  background: rgba(250, 250, 252, 0.98);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+  overflow-y: auto;
+}
+.um-pop .mac-sheet-label { margin: 0 4px 6px; overflow-wrap: anywhere; }
+.um-pop-empty { padding: 4px; font-size: 13px; }
+.um-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.um-check-row:hover:not(.is-disabled) { background: rgba(0, 0, 0, 0.04); }
+.um-check-row.is-disabled { color: #a1a1a6; cursor: default; }
+.um-check-row .mac-check { margin-top: 1px; }
+.um-check-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.um-quota { font-size: 11px; color: #6e6e73; }
+.um-quota.is-full { color: #c2410c; font-weight: 600; }
+.um-page .mac-check:disabled,
+.um-sheet .mac-check:disabled,
+.um-pop .mac-check:disabled { opacity: 0.45; cursor: default; }
+
+/* ----- 視窗 ----- */
+.um-sheet { display: flex; flex-direction: column; }
+.um-sheet--tall { height: min(86vh, 860px); }
+.um-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.um-sheet-pad { padding: 14px 16px 16px; }
+.um-sheet .mac-sheet-head .mac-sheet-close:disabled { opacity: 0.4; cursor: default; }
+.um-sheet--tall .um-sheet-body { overflow: hidden; }
+
+.um-edit { display: grid; grid-template-columns: 340px minmax(0, 1fr); height: 100%; }
+.um-edit--even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.um-edit--single { grid-template-columns: minmax(0, 520px); justify-content: center; }
+.um-edit-side,
+.um-edit-main { min-height: 0; padding: 14px 16px 18px; overflow-y: auto; }
+.um-edit-side { border-right: 1px solid rgba(0, 0, 0, 0.08); }
+.um-edit--single .um-edit-side { border-right: 0; }
+
+.um-label-first { margin-top: 0; }
+.um-label-note { color: #0058b0; font-weight: 500; }
+.um-step {
+  display: inline-grid;
+  place-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #0071e3;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.um-fields { display: flex; flex-direction: column; gap: 10px; }
+.um-field { min-width: 0; }
+.um-field > .mac-sheet-label { display: block; margin-bottom: 4px; }
+.um-group-gap { margin-top: 12px; }
+.um-switch-row { cursor: pointer; }
+.um-row-sub { display: block; font-size: 12px; color: #6e6e73; overflow-wrap: anywhere; }
+.um-row-sub.is-danger { color: #b3261b; }
+.um-link-row {
+  width: 100%;
+  border-width: 1px 0 0;
+  border-style: solid;
+  border-color: #ececf0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+
+.um-panel-search { margin-bottom: 10px; }
+.um-panels { display: flex; flex-direction: column; gap: 8px; }
+.um-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 6px 12px 6px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.um-panel-head:hover { background: #fafafc; }
+.um-panel-name { flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.um-chevron { flex-shrink: 0; color: #8e8e93; transition: transform 0.15s; }
+.um-chevron.is-open { transform: rotate(90deg); }
+.um-panel-body { padding: 2px 14px 12px; border-top: 1px solid #ececf0; }
+.um-perm-group { margin-top: 10px; }
+.um-perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 10px; margin-top: 3px; }
+.um-perm-grid--2 { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+
+/* 批次授權 */
+.um-batch-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-bottom: 10px; }
+.um-batch-user { display: flex; align-items: center; gap: 10px; padding: 8px 14px; cursor: pointer; }
+.um-batch-user + .um-batch-user { border-top: 1px solid #ececf0; }
+.um-batch-user:hover:not(.is-disabled) { background: #fafafc; }
+.um-batch-user.is-disabled { color: #a1a1a6; cursor: default; }
+.um-batch-user-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.um-batch-user-name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 13.5px; font-weight: 500; overflow-wrap: anywhere; }
+.um-batch-user-sub { font-size: 12px; color: #6e6e73; overflow-wrap: anywhere; }
+.um-batch-user.is-disabled .um-batch-user-sub { color: #a1a1a6; }
+.um-progress { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: #6e6e73; }
+.um-result { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.um-callout-title { font-weight: 600; margin-bottom: 2px; }
+.um-callout--success { background: rgba(52, 199, 89, 0.13); }
+.um-callout--success > .v-icon { color: #1f7a36; }
+
+/* 權限功能視窗 */
+.um-quota-list { max-height: 300px; overflow-y: auto; }
+.um-quota-row { flex-wrap: nowrap; }
+.um-quota-row .mac-form-row-main { overflow-wrap: anywhere; }
+.um-quota-row > .um-quota-input { flex: 0 0 110px; max-width: 110px; margin-left: auto; }
+.um-quota-input input { text-align: right; }
+
+/* 通知信 */
+.um-mail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
+.um-field--wide { grid-column: 1 / -1; }
+.um-editor {
+  margin-top: 12px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
   overflow: hidden;
 }
-
-.editor-toolbar {
-  background: #f5f5f5;
-  padding: 8px;
-  border-bottom: 1px solid #ccc;
+.um-editor-bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 5px 6px;
+  background: #f6f6f8;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
+.um-editor-bar .mac-icon-btn.is-on { background: rgba(0, 113, 227, 0.12); color: #0071e3; }
+.um-editor-sep { width: 1px; height: 16px; margin: 0 4px; background: rgba(0, 0, 0, 0.12); }
+.um-color-btn { position: relative; overflow: hidden; }
+.um-color-btn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.um-editor-content { min-height: 200px; max-height: 40vh; padding: 12px; font-size: 14px; line-height: 1.6; overflow-y: auto; }
+.um-editor-content :deep(.tiptap) { min-height: 176px; outline: none; }
+.um-editor-content :deep(.tiptap p) { margin-bottom: 0.5em; }
+.um-editor-content :deep(.tiptap ul) { padding-left: 1.5em; }
+.um-editor-content :deep(.tiptap a) { color: #0071e3; text-decoration: underline; }
 
-.tiptap-editor {
-  min-height: 200px;
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 12px;
+/* 確認視窗 */
+.um-alert { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 20px 18px; text-align: center; }
+.um-alert-title { font-size: 15px; font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; }
+
+/* ----- 手機／平板 ----- */
+@media (max-width: 959.98px) {
+  .um-tabs { padding: 2px 12px 10px; }
+  .um-status-seg { display: flex; flex: 1 1 100%; }
+  .um-status-seg .mac-form-seg-btn { flex: 1 1 0; min-width: 0; padding: 0 6px; height: 30px; }
+  .um-split { display: block; }
+  .um-grow { max-width: none; margin-left: 0; }
+  .um-list { padding-bottom: 24px; }
+  .um-detail { padding: 12px 12px 24px; }
+  .um-member { flex-wrap: wrap; }
+  .um-member-person { flex: 1 1 auto; width: auto; }
+  .um-member-perms { order: 3; flex-basis: 100%; padding-top: 0; }
+  .um-field-seg { display: flex; flex: 1 1 100%; margin-left: 0; }
+  .um-field-seg .mac-form-seg-btn { flex: 1 1 0; min-width: 0; padding: 0 4px; height: 30px; }
+
+  /* 全螢幕視窗：直角、標題列避開左上角漢堡鈕（z-index 高於視窗）、單欄捲動 */
+  .um-sheet.um-sheet--full { border-radius: 0 !important; }
+  .um-sheet--full .mac-sheet-head { min-height: 56px; padding-left: 58px; }
+  .um-sheet--full .mac-sheet-foot { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .um-edit,
+  .um-edit--even { display: block; height: auto; }
+  .um-edit-side,
+  .um-edit-main { padding: 14px 12px 6px; overflow: visible; }
+  .um-edit-side { border-right: 0; }
+  .um-edit-main { padding-bottom: 20px; }
+  .um-perm-grid,
+  .um-perm-grid--2 { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .um-check-row { padding: 8px 4px; font-size: 14.5px; }
+  .um-check-row .mac-check,
+  .um-batch-user .mac-check,
+  .um-panel-head .mac-check { width: 20px; height: 20px; border-radius: 5px; }
+  .um-panel-head { min-height: 48px; }
+  .um-panel-name { font-size: 15px; }
+  .um-batch-user { padding: 10px 12px; }
+  .um-batch-user-name { font-size: 15px; }
+  .um-mail-grid { grid-template-columns: minmax(0, 1fr); }
+  /* iOS 輸入框字級小於 16px 會在聚焦時自動放大畫面 */
+  .um-page .mac-form-input,
+  .um-sheet .mac-form-input,
+  .um-sheet .mac-form-unit input { font-size: 16px; }
+  .um-page .mac-form-input,
+  .um-sheet .mac-form-input { height: 36px; }
 }
-
-.tiptap-editor :deep(.tiptap) {
-  outline: none;
+@media (max-width: 600px) {
+  .um-bar { padding-left: 58px; }
+  .um-batch-filters { grid-template-columns: minmax(0, 1fr); }
 }
-
-.tiptap-editor :deep(.tiptap p) {
-  margin-bottom: 0.5em;
-}
-
-.tiptap-editor :deep(.tiptap ul) {
-  padding-left: 1.5em;
-}
-
-.tiptap-editor :deep(.tiptap a) {
-  color: #3f51b5;
-  text-decoration: underline;
-}
-
 </style>

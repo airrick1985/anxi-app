@@ -9,7 +9,9 @@
  * 每次上傳都寫入新的檔案路徑，網址不重複，可長期快取；替換後各頁不會再看到舊圖。
  */
 
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('firebase-functions/v2/https');
+// onCall 執行前先擋下已停用的操作者（人員管理一鍵停用）
+const { onCall } = require('./utils/accountGuard');
 const { Firestore, FieldValue } = require('@google-cloud/firestore');
 const admin = require('firebase-admin');
 

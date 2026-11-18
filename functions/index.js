@@ -102,7 +102,11 @@ const client = new SecretManagerServiceClient();
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { DateTime } = require('luxon'); // ✅ 處理台灣時區
 
-const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
+const { HttpsError, onRequest } = require("firebase-functions/v2/https");
+// 帳號停用守衛：onCall 執行前先擋下已停用的操作者（人員管理一鍵停用）
+const {
+  onCall, forgetAccount, disabledError, SUSPENDED_LINE_FIELD,
+} = require("./utils/accountGuard");
 const { onDocumentCreated, onDocumentWritten, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { Firestore, FieldPath: GCloudFieldPath, } = require("@google-cloud/firestore");
 const { getStorage } = require("firebase-admin/storage"); //  1. 引入 GCS Admin SDK
@@ -309,6 +313,8 @@ exports.forgotPasswordSender = onCall({ region: "asia-east1", secrets: gmailSecr
     if (userData.isTrial === true) {
       throw new HttpsError('permission-denied', '測試帳號不提供密碼重設');
     }
+    // 停用中的帳號不寄送密碼
+    if (userData.disabled === true) throw disabledError();
     const userEmail = userData.email;
     const userPassword = userData.password;
     if (!userEmail || !userPassword) {
@@ -1425,6 +1431,9 @@ exports.handleLogin = onCall({ memory: "512MiB" }, async (request) => {
     if (userData.password !== String(password)) {
       throw new HttpsError("unauthenticated", "密碼錯誤");
     }
+
+    // 帳號已停用：密碼正確才告知，避免讓外人探知帳號狀態
+    if (userData.disabled === true) throw disabledError();
 
     // 驗證成功，更新 activeSessionId
     await userDocRef.update({ activeSessionId: sessionId });
@@ -9220,6 +9229,14 @@ exports.fetchUserDetailsForAdmin = onCall({ memory: "512MiB" }, async (request) 
           // 是否允許此帳號重複登入（多裝置同時在線，不受單一 Session 限制）
           allowMultiLogin: targetUserData.allowMultiLogin === true
         },
+        // 帳號狀態獨立於 basicInfo：basicInfo 會被前端整份寫回，狀態只能由 setUserAccountStatus 變更
+        account: {
+          disabled: targetUserData.disabled === true,
+          disabledAt: targetUserData.disabledAt?.toMillis?.() || null,
+          disabledByName: targetUserData.disabledByName || '',
+          lineBound: !!targetUserData.lineId,
+          lineSuspended: !targetUserData.lineId && !!targetUserData[SUSPENDED_LINE_FIELD],
+        },
         permissions: permissions
       }
     };
@@ -9770,6 +9787,7 @@ exports.verifyUserByPhone = onCall(async (request) => {
     }
 
     const userData = userDoc.data();
+    if (userData.disabled === true) throw disabledError();
     const userName = userData.name;
 
     if (!userName) {
@@ -9814,6 +9832,7 @@ exports.bindLineIdToUser = onCall(async (request) => {
     if (!userDoc.exists) {
       throw new HttpsError("not-found", "在執行綁定時，找不到對應的手機號碼。");
     }
+    if (userDoc.data().disabled === true) throw disabledError();
 
     // 執行更新
     await userDocRef.update({
@@ -9857,6 +9876,9 @@ exports.checkLineBindingStatus = onCall(async (request) => {
     const snapshot = await query.get();
 
     if (snapshot.empty) {
+      // 帳號停用期間 lineId 暫存在別的欄位：告知已停用，不引導重新綁定
+      const suspended = await usersRef.where(SUSPENDED_LINE_FIELD, "==", lineId).limit(1).get();
+      if (!suspended.empty) return { status: "disabled", name: suspended.docs[0].data().name || "" };
       // 如果找不到任何文件，代表此 LINE 帳號尚未綁定
       console.log(`[${functionName}] LINE ID [${lineId}] 尚未綁定。`);
       return { status: "not_found" };
@@ -9910,6 +9932,7 @@ exports.initiateLineBindingVerification = onCall({
       throw new HttpsError("not-found", "找不到此手機號碼對應的使用者，或該用戶未設定 Email。");
     }
     const userData = userDoc.data();
+    if (userData.disabled === true) throw disabledError();
     const userEmail = userData.email;
     const userName = userData.name || phone;
 
@@ -10006,8 +10029,13 @@ exports.finalizeLineBinding = onCall(async (request) => {
     // 取得待綁定的資料
     const { phone, lineId } = tokenData;
 
-    // 執行最終綁定
+    // 執行最終綁定（帳號停用期間不可綁定，驗證連結一併作廢）
     const userDocRef = db.collection("users").doc(phone);
+    const bindingUserDoc = await userDocRef.get();
+    if (bindingUserDoc.exists && bindingUserDoc.data().disabled === true) {
+      await tokenRef.delete();
+      throw disabledError();
+    }
     await userDocRef.update({
       lineId: lineId
     });
@@ -10073,7 +10101,8 @@ exports.unbindLineIdByAdmin = onCall({
       throw new HttpsError("not-found", "找不到指定的用戶資料。");
     }
     const targetData = targetSnap.data();
-    const previousLineId = targetData.lineId || "";
+    // 停用中的帳號 lineId 暫存在別的欄位，一樣可以解除
+    const previousLineId = targetData.lineId || targetData[SUSPENDED_LINE_FIELD] || "";
 
     if (!previousLineId) {
       return { status: "success", alreadyUnbound: true, message: "此用戶目前並未綁定 LINE。" };
@@ -10082,6 +10111,7 @@ exports.unbindLineIdByAdmin = onCall({
     // 3. 解除綁定（保留前次 lineId 供追溯）
     await targetRef.update({
       lineId: FieldValue.delete(),
+      [SUSPENDED_LINE_FIELD]: FieldValue.delete(),
       previousLineId,
       lineUnboundBy: String(adminKey),
       lineUnboundByName: adminData.name || "",
@@ -10135,6 +10165,179 @@ exports.unbindLineIdByAdmin = onCall({
 });
 
 
+/** 這個 LINE ID 是否屬於停用中的帳號（停用期間 lineId 暫存在 SUSPENDED_LINE_FIELD） */
+async function _isSuspendedLineId(db, lineId) {
+  const snap = await db.collection("users").where(SUSPENDED_LINE_FIELD, "==", lineId).limit(1).get();
+  return !snap.empty;
+}
+
+/**
+ * [人員管理] 一鍵停用／啟用帳號（限超級管理員、系統管理員）
+ *
+ * 停用：
+ *  - users/{key}.disabled = true → 登入、所有帶操作者身分的 Cloud Function 都會被擋下
+ *  - activeSessionId 換成停用標記 → 已登入的裝置立即被踢出
+ *  - lineId 移到 lineIdDisabled 暫存 → LINE 入口（LIFF）、LINE 通知全部失效，且不可重新綁定
+ *  - 清除尚未完成的 LINE 綁定驗證信
+ * 啟用：移除 disabled，把暫存的 lineId 放回去（期間若該 LINE 已綁到別的帳號則不恢復）
+ *
+ * 權限、角色、密碼都不動，重新啟用後即恢復原狀。
+ */
+exports.setUserAccountStatus = onCall({
+  region: "asia-east1",
+  memory: "512MiB",
+}, async (request) => {
+  const functionName = "setUserAccountStatus";
+  const { adminKey, sessionId, targetUserKey, disabled } = request.data || {};
+
+  if (!adminKey || !sessionId) throw new HttpsError("unauthenticated", "缺少身分資訊，請重新登入。");
+  if (!targetUserKey) throw new HttpsError("invalid-argument", "缺少 targetUserKey。");
+  if (typeof disabled !== "boolean") throw new HttpsError("invalid-argument", "缺少 disabled（true／false）。");
+
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const operatorId = String(adminKey);
+  const targetId = String(targetUserKey);
+
+  try {
+    // 1. 驗證操作者：登入中的超級管理員或系統管理員
+    const adminSnap = await db.collection("users").doc(operatorId).get();
+    if (!adminSnap.exists) throw new HttpsError("unauthenticated", "找不到操作者資料，請重新登入。");
+    const adminData = adminSnap.data();
+    if (adminData.disabled === true) throw disabledError();
+    if (adminData.allowMultiLogin !== true && adminData.activeSessionId !== sessionId) {
+      throw new HttpsError("unauthenticated", "登入已過期，請重新登入。");
+    }
+    const adminRoles = adminData.roles || [];
+    const isSuperAdmin = adminRoles.includes("超級管理員");
+    if (!isSuperAdmin && !adminRoles.includes("系統管理員")) {
+      throw new HttpsError("permission-denied", "權限不足：僅限超級管理員或系統管理員停用／啟用帳號。");
+    }
+
+    // 2. 驗證對象
+    if (targetId === operatorId) throw new HttpsError("failed-precondition", "不可停用自己的帳號。");
+    const targetRef = db.collection("users").doc(targetId);
+    const targetSnap = await targetRef.get();
+    if (!targetSnap.exists) throw new HttpsError("not-found", "找不到指定的用戶資料。");
+    const targetData = targetSnap.data();
+    if ((targetData.roles || []).includes("超級管理員") && !isSuperAdmin) {
+      throw new HttpsError("permission-denied", "權限不足：僅限超級管理員停用／啟用超級管理員帳號。");
+    }
+    if (targetData.isTrial === true) throw new HttpsError("failed-precondition", "試用帳號請由試用設定管理。");
+
+    const targetName = targetData.name || targetId;
+    const wasDisabled = targetData.disabled === true;
+    if (wasDisabled === disabled) {
+      return {
+        status: "success",
+        disabled,
+        unchanged: true,
+        targetUserName: targetName,
+        lineId: targetData.lineId || null,
+        lineSuspended: !targetData.lineId && !!targetData[SUSPENDED_LINE_FIELD],
+      };
+    }
+
+    const operatorName = adminData.name || operatorId;
+    let lineRestored = false;
+    let lineConflict = false;
+    let lineSuspended = false;
+    // 變更後的 LINE 綁定狀態，回傳給前端直接更新列表
+    let currentLineId = targetData.lineId || null;
+
+    if (disabled) {
+      const update = {
+        disabled: true,
+        disabledAt: FieldValue.serverTimestamp(),
+        disabledBy: operatorId,
+        disabledByName: operatorName,
+        // 換掉 session：已登入的裝置（含未更新的舊版前端）會被判定為已在別處登入而登出
+        activeSessionId: `disabled:${Date.now()}`,
+      };
+      if (targetData.lineId) {
+        update[SUSPENDED_LINE_FIELD] = targetData.lineId;
+        update.lineId = FieldValue.delete();
+        lineSuspended = true;
+        currentLineId = null;
+      } else if (targetData[SUSPENDED_LINE_FIELD]) {
+        lineSuspended = true;
+      }
+      await targetRef.update(update);
+
+      // 清除尚未完成的 LINE 綁定驗證信，避免舊連結在停用期間把綁定加回去
+      try {
+        const tokenSnap = await db.collection("lineBindingTokens").where("phone", "==", targetId).get();
+        if (!tokenSnap.empty) {
+          const batch = db.batch();
+          tokenSnap.forEach(doc => batch.delete(doc.ref));
+          await batch.commit();
+        }
+      } catch (tokenErr) {
+        console.error(`[${functionName}] 清除待驗證綁定 token 失敗:`, tokenErr);
+      }
+    } else {
+      const update = {
+        disabled: FieldValue.delete(),
+        disabledAt: FieldValue.delete(),
+        disabledBy: FieldValue.delete(),
+        disabledByName: FieldValue.delete(),
+        enabledAt: FieldValue.serverTimestamp(),
+        enabledBy: operatorId,
+        enabledByName: operatorName,
+        [SUSPENDED_LINE_FIELD]: FieldValue.delete(),
+      };
+      const suspendedLineId = targetData[SUSPENDED_LINE_FIELD];
+      if (suspendedLineId && !targetData.lineId) {
+        // 停用期間這個 LINE 若已綁到別的帳號，就不搶回來，請本人重新綁定
+        const takenSnap = await db.collection("users").where("lineId", "==", suspendedLineId).limit(1).get();
+        if (takenSnap.empty) {
+          update.lineId = suspendedLineId;
+          lineRestored = true;
+          currentLineId = suspendedLineId;
+        } else {
+          update.previousLineId = suspendedLineId;
+          lineConflict = true;
+        }
+      }
+      await targetRef.update(update);
+    }
+    forgetAccount(targetId);
+
+    // 3. 稽核紀錄（best-effort）
+    try {
+      await db.collection("userAccountLogs").add({
+        action: disabled ? "disable" : "enable",
+        targetUserKey: targetId,
+        targetUserName: targetName,
+        operatorKey: operatorId,
+        operatorName,
+        lineSuspended,
+        lineRestored,
+        lineConflict,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    } catch (logErr) {
+      console.error(`[${functionName}] 寫入 userAccountLogs 失敗:`, logErr);
+    }
+
+    console.log(`[${functionName}] ${operatorName} ${disabled ? "停用" : "啟用"}了用戶 ${targetName}（${targetId}）。`);
+    return {
+      status: "success",
+      disabled,
+      unchanged: false,
+      targetUserName: targetName,
+      lineId: currentLineId,
+      lineSuspended,
+      lineRestored,
+      lineConflict,
+    };
+  } catch (error) {
+    console.error(`[${functionName}] 變更帳號狀態失敗:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `變更帳號狀態失敗: ${error.message}`);
+  }
+});
+
+
 /**
  * [LIFF查詢用] 獲取使用者資料與其可查詢的建案列表 (V2 - 包含 bookingTypes)
  * @param {string} lineId - 從 LIFF SDK 獲取的 LINE User ID
@@ -10156,12 +10359,14 @@ exports.getLiffUserData = onCall(async (request) => {
     const userSnapshot = await userQuery.get();
 
     if (userSnapshot.empty) {
+      if (await _isSuspendedLineId(db, lineId)) return { status: "disabled" };
       console.log(`[${functionName}] LINE ID [${lineId}] 尚未綁定。`);
       return { status: "not_bound" };
     }
 
     const userDoc = userSnapshot.docs[0];
     const userData = userDoc.data();
+    if (userData.disabled === true) return { status: "disabled" };
 
     // [說明] 用於權限查找的 ID (通常是 Document ID)
     // 注意：如果您的權限文件 (userPermissions) 是以「電話號碼」為 ID，
@@ -15032,7 +15237,11 @@ exports.getUserManagementInitialData = onCall({ region: "asia-east1", memory: "5
         email: u.email || '',
         roles: u.roles || [],
         lineId: u.lineId || null,
-        companyName: u.companyName || ''
+        companyName: u.companyName || '',
+        // 帳號停用狀態；停用期間 LINE 綁定暫停（lineId 暫存），重新啟用後恢復
+        disabled: u.disabled === true,
+        lineSuspended: !u.lineId && !!u[SUSPENDED_LINE_FIELD],
+        isTrial: u.isTrial === true,
       }));
       // 依姓名排序
       manageableUsers.sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'zh-Hant'));
@@ -19698,10 +19907,14 @@ async function _handleGetLiffUserData(data) {
     const usersRef = db.collection("users");
     const userQuery = usersRef.where("lineId", "==", lineId).limit(1);
     const userSnapshot = await userQuery.get();
-    if (userSnapshot.empty) return { status: "not_bound" };
+    if (userSnapshot.empty) {
+      if (await _isSuspendedLineId(db, lineId)) return { status: "disabled" };
+      return { status: "not_bound" };
+    }
 
     const userDoc = userSnapshot.docs[0];
     const userData = userDoc.data();
+    if (userData.disabled === true) return { status: "disabled" };
     const userKey = userDoc.id;
 
     const permDocRef = db.collection("userPermissions").doc(userKey);
