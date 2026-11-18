@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/browser-BgKfLM8-.js","assets/shims-BK3iYsae.js"])))=>i.map(i=>d[i]);
+import{a as n}from"./shims-BK3iYsae.js";let r=null;async function l(o,t=360){try{return r=r||await n(()=>import("./browser-BgKfLM8-.js").then(a=>a.b),__vite__mapDeps([0,1])),await(r.default||r).toDataURL(o,{margin:1,width:t,errorCorrectionLevel:"M",color:{dark:"#0B0B0F",light:"#FFFFFF"}})}catch(e){return console.warn("[ProductPage] QR Code 產生失敗:",e),""}}export{l as m};
