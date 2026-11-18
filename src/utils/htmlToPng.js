@@ -7,7 +7,9 @@
  * 只有在這條路失敗（瀏覽器不支援或畫出空白）時才退回 html2canvas。
  *
  * 使用限制：樣式寫在 inline style 或 css 參數（不會帶入網站的 CSS）；
- * 不能用外部圖片與網頁字型（SVG 圖片內不載入外部資源），字型用系統字型。
+ * 不能用外部圖片與網頁字型（SVG 圖片內不載入外部資源），字型用系統字型；
+ * 不能用 opacity、position: relative/absolute、transform（Safari 會把這些元素縮小畫到圖片左上角），
+ * 半透明請先算成實色。
  */
 
 export const PNG_FONT_FAMILY =

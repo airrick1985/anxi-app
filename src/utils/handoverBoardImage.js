@@ -4,8 +4,10 @@
  * 版面與畫面一致：標題、更新時間、圖例戶數、完整矩陣（不受畫面捲動裁切）、店面排、右側統計。
  * 有篩選／搜尋時，不符合的格子同畫面一樣淡化，標題列標出篩選條件。
  * HTML 交給 utils/htmlToPng 以瀏覽器原生排版轉 PNG（樣式全部放在 css 參數，不依賴網站 CSS）。
+ * 不用 opacity：Safari 轉圖時會把半透明元素畫到圖片左上角（日期、淡化格子都曾因此消失），
+ * 半透明效果一律先算成實色。
  */
-import { barColor, boardKpis, shortDate, textColorFor } from './handoverBoard.js';
+import { barColor, boardKpis, normalizeHex, shortDate, textColorFor } from './handoverBoard.js';
 import { formatDateTime } from './handoverBoardExport.js';
 
 const esc = (v) => String(v ?? '')
@@ -24,6 +26,22 @@ const STATS_W = 240;
 const BODY_GAP = 16;
 const SPECIAL_W = 72;
 
+// 淡化程度（與畫面一致）：篩選不符合的格子、篩選外的圖例
+const DIM = 0.18;
+const OFF = 0.45;
+const WHITE = '#FFFFFF';
+
+/** 兩色混合（t＝a 的比例），用來取代 opacity */
+function mix(a, b, t) {
+  const ha = normalizeHex(a) || WHITE;
+  const hb = normalizeHex(b) || WHITE;
+  const ch = (i) => Math.round(parseInt(ha.slice(i, i + 2), 16) * t + parseInt(hb.slice(i, i + 2), 16) * (1 - t))
+    .toString(16).padStart(2, '0');
+  return `#${ch(1)}${ch(3)}${ch(5)}`.toUpperCase();
+}
+/** 白底上的透明度 t */
+const fade = (c, t) => (t >= 1 ? normalizeHex(c) || WHITE : mix(c, WHITE, t));
+
 const CSS = `
 .hi{padding:22px ${PAD_X}px 26px;background:#fff;color:#1d1d1f;font-size:13px}
 .hi-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin-bottom:12px}
@@ -33,7 +51,9 @@ const CSS = `
 .hi-time{margin-left:auto;font-size:12.5px;color:#6e6e73}
 .hi-legend{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
 .hi-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 7px 3px 4px;border:1px solid #e5e5ea;border-radius:8px;font-size:12.5px;font-weight:500;white-space:nowrap}
-.hi-chip.off{opacity:.45}
+.hi-chip.off{border-color:${fade('#E5E5EA', OFF)};color:${fade('#1D1D1F', OFF)}}
+.hi-chip.off .hi-sw{border-color:rgba(0,0,0,${0.12 * OFF})}
+.hi-chip.off .hi-n{background:${fade('#F0F0F3', OFF)};color:${fade('#6E6E73', OFF)}}
 .hi-sw{display:inline-block;width:16px;height:16px;border-radius:5px;border:1px solid rgba(0,0,0,.12)}
 .hi-n{min-width:18px;padding:0 5px;border-radius:9px;background:#f0f0f3;color:#6e6e73;font-size:11.5px;font-weight:600;text-align:center}
 .hi-body{display:flex;align-items:flex-start;gap:${BODY_GAP}px}
@@ -45,15 +65,14 @@ const CSS = `
 .hi-floor{width:${FLOOR_W}px}
 .hi-gap{width:${GAP_W}px;padding:0}
 .hi-c{width:${CELL_W}px;height:40px;padding:2px 3px;border-radius:7px;border:1px solid rgba(0,0,0,.08);text-align:center;vertical-align:middle;font-size:12px;font-weight:600;line-height:1.2;word-break:break-all}
-.hi-c small{display:block;font-size:10.5px;font-weight:500;opacity:.8}
-.hi-c.dim{opacity:.18}
+.hi-c small{display:block;font-size:10.5px;font-weight:500}
 .hi-empty{padding:0}
 .hi-special{display:flex;align-items:flex-start;gap:10px;margin-top:6px;padding:10px 4px 0;border-top:1px solid #ececf0}
 .hi-special.only{margin-top:0;padding-top:2px;border-top:0}
 .hi-special-label{flex:none;min-width:36px;padding-top:12px;color:#6e6e73;font-size:12px;font-weight:600;text-align:center}
 .hi-special-list{display:flex;flex-wrap:wrap;gap:4px}
 .hi-s{width:${SPECIAL_W - 4}px;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.hi-s b{font-size:11px;font-weight:700;opacity:.85}
+.hi-s b{font-size:11px;font-weight:700}
 .hi-stats{flex:none;width:${STATS_W}px;display:flex;flex-direction:column;gap:10px}
 .hi-card{padding:11px 14px 12px;border:1px solid #e5e5ea;border-radius:12px}
 .hi-card-t{margin-bottom:7px;color:#6e6e73;font-size:11.5px;font-weight:600}
@@ -98,11 +117,21 @@ export function buildHandoverImage(board, { projectName = '', updatedAt = new Da
   const label = Object.fromEntries(board.statusList.map(s => [s.key, s.label]));
   const counts = board.stats.statusCounts;
   const dim = (u) => (isMatch && !isMatch(u) ? ' dim' : '');
-  const cellStyle = (u) => {
-    const bg = board.colors[u.status] || '#FFFFFF';
-    return `background:${bg};color:${textColorFor(bg)}`;
+  // 格子顏色：日期、店面戶號的淺色字與篩選淡化都直接算成實色
+  const cellColors = (u) => {
+    const bg = normalizeHex(board.colors[u.status]) || WHITE;
+    const fg = textColorFor(bg);
+    const k = isMatch && !isMatch(u) ? DIM : 1;
+    return {
+      bg: fade(bg, k),
+      fg: fade(fg, k),
+      border: fade(mix('#000000', bg, 0.08), k),
+      date: fade(mix(fg, bg, 0.8), k),
+      unit: fade(mix(fg, bg, 0.85), k),
+    };
   };
-  const cellInner = (u) => `${esc(label[u.status] || '')}${u.nextDate ? `<small>${esc(shortDate(u.nextDate))}</small>` : ''}`;
+  const cellStyle = (c) => `background:${c.bg};color:${c.fg};border-color:${c.border}`;
+  const cellInner = (u, c) => `${esc(label[u.status] || '')}${u.nextDate ? `<small style="color:${c.date}">${esc(shortDate(u.nextDate))}</small>` : ''}`;
 
   // 標題列
   const head = `<div class="hi-head">
@@ -113,7 +142,8 @@ ${filterText ? `<span class="hi-filter">${esc(filterText)}</span>` : ''}
   // 圖例
   const legend = `<div class="hi-legend">${board.statusList.map(s => {
     const off = activeStatuses.length > 0 && !activeStatuses.includes(s.key) ? ' off' : '';
-    return `<span class="hi-chip${off}"><i class="hi-sw" style="background:${board.colors[s.key]}"></i>${esc(s.label)}<span class="hi-n">${counts[s.key] || 0}</span></span>`;
+    const sw = off ? fade(board.colors[s.key], OFF) : board.colors[s.key];
+    return `<span class="hi-chip${off}"><i class="hi-sw" style="background:${sw}"></i>${esc(s.label)}<span class="hi-n">${counts[s.key] || 0}</span></span>`;
   }).join('')}</div>`;
 
   // 矩陣
@@ -126,14 +156,19 @@ ${filterText ? `<span class="hi-filter">${esc(filterText)}</span>` : ''}
     const rows = board.floors.map(floor => {
       const cells = board.towers.map((t, i) => `${i > 0 ? '<td class="hi-gap"></td>' : ''}${t.cols.map(col => {
         const u = board.cellMap[`${floor}|${col}`];
-        return u ? `<td class="hi-c${dim(u)}" style="${cellStyle(u)}">${cellInner(u)}</td>` : '<td class="hi-empty"></td>';
+        if (!u) return '<td class="hi-empty"></td>';
+        const c = cellColors(u);
+        return `<td class="hi-c${dim(u)}" style="${cellStyle(c)}">${cellInner(u, c)}</td>`;
       }).join('')}`).join('');
       return `<tr><th class="hi-floor">${floor}F</th>${cells}<th class="hi-floor">${floor}F</th></tr>`;
     }).join('');
     table = `<table class="hi-t"><thead>${towerRow}${colRow}</thead><tbody>${rows}</tbody></table>`;
   }
   const special = board.specialUnits.length > 0
-    ? `<div class="hi-special${board.floors.length === 0 ? ' only' : ''}"><div class="hi-special-label">${esc(board.specialLabel)}</div><div class="hi-special-list">${board.specialUnits.map(u => `<div class="hi-c hi-s${dim(u)}" style="${cellStyle(u)}"><b>${esc(u.unitId)}</b>${cellInner(u)}</div>`).join('')}</div></div>`
+    ? `<div class="hi-special${board.floors.length === 0 ? ' only' : ''}"><div class="hi-special-label">${esc(board.specialLabel)}</div><div class="hi-special-list">${board.specialUnits.map((u) => {
+      const c = cellColors(u);
+      return `<div class="hi-c hi-s${dim(u)}" style="${cellStyle(c)}"><b style="color:${c.unit}">${esc(u.unitId)}</b>${cellInner(u, c)}</div>`;
+    }).join('')}</div></div>`
     : '';
 
   // 統計

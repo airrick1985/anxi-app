@@ -4735,9 +4735,9 @@ async function buildSchedulePng(start, end) {
             whiteSpace: 'normal', wordWrap: 'break-word', padding: '4px 6px',
             marginTop: '4px', borderRadius: '4px', fontSize: '0.9em',
           });
+          // 取消：灰字刪除線（不用 opacity，Safari 轉圖會把半透明元素畫到左上角）
           if (event['預約狀態'] === '取消') {
-           eventItem.style.textDecoration = 'line-through';
-           eventItem.style.opacity = '0.7';
+            Object.assign(eventItem.style, { textDecoration: 'line-through', backgroundColor: '#F5F5F5', color: '#9E9E9E' });
           }
           
           // --- ✨ 修改後：使用 displayParts 產生 HTML 字串 ---
@@ -4958,7 +4958,7 @@ function buildPersonPngRowsHTML(person, events, isInspectorBlock) {
     // 資料列底色/文字色沿用畫面上的事件顏色設定（取消/已完成→自訂顏色→關鍵字顏色→預設）
     const style = getEventStyle(evt);
     const cancelled = evt.status === '取消';
-    const rowStyle = `background-color:${style.backgroundColor};color:${style.color};${style.border ? `border:${style.border};` : ''}${cancelled ? 'text-decoration:line-through;opacity:.8;' : ''}`;
+    const rowStyle = `background-color:${style.backgroundColor};color:${style.color};${style.border ? `border:${style.border};` : ''}${cancelled ? 'text-decoration:line-through;' : ''}`;
     const cells = columns.map(option => `<td style="${PERSON_PNG_TD}">${buildPersonPngCellHTML(evt, option)}</td>`).join('');
     return `<tr style="${rowStyle}">
       <td style="${PERSON_PNG_TD}">${escapePngHtml(dateLabel)}</td>

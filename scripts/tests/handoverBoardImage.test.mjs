@@ -19,7 +19,7 @@ test('圖片包含完整矩陣、店面、統計與圖例戶數', () => {
   assert.match(html, /測試建案/);
   assert.match(html, /交屋控管表/);
   assert.equal((html.match(/class="hi-c[ "]/g) || []).length, 4); // 3 格＋1 店面
-  assert.match(html, /已約交屋<small>11\/20<\/small>/);
+  assert.match(html, /已約交屋<small style="color:#[0-9A-F]{6}">11\/20<\/small>/);
   assert.match(html, /A 棟/);
   assert.match(html, /hi-special-label">店面/);
   assert.match(html, /總覽/);
@@ -36,6 +36,22 @@ test('篩選：不符合的格子淡化、標題列顯示條件、圖例其他�
   assert.equal((html.match(/hi-c dim/g) || []).length, 1);
   assert.match(html, /hi-filter">篩選：未售/);
   assert.ok((html.match(/hi-chip off/g) || []).length >= 1);
+});
+
+test('圖片不用 opacity（Safari 轉圖會把半透明元素畫到左上角）', () => {
+  const board = buildHandoverBoard([
+    h('A1-03', 'A1', { _bookingInfo: { 交屋: booked('2026-11-20') } }),
+    h('A1-04', 'A1', { buyerName: '' }),
+    h('S-01', 'S', { _bookingInfo: { 初驗: booked('2026-11-21') } }),
+  ], menu, TODAY);
+  const { html, css } = buildHandoverImage(board, {
+    isMatch: (u) => u.status === 'unsold', activeStatuses: ['unsold'],
+  });
+  assert.doesNotMatch(css + html, /opacity/);
+  // 淡化的格子改用淺色實色
+  const dimCell = html.match(/<td class="hi-c dim" style="([^"]+)"/)[1];
+  assert.match(dimCell, /background:#[0-9A-F]{6};color:#[0-9A-F]{6};border-color:#[0-9A-F]{6}/);
+  assert.doesNotMatch(dimCell, /color:#1D1D1F/);
 });
 
 test('使用者資料會被跳脫，不會破壞版面', () => {
