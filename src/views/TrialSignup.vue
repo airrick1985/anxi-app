@@ -23,6 +23,11 @@
             <li><v-icon size="20">mdi-check-circle</v-icon>首次登入附功能導覽，30 秒認識全系統</li>
           </ul>
 
+          <!-- 桌機：客戶用手機掃描，在自己的手機上填寫 -->
+          <div v-if="qrDataUrl" class="trial-qr">
+            <img :src="qrDataUrl" alt="免費試用 QR Code" width="120" height="120" />
+            <strong>手機掃描填寫</strong>
+          </div>
         </div>
       </aside>
 
@@ -169,6 +174,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useUserStore } from '@/store/user';
 import { submitTrialLeadAPI, loginUser } from '@/api';
 import { setTrialLeadId, trackTrialEvent } from '@/utils/trialTracking';
+import { makeQr } from '@/components/product/qr';
 import logoUrl from '@/assets/landing/anxi-logo.webp';
 
 const router = useRouter();
@@ -216,7 +222,18 @@ onMounted(() => {
     if (route.query[k]) utm[k.replace('utm_', '')] = String(route.query[k]);
   });
   if (route.query.source) utm.entry = String(route.query.source);
+  buildQr();
 });
+
+// 桌機顯示本頁 QR Code：保留來源參數，掃描進來的另記 utm_medium=qr
+const qrDataUrl = ref('');
+const buildQr = async () => {
+  if (!window.matchMedia('(min-width: 960px)').matches) return;
+  const query = { ...route.query };
+  if (!query.utm_medium) query.utm_medium = 'qr';
+  const url = new URL(router.resolve({ name: 'TrialSignup', query }).href, window.location.href).href;
+  qrDataUrl.value = await makeQr(url, 360);
+};
 
 const submit = async () => {
   error.value = '';
@@ -341,7 +358,19 @@ const submit = async () => {
 .trial-lead { font-size: 1.02rem; line-height: 1.8; opacity: .92; }
 .trial-points { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 12px; }
 .trial-points li { display: flex; align-items: center; gap: 10px; font-size: .98rem; }
-
+.trial-qr {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: fit-content;
+  margin-top: 32px;
+  padding: 12px 20px 12px 12px;
+  border-radius: 16px;
+  background: #fff;
+  color: var(--lp-text);
+}
+.trial-qr img { display: block; width: 120px; height: 120px; border-radius: 8px; }
+.trial-qr strong { font-size: 1.02rem; font-weight: 700; white-space: nowrap; }
 
 .trial-main { display: flex; align-items: center; justify-content: center; padding: 48px 24px; }
 .trial-card {
@@ -382,7 +411,7 @@ const submit = async () => {
   .trial-layout { grid-template-columns: 1fr; }
   .trial-aside { padding: 36px 24px; }
   .trial-title { font-size: 1.7rem; }
-  .trial-points { display: none; }
+  .trial-points, .trial-qr { display: none; }
   .trial-main { padding: 24px 16px 40px; }
   .trial-card { padding: 24px 20px; }
 }
