@@ -48,9 +48,11 @@
         <v-row v-else :no-gutters="isMobile">
           <!-- ================= 左欄：編輯 ================= -->
           <v-col cols="12" lg="5" v-show="!isMobile || mobileTab === 'edit'" :class="isMobile ? '' : 'pr-3'">
+           <!-- 桌機雙欄：各輸入區塊下移到與右側對應預覽頁同高（見 alignEditorCards） -->
+           <div ref="editorStackRef" class="editor-stack">
 
             <!-- 頁面清單 -->
-            <v-card elevation="2" class="mb-4">
+            <v-card elevation="2" class="mb-4" data-align-head>
               <v-card-item class="editor-header cursor-pointer" @click="pagesExpanded = !pagesExpanded">
                 <v-card-title class="text-subtitle-1">
                   <v-icon start size="small">mdi-file-multiple-outline</v-icon>
@@ -105,7 +107,8 @@
             </v-card>
 
             <!-- 期款方式 -->
-            <v-card elevation="2" class="mb-4" v-if="needsInstallment">
+            <v-card elevation="2" class="mb-4" v-if="needsInstallment"
+              data-align-key="installment" :style="cardAlignStyle('installment')">
               <v-card-item class="editor-header">
                 <v-card-title class="text-subtitle-1">
                   <v-icon start size="small">mdi-format-list-numbered</v-icon>
@@ -329,7 +332,8 @@
             </v-card>
 
             <!-- 裝修期款（配套戶） -->
-            <v-card elevation="2" class="mb-4" v-if="needsDecoration">
+            <v-card elevation="2" class="mb-4" v-if="needsDecoration"
+              data-align-key="decoration" :style="cardAlignStyle('decoration')">
               <v-card-item class="editor-header">
                 <v-card-title class="text-subtitle-1">
                   <v-icon start size="small">mdi-hammer-wrench</v-icon>
@@ -446,7 +450,8 @@
             </v-card>
 
             <!-- 拆款表欄位 -->
-            <v-card elevation="2" class="mb-4" v-if="breakdownPage">
+            <v-card elevation="2" class="mb-4" v-if="breakdownPage"
+              data-align-key="breakdownFields" :style="cardAlignStyle('breakdownFields')">
               <v-card-item class="editor-header">
                 <v-card-title class="text-subtitle-1">
                   <v-icon start size="small">mdi-file-table-outline</v-icon>
@@ -515,7 +520,8 @@
             </v-card>
 
             <!-- 繳款銀行 / QR -->
-            <v-card elevation="2" class="mb-4" v-if="bankPages.length">
+            <v-card elevation="2" class="mb-4" v-if="bankPages.length"
+              data-align-key="bank" :style="cardAlignStyle('bank')">
               <v-card-item class="editor-header">
                 <v-card-title class="text-subtitle-1">
                   <v-icon start size="small">mdi-bank-outline</v-icon>
@@ -540,7 +546,8 @@
             </v-card>
 
             <!-- 合約加註 -->
-            <v-card elevation="2" class="mb-4" v-if="notesPage">
+            <v-card elevation="2" class="mb-4" v-if="notesPage"
+              data-align-key="notes" :style="cardAlignStyle('notes')">
               <v-card-item class="editor-header">
                 <v-card-title class="text-subtitle-1">
                   <v-icon start size="small">mdi-note-text-outline</v-icon>
@@ -571,7 +578,8 @@
             </v-card>
 
             <!-- 合約附圖 -->
-            <v-card elevation="2" class="mb-4" v-if="attachmentsPage">
+            <v-card elevation="2" class="mb-4" v-if="attachmentsPage"
+              data-align-key="attachments" :style="cardAlignStyle('attachments')">
               <v-card-item class="editor-header">
                 <v-card-title class="text-subtitle-1">
                   <v-icon start size="small">mdi-floor-plan</v-icon>
@@ -610,16 +618,18 @@
                 </template>
               </v-card-text>
             </v-card>
+           </div>
           </v-col>
 
           <!-- ================= 右欄：預覽 ================= -->
           <v-col cols="12" lg="7" v-show="!isMobile || mobileTab === 'preview'">
-            <div class="preview-wrapper">
+            <div ref="previewWrapperRef" class="preview-wrapper">
               <template v-for="pv in previewPages" :key="pv.renderKey">
                 <template v-for="pc in (pv.page.pageCopies || 1)" :key="`${pv.renderKey}_p${pc}`">
-                  <div class="preview-sheet" :style="[paperStyle(pv.page), sheetZoomStyle(pv.page), sheetFontStyle(pv.page)]">
+                  <div class="preview-sheet" :data-pv-key="pc === 1 ? pv.renderKey : null"
+                    :style="[paperStyle(pv), sheetZoomStyle(pv), sheetFontStyle(pv.page)]">
                     <template v-if="pv.page.type === 'contractAttachments'">
-                      <AttachmentsPreview :data="pv.data" :style="attInnerStyle(pv.page)"
+                      <AttachmentsPreview :data="pv.data" :style="attInnerStyle(pv)"
                         @rotate="rotateAttachment" />
                     </template>
                     <template v-else>
@@ -639,6 +649,13 @@
                       {{ pv.page.title }}<template v-if="pv.data.total > 1">（附圖 {{ pv.data.index }}/{{ pv.data.total }}）</template>
                       <template v-if="(pv.page.pageCopies || 1) > 1">（{{ pc }}/{{ pv.page.pageCopies }}）</template>
                     </div>
+                    <button v-if="pc === 1 && !pv.data.empty" type="button" class="sheet-print"
+                      :style="sheetUnzoomStyle(pv)" :disabled="!canDownload || !!printingKey"
+                      :title="`列印「${pv.page.title}」`" @click="printPreviewPage(pv)">
+                      <v-progress-circular v-if="printingKey === pv.renderKey" indeterminate size="12" width="2" />
+                      <v-icon v-else size="14">mdi-printer</v-icon>
+                      <span>列印</span>
+                    </button>
                   </div>
                 </template>
               </template>
@@ -673,6 +690,9 @@
           歷史檔案<template v-if="historyFiles.length">（{{ historyFiles.length }}）</template>
         </v-btn>
         <v-spacer />
+        <v-btn color="primary" variant="flat" prepend-icon="mdi-printer" :loading="printingKey === 'all'"
+          :disabled="!canDownload || (!!printingKey && printingKey !== 'all')"
+          @click="printDocument('all')">列印全部</v-btn>
         <v-btn color="error" variant="flat" prepend-icon="mdi-file-pdf-box" :loading="downloading.pdf"
           :disabled="!canDownload" @click="openPageExportDialog('pdf')">下載 PDF</v-btn>
         <v-btn color="success" variant="flat" prepend-icon="mdi-file-excel" :loading="downloading.excel"
@@ -855,7 +875,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, reactive, defineAsyncComponent } from 'vue';
+import { ref, computed, watch, reactive, defineAsyncComponent, nextTick, onBeforeUnmount } from 'vue';
 import { useDisplay } from 'vuetify';
 import { useToast } from 'vue-toastification';
 import draggable from 'vuedraggable';
@@ -917,7 +937,7 @@ const props = defineProps({
 });
 defineEmits(['update:show']);
 
-const { mobile: isMobile, width: windowWidth } = useDisplay();
+const { mobile: isMobile, width: windowWidth, lgAndUp } = useDisplay();
 const toast = useToast();
 const projectStore = useProjectStore();
 
@@ -1726,8 +1746,16 @@ function pageDims(page) {
   return { w: landscape ? h : w, h: landscape ? w : h };
 }
 
-function paperStyle(page) {
-  const { w, h } = pageDims(page);
+// 預覽紙張尺寸：附圖旋轉 90°／270° 時紙張跟著轉（寬高互換），與匯出 PDF 以頁面 /Rotate 轉向一致
+function previewDims(pv) {
+  const dims = pageDims(pv.page);
+  const rotation = Number(pv.data?.file?.rotation) || 0;
+  const quarter = pv.page.type === 'contractAttachments' && ((rotation % 180) + 180) % 180 === 90;
+  return quarter ? { w: dims.h, h: dims.w } : dims;
+}
+
+function paperStyle(pv) {
+  const { w, h } = previewDims(pv);
   return {
     width: `${w}px`,
     minHeight: `${h}px`,
@@ -1735,8 +1763,8 @@ function paperStyle(page) {
 }
 
 // 逐頁縮放：依該頁紙張寬度計算（橫向頁不會爆版）
-function sheetZoomStyle(page) {
-  const { w } = pageDims(page);
+function sheetZoomStyle(pv) {
+  const { w } = previewDims(pv);
   const available = isMobile.value
     ? Math.max(300, (windowWidth.value || 375) - 24)
     : 800;   // 桌機右欄可視寬度概估
@@ -1745,8 +1773,8 @@ function sheetZoomStyle(page) {
 
 // 附圖滿版預覽的內容高度（紙張高 - 上下 padding）；
 // 同時輸出內容寬高 CSS 變數，供旋轉 90/270 時圖片寬高互換的縮放限制
-function attInnerStyle(page) {
-  const { w, h } = pageDims(page);
+function attInnerStyle(pv) {
+  const { w, h } = previewDims(pv);
   const stageH = h - 56 - 24;   // 再扣預覽底部檔名列高度
   return {
     height: `${h - 56}px`,
@@ -1862,6 +1890,84 @@ const previewPages = computed(() => {
 });
 
 const exportablePages = computed(() => localPages.value.filter(p => p.enabled && !pageDisabled(p)));
+
+/* ---------- 左欄輸入區塊對齊右側預覽頁（桌機雙欄） ----------
+ * 每個區塊下移到與對應預覽頁頂端同高；依預覽頁順序排列（flex order），
+ * 上一個區塊比對應頁長時不重疊、順延。手機／窄螢幕（單欄）不套用。 */
+const editorStackRef = ref(null);
+const previewWrapperRef = ref(null);
+const cardAlign = ref({});   // key → { order, mt }
+const ALIGN_GAP = 16;        // 與卡片 mb-4 相同
+const ALIGN_TARGETS = {
+  installment: p => ['breakdown', 'contractNumberTable', 'contractNumberTableCombined'].includes(p.type)
+    || (p.type === 'paymentDetail' && !isPackagePaymentDetail(p)),
+  decoration: p => p.type === 'decorationBreakdown' || p.type === 'decorationPaymentDetail' || isPackagePaymentDetail(p),
+  breakdownFields: p => p.type === 'breakdown',
+  bank: p => p.type === 'bankAccounts',
+  notes: p => p.type === 'contractNotes',
+  attachments: p => p.type === 'contractAttachments',
+};
+
+function cardAlignStyle(key) {
+  const a = cardAlign.value[key];
+  return a ? { order: a.order, marginTop: `${a.mt}px` } : null;
+}
+
+function alignEditorCards() {
+  const stack = editorStackRef.value;
+  const wrapper = previewWrapperRef.value;
+  if (!stack || !wrapper || isMobile.value || !lgAndUp.value) {
+    if (Object.keys(cardAlign.value).length) cardAlign.value = {};
+    return;
+  }
+  const stackTop = stack.getBoundingClientRect().top;
+  const sheetTops = new Map();
+  wrapper.querySelectorAll('[data-pv-key]').forEach(el => {
+    sheetTops.set(el.dataset.pvKey, el.getBoundingClientRect().top - stackTop);
+  });
+  // 有對應頁者依頁面位置排序；沒有對應頁（例如該頁無資料不預覽）者緊接在原本的前一個區塊之後
+  let prevSortKey = -Infinity;
+  const cards = [...stack.querySelectorAll(':scope > [data-align-key]')].map((el, idx) => {
+    const key = el.dataset.alignKey;
+    const pv = previewPages.value.find(x => ALIGN_TARGETS[key]?.(x.page));
+    const top = pv ? sheetTops.get(pv.renderKey) : undefined;
+    const target = Number.isFinite(top) ? top : null;
+    prevSortKey = target ?? prevSortKey;
+    return { key, el, idx, target, sortKey: prevSortKey };
+  });
+  cards.sort((a, b) => (a.sortKey - b.sortKey) || (a.idx - b.idx));
+  const head = stack.querySelector(':scope > [data-align-head]');
+  let y = head ? head.getBoundingClientRect().bottom - stackTop + ALIGN_GAP : 0;
+  const next = {};
+  cards.forEach((c, i) => {
+    const mt = c.target == null ? 0 : Math.max(0, Math.round(c.target - y));
+    next[c.key] = { order: i + 1, mt };
+    y += mt + c.el.getBoundingClientRect().height + ALIGN_GAP;
+  });
+  if (JSON.stringify(next) !== JSON.stringify(cardAlign.value)) cardAlign.value = next;
+}
+
+let alignRaf = 0;
+function scheduleAlign() {
+  if (alignRaf) return;
+  alignRaf = requestAnimationFrame(() => { alignRaf = 0; alignEditorCards(); });
+}
+// 左欄（卡片展開／內容變動）或右側預覽（頁面增減、附圖旋轉改變紙張高度）尺寸變動時重新對齊
+let alignObserver = null;
+watch([editorStackRef, previewWrapperRef], ([stack, wrapper]) => {
+  alignObserver?.disconnect();
+  if (!stack || !wrapper || typeof ResizeObserver === 'undefined') return;
+  alignObserver = alignObserver || new ResizeObserver(scheduleAlign);
+  alignObserver.observe(stack);
+  alignObserver.observe(wrapper);
+  scheduleAlign();
+}, { flush: 'post' });
+watch([previewPages, lgAndUp, isMobile], () => nextTick(scheduleAlign));
+onBeforeUnmount(() => {
+  alignObserver?.disconnect();
+  if (alignRaf) cancelAnimationFrame(alignRaf);
+  clearPrintFrame();
+});
 
 /* ---------- 驗證（可否下載） ---------- */
 // 會辦單負數欄位檢查：面積/價款/付款明細不得為負（溢差價除外）；有異常時預覽標紅並禁止下載
@@ -2226,99 +2332,187 @@ function base64ToBlob(base64, mimeType) {
   return new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
 }
 
-async function download(format, onlyPageIds = null) {
+/**
+ * 產製合約文件（下載與列印共用）：回傳 { blob, fileName }；失敗或無可產製頁面時回傳 null（已提示）。
+ * @param {string[]|null} onlyPageIds 只產製這些頁面（null＝該格式全部頁）
+ * @param {{ attachmentFileId?: string }} [opts] 只含合約附圖中的這個檔案（列印單張附圖）
+ */
+async function produceDocument(format, onlyPageIds = null, { attachmentFileId = null } = {}) {
   // 數字異常／資料缺漏：明確提醒並拒絕產製（按鈕已 disabled，此為雙重保險）
   if (downloadBlockers.value.length) {
     const detail = breakdownNegatives.value.length ? `；負數欄位：${breakdownNegativeText.value}` : '';
     toast.error(`無法匯出，請先修正：${downloadBlockers.value.join('；')}${detail}`);
-    return;
+    return null;
   }
-  if (!canDownload.value) return;
+  if (!canDownload.value) return null;
+  await saveDocData(true);
+
+  // 附圖頁要匯出但清單尚未載入時，先載入並預設全選（避免靜默漏掉附圖）
+  const includesAttachments = exportablePages.value
+    .some(p => p.type === 'contractAttachments' && (!onlyPageIds || onlyPageIds.includes(p.id)));
+  if (format === 'pdf' && includesAttachments && attachmentSourceUrl.value && !attachmentsLoaded.value) {
+    await loadAttachmentFiles();
+  }
+  if (format === 'pdf' && includesAttachments && !state.attachmentSelection.length) {
+    toast.warning('合約附圖尚未勾選任何檔案，本次匯出將不含附圖');
+  }
+
+  let qrDataUrl = null;
+  if (state.qrUrl) {
+    qrDataUrl = await QRCode.toDataURL(state.qrUrl, { width: 300, margin: 1, errorCorrectionLevel: 'M' });
+  }
+
+  const pageData = (p) => {
+    if (p.type === 'bankAccounts') return { ...buildPageData(p), qrDataUrl };
+    const data = buildPageData(p);
+    if (p.type === 'contractAttachments' && attachmentFileId) {
+      return { ...data, selection: data.selection.filter(a => a.fileId === attachmentFileId) };
+    }
+    return data;
+  };
+  const candidatePages = formatPages(format);
+  const pagesPayload = candidatePages
+    .filter(p => !onlyPageIds || onlyPageIds.includes(p.id))
+    .map(p => ({
+      id: p.id,
+      type: p.type,
+      title: p.title,
+      paper: { size: p.paper?.size || 'A4', orientation: p.paper?.orientation || 'portrait' },
+      repeatCount: p.repeatCount || 1,
+      pageCopies: p.pageCopies || 1,
+      font: p.font || null,
+      data: pageData(p),
+    }));
+
+  if (!pagesPayload.length) {
+    toast.warning('沒有可匯出的頁面（EXCEL 不含合約附圖頁）。');
+    return null;
+  }
+
+  // 選頁檔名：單頁附頁名、多頁串接頁名（過長改「自選N頁」）；勾滿該格式全部頁視同完整匯出不附頁名
+  let pageTitle = null;
+  if (onlyPageIds && pagesPayload.length < candidatePages.length) {
+    const titles = pagesPayload.map(p => p.title).filter(Boolean);
+    const joined = titles.join('+');
+    pageTitle = titles.length <= 1 ? (titles[0] || null)
+      : (joined.length <= 30 ? joined : `自選${titles.length}頁`);
+  }
+
+  const payload = {
+    projectId: props.projectId,
+    format,
+    fileNameParts: {
+      projectName: props.projectName,
+      unitId: unitCtx.value.unitId,
+      salesperson: unitCtx.value.salespersonText,
+      pageTitle,
+    },
+    pages: pagesPayload,
+  };
+
+  const result = await generateContractDocument(payload);
+  if (result.status !== 'success' || !(result.url || result.base64)) {
+    throw new Error(result.message || '後端發生未知錯誤');
+  }
+  if (Array.isArray(result.warnings) && result.warnings.length) {
+    toast.warning(`部分附圖無法載入：${result.warnings.join('、')}`);
+  }
+  if (result.url) {
+    // Storage 下載連結（新版後端）：抓取檔案，並刷新歷史檔案列表
+    const resp = await fetch(result.url);
+    if (!resp.ok) throw new Error(`下載檔案失敗（HTTP ${resp.status}）`);
+    loadHistoryFiles();
+    return { blob: await resp.blob(), fileName: result.fileName };
+  }
+  return { blob: base64ToBlob(result.base64, result.mimeType), fileName: result.fileName };
+}
+
+async function download(format, onlyPageIds = null) {
   downloading[format] = true;
   try {
-    await saveDocData(true);
-
-    // 附圖頁要匯出但清單尚未載入時，先載入並預設全選（避免靜默漏掉附圖）
-    const includesAttachments = exportablePages.value
-      .some(p => p.type === 'contractAttachments' && (!onlyPageIds || onlyPageIds.includes(p.id)));
-    if (format === 'pdf' && includesAttachments && attachmentSourceUrl.value && !attachmentsLoaded.value) {
-      await loadAttachmentFiles();
-    }
-    if (format === 'pdf' && includesAttachments && !state.attachmentSelection.length) {
-      toast.warning('合約附圖尚未勾選任何檔案，本次匯出將不含附圖');
-    }
-
-    let qrDataUrl = null;
-    if (state.qrUrl) {
-      qrDataUrl = await QRCode.toDataURL(state.qrUrl, { width: 300, margin: 1, errorCorrectionLevel: 'M' });
-    }
-
-    const candidatePages = formatPages(format);
-    const pagesPayload = candidatePages
-      .filter(p => !onlyPageIds || onlyPageIds.includes(p.id))
-      .map(p => ({
-        id: p.id,
-        type: p.type,
-        title: p.title,
-        paper: { size: p.paper?.size || 'A4', orientation: p.paper?.orientation || 'portrait' },
-        repeatCount: p.repeatCount || 1,
-        pageCopies: p.pageCopies || 1,
-        font: p.font || null,
-        data: p.type === 'bankAccounts'
-          ? { ...buildPageData(p), qrDataUrl }
-          : buildPageData(p),
-      }));
-
-    if (!pagesPayload.length) {
-      toast.warning('沒有可匯出的頁面（EXCEL 不含合約附圖頁）。');
-      return;
-    }
-
-    // 選頁檔名：單頁附頁名、多頁串接頁名（過長改「自選N頁」）；勾滿該格式全部頁視同完整匯出不附頁名
-    let pageTitle = null;
-    if (onlyPageIds && pagesPayload.length < candidatePages.length) {
-      const titles = pagesPayload.map(p => p.title).filter(Boolean);
-      const joined = titles.join('+');
-      pageTitle = titles.length <= 1 ? (titles[0] || null)
-        : (joined.length <= 30 ? joined : `自選${titles.length}頁`);
-    }
-
-    const payload = {
-      projectId: props.projectId,
-      format,
-      fileNameParts: {
-        projectName: props.projectName,
-        unitId: unitCtx.value.unitId,
-        salesperson: unitCtx.value.salespersonText,
-        pageTitle,
-      },
-      pages: pagesPayload,
-    };
-
-    const result = await generateContractDocument(payload);
-    if (result.status === 'success' && (result.url || result.base64)) {
-      if (result.url) {
-        // Storage 下載連結（新版後端）：抓取後另存，並刷新歷史檔案列表
-        const resp = await fetch(result.url);
-        if (!resp.ok) throw new Error(`下載檔案失敗（HTTP ${resp.status}）`);
-        saveAs(await resp.blob(), result.fileName);
-        loadHistoryFiles();
-      } else {
-        saveAs(base64ToBlob(result.base64, result.mimeType), result.fileName);
-      }
-      if (Array.isArray(result.warnings) && result.warnings.length) {
-        toast.warning(`部分附圖無法載入：${result.warnings.join('、')}`);
-      }
-      toast.success(`合約製作 ${format === 'pdf' ? 'PDF' : 'EXCEL'} 已下載`);
-    } else {
-      throw new Error(result.message || '後端發生未知錯誤');
-    }
+    const doc = await produceDocument(format, onlyPageIds);
+    if (!doc) return;
+    saveAs(doc.blob, doc.fileName);
+    toast.success(`合約製作 ${format === 'pdf' ? 'PDF' : 'EXCEL'} 已下載`);
   } catch (e) {
     console.error('下載合約製作文件失敗:', e);
     toast.error(`下載失敗：${e.message}`);
   } finally {
     downloading[format] = false;
   }
+}
+
+/* ---------- 列印：產製與下載相同的 PDF 後直接開啟列印視窗 ---------- */
+const printingKey = ref('');   // 'all' 或預覽頁 renderKey；列印產製中停用其他列印按鈕
+let printFrame = null;
+let printUrl = '';
+
+function clearPrintFrame() {
+  printFrame?.remove();
+  printFrame = null;
+  if (printUrl) URL.revokeObjectURL(printUrl);
+  printUrl = '';
+}
+
+// Safari／行動裝置無法從隱藏 iframe 列印 PDF：改在新分頁開啟 PDF，由使用者列印
+const printInNewTab = () => isMobile.value
+  || /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
+
+/**
+ * @param {string} key 'all' 或預覽頁 renderKey（按鈕載入狀態用）
+ * @param {string[]|null} onlyPageIds
+ * @param {{ attachmentFileId?: string }} [opts]
+ */
+async function printDocument(key, onlyPageIds = null, opts = {}) {
+  if (printingKey.value) return;
+  // 新分頁須在點擊當下開啟，等產製完成再導向 PDF（避免被擋彈出視窗）
+  const tab = printInNewTab() ? window.open('', '_blank') : null;
+  printingKey.value = key;
+  try {
+    const doc = await produceDocument('pdf', onlyPageIds, opts);
+    if (!doc) { tab?.close(); return; }
+    clearPrintFrame();
+    printUrl = URL.createObjectURL(new Blob([doc.blob], { type: 'application/pdf' }));
+    if (tab) {
+      tab.location.href = printUrl;
+      return;
+    }
+    const frame = document.createElement('iframe');
+    frame.setAttribute('data-print-frame', '');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    frame.onload = () => {
+      setTimeout(() => {
+        try {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+        } catch (e) {
+          console.warn('列印視窗開啟失敗，改在新分頁開啟:', e);
+          window.open(printUrl, '_blank');
+        }
+      }, 150);
+    };
+    frame.src = printUrl;
+    document.body.appendChild(frame);
+    printFrame = frame;
+  } catch (e) {
+    tab?.close();
+    console.error('列印合約製作文件失敗:', e);
+    toast.error(`列印失敗：${e.message}`);
+  } finally {
+    printingKey.value = '';
+  }
+}
+
+// 預覽頁的列印：該頁（重複頁數照範本設定）；合約附圖只印這一張圖檔
+function printPreviewPage(pv) {
+  const fileId = pv.page.type === 'contractAttachments' ? pv.data?.file?.fileId : null;
+  printDocument(pv.renderKey, [pv.page.id], fileId ? { attachmentFileId: fileId } : {});
+}
+
+// 預覽列印按鈕抵銷紙張縮放，維持一般按鈕大小
+function sheetUnzoomStyle(pv) {
+  const z = sheetZoomStyle(pv).zoom || 1;
+  return z < 1 ? { zoom: 1 / z } : null;
 }
 
 /* ---------- 歷史檔案（Storage 已產製的合約文件；狀態宣告於檔案前段） ---------- */
@@ -2419,6 +2613,10 @@ function formatNumber(value) {
 .split-error :deep(.v-field) { background: rgba(var(--v-theme-error), 0.08); }
 .split-error :deep(.v-field__outline) { color: rgb(var(--v-theme-error)); }
 .split-total-row td { border-top: 1px solid rgba(0, 0, 0, 0.18); background: rgba(0, 0, 0, 0.02); }
+.editor-stack {
+  display: flex;
+  flex-direction: column;
+}
 .preview-wrapper {
   overflow-x: auto;
   display: flex;
@@ -2455,6 +2653,28 @@ function formatNumber(value) {
   margin-bottom: 12px;
 }
 .repeat-block:last-child { border-bottom: none; margin-bottom: 0; }
+.sheet-print {
+  position: absolute;
+  top: -12px;
+  right: 8px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans TC', sans-serif;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+.sheet-print:hover:not(:disabled) { background: #f2f2f7; }
+.sheet-print:disabled { color: #aeaeb2; cursor: default; }
 .sheet-label {
   position: absolute;
   top: -10px;
@@ -2464,8 +2684,8 @@ function formatNumber(value) {
   font-size: 11px;
   border-radius: 4px;
   padding: 1px 8px;
-  /* 長標題防溢位：不超過紙張寬度，超過以… 收尾 */
-  max-width: calc(100% - 16px);
+  /* 長標題防溢位：不超過紙張寬度（右側保留列印按鈕），超過以… 收尾 */
+  max-width: calc(100% - 110px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
