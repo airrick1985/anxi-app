@@ -64,12 +64,12 @@
             <span class="d-none d-sm-inline ml-2">建立頁面</span>
           </v-btn>
           <v-btn
-            v-if="currentIsPage"
+            v-if="currentMessage"
             variant="text"
             color="white"
             class="mr-1"
-            title="編輯這個頁面"
-            @click="openPageEditor(currentMessage)"
+            :title="currentIsPage ? '編輯這個頁面' : '編輯標題、說明或更換檔案'"
+            @click="currentIsPage ? openPageEditor(currentMessage) : openInfoEditor(currentMessage)"
           >
             <v-icon>mdi-pencil</v-icon>
             <span class="d-none d-sm-inline ml-1">編輯</span>
@@ -149,117 +149,152 @@
           </div>
 
           <template v-else>
-            <div class="lightbox-stage flex-grow-1" ref="stageRef">
-              <div
-                v-if="currentMessage && !currentIsPdf && !currentIsPage"
-                ref="panRef"
-                class="lightbox-pan-target"
-                @dblclick="toggleZoom"
-              >
-                <img
+            <div class="stage-column">
+              <div class="lightbox-stage flex-grow-1" ref="stageRef">
+                <div
+                  v-if="currentMessage && !currentIsPdf && !currentIsPage"
+                  ref="panRef"
+                  class="lightbox-pan-target"
+                  @dblclick="toggleZoom"
+                >
+                  <img
+                    :key="currentMessage.id"
+                    ref="imgRef"
+                    :src="currentMessage.downloadURL"
+                    :alt="currentMessage.title || currentMessage.fileName"
+                    class="lightbox-image"
+                    draggable="false"
+                    @load="onImageLoaded"
+                  />
+                </div>
+
+                <!-- 自建頁面（自由畫布）：等比縮放置中，可縮放、捲動 -->
+                <ActivityCanvasView
+                  v-else-if="currentMessage && currentIsPage"
                   :key="currentMessage.id"
-                  ref="imgRef"
-                  :src="currentMessage.downloadURL"
-                  :alt="currentMessage.fileName"
-                  class="lightbox-image"
-                  draggable="false"
-                  @load="onImageLoaded"
+                  v-model:zoom="pageZoom"
+                  class="page-stage"
+                  :canvas="currentMessage.canvas || {}"
                 />
-              </div>
 
-              <!-- 自建頁面（自由畫布）：等比縮放置中，可縮放、捲動 -->
-              <ActivityCanvasView
-                v-else-if="currentMessage && currentIsPage"
-                :key="currentMessage.id"
-                v-model:zoom="pageZoom"
-                class="page-stage"
-                :canvas="currentMessage.canvas || {}"
-              />
+                <!-- PDF 分頁瀏覽（vue-pdf-embed 逐頁渲染，寬度符合容器，縮放改變渲染寬度） -->
+                <div v-else-if="currentMessage" ref="pdfScrollRef" class="pdf-stage">
+                  <div v-if="pdfLoadFailed" class="pdf-status-hint">
+                    <v-icon size="44" class="mb-2">mdi-file-alert-outline</v-icon>
+                    <div class="mb-3">PDF 預覽載入失敗</div>
+                    <v-btn
+                      color="teal"
+                      variant="flat"
+                      size="small"
+                      prepend-icon="mdi-open-in-new"
+                      :href="currentMessage.downloadURL"
+                      target="_blank"
+                      rel="noopener"
+                    >在新分頁開啟</v-btn>
+                  </div>
+                  <div v-else-if="isPdfLoading" class="pdf-status-hint">
+                    <v-progress-circular indeterminate color="#008cff" size="40" class="mb-3"></v-progress-circular>
+                    <div>PDF 載入中...</div>
+                  </div>
+                  <VuePdfEmbed
+                    v-if="pdfBaseWidth > 0 && !pdfLoadFailed"
+                    :key="currentMessage.id"
+                    :source="currentMessage.downloadURL"
+                    :width="pdfRenderWidth"
+                    class="pdf-embed-pages"
+                    @rendered="onPdfRendered"
+                    @loading-failed="onPdfLoadFailed"
+                    @rendering-failed="onPdfLoadFailed"
+                  />
+                </div>
 
-              <!-- PDF 分頁瀏覽（vue-pdf-embed 逐頁渲染，寬度符合容器，縮放改變渲染寬度） -->
-              <div v-else-if="currentMessage" ref="pdfScrollRef" class="pdf-stage">
-                <div v-if="pdfLoadFailed" class="pdf-status-hint">
-                  <v-icon size="44" class="mb-2">mdi-file-alert-outline</v-icon>
-                  <div class="mb-3">PDF 預覽載入失敗</div>
+                <!-- 已隱藏標示（管理模式下檢視到被隱藏的圖時提示） -->
+                <div v-if="manageMode && currentMessage?.hidden" class="hidden-badge">
+                  <v-icon size="small" start>mdi-eye-off</v-icon>
+                  {{ currentIsPage ? '此頁面' : '此圖' }}已隱藏（一般人員看不到）
+                </div>
+
+                <!-- 左右切換 -->
+                <v-btn
+                  v-if="displayMessages.length > 1"
+                  icon="mdi-chevron-left"
+                  size="large"
+                  class="nav-btn nav-prev"
+                  @click="prev"
+                />
+                <v-btn
+                  v-if="displayMessages.length > 1"
+                  icon="mdi-chevron-right"
+                  size="large"
+                  class="nav-btn nav-next"
+                  @click="next"
+                />
+
+                <!-- 縮放控制 -->
+                <div class="zoom-controls">
                   <v-btn
-                    color="teal"
-                    variant="flat"
+                    icon="mdi-magnify-minus-outline"
                     size="small"
-                    prepend-icon="mdi-open-in-new"
-                    :href="currentMessage.downloadURL"
-                    target="_blank"
-                    rel="noopener"
-                  >在新分頁開啟</v-btn>
+                    variant="text"
+                    color="white"
+                    @click="zoomOut"
+                  />
+                  <span class="scale-label">{{ scalePercent }}%</span>
+                  <v-btn
+                    icon="mdi-magnify-plus-outline"
+                    size="small"
+                    variant="text"
+                    color="white"
+                    @click="zoomIn"
+                  />
+                  <v-divider vertical class="mx-1" color="white" />
+                  <v-btn
+                    icon="mdi-image-filter-center-focus"
+                    size="small"
+                    variant="text"
+                    color="white"
+                    title="復位"
+                    @click="resetZoom"
+                  />
                 </div>
-                <div v-else-if="isPdfLoading" class="pdf-status-hint">
-                  <v-progress-circular indeterminate color="#008cff" size="40" class="mb-3"></v-progress-circular>
-                  <div>PDF 載入中...</div>
+
+                <!-- 計數提示 -->
+                <div v-if="displayMessages.length > 1" class="counter-pill">
+                  {{ currentIndex + 1 }} / {{ displayMessages.length }}
                 </div>
-                <VuePdfEmbed
-                  v-if="pdfBaseWidth > 0 && !pdfLoadFailed"
-                  :key="currentMessage.id"
-                  :source="currentMessage.downloadURL"
-                  :width="pdfRenderWidth"
-                  class="pdf-embed-pages"
-                  @rendered="onPdfRendered"
-                  @loading-failed="onPdfLoadFailed"
-                  @rendering-failed="onPdfLoadFailed"
-                />
               </div>
 
-              <!-- 已隱藏標示（管理模式下檢視到被隱藏的圖時提示） -->
-              <div v-if="manageMode && currentMessage?.hidden" class="hidden-badge">
-                <v-icon size="small" start>mdi-eye-off</v-icon>
-                {{ currentIsPage ? '此頁面' : '此圖' }}已隱藏（一般人員看不到）
-              </div>
-
-              <!-- 左右切換 -->
-              <v-btn
-                v-if="displayMessages.length > 1"
-                icon="mdi-chevron-left"
-                size="large"
-                class="nav-btn nav-prev"
-                @click="prev"
-              />
-              <v-btn
-                v-if="displayMessages.length > 1"
-                icon="mdi-chevron-right"
-                size="large"
-                class="nav-btn nav-next"
-                @click="next"
-              />
-
-              <!-- 縮放控制 -->
-              <div class="zoom-controls">
-                <v-btn
-                  icon="mdi-magnify-minus-outline"
-                  size="small"
-                  variant="text"
-                  color="white"
-                  @click="zoomOut"
-                />
-                <span class="scale-label">{{ scalePercent }}%</span>
-                <v-btn
-                  icon="mdi-magnify-plus-outline"
-                  size="small"
-                  variant="text"
-                  color="white"
-                  @click="zoomIn"
-                />
-                <v-divider vertical class="mx-1" color="white" />
-                <v-btn
-                  icon="mdi-image-filter-center-focus"
-                  size="small"
-                  variant="text"
-                  color="white"
-                  title="復位"
-                  @click="resetZoom"
-                />
-              </div>
-
-              <!-- 計數提示 -->
-              <div v-if="displayMessages.length > 1" class="counter-pill">
-                {{ currentIndex + 1 }} / {{ displayMessages.length }}
+              <!-- 標題與說明字幕列：放在圖片下方、不蓋住圖片；說明超過兩行可展開 -->
+              <div v-if="captionVisible" class="lightbox-caption" :class="{ 'is-expanded': captionExpanded }">
+                <div class="caption-inner">
+                  <div class="caption-body">
+                    <div v-if="currentMessage.title" class="caption-title">{{ currentMessage.title }}</div>
+                    <div v-if="currentMessage.description" ref="captionDescRef" class="caption-desc">{{ currentMessage.description }}</div>
+                    <button
+                      v-if="captionOverflow || captionExpanded"
+                      type="button"
+                      class="caption-toggle"
+                      @click="captionExpanded = !captionExpanded"
+                    >{{ captionExpanded ? '收合' : '更多' }}</button>
+                    <button
+                      v-if="!currentMessage.title && !currentMessage.description"
+                      type="button"
+                      class="caption-add"
+                      @click="openInfoEditor(currentMessage)"
+                    >
+                      <v-icon size="16">mdi-plus</v-icon>標題與說明
+                    </button>
+                  </div>
+                  <v-btn
+                    v-if="hasManageTools && (currentMessage.title || currentMessage.description)"
+                    icon="mdi-pencil"
+                    size="small"
+                    variant="text"
+                    color="white"
+                    title="編輯標題與說明"
+                    @click="openInfoEditor(currentMessage)"
+                  />
+                </div>
               </div>
             </div>
 
@@ -287,21 +322,22 @@
                       <div v-if="isPageItem(item)" class="thumbnail-page rounded">
                         <img v-if="item.coverURL" :src="item.coverURL" alt="" class="thumbnail-page-cover" loading="lazy" />
                         <v-icon v-else size="26" color="teal-lighten-2">mdi-file-document-outline</v-icon>
-                        <span class="thumbnail-page-title">{{ item.title }}</span>
+                        <span class="thumbnail-title">{{ item.title }}</span>
                       </div>
                       <div v-else-if="isPdfItem(item)" class="thumbnail-pdf rounded">
                         <v-icon size="30" color="red-lighten-1">mdi-file-pdf-box</v-icon>
-                        <span class="thumbnail-pdf-name">{{ item.fileName }}</span>
+                        <span class="thumbnail-pdf-name">{{ item.title || item.fileName }}</span>
                       </div>
-                      <v-img
-                        v-else
-                        :src="item.downloadURL"
-                        :alt="item.fileName"
-                        cover
-                        width="80"
-                        height="80"
-                        class="rounded"
-                      ></v-img>
+                      <div v-else class="thumbnail-image rounded">
+                        <v-img
+                          :src="item.downloadURL"
+                          :alt="item.title || item.fileName"
+                          cover
+                          width="80"
+                          height="80"
+                        ></v-img>
+                        <span v-if="item.title" class="thumbnail-title">{{ item.title }}</span>
+                      </div>
                       <div v-if="item.hidden" class="thumbnail-hidden-tag">已隱藏</div>
                       <div v-if="item.pinnedToQuote" class="thumbnail-pinned-tag">
                         <v-icon size="10">mdi-pin</v-icon>報價頁
@@ -380,7 +416,7 @@
             border
             rounded="lg"
             class="pa-3 mt-2"
-            style="max-height: 320px; overflow-y: auto;"
+            style="max-height: 50vh; overflow-y: auto;"
           >
             <div
               v-for="(item, idx) in stagedFiles"
@@ -392,8 +428,8 @@
                 <v-icon v-if="item.isPdf" size="32" color="red-darken-1">mdi-file-pdf-box</v-icon>
                 <v-img v-else :src="item.previewUrl" cover></v-img>
               </v-avatar>
-              <div class="flex-grow-1">
-                <div class="text-body-2 font-weight-medium">{{ item.file.name }}</div>
+              <div class="flex-grow-1" style="min-width: 0;">
+                <div class="text-body-2 font-weight-medium text-truncate">{{ item.file.name }}</div>
                 <div class="text-caption text-grey">
                   {{ formatSize(item.file.size) }} | {{ item.contentType || '未知格式' }}
                 </div>
@@ -401,6 +437,28 @@
                   <v-icon size="x-small" color="error">mdi-alert-circle</v-icon>
                   {{ item.error }}
                 </div>
+                <template v-else>
+                  <v-text-field
+                    v-model="item.title"
+                    label="標題"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    :maxlength="TITLE_MAX"
+                    class="mt-2"
+                  />
+                  <v-textarea
+                    v-model="item.description"
+                    label="說明"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    rows="2"
+                    auto-grow
+                    :maxlength="DESCRIPTION_MAX"
+                    class="mt-2"
+                  />
+                </template>
               </div>
               <v-btn
                 icon="mdi-close"
@@ -441,7 +499,7 @@
         <v-card-text class="pt-4">
           確定要刪除這則活動訊息嗎？此動作無法復原。
           <div v-if="pendingDeleteItem" class="mt-2 text-caption text-grey">
-            {{ isPageItem(pendingDeleteItem) ? '頁面' : '檔名' }}：{{ pendingDeleteItem.fileName }}
+            {{ isPageItem(pendingDeleteItem) ? '頁面' : (pendingDeleteItem.title ? '標題' : '檔名') }}：{{ pendingDeleteItem.title || pendingDeleteItem.fileName }}
           </div>
         </v-card-text>
         <v-card-actions>
@@ -452,6 +510,78 @@
           <v-btn color="error" variant="flat" :loading="isDeleting" @click="executeDelete">
             刪除
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 編輯標題、說明（圖片／PDF 可更換檔案；自建頁面的內容另由畫布編輯器修改） -->
+    <v-dialog :model-value="infoEditor.open" max-width="560px" persistent>
+      <v-card v-if="infoEditor.item">
+        <v-card-title class="bg-teal text-white d-flex align-center">
+          <v-icon start>mdi-pencil</v-icon>
+          {{ infoEditor.isPage ? '編輯標題與說明' : '編輯活動訊息' }}
+        </v-card-title>
+        <v-card-text class="pt-4">
+          <div v-if="!infoEditor.isPage" v-file-drop class="info-file-row mb-4">
+            <v-avatar rounded="lg" size="72" class="mr-3 elevation-1" :color="infoFile.isPdf ? 'red-lighten-5' : undefined">
+              <v-icon v-if="infoFile.isPdf" size="36" color="red-darken-1">mdi-file-pdf-box</v-icon>
+              <v-img v-else :src="infoFile.previewUrl" cover></v-img>
+            </v-avatar>
+            <div class="flex-grow-1" style="min-width: 0;">
+              <div class="text-body-2 font-weight-medium text-truncate">{{ infoFile.name }}</div>
+              <div v-if="infoEditor.fileError" class="text-caption text-error">
+                <v-icon size="x-small" color="error">mdi-alert-circle</v-icon>
+                {{ infoEditor.fileError }}
+              </div>
+            </div>
+            <v-btn
+              variant="tonal"
+              color="teal"
+              prepend-icon="mdi-swap-horizontal"
+              class="ml-2"
+              :disabled="infoEditor.saving"
+              @click="replaceInputRef?.click()"
+            >更換</v-btn>
+            <input
+              ref="replaceInputRef"
+              type="file"
+              hidden
+              accept="image/jpeg, image/png, image/webp, application/pdf, .pdf"
+              @change="onReplaceFilePicked"
+            />
+          </div>
+          <v-text-field
+            v-model="infoEditor.title"
+            label="標題"
+            variant="outlined"
+            density="compact"
+            :maxlength="TITLE_MAX"
+            counter
+            autofocus
+          />
+          <v-textarea
+            v-model="infoEditor.description"
+            label="說明"
+            variant="outlined"
+            density="compact"
+            rows="3"
+            auto-grow
+            :maxlength="DESCRIPTION_MAX"
+            counter
+            class="mt-1"
+          />
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" :disabled="infoEditor.saving" @click="closeInfoEditor">取消</v-btn>
+          <v-btn
+            color="teal"
+            variant="flat"
+            :loading="infoEditor.saving"
+            :disabled="!canSaveInfo"
+            @click="saveInfo"
+          >儲存</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -479,6 +609,8 @@ import {
   updateActivityMessagesOrder,
   updateActivityMessageVisibility,
   updateActivityMessagePinned,
+  updateActivityMessage,
+  deleteActivityMessageAssets,
 } from '@/api';
 import { serverTimestamp } from 'firebase/firestore';
 import { isActivityPage, ACTIVITY_PAGE_CSS } from '@/utils/activityPage';
@@ -508,6 +640,8 @@ const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const PDF_TYPE = 'application/pdf';
 const MAX_SIZE = 2 * 1024 * 1024;        // 圖檔上限 2MB
 const PDF_MAX_SIZE = 7 * 1024 * 1024;    // PDF 上限 7MB（base64 後約 9.4MB，不超過 onCall 10MB 請求上限）
+const TITLE_MAX = 60;                    // 與自建頁面名稱上限一致
+const DESCRIPTION_MAX = 500;
 
 // 判斷一則活動訊息是否為 PDF（優先看 contentType，舊資料則退回副檔名）
 function isPdfItem(item) {
@@ -607,6 +741,142 @@ function focusMessage(id) {
 
 // 縮圖列：一般情況超過 1 張才出現；管理模式下只要有 1 張就出現（才能刪除/隱藏唯一一張）
 const hasManageTools = computed(() => props.canUpload && manageMode.value);
+
+// --- 標題與說明字幕列 ---
+// 有標題或說明才顯示；管理模式下空白的也顯示，提供新增入口
+const captionVisible = computed(() => {
+  const item = currentMessage.value;
+  if (!item) return false;
+  return !!(item.title || item.description) || hasManageTools.value;
+});
+const captionDescRef = ref(null);
+const captionExpanded = ref(false);
+const captionOverflow = ref(false);
+// 說明預設最多兩行，量測是否被截斷以決定要不要顯示「更多」
+function measureCaption() {
+  nextTick(() => {
+    if (captionExpanded.value) return;
+    const el = captionDescRef.value;
+    captionOverflow.value = !!el && el.scrollHeight > el.clientHeight + 1;
+  });
+}
+watch(
+  () => [currentMessage.value?.id, currentMessage.value?.description, captionVisible.value],
+  () => {
+    captionExpanded.value = false;
+    measureCaption();
+  }
+);
+
+// --- 編輯標題、說明、更換檔案 ---
+const replaceInputRef = ref(null);
+const infoEditor = ref({
+  open: false, item: null, isPage: false, title: '', description: '',
+  newFile: null, fileError: '', saving: false,
+});
+// 對話框顯示的檔案：有選新檔就預覽新檔，否則顯示目前的檔案
+const infoFile = computed(() => {
+  const { item, newFile } = infoEditor.value;
+  if (newFile) {
+    return { name: newFile.file.name, isPdf: newFile.contentType === PDF_TYPE, previewUrl: newFile.previewUrl };
+  }
+  return { name: item?.fileName || '', isPdf: isPdfItem(item), previewUrl: item?.downloadURL || '' };
+});
+// 自建頁面沿用頁面名稱為標題，不可空白
+const canSaveInfo = computed(() => {
+  const ed = infoEditor.value;
+  return !ed.saving && !(ed.isPage && !ed.title.trim());
+});
+
+function openInfoEditor(item) {
+  if (!item) return;
+  infoEditor.value = {
+    open: true,
+    item,
+    isPage: isPageItem(item),
+    title: item.title || '',
+    description: item.description || '',
+    newFile: null,
+    fileError: '',
+    saving: false,
+  };
+}
+
+function releaseReplaceFile() {
+  const url = infoEditor.value.newFile?.previewUrl;
+  if (url) URL.revokeObjectURL(url);
+  infoEditor.value.newFile = null;
+}
+
+function closeInfoEditor() {
+  if (infoEditor.value.saving) return;
+  releaseReplaceFile();
+  infoEditor.value.open = false;
+}
+
+function onReplaceFilePicked(e) {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  const contentType = resolveFileType(file);
+  const error = validateFile(file, contentType);
+  infoEditor.value.fileError = error || '';
+  if (error) return;
+  releaseReplaceFile();
+  infoEditor.value.newFile = {
+    file,
+    contentType,
+    previewUrl: contentType === PDF_TYPE ? '' : URL.createObjectURL(file),
+  };
+}
+
+async function saveInfo() {
+  const ed = infoEditor.value;
+  if (!canSaveInfo.value || !ed.item) return;
+  ed.saving = true;
+  const userKey = userStore.user?.key || '';
+  const data = {
+    title: ed.title.trim(),
+    description: ed.description.trim(),
+    updatedBy: userKey,
+    updatedByName: userStore.user?.name || '',
+  };
+  // 自建頁面的 fileName 一向等於頁面名稱（刪除確認等處沿用），一起更新
+  if (ed.isPage) data.fileName = data.title;
+  let uploadedPath = '';
+  try {
+    if (ed.newFile) {
+      const { file, contentType } = ed.newFile;
+      const { downloadURL, storagePath } = await uploadActivityMessage({
+        projectId: props.projectId,
+        userKey,
+        fileName: file.name,
+        fileBase64: await fileToBase64(file),
+        contentType,
+      });
+      uploadedPath = storagePath;
+      Object.assign(data, { fileName: file.name, downloadURL, storagePath, contentType, fileSize: file.size });
+    }
+    await updateActivityMessage(ed.item.id, data);
+    // 換檔後清掉舊檔（後端只會刪除已無任何活動訊息引用的檔案）
+    const oldPath = ed.item.storagePath;
+    if (uploadedPath && oldPath && oldPath !== uploadedPath) {
+      deleteActivityMessageAssets({ projectId: props.projectId, userKey, storagePaths: [oldPath] })
+        .catch(err => console.warn('清除舊活動訊息檔案失敗:', err));
+    }
+    toast.success('已儲存', { timeout: 1500 });
+    ed.saving = false;
+    closeInfoEditor();
+  } catch (err) {
+    // 新檔已上傳但文件沒更新成功：清掉沒人引用的新檔
+    if (uploadedPath) {
+      deleteActivityMessageAssets({ projectId: props.projectId, userKey, storagePaths: [uploadedPath] })
+        .catch(() => {});
+    }
+    toast.error(`儲存失敗：${err.message}`);
+    ed.saving = false;
+  }
+}
 const thumbnailAvailable = computed(() =>
   displayMessages.value.length > 1 ||
   (hasManageTools.value && displayMessages.value.length >= 1)
@@ -819,15 +1089,27 @@ async function togglePinned(item) {
 // 切換縮圖列可見性後，主圖區寬度會變 → 重新初始化 panzoom 邊界 / 重新量測 PDF 寬度
 watch(isThumbnailVisible, async () => {
   await nextTick();
+  measureCaption();
   if (currentIsPdf.value) measurePdfBaseWidth();
   else if (panzoomInstance) initPanzoom();
 });
 
-// 視窗尺寸變動時同步重算 PDF 渲染寬度
+// 視窗尺寸變動時同步重算 PDF 渲染寬度與說明是否被截斷
 function onWindowResize() {
-  if (props.modelValue && currentIsPdf.value) measurePdfBaseWidth();
+  if (!props.modelValue) return;
+  measureCaption();
+  if (currentIsPdf.value) measurePdfBaseWidth();
 }
 onMounted(() => window.addEventListener('resize', onWindowResize));
+
+// 子對話框開啟或正在輸入文字時，方向鍵、+/-、解鎖碼都不可作用在燈箱上
+const subDialogOpen = computed(() =>
+  pageEditor.value.open || infoEditor.value.open || isUploadDialogOpen.value || isDeleteDialogOpen.value
+);
+function isTypingTarget(e) {
+  const t = e.target;
+  return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+}
 
 function onKeydown(e) {
   if (!props.modelValue || pageEditor.value.open) return;
@@ -837,6 +1119,7 @@ function onKeydown(e) {
     printCurrent();
     return;
   }
+  if (subDialogOpen.value || isTypingTarget(e)) return;
   if (e.key === 'ArrowLeft') prev();
   else if (e.key === 'ArrowRight') next();
   else if (e.key === '+' || e.key === '=') zoomIn();
@@ -865,7 +1148,7 @@ function applyManageMode(next) {
 
 // 以 keyup 偵測（避免按鍵被其他元件的 keydown 攔截）
 function onUnlockKeyup(e) {
-  if (!props.canUpload || pageEditor.value.open) return;
+  if (!props.canUpload || subDialogOpen.value || isTypingTarget(e)) return;
   if (typeof e.key !== 'string' || e.key.length !== 1) return;
   keyBuffer = (keyBuffer + normalizeChar(e.key)).slice(-UNLOCK_CODE.length);
   if (keyBuffer === UNLOCK_CODE) {
@@ -924,6 +1207,8 @@ watch(
     } else {
       manageMode.value = false;
       pageEditor.value = { open: false, page: null };
+      releaseReplaceFile();
+      infoEditor.value.open = false;
       stopListening();
       destroyPanzoom();
       document.removeEventListener('keydown', onKeydown);
@@ -971,6 +1256,8 @@ function addStagedFiles(files) {
       // PDF 無縮圖，不建立 objectURL（避免無謂佔用記憶體）
       previewUrl: isPdf ? '' : URL.createObjectURL(file),
       error: validateFile(file, contentType),
+      title: '',
+      description: '',
     });
   }
 }
@@ -1049,6 +1336,8 @@ async function handleUpload() {
 
       await addActivityMessageMetadata({
         projectId: props.projectId,
+        title: item.title.trim(),
+        description: item.description.trim(),
         fileName: item.file.name,
         downloadURL,
         storagePath,
@@ -1113,7 +1402,7 @@ function printImage(item) {
     const frame = createPrintFrame();
     const doc = frame.contentDocument;
     doc.open();
-    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(item.fileName || '活動訊息')}</title>
+    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(item.title || item.fileName || '活動訊息')}</title>
 <style>
   @page { margin: 10mm; }
   html, body { margin: 0; padding: 0; }
@@ -1173,31 +1462,46 @@ async function printPdf(item) {
   });
 }
 
-// 自建頁面：畫布等比縮到列印寬度後寫進 iframe（套用同一份畫布樣式），等圖片載入完再印
+// 等圖片載入（失敗也算完成，不擋列印）
+function waitImageLoaded(img) {
+  if (img.complete) return Promise.resolve();
+  return new Promise((done) => {
+    img.onload = done;
+    img.onerror = done;
+  });
+}
+
+// 自建頁面：整頁等比縮進一張 A4（套用同一份畫布樣式），等圖片與背景圖載入完再印。
+// 不可讓畫布跨頁：圖片不會被切開，跨頁的圖會整張被推到下一頁，累積下推後超出畫布裁切範圍的圖就印成空白。
 function printPage(item) {
   return new Promise((resolve, reject) => {
     const frame = createPrintFrame();
     const doc = frame.contentDocument;
     const canvas = normalizeCanvas(item.canvas);
     const printWidth = frame.clientWidth || 718;
-    const k = Math.min(1, printWidth / CANVAS_WIDTH);
+    // 少算 2px，避免四捨五入後多出一點點而溢到第二頁
+    const printHeight = (frame.clientHeight || 1046) - 2;
+    const k = Math.min(1, printWidth / CANVAS_WIDTH, printHeight / canvas.height);
     doc.open();
     doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(item.title || '活動訊息')}</title>
 <style>
-  @page { margin: 10mm; }
+  @page { size: A4; margin: 10mm; }
   html, body { margin: 0; padding: 0; background: #fff; }
-  .print-sizer { position: relative; width: ${Math.round(CANVAS_WIDTH * k)}px; height: ${Math.ceil(canvas.height * k)}px; margin: 0 auto; overflow: hidden; }
+  .print-sizer { position: relative; width: ${Math.floor(CANVAS_WIDTH * k)}px; height: ${Math.floor(canvas.height * k)}px; margin: 0 auto; overflow: hidden; }
   .print-stage { position: absolute; top: 0; left: 0; transform: scale(${k}); transform-origin: 0 0; }
   ${ACTIVITY_PAGE_CSS}
 </style>
 </head><body><div class="print-sizer"><div class="print-stage">${renderCanvasHtml(canvas)}</div></div></body></html>`);
     doc.close();
 
-    const pending = [...doc.images].filter(img => !img.complete).map(img => new Promise((done) => {
-      img.onload = done;
-      img.onerror = done;
-    }));
-    const timeout = new Promise(done => setTimeout(done, 8000));
+    const pending = [...doc.images].map(waitImageLoaded);
+    // 背景圖是 CSS 背景、不在 doc.images 裡，另外預載同一網址；沒等它會印出白底
+    if (canvas.background.image) {
+      const bg = doc.createElement('img');
+      bg.src = canvas.background.image;
+      pending.push(waitImageLoaded(bg));
+    }
+    const timeout = new Promise(done => setTimeout(done, 20000));
     Promise.race([Promise.all(pending), timeout]).then(() => {
       try {
         triggerPrint(frame);
@@ -1316,11 +1620,101 @@ async function executeDelete() {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
 }
 
+/* 主圖區＋下方字幕列（直向排列，字幕列不蓋住圖片） */
+.stage-column {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .lightbox-stage {
   position: relative;
   overflow: hidden;
   background-color: #0d0d0d;
   min-height: 0;
+}
+
+/* ---------- 標題與說明字幕列 ---------- */
+.lightbox-caption {
+  flex-shrink: 0;
+  background-color: #151515;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #fff;
+  padding: 10px 16px 12px;
+}
+.caption-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.caption-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.caption-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.caption-desc {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.78);
+  white-space: pre-line;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lightbox-caption.is-expanded .caption-desc {
+  display: block;
+  -webkit-line-clamp: unset;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.caption-toggle {
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #4dd0c4;
+  font-size: 13px;
+  cursor: pointer;
+}
+.caption-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  border-radius: 14px;
+  background: none;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+  cursor: pointer;
+}
+.caption-add:hover {
+  border-color: #4dd0c4;
+  color: #4dd0c4;
+}
+@media (max-width: 767px) {
+  .lightbox-caption { padding: 8px 12px 10px; }
+  .caption-title { font-size: 14px; }
+}
+
+/* 編輯對話框：目前檔案＋更換按鈕 */
+.info-file-row {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px dashed rgba(0, 0, 0, 0.15);
 }
 
 /* 重點：pan-target 以 absolute 鋪滿 stage（貼齊父層左上角），圖片改在其內部置中。
@@ -1394,7 +1788,14 @@ async function executeDelete() {
   height: 100%;
   object-fit: cover;
 }
-.thumbnail-page-title {
+/* 圖片縮圖：有標題時下方疊標題 */
+.thumbnail-image {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  overflow: hidden;
+}
+.thumbnail-title {
   position: absolute;
   left: 0;
   right: 0;

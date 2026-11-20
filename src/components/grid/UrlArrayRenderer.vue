@@ -16,7 +16,7 @@
         <template v-slot:prepend>
           <v-icon :color="files[0].isDownloaded ? 'grey' : 'red'" size="30">mdi-file-pdf-box</v-icon>
         </template>
-        <span class="text-truncate" style="max-width: 250px;">{{ files[0].name }}</span>
+        <span class="url-array-name" :style="NAME_STYLE">{{ files[0].name }}</span>
       </v-btn>
 
       <v-tooltip text="標記為已下載" location="top" v-if="!files[0].isDownloaded">
@@ -69,7 +69,7 @@
             <v-icon :color="file.isDownloaded ? 'grey' : 'red'" size="30" class="mr-2">mdi-file-pdf-box</v-icon>
           </template>
           <v-list-item-title class="d-flex align-center justify-space-between w-100">
-            <span class="text-truncate flex-grow-1 mr-2" :class="{'text-grey': file.isDownloaded}" style="max-width: 200px;">{{ file.name }}</span>
+            <span class="url-array-name flex-grow-1 mr-2" :class="{'text-grey': file.isDownloaded}" :style="NAME_STYLE">{{ file.name }}</span>
             <div class="d-flex align-center shrink-0">
                <v-tooltip text="標記為已下載" location="top" v-if="!file.isDownloaded">
                  <template v-slot:activator="{ props }">
@@ -103,6 +103,10 @@
 
 <script setup>
 import { computed } from 'vue';
+
+// 檔名完整顯示不截斷（欄寬由 urlArrayWidth.js 依最長檔名計算）；
+// AG Grid 掛載的元件拿不到 scoped 樣式，直接寫 inline
+const NAME_STYLE = { whiteSpace: 'nowrap', letterSpacing: 'normal' };
 
 const props = defineProps({
   params: {

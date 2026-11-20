@@ -251,20 +251,23 @@
           :key="item.id"
           type="button"
           class="pinned-activity-thumb"
-          :title="item.fileName"
+          :title="item.title || item.fileName"
           @click="openPinnedActivityMessage(item)"
         >
-          <div v-if="item.type === 'page'" class="pinned-activity-page">
-            <img v-if="item.coverURL" :src="item.coverURL" alt="" loading="lazy" />
-            <v-icon v-else size="44" color="teal-lighten-1">mdi-file-document-outline</v-icon>
-            <span class="pinned-activity-page-title">{{ item.title }}</span>
+          <div class="pinned-activity-media">
+            <div v-if="item.type === 'page'" class="pinned-activity-page">
+              <img v-if="item.coverURL" :src="item.coverURL" alt="" loading="lazy" />
+              <v-icon v-else size="44" color="teal-lighten-1">mdi-file-document-outline</v-icon>
+            </div>
+            <div v-else-if="isPdfActivityItem(item)" class="pinned-activity-pdf">
+              <v-icon size="44" color="red-lighten-1">mdi-file-pdf-box</v-icon>
+              <span v-if="!item.title" class="pinned-activity-pdf-name">{{ item.fileName }}</span>
+            </div>
+            <img v-else :src="item.downloadURL" :alt="item.title || item.fileName" loading="lazy" />
+            <span class="pinned-activity-zoom"><v-icon size="16">mdi-magnify-plus-outline</v-icon></span>
           </div>
-          <div v-else-if="isPdfActivityItem(item)" class="pinned-activity-pdf">
-            <v-icon size="44" color="red-lighten-1">mdi-file-pdf-box</v-icon>
-            <span class="pinned-activity-pdf-name">{{ item.fileName }}</span>
-          </div>
-          <img v-else :src="item.downloadURL" :alt="item.fileName" loading="lazy" />
-          <span class="pinned-activity-zoom"><v-icon size="16">mdi-magnify-plus-outline</v-icon></span>
+          <!-- 只顯示標題（放在圖片下方，不蓋住海報）；說明在點開燈箱後的字幕列 -->
+          <span v-if="item.title" class="pinned-activity-caption">{{ item.title }}</span>
         </button>
       </div>
     </v-card>
@@ -1627,16 +1630,18 @@ function runTool(action) {
   scroll-snap-type: x proximity;
   scrollbar-width: thin;
 }
+/* 卡片：上方圖片、下方標題；同一列卡片等高（標題行數不同時底部仍對齊） */
 .pinned-activity-thumb {
   position: relative;
   flex: 0 0 auto;
-  height: 200px;
+  display: flex;
+  flex-direction: column;
   max-width: 320px;
   padding: 0;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 10px;
   overflow: hidden;
-  background: #f5f5f7;
+  background: #fff;
   cursor: zoom-in;
   scroll-snap-align: start;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -1644,6 +1649,12 @@ function runTool(action) {
 .pinned-activity-thumb:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+}
+.pinned-activity-media {
+  position: relative;
+  flex-shrink: 0;
+  height: 200px;
+  background: #f5f5f7;
 }
 .pinned-activity-thumb img {
   display: block;
@@ -1680,18 +1691,19 @@ function runTool(action) {
   min-width: 160px;
   height: 100%;
 }
-.pinned-activity-page-title {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 6px 38px 6px 10px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
-  color: #fff;
-  font-size: 13px;
+/* 標題列：白底深色字；width 0 + min-width 100% 讓長標題換行而不撐寬卡片（卡片寬度跟著圖片） */
+.pinned-activity-caption {
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px 9px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  color: #1d1d1f;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.35;
   text-align: left;
+  word-break: break-word;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1712,7 +1724,9 @@ function runTool(action) {
   pointer-events: none;
 }
 @media (max-width: 599px) {
-  .pinned-activity-thumb { height: 160px; max-width: 260px; }
+  .pinned-activity-thumb { max-width: 260px; }
+  .pinned-activity-media { height: 160px; }
   .pinned-activity-thumb img { max-width: 260px; }
+  .pinned-activity-caption { font-size: 13px; }
 }
 </style>

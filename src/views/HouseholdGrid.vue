@@ -37,7 +37,7 @@
       <button type="button" class="mac-icon-btn" title="自訂欄位" aria-label="自訂欄位" @click="openFieldDefinitionDialog">
         <v-icon size="20">mdi-table-column-plus-after</v-icon>
       </button>
-      <button type="button" class="mac-icon-btn" title="下載戶別資料" aria-label="下載戶別資料" @click="exportToExcel">
+      <button type="button" class="mac-icon-btn" title="下載戶別資料" aria-label="下載戶別資料" @click="exportDialog = true">
         <v-icon size="20">mdi-download</v-icon>
       </button>
       <button type="button" class="mac-icon-btn" title="上傳戶別資料" aria-label="上傳戶別資料" @click="uploadDialog = true">
@@ -140,6 +140,8 @@
 />
 
 </v-card>
+<HouseholdExportDialog v-model="exportDialog" :groups="exportColumnGroups" @confirm="exportToExcel" />
+
 <v-dialog v-model="uploadDialog" max-width="600px" persistent>
    <v-card>
      <v-card-title class="bg-red-darken-2">
@@ -504,13 +506,13 @@
             </div>
             <div class="mac-form-row hdm-field">
                <span class="hdm-label">撥款日</span>
-               <input
+               <MacDateInput
                   v-if="isModalEditMode"
-                  type="date"
-                  class="hdm-input hdm-input--date"
-                  :value="toDateInputValue(selectedHouseholdForDetail.appropriationDate)"
-                  @input="(e) => selectedHouseholdForDetail.appropriationDate = e.target.value"
-               >
+                  class="hdm-date"
+                  aria-label="撥款日"
+                  :model-value="selectedHouseholdForDetail.appropriationDate"
+                  @update:model-value="(v) => selectedHouseholdForDetail.appropriationDate = v"
+               />
                <span v-else class="hdm-value" :class="{ 'is-empty': !formatDetailDate(selectedHouseholdForDetail.appropriationDate) }">
                   {{ formatDetailDate(selectedHouseholdForDetail.appropriationDate) || '—' }}
                </span>
@@ -1020,6 +1022,10 @@ import { AG_GRID_LOCALE_TW } from '@/utils/agGridLocale';
 import { format } from 'date-fns';
 import UrlArrayRenderer from '@/components/grid/UrlArrayRenderer.vue';
 import AuthLetterArrayRenderer from '@/components/grid/AuthLetterArrayRenderer.vue';
+import DateCellEditor from '@/components/grid/DateCellEditor.vue';
+import { urlArrayColumnWidth } from '@/components/grid/urlArrayWidth';
+import MacDateInput from '@/components/MacDateInput.vue';
+import HouseholdExportDialog from '@/components/household/HouseholdExportDialog.vue';
 import { formatAuthLetterName, extractAuthLetterDate, getLatestAgentInfo } from '@/utils/authLetterName.js';
 import { formatSalespersons, parseSalespersonsInput } from '@/utils/salespersonUtils';
 import AdminAddBookingDialog from '@/components/AdminAddBookingDialog.vue';
@@ -1108,6 +1114,7 @@ const sideBarConfig = ref({
 
 // 上傳功能狀態 ---
 const uploadDialog = ref(false);
+const exportDialog = ref(false);
 const uploadedFile = ref(null);// v-file-input v-model 建議使用陣列
 const parsedData = ref([]);
 const isParsing = ref(false);
@@ -2445,6 +2452,14 @@ const areaSettleColDefs = AREA_FIELDS.map((f) => {
   };
 });
 
+// 驗屋報告欄寬：依最長檔名加寬，檔名完整顯示不截斷（只在需要的寬度改變時才更新欄位設定）
+const REPORT_COL_MIN_WIDTH = 500;
+const reportColWidth = ref(REPORT_COL_MIN_WIDTH);
+watch(rowData, (rows) => {
+  const w = urlArrayColumnWidth(rows, 'inspectionReportUrl', REPORT_COL_MIN_WIDTH);
+  if (w !== reportColWidth.value) reportColWidth.value = w;
+});
+
 const baseColDefs = computed(() => {
   const isUserAdmin = isAdmin.value;
 
@@ -2484,12 +2499,12 @@ const baseColDefs = computed(() => {
     { headerName: '買方身分證(驗證碼)', field: 'buyerIdNumber', editable: true },
     { headerName: '車位', field: 'parkingLots', editable: true },
     { headerName: '門牌', field: 'address', editable: true, minWidth: 250 },
-    { headerName: '撥款日', field: 'appropriationDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, editable: true, cellEditor: 'agDateCellEditor' },
+    { headerName: '撥款日', field: 'appropriationDate', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, editable: true, cellEditor: DateCellEditor },
     { headerName: '初驗批次', field: 'initialInspectionBatch', editable: true },
     { headerName: '複驗批次', field: 'reInspectionBatch', editable: true },
     { headerName: '初驗報告上傳開關', field: 'initialReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
     { headerName: '複驗報告上傳開關', field: 'reInspectionReportUploadSwitch', editable: true, width: 180, cellRenderer: SwitchRenderer, headerComponent: SwitchHeaderRenderer },
-     { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: UrlArrayRenderer, minWidth: 500, flex: 3, editable: false, cellRendererParams: { onDelete: confirmDeleteReport, onDownloadMark: confirmMarkDownloaded } } ,
+     { headerName: '驗屋報告', field: 'inspectionReportUrl', cellRenderer: UrlArrayRenderer, width: reportColWidth.value, minWidth: REPORT_COL_MIN_WIDTH, flex: null, editable: false, cellRendererParams: { onDelete: confirmDeleteReport, onDownloadMark: confirmMarkDownloaded } } ,
     { headerName: '驗屋報告資料夾', field: 'inspectionReportFolderUrl', cellRenderer: linkRenderer, minWidth: 150, flex: 1.5, editable: false },
     { headerName: '驗屋文件', field: 'inspectionDocsUrl', cellRenderer: linkRenderer, minWidth: 150, flex: 1.5, editable: false },
     { headerName: '驗屋授權書', field: 'authorizationLetterUrl', cellRenderer: AuthLetterArrayRenderer, minWidth: 220, flex: 2, editable: false },
@@ -2709,12 +2724,38 @@ const finalColDefs = computed(() => {
 
 
 // --- 匯出 Excel 功能 ---
-const exportToExcel = () => {
+// 下載戶別資料可選欄位：依欄位順序分成 基本資料／自訂欄位／預約資訊／面積找補
+//    key 以 colId 優先（「授權狀態」與「驗屋授權書」共用 field，靠 colId 區分）；
+//    只有 colId 沒有 field 的欄位（例如「受託人姓名/與委託人關係/受託人電話」）也用 colId；兩者都缺則略過
+const exportColKey = (def) => def?.colId || def?.field || '';
+const exportColumnGroups = computed(() => {
+  const areaKeys = new Set(areaSettleColDefs.map(exportColKey));
+  const customKeys = new Set(customFieldDefs.value.map(customFieldKey));
+  const isBooking = (k) => k.startsWith('_booking_') || k.startsWith('_methodDetail_') || k.startsWith('customBatches.');
+  const groups = [
+    { key: 'basic', label: '基本資料', items: [] },
+    { key: 'custom', label: '自訂欄位', items: [] },
+    { key: 'booking', label: '預約資訊', items: [] },
+    { key: 'area', label: '面積找補', items: [] },
+  ];
+  const byKey = Object.fromEntries(groups.map(g => [g.key, g]));
+  const seen = new Set();
+  for (const def of finalColDefs.value) {
+    const key = exportColKey(def);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const group = areaKeys.has(key) ? 'area' : customKeys.has(key) ? 'custom' : isBooking(key) ? 'booking' : 'basic';
+    byKey[group].items.push({ key, label: def.headerName || key });
+  }
+  return groups.filter(g => g.items.length > 0);
+});
+
+/** @param {string[]} [selectedKeys] 要匯出的欄位（未傳＝全部）；文件ID 一律匯出 */
+const exportToExcel = (selectedKeys) => {
   // 1. 從 colDefs 提取欄位和標頭，並在開頭加入 _docId
-  //    對於只有 colId 沒有 field 的欄位（例如「受託人姓名/與委託人關係/受託人電話」），
-  //    用 colId 作為 key；兩者都缺則過濾掉避免後續 key.startsWith() crash
-   const exportableColDefs = finalColDefs.value.filter(def => def && (def.field || def.colId));
-   const exportFields = ['_docId', ...exportableColDefs.map(def => def.field || def.colId)];
+  const picked = Array.isArray(selectedKeys) ? new Set(selectedKeys) : null;
+   const exportableColDefs = finalColDefs.value.filter(def => exportColKey(def) && (!picked || picked.has(exportColKey(def))));
+   const exportFields = ['_docId', ...exportableColDefs.map(exportColKey)];
    const chineseHeaders = ['文件ID', ...exportableColDefs.map(def => def.headerName)];
 
 
@@ -3278,7 +3319,8 @@ async function onCellValueChanged(event) {
 
   console.log('單一單元格更新:', householdDocId, field, valueToSave);
   try {
-    await updateHouseholdData(householdDocId, { [field]: valueToSave });
+    const res = await updateHouseholdData(householdDocId, { [field]: valueToSave });
+    if (res?.status === 'error') throw new Error(res.message || '寫入失敗');
     snackbar.text = `戶別 [${data.unitId}] 的 [${colDef.headerName}] 已更新成功！`;
     snackbar.color = 'success';
     snackbar.show = true;
@@ -3607,7 +3649,7 @@ onUnmounted(() => {
    border-color: var(--hdm-accent);
    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.22);
 }
-.hdm-input--date { max-width: 200px; }
+.hdm-date { flex: 1 1 auto; }
 
 /* 開關：檢視模式不可點，但保留顏色狀態（綠色=開、灰色=關） */
 .hdm-switch-row { cursor: default; }

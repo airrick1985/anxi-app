@@ -385,7 +385,7 @@ import { useUserStore } from '@/store/user';
 import {
   uploadActivityMessage,
   addActivityMessageMetadata,
-  updateActivityMessagePage,
+  updateActivityMessage,
   deleteActivityMessageAssets,
 } from '@/api';
 import { normalizeActivityLink } from '@/utils/activityPage';
@@ -1213,7 +1213,7 @@ async function save() {
     };
     let id = props.page?.id;
     if (id) {
-      await updateActivityMessagePage(id, payload);
+      await updateActivityMessage(id, payload);
     } else {
       id = await addActivityMessageMetadata({
         projectId: props.projectId,

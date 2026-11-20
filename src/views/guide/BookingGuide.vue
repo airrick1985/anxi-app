@@ -196,7 +196,7 @@
           <h3>新增批次</h3>
           <ol class="g-steps">
             <li>按「<b>新增批次</b>」。</li>
-            <li>填「批次代號」（例：A1，建立後不能改）並選「預約項目」。</li>
+            <li>先選「預約項目」、填「批次代號」（例：A1），按「<b>下一步</b>」。兩個都填好才能往下；還沒建立預約方式的項目不能選。儲存前可按標題旁的「修改」改回。</li>
             <li>選「名額計算模式」：共用名額或獨立名額。</li>
             <li>填上面兩組時間。</li>
             <li>選設定方式，排日期、時段、名額。</li>
@@ -205,12 +205,8 @@
 
           <GuideFigure :src="shot('batch-dialog')" :width="560" caption="新增預約批次">
             <div class="mk">
-              <div class="mk-bar">新增預約批次<span class="mk-grow"></span><i class="mdi mdi-help-circle-outline"></i></div>
+              <div class="mk-bar">新增預約批次<span class="mk-bar-tag">初驗 · A1</span><span class="mk-bar-link"><i class="mdi mdi-pencil-outline"></i>修改</span><span class="mk-grow"></span><i class="mdi mdi-help-circle-outline"></i></div>
               <div class="mk-body">
-                <div class="mk-grid2">
-                  <div class="mk-field"><label>批次代號</label><div>A1</div></div>
-                  <div class="mk-field"><label>預約項目</label><div>初驗 <i class="mdi mdi-menu-down"></i></div></div>
-                </div>
                 <div class="mk-label">名額計算模式</div>
                 <div class="mk-row">
                   <span class="mk-radio on"></span>共用名額
@@ -445,7 +441,7 @@
           <div class="g-table-wrap">
             <table class="g-table">
               <tbody>
-                <tr><td class="g-nowrap"><i class="mdi mdi-download"></i> 下載戶別資料</td><td>匯出整張表（也可當備份）</td></tr>
+                <tr><td class="g-nowrap"><i class="mdi mdi-download"></i> 下載戶別資料</td><td>先勾選要匯出的欄位（預設全選，文件ID 一定會匯出）；全選即整張表，也可當備份</td></tr>
                 <tr><td class="g-nowrap"><i class="mdi mdi-upload"></i> 上傳戶別資料</td><td>用 Excel 批次更新：有「文件ID」就更新，只有「戶號」就新增戶別</td></tr>
               </tbody>
             </table>
@@ -1596,6 +1592,17 @@ onBeforeUnmount(() => {
   color: #fff;
   padding: 8px 14px;
   font-weight: 700;
+}
+.mk-bar-tag {
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.mk-bar-link {
+  font-size: 12px;
+  font-weight: 500;
 }
 .mk-row {
   display: flex;

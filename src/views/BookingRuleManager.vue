@@ -2506,10 +2506,37 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="isBatchDialogVisible" max-width="95vw" persistent>
-      <v-card style="max-height: 95vh; display: flex; flex-direction: column;">
+    <v-dialog v-model="isBatchDialogVisible" :max-width="batchSetupStep === 1 ? 460 : '95vw'" persistent>
+      <!-- 新增批次第一步：先選預約項目、填批次代號，才能進入後續設定 -->
+      <v-card v-if="batchSetupStep === 1">
         <v-card-title class="primary-bg d-flex align-center">
+          <span class="text-h6">新增預約批次</span>
+        </v-card-title>
+        <v-card-text class="pt-5 pb-0">
+          <v-form @submit.prevent="goBatchSetupStep2">
+            <v-select v-model="editedBatch.bookingType" :items="bookingTypeOptions" label="預約項目"
+              placeholder="請選擇" variant="outlined" class="mb-2"
+              :error-messages="itemHasNoMethods(editedBatch.bookingType) ? ['此項目尚未建立預約方式'] : []"></v-select>
+            <v-text-field v-if="editedBatch.bookingType === '其他'" v-model="customBookingType" label="自訂項目名稱"
+              variant="outlined" class="mb-2"></v-text-field>
+            <v-text-field v-model="editedBatch.batchCode" label="批次代號" placeholder="例：A1" variant="outlined"
+              :error-messages="batchCodeDuplicateMessages"></v-text-field>
+          </v-form>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey-darken-1" variant="text" @click="isBatchDialogVisible = false">取消</v-btn>
+          <v-btn color="primary" variant="flat" append-icon="mdi-arrow-right" :disabled="!batchStartReady"
+            @click="goBatchSetupStep2">下一步</v-btn>
+        </v-card-actions>
+      </v-card>
+
+      <v-card v-else style="max-height: 95vh; display: flex; flex-direction: column;">
+        <v-card-title class="primary-bg d-flex align-center flex-wrap ga-2" style="white-space: normal;">
           <span class="text-h6">{{ editedBatch.id ? '編輯' : '新增' }}預約批次</span>
+          <v-chip variant="outlined" color="white" label>{{ currentBatchTypeLabel }} · {{ editedBatch.batchCode }}</v-chip>
+          <v-btn v-if="!editedBatch.id" variant="text" color="white" size="small" prepend-icon="mdi-pencil-outline"
+            @click="backToBatchSetupStep1">修改</v-btn>
           <v-spacer></v-spacer>
           <v-btn icon variant="text" color="white" size="small" @click="isBatchGuideVisible = true" title="操作說明">
             <v-icon>mdi-help-circle-outline</v-icon>
@@ -2517,25 +2544,6 @@
         </v-card-title>
         <v-card-text style="flex: 1; overflow-y: auto; overflow-x: hidden;">
           <v-form ref="batchForm">
-            <v-row>
-              <v-col cols="12" sm="6" md="3">
-                <v-text-field v-model="editedBatch.batchCode" label="批次代號"
-                  :rules="[v => !!v || '必填', batchUniquenessRule]" :readonly="!!editedBatch.id"
-                  :variant="editedBatch.id ? 'filled' : 'outlined'"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="6" md="3">
-                <v-select v-model="editedBatch.bookingType" :items="bookingTypeOptions" label="預約項目"
-                  hint="請至「預約系統狀態設定」新增選項" persistent-hint :rules="[v => !!v || '必填', batchUniquenessRule]"
-                  :readonly="!!editedBatch.id" :variant="editedBatch.id ? 'filled' : 'outlined'"></v-select>
-              </v-col>
-              <v-col v-if="editedBatch.bookingType === '其他'" cols="12" sm="6" md="3">
-                <v-text-field v-model="customBookingType" label="請輸入自訂項目名稱"
-                  :rules="[v => !!v || '自訂項目為必填', batchUniquenessRule]" :readonly="!!editedBatch.id"
-                  :variant="editedBatch.id ? 'filled' : 'outlined'"></v-text-field>
-              </v-col>
-            </v-row>
-
-            <v-divider class="my-2"></v-divider>
             <v-row>
               <v-col cols="12">
                 <div class="text-subtitle-1 font-weight-bold mb-2 d-flex align-center">
@@ -3315,14 +3323,14 @@
             </v-list-subheader>
             <v-list-item density="comfortable">
               <div class="text-body-2">
-                <div class="font-weight-bold mb-1">批次代號</div>
-                <div class="text-grey-darken-1">唯一識別此批次，新增後不可修改。建議使用有意義的編碼（如：初驗20260401、複驗0331）。</div>
+                <div class="font-weight-bold mb-1">預約項目</div>
+                <div class="text-grey-darken-1">此批次屬於哪個項目（如：初驗、複驗、對保）。新增時第一步先選，儲存後不可修改。</div>
               </div>
             </v-list-item>
             <v-list-item density="comfortable">
               <div class="text-body-2">
-                <div class="font-weight-bold mb-1">預約項目</div>
-                <div class="text-grey-darken-1">此批次屬於哪個項目（如：初驗、複驗、對保）。新增後不可修改。</div>
+                <div class="font-weight-bold mb-1">批次代號</div>
+                <div class="text-grey-darken-1">唯一識別此批次，與預約項目一起在第一步填寫，儲存後不可修改。建議使用有意義的編碼（如：初驗20260401、複驗0331）。</div>
               </div>
             </v-list-item>
 
@@ -6531,11 +6539,58 @@ async function openBatchDialog(item = null) {
   batchEditMode.value = 'byDate';
   methodModeTargetKeys.value = [];
   resetMethodModeInputs();
+  // 新增批次：先停在第一步（選預約項目、填批次代號）；編輯既有批次直接進入設定
+  batchSetupStep.value = item ? 2 : 1;
+  batchTypeBeforeBack.value = null;
   isBatchDialogVisible.value = true;
 
   // 等 DOM 更新完畢後才解除 flag，避免 watcher 誤清空
   await nextTick();
   isLoadingBatchData.value = false;
+}
+
+// --- 新增批次兩步驟：第一步選預約項目＋批次代號 ---
+const batchSetupStep = ref(2); // 1 = 選項目與代號；2 = 完整設定
+const batchTypeBeforeBack = ref(null); // 從第二步按「修改」回第一步時的預約項目，用於判斷是否換了項目
+
+const batchCodeDuplicateMessages = computed(() => {
+  const result = batchUniquenessRule((editedBatch.value.batchCode || '').trim());
+  return result === true ? [] : [result];
+});
+
+const batchStartReady = computed(() => {
+  const type = editedBatch.value.bookingType;
+  if (!type || itemHasNoMethods(type)) return false;
+  if (type === '其他' && !(customBookingType.value || '').trim()) return false;
+  if (!(editedBatch.value.batchCode || '').trim()) return false;
+  return batchCodeDuplicateMessages.value.length === 0;
+});
+
+function goBatchSetupStep2() {
+  if (!batchStartReady.value) return;
+  editedBatch.value.batchCode = editedBatch.value.batchCode.trim();
+  if (editedBatch.value.bookingType === '其他') customBookingType.value = customBookingType.value.trim();
+
+  const newType = currentBatchTypeRaw.value;
+  if (batchTypeBeforeBack.value !== null && batchTypeBeforeBack.value !== newType) {
+    // 換了預約項目：已排的時段與方式屬於舊項目，需清除
+    if (Object.keys(editedBatch.value.dailyRules || {}).length > 0
+      && !confirm('變更預約項目會清除已設定的日期與時段，確定嗎？')) return;
+    editedBatch.value.dailyRules = {};
+    selectedDaysForEditing.value = [];
+    selectedSlotForDetail.value = null;
+    pendingNewMethods.value = [];
+    methodModeTargetKeys.value = [];
+    resetMethodModeInputs();
+    sharedWithSelection.value = sharedWithSelection.value.filter(t => t !== newType);
+  }
+  batchTypeBeforeBack.value = null;
+  batchSetupStep.value = 2;
+}
+
+function backToBatchSetupStep1() {
+  batchTypeBeforeBack.value = currentBatchTypeRaw.value;
+  batchSetupStep.value = 1;
 }
 
 async function openDeleteDialog(item) {

@@ -5295,10 +5295,10 @@ export const addActivityMessageMetadata = async (metadata) => {
 };
 
 /**
- * 更新活動訊息自建頁面（標題、內容、頁內圖片）
+ * 更新活動訊息欄位（標題、說明、自建頁面內容、換檔後的檔案資訊）
  */
-export const updateActivityMessagePage = async (docId, data) => {
-  if (!docId) throw new Error('缺少 docId，無法更新頁面。');
+export const updateActivityMessage = async (docId, data) => {
+  if (!docId) throw new Error('缺少 docId，無法更新活動訊息。');
   await updateDoc(doc(db, "activityMessages", docId), {
     ...data,
     updatedAt: serverTimestamp(),
