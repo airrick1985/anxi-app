@@ -2230,6 +2230,16 @@
       :price-mode="priceDisplayMode"
     />
 
+    <!-- 下載戶別EXCEL：先勾選要匯出的欄位（首次開啟才掛載，之後常駐） -->
+    <HouseholdExportDialog
+      v-if="excelExportMounted"
+      v-model="isExcelExportDialogVisible"
+      title="下載戶別EXCEL"
+      :groups="excelExportGroups"
+      :locked-labels="['文件ID', '戶別']"
+      @confirm="exportToExcel"
+    />
+
     <!-- 排程更新：指定時間調價／套用 Excel（首次開啟才掛載，之後常駐） -->
     <ScheduledUpdateDialog
       v-if="scheduledUpdateMounted"
@@ -2315,7 +2325,7 @@ import {
   landParcelToRow,
   rowToLandParcel,
 } from '@/constants/landParcelColumns';
-import { COLUMN_DEFINITIONS, UNIT_EXPORT_COMPUTED_COLUMNS } from '@/constants/householdColumns';
+import { COLUMN_DEFINITIONS, UNIT_EXPORT_COMPUTED_COLUMNS, SALES_EXCEL_PARKING_COLUMNS, SALES_EXCEL_LAND_SHEET_KEY, SALES_EXCEL_LOCKED_KEYS, buildSalesExcelExportGroups } from '@/constants/householdColumns';
 import { isSpecialContractType } from '@/composables/usePriceFormula';
 // ✅ [效能] 戶別詳情 Modal（含合約製作、付款設定、xlsx…約 500KB+）改為非同步載入；
 // 模板本來就以 v-if 於開啟時建立，故非同步安全。銷控資料載入完成後會閒置預抓（見 loadCurrentProjectData），首次點開不會等下載。
@@ -2361,6 +2371,7 @@ const ActivityMessageViewer = defineAsyncComponent(() => import('@/components/Ac
 const UnitDataExportDialog = defineAsyncComponent(() => import('@/components/UnitDataExportDialog.vue'));
 const SalesGridDownloadDialog = defineAsyncComponent(() => import('@/components/SalesGridDownloadDialog.vue'));
 const ScheduledUpdateDialog = defineAsyncComponent(() => import('@/components/scheduledUpdate/ScheduledUpdateDialog.vue'));
+const HouseholdExportDialog = defineAsyncComponent(() => import('@/components/household/HouseholdExportDialog.vue'));
 import { useUserStore } from '@/store/user';
 import { useSalesAiStore } from '@/store/salesAiStore';
 import SalesAiFab from '@/components/salesAi/SalesAiFab.vue';
@@ -2439,7 +2450,7 @@ const moreToolGroups = computed(() => {
     {
       title: '資料',
       tools: [
-        { icon: 'mdi-tray-arrow-down', label: '下載EXCEL', action: exportToExcel },
+        { icon: 'mdi-tray-arrow-down', label: '下載EXCEL', action: openExcelExportDialog },
         { icon: 'mdi-table-arrow-down', label: '指定戶別下載', action: () => { isUnitExportDialogVisible.value = true; } },
         { icon: 'mdi-tray-arrow-up', label: '上傳EXCEL', action: () => { uploadDialog.value = true; } },
         { icon: 'mdi-table-pivot', label: '資料透視', action: () => { isSalesPivotVisible.value = true; } },
@@ -2502,7 +2513,7 @@ const desktopToolGroups = computed(() => {
   );
   if (canManageAnnouncements.value) common.push({ icon: 'mdi-bullhorn-variant-outline', label: '公告管理', action: openAnnouncementManager });
   dataTools.push(
-    { icon: 'mdi-tray-arrow-down', label: '下載戶別EXCEL', action: exportToExcel },
+    { icon: 'mdi-tray-arrow-down', label: '下載戶別EXCEL', action: openExcelExportDialog },
     { icon: 'mdi-table-arrow-down', label: '指定戶別下載', action: () => { isUnitExportDialogVisible.value = true; } },
     { icon: 'mdi-tray-arrow-up', label: '上傳戶別EXCEL', action: () => { uploadDialog.value = true; } },
     { icon: 'mdi-table-pivot', label: '資料透視', action: () => { isSalesPivotVisible.value = true; } },
@@ -4668,8 +4679,19 @@ const unitExportItems = computed(() => {
         }));
 });
 const fieldMapping = computed(() => Object.fromEntries(exportableColumns.value.map(col => [col.key, col.title])));
-const chineseHeaders = computed(() => exportableColumns.value.map(c => c.title));
-const exportOrder = computed(() => exportableColumns.value.map(c => c.key));
+
+// 「下載戶別EXCEL」欄位選擇對話框
+const isExcelExportDialogVisible = ref(false);
+const excelExportMounted = ref(false);
+const excelExportGroups = computed(() => buildSalesExcelExportGroups(exportableColumns.value, LAND_PARCEL_SHEET_NAME));
+function openExcelExportDialog() {
+  if (salesHouseholds.value.length === 0) {
+    toast.info('目前沒有資料可匯出。', { position: POSITION.BOTTOM_CENTER });
+    return;
+  }
+  excelExportMounted.value = true;
+  isExcelExportDialogVisible.value = true;
+}
 
 const { mobile: isMobile } = useDisplay();
 const router = useRouter();
@@ -6484,8 +6506,9 @@ onUnmounted(() => {
   if (unsubQuotePlans) unsubQuotePlans(); // ✅ [新增] 停止監聽方案清單
 });
 
-// Export/Upload methods (Keeping same)
-const exportToExcel = async () => {
+// 下載戶別EXCEL：selectedKeys 為對話框勾選的欄位（未傳＝全部，例如上傳視窗的「匯出目前戶別資料 (備份)」）；
+// 文件ID、戶別一律匯出，重新上傳時只會更新檔案中有的欄位
+const exportToExcel = async (selectedKeys) => {
     if (salesHouseholds.value.length === 0) {
         toast.info('目前沒有資料可匯出。', { position: POSITION.BOTTOM_CENTER });
         return;
@@ -6496,12 +6519,21 @@ const exportToExcel = async () => {
         return String(a.unitId).localeCompare(String(b.unitId), 'zh-TW', { numeric: true });
     });
 
+    const picked = Array.isArray(selectedKeys) ? new Set([...selectedKeys, ...SALES_EXCEL_LOCKED_KEYS]) : null;
+    const isPicked = (key) => !picked || picked.has(key);
+    const columns = exportableColumns.value.filter(c => isPicked(c.key));
     // 車位加值欄位（僅供檢視，上傳時非 COLUMN_DEFINITIONS 標頭會被自動忽略）
+    const parkingColumns = SALES_EXCEL_PARKING_COLUMNS.filter(c => isPicked(c.key));
+    const includeLandSheet = isPicked(SALES_EXCEL_LAND_SHEET_KEY);
+    const isFullExport = !picked || [
+        ...exportableColumns.value.map(c => c.key),
+        ...SALES_EXCEL_PARKING_COLUMNS.map(c => c.key),
+        SALES_EXCEL_LAND_SHEET_KEY,
+    ].every(k => picked.has(k));
     const allParkings = salesParkings.value || [];
-    const PARKING_EXTRA_HEADERS = ['車位編號及價格', '車位合計底價', '合計車位價格', '合計成交總價', '合計成交底價'];
 
     const dataAsArray = sortedItems.map(item => {
-        const row = exportOrder.value.map(key => {
+        const row = columns.map(({ key }) => {
             const value = item[key];
             if (key === 'buyerDateOfBirth') {
                 if (!value) return '';
@@ -6562,22 +6594,25 @@ const exportToExcel = async () => {
         });
 
         // 車位編號及價格（複數以逗號區隔）、車位合計底價、合計車位價格、合計成交總價（房屋成交價+合計車位價格）、合計成交底價（房屋總底價+車位合計底價，僅銷控後台狀態不為空時輸出）
-        const mySpots = getUnitParkings(item, allParkings);
-        const parkingText = mySpots
-            .map(p => `${p.spotId ?? ''}(${Number(p.price_transaction) || 0})`)
-            .join(',');
-        const parkingFloorTotal = getParkingFloorTotal(item, allParkings);
-        const parkingTotal = getParkingTransactionTotal(item, allParkings);
-        const grandTotal = getUnitTotalTransactionPrice(item, allParkings);
-        const hasBackendStatus = String(item.salesStatus_backend || '').trim() !== '';
-        const grandFloorTotal = hasBackendStatus ? getUnitTotalFloorPrice(item, allParkings) : '';
-        row.push(parkingText, mySpots.length > 0 ? parkingFloorTotal : '', mySpots.length > 0 ? parkingTotal : '', grandTotal || '', grandFloorTotal || '');
+        if (parkingColumns.length > 0) {
+            const mySpots = getUnitParkings(item, allParkings);
+            const hasSpots = mySpots.length > 0;
+            const hasBackendStatus = String(item.salesStatus_backend || '').trim() !== '';
+            const parkingValues = {
+                xl_parking_text: mySpots.map(p => `${p.spotId ?? ''}(${Number(p.price_transaction) || 0})`).join(','),
+                xl_parking_floor_total: hasSpots ? getParkingFloorTotal(item, allParkings) : '',
+                xl_parking_trans_total: hasSpots ? getParkingTransactionTotal(item, allParkings) : '',
+                xl_grand_total: getUnitTotalTransactionPrice(item, allParkings) || '',
+                xl_grand_floor_total: (hasBackendStatus ? getUnitTotalFloorPrice(item, allParkings) : '') || '',
+            };
+            row.push(...parkingColumns.map(c => parkingValues[c.key]));
+        }
         // ✅ [新增] 第一欄輸出 Firestore 文件ID（僅供識別，上傳時非 COLUMN_DEFINITIONS 標頭會被自動忽略）
         row.unshift(item.id || `${projectId.value}_${item.unitId}`);
         return row;
     });
 
-    const exportHeaders = ['文件ID', ...chineseHeaders.value, ...PARKING_EXTRA_HEADERS];
+    const exportHeaders = ['文件ID', ...columns.map(c => c.title), ...parkingColumns.map(c => c.title)];
     const warningRow = ['注意：為確保資料能正確重新上傳，請勿修改第二列的標頭名稱。'];
     const dataWithHeader = [warningRow, exportHeaders, ...dataAsArray];
     const XLSX = await loadXLSX();
@@ -6599,33 +6634,35 @@ const exportToExcel = async () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, HOUSEHOLDS_SHEET_NAME);
 
-    // ── Sheet 2：土地標的清冊（一戶 N 筆 → N 列） ──
-    const landParcelRows = [];
-    for (const item of sortedItems) {
-        const parcels = Array.isArray(item.landParcels) ? item.landParcels : [];
-        for (const parcel of parcels) {
-            landParcelRows.push(landParcelToRow(parcel, item.unitId));
+    // ── Sheet 2：土地標的清冊（一戶 N 筆 → N 列）；未勾選則不附（重新上傳時沒有此工作表＝不異動土地資料） ──
+    if (includeLandSheet) {
+        const landParcelRows = [];
+        for (const item of sortedItems) {
+            const parcels = Array.isArray(item.landParcels) ? item.landParcels : [];
+            for (const parcel of parcels) {
+                landParcelRows.push(landParcelToRow(parcel, item.unitId));
+            }
         }
+        const landSheetData = [LAND_PARCEL_HEADERS, ...landParcelRows];
+        const wsLand = XLSX.utils.aoa_to_sheet(landSheetData);
+        // 套用灰色標頭樣式
+        const landRange = XLSX.utils.decode_range(wsLand['!ref']);
+        for (let C = landRange.s.c; C <= landRange.e.c; ++C) {
+            const address = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (wsLand[address]) wsLand[address].s = headerStyle;
+        }
+        wsLand['!freeze'] = { ySplit: 1 };
+        // 合理欄寬
+        wsLand['!cols'] = LAND_PARCEL_COLUMNS.map(c => {
+            if (c.key === 'section' || c.key === 'zoneText') return { wch: 18 };
+            if (c.key === 'unitId' || c.key === 'district' || c.key === 'city') return { wch: 10 };
+            return { wch: 12 };
+        });
+        XLSX.utils.book_append_sheet(wb, wsLand, LAND_PARCEL_SHEET_NAME);
     }
-    const landSheetData = [LAND_PARCEL_HEADERS, ...landParcelRows];
-    const wsLand = XLSX.utils.aoa_to_sheet(landSheetData);
-    // 套用灰色標頭樣式
-    const landRange = XLSX.utils.decode_range(wsLand['!ref']);
-    for (let C = landRange.s.c; C <= landRange.e.c; ++C) {
-        const address = XLSX.utils.encode_cell({ r: 0, c: C });
-        if (wsLand[address]) wsLand[address].s = headerStyle;
-    }
-    wsLand['!freeze'] = { ySplit: 1 };
-    // 合理欄寬
-    wsLand['!cols'] = LAND_PARCEL_COLUMNS.map(c => {
-        if (c.key === 'section' || c.key === 'zoneText') return { wch: 18 };
-        if (c.key === 'unitId' || c.key === 'district' || c.key === 'city') return { wch: 10 };
-        return { wch: 12 };
-    });
-    XLSX.utils.book_append_sheet(wb, wsLand, LAND_PARCEL_SHEET_NAME);
 
     const exportFileName = projectName.value || 'unknown-project';
-    XLSX.writeFile(wb, `${exportFileName}_戶別資料備份_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `${exportFileName}_戶別資料${isFullExport ? '備份' : ''}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 };
 
 const closeUploadDialog = () => {

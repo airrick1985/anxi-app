@@ -138,6 +138,54 @@ export const UNIT_EXPORT_COMPUTED_COLUMNS = [
 ];
 
 /* ==========================================================
+ * 銷控「下載戶別EXCEL」：可勾選匯出欄位（文件ID、戶別一律匯出）
+ * ========================================================== */
+
+/** 戶別工作表最後附加的車位／合計欄位（僅供檢視，重新上傳時會被忽略） */
+export const SALES_EXCEL_PARKING_COLUMNS = [
+    { key: 'xl_parking_text', title: '車位編號及價格' },
+    { key: 'xl_parking_floor_total', title: '車位合計底價' },
+    { key: 'xl_parking_trans_total', title: '合計車位價格' },
+    { key: 'xl_grand_total', title: '合計成交總價' },
+    { key: 'xl_grand_floor_total', title: '合計成交底價' },
+];
+
+/** 第二張工作表「土地標的清冊」的勾選 key */
+export const SALES_EXCEL_LAND_SHEET_KEY = 'xl_land_parcels_sheet';
+
+/** 一律匯出、不列入勾選的欄位 */
+export const SALES_EXCEL_LOCKED_KEYS = ['unitId'];
+
+const SALES_EXCEL_GROUP_RULES = [
+    { key: 'buyer', label: '買方資料', match: (k) => k.startsWith('buyer') || k.startsWith('referrer') || k === 'isFirstTimeBuyer' },
+    { key: 'area', label: '面積', match: (k) => k.startsWith('area_') || k.startsWith('land_share') || ['common_area_ratio', 'build_no', 'common_share'].includes(k) },
+    { key: 'price', label: '價格', match: (k) => k.startsWith('price_') || k === 'housePriceRatio' || k === 'landPriceRatio' },
+    { key: 'payment', label: '付款／匯款帳戶', match: (k) => k.startsWith('payment_') || /Bank/.test(k) },
+    { key: 'display', label: '標籤與圖檔', match: (k) => k.startsWith('unitTags_') || k.startsWith('unitEffect_') || ['availablePlans', 'salesImages', 'svgName', 'driveFolderUrl', 'contractDrawingFolderUrl'].includes(k) },
+];
+
+/**
+ * 依欄位分組供 HouseholdExportDialog 使用；未符合任何規則的欄位歸入「基本資料」。
+ * @param {{ key: string, title: string }[]} columns 可匯出的原始欄位（COLUMN_DEFINITIONS 順序）
+ * @param {string} landSheetLabel 土地標的清冊工作表名稱
+ */
+export function buildSalesExcelExportGroups(columns, landSheetLabel) {
+    const groups = [
+        { key: 'basic', label: '基本資料', items: [] },
+        ...SALES_EXCEL_GROUP_RULES.map(r => ({ key: r.key, label: r.label, items: [] })),
+        { key: 'parking', label: '車位與合計', items: SALES_EXCEL_PARKING_COLUMNS.map(c => ({ key: c.key, label: c.title })) },
+        { key: 'sheet', label: '其他工作表', items: [{ key: SALES_EXCEL_LAND_SHEET_KEY, label: landSheetLabel }] },
+    ];
+    const byKey = Object.fromEntries(groups.map(g => [g.key, g]));
+    for (const col of columns) {
+        if (SALES_EXCEL_LOCKED_KEYS.includes(col.key)) continue;
+        const rule = SALES_EXCEL_GROUP_RULES.find(r => r.match(col.key));
+        byKey[rule ? rule.key : 'basic'].items.push({ key: col.key, label: col.title });
+    }
+    return groups.filter(g => g.items.length > 0);
+}
+
+/* ==========================================================
  * 銷售圖面編輯器：資訊卡欄位選擇用的分群／排除／簡短標籤定義
  * ========================================================== */
 
