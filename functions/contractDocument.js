@@ -1064,37 +1064,70 @@ function drawPageContent(pdf, page, slotTop, slotH) {
   }
 }
 
-/** pdf-lib 合併附圖（PDF 依頁碼範圍；圖片各佔一頁，依附圖頁紙張設定；rotation 以頁面 /Rotate 套用） */
+// 附圖置入紙張時的留白（pt）：縮小時四周保留，避免印表機不可列印區裁到圖框
+const ATTACHMENT_MARGIN = 20;
+
+/**
+ * 附圖頁版面：放進附圖頁設定的紙張大小（紙張方向跟著圖），
+ * 比紙張大的等比縮小並留白；不大於紙張者維持 100% 置中（A4 圖照原樣）。
+ * @param {number} w 圖寬（pt）
+ * @param {number} h 圖高（pt）
+ * @param {string} [paperSize] A4／A3／B4／Letter
+ * @returns {{ pageW: number, pageH: number, scale: number, x: number, y: number }}
+ */
+function fitAttachmentOnPaper(w, h, paperSize) {
+  const [pw, ph] = PAPER_PT[paperSize] || PAPER_PT.A4;
+  const landscape = w > h;
+  const pageW = landscape ? ph : pw;
+  const pageH = landscape ? pw : ph;
+  const tolerance = 1.5;   // 同尺寸的 PDF 常有 1pt 內的誤差
+  const fits = w <= pageW + tolerance && h <= pageH + tolerance;
+  const scale = fits ? 1 : Math.min((pageW - ATTACHMENT_MARGIN * 2) / w, (pageH - ATTACHMENT_MARGIN * 2) / h);
+  return { pageW, pageH, scale, x: (pageW - w * scale) / 2, y: (pageH - h * scale) / 2 };
+}
+
+/**
+ * pdf-lib 合併附圖（PDF 依頁碼範圍；圖片各佔一頁）：每頁放進附圖頁紙張大小（file.paperSize，預設 A4），
+ * 讓 A3 合約圖以 A4「實際大小」列印時不會超出紙張；rotation 以頁面 /Rotate 套用（與前端預覽一致）
+ */
 async function mergeAttachments(baseBuffer, attachmentFiles) {
   const { PDFDocument: PdfLibDocument, degrees } = require("pdf-lib");
   const merged = await PdfLibDocument.load(baseBuffer);
+  const norm = (deg) => ((Math.round(Number(deg) || 0) % 360) + 360) % 360;
 
   for (const file of attachmentFiles) {
     if (!file || !file.buffer) continue;
-    const rotation = ((Math.round(Number(file.rotation) || 0) % 360) + 360) % 360;
+    const rotation = norm(file.rotation);
     try {
       const isPdf = (file.mimeType || "").includes("pdf") || /\.pdf$/i.test(file.fileName || "");
       if (isPdf) {
         const src = await PdfLibDocument.load(file.buffer, { ignoreEncryption: true });
         const indices = parsePageRange(file.pageRange, src.getPageCount());
-        const copied = await merged.copyPages(src, indices);
-        copied.forEach(p => {
-          if (rotation) {
-            const current = p.getRotation()?.angle || 0;
-            p.setRotation(degrees((((current + rotation) % 360) + 360) % 360));
-          }
-          merged.addPage(p);
-        });
+        for (const idx of indices) {
+          const srcPage = src.getPage(idx);
+          // 以裁切框（檢視器實際顯示範圍）嵌入；嵌入內容不含原頁 /Rotate，於新頁合併套用
+          const box = srcPage.getCropBox();
+          const embedded = await merged.embedPage(srcPage, {
+            left: box.x, bottom: box.y, right: box.x + box.width, top: box.y + box.height,
+          });
+          const fit = fitAttachmentOnPaper(embedded.width, embedded.height, file.paperSize);
+          const page = merged.addPage([fit.pageW, fit.pageH]);
+          page.drawPage(embedded, {
+            x: fit.x, y: fit.y, width: embedded.width * fit.scale, height: embedded.height * fit.scale,
+          });
+          const total = norm((srcPage.getRotation()?.angle || 0) + rotation);
+          if (total) page.setRotation(degrees(total));
+        }
       } else {
         const isPng = (file.mimeType || "").includes("png") || /\.png$/i.test(file.fileName || "");
         const img = isPng ? await merged.embedPng(file.buffer) : await merged.embedJpg(file.buffer);
-        // 依圖片方向決定紙張方向（橫圖 → A4 橫式，比照合約圖範本）
+        // 圖片一律等比縮放到紙張內（紙張方向跟著圖片）
+        const [pw, ph] = PAPER_PT[file.paperSize] || PAPER_PT.A4;
         const landscape = img.width > img.height;
-        const pageW = landscape ? 841.89 : 595.28;
-        const pageH = landscape ? 595.28 : 841.89;
-        const margin = 20;
+        const pageW = landscape ? ph : pw;
+        const pageH = landscape ? pw : ph;
         const page = merged.addPage([pageW, pageH]);
-        const scale = Math.min((pageW - margin * 2) / img.width, (pageH - margin * 2) / img.height);
+        const scale = Math.min((pageW - ATTACHMENT_MARGIN * 2) / img.width, (pageH - ATTACHMENT_MARGIN * 2) / img.height);
         const w = img.width * scale, h = img.height * scale;
         page.drawImage(img, { x: (pageW - w) / 2, y: (pageH - h) / 2, width: w, height: h });
         if (rotation) page.setRotation(degrees(rotation));
@@ -1922,4 +1955,4 @@ async function buildContractExcel(payload) {
   return Buffer.from(buffer);
 }
 
-module.exports = { buildContractPdf, buildContractExcel, parsePageRange };
+module.exports = { buildContractPdf, buildContractExcel, parsePageRange, mergeAttachments, fitAttachmentOnPaper };

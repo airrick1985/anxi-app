@@ -20487,6 +20487,7 @@ exports.generateContractDocument = onCall({
                 mimeType: meta.data.mimeType || '',
                 pageRange: sel.pageRange || null,
                 rotation: Number(sel.rotation) || 0,
+                paperSize: (page.paper && page.paper.size) || 'A4',   // 附圖頁紙張：A3 圖縮到此大小
                 buffer: Buffer.from(res.data)
               }
             };
