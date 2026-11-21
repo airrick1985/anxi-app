@@ -109,6 +109,7 @@ function createFakeDb(initial = {}) {
     failures,
     collection: name => collectionRef(name),
     doc: path => docRef(path),
+    getAll: async (...refs) => refs.map(ref => snapshot(ref.path)),
     batch() {
       const operations = [];
       const batch = {

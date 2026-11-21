@@ -210,14 +210,28 @@
           </v-card>
         </v-dialog>
 
+        <!-- 💻 桌機：勾選名單後批次改派 -->
+        <div v-if="!smAndDown && canReassign && selectedLeadIds.length" class="ld-selbar">
+          <span>已選 <b>{{ selectedLeadIds.length }}</b> 筆</span>
+          <button type="button" class="mac-btn mac-btn--primary" @click="openBatchReassign">
+            <v-icon size="16">mdi-account-switch-outline</v-icon>改派
+          </button>
+          <button type="button" class="mac-link-btn" @click="selectedLeadIds = []">取消選取</button>
+        </div>
+
         <!-- 💻 桌機：表格（整列可點擊進入聯絡回報） -->
         <v-data-table
           v-if="!smAndDown"
+          v-model="selectedLeadIds"
           :headers="statusHeaders"
           :items="filteredLeads"
+          item-value="id"
+          :show-select="canReassign"
+          select-strategy="all"
           :row-props="leadRowProps"
           :items-per-page="25"
           class="mac-table ld-table"
+          :class="{ 'ld-table--select': canReassign }"
           no-data-text="找不到符合的名單"
           hover
           @click:row="(_, { item }) => openReport(item)"
@@ -283,6 +297,9 @@
               <button type="button" class="mac-icon-btn" title="聯絡回報" @click.stop="openReport(item)">
                 <v-icon size="18">mdi-comment-edit-outline</v-icon>
               </button>
+              <button v-if="canReassign" type="button" class="mac-icon-btn" title="改派" @click.stop="openReassign(item)">
+                <v-icon size="18">mdi-account-switch-outline</v-icon>
+              </button>
               <button v-if="isReceptionist" type="button" class="mac-icon-btn mac-icon-btn--danger" title="移至回收站" @click.stop="handleSoftDelete(item)">
                 <v-icon size="18">mdi-trash-can-outline</v-icon>
               </button>
@@ -319,14 +336,15 @@
                 <v-icon size="13">mdi-calendar-check</v-icon>已預約 {{ formatTime(getCustomerReservations(item.phone)[0]?.reservationTime) }}
               </div>
             </div>
-            <v-menu v-if="isReceptionist" location="bottom end" content-class="mac-menu">
+            <v-menu v-if="canReassign" location="bottom end" content-class="mac-menu">
               <template v-slot:activator="{ props }">
                 <button type="button" class="mac-icon-btn ld-row-more" title="更多" v-bind="props" @click.stop>
                   <v-icon size="18">mdi-dots-horizontal</v-icon>
                 </button>
               </template>
               <v-list density="compact">
-                <v-list-item prepend-icon="mdi-trash-can-outline" title="移至回收站" base-color="error" @click="handleSoftDelete(item)"></v-list-item>
+                <v-list-item prepend-icon="mdi-account-switch-outline" title="改派" @click="openReassign(item)"></v-list-item>
+                <v-list-item v-if="isReceptionist" prepend-icon="mdi-trash-can-outline" title="移至回收站" base-color="error" @click="handleSoftDelete(item)"></v-list-item>
               </v-list>
             </v-menu>
           </div>
@@ -1541,6 +1559,67 @@
       </v-card>
     </v-dialog>
 
+    <!-- 改派銷售（單筆／批次） -->
+    <v-dialog v-model="reassignDialog.show" max-width="460" :persistent="reassignDialog.loading" content-class="mac-dialog-fit">
+      <v-card class="mac-sheet">
+        <div class="mac-sheet-head">
+          <v-icon size="18">mdi-account-switch-outline</v-icon>改派
+          <button type="button" class="mac-sheet-close" title="關閉" :disabled="reassignDialog.loading" @click="reassignDialog.show = false">
+            <v-icon size="18">mdi-close</v-icon>
+          </button>
+        </div>
+        <v-card-text class="mac-form pa-3">
+          <div class="mac-form-group">
+            <div class="mac-form-row">
+              <span class="ld-reassign-label">名單</span>
+              <span class="mac-form-row-main ld-reassign-value">
+                <template v-if="reassignTargets.length === 1">{{ reassignTargets[0].name || '未填姓名' }}・{{ reassignTargets[0].phone }}</template>
+                <template v-else>{{ reassignTargets.length }} 筆</template>
+              </span>
+            </div>
+            <div class="mac-form-row">
+              <span class="ld-reassign-label">目前</span>
+              <span class="mac-form-row-main ld-reassign-value">{{ reassignFromSummary }}</span>
+            </div>
+            <div class="mac-form-row">
+              <span class="ld-reassign-label">改派給</span>
+              <v-select
+                v-model="reassignDialog.salesId"
+                :items="reassignStaffOptions"
+                item-title="name"
+                item-value="id"
+                placeholder="選擇銷售"
+                class="mac-form-row-main"
+                menu-icon="mdi-unfold-more-horizontal"
+                v-bind="macFieldProps"
+                :menu-props="{ contentClass: 'mac-menu', maxHeight: 400 }"
+              >
+                <template v-slot:item="{ props: itemProps, item }">
+                  <v-list-item
+                    v-bind="itemProps"
+                    :title="item.raw.name"
+                    :subtitle="`共 ${item.raw.totalCount}・本週 ${item.raw.weekCount}・本月 ${item.raw.monthCount}`"
+                  ></v-list-item>
+                </template>
+              </v-select>
+            </div>
+          </div>
+        </v-card-text>
+        <div class="mac-sheet-foot">
+          <span class="mac-spacer"></span>
+          <button type="button" class="mac-btn" :disabled="reassignDialog.loading" @click="reassignDialog.show = false">取消</button>
+          <button
+            type="button"
+            class="mac-btn mac-btn--primary"
+            :disabled="!reassignDialog.salesId || reassignDialog.loading"
+            @click="executeReassign"
+          >
+            <v-progress-circular v-if="reassignDialog.loading" indeterminate size="14" width="2"></v-progress-circular>改派
+          </button>
+        </div>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000">
       {{ snackbar.text }}
     </v-snackbar>
@@ -1577,7 +1656,8 @@ import {
 import { checkLeadDuplicates, batchImportAndAssignLeadsAPI,
   batchImportLeadsV2API,
   notifyPendingReservationLeadsAPI,
-  clearProjectLeadsAPI
+  clearProjectLeadsAPI,
+  reassignLeadsAPI
 } from '@/api';
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import ChartDataLabels from 'chartjs-plugin-datalabels';
@@ -2117,6 +2197,87 @@ const userSystems = computed(() => userStore.user?.permissions?.[props.projectId
 const isReceptionist = computed(() => userSystems.value.includes('客資系統-櫃台'));
 const isAdmin = computed(() => userStore.user?.roles?.includes('系統管理員') || userStore.user?.roles?.includes('超級管理員'));
 const isSuperAdmin = computed(() => userStore.user?.roles?.includes('超級管理員'));
+
+// --- 改派銷售（單筆／勾選批次）：只換負責人，聯絡狀況與回報紀錄保留 ---
+const canReassign = computed(() => isReceptionist.value || isAdmin.value);
+const selectedLeadIds = ref([]);
+// 名單被刪除／移到垃圾桶後，從勾選中移除
+watch(allLeads, (list) => {
+  if (!selectedLeadIds.value.length) return;
+  const ids = new Set(list.map(l => l.id));
+  const kept = selectedLeadIds.value.filter(id => ids.has(id));
+  if (kept.length !== selectedLeadIds.value.length) selectedLeadIds.value = kept;
+});
+const reassignDialog = reactive({ show: false, leadIds: [], salesId: null, loading: false });
+const reassignTargets = computed(() => {
+  const ids = new Set(reassignDialog.leadIds);
+  return allLeads.value.filter(l => ids.has(l.id));
+});
+const reassignStaffOptions = computed(() => salesStaffWithCounts.value.filter(s => !s.disabled));
+const reassignFromSummary = computed(() => {
+  const counts = new Map();
+  reassignTargets.value.forEach(l => {
+    const name = l.assignedName || '尚未指派';
+    counts.set(name, (counts.get(name) || 0) + 1);
+  });
+  const multi = reassignTargets.value.length > 1;
+  const parts = [...counts].map(([name, n]) => (multi ? `${name} ${n}` : name));
+  return parts.length > 3 ? `${parts.slice(0, 3).join('、')} 等 ${parts.length} 位` : (parts.join('、') || '-');
+});
+
+const openReassign = (lead) => {
+  if (!lead?.id) return;
+  reassignDialog.leadIds = [lead.id];
+  reassignDialog.salesId = null;
+  reassignDialog.show = true;
+};
+const openBatchReassign = () => {
+  if (!selectedLeadIds.value.length) return;
+  reassignDialog.leadIds = [...selectedLeadIds.value];
+  reassignDialog.salesId = null;
+  reassignDialog.show = true;
+};
+
+const REASSIGN_CHUNK = 400; // 後端單次上限 450
+const executeReassign = async () => {
+  const salesId = reassignDialog.salesId;
+  if (!salesId || reassignDialog.loading) return;
+  const salesName = salesStaff.value.find(s => s.id === salesId)?.name || '';
+  const ids = reassignTargets.value.filter(l => l.assignedTo !== salesId).map(l => l.id);
+  if (!ids.length) {
+    showMsg(`名單已是 ${salesName} 負責`, 'info');
+    reassignDialog.show = false;
+    return;
+  }
+  reassignDialog.loading = true;
+  let updated = 0;
+  let failed = 0;
+  try {
+    for (let i = 0; i < ids.length; i += REASSIGN_CHUNK) {
+      const res = await reassignLeadsAPI({
+        projectId: props.projectId,
+        leadIds: ids.slice(i, i + REASSIGN_CHUNK),
+        salesId,
+        operatorKey: userUid.value,
+        operator: userStore.user?.name || ''
+      });
+      updated += res?.updated || 0;
+      failed += res?.failed?.length || 0;
+    }
+    showMsg(
+      failed ? `已改派 ${updated} 筆給 ${salesName}，${failed} 筆失敗` : `已改派 ${updated} 筆給 ${salesName}`,
+      failed ? 'warning' : 'success'
+    );
+    const done = new Set(reassignDialog.leadIds);
+    selectedLeadIds.value = selectedLeadIds.value.filter(id => !done.has(id));
+    reassignDialog.show = false;
+  } catch (err) {
+    const prefix = updated ? `已改派 ${updated} 筆，其餘失敗：` : '改派失敗：';
+    showMsg(prefix + (err?.message || err), 'error');
+  } finally {
+    reassignDialog.loading = false;
+  }
+};
 
 // --- [危險操作] 清除該建案全部名單（僅限超級管理員） ---
 const clearAllDialog = reactive({
@@ -3837,7 +3998,8 @@ const fetchProjectStaff = async () => {
         staff.push({ 
           id: uDoc.id, 
           name: userData.name || uDoc.id, 
-          lineId: userData.lineId || '' 
+          lineId: userData.lineId || '',
+          disabled: userData.disabled === true
         });
       }
     });
@@ -4787,12 +4949,24 @@ const handleExcelFileSelect = async (input) => {
 .ld-name { font-weight: 600; }
 .ld-muted { color: #6e6e73; font-size: 12.5px; }
 .ld-table :deep(tbody tr) { cursor: pointer; }
-/* 狀態、姓名、電話～指派給、預約紀錄不換行；原因／備註限寬換行（欄位順序見 statusHeaders） */
-.ld-table :deep(tbody td:nth-child(-n+2)),
-.ld-table :deep(tbody td:nth-child(n+4):nth-child(-n+8)),
-.ld-table :deep(tbody td:nth-child(11)) { white-space: nowrap; }
-.ld-table :deep(tbody td:nth-child(12)),
-.ld-table :deep(tbody td:nth-child(13)) { min-width: 150px; max-width: 240px; }
+/* 狀態、姓名、電話～指派給、預約紀錄不換行；原因／備註限寬換行（欄位順序見 statusHeaders）
+   可改派時最前面多一欄勾選框，索引全部 +1 */
+.ld-table:not(.ld-table--select) :deep(tbody td:nth-child(-n+2)),
+.ld-table:not(.ld-table--select) :deep(tbody td:nth-child(n+4):nth-child(-n+8)),
+.ld-table:not(.ld-table--select) :deep(tbody td:nth-child(11)) { white-space: nowrap; }
+.ld-table:not(.ld-table--select) :deep(tbody td:nth-child(12)),
+.ld-table:not(.ld-table--select) :deep(tbody td:nth-child(13)) { min-width: 150px; max-width: 240px; }
+.ld-table--select :deep(tbody td:nth-child(-n+3)),
+.ld-table--select :deep(tbody td:nth-child(n+5):nth-child(-n+9)),
+.ld-table--select :deep(tbody td:nth-child(12)) { white-space: nowrap; }
+.ld-table--select :deep(tbody td:nth-child(13)),
+.ld-table--select :deep(tbody td:nth-child(14)) { min-width: 150px; max-width: 240px; }
+/* 勾選後的批次改派列 */
+.ld-selbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 16px 10px; padding: 8px 12px; border-radius: 10px; background: rgba(0, 113, 227, 0.08); font-size: 13px; }
+.ld-selbar b { color: #0071e3; }
+/* 改派視窗 */
+.ld-reassign-label { flex-shrink: 0; width: 56px; color: #6e6e73; }
+.ld-reassign-value { overflow-wrap: anywhere; }
 /* 最新回報：全文保留換行、限寬自動換行 */
 .ld-lr { min-width: 200px; max-width: 300px; padding: 6px 0; }
 .ld-lr-text { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.45; }

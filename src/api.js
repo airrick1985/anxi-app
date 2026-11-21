@@ -9738,6 +9738,22 @@ export const processAndAssignLeadAPI = async (data) => {
   }
 };
 
+/**
+ * [API] 聯絡名單改派（單筆或批次）
+ * @param {object} data - { projectId, leadIds, salesId, operatorKey, operator }
+ * 回傳 { status, updated, skipped, failed: [{ leadId, error }] }
+ */
+export const reassignLeadsAPI = async (data) => {
+  try {
+    const func = httpsCallable(getFunctions(undefined, 'asia-east1'), 'reassignLeads');
+    const result = await func(data);
+    return result.data;
+  } catch (error) {
+    console.error("[api.js] reassignLeadsAPI 錯誤:", error);
+    throw error;
+  }
+};
+
 // 定義名單查重的路由函式 (強制指定 asia-east1)
 export const checkLeadDuplicatesApi = httpsCallable(getFunctions(undefined, 'asia-east1'), 'checkLeadDuplicates', { timeout: 120000 });
 

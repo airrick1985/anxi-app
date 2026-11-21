@@ -25741,6 +25741,152 @@ exports.processAndAssignLead = onCall({
   }
 });
 
+/**
+ * 聯絡名單改派：把已分配的名單改給另一位銷售（單筆或批次）
+ * 權限：系統管理員／超級管理員，或該建案「客資系統-櫃台」
+ * 只換負責人：聯絡狀況與回報紀錄保留；指派時間更新為改派當下，並在 reassignLog 留紀錄
+ * LINE：通知新銷售＋本建案固定通知人員＋系統管理員（5 筆以內逐筆名單卡，超過改一則彙總）
+ * 客資庫歸屬由 onLeadOwnerChangeSyncVipGuest 自動同步
+ *
+ * request.data: { projectId, leadIds: string[], salesId, operatorKey, operator }
+ * 回傳 { status, updated, skipped, failed: [{ leadId, error }] }
+ */
+exports.reassignLeads = onCall({
+  region: "asia-east1",
+  cors: true,
+  memory: "512MiB",
+  timeoutSeconds: 120,
+  secrets: ["ANXISMART_LINE_CRM_TOKEN", "ANXI_ADMIN_RICK__LINEID"]
+}, async (request) => {
+  const functionName = "reassignLeads";
+  const db = new Firestore({ databaseId: "anxi-app" });
+  const { projectId, leadIds, salesId, operatorKey, operator } = request.data || {};
+
+  const ids = Array.isArray(leadIds) ? [...new Set(leadIds.map(id => String(id || "").trim()).filter(Boolean))] : [];
+  if (!projectId || !salesId || ids.length === 0) {
+    throw new HttpsError("invalid-argument", "缺少必要參數。");
+  }
+  if (ids.length > 450) {
+    throw new HttpsError("invalid-argument", "單次最多改派 450 筆。");
+  }
+
+  // 1. 權限：比照名單匯入（系統管理員，或該建案「客資系統-櫃台」）
+  if (!operatorKey) throw new HttpsError("permission-denied", "缺少操作者身分 (operatorKey)。");
+  const operatorSnap = await db.collection("users").doc(String(operatorKey)).get();
+  if (!operatorSnap.exists) throw new HttpsError("permission-denied", "找不到操作者資料。");
+  const operatorRoles = operatorSnap.data().roles || [];
+  if (!operatorRoles.includes("系統管理員") && !operatorRoles.includes("超級管理員")) {
+    const permSnap = await db.collection("userPermissions").doc(String(operatorKey)).get();
+    const systems = permSnap.exists ? (permSnap.data().permissions?.[projectId]?.systems || []) : [];
+    if (!systems.includes("客資系統-櫃台")) {
+      throw new HttpsError("permission-denied", "權限不足：僅限系統管理員或該建案「客資系統-櫃台」人員改派名單。");
+    }
+  }
+  const operatorName = String(operator || operatorSnap.data().name || "");
+
+  try {
+    // 2. 新銷售：必須存在且未停用
+    const salesSnap = await db.collection("users").doc(String(salesId)).get();
+    if (!salesSnap.exists) throw new HttpsError("not-found", "找不到改派的銷售人員。");
+    const salesData = salesSnap.data();
+    if (salesData.disabled === true) throw new HttpsError("failed-precondition", "此銷售帳號已停用，無法改派。");
+    const toSalesId = String(salesId);
+    const toSalesName = salesData.name || toSalesId;
+
+    // 3. 逐筆檢查後以單一 batch 寫入
+    const snaps = await db.getAll(...ids.map(id => db.collection("leads").doc(id)));
+    const now = admin.firestore.Timestamp.now();
+    const batch = db.batch();
+    const updatedLeads = [];
+    const failed = [];
+    let skipped = 0;
+
+    snaps.forEach((snap, i) => {
+      const leadId = ids[i];
+      if (!snap.exists) { failed.push({ leadId, error: "名單不存在" }); return; }
+      const lead = snap.data();
+      if (lead.projectId !== projectId) { failed.push({ leadId, error: "不屬於本建案" }); return; }
+      if (lead.isDeleted) { failed.push({ leadId, error: "名單已在垃圾桶" }); return; }
+      if (String(lead.assignedTo || "") === toSalesId) { skipped++; return; }
+
+      const updatePayload = {
+        assignedTo: toSalesId,
+        assignedName: toSalesName,
+        assignedAt: now,
+        lastModifiedAt: now,
+        lastModifiedBy: operatorName
+      };
+      batch.update(snap.ref, {
+        ...updatePayload,
+        reassignLog: FieldValue.arrayUnion({
+          fromSalesId: lead.assignedTo || null,
+          fromSalesName: lead.assignedName || null,
+          toSalesId,
+          toSalesName,
+          byKey: String(operatorKey),
+          byName: operatorName,
+          at: now
+        })
+      });
+      updatedLeads.push({ leadId, data: { ...lead, ...updatePayload } });
+    });
+
+    if (updatedLeads.length > 0) await batch.commit();
+    console.log(`[${functionName}] ${operatorName} 改派 ${updatedLeads.length} 筆 → ${toSalesName}（略過 ${skipped}、失敗 ${failed.length}）`);
+
+    // 4. LINE 通知（失敗不影響改派結果）
+    const channelToken = process.env.ANXISMART_LINE_CRM_TOKEN;
+    if (channelToken && updatedLeads.length > 0) {
+      try {
+        if (!(await shouldBlockOutbound(projectId, "line"))) { // [TrialGuard]
+          const [projectDoc, settingsDoc] = await Promise.all([
+            db.collection("projects").doc(projectId).get(),
+            db.collection("projectSettings").doc(projectId).get()
+          ]);
+          const projectName = projectDoc.exists ? (projectDoc.data().name || projectId) : projectId;
+
+          const managerLineIds = [];
+          const notifyRecipients = settingsDoc.exists ? (settingsDoc.data().notifyRecipients || []) : [];
+          if (Array.isArray(notifyRecipients) && notifyRecipients.length > 0) {
+            const managerDocs = await Promise.all(notifyRecipients.map(uid => db.collection("users").doc(String(uid)).get()));
+            managerDocs.forEach(d => {
+              const lid = (d.exists ? (d.data().lineId || "") : "").trim();
+              if (lid.startsWith("U")) managerLineIds.push(lid);
+            });
+          }
+          const adminLineId = (process.env.ANXI_ADMIN_RICK__LINEID || "").trim();
+          const salesLineId = (salesData.lineId || "").trim();
+          const recipients = [...new Set([salesLineId, ...managerLineIds, adminLineId].filter(lid => lid.startsWith("U")))];
+
+          if (recipients.length > 0) {
+            if (updatedLeads.length <= 5) {
+              for (const { leadId, data } of updatedLeads) {
+                await _sendLeadAssignmentFlex(channelToken, recipients, { ...data, projectName: data.projectName || projectName }, leadId, { title: "名單改派" })
+                  .catch(err => console.warn(`[${functionName}] LINE 名單卡失敗 ${leadId}:`, err?.response?.data?.message || err.message));
+              }
+            } else {
+              const MAX_LIST = 20;
+              const lines = updatedLeads.slice(0, MAX_LIST).map(({ data }) => `・${data.name || "未填姓名"} ${data.phone || ""}`);
+              if (updatedLeads.length > MAX_LIST) lines.push(`…等共 ${updatedLeads.length} 筆`);
+              const liffUrl = "https://liff.line.me/2008257338-FSWtfaEM";
+              const text = `📋 [${projectName}] 名單改派通知\n\n${operatorName || "櫃台"} 已將 ${updatedLeads.length} 筆名單改派給 ${toSalesName}\n\n${lines.join("\n")}\n\n🔎 回報聯絡狀況\n${liffUrl}`;
+              await _sendLeadBatchSummaryText(channelToken, recipients, text);
+            }
+          }
+        }
+      } catch (lineError) {
+        console.warn(`[${functionName}] LINE 通知失敗:`, lineError?.response?.data?.message || lineError.message);
+      }
+    }
+
+    return { status: "success", updated: updatedLeads.length, skipped, failed };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error(`[${functionName}] 執行失敗:`, error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
 // =================================================================
 // 2. [Scheduled] 動態定時提醒 (每 15 分鐘執行一次檢查)
 // =================================================================
@@ -25867,7 +26013,7 @@ function _parseLeadText(text) {
  * @param {string} token - LINE Channel Access Token
  * @param {string|string[]} to - 單一 LINE ID 或多筆 LINE ID 陣列（多筆時走 multicast）
  */
-async function _sendLeadAssignmentFlex(token, to, lead, docId) {
+async function _sendLeadAssignmentFlex(token, to, lead, docId, { title = "名單分配" } = {}) {
   // 統一為去重後的有效 LINE ID 陣列
   const recipients = Array.from(new Set(
     (Array.isArray(to) ? to : [to])
@@ -25881,7 +26027,7 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
 
   const messages = [{
       type: "flex",
-      altText: `📞 [${lead.projectName || "新名單"}] 分配給 ${lead.assignedName || "未指定"}`, // ✅ 預覽文字加入建案名稱與分配銷售
+      altText: `📞 [${lead.projectName || "新名單"}] ${title === "名單分配" ? "分配" : "改派"}給 ${lead.assignedName || "未指定"}`, // ✅ 預覽文字加入建案名稱與分配銷售
       contents: {
         type: "bubble",
         header: {
@@ -25890,7 +26036,7 @@ async function _sendLeadAssignmentFlex(token, to, lead, docId) {
           contents: [{
             type: "text",
             // ✅ 修改點：標題整合建案名稱與業務員姓名
-            text: `[${lead.projectName || "客資系統"}] 名單分配`,
+            text: `[${lead.projectName || "客資系統"}] ${title}`,
             weight: "bold",
             color: "#FFFFFF"
           }],
