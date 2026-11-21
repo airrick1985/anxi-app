@@ -1408,7 +1408,7 @@ function printImage(item) {
   html, body { margin: 0; padding: 0; }
   img { display: block; margin: 0 auto; max-width: 100%; max-height: 100vh; }
 </style>
-</head><body><img src="${escapeHtml(item.downloadURL)}" alt=""></body></html>`);
+</head><body><img src="${escapeHtml(item.downloadURL)}" alt="" decoding="sync"></body></html>`);
     doc.close();
 
     const img = doc.querySelector('img');
@@ -1416,15 +1416,15 @@ function printImage(item) {
       disposePrintFrame(frame);
       if (err) reject(err); else resolve();
     };
-    // 圖已在燈箱顯示過，通常已在快取中；仍需等 iframe 內的 img 解碼完成才印，否則會印出空白
-    if (img.complete && img.naturalWidth > 0) {
-      try { triggerPrint(frame); done(); } catch (e) { done(e); }
-      return;
-    }
-    img.onload = () => {
-      try { triggerPrint(frame); done(); } catch (e) { done(e); }
-    };
-    img.onerror = () => done(new Error('圖檔載入失敗'));
+    waitImageLoaded(img).then(() => {
+      if (!img.naturalWidth) {
+        done(new Error('圖檔載入失敗'));
+        return;
+      }
+      decodeForPrint(img).then(() => {
+        try { triggerPrint(frame); done(); } catch (e) { done(e); }
+      });
+    });
   });
 }
 
@@ -1471,6 +1471,14 @@ function waitImageLoaded(img) {
   });
 }
 
+// Safari：畫面外 iframe 裡的大圖列印時會改走非同步解碼，來不及解完就印成空白。
+// 指定 decoding="sync" 並先等 decode() 解碼完成再印（失敗不擋列印）
+function decodeForPrint(img) {
+  img.decoding = 'sync';
+  if (!img.naturalWidth || typeof img.decode !== 'function') return Promise.resolve();
+  return img.decode().catch(() => {});
+}
+
 // 自建頁面：整頁等比縮進一張 A4（套用同一份畫布樣式），等圖片與背景圖載入完再印。
 // 不可讓畫布跨頁：圖片不會被切開，跨頁的圖會整張被推到下一頁，累積下推後超出畫布裁切範圍的圖就印成空白。
 function printPage(item) {
@@ -1494,13 +1502,14 @@ function printPage(item) {
 </head><body><div class="print-sizer"><div class="print-stage">${renderCanvasHtml(canvas)}</div></div></body></html>`);
     doc.close();
 
-    const pending = [...doc.images].map(waitImageLoaded);
+    const images = [...doc.images];
     // 背景圖是 CSS 背景、不在 doc.images 裡，另外預載同一網址；沒等它會印出白底
     if (canvas.background.image) {
       const bg = doc.createElement('img');
       bg.src = canvas.background.image;
-      pending.push(waitImageLoaded(bg));
+      images.push(bg);
     }
+    const pending = images.map(img => waitImageLoaded(img).then(() => decodeForPrint(img)));
     const timeout = new Promise(done => setTimeout(done, 20000));
     Promise.race([Promise.all(pending), timeout]).then(() => {
       try {
