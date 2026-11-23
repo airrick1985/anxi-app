@@ -44,6 +44,14 @@
           </button>
         </div>
         <MacFilterPopover :sheet="smAndDown" :count="filterTokens.length" :result-count="sortedRows.length" @clear="clearFilters">
+          <div v-if="unitOptions.buildings.length > 1" class="mac-filter-field">
+            <div class="mac-sheet-label">棟別</div>
+            <v-select v-model="buildingFilter" :items="unitOptions.buildings" multiple placeholder="全部" v-bind="macFieldProps"></v-select>
+          </div>
+          <div v-if="unitOptions.floors.length > 1" class="mac-filter-field">
+            <div class="mac-sheet-label">樓層</div>
+            <v-select v-model="floorFilter" :items="unitOptions.floors" multiple placeholder="全部" v-bind="macFieldProps"></v-select>
+          </div>
           <div class="mac-filter-field">
             <div class="mac-sheet-label">格式</div>
             <v-select v-model="formatFilter" :items="SALES_IMAGE_FORMATS" multiple placeholder="全部" v-bind="macFieldProps"></v-select>
@@ -75,6 +83,9 @@
       <span class="sim-selbar-count">已選取 {{ selectedIds.length }} 張</span>
       <button type="button" class="mac-link-btn" @click="selectedIds = []">取消選取</button>
       <span class="mac-spacer"></span>
+      <button type="button" class="mac-btn" :disabled="usageLoading" @click="openUnits(selectedRows)">
+        <v-icon size="16">mdi-home-edit-outline</v-icon>使用戶別
+      </button>
       <button type="button" class="mac-btn" :disabled="downloading" @click="downloadImages(selectedRows)">
         <v-progress-circular v-if="downloading" indeterminate size="14" width="2"></v-progress-circular>
         <v-icon v-else size="16">mdi-tray-arrow-down</v-icon>下載
@@ -151,20 +162,12 @@
 
       <template #item.usageCount="{ item }">
         <span v-if="usageLoading" class="sim-muted">…</span>
-        <v-menu v-else-if="item.units.length" location="bottom start" :close-on-content-click="false">
-          <template #activator="{ props: menuProps }">
-            <button type="button" class="mac-tag sim-usage" v-bind="menuProps" @click.stop>
-              <v-icon size="12">mdi-home-outline</v-icon>{{ item.units.length }} 戶
-            </button>
-          </template>
-          <div class="mac-sheet sim-units-pop">
-            <div class="mac-sheet-label">使用戶別</div>
-            <div class="sim-units">
-              <span v-for="u in item.units" :key="u" class="mac-tag">{{ u }}</span>
-            </div>
-          </div>
-        </v-menu>
-        <span v-else class="sim-muted">未使用</span>
+        <button v-else-if="item.units.length" type="button" class="mac-tag sim-usage" :title="unitsTitle(item)" @click.stop="openUnits([item])">
+          <v-icon size="12">mdi-home-outline</v-icon>{{ item.units.length }} 戶
+        </button>
+        <button v-else type="button" class="mac-tag sim-unused sim-unused-btn" title="設定使用戶別" @click.stop="openUnits([item])">
+          未使用<v-icon size="12">mdi-plus</v-icon>
+        </button>
       </template>
 
       <template #item.updatedMs="{ item }">
@@ -231,6 +234,7 @@
               </button>
             </template>
             <v-list density="compact">
+              <v-list-item prepend-icon="mdi-home-edit-outline" title="使用戶別" :disabled="usageLoading" @click="openUnits([row])"></v-list-item>
               <v-list-item prepend-icon="mdi-pencil-outline" title="更名" @click="openRename(row)"></v-list-item>
               <v-list-item prepend-icon="mdi-image-refresh-outline" title="替換檔案" @click="pickReplace(row)"></v-list-item>
               <v-list-item prepend-icon="mdi-trash-can-outline" title="刪除" base-color="error" @click="askDelete([row])"></v-list-item>
@@ -260,9 +264,19 @@
       v-model="previewOpen"
       v-model:index="previewIndex"
       :images="sortedRows"
+      :usage-loading="usageLoading"
       @rename="openRename"
       @replace="pickReplace"
       @delete="row => askDelete([row])"
+      @units="row => openUnits([row])"
+    />
+
+    <SalesImageUnitsDialog
+      v-model="unitsDialog.open"
+      :images="unitsDialog.rows"
+      :units="unitList"
+      :unit-images="unitImages"
+      @saved="onUnitsSaved"
     />
 
     <!-- 更名 -->
@@ -363,6 +377,7 @@ import { useToast } from 'vue-toastification';
 import MacFilterPopover from '@/components/MacFilterPopover.vue';
 import SalesImageUploadDialog from './SalesImageUploadDialog.vue';
 import SalesImagePreviewDialog from './SalesImagePreviewDialog.vue';
+import SalesImageUnitsDialog from './SalesImageUnitsDialog.vue';
 import {
   listenToSalesImages, fetchSalesHouseholdsOnce, saveSalesImage, renameSalesImage, deleteSalesImages,
 } from '@/api.js';
@@ -370,7 +385,7 @@ import { shrinkImageToLimit } from '@/utils/canvasCompress';
 import {
   SALES_IMAGE_ACCEPT, SALES_IMAGE_MAX_BYTES, SALES_IMAGE_NAME_MAX, SALES_IMAGE_FORMATS,
   normalizeImageName, imageNameError, imageFormat, formatBytes, timestampMs, buildImageUsage,
-  readImageSize, fileToBase64,
+  readImageSize, fileToBase64, buildUnitList, unitFilterOptions, householdUnitKey,
 } from '@/utils/salesImages';
 
 const props = defineProps({
@@ -418,7 +433,8 @@ const withVersion = (url, ms) => (url && ms ? `${url}${url.includes('?') ? '&' :
 // ── 資料 ──
 const images = ref([]);
 const loading = ref(true);
-const usage = ref(new Map());
+const households = ref([]);
+const usage = computed(() => buildImageUsage(households.value));
 const usageLoading = ref(true);
 const measured = reactive({});
 let unsubscribe = null;
@@ -436,10 +452,11 @@ function subscribe() {
   });
 }
 
-async function loadUsage() {
-  usageLoading.value = true;
+// silent：背景重讀，不顯示載入中
+async function loadUsage(silent = false) {
+  if (!silent) usageLoading.value = true;
   try {
-    usage.value = buildImageUsage(await fetchSalesHouseholdsOnce(props.projectId));
+    households.value = await fetchSalesHouseholdsOnce(props.projectId);
   } catch (e) {
     console.error('[SalesImageManager] 載入戶別引用失敗', e);
   } finally {
@@ -449,6 +466,7 @@ async function loadUsage() {
 
 watch(() => props.projectId, (id) => {
   if (!id) return;
+  households.value = [];
   subscribe();
   loadUsage();
 }, { immediate: true });
@@ -476,6 +494,13 @@ const rows = computed(() => images.value.map((img) => {
 }));
 const existingNames = computed(() => images.value.map(i => i.imageName));
 
+// 戶別清單（棟別／樓層）與各戶引用的圖片
+const unitList = computed(() => buildUnitList(households.value));
+const unitById = computed(() => new Map(unitList.value.map(u => [u.unitId, u])));
+const unitOptions = computed(() => unitFilterOptions(unitList.value));
+const unitImages = computed(() => new Map(households.value.map(h => [householdUnitKey(h), new Set(Array.isArray(h.salesImages) ? h.salesImages : [])])));
+const unitsTitle = row => (row.units.length > 30 ? `${row.units.slice(0, 30).join('、')}⋯` : row.units.join('、'));
+
 // 舊資料沒有存寬高：縮圖載入後補量
 function onThumbLoad(row, e) {
   if (row.width || measured[row.id]) return;
@@ -496,6 +521,8 @@ const missingList = computed(() => {
 const search = ref('');
 const usageFilter = ref('all');
 const formatFilter = ref([]);
+const buildingFilter = ref([]);
+const floorFilter = ref([]);
 const dateFrom = ref('');
 const dateTo = ref('');
 const sortBy = ref([{ key: 'updatedMs', order: 'desc' }]);
@@ -508,11 +535,20 @@ const searchedRows = computed(() => {
     if (q && !r.imageName.toLowerCase().includes(q) && !r.fileName.toLowerCase().includes(q)
       && !r.units.some(u => String(u).toLowerCase().includes(q))) return false;
     if (formatFilter.value.length && !formatFilter.value.includes(r.format)) return false;
+    if ((buildingFilter.value.length || floorFilter.value.length) && !r.units.some(matchUnit)) return false;
     if (from && r.updatedMs < from) return false;
     if (to && r.updatedMs > to) return false;
     return true;
   });
 });
+// 圖片有任一戶符合棟別＋樓層條件
+function matchUnit(unitId) {
+  const u = unitById.value.get(unitId);
+  if (!u) return false;
+  return (!buildingFilter.value.length || buildingFilter.value.includes(u.building))
+    && (!floorFilter.value.length || floorFilter.value.includes(u.floorKey));
+}
+const optionLabels = (options, values) => values.map(v => options.find(o => o.value === v)?.title ?? v).join('、');
 const usageCounts = computed(() => {
   const used = searchedRows.value.filter(r => r.usageCount > 0).length;
   return { all: searchedRows.value.length, used, unused: searchedRows.value.length - used };
@@ -538,6 +574,8 @@ const sortedRows = computed(() => {
 
 const filterTokens = computed(() => {
   const tokens = [];
+  if (buildingFilter.value.length) tokens.push({ key: 'building', label: `棟別：${optionLabels(unitOptions.value.buildings, buildingFilter.value)}`, clear: () => { buildingFilter.value = []; } });
+  if (floorFilter.value.length) tokens.push({ key: 'floor', label: `樓層：${optionLabels(unitOptions.value.floors, floorFilter.value)}`, clear: () => { floorFilter.value = []; } });
   if (formatFilter.value.length) tokens.push({ key: 'format', label: `格式：${formatFilter.value.join('、')}`, clear: () => { formatFilter.value = []; } });
   if (dateFrom.value || dateTo.value) {
     tokens.push({ key: 'date', label: `更新：${dateFrom.value || '不限'}～${dateTo.value || '不限'}`, clear: () => { dateFrom.value = ''; dateTo.value = ''; } });
@@ -545,6 +583,8 @@ const filterTokens = computed(() => {
   return tokens;
 });
 function clearFilters() {
+  buildingFilter.value = [];
+  floorFilter.value = [];
   formatFilter.value = [];
   dateFrom.value = '';
   dateTo.value = '';
@@ -569,7 +609,7 @@ function toggleOne(id) {
 
 const mobileVisible = ref(MOBILE_PAGE);
 const mobileRows = computed(() => sortedRows.value.slice(0, mobileVisible.value));
-watch([search, usageFilter, formatFilter, dateFrom, dateTo], () => { mobileVisible.value = MOBILE_PAGE; });
+watch([search, usageFilter, buildingFilter, floorFilter, formatFilter, dateFrom, dateTo], () => { mobileVisible.value = MOBILE_PAGE; });
 
 // ── 上傳 ──
 const uploadOpen = ref(false);
@@ -587,6 +627,27 @@ function openPreview(row) {
   if (i < 0) return;
   previewIndex.value = i;
   previewOpen.value = true;
+}
+
+// ── 使用戶別 ──
+const unitsDialog = reactive({ open: false, rows: [] });
+function openUnits(list) {
+  if (!list.length || usageLoading.value) return;
+  Object.assign(unitsDialog, { open: true, rows: [...list] });
+}
+// 先在本機套用（畫面立即更新），再背景重讀戶別
+function onUnitsSaved(changes) {
+  if (changes.length) {
+    const byDoc = new Map(changes.map(c => [c.docId, c]));
+    households.value = households.value.map((h) => {
+      const c = byDoc.get(h.id);
+      if (!c) return h;
+      const list = Array.isArray(h.salesImages) ? h.salesImages : [];
+      const next = c.add ? [...list, ...c.add.filter(n => !list.includes(n))] : list.filter(n => !c.remove.includes(n));
+      return { ...h, salesImages: next };
+    });
+  }
+  loadUsage(true);
 }
 
 // ── 替換檔案 ──
@@ -806,17 +867,17 @@ function onMissingInput(e) {
   cursor: pointer;
 }
 .sim-unused { --mac-tag-color: #8e8e93; }
-.sim-actions { display: inline-flex; gap: 2px; }
-.sim-units-pop {
-  min-width: 180px;
-  max-width: min(360px, calc(100vw - 32px));
-  max-height: 300px;
-  overflow-y: auto;
-  padding: 12px 14px;
-  background: #fff;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+.sim-unused-btn {
+  gap: 2px;
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
 }
-.sim-units { display: flex; flex-wrap: wrap; gap: 5px; }
+.sim-unused-btn .v-icon { opacity: 0; transition: opacity 0.12s; }
+.sim-unused-btn:hover { --mac-tag-color: #0058b0; }
+.sim-unused-btn:hover .v-icon,
+.sim-table :deep(tbody tr:hover) .sim-unused-btn .v-icon { opacity: 1; }
+.sim-actions { display: inline-flex; gap: 2px; }
 
 /* 空狀態 */
 .sim-empty {

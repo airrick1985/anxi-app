@@ -10,6 +10,9 @@
         <span class="sip-title">{{ current.imageName }}</span>
         <span class="mac-page-count">{{ index + 1 }} / {{ images.length }}</span>
         <span class="mac-spacer"></span>
+        <button type="button" class="mac-icon-btn" title="使用戶別" :disabled="usageLoading" @click="emit('units', current)">
+          <v-icon size="18">mdi-home-edit-outline</v-icon>
+        </button>
         <button type="button" class="mac-icon-btn" title="更名" @click="emit('rename', current)">
           <v-icon size="18">mdi-pencil-outline</v-icon>
         </button>
@@ -40,12 +43,15 @@
       <div class="mac-sheet-foot sip-foot">
         <span class="sip-meta">{{ metaText }}</span>
         <span class="mac-spacer"></span>
-        <span v-if="!current.units.length" class="mac-tag sip-unused">未使用</span>
-        <template v-else>
-          <span class="sip-units-label">使用戶別</span>
-          <span v-for="u in current.units.slice(0, UNIT_PREVIEW)" :key="u" class="mac-tag">{{ u }}</span>
-          <span v-if="current.units.length > UNIT_PREVIEW" class="sip-more">等 {{ current.units.length }} 戶</span>
-        </template>
+        <button type="button" class="sip-units" title="設定使用戶別" :disabled="usageLoading" @click="emit('units', current)">
+          <span v-if="!current.units.length" class="mac-tag sip-unused">未使用</span>
+          <template v-else>
+            <span class="sip-units-label">使用戶別</span>
+            <span v-for="u in current.units.slice(0, UNIT_PREVIEW)" :key="u" class="mac-tag">{{ u }}</span>
+            <span v-if="current.units.length > UNIT_PREVIEW" class="sip-more">等 {{ current.units.length }} 戶</span>
+          </template>
+          <v-icon size="15" class="sip-units-edit">mdi-pencil-outline</v-icon>
+        </button>
       </div>
     </v-card>
   </v-dialog>
@@ -58,8 +64,9 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   images: { type: Array, default: () => [] },
   index: { type: Number, default: 0 },
+  usageLoading: { type: Boolean, default: false },
 });
-const emit = defineEmits(['update:modelValue', 'update:index', 'rename', 'replace', 'delete']);
+const emit = defineEmits(['update:modelValue', 'update:index', 'rename', 'replace', 'delete', 'units']);
 
 const UNIT_PREVIEW = 8;
 
@@ -133,6 +140,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 .sip-nav--next { right: 10px; }
 .sip-foot { row-gap: 6px; }
 .sip-meta { font-size: 12.5px; color: #6e6e73; overflow-wrap: anywhere; }
+.sip-units {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: -4px -6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sip-units:hover { background: rgba(0, 0, 0, 0.05); }
+.sip-units-edit { color: #8e8e93; }
 .sip-units-label { font-size: 12px; font-weight: 600; color: #6e6e73; }
 .sip-unused { --mac-tag-color: #8e8e93; }
 .sip-more { font-size: 12px; color: #6e6e73; }

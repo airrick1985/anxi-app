@@ -19,6 +19,8 @@ import {
   documentId,
   orderBy,
   writeBatch,
+  arrayUnion,
+  arrayRemove,
   setDoc,
   deleteDoc,
   Timestamp,
@@ -5245,6 +5247,26 @@ export const renameSalesImage = async (projectId, docId, newName) => {
 export const deleteSalesImages = async (projectId, docIds) => {
   const result = await httpsCallable(functions, 'deleteSalesImages', { timeout: 300000 })({ projectId, docIds });
   return result.data;
+};
+
+/**
+ * 銷控圖片：批次加入／移出戶別引用（salesHouseholds.salesImages）；加入的圖片排在該戶最後
+ * @param {Array<{docId: string, add?: string[], remove?: string[]}>} changes
+ * @returns {Promise<number>} 寫入的戶數
+ */
+export const updateHouseholdSalesImages = async (changes) => {
+  const writes = [];
+  for (const { docId, add = [], remove = [] } of changes) {
+    const unitDoc = doc(db, "salesHouseholds", docId);
+    if (add.length) writes.push([unitDoc, { salesImages: arrayUnion(...add), updatedAt: serverTimestamp() }]);
+    if (remove.length) writes.push([unitDoc, { salesImages: arrayRemove(...remove), updatedAt: serverTimestamp() }]);
+  }
+  for (let i = 0; i < writes.length; i += 400) {
+    const batch = writeBatch(db);
+    writes.slice(i, i + 400).forEach(([unitDoc, data]) => batch.update(unitDoc, data));
+    await batch.commit();
+  }
+  return writes.length;
 };
 
 // =================================================================
