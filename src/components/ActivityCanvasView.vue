@@ -95,7 +95,7 @@ function onTouchEnd(e) {
   margin: 0 auto;
   overflow: hidden;
   border-radius: 6px;
-  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 24px rgba(0, 0, 0, 0.16);
 }
 .acv-stage {
   position: absolute;

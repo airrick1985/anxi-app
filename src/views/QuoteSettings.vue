@@ -251,23 +251,15 @@
           :key="item.id"
           type="button"
           class="pinned-activity-thumb"
-          :title="item.title || item.fileName"
+          :title="activityPublicName(item)"
           @click="openPinnedActivityMessage(item)"
         >
           <div class="pinned-activity-media">
-            <div v-if="item.type === 'page'" class="pinned-activity-page">
-              <img v-if="item.coverURL" :src="item.coverURL" alt="" loading="lazy" />
-              <v-icon v-else size="44" color="teal-lighten-1">mdi-file-document-outline</v-icon>
-            </div>
-            <div v-else-if="isPdfActivityItem(item)" class="pinned-activity-pdf">
-              <v-icon size="44" color="red-lighten-1">mdi-file-pdf-box</v-icon>
-              <span v-if="!item.title" class="pinned-activity-pdf-name">{{ item.fileName }}</span>
-            </div>
-            <img v-else :src="item.downloadURL" :alt="item.title || item.fileName" loading="lazy" />
+            <ActivityThumb :item="item" fit="height" class="pinned-activity-preview" />
             <span class="pinned-activity-zoom"><v-icon size="16">mdi-magnify-plus-outline</v-icon></span>
           </div>
-          <!-- 只顯示標題（放在圖片下方，不蓋住海報）；說明在點開燈箱後的字幕列 -->
-          <span v-if="item.title" class="pinned-activity-caption">{{ item.title }}</span>
+          <!-- 只顯示標題（放在圖片下方，不蓋住海報；PDF 沒標題用檔名）；說明在點開後的字幕列 -->
+          <span v-if="activityPublicName(item)" class="pinned-activity-caption">{{ activityPublicName(item) }}</span>
         </button>
       </div>
     </v-card>
@@ -533,6 +525,8 @@ import QuoteItem from '@/components/QuoteItem.vue';
 // 改為 async 載入：PrintQuotation 帶入 fabric/jspdf 等大型套件，僅在使用者點「列印報價單」時才下載
 const PrintQuotation = defineAsyncComponent(() => import('@/views/PrintQuotation.vue'));
 import ActivityMessageViewer from '@/components/ActivityMessageViewer.vue';
+import ActivityThumb from '@/components/activity/ActivityThumb.vue';
+import { activityPublicName } from '@/utils/activityMessage';
 import QuoteUnitPickerDialog from '@/components/QuoteUnitPickerDialog.vue';
 import QuotePrintDialog from '@/components/QuotePrintDialog.vue';
 import QuotePackageReminderDialog from '@/components/QuotePackageReminderDialog.vue';
@@ -703,10 +697,6 @@ let unsubActivityMessages = null;
 const pinnedActivityMessages = computed(() =>
   activityMessages.value.filter(m => m.pinnedToQuote && !m.hidden)
 );
-function isPdfActivityItem(item) {
-  if (item?.type === 'page') return false;
-  return item?.contentType === 'application/pdf' || /\.pdf$/i.test(item?.fileName || '');
-}
 function subscribeActivityMessages() {
   if (unsubActivityMessages) unsubActivityMessages();
   activityMessages.value = [];
@@ -1656,41 +1646,9 @@ function runTool(action) {
   height: 200px;
   background: #f5f5f7;
 }
-.pinned-activity-thumb img {
-  display: block;
-  height: 100%;
-  width: auto;
-  max-width: 320px;
-  object-fit: cover;
-}
-.pinned-activity-pdf {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 160px;
-  height: 100%;
-  padding: 12px;
-}
-.pinned-activity-pdf-name {
-  font-size: 12px;
-  color: #3a3a3c;
-  text-align: center;
-  word-break: break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.pinned-activity-page {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 160px;
-  height: 100%;
-}
+/* 縮圖滿版貼齊卡片（不要圓角陰影），寬度上限內等比 */
+.pinned-activity-preview :deep(.amt-paper) { border-radius: 0; box-shadow: none; }
+.pinned-activity-preview :deep(.amt-img) { max-width: 320px; object-fit: cover; }
 /* 標題列：白底深色字；width 0 + min-width 100% 讓長標題換行而不撐寬卡片（卡片寬度跟著圖片） */
 .pinned-activity-caption {
   width: 0;
@@ -1726,7 +1684,7 @@ function runTool(action) {
 @media (max-width: 599px) {
   .pinned-activity-thumb { max-width: 260px; }
   .pinned-activity-media { height: 160px; }
-  .pinned-activity-thumb img { max-width: 260px; }
+  .pinned-activity-preview :deep(.amt-img) { max-width: 260px; }
   .pinned-activity-caption { font-size: 13px; }
 }
 </style>

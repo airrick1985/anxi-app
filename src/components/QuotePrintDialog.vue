@@ -378,7 +378,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { useParkingStore } from '@/store/parkingStore';
 import { useUserStore } from '@/store/user';
 import { fetchQuoteRemark, checkQuoteFloor, notifyQuoteApproval, listQuoteSupervisors } from '@/api';
-import { generateQrDataUrl } from '@/utils/quoteQrCode';
+import { generateQrDataUrl, resolveQrLabel } from '@/utils/quoteQrCode';
 import { PREVIEW_FIT_SCRIPT } from '@/utils/previewFitScript';
 import { normalizeUnitAnnotation, sanitizeAnnotationHtml } from '@/utils/unitAnnotation';
 
@@ -678,14 +678,15 @@ const optValidUntil = ref('');         // 有效期限（選填）
 const introQrDataUrl = ref('');
 const hasIntroQr = computed(() => !!introQrDataUrl.value);
 
-// 讀取該建案的簡介網址並產生中央帶建案名稱的 QR Code；失敗或未設定時一律不印
+// 讀取該建案的簡介網址與中央文字設定並產生 QR Code；失敗或未設定時一律不印
 async function loadIntroQr() {
   introQrDataUrl.value = '';
   try {
     const data = await projectStore.fetchProjectSettings(props.projectId);
     const url = String(data?.quoteIntroUrl || '').trim();
     if (!url) return;
-    introQrDataUrl.value = await generateQrDataUrl(url, props.projectName, { size: 512 });
+    const label = resolveQrLabel(data?.quoteIntroQrLabel, props.projectName);
+    introQrDataUrl.value = await generateQrDataUrl(url, label, { size: 512 });
   } catch (e) {
     console.error('[QuotePrintDialog] 建案簡介 QR Code 產生失敗:', e);
     introQrDataUrl.value = '';
