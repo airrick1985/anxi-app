@@ -103,10 +103,12 @@
 import { ref, computed, watch } from 'vue';
 import { useToast } from 'vue-toastification';
 import { updateHouseholdSalesImages } from '@/api.js';
+import { useUserStore } from '@/store/user';
 import { unitFilterOptions, floorLabel } from '@/utils/salesImages';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
+  projectId: { type: String, required: true },
   // 要設定的圖片列（SalesImageManager 的 row：imageName、src、units）
   images: { type: Array, default: () => [] },
   // buildUnitList 的戶別清單
@@ -117,6 +119,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'saved']);
 
 const toast = useToast();
+const userStore = useUserStore();
 const MODE_OPTIONS = [
   { value: 'add', label: '加入戶別' },
   { value: 'remove', label: '移出戶別' },
@@ -246,9 +249,11 @@ async function save() {
   saving.value = true;
   const list = changes.value;
   try {
-    await updateHouseholdSalesImages(list);
+    const res = await updateHouseholdSalesImages({ projectId: props.projectId, userKey: userStore.user?.key || '', changes: list });
     const parts = [addCount.value && `加入 ${addCount.value} 戶`, removeCount.value && `移出 ${removeCount.value} 戶`].filter(Boolean);
     toast.success(`已${parts.join('、')}`);
+    if (res?.notFound?.length) toast.warning(`${res.notFound.length} 戶已不存在`);
+    if (res?.sheetSyncWarning) toast.warning(res.sheetSyncWarning, { timeout: 8000 });
     emit('saved', list);
     saving.value = false;
     close();

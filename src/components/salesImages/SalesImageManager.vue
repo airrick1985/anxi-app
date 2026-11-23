@@ -273,6 +273,7 @@
 
     <SalesImageUnitsDialog
       v-model="unitsDialog.open"
+      :project-id="projectId"
       :images="unitsDialog.rows"
       :units="unitList"
       :unit-images="unitImages"
@@ -716,6 +717,7 @@ async function saveRename() {
   try {
     const res = await renameSalesImage(props.projectId, rename.row.id, normalizeImageName(rename.name));
     toast.success(res.householdsUpdated ? `已更名，並更新 ${res.householdsUpdated} 戶` : '已更名');
+    if (res.sheetSyncWarning) toast.warning(res.sheetSyncWarning, { timeout: 8000 });
     selectedIds.value = selectedIds.value.filter(id => id !== rename.row.id);
     rename.open = false;
     if (res.householdsUpdated) loadUsage();

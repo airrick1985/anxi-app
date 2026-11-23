@@ -28972,9 +28972,9 @@ exports.onSalesHouseholdWrite = onDocumentWritten({
     return;
   }
 
-  // 批次新增預計繳款結束時會全量同步一次，這裡不逐戶寫 Sheet，避免上百次 API 呼叫
+  // 批次新增預計繳款、批次設定銷控圖片結束時會全量同步一次，這裡不逐戶寫 Sheet，避免上百次 API 呼叫
   if (shouldSkipSheetSync(oldData, newData)) {
-    console.log(`[${functionName}] 批次新增預計繳款，略過逐戶同步: ID=${docId}`);
+    console.log(`[${functionName}] 批次寫入，略過逐戶同步: ID=${docId}`);
     return;
   }
 
@@ -32142,10 +32142,12 @@ paymentDueReminderModule.init({ syncSalesSheet: _fullSyncSalesHouseholdsToSheet 
 exports.paymentDueReminder = paymentDueReminderModule.paymentDueReminder;
 exports.paymentReminderApi = paymentDueReminderModule.paymentReminderApi;
 
-// 銷控圖片管理：新增／替換、更名（同步戶別引用）、批次刪除。
+// 銷控圖片管理：新增／替換、更名（同步戶別引用）、批次設定使用戶別、批次刪除。
 const salesImages = require('./salesImages');
+salesImages.init({ syncSalesSheet: _fullSyncSalesHouseholdsToSheet });
 exports.saveSalesImage = salesImages.saveSalesImage;
 exports.renameSalesImage = salesImages.renameSalesImage;
+exports.updateSalesImageUnits = salesImages.updateSalesImageUnits;
 exports.deleteSalesImages = salesImages.deleteSalesImages;
 
 // 車位轉到別戶時記錄，換戶退戶時帶進退戶紀錄。

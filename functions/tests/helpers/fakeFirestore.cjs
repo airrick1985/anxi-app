@@ -38,9 +38,17 @@ function createFakeDb(initial = {}) {
     get: key => store.get(path)?.[key],
   });
 
-  // 比照正式環境：FieldValue.delete() 會移除欄位，不會留在文件內
+  // 比照正式環境：FieldValue.delete() 會移除欄位、arrayUnion／arrayRemove 套用到現有陣列
+  const resolve = (current, value) => {
+    const list = Array.isArray(current) ? current : [];
+    if (value?.methodName === 'FieldValue.arrayUnion') return [...list, ...value.elements.filter(v => !list.includes(v))];
+    if (value?.methodName === 'FieldValue.arrayRemove') return list.filter(v => !value.elements.includes(v));
+    return value;
+  };
   const applyMerge = (current, data) => Object.fromEntries(
-    Object.entries({ ...current, ...data }).filter(([, value]) => value?.methodName !== 'FieldValue.delete'),
+    Object.entries({ ...current, ...data })
+      .filter(([, value]) => value?.methodName !== 'FieldValue.delete')
+      .map(([key, value]) => [key, resolve(current?.[key], value)]),
   );
 
   const writeSet = (path, data, options) => {

@@ -3,10 +3,14 @@
  *
  * - saveSalesImage：新增或替換一張圖片（上傳檔案＋寫入中繼資料；替換時刪除舊檔）
  * - renameSalesImage：更名，並同步更新戶別 salesImages 引用的名稱
+ * - updateSalesImageUnits：批次加入／移出戶別引用
  * - deleteSalesImages：批次刪除（中繼資料＋檔案）
  *
  * 戶別以「圖片名稱」引用圖片（salesHouseholds.salesImages），文件 ID 為 {projectId}_{imageName}。
  * 每次上傳都寫入新的檔案路徑，網址不重複，可長期快取；替換後各頁不會再看到舊圖。
+ *
+ * 一次改到很多戶時不逐戶同步 Google Sheet（每戶 3 次 API 會超過配額，且每失敗一戶就寄一封通知信），
+ * 改在戶別留標記讓觸發器略過，寫完全量同步一次（utils/sheetSyncSkip.js）。
  */
 
 const { HttpsError } = require('firebase-functions/v2/https');
@@ -14,11 +18,16 @@ const { HttpsError } = require('firebase-functions/v2/https');
 const { onCall } = require('./utils/accountGuard');
 const { Firestore, FieldValue } = require('@google-cloud/firestore');
 const admin = require('firebase-admin');
+const { SHEET_SYNC_SKIP_FIELD, newSheetSyncBatchId } = require('./utils/sheetSyncSkip');
 
 const MAX_BYTES = 1024 * 1024;
 const MAX_NAME_LENGTH = 80;
 const MAX_BATCH_DELETE = 200;
 const BATCH_WRITE_LIMIT = 450;
+const MAX_UNIT_CHANGES = 5000;
+const MAX_NAMES_PER_UNIT = 200;
+const MAX_REF_NAME_LENGTH = 300; // 引用名稱可能是改版前的舊名，只擋異常長度
+const SHEET_SYNC_EACH_LIMIT = 10; // 不超過此戶數維持逐戶同步
 const CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 function requireProjectId(value) {
@@ -94,6 +103,57 @@ async function deleteFileIfUnused(db, bucket, storagePath, exceptDocId) {
     if (error.code !== 404) console.warn(`[salesImages] 刪除檔案失敗 ${storagePath}:`, error.message);
   }
   return true;
+}
+
+// ── Google Sheet 同步 ──
+let syncSalesSheetImpl = null;
+function init({ syncSalesSheet }) {
+  syncSalesSheetImpl = syncSalesSheet;
+}
+function defaultSyncSalesSheet(params) {
+  if (!syncSalesSheetImpl) throw new Error('Sheet 同步尚未初始化');
+  return syncSalesSheetImpl(params);
+}
+
+// 戶數多且建案有設定銷控 Sheet 時，回傳要寫進戶別的標記與全量同步的目標；否則 null（維持逐戶同步）
+async function planSheetSync(db, projectId, unitCount) {
+  if (unitCount <= SHEET_SYNC_EACH_LIMIT) return null;
+  const snap = await db.collection('projects').doc(projectId).get();
+  const { salesSheetId, salesSheetTabName } = snap.data() || {};
+  if (!salesSheetId || !salesSheetTabName) return null;
+  return {
+    marker: { [SHEET_SYNC_SKIP_FIELD]: newSheetSyncBatchId() },
+    target: { projectId, spreadsheetId: salesSheetId, sheetName: salesSheetTabName },
+  };
+}
+
+// 失敗不影響已寫入的資料，回傳提示文字
+async function runSheetSync({ db, plan, syncSalesSheet, label }) {
+  if (!plan) return {};
+  try {
+    await syncSalesSheet({ db, ...plan.target });
+    return {};
+  } catch (error) {
+    console.error(`[${label}] ${plan.target.projectId} 同步 Sheet 失敗:`, error);
+    return { sheetSyncWarning: `資料已更新，但 Sheet 同步失敗，請至建案設定手動同步（${error.message}）` };
+  }
+}
+
+// 依序分批寫入；回傳寫完的筆數與失敗原因（前面批次已生效，由呼叫端決定如何回報）
+async function commitInBatches(db, writes) {
+  let committed = 0;
+  for (let i = 0; i < writes.length; i += BATCH_WRITE_LIMIT) {
+    const chunk = writes.slice(i, i + BATCH_WRITE_LIMIT);
+    const batch = db.batch();
+    chunk.forEach(write => write(batch));
+    try {
+      await batch.commit();
+    } catch (error) {
+      return { committed, error };
+    }
+    committed += chunk.length;
+  }
+  return { committed, error: null };
 }
 
 async function saveSalesImageCore({ db, bucket, data, now = Date.now() }) {
@@ -176,7 +236,7 @@ async function saveSalesImageCore({ db, bucket, data, now = Date.now() }) {
   };
 }
 
-async function renameSalesImageCore({ db, data }) {
+async function renameSalesImageCore({ db, data, syncSalesSheet = defaultSyncSalesSheet }) {
   const projectId = requireProjectId(data?.projectId);
   const newName = normalizeImageName(data?.newName);
   const oldRef = db.collection('salesImages').doc(String(data?.docId || ''));
@@ -191,23 +251,83 @@ async function renameSalesImageCore({ db, data }) {
   const affected = households.docs.filter(d => Array.isArray(d.data().salesImages) && d.data().salesImages.includes(oldName));
 
   // 第一批（含圖片文件搬移）原子寫入；create 遇到同名文件會整批失敗
+  const plan = await planSheetSync(db, projectId, affected.length);
   const writes = [
     b => b.create(newRef, { ...image, imageName: newName, updatedAt: FieldValue.serverTimestamp() }),
     b => b.delete(oldRef),
-    ...affected.map(d => b => b.update(d.ref, { salesImages: renameInList(d.data().salesImages, oldName, newName) })),
+    ...affected.map(d => b => b.update(d.ref, { salesImages: renameInList(d.data().salesImages, oldName, newName), ...plan?.marker })),
   ];
-  for (let i = 0; i < writes.length; i += BATCH_WRITE_LIMIT) {
-    const batch = db.batch();
-    writes.slice(i, i + BATCH_WRITE_LIMIT).forEach(write => write(batch));
-    try {
-      await batch.commit();
-    } catch (error) {
-      if (i === 0 && error.code === 6) throw new HttpsError('already-exists', `圖片名稱「${newName}」已存在。`);
-      throw error;
+  const { committed, error } = await commitInBatches(db, writes);
+  if (error && committed === 0) {
+    if (error.code === 6) throw new HttpsError('already-exists', `圖片名稱「${newName}」已存在。`);
+    throw error;
+  }
+  const sync = await runSheetSync({ db, plan, syncSalesSheet, label: 'renameSalesImage' });
+  if (error) throw error;
+
+  return { status: 'success', docId: newRef.id, imageName: newName, householdsUpdated: affected.length, ...sync };
+}
+
+// 異動清單：每戶一筆，加入或移出擇一
+function normalizeUnitChanges(raw) {
+  if (!Array.isArray(raw) || !raw.length) throw new HttpsError('invalid-argument', '沒有要更新的戶別。');
+  if (raw.length > MAX_UNIT_CHANGES) throw new HttpsError('invalid-argument', `一次最多更新 ${MAX_UNIT_CHANGES} 戶。`);
+  const names = (list) => {
+    if (list === undefined || list === null) return [];
+    const valid = Array.isArray(list) && list.length <= MAX_NAMES_PER_UNIT
+      && list.every(n => typeof n === 'string' && n && n.length <= MAX_REF_NAME_LENGTH);
+    if (!valid) throw new HttpsError('invalid-argument', '圖片名稱不正確。');
+    return [...new Set(list)];
+  };
+  const seen = new Set();
+  return raw.map((item) => {
+    const docId = typeof item?.docId === 'string' ? item.docId : '';
+    if (!docId || docId.includes('/') || seen.has(docId)) throw new HttpsError('invalid-argument', '戶別資料不正確。');
+    seen.add(docId);
+    const add = names(item.add);
+    const remove = names(item.remove);
+    if (!add.length === !remove.length) throw new HttpsError('invalid-argument', '每戶需指定加入或移出其中一種。');
+    return { docId, add, remove };
+  });
+}
+
+/**
+ * 批次加入／移出戶別引用（salesHouseholds.salesImages）；加入的圖片排在該戶最後
+ * 用 arrayUnion／arrayRemove 寫入，不會蓋掉同時間其他人改的圖片；已是目標狀態的戶別不寫
+ */
+async function updateSalesImageUnitsCore({ db, data, syncSalesSheet = defaultSyncSalesSheet }) {
+  const projectId = requireProjectId(data?.projectId);
+  const changes = normalizeUnitChanges(data?.changes);
+
+  const households = await db.collection('salesHouseholds').where('projectId', '==', projectId).get();
+  const byId = new Map(households.docs.map(d => [d.id, d]));
+  const notFound = [];
+  const pending = [];
+  for (const { docId, add, remove } of changes) {
+    const doc = byId.get(docId);
+    if (!doc) {
+      notFound.push(docId);
+      continue;
     }
+    const current = Array.isArray(doc.data().salesImages) ? doc.data().salesImages : [];
+    const newNames = add.filter(n => !current.includes(n));
+    const oldNames = remove.filter(n => current.includes(n));
+    if (newNames.length) pending.push({ ref: doc.ref, value: FieldValue.arrayUnion(...newNames) });
+    else if (oldNames.length) pending.push({ ref: doc.ref, value: FieldValue.arrayRemove(...oldNames) });
   }
 
-  return { status: 'success', docId: newRef.id, imageName: newName, householdsUpdated: affected.length };
+  const plan = await planSheetSync(db, projectId, pending.length);
+  const { committed, error } = await commitInBatches(db, pending.map(({ ref, value }) => b => b.update(ref, {
+    salesImages: value,
+    updatedAt: FieldValue.serverTimestamp(),
+    ...plan?.marker,
+  })));
+  const sync = committed ? await runSheetSync({ db, plan, syncSalesSheet, label: 'updateSalesImageUnits' }) : {};
+  if (error) {
+    console.error(`[updateSalesImageUnits] ${projectId} 寫入失敗（已完成 ${committed}/${pending.length} 戶）:`, error);
+    throw new HttpsError('internal', committed ? `已更新 ${committed} 戶，其餘 ${pending.length - committed} 戶失敗，請再試一次。` : '更新戶別失敗，請再試一次。');
+  }
+  return { status: 'success', updated: committed, notFound, ...sync };
 }
 
 async function deleteSalesImagesCore({ db, bucket, data }) {
@@ -249,13 +369,16 @@ function wrap(name, fn) {
 }
 
 exports.saveSalesImage = onCall({ region: 'asia-east1', memory: '512MiB' }, wrap('saveSalesImage', saveSalesImageCore));
-exports.renameSalesImage = onCall({ region: 'asia-east1' }, wrap('renameSalesImage', renameSalesImageCore));
+exports.renameSalesImage = onCall({ region: 'asia-east1', memory: '512MiB', timeoutSeconds: 300 }, wrap('renameSalesImage', renameSalesImageCore));
+exports.updateSalesImageUnits = onCall({ region: 'asia-east1', memory: '512MiB', timeoutSeconds: 300 }, wrap('updateSalesImageUnits', updateSalesImageUnitsCore));
 exports.deleteSalesImages = onCall({ region: 'asia-east1', timeoutSeconds: 300 }, wrap('deleteSalesImages', deleteSalesImagesCore));
 
+exports.init = init;
 exports.normalizeImageName = normalizeImageName;
 exports.buildStoragePath = buildStoragePath;
 exports.isSalesImagePath = isSalesImagePath;
 exports.renameInList = renameInList;
 exports.saveSalesImageCore = saveSalesImageCore;
 exports.renameSalesImageCore = renameSalesImageCore;
+exports.updateSalesImageUnitsCore = updateSalesImageUnitsCore;
 exports.deleteSalesImagesCore = deleteSalesImagesCore;

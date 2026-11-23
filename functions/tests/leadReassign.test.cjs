@@ -78,7 +78,7 @@ test('只換負責人：聯絡狀況與回報保留，指派時間更新並留�
   assert.deepEqual(after.lastReport, { status: '未接' });
   assert.ok(after.assignedAt?.toMillis);
   assert.equal(after.lastModifiedBy, '櫃台');
-  const [entry] = after.reassignLog.elements;
+  const [entry] = after.reassignLog;
   assert.equal(entry.fromSalesId, 'old');
   assert.equal(entry.fromSalesName, '舊銷售');
   assert.equal(entry.toSalesId, 'new');

@@ -726,3 +726,40 @@ test('全程沒有成功的對外連線', () => {
 test.after(() => {
   restore();
 });
+
+test('Sheet：批次設定銷控圖片使用戶別只全量同步一次，觸發器逐戶略過；之後單戶改圖片仍逐筆同步', async () => {
+  const units = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [
+    `salesHouseholds/p1_B${i}`, { projectId: 'p1', unitId: `B${i}`, salesImages: i % 2 ? ['公設圖'] : [], paymentRecords: [] },
+  ]));
+  reset({ ...seedUsers(), 'projects/p1': { name: '森之樹', salesSheetId: 'sheet1', salesSheetTabName: 'tab1' }, ...units });
+  const calls = installFakeSheets();
+  const blockedBefore = blockedConnections.length;
+  const changes = Object.keys(units).map(key => ({ docId: key.split('/')[1], add: ['平面圖'] }));
+  const result = await index.updateSalesImageUnits.run({ data: { projectId: 'p1', userKey: 'mgr', changes } });
+  assert.deepEqual(result, { status: 'success', updated: 40, notFound: [] });
+  assert.deepEqual(callNames(calls), FULL_SYNC_CALLS);
+  const { values } = calls[0].params.resource;
+  const inProject = [...store.entries()].filter(([key, doc]) => key.startsWith('salesHouseholds/') && doc.projectId === 'p1').length;
+  assert.equal(values.length, inProject + 1, '標題列加建案全部戶別');
+  assert.ok(!JSON.stringify(values).includes(SHEET_SYNC_SKIP_FIELD));
+  assert.ok(JSON.stringify(values).includes('平面圖'));
+
+  // 40 戶各自的觸發器都不碰 Sheet
+  calls.length = 0;
+  for (const [key, before] of Object.entries(units)) {
+    await index.onSalesHouseholdWrite.run(writtenEvent(key.split('/')[1], before, { ...store.get(key) }));
+  }
+  assert.equal(calls.length, 0);
+  assert.deepEqual(store.get('salesHouseholds/p1_B1').salesImages, ['公設圖', '平面圖']);
+
+  // 戶別詳細資訊單戶改圖片（標記沿用舊值）
+  const marked = { ...store.get('salesHouseholds/p1_B0') };
+  const single = installFakeSheets({ headerRow: ['系統編號 (勿動)', '銷控圖片'] });
+  await index.onSalesHouseholdWrite.run(writtenEvent('p1_B0', marked, { ...marked, salesImages: ['平面圖', '新圖'] }));
+  assert.equal(single.filter(call => ['values.update', 'values.append'].includes(call.name)).length, 1);
+
+  // 停用帳號不可操作
+  store.set('users/off1', { disabled: true });
+  await assert.rejects(index.updateSalesImageUnits.run({ data: { projectId: 'p1', userKey: 'off1', changes } }), /停用/);
+  assert.equal(blockedConnections.length, blockedBefore, '沒有任何對外連線（含通知信）');
+});

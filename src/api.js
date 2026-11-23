@@ -19,8 +19,6 @@ import {
   documentId,
   orderBy,
   writeBatch,
-  arrayUnion,
-  arrayRemove,
   setDoc,
   deleteDoc,
   Timestamp,
@@ -5239,7 +5237,7 @@ export const saveSalesImage = async (payload) => {
 
 /** 銷控圖片更名，並同步更新戶別引用的圖片名稱 */
 export const renameSalesImage = async (projectId, docId, newName) => {
-  const result = await httpsCallable(functions, 'renameSalesImage')({ projectId, docId, newName });
+  const result = await httpsCallable(functions, 'renameSalesImage', { timeout: 300000 })({ projectId, docId, newName });
   return result.data;
 };
 
@@ -5251,22 +5249,14 @@ export const deleteSalesImages = async (projectId, docIds) => {
 
 /**
  * 銷控圖片：批次加入／移出戶別引用（salesHouseholds.salesImages）；加入的圖片排在該戶最後
- * @param {Array<{docId: string, add?: string[], remove?: string[]}>} changes
- * @returns {Promise<number>} 寫入的戶數
+ * 戶數多時後端改為結束後全量同步一次 Google Sheet，不逐戶同步
+ * @param {Array<{docId: string, add?: string[], remove?: string[]}>} changes 每戶加入或移出擇一
+ * @returns {Promise<{updated: number, notFound: string[], sheetSyncWarning?: string}>}
  */
-export const updateHouseholdSalesImages = async (changes) => {
-  const writes = [];
-  for (const { docId, add = [], remove = [] } of changes) {
-    const unitDoc = doc(db, "salesHouseholds", docId);
-    if (add.length) writes.push([unitDoc, { salesImages: arrayUnion(...add), updatedAt: serverTimestamp() }]);
-    if (remove.length) writes.push([unitDoc, { salesImages: arrayRemove(...remove), updatedAt: serverTimestamp() }]);
-  }
-  for (let i = 0; i < writes.length; i += 400) {
-    const batch = writeBatch(db);
-    writes.slice(i, i + 400).forEach(([unitDoc, data]) => batch.update(unitDoc, data));
-    await batch.commit();
-  }
-  return writes.length;
+export const updateHouseholdSalesImages = async ({ projectId, userKey, changes }) => {
+  const payload = changes.map(({ docId, add, remove }) => ({ docId, ...(add ? { add } : {}), ...(remove ? { remove } : {}) }));
+  const result = await httpsCallable(functions, 'updateSalesImageUnits', { timeout: 300000 })({ projectId, userKey, changes: payload });
+  return result.data;
 };
 
 // =================================================================
