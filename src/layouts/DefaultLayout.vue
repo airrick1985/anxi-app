@@ -60,7 +60,7 @@
         <template v-if="user">
           <v-divider class="my-1" />
           <v-list-subheader>功能</v-list-subheader>
-          <v-list-item prepend-icon="mdi-calculator-variant-outline" title="房貸試算" @click="onMenuClick(() => mortgageDialog = true)" />
+          <v-list-item prepend-icon="mdi-calculator-variant-outline" title="房貸試算" @click="onMenuClick(() => uiStore.openMortgageCalculator())" />
           <v-list-item prepend-icon="mdi-message-question" title="聯絡客服" @click="onMenuClick(() => contactDialog = true)" />
           <v-list-item title="問題回報" @click="onMenuClick(() => uiStore.openBugReport())">
             <template #prepend>
@@ -258,7 +258,7 @@ const dismissTrialBanner = () => {
 };
 // 重新開始導覽：以全域事件通知 Home.vue
 const restartTour = () => window.dispatchEvent(new CustomEvent('anxi:restart-tour'));
-const { showAppToolbar } = storeToRefs(uiStore);
+const { showAppToolbar, mortgageDialog } = storeToRefs(uiStore);
 
 // ✅ 漢堡選單抽屜開關
 const drawerOpen = ref(false);
@@ -272,7 +272,6 @@ const router = useRouter();
 const route = useRoute();
 const { isFullscreen, toggleFullscreen } = useFullscreen();
 const contactDialog = ref(false);
-const mortgageDialog = ref(false);
 const showAiAssistant = ref(false); // AI助理false=隱藏
 const isLoggingOut = ref(false); // ✅ 新增此行
 

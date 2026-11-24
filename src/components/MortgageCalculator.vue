@@ -1,5 +1,5 @@
 <template>
-  <v-card class="mc-card" elevation="0">
+  <v-card ref="cardRef" class="mc-card" elevation="0">
     <!-- 標題列 -->
     <div class="mc-header">
       <div class="mc-title">
@@ -246,6 +246,7 @@
 import { ref, computed, reactive, watch } from 'vue';
 
 const emit = defineEmits(['close']);
+const cardRef = ref(null);
 
 // 年限以年計；期數為總還款次數，在年限內平均拆分（5 年 20 期 → 每 3 個月一期）
 const TERM_OPTIONS = [10, 15, 20, 25, 30, 40];
@@ -542,6 +543,8 @@ const calculate = () => {
     secondPhaseLabel,
   };
   hasResult.value = true;
+  // 小螢幕輸入區較長：捲回頂端讓結果看得到
+  cardRef.value?.$el?.scrollTo({ top: 0, behavior: 'smooth' });
 };
 </script>
 
@@ -569,8 +572,14 @@ const calculate = () => {
   font-variant-numeric: tabular-nums;
 }
 
+/* 視窗高度不足時整張卡片捲動（v-dialog scrollable 的 flex 會把各區塊壓扁而重疊） */
+.mc-card > * { flex: none; }
+
 /* 標題列 */
 .mc-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;

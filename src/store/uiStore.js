@@ -12,6 +12,9 @@ export const useUiStore = defineStore('ui', {
 
     // 系統問題回報：漢堡選單觸發開啟（遞增計數，SystemBugReport 監聽）
     bugReportOpenRequest: 0,
+
+    // 房貸試算（全域同一個視窗，DefaultLayout 掛載；漢堡選單與報價單設定共用）
+    mortgageDialog: false,
     
     // ✅ 新增：全域 Snackbar (提示框) 狀態
     snackbar: {
@@ -44,6 +47,11 @@ export const useUiStore = defineStore('ui', {
     // 開啟系統問題回報 Dialog（登入後由漢堡選單呼叫）
     openBugReport() {
       this.bugReportOpenRequest += 1
+    },
+
+    // 開啟房貸試算
+    openMortgageCalculator() {
+      this.mortgageDialog = true
     },
 
     // ✅ 新增：設置 Loading 狀態的函式

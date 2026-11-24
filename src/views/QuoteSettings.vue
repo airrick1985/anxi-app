@@ -66,6 +66,11 @@
         <v-icon size="16">mdi-plus</v-icon><span>新增戶別</span>
       </button>
 
+      <!-- 全域房貸試算（與漢堡選單同一個視窗） -->
+      <button type="button" class="mac-btn toolbar-mortgage-btn" @click="uiStore.openMortgageCalculator()">
+        <v-icon size="16">mdi-calculator-variant-outline</v-icon><span>房貸試算</span>
+      </button>
+
       <button type="button" class="mac-btn" @click="isLoanQuoteVisible = true">
         <v-icon size="16">mdi-bank-outline</v-icon><span>公司借貸報價</span>
       </button>
@@ -504,6 +509,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useDisplay } from 'vuetify';
 import { useQuoteStore } from '@/store/quoteStore';
 import { useUserStore } from '@/store/user';
+import { useUiStore } from '@/store/uiStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useParkingStore } from '@/store/parkingStore';
 import { useAdminStore } from '@/store/adminStore'; // 1. 引入 adminStore
@@ -548,6 +554,7 @@ const router = useRouter();
 const { smAndDown } = useDisplay(); // ✅ [優化] 手機版功能列/按鈕尺寸
 const quoteStore = useQuoteStore();
 const userStore = useUserStore();
+const uiStore = useUiStore();
 const projectStore = useProjectStore();
 const parkingStore = useParkingStore();
 const adminStore = useAdminStore();
@@ -1472,6 +1479,14 @@ function runTool(action) {
 .toolbar-title-icon { color: var(--tb-secondary); margin-right: 2px; }
 .toolbar-title-project { color: var(--tb-secondary); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
 .toolbar-title-sep { color: var(--tb-tertiary); font-weight: 400; margin: 0 2px; }
+/* 房貸試算：計算機同款橘色，與其他白底／藍底按鈕區隔 */
+.toolbar-mortgage-btn {
+  background: linear-gradient(180deg, #ffb340, #ff9f0a);
+  color: #1d1d1f;
+  font-weight: 600;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.18), inset 0 0.5px 0 rgba(255, 255, 255, 0.35);
+}
+.toolbar-mortgage-btn .v-icon { color: #1d1d1f; }
 /* 🔐 隱藏解鎖點按目標：無可點擊暗示、防連點選取文字 */
 .tap-unlock-target {
   user-select: none;
@@ -1505,16 +1520,15 @@ function runTool(action) {
 @media (max-width: 1400px) {
   .toolbar-divider { display: none; }
 }
-/* 手機：第一列 標題＋右側鈕，第二列 建案下拉整行，第三列 動作鈕平分寬度 */
+/* 手機：第一列 標題＋右側鈕，第二列 建案下拉整行，第三列起 動作鈕依文字寬度換行並撐滿（不截字） */
 @media (max-width: 959px) {
   .page-toolbar { padding: 8px 10px 8px 54px; column-gap: 8px; }
   .toolbar-title { order: 1; flex: 1 1 0; font-size: 14px; }
   .toolbar-group-actions { order: 2; margin-left: 0; }
   .toolbar-group-project { order: 3; flex: 1 1 100%; }
   .project-selector { max-width: none; width: 100%; }
-  .toolbar-group-main { order: 4; flex: 1 1 100%; flex-wrap: nowrap; }
-  .toolbar-group-main > .mac-btn { flex: 1 1 0; min-width: 0; padding: 0 8px; }
-  .toolbar-group-main > .mac-btn span { overflow: hidden; text-overflow: ellipsis; }
+  .toolbar-group-main { order: 4; flex: 1 1 100%; }
+  .toolbar-group-main > .mac-btn { flex: 1 1 auto; padding: 0 8px; }
 }
 /* 「功能」下拉選單：分群磚格（與銷控系統桌面版功能選單一致，配色改為工具列同套中性色） */
 .desktop-tools-menu {
