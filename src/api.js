@@ -5252,6 +5252,12 @@ export const renameSalesImage = async (projectId, docId, newName) => {
   return result.data;
 };
 
+/** 銷控圖片：手動指定全景類型（'sphere' 360° 環景｜'strip' 長條全景｜'none' 一般圖片） */
+export const setSalesImagePanorama = async (projectId, docId, panorama) => {
+  const result = await httpsCallable(functions, 'setSalesImagePanorama')({ projectId, docId, panorama });
+  return result.data;
+};
+
 /** 批次刪除銷控圖片（中繼資料＋檔案），回傳 { deleted, failed: [{ docId, message }] } */
 export const deleteSalesImages = async (projectId, docIds) => {
   const result = await httpsCallable(functions, 'deleteSalesImages', { timeout: 300000 })({ projectId, docIds });

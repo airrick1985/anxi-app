@@ -78,14 +78,19 @@ export async function prepareImageForUpload(file, maxBytes = 7 * 1024 * 1024) {
 const LIMIT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 /**
- * 把圖片壓到指定大小以內（活動訊息頁面插圖用）
+ * 把圖片壓到指定大小以內（活動訊息頁面插圖、銷控圖片用）
  * - JPG／PNG／WEBP 且未超過 maxBytes → 回傳原檔
  * - 其餘（含 HEIC）以白底轉 JPEG，逐步縮小尺寸與品質直到符合
  * 瀏覽器無法解碼或壓不下來時丟出錯誤
+ * options（全景圖用）：
+ * - maxEdge／maxArea：長邊與面積上限（預設長邊 2400、面積不限）
+ * - force：即使檔案未超過 maxBytes 也重新輸出（尺寸超過上限時）
+ * - qualityFirst：先降品質再縮尺寸，盡量保留解析度
  */
-export async function shrinkImageToLimit(file, maxBytes = 2 * 1024 * 1024) {
+export async function shrinkImageToLimit(file, maxBytes = 2 * 1024 * 1024, options = {}) {
+  const { maxEdge = 2400, maxArea = Infinity, force = false, qualityFirst = false } = options;
   const type = (file.type || '').toLowerCase();
-  if (LIMIT_TYPES.includes(type) && file.size <= maxBytes) return file;
+  if (!force && LIMIT_TYPES.includes(type) && file.size <= maxBytes) return file;
 
   let bmp;
   try {
@@ -95,11 +100,12 @@ export async function shrinkImageToLimit(file, maxBytes = 2 * 1024 * 1024) {
   }
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
-  let edge = Math.min(2400, Math.max(bmp.width, bmp.height));
+  const longEdge = Math.max(bmp.width, bmp.height);
+  let edge = Math.min(maxEdge, longEdge, Math.floor(longEdge * Math.sqrt(maxArea / (bmp.width * bmp.height))));
   let quality = 0.86;
   try {
-    for (let attempt = 0; attempt < 7; attempt += 1) {
-      const ratio = edge / Math.max(bmp.width, bmp.height);
+    for (let attempt = 0; attempt < (qualityFirst ? 10 : 7); attempt += 1) {
+      const ratio = edge / longEdge;
       canvas.width = Math.max(1, Math.round(bmp.width * ratio));
       canvas.height = Math.max(1, Math.round(bmp.height * ratio));
       ctx.fillStyle = '#fff';
@@ -110,8 +116,12 @@ export async function shrinkImageToLimit(file, maxBytes = 2 * 1024 * 1024) {
         const base = (file.name || 'image').replace(/\.[^.]+$/, '');
         return new File([blob], `${base}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
       }
-      edge = Math.round(edge * 0.8);
-      quality = Math.max(0.6, quality - 0.06);
+      if (qualityFirst && quality > 0.72) {
+        quality -= 0.07;
+      } else {
+        edge = Math.round(edge * (qualityFirst ? 0.86 : 0.8));
+        quality = Math.max(0.6, quality - (qualityFirst ? 0 : 0.06));
+      }
     }
   } finally {
     bmp.close?.();

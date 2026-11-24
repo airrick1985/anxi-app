@@ -15,6 +15,7 @@
           <span class="uig-caption-name">{{ currentImage.imageName }}</span>
           <span v-if="images.length > 1" class="uig-caption-count">{{ current + 1 }} / {{ images.length }}</span>
         </div>
+        <PanoramaBadge class="uig-pano" :type="panoramaTypeOf(currentImage)" />
 
         <div v-if="editable && currentImage" class="uig-toolbar">
           <button type="button" class="uig-tool" title="更換圖片" :disabled="!!busy" @click="pickReplace">
@@ -54,6 +55,7 @@
             @click="current = index"
           >
             <img v-if="thumbsReady" :src="element.downloadURL" :alt="element.imageName" draggable="false" />
+            <PanoramaBadge class="uig-thumb-pano" :type="panoramaTypeOf(element)" small />
           </button>
         </template>
         <template #footer>
@@ -183,10 +185,11 @@ import { useToast } from 'vue-toastification';
 import { db } from '@/firebase';
 import { doc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
 import { saveSalesImage, deleteSalesImages, fetchSalesHouseholdsOnce } from '@/api.js';
-import { shrinkImageToLimit } from '@/utils/canvasCompress';
 import {
-  SALES_IMAGE_ACCEPT, SALES_IMAGE_MAX_BYTES, buildImageUsage, readImageSize, fileToBase64, uniqueImageName,
+  SALES_IMAGE_ACCEPT, buildImageUsage, fileToBase64, uniqueImageName, prepareSalesImageUpload,
 } from '@/utils/salesImages';
+import { panoramaTypeOf } from '@/utils/panorama';
+import PanoramaBadge from '@/components/panorama/PanoramaBadge.vue';
 import SalesImageUploadDialog from './SalesImageUploadDialog.vue';
 import SalesImagePickerDialog from './SalesImagePickerDialog.vue';
 
@@ -375,16 +378,15 @@ function confirmReplace(scope) {
 async function doReplace(image, file, scope, othersCount) {
   busy.value = '更換中…';
   try {
-    const upload = await shrinkImageToLimit(file, SALES_IMAGE_MAX_BYTES);
-    const size = await readImageSize(upload);
-    if (!size) throw new Error('無法讀取這張圖片');
+    const { upload, width, height, panorama } = await prepareSalesImageUpload(file);
     const payload = {
       projectId: props.projectId,
       fileName: upload.name,
       contentType: upload.type,
       fileBase64: await fileToBase64(upload),
-      width: size.width,
-      height: size.height,
+      width,
+      height,
+      panorama,
     };
     if (scope === 'all') {
       await saveSalesImage({ ...payload, docId: image.id });
@@ -494,6 +496,18 @@ onUnmounted(() => {
 }
 .uig-caption-name { font-weight: 600; overflow-wrap: anywhere; line-height: 1.35; }
 .uig-caption-count { flex-shrink: 0; color: #6e6e73; font-variant-numeric: tabular-nums; }
+
+.uig-pano {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+}
+.uig-thumb-pano {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+}
 
 .uig-toolbar {
   top: 10px;

@@ -154,6 +154,11 @@
           <v-icon left>mdi-printer</v-icon>
           列印
         </v-btn>
+
+        <v-btn v-if="currentPano" color="grey-darken-3" variant="flat" elevation="4" class="ml-2" @click="emit('panorama')">
+          <v-icon left>mdi-rotate-360</v-icon>
+          全景瀏覽
+        </v-btn>
       </div>
     </v-card>
   </v-dialog>
@@ -165,6 +170,7 @@
 import { ref, computed, watch, nextTick, onUnmounted } from 'vue';
 import { useToast } from 'vue-toastification';
 import { printImageA3 } from '@/utils/printImageA3';
+import { panoramaTypeOf } from '@/utils/panorama';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -173,7 +179,7 @@ const props = defineProps({
   unitData: { type: Object, default: null },
   unitPriceText: { type: String, default: '' },
 });
-const emit = defineEmits(['update:modelValue', 'update:index']);
+const emit = defineEmits(['update:modelValue', 'update:index', 'panorama']);
 
 const toast = useToast();
 
@@ -183,6 +189,8 @@ const dialogModel = computed({
 });
 
 const currentImage = computed(() => props.images[props.index] || null);
+// 全景圖：可切到全景瀏覽（由父層開啟）
+const currentPano = computed(() => panoramaTypeOf(currentImage.value));
 const showInfoOverlay = ref(false);
 
 function formatNumber(value, frac = 0) {

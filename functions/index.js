@@ -32147,6 +32147,7 @@ const salesImages = require('./salesImages');
 salesImages.init({ syncSalesSheet: _fullSyncSalesHouseholdsToSheet });
 exports.saveSalesImage = salesImages.saveSalesImage;
 exports.renameSalesImage = salesImages.renameSalesImage;
+exports.setSalesImagePanorama = salesImages.setSalesImagePanorama;
 exports.updateSalesImageUnits = salesImages.updateSalesImageUnits;
 exports.deleteSalesImages = salesImages.deleteSalesImages;
 

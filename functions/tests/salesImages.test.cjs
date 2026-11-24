@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   normalizeImageName, buildStoragePath, isSalesImagePath, renameInList,
   saveSalesImageCore, renameSalesImageCore, updateSalesImageUnitsCore, deleteSalesImagesCore,
+  setSalesImagePanoramaCore,
 } = require('../salesImages');
 const { SHEET_SYNC_SKIP_FIELD, shouldSkipSheetSync } = require('../utils/sheetSyncSkip');
 
@@ -115,6 +116,55 @@ test('新增圖片：驗證格式、同名需明確取代', async () => {
   assert.equal(replaced.replaced, true);
   assert.equal(db.store.get('salesImages/p1_A1').storagePath, 'projects/p1/salesImages/3_a1.png');
   assert.deepEqual(bucket.deleted, ['projects/p1/salesImages/1_a1.png']);
+});
+
+test('全景圖：夠寬才放寬到 4MB，類型隨檔案寫入', async () => {
+  const db = fakeDb();
+  const bucket = fakeBucket();
+  // PNG 檔頭＋填充到指定大小
+  const sized = bytes => Buffer.concat([Buffer.from(PNG, 'base64'), Buffer.alloc(bytes - 12)]).toString('base64');
+  const base = { projectId: 'p1', fileName: 'p.png', contentType: 'image/png', width: 6000, height: 3000 };
+  const MB = 1024 * 1024;
+
+  await saveSalesImageCore({ db, bucket, data: { ...base, imageName: '客廳', fileBase64: sized(3 * MB), panorama: 'sphere' }, now: 1 });
+  assert.equal(db.store.get('salesImages/p1_客廳').panorama, 'sphere');
+  await assert.rejects(saveSalesImageCore({ db, bucket, data: { ...base, imageName: '太大', fileBase64: sized(4 * MB + 1), panorama: 'sphere' } }), /全景圖超過 4MB/);
+  // 沒標全景、標成一般圖片、或不夠寬的圖維持 1MB
+  await assert.rejects(saveSalesImageCore({ db, bucket, data: { ...base, imageName: 'B', fileBase64: sized(2 * MB) } }), /超過 1MB/);
+  await assert.rejects(saveSalesImageCore({ db, bucket, data: { ...base, imageName: 'C', fileBase64: sized(2 * MB), panorama: 'none' } }), /超過 1MB/);
+  await assert.rejects(saveSalesImageCore({ db, bucket, data: { ...base, imageName: 'D', fileBase64: sized(2 * MB), panorama: 'strip', width: 1600, height: 1200 } }), /超過 1MB/);
+
+  // 不夠寬卻標成全景：存成一般圖片；不認得的值不寫入
+  await saveSalesImageCore({ db, bucket, data: { ...base, imageName: 'E', fileBase64: PNG, panorama: 'strip', width: 1600, height: 1200 }, now: 2 });
+  assert.equal(db.store.get('salesImages/p1_E').panorama, 'none');
+  await saveSalesImageCore({ db, bucket, data: { ...base, imageName: 'F', fileBase64: PNG, panorama: 'cube' }, now: 3 });
+  assert.ok(!('panorama' in db.store.get('salesImages/p1_F')));
+
+  // 替換檔案：帶新類型就更新，沒帶（舊版前端）就清掉讓前端重新辨識
+  await saveSalesImageCore({ db, bucket, data: { ...base, docId: 'p1_客廳', fileBase64: PNG, panorama: 'strip' }, now: 4 });
+  assert.equal(db.store.get('salesImages/p1_客廳').panorama, 'strip');
+  await saveSalesImageCore({ db, bucket, data: { ...base, docId: 'p1_客廳', fileBase64: PNG }, now: 5 });
+  assert.notEqual(typeof db.store.get('salesImages/p1_客廳').panorama, 'string');
+});
+
+test('手動指定全景類型', async () => {
+  const db = fakeDb({
+    'salesImages/p1_A': { projectId: 'p1', imageName: 'A', width: 4000, height: 2000 },
+    'salesImages/p1_B': { projectId: 'p1', imageName: 'B', width: 1600, height: 1200 },
+    'salesImages/p1_舊圖': { projectId: 'p1', imageName: '舊圖' },
+  });
+  await setSalesImagePanoramaCore({ db, data: { projectId: 'p1', docId: 'p1_A', panorama: 'none' } });
+  assert.equal(db.store.get('salesImages/p1_A').panorama, 'none');
+  await setSalesImagePanoramaCore({ db, data: { projectId: 'p1', docId: 'p1_A', panorama: 'strip' } });
+  assert.equal(db.store.get('salesImages/p1_A').panorama, 'strip');
+  await setSalesImagePanoramaCore({ db, data: { projectId: 'p1', docId: 'p1_舊圖', panorama: 'sphere' } });
+  assert.equal(db.store.get('salesImages/p1_舊圖').panorama, 'sphere');
+
+  await assert.rejects(setSalesImagePanoramaCore({ db, data: { projectId: 'p1', docId: 'p1_B', panorama: 'sphere' } }), /不夠寬/);
+  await setSalesImagePanoramaCore({ db, data: { projectId: 'p1', docId: 'p1_B', panorama: 'none' } });
+  await assert.rejects(setSalesImagePanoramaCore({ db, data: { projectId: 'p1', docId: 'p1_A', panorama: 'cube' } }), /類型不正確/);
+  await assert.rejects(setSalesImagePanoramaCore({ db, data: { projectId: 'p2', docId: 'p1_A', panorama: 'none' } }), /找不到/);
+  await assert.rejects(setSalesImagePanoramaCore({ db, data: { projectId: 'p1', docId: 'p1_X', panorama: 'none' } }), /找不到/);
 });
 
 test('替換檔案：舊路徑仍被其他圖片引用時保留', async () => {

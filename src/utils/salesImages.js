@@ -1,6 +1,11 @@
 // 銷控圖片管理共用工具（建案設定「銷控圖片管理」）
 // 圖片名稱規則需與 functions/salesImages.js 的 normalizeImageName 一致
 
+import { shrinkImageToLimit } from '@/utils/canvasCompress';
+import {
+  PANORAMA_NONE, PANORAMA_MAX_BYTES, PANORAMA_MAX_EDGE, PANORAMA_MAX_AREA, isPanoramaType, detectPanoramaFromFile,
+} from '@/utils/panorama';
+
 export const SALES_IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp';
 export const SALES_IMAGE_MAX_BYTES = 1024 * 1024;
 export const SALES_IMAGE_NAME_MAX = 80;
@@ -150,4 +155,29 @@ export function fileToBase64(file) {
     reader.onerror = () => reject(new Error('無法讀取檔案'));
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * 上傳前整理銷控圖片：判斷是否為全景，並壓到對應的大小上限
+ * （一般圖片 1MB；全景圖 4MB、長邊 6000，放大才看得清楚）
+ * panorama：指定 'sphere'｜'strip'｜'none'；不給則自動判斷
+ * 回傳 { upload, width, height, panorama, wide, compressed }；無法解碼時丟出錯誤
+ */
+export async function prepareSalesImageUpload(file, { panorama } = {}) {
+  const info = await detectPanoramaFromFile(file);
+  if (!info) throw new Error('無法讀取這張圖片');
+  // 不夠寬的圖不當全景（後端也只對夠寬的圖放寬上限）
+  const type = info.wide && isPanoramaType(panorama ?? info.type) ? (panorama ?? info.type) : PANORAMA_NONE;
+  let upload;
+  if (type === PANORAMA_NONE) {
+    upload = await shrinkImageToLimit(file, SALES_IMAGE_MAX_BYTES);
+  } else {
+    const oversized = Math.max(info.width, info.height) > PANORAMA_MAX_EDGE || info.width * info.height > PANORAMA_MAX_AREA;
+    upload = await shrinkImageToLimit(file, PANORAMA_MAX_BYTES, {
+      maxEdge: PANORAMA_MAX_EDGE, maxArea: PANORAMA_MAX_AREA, force: oversized, qualityFirst: true,
+    });
+  }
+  const size = upload === file ? info : await readImageSize(upload);
+  if (!size) throw new Error('無法讀取這張圖片');
+  return { upload, width: size.width, height: size.height, panorama: type, wide: info.wide, compressed: upload !== file };
 }

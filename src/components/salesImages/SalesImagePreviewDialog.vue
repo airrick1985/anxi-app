@@ -13,6 +13,23 @@
         <button type="button" class="mac-icon-btn" title="使用戶別" :disabled="usageLoading" @click="emit('units', current)">
           <v-icon size="18">mdi-home-edit-outline</v-icon>
         </button>
+        <v-menu v-if="wide" location="bottom end" content-class="mac-menu">
+          <template #activator="{ props: menuProps }">
+            <button type="button" class="mac-icon-btn" :class="{ 'sip-on': !!panoType }" title="全景類型" v-bind="menuProps">
+              <v-icon size="18">mdi-rotate-360</v-icon>
+            </button>
+          </template>
+          <v-list density="compact">
+            <v-list-item
+              v-for="opt in PANORAMA_OPTIONS"
+              :key="opt.value"
+              :prepend-icon="opt.icon"
+              :title="opt.label"
+              :active="(panoType || PANORAMA_NONE) === opt.value"
+              @click="emit('panorama', current, opt.value)"
+            ></v-list-item>
+          </v-list>
+        </v-menu>
         <button type="button" class="mac-icon-btn" title="更名" @click="emit('rename', current)">
           <v-icon size="18">mdi-pencil-outline</v-icon>
         </button>
@@ -31,7 +48,16 @@
       </div>
 
       <div class="sip-stage">
-        <img :key="current.src" :src="current.src" :alt="current.imageName" />
+        <img
+          :key="current.src"
+          :src="current.src"
+          :alt="current.imageName"
+          :class="{ 'is-pano': !!panoType }"
+          @click="panoType && (panoOpen = true)"
+        />
+        <button v-if="panoType" type="button" class="sip-pano-btn" @click="panoOpen = true">
+          <v-icon size="16">{{ panoType === 'sphere' ? 'mdi-rotate-360' : 'mdi-panorama-horizontal-outline' }}</v-icon>全景瀏覽
+        </button>
         <button v-if="images.length > 1" type="button" class="sip-nav sip-nav--prev" title="上一張" @click="go(-1)">
           <v-icon size="26">mdi-chevron-left</v-icon>
         </button>
@@ -55,10 +81,20 @@
       </div>
     </v-card>
   </v-dialog>
+
+  <PanoramaDialog
+    v-model="panoOpen"
+    :images="images"
+    :index="index"
+    @update:index="i => emit('update:index', i)"
+    @flat="panoOpen = false"
+  />
 </template>
 
 <script setup>
-import { computed, watch, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
+import PanoramaDialog from '@/components/panorama/PanoramaDialog.vue';
+import { PANORAMA_OPTIONS, PANORAMA_NONE, panoramaTypeOf, isWideImage } from '@/utils/panorama';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -66,7 +102,7 @@ const props = defineProps({
   index: { type: Number, default: 0 },
   usageLoading: { type: Boolean, default: false },
 });
-const emit = defineEmits(['update:modelValue', 'update:index', 'rename', 'replace', 'delete', 'units']);
+const emit = defineEmits(['update:modelValue', 'update:index', 'rename', 'replace', 'delete', 'units', 'panorama']);
 
 const UNIT_PREVIEW = 8;
 
@@ -77,6 +113,12 @@ const metaText = computed(() => {
   return [c.fileName, c.format, c.width ? `${c.width}×${c.height}` : '', c.sizeText, c.updatedText].filter(Boolean).join(' · ');
 });
 
+// 全景：點圖或按鈕進全景瀏覽；夠寬的圖可手動改類型
+const panoOpen = ref(false);
+const panoType = computed(() => panoramaTypeOf(current.value));
+const wide = computed(() => isWideImage(current.value?.width, current.value?.height));
+watch(() => props.modelValue, (open) => { if (!open) panoOpen.value = false; });
+
 // 目前這張被刪除或篩掉時關閉
 watch(current, (c) => { if (!c && props.modelValue) emit('update:modelValue', false); });
 
@@ -86,7 +128,7 @@ function go(step) {
 }
 
 function onKey(e) {
-  if (!props.modelValue || e.target?.closest?.('input, textarea')) return;
+  if (!props.modelValue || panoOpen.value || e.target?.closest?.('input, textarea')) return;
   if (e.key === 'ArrowLeft') go(-1);
   else if (e.key === 'ArrowRight') go(1);
 }
@@ -117,6 +159,33 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
   border-radius: 4px;
   background: #fff;
 }
+.sip-stage img.is-pano { cursor: pointer; }
+.sip-on .v-icon { color: #0071e3; }
+.sip-pano-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 17px;
+  background: rgba(40, 40, 44, 0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.18), 0 4px 14px rgba(0, 0, 0, 0.3);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sip-pano-btn .v-icon { color: #fff; }
+.sip-pano-btn:hover { background: rgba(60, 60, 66, 0.82); }
 .sip-nav {
   position: absolute;
   top: 50%;

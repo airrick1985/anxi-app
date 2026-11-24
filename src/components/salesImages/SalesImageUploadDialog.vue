@@ -44,6 +44,31 @@
                   :maxlength="SALES_IMAGE_NAME_MAX"
                 />
                 <span v-if="replaceTargets.has(item.id)" class="mac-tag siu-tag-replace">取代</span>
+                <v-menu v-if="item.wide && item.status !== 'invalid'" location="bottom end" content-class="mac-menu">
+                  <template #activator="{ props: menuProps }">
+                    <button
+                      type="button"
+                      class="mac-tag siu-pano"
+                      :class="{ 'is-on': isPanoramaType(item.panorama) }"
+                      title="全景類型"
+                      :disabled="isUploading || item.status !== 'ready'"
+                      v-bind="menuProps"
+                    >
+                      <v-icon size="12">{{ panoramaOption(item.panorama).icon }}</v-icon>{{ panoramaOption(item.panorama).label }}
+                      <v-icon size="12">mdi-chevron-down</v-icon>
+                    </button>
+                  </template>
+                  <v-list density="compact">
+                    <v-list-item
+                      v-for="opt in PANORAMA_OPTIONS"
+                      :key="opt.value"
+                      :prepend-icon="opt.icon"
+                      :title="opt.label"
+                      :active="item.panorama === opt.value"
+                      @click="setPanorama(item, opt.value)"
+                    ></v-list-item>
+                  </v-list>
+                </v-menu>
                 <span v-if="item.compressed" class="mac-tag">已壓縮</span>
               </div>
               <div class="siu-meta">
@@ -86,11 +111,11 @@ import { ref, computed, onBeforeUnmount } from 'vue';
 import { useToast } from 'vue-toastification';
 import UploadDropZone from '@/components/subscription/UploadDropZone.vue';
 import { saveSalesImage } from '@/api.js';
-import { shrinkImageToLimit } from '@/utils/canvasCompress';
 import {
-  SALES_IMAGE_ACCEPT, SALES_IMAGE_MAX_BYTES, SALES_IMAGE_NAME_MAX,
-  normalizeImageName, imageNameError, fileBaseName, formatBytes, readImageSize, fileToBase64, uniqueImageName,
+  SALES_IMAGE_ACCEPT, SALES_IMAGE_NAME_MAX,
+  normalizeImageName, imageNameError, fileBaseName, formatBytes, fileToBase64, uniqueImageName, prepareSalesImageUpload,
 } from '@/utils/salesImages';
+import { PANORAMA_OPTIONS, PANORAMA_NONE, isPanoramaType } from '@/utils/panorama';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -143,16 +168,24 @@ const uploadLabel = computed(() => {
   return `${retry ? '重試' : '上傳'} ${pending.value.length} 張`;
 });
 
-async function prepare(item) {
+// panorama：指定全景類型；不給則自動辨識
+async function prepare(item, panorama) {
   try {
     if (!ACCEPTED_TYPES.includes(item.file.type)) throw new Error('僅支援 PNG、JPG、WEBP');
-    const upload = await shrinkImageToLimit(item.file, SALES_IMAGE_MAX_BYTES);
-    const size = await readImageSize(upload);
-    if (!size) throw new Error('無法讀取這張圖片');
-    Object.assign(item, { upload, compressed: upload !== item.file, width: size.width, height: size.height, status: 'ready', error: '' });
+    const result = await prepareSalesImageUpload(item.file, { panorama });
+    Object.assign(item, { ...result, status: 'ready', error: '' });
   } catch (e) {
     Object.assign(item, { status: 'invalid', error: e.message || '無法讀取這張圖片' });
   }
+}
+
+const panoramaOption = value => PANORAMA_OPTIONS.find(o => o.value === value) || PANORAMA_OPTIONS[PANORAMA_OPTIONS.length - 1];
+
+// 手動改判：全景與一般圖片的大小上限不同，要重新整理檔案
+function setPanorama(item, value) {
+  if (item.panorama === value || item.status !== 'ready') return;
+  item.status = 'processing';
+  prepare(item, value);
 }
 
 function defaultName(file) {
@@ -176,6 +209,8 @@ function addFiles(files, presetName = '') {
       compressed: false,
       width: 0,
       height: 0,
+      panorama: PANORAMA_NONE,
+      wide: false,
       status: 'processing',
       error: '',
     };
@@ -217,6 +252,7 @@ async function uploadOne(item) {
       fileBase64: await fileToBase64(item.upload),
       width: item.width,
       height: item.height,
+      panorama: item.panorama,
     });
     item.status = 'done';
   } catch (e) {
@@ -288,6 +324,13 @@ defineExpose({ addFiles });
 .siu-name { flex: 1 1 200px; max-width: 360px; }
 .siu-name.is-invalid { border-color: #d62d20; box-shadow: 0 0 0 3px rgba(214, 45, 32, 0.14); }
 .siu-tag-replace { --mac-tag-bg: rgba(255, 159, 10, 0.16); --mac-tag-color: #b25e00; }
+.siu-pano {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+.siu-pano.is-on { --mac-tag-bg: rgba(0, 113, 227, 0.12); --mac-tag-color: #0058b0; }
+.siu-pano:disabled { opacity: 0.5; cursor: default; }
 .siu-meta { font-size: 12px; color: #6e6e73; overflow-wrap: anywhere; }
 .siu-error { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #d62d20; }
 .siu-switch {

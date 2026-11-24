@@ -34,6 +34,9 @@
             ></v-img>
           </v-carousel-item>
         </v-carousel>
+        <div v-if="currentPano" class="lb-pano">
+          <PanoramaBadge :type="currentPano" />
+        </div>
 
         <div class="text-center text-caption text-grey mt-2">點擊圖片可放大檢視</div>
 
@@ -47,6 +50,7 @@
           >
             <!-- 縮圖與主圖同一原檔：等主圖載入完才載入，避免開啟時同時下載多張大圖 -->
             <v-img :src="thumbsReady ? image.downloadURL : undefined" aspect-ratio="16/9" cover></v-img>
+            <PanoramaBadge class="thumb-pano" :type="panoramaTypeOf(image)" small />
           </div>
         </div>
       </v-card-text>
@@ -87,18 +91,25 @@
         <v-btn icon="mdi-magnify-plus-outline" variant="flat" size="small" @click.stop="zoomBy(0.25)"></v-btn>
         <v-btn icon="mdi-backup-restore" variant="flat" size="small" @click.stop="resetZoom"></v-btn>
         <v-btn icon="mdi-printer-outline" variant="flat" size="small" title="列印（A3 橫向）" @click.stop="printCurrent"></v-btn>
+        <v-btn v-if="currentPano" icon="mdi-rotate-360" variant="flat" size="small" title="全景瀏覽" @click.stop="openPano"></v-btn>
         <span class="zoom-caption">{{ currentIndex + 1 }} / {{ images.length }}</span>
       </div>
 
       <v-btn class="close-btn" icon="mdi-close" variant="flat" @click.stop="zoomDialog = false"></v-btn>
     </div>
   </v-dialog>
+
+  <!-- 全景圖：點圖直接進全景瀏覽；切到一般圖片或按「平面檢視」回放大燈箱 -->
+  <PanoramaDialog v-model="panoDialog" v-model:index="currentIndex" :images="images" @flat="openFlat" />
 </template>
 
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue';
 import { useToast } from 'vue-toastification';
 import { printImageA3 } from '@/utils/printImageA3';
+import { panoramaTypeOf } from '@/utils/panorama';
+import PanoramaDialog from './panorama/PanoramaDialog.vue';
+import PanoramaBadge from './panorama/PanoramaBadge.vue';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -116,6 +127,8 @@ const currentIndex = ref(0);
 const zoomDialog = ref(false);
 
 const currentImage = computed(() => props.images[currentIndex.value] || null);
+const currentPano = computed(() => panoramaTypeOf(currentImage.value));
+const panoDialog = ref(false);
 
 // 列印目前圖片：與戶別資訊圖片列印同規則（A3 橫向、縮放至紙張寬度、不印頁首頁尾）
 const toast = useToast();
@@ -139,6 +152,7 @@ watch(dialogModel, (open) => {
     thumbsReadyTimer = setTimeout(() => { thumbsReady.value = true; }, 1500);
   } else {
     zoomDialog.value = false;
+    panoDialog.value = false;
   }
 }, { immediate: true });
 
@@ -167,6 +181,21 @@ function zoomBy(delta) {
 }
 
 function openZoom() {
+  if (currentPano.value) {
+    openPano();
+    return;
+  }
+  resetZoom();
+  zoomDialog.value = true;
+}
+
+function openPano() {
+  zoomDialog.value = false;
+  panoDialog.value = true;
+}
+
+function openFlat() {
+  panoDialog.value = false;
   resetZoom();
   zoomDialog.value = true;
 }
@@ -242,6 +271,21 @@ function prevImage() {
 .carousel-stage {
   background-color: #e8eaed;
   border-radius: 4px;
+}
+
+.v-card-text { position: relative; }
+.lb-pano {
+  position: absolute;
+  top: 22px;
+  left: 22px;
+  z-index: 2;
+  pointer-events: none;
+}
+.thumb { position: relative; }
+.thumb-pano {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
 }
 
 .thumb-strip {

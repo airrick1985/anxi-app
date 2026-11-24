@@ -146,7 +146,7 @@
 
       <template #item.imageName="{ item }">
         <div class="sim-name-cell" v-file-drop="rowDrop(item)">
-          <div class="sim-name">{{ item.imageName }}</div>
+          <div class="sim-name">{{ item.imageName }}<PanoramaBadge class="sim-pano" :type="panoramaTypeOf(item)" /></div>
           <div class="sim-sub">{{ item.fileName }}</div>
         </div>
       </template>
@@ -221,6 +221,7 @@
           <div class="mac-list-main">
             <div class="mac-list-line1">
               <span class="mac-list-title">{{ row.imageName }}</span>
+              <PanoramaBadge :type="panoramaTypeOf(row)" />
               <span v-if="row.units.length" class="mac-tag sim-usage">{{ row.units.length }} 戶</span>
               <span v-else-if="!usageLoading" class="mac-tag sim-unused">未使用</span>
             </div>
@@ -269,6 +270,7 @@
       @replace="pickReplace"
       @delete="row => askDelete([row])"
       @units="row => openUnits([row])"
+      @panorama="changePanorama"
     />
 
     <SalesImageUnitsDialog
@@ -381,13 +383,15 @@ import SalesImagePreviewDialog from './SalesImagePreviewDialog.vue';
 import SalesImageUnitsDialog from './SalesImageUnitsDialog.vue';
 import {
   listenToSalesImages, fetchSalesHouseholdsOnce, saveSalesImage, renameSalesImage, deleteSalesImages,
+  setSalesImagePanorama,
 } from '@/api.js';
-import { shrinkImageToLimit } from '@/utils/canvasCompress';
+import PanoramaBadge from '@/components/panorama/PanoramaBadge.vue';
 import {
-  SALES_IMAGE_ACCEPT, SALES_IMAGE_MAX_BYTES, SALES_IMAGE_NAME_MAX, SALES_IMAGE_FORMATS,
+  SALES_IMAGE_ACCEPT, SALES_IMAGE_NAME_MAX, SALES_IMAGE_FORMATS,
   normalizeImageName, imageNameError, imageFormat, formatBytes, timestampMs, buildImageUsage,
-  readImageSize, fileToBase64, buildUnitList, unitFilterOptions, householdUnitKey,
+  fileToBase64, buildUnitList, unitFilterOptions, householdUnitKey, prepareSalesImageUpload,
 } from '@/utils/salesImages';
+import { panoramaTypeOf } from '@/utils/panorama';
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -482,6 +486,9 @@ const rows = computed(() => images.value.map((img) => {
     imageName: img.imageName || '',
     fileName: img.fileName || '',
     src: withVersion(img.downloadURL, updatedMs),
+    // 全景辨識與全景瀏覽用（panorama：上傳時判斷或手動指定的類型，舊圖沒有）
+    downloadURL: withVersion(img.downloadURL, updatedMs),
+    panorama: img.panorama || '',
     format: imageFormat(img),
     width: img.width || size?.width || 0,
     height: img.height || size?.height || 0,
@@ -676,17 +683,16 @@ async function replaceFile(row, file) {
   }
   replacingIds.add(row.id);
   try {
-    const upload = await shrinkImageToLimit(file, SALES_IMAGE_MAX_BYTES);
-    const size = await readImageSize(upload);
-    if (!size) throw new Error('無法讀取這張圖片');
+    const { upload, width, height, panorama } = await prepareSalesImageUpload(file);
     await saveSalesImage({
       projectId: props.projectId,
       docId: row.id,
       fileName: upload.name,
       contentType: upload.type,
       fileBase64: await fileToBase64(upload),
-      width: size.width,
-      height: size.height,
+      width,
+      height,
+      panorama,
     });
     delete measured[row.id];
     toast.success(`已替換「${row.imageName}」`);
@@ -782,6 +788,15 @@ async function downloadImages(list) {
   }
 }
 
+// ── 全景類型（辨識錯誤時手動改） ──
+async function changePanorama(row, value) {
+  try {
+    await setSalesImagePanorama(props.projectId, row.id, value);
+  } catch (e) {
+    toast.error(`設定失敗：${e.message}`);
+  }
+}
+
 // ── 缺圖補上傳 ──
 const missingDialog = ref(false);
 const missingInput = ref(null);
@@ -806,6 +821,7 @@ function onMissingInput(e) {
   overflow: hidden;
 }
 .sim-searchbar { flex-wrap: wrap; }
+.sim-pano { margin-left: 6px; vertical-align: 1px; }
 .sim-search-tools { display: flex; align-items: center; gap: 8px; }
 .sim-seg-count { margin-left: 5px; font-size: 11.5px; font-weight: 500; color: #8e8e93; }
 .mac-form-seg-btn.is-active .sim-seg-count { color: #6e6e73; }

@@ -3,6 +3,7 @@
  *
  * - saveSalesImage：新增或替換一張圖片（上傳檔案＋寫入中繼資料；替換時刪除舊檔）
  * - renameSalesImage：更名，並同步更新戶別 salesImages 引用的名稱
+ * - setSalesImagePanorama：手動指定全景類型（自動辨識錯誤時）
  * - updateSalesImageUnits：批次加入／移出戶別引用
  * - deleteSalesImages：批次刪除（中繼資料＋檔案）
  *
@@ -21,6 +22,10 @@ const admin = require('firebase-admin');
 const { SHEET_SYNC_SKIP_FIELD, newSheetSyncBatchId } = require('./utils/sheetSyncSkip');
 
 const MAX_BYTES = 1024 * 1024;
+// 全景圖（360° 環景／長條全景）放寬上限，放大瀏覽才看得清楚；規則需與 src/utils/panorama.js 一致
+const PANORAMA_MAX_BYTES = 4 * 1024 * 1024;
+const PANORAMA_TYPES = ['sphere', 'strip', 'none'];
+const PANORAMA_MIN_RATIO = 1.9;
 const MAX_NAME_LENGTH = 80;
 const MAX_BATCH_DELETE = 200;
 const BATCH_WRITE_LIMIT = 450;
@@ -80,6 +85,16 @@ function sniffContentType(buffer) {
 function dimension(value) {
   const n = Math.round(Number(value));
   return Number.isFinite(n) && n > 0 && n <= 50000 ? n : null;
+}
+
+// 全景類型：前端上傳時判斷（或手動指定）；沒帶或不認得的值回傳 null
+function panoramaType(value) {
+  return PANORAMA_TYPES.includes(value) ? value : null;
+}
+
+// 夠寬的圖才可能是全景
+function isWide(width, height) {
+  return width > 0 && height > 0 && width / height >= PANORAMA_MIN_RATIO;
 }
 
 // 戶別引用的名稱陣列：舊名換成新名（保留順序、去除重複）
@@ -163,7 +178,14 @@ async function saveSalesImageCore({ db, bucket, data, now = Date.now() }) {
   if (typeof data?.fileBase64 !== 'string' || !data.fileBase64) throw new HttpsError('invalid-argument', '缺少檔案內容。');
   const buffer = Buffer.from(data.fileBase64, 'base64');
   if (!buffer.length) throw new HttpsError('invalid-argument', '缺少檔案內容。');
-  if (buffer.length > MAX_BYTES) throw new HttpsError('invalid-argument', '檔案超過 1MB。');
+  const width = dimension(data.width);
+  const height = dimension(data.height);
+  let panorama = panoramaType(data.panorama);
+  if (panorama && panorama !== 'none' && !isWide(width, height)) panorama = 'none';
+  const isPanorama = panorama === 'sphere' || panorama === 'strip';
+  if (buffer.length > (isPanorama ? PANORAMA_MAX_BYTES : MAX_BYTES)) {
+    throw new HttpsError('invalid-argument', isPanorama ? '全景圖超過 4MB。' : '檔案超過 1MB。');
+  }
   const sniffed = sniffContentType(buffer);
   if (!sniffed) throw new HttpsError('invalid-argument', '檔案不是有效的圖片。');
 
@@ -201,13 +223,14 @@ async function saveSalesImageCore({ db, bucket, data, now = Date.now() }) {
     fileName,
     contentType: sniffed,
     fileSize: buffer.length,
-    width: dimension(data.width),
-    height: dimension(data.height),
+    width,
+    height,
     updatedAt: FieldValue.serverTimestamp(),
   };
 
   if (existing) {
-    await ref.update(fileMeta);
+    // 換了檔案：沒帶全景類型（舊版前端）就清掉，交給前端重新辨識
+    await ref.update({ ...fileMeta, panorama: panorama || FieldValue.delete() });
     if (existing.storagePath && existing.storagePath !== storagePath) {
       await deleteFileIfUnused(db, bucket, existing.storagePath, ref.id);
     }
@@ -217,6 +240,7 @@ async function saveSalesImageCore({ db, bucket, data, now = Date.now() }) {
         projectId,
         imageName: normalizeImageName(data.imageName),
         ...fileMeta,
+        ...(panorama ? { panorama } : {}),
         createdAt: FieldValue.serverTimestamp(),
       });
     } catch (error) {
@@ -330,6 +354,22 @@ async function updateSalesImageUnitsCore({ db, data, syncSalesSheet = defaultSyn
   return { status: 'success', updated: committed, notFound, ...sync };
 }
 
+async function setSalesImagePanoramaCore({ db, data }) {
+  const projectId = requireProjectId(data?.projectId);
+  const panorama = panoramaType(data?.panorama);
+  if (!panorama) throw new HttpsError('invalid-argument', '全景類型不正確。');
+  const ref = db.collection('salesImages').doc(String(data?.docId || ''));
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().projectId !== projectId) throw new HttpsError('not-found', '找不到這張圖片，可能已被刪除。');
+  const { width, height } = snap.data();
+  // 舊資料沒有記錄寬高時不擋
+  if (panorama !== 'none' && width > 0 && height > 0 && !isWide(width, height)) {
+    throw new HttpsError('failed-precondition', '這張圖片不夠寬，無法設為全景。');
+  }
+  await ref.update({ panorama });
+  return { status: 'success', docId: ref.id, panorama };
+}
+
 async function deleteSalesImagesCore({ db, bucket, data }) {
   const projectId = data?.projectId ? requireProjectId(data.projectId) : null;
   const ids = Array.isArray(data?.docIds) ? data.docIds : (data?.docId ? [data.docId] : []);
@@ -370,6 +410,7 @@ function wrap(name, fn) {
 
 exports.saveSalesImage = onCall({ region: 'asia-east1', memory: '512MiB' }, wrap('saveSalesImage', saveSalesImageCore));
 exports.renameSalesImage = onCall({ region: 'asia-east1', memory: '512MiB', timeoutSeconds: 300 }, wrap('renameSalesImage', renameSalesImageCore));
+exports.setSalesImagePanorama = onCall({ region: 'asia-east1' }, wrap('setSalesImagePanorama', setSalesImagePanoramaCore));
 exports.updateSalesImageUnits = onCall({ region: 'asia-east1', memory: '512MiB', timeoutSeconds: 300 }, wrap('updateSalesImageUnits', updateSalesImageUnitsCore));
 exports.deleteSalesImages = onCall({ region: 'asia-east1', timeoutSeconds: 300 }, wrap('deleteSalesImages', deleteSalesImagesCore));
 
@@ -380,5 +421,6 @@ exports.isSalesImagePath = isSalesImagePath;
 exports.renameInList = renameInList;
 exports.saveSalesImageCore = saveSalesImageCore;
 exports.renameSalesImageCore = renameSalesImageCore;
+exports.setSalesImagePanoramaCore = setSalesImagePanoramaCore;
 exports.updateSalesImageUnitsCore = updateSalesImageUnitsCore;
 exports.deleteSalesImagesCore = deleteSalesImagesCore;

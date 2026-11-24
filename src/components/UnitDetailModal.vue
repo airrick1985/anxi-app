@@ -1450,7 +1450,12 @@
     :project-id="projectId" :all-data="allData" />
 
   <UnitImageFullscreenViewer v-model="fullscreenViewerDialog" v-model:index="currentImageIndex"
-    :images="householdImages" :unit-data="unitData" :unit-price-text="calculatedUnitPrice" />
+    :images="householdImages" :unit-data="unitData" :unit-price-text="calculatedUnitPrice"
+    @panorama="openPanoramaViewer" />
+
+  <!-- 全景圖：點圖直接進全景瀏覽；切到一般圖片或按「平面檢視」回全螢幕檢視 -->
+  <PanoramaDialog v-model="panoramaDialog" v-model:index="currentImageIndex" :images="householdImages"
+    @flat="openFlatViewer" />
 
   <!-- ✅ [新增] 備註圖片：全螢幕預覽 -->
   <v-dialog v-model="isFullscreenImageOpen" fullscreen hide-overlay transition="dialog-bottom-transition">
@@ -1466,6 +1471,8 @@
 
 <script setup>
 import UnitImageFullscreenViewer from './UnitImageFullscreenViewer.vue';
+import PanoramaDialog from './panorama/PanoramaDialog.vue';
+import { panoramaTypeOf } from '@/utils/panorama';
 import UnitImageGallery from './salesImages/UnitImageGallery.vue';
 import { ref, reactive, watch, computed, defineProps, defineEmits, onUnmounted, onMounted, nextTick, defineAsyncComponent } from 'vue';
 import { useDisplay } from 'vuetify';
@@ -1988,6 +1995,7 @@ const canUseSalesAi = computed(() => {
 
 const currentImageIndex = ref(0);
 const fullscreenViewerDialog = ref(false);
+const panoramaDialog = ref(false);
 const allProjectImages = computed(() => props.allData['銷控圖片'] || []);
 
 // 本戶圖片名稱（檢視模式就地增刪改後立即反映；父層即時監聽更新時同步）
@@ -3717,7 +3725,17 @@ const shouldHidePrice = computed(() => isQuotePriceRestricted.value);
 
 // 全螢幕檢視（縮放 / 丈量）在 UnitImageFullscreenViewer，高頻更新不會重繪整個戶別資訊
 const openFullscreenViewer = () => {
-  if (currentImage.value) fullscreenViewerDialog.value = true;
+  if (!currentImage.value) return;
+  if (panoramaTypeOf(currentImage.value)) openPanoramaViewer();
+  else fullscreenViewerDialog.value = true;
+};
+const openPanoramaViewer = () => {
+  fullscreenViewerDialog.value = false;
+  panoramaDialog.value = true;
+};
+const openFlatViewer = () => {
+  panoramaDialog.value = false;
+  fullscreenViewerDialog.value = true;
 };
 
 // 視窗由父層第一次開啟後保留掛載、換戶別只更新資料（效能）；
@@ -3745,6 +3763,7 @@ function resetForOpen() {
   showRealPriceReportDialog.value = false;
   isFullscreenImageOpen.value = false;
   fullscreenViewerDialog.value = false;
+  panoramaDialog.value = false;
   paymentSettingsDialog.value = false;
   contractDocDialog.value = false;
   showParkingSpotEditor.value = false;
@@ -3785,6 +3804,7 @@ watch(() => props.show, (newVal) => {
     loadCancelledCount();
   } else {
     fullscreenViewerDialog.value = false;
+    panoramaDialog.value = false;
   }
 });
 
