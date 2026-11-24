@@ -8694,8 +8694,17 @@ export async function getSalesParkingsByFloorForManager(projectId, floor) { // �
   try {
     const getterFunction = httpsCallable(functions, 'getSalesParkingsByFloor'); // 後端函式名稱
     const result = await getterFunction({ projectId, floor });
-    // 直接回傳後端的 result.data
-    return result.data;
+    // onCall 會把 Timestamp 序列化成 { _seconds, _nanoseconds }，還原成 Date：
+    // 否則已保留天數／更新日期無法計算，編輯儲存時還會把純物件寫回 Firestore
+    const revive = (row) => Object.fromEntries(Object.entries(row).map(([key, value]) => (
+      typeof value?._seconds === 'number' ? [key, new Date(value._seconds * 1000)] : [key, value]
+    )));
+    const data = result.data;
+    return {
+      ...data,
+      preview: (data?.preview || []).map(revive),
+      allData: (data?.allData || []).map(revive),
+    };
   } catch (error) {
     console.error(`API Error in getSalesParkingsByFloorForManager (Project: ${projectId}, Floor: ${floor}):`, error);
     // 拋出錯誤，讓 Vue 元件可以捕捉並處理

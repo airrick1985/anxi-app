@@ -416,23 +416,16 @@
 
     <!-- 車位詳細資訊 Modal -->
     <div v-if="showDetailModal && selectedDetailSpot" class="modal-overlay detail-modal-overlay" @click.self="closeDetailModal">
-      <div class="modal-content detail-modal-content">
+      <!-- 編輯時隱藏資訊卡：編輯視窗同位置同版面，看起來就是原卡片變成可編輯 -->
+      <div class="modal-content detail-modal-content" :class="{ 'is-editing': showParkingEditDialog }">
         <div class="modal-header detail-header">
-          <div class="d-flex align-center" style="gap: 12px;">
-            <span class="detail-title-icon"><svg-icon type="mdi" :path="mdiCarSide" :size="16"></svg-icon></span>
-            <h3 class="mb-0 detail-title">{{ selectedDetailSpot.parkingData.number || selectedDetailSpot.spotId }}</h3>
-            <span 
-              class="status-chip" 
-              :style="getDetailStatusStyle(selectedDetailSpot.parkingData)"
-            >
-              {{ contextMode === 'sales' ? (selectedDetailSpot.parkingData.status_backend || '未設定') : (selectedDetailSpot.parkingData.status || '未設定') }}
-            </span>
-            <span
-              v-if="contextMode === 'sales' && getSpotTierMeta(selectedDetailSpot.parkingData).occupied"
-              class="status-chip tier-chip"
-              :style="{ backgroundColor: getSpotTierMeta(selectedDetailSpot.parkingData).color, color: '#fff', padding: '3px 9px', borderRadius: '999px', fontSize: '11.5px', fontWeight: '600' }"
-            >{{ getSpotTierMeta(selectedDetailSpot.parkingData).label }}</span>
-          </div>
+          <ParkingSpotHead
+            :floor="selectedDetailSpot.parkingData.floor"
+            :number="selectedDetailSpot.parkingData.number || selectedDetailSpot.spotId"
+            :status="contextMode === 'sales' ? selectedDetailSpot.parkingData.status_backend : selectedDetailSpot.parkingData.status"
+            :tier-label="contextMode === 'sales' && getSpotTierMeta(selectedDetailSpot.parkingData).occupied ? getSpotTierMeta(selectedDetailSpot.parkingData).label : ''"
+            :tone="detailTone"
+          />
           <div class="d-flex align-center" style="gap: 8px;">
             <button
               v-if="canEditParking && selectedDetailSpot.parkingData.id"
@@ -449,188 +442,15 @@
         </div>
         
         <div class="modal-body detail-body">
-          <!-- 報價模式且已售/來賓車位 -->
-          <template v-if="contextMode === 'quote' && ['已售', '來賓車位'].includes(selectedDetailSpot.parkingData.status)">
-            <div class="info-section">
-              <div class="section-title">基本資訊</div>
-              <div class="info-row">
-                <span class="info-label">樓層</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.floor || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">類型</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.type || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">形式</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.type2 || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">尺寸</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">車位面積</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.area ? `${selectedDetailSpot.parkingData.area} m²` : '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">車位面積（坪）</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.area_ping ? `${selectedDetailSpot.parkingData.area_ping} 坪` : '—' }}</span>
-              </div>
-            </div>
-            <div class="info-section">
-              <div class="section-title">價格資訊</div>
-              <div class="info-row" style="justify-content: center; padding: 1.5rem 0;">
-                <span class="text-h5 font-weight-black" :style="{ color: selectedDetailSpot.parkingData.status === '來賓車位' ? '#0d6efd' : '#dc3545' }">{{ selectedDetailSpot.parkingData.status }}</span>
-              </div>
-            </div>
-          </template>
-
-          <!-- 報價模式且未售 -->
-          <template v-else-if="contextMode === 'quote'">
-            <div class="info-section">
-              <div class="section-title">基本資訊</div>
-              <div class="info-row">
-                <span class="info-label">樓層</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.floor || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">類型</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.type || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">形式</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.type2 || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">尺寸</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">車位面積</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.area ? `${selectedDetailSpot.parkingData.area} m²` : '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">車位面積（坪）</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.area_ping ? `${selectedDetailSpot.parkingData.area_ping} 坪` : '—' }}</span>
-              </div>
-            </div>
-            <div class="info-section">
-              <div class="section-title">價格資訊</div>
-              <div class="info-row">
-                <span class="info-label">車位價格</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.price_list ? `${selectedDetailSpot.parkingData.price_list} 萬` : '未設定' }}</span>
-              </div>
-            </div>
-          </template>
-
-          <!-- 銷控模式 -->
-          <template v-else-if="contextMode === 'sales'">
-            <div class="info-section">
-              <div class="section-title">基本資訊</div>
-              <div class="info-row">
-                <span class="info-label">樓層</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.floor || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">類型</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.type || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">形式</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.type2 || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">尺寸</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.size || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">車位面積</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.area ? `${selectedDetailSpot.parkingData.area} m²` : '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">車位面積（坪）</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.area_ping ? `${selectedDetailSpot.parkingData.area_ping} 坪` : '—' }}</span>
-              </div>
-            </div>
-            <div class="info-section">
-              <div class="section-title">價格資訊</div>
-              <div class="info-row">
-                <span class="info-label">表價</span>
-                <span class="info-value font-weight-bold">{{ selectedDetailSpot.parkingData.price_list ? `${selectedDetailSpot.parkingData.price_list} 萬` : '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label" style="color: #dc3545;">底價</span>
-                <span class="info-value font-weight-bold" style="color: #dc3545;">{{ selectedDetailSpot.parkingData.price_floor ? `${selectedDetailSpot.parkingData.price_floor} 萬` : '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label" style="color: #198754;">成交價</span>
-                <span class="info-value font-weight-bold" style="color: #198754;">{{ selectedDetailSpot.parkingData.price_transaction ? `${selectedDetailSpot.parkingData.price_transaction} 萬` : '—' }}</span>
-              </div>
-            </div>
-            <!-- 成交資訊：後台狀態屬已訂／已簽（或已售、有買方資料）即顯示；並讀取關聯戶別補上電話、戶別狀態與小訂／補足／簽約日期 -->
-            <div class="info-section" v-if="hasDealInfo(selectedDetailSpot.parkingData)">
-              <div class="section-title">
-                成交資訊
-                <span v-if="linkedHouseholdLoading" class="section-title-hint">讀取戶別資料…</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">買方戶別</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.buyerUnitId || '—' }}</span>
-              </div>
-              <div class="info-row" v-if="linkedHousehold?.status_backend">
-                <span class="info-label">戶別狀態</span>
-                <span class="info-value">{{ linkedHousehold.status_backend }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">買方姓名</span>
-                <span class="info-value">{{ selectedDetailSpot.parkingData.buyerName || linkedHousehold?.buyerName || '—' }}</span>
-              </div>
-              <div class="info-row" v-if="linkedHousehold?.buyerPhone">
-                <span class="info-label">買方電話</span>
-                <span class="info-value"><a :href="`tel:${linkedHousehold.buyerPhone}`" class="info-link">{{ linkedHousehold.buyerPhone }}</a></span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">銷售人員</span>
-                <span class="info-value">{{ dealSalespersons(selectedDetailSpot.parkingData) }}</span>
-              </div>
-              <div class="info-row" v-for="step in dealTimeline" :key="step.key">
-                <span class="info-label">{{ step.label }}日期</span>
-                <span class="info-value" :class="{ 'info-value--muted': !step.date }">{{ step.date || '未填' }}</span>
-              </div>
-              <div class="info-row" v-if="selectedDetailSpot.parkingData.remarks">
-                <span class="info-label">車位備註</span>
-                <span class="info-value info-value--wrap">{{ selectedDetailSpot.parkingData.remarks }}</span>
-              </div>
-              <div class="info-row" v-if="formatDealDate(selectedDetailSpot.parkingData.updatedAt)">
-                <span class="info-label">最後更新</span>
-                <span class="info-value info-value--muted">{{ formatDealDate(selectedDetailSpot.parkingData.updatedAt) }}</span>
-              </div>
-            </div>
-            <!-- 保留資訊：暫時保留層級才顯示 -->
-            <div class="info-section info-section--hold" v-if="contextMode === 'sales' && getSpotHold(selectedDetailSpot.parkingData)">
-              <div class="section-title">保留資訊</div>
-              <div class="info-row">
-                <span class="info-label">保留人</span>
-                <span class="info-value">{{ getSpotHold(selectedDetailSpot.parkingData).reservedBy || selectedDetailSpot.parkingData.buyerName || '—' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">保留到期</span>
-                <span class="info-value" :style="getSpotHold(selectedDetailSpot.parkingData).overdue ? 'color:#c62828;font-weight:700' : ''">
-                  {{ getSpotHold(selectedDetailSpot.parkingData).reservedUntil || '未設定' }}
-                  <template v-if="getSpotHold(selectedDetailSpot.parkingData).overdue">（已逾期 {{ getSpotHold(selectedDetailSpot.parkingData).daysOverdue }} 天）</template>
-                </span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">已保留</span>
-                <span class="info-value">{{ getSpotHold(selectedDetailSpot.parkingData).daysHeld !== null ? `${getSpotHold(selectedDetailSpot.parkingData).daysHeld} 天` : '—' }}</span>
-              </div>
-              <div class="info-row" v-if="getSpotHold(selectedDetailSpot.parkingData).reservedNote">
-                <span class="info-label">保留備註</span>
-                <span class="info-value">{{ getSpotHold(selectedDetailSpot.parkingData).reservedNote }}</span>
-              </div>
-            </div>
-          </template>
+          <ParkingSpotInfo
+            :parking="selectedDetailSpot.parkingData"
+            :context-mode="contextMode"
+            :hold="contextMode === 'sales' ? getSpotHold(selectedDetailSpot.parkingData) : null"
+            :household="linkedHousehold"
+            :household-loading="linkedHouseholdLoading"
+            :timeline="dealTimeline"
+            :updated-text="formatDealDate(selectedDetailSpot.parkingData.updatedAt)"
+          />
         </div>
 
         <!-- 報價模式：由「為戶別選擇車位」開啟時，資訊卡底部可直接把此車位加入該戶別 -->
@@ -689,7 +509,6 @@ import {
   mdiPrinter,
   mdiPencil,
   mdiCheck,
-  mdiCarSide,
   mdiCheckBold,
   mdiEyeOutline,
   mdiEyeOffOutline,
@@ -700,6 +519,9 @@ import { classifyCommitment, COMMITMENT_TIERS } from '@/utils/salesStatusGroups'
 import { buildHeldEntry, todayKey } from '@/composables/useParkingRatio';
 import { useUserStore } from '@/store/user';
 import ParkingSpotEditDialog from '@/components/ParkingSpotEditDialog.vue';
+import ParkingSpotHead from '@/components/ParkingSpotHead.vue';
+import ParkingSpotInfo from '@/components/ParkingSpotInfo.vue';
+import { backendTone, quoteTone } from '@/utils/parkingSpotCard';
 
 export default {
   name: 'ParkingCanvas',
@@ -707,6 +529,8 @@ export default {
     SvgIcon,
     VueDragResizeRotate,
     ParkingSpotEditDialog,
+    ParkingSpotHead,
+    ParkingSpotInfo,
   },
   props: {
     floorPlan: {
@@ -917,19 +741,6 @@ export default {
     const householdCache = new Map(); // unitId → household（同一次開啟畫布內快取，避免重複查詢）
     let householdFetchSeq = 0;
 
-    const hasDealInfo = (data) => {
-      if (!data || props.contextMode !== 'sales') return false;
-      const tier = getSpotTier(data);
-      if (tier === 'signed' || tier === 'booked') return true;
-      if (data.status_backend === '已售') return true;
-      const sp = Array.isArray(data.salesperson) ? data.salesperson.length : !!data.salesperson;
-      return !!(data.buyerUnitId || data.buyerName || sp);
-    };
-    const dealSalespersons = (data) => {
-      const own = formatSalespersons(data?.salesperson, '、', '');
-      if (own) return own;
-      return formatSalespersons(linkedHousehold.value?.salesperson, '、', '—');
-    };
     // Firestore Timestamp／Date／字串 統一轉 YYYY/MM/DD
     const formatDealDate = (raw) => {
       if (!raw) return '';
@@ -954,7 +765,7 @@ export default {
     const loadLinkedHousehold = async (data) => {
       linkedHousehold.value = null;
       const unitId = data?.buyerUnitId;
-      if (!unitId || !props.projectId || !hasDealInfo(data)) return;
+      if (!unitId || !props.projectId || props.contextMode !== 'sales') return;
       const seq = ++householdFetchSeq;
       if (householdCache.has(unitId)) {
         linkedHousehold.value = householdCache.get(unitId);
@@ -1006,27 +817,11 @@ export default {
       closeDetailModal();
     };
 
-    const getDetailStatusStyle = (data) => {
-      const statusText = props.contextMode === 'sales' ? (data.status_backend || '預設') : (data.status || '預設');
-      const colors = {
-        '可售': { bg: '#dcfce7', text: '#166534' },
-        '已售': { bg: '#fee2e2', text: '#991b1b' },
-        '來賓車位': { bg: '#dbeafe', text: '#1e40af' },
-        '保留': { bg: '#fef3c7', text: '#92400e' },
-        '主管保留': { bg: '#e0e7ff', text: '#3730a3' },
-        '預設': { bg: '#f3f4f6', text: '#374151' }
-      };
-      const cs = colors[statusText] || colors['預設'];
-      return {
-        backgroundColor: cs.bg,
-        color: cs.text,
-        padding: '3px 10px',
-        borderRadius: '999px',
-        fontSize: '12px',
-        fontWeight: '600',
-        letterSpacing: '0.01em'
-      };
-    };
+    // 資訊卡標題列色調：銷控模式依確定度層級，報價模式依報價狀態
+    const detailTone = computed(() => {
+      const data = selectedDetailSpot.value?.parkingData;
+      return props.contextMode === 'sales' ? backendTone(data?.status_backend, props.tierOverrides) : quoteTone(data?.status);
+    });
 
     // Methods
     const fitToScreen = () => {
@@ -1751,15 +1546,15 @@ export default {
       multiSelectedIds, marqueeRect, onMarqueeStart, handleSpotDeactivated,
       scrollAreaRef, isPanning, onScrollAreaMouseDown,
       getSpotLayouts, loadSpotLayouts, updateSpotProperty, closePropertiesPanel: () => selectedSpot.value = null, deleteSelectedSpot, openImportModal, closeImportModal, confirmImport, switchDisplayMode, handleSpotActivated, onBgImageLoad, getSpotStyle, getDisplayFields, getSpotTextStyle, canvasScale, fitToScreen, handleTransform, handleTransformStop, showAdjustAllPanel, adjustAllWidth, adjustAllHeight, openAdjustAllPanel, closeAdjustAllPanel: () => showAdjustAllPanel.value = false, applyAdjustAll, availableFloorPlans, switchFloor, zoomIn, zoomOut, zoomSliderMin, zoomSliderMax, onZoomSlider, isCanvasLoading, propertiesPanelStyle, onPropertiesPanelDragStart,
-      showDetailModal, selectedDetailSpot, handleSpotClick, closeDetailModal, getDetailStatusStyle,
-      linkedHousehold, linkedHouseholdLoading, hasDealInfo, dealSalespersons, dealTimeline, formatDealDate,
+      showDetailModal, selectedDetailSpot, handleSpotClick, closeDetailModal, detailTone,
+      linkedHousehold, linkedHouseholdLoading, dealTimeline, formatDealDate,
       isQuoteSpotAdded, isQuoteSpotSelectable, addSpotToQuote, removeSpotFromQuote, isQuotedSpot,
       canEditParking, showParkingEditDialog, openParkingEditDialog, handleParkingEditSaved,
       getSpotTier, getSpotTierMeta, isSpotHeld, isSpotBooked, getSpotHold,
       formatSalespersons,
       canvasWidth, canvasHeight,
       showPrintDialog, printOrientation, recommendedOrientation, printModeLabel, openPrintDialog, closePrintDialog, doPrint,
-      mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus, mdiFitToScreenOutline, mdiPrinter, mdiPencil, mdiCheck, mdiCarSide, mdiCheckBold, mdiEyeOutline, mdiEyeOffOutline,
+      mdiDownload, mdiLoading, mdiClose, mdiTrashCanOutline, mdiArrowExpandAll, mdiMinus, mdiPlus, mdiFitToScreenOutline, mdiPrinter, mdiPencil, mdiCheck, mdiCheckBold, mdiEyeOutline, mdiEyeOffOutline,
       onCanvasWheel
     }
   }
@@ -1847,7 +1642,6 @@ export default {
   height: 14px;
   display: block;
 }
-.info-section--hold .section-title { color: #b26a00; }
 .parking-canvas-container {
   position: relative;
   width: 100%;
@@ -2444,8 +2238,12 @@ export default {
 }
 
 .detail-modal-content {
-  max-width: 440px !important;
-  width: 92% !important;
+  max-width: 540px !important;
+  width: 94% !important;
+  max-height: 92vh;
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
   border-radius: 14px !important;
   box-shadow:
     0 0 0 0.5px rgba(0, 0, 0, 0.12),
@@ -2466,44 +2264,20 @@ export default {
 
 .detail-header {
   min-height: 52px;
-  padding: 10px 10px 10px 16px !important;
+  flex: 0 0 auto;
+  padding: 12px 12px 12px 18px !important;
   background: #f6f6f8;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
   gap: 8px;
 }
 
-.detail-header > .d-flex:first-child {
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 8px !important;
-}
-
-.detail-title-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  background: linear-gradient(180deg, #2b8cf2, #0a6fdc);
-  color: #fff;
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.3);
-  flex: 0 0 auto;
-}
-
-.detail-header h3.detail-title {
-  font-size: 16px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0;
-  color: #1d1d1f;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
+.detail-modal-content.is-editing { visibility: hidden; }
 
 .detail-body {
-  padding: 14px 16px 4px !important;
-  max-height: calc(90vh - 52px - 70px);
+  padding: 16px 18px 2px !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   background: #fff;
 }
@@ -2537,76 +2311,6 @@ export default {
   color: #0071e3;
 }
 
-/* 分組：標題在群組上方，列以灰底圓角群組呈現（比照 macOS 系統設定的 inset grouped list） */
-.info-section {
-  padding: 0 0 12px;
-  border-bottom: 0;
-}
-
-.info-section:last-child {
-  padding-bottom: 12px;
-}
-
-.section-title {
-  display: block;
-  margin: 0 0 5px 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #6e6e73;
-  letter-spacing: 0.02em;
-  text-transform: none;
-}
-
-.section-title::before {
-  content: none;
-}
-
-.info-row {
-  position: relative;
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  padding: 9px 12px;
-  background: #f5f5f7;
-  border-bottom: 0;
-}
-.info-row::after {
-  content: '';
-  position: absolute;
-  left: 12px;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: rgba(0, 0, 0, 0.07);
-}
-.info-row:nth-child(2) { border-radius: 10px 10px 0 0; }
-.info-row:last-child { border-radius: 0 0 10px 10px; }
-.info-row:nth-child(2):last-child { border-radius: 10px; }
-.info-row:last-child::after { display: none; }
-
-.info-label {
-  color: #6e6e73;
-  font-size: 13px;
-  font-weight: 500;
-  flex: 0 0 auto;
-}
-
-.info-value {
-  font-weight: 600;
-  font-size: 14px;
-  color: #1d1d1f;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-.info-value--muted { color: #8e8e93; font-weight: 500; }
-.info-value--wrap { white-space: pre-wrap; text-align: left; flex: 1 1 auto; font-weight: 500; }
-.info-link { color: #0071e3; text-decoration: none; }
-.info-link:hover { text-decoration: underline; }
-.section-title-hint { margin-left: 6px; font-weight: 500; color: #8e8e93; }
-
 /* 報價模式底部：為『戶別』加入此車位 */
 .detail-foot {
   padding: 12px 16px;
@@ -2638,7 +2342,8 @@ export default {
 }
 
 @media (max-width: 600px) {
-  .detail-modal-content { border-radius: 12px !important; }
+  /* 上下各留 54px：避開左上角全站漢堡鈕 */
+  .detail-modal-content { border-radius: 12px !important; max-height: calc(100vh - 108px); max-height: calc(100dvh - 108px); }
   .detail-body { padding: 12px 12px 2px !important; }
   .detail-foot { padding: 10px 12px; }
 }

@@ -38,6 +38,7 @@ export function toDateKey(value) {
   let d = value;
   if (typeof value.toDate === 'function') d = value.toDate();
   else if (typeof value.seconds === 'number') d = new Date(value.seconds * 1000);
+  else if (typeof value._seconds === 'number') d = new Date(value._seconds * 1000);
   if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
