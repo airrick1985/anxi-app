@@ -46,6 +46,9 @@
                   <div class="step-section-header mb-4">
                     <v-icon class="mr-2" color="primary">mdi-home-search-outline</v-icon>
                     <span class="text-h6 font-weight-bold">選擇戶別</span>
+                    <v-chip v-if="presetLabel" class="ml-auto font-weight-bold" color="primary" variant="tonal" label>
+                      <v-icon start size="16">mdi-calendar-clock-outline</v-icon>{{ presetLabel }}
+                    </v-chip>
                   </div>
 
                   <v-text-field
@@ -628,7 +631,7 @@ import { useDate } from 'vuetify';
 import { watchDebounced } from '@vueuse/core';
 import VueDatePicker from '@vuepic/vue-datepicker'; // ✓ 新增
 import '@vuepic/vue-datepicker/dist/main.css';      // ✓ 新增
-import { format } from 'date-fns';                 // ✓ 新增
+import { format, parseISO } from 'date-fns';
 
 import AppointmentDetailsDialog from '@/components/AppointmentDetailsDialog.vue';
 import DynamicFormRenderer from '@/components/DynamicFormRenderer.vue';
@@ -653,6 +656,9 @@ const props = defineProps({
   projectId: { type: String, required: true },
   // [新增] 開啟時若帶入此戶號，會自動完成步驟一的戶別選取，直接進入後續步驟
   preselectedUnitId: { type: String, default: '' },
+  // 開啟時帶入的預約日期（yyyy-MM-dd）與時段（HH:mm），由預約時間表點格子帶入
+  presetDate: { type: String, default: '' },
+  presetTimeSlot: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:modelValue', 'booking-success']);
@@ -898,12 +904,6 @@ const showHistoryDetails = (appointment) => {
   isDetailsDialogVisible.value = true;
 };
 
-const getDateType = (date) => {
-  const dateStr = date instanceof Date ? date.toISOString().split('T')[0] : date;
-  const dayData = calendarData.value.find(d => d.date === dateStr);
-  return dayData ? dayData.type : 'no_batch';
-};
-
 const calendarData = ref([]);
 const dateSelectionAlert = reactive({ show: false, type: 'info', text: '' });
 const availableTimeSlots = ref([]);
@@ -912,6 +912,10 @@ const isOverbooking = ref(false);
 const isOverbookingConfirmDialogVisible = ref(false);
 const overbookingDetails = reactive({ date: '', time: '' });
 const timeSlotError = ref('');
+// 已選定日期（帶入或使用者點選）：換戶別時要重新比對批次提示
+const isDateChosen = ref(false);
+// 尚未套用的帶入時段：進到步驟二、該日時段載入後才套用
+const pendingPresetTime = ref('');
 
 const manualTimeRule = (v) => {
     if (!v) return true; // 允許為空 (如果選擇了 chip)
@@ -925,6 +929,13 @@ const canEdit = computed(() => userStore.hasProjectPermission('驗屋預約管�
 const dialogModel = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val),
+});
+
+const presetLabel = computed(() => {
+  const d = formStep2.appointmentDate;
+  if (!props.presetDate || !d) return '';
+  const time = formStep2.manualTimeSlot || formStep2.appointmentTimeSlot || pendingPresetTime.value;
+  return `${format(d, 'M/d')}(${'日一二三四五六'[d.getDay()]})${time ? ` ${time}` : ''}`;
 });
 
 // 取得戶別對應某 type 的批次代碼（優先 customBatches、再 fallback 到初驗/複驗的固定欄位）
@@ -1076,6 +1087,10 @@ const resetState = () => {
     dateSelectionAlert.show = false;    
     availableTimeSlots.value = [];
     isOverbooking.value = false;
+    isDateChosen.value = false;
+    pendingPresetTime.value = '';
+    slotsRequestId++; // 作廢尚未回來的時段查詢
+    isFetchingSlots.value = false;
 };
 
 watch(() => formStep2.bookingType, (newVal) => {
@@ -1196,6 +1211,7 @@ const onUnitChange = async (unitId) => {
     if (calendarRes.status === 'success') {
       calendarData.value = calendarRes.data; // 後端已回傳 'YYYY-MM-DD' 字串
     }
+    if (isDateChosen.value) updateDateAlert();
 
   } catch (error) {
     console.error(`載入戶別 ${unitId} 詳細資料失敗:`, error);
@@ -1213,15 +1229,12 @@ const syncBuyerData = () => {
   }
 };
 
-const onDateChange = async (date) => {
-  formStep2.appointmentTimeSlot = null;
-  isOverbooking.value = false;
+// 依戶別批次檢查所選日期，顯示提示
+const updateDateAlert = () => {
+  const date = formStep2.appointmentDate;
   dateSelectionAlert.show = false;
-  isFetchingSlots.value = true; // ✓ 開始載入
-  availableTimeSlots.value = []; // ✓ 先清空舊時段
-
-  const dateStr = date.toISOString().split('T')[0];
-  const selectedDayData = calendarData.value.find(d => d.date === dateStr);
+  if (!date) return;
+  const selectedDayData = calendarData.value.find(d => d.date === format(date, 'yyyy-MM-dd'));
   const formattedDate = dateAdapter.format(date, 'keyboardDate');
 
   if (selectedDayData?.type === 'other_batch') {
@@ -1233,17 +1246,65 @@ const onDateChange = async (date) => {
     dateSelectionAlert.type = 'error';
     dateSelectionAlert.text = `${formattedDate} 尚未建立可預約日期批次，請確保選擇日期正確。`;
   }
-
-  try {
-    const slots = await getSlotsForAdmin(props.projectId, dateStr);
-    availableTimeSlots.value = slots.map(s => ({ title: s, value: s.split(' ')[0] }));
-  } catch(e) {
-    console.error("獲取時段失敗:", e);
-    availableTimeSlots.value = [];
-  } finally {
-    isFetchingSlots.value = false; // ✓ 載入結束 (無論成功或失敗)
-  }
 };
+
+let slotsRequestId = 0; // 連續換日期時只採用最後一次的結果
+const loadSlots = async (date) => {
+  const requestId = ++slotsRequestId;
+  isFetchingSlots.value = true;
+  availableTimeSlots.value = []; // 先清空舊時段
+  let slots = [];
+  try {
+    slots = await getSlotsForAdmin(props.projectId, format(date, 'yyyy-MM-dd'));
+  } catch (e) {
+    console.error("獲取時段失敗:", e);
+  }
+  if (requestId !== slotsRequestId) return;
+  availableTimeSlots.value = (slots || []).map(s => ({ title: s, value: s.split(' ')[0] }));
+  isFetchingSlots.value = false;
+};
+
+const onDateChange = (date) => {
+  formStep2.appointmentTimeSlot = null;
+  isOverbooking.value = false;
+  pendingPresetTime.value = '';
+  // 帶入的手動時段只適用原日期，換日期後重選（自行輸入的不清）
+  if (props.presetTimeSlot && formStep2.manualTimeSlot === props.presetTimeSlot) formStep2.manualTimeSlot = '';
+  if (!date) {
+    dateSelectionAlert.show = false;
+    slotsRequestId++;
+    isFetchingSlots.value = false;
+    availableTimeSlots.value = [];
+    return;
+  }
+  isDateChosen.value = true;
+  // v-model 與此事件的先後不定，先寫入再比對
+  formStep2.appointmentDate = date;
+  updateDateAlert();
+  return loadSlots(date);
+};
+
+// 帶入時間表點選的日期與時段
+const applyPreset = () => {
+  if (!props.presetDate) return;
+  const date = parseISO(props.presetDate);
+  if (isNaN(date.getTime())) return;
+  formStep2.appointmentDate = date;
+  isDateChosen.value = true;
+  pendingPresetTime.value = /^\d{2}:\d{2}$/.test(props.presetTimeSlot) ? props.presetTimeSlot : '';
+  loadSlots(date);
+};
+
+// 該日批次有這個時段就選取，沒有就填入手動時段（額滿確認在步驟二才跳出）
+watch([step, isFetchingSlots], () => {
+  if (!pendingPresetTime.value || step.value !== 2 || isFetchingSlots.value) return;
+  const time = pendingPresetTime.value;
+  pendingPresetTime.value = '';
+  if (formStep2.appointmentTimeSlot || formStep2.manualTimeSlot) return;
+  if (availableTimeSlots.value.some(s => s.value === time)) formStep2.appointmentTimeSlot = time;
+  else formStep2.manualTimeSlot = time;
+});
+
 const onTimeSlotChange = (selectedSlot) => {
     isOverbooking.value = false;
 
@@ -1437,6 +1498,7 @@ watch(() => projectStore.isLoading, (newVal) => {
 watch(() => props.modelValue, async (newVal) => {
     if (newVal) {
         // 當對話框打開時，載入初始資料
+        applyPreset();
         await loadInitialData();
         // [新增] 若有預先指定的戶號，自動完成步驟一的戶別選擇，直接進入後續流程
         if (props.preselectedUnitId) {
@@ -1532,6 +1594,8 @@ watch(() => props.modelValue, async (newVal) => {
 .step-section-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 0;
   padding-bottom: 8px;
   border-bottom: 2px solid rgba(25, 118, 210, 0.18);
 }

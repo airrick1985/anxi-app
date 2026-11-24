@@ -1,6 +1,6 @@
 <template>
   <v-container fluid class="pa-1 pa-sm-4">
-    <v-card class="pa-2 pa-sm-4">
+    <v-card class="pa-2 pa-sm-4 ic-root-card">
 
 
       <div v-if="isLoading" class="d-flex flex-column gap-4">
@@ -240,7 +240,7 @@
           icon="mdi-calendar-plus"
           variant="text"
           color="black"
-          @click="isAdminAddDialogVisible = true"
+          @click="openAddBooking()"
         ></v-btn>
       </template>
     </v-tooltip>
@@ -485,6 +485,8 @@
               <v-icon size="small" color="primary" class="mr-1">mdi-calendar-today</v-icon>
               <span class="font-weight-bold">{{ selectedMobileDateLabel }}</span>
               <v-chip size="x-small" color="primary" variant="tonal" class="ml-2" label>{{ mobileSelectedDayCount }} 筆</v-chip>
+              <button v-if="canEdit && selectedMobileDate" type="button" class="ic-add-btn ic-add-btn--day" title="新增預約"
+                @click="openAddBooking(selectedMobileDate)"><i class="mdi mdi-plus"></i>新增</button>
             </div>
             <!-- 每日名額摘要（手機版：點擊開啟明細） -->
             <div v-if="(dailyQuotaByDate[selectedMobileDate] || []).length" class="mobile-quota-strip">
@@ -525,7 +527,11 @@
                 <p class="mt-2">這一天沒有符合條件的預約</p>
               </div>
               <div v-for="slot in mobileSlotsForSelectedDay" :key="slot.time" class="mobile-slot">
-                <div class="mobile-slot-time"><v-icon size="x-small" class="mr-1">mdi-clock-outline</v-icon>{{ slot.time }}</div>
+                <div class="mobile-slot-time">
+                  <v-icon size="x-small" class="mr-1">mdi-clock-outline</v-icon>{{ slot.time }}
+                  <button v-if="canEdit" type="button" class="ic-add-btn ic-add-btn--slot" :title="`新增 ${slot.time} 預約`"
+                    @click="openAddBooking(selectedMobileDate, slot.time)"><i class="mdi mdi-plus"></i></button>
+                </div>
                 <div class="mobile-slot-events">
                   <div
                     v-for="event in slot.events"
@@ -567,10 +573,12 @@
               <p class="mt-2">這一週沒有符合條件的預約</p>
             </div>
             <template v-for="day in mobileDates" :key="day.key">
-              <div v-if="day.count > 0 || (calendarNotesByDate[day.key] || []).length || (dailyQuotaByDate[day.key] || []).length" class="mobile-week-day">
+              <div v-if="day.count > 0 || showEmptyWeekDays || (calendarNotesByDate[day.key] || []).length || (dailyQuotaByDate[day.key] || []).length" class="mobile-week-day">
                 <div class="mobile-week-day-header" :class="{ 'is-today': day.isToday }">
                   <span class="font-weight-bold">{{ day.dateLabel }}（{{ day.dowLabel }}）</span>
                   <v-chip size="x-small" color="primary" variant="tonal" class="ml-2" label>{{ day.count }} 筆</v-chip>
+                  <button v-if="canEdit" type="button" class="ic-add-btn ic-add-btn--day" :title="`新增 ${day.dateLabel} 預約`"
+                    @click="openAddBooking(day.key)"><i class="mdi mdi-plus"></i>新增</button>
                 </div>
                 <!-- 每日名額摘要（手機週檢視：點擊開啟明細） -->
                 <div v-if="(dailyQuotaByDate[day.key] || []).length" class="mobile-quota-strip">
@@ -606,7 +614,11 @@
                   </div>
                 </div>
                 <div v-for="slot in slotsForDate(day.key)" :key="day.key + slot.time" class="mobile-slot">
-                  <div class="mobile-slot-time"><v-icon size="x-small" class="mr-1">mdi-clock-outline</v-icon>{{ slot.time }}</div>
+                  <div class="mobile-slot-time">
+                    <v-icon size="x-small" class="mr-1">mdi-clock-outline</v-icon>{{ slot.time }}
+                    <button v-if="canEdit" type="button" class="ic-add-btn ic-add-btn--slot" :title="`新增 ${slot.time} 預約`"
+                      @click="openAddBooking(day.key, slot.time)"><i class="mdi mdi-plus"></i></button>
+                  </div>
                   <div class="mobile-slot-events">
                     <div
                       v-for="event in slot.events"
@@ -646,7 +658,7 @@
         <!-- 桌機版：多日時間表 -->
         <div v-else id="custom-calendar-container">
           <div v-for="(chunk, index) in dateChunks" :key="index" class="mb-8 table-chunk">
-            <h3 class="text-h6 mb-2">
+            <h3 class="text-h6 mb-2 ic-chunk-title">
               　 {{ projectName }} - 時間表: {{ format(chunk[0].dateObj, 'yyyy/MM/dd') }} - {{ format(chunk[chunk.length - 1].dateObj, 'yyyy/MM/dd') }}
             </h3>
             <v-table class="custom-calendar-table">
@@ -745,7 +757,11 @@
         </v-menu>
       </th>
                   <th v-for="day in chunk" :key="day.fullDate" class="day-header" :class="{ 'today-column': day.isToday, 'weekend-column': day.isWeekend }">
-                    <div v-if="day.isInRange">{{ day.dateLabel }}</div>
+                    <div v-if="day.isInRange" class="ic-day-head">
+                      {{ day.dateLabel }}
+                      <button v-if="canEdit" type="button" class="ic-add-btn ic-add-btn--head" :title="`新增 ${day.dateLabel} 預約`"
+                        @click="openAddBooking(day.fullDate)"><i class="mdi mdi-plus"></i></button>
+                    </div>
                   </th>
                 </tr>
                 <!-- 每日名額摘要：日期標題下第一列（該週無批次名額時不顯示；可整列隱藏） -->
@@ -868,7 +884,8 @@
                   <td class="time-cell">
                     {{ timeSlot }}<v-icon v-if="addedTimeSlots.has(timeSlot)" size="x-small" color="orange-darken-2" class="ml-1" title="未勾選，有預約">mdi-auto-fix</v-icon>
                   </td>
-                  <td v-for="day in chunk" :key="day.fullDate" :data-cell="`${day.fullDate} ${timeSlot}`" :class="['event-cell', { 'disabled-cell': !day.isInRange, 'today-column': day.isToday, 'weekend-column': day.isWeekend }]">
+                  <td v-for="day in chunk" :key="day.fullDate" :data-cell="`${day.fullDate} ${timeSlot}`" :class="['event-cell', { 'disabled-cell': !day.isInRange, 'ic-addable': canEdit && day.isInRange, 'today-column': day.isToday, 'weekend-column': day.isWeekend }]"
+                    @click="handleCellClick($event, day, timeSlot)">
                     <div v-if="day.isInRange" class="event-cell-content">
                       <div v-if="groupedEvents[day.fullDate] && groupedEvents[day.fullDate][timeSlot]">
                         <div
@@ -960,6 +977,8 @@
       v-if="isAdminAddDialogVisible"
       v-model="isAdminAddDialogVisible"
       :project-id="projectId"
+      :preset-date="addBookingPreset.date"
+      :preset-time-slot="addBookingPreset.time"
       @booking-success="handleBookingSuccess"
     />
 
@@ -1035,11 +1054,15 @@
               <div class="quota-detail-table">
                 <div v-for="s in row.slots" :key="s.time" class="quota-detail-line">
                   <span class="quota-detail-key">{{ s.time }}</span>
-                  <span class="font-weight-bold">
-                    {{ s.booked }}/{{ s.capacity }}
-                    <span :style="{ color: s.capacity - s.booked <= 0 ? '#E53935' : '#2E9E6B' }">
-                      {{ s.capacity - s.booked <= 0 ? '額滿' : `剩 ${s.capacity - s.booked}` }}
+                  <span class="font-weight-bold d-inline-flex align-center">
+                    <span>
+                      {{ s.booked }}/{{ s.capacity }}
+                      <span :style="{ color: s.capacity - s.booked <= 0 ? '#E53935' : '#2E9E6B' }">
+                        {{ s.capacity - s.booked <= 0 ? '額滿' : `剩 ${s.capacity - s.booked}` }}
+                      </span>
                     </span>
+                    <button v-if="canEdit" type="button" class="ic-add-btn ic-add-btn--quota" :title="`新增 ${s.time} 預約`"
+                      @click="addBookingFromQuota(s.time)"><i class="mdi mdi-plus"></i></button>
                   </span>
                 </div>
               </div>
@@ -1896,7 +1919,7 @@
       <span>{{ totalFilterCount > 0 ? '篩選中' : '篩選' }}</span>
     </v-btn>
 
-    <v-btn v-if="canEdit" @click="isAdminAddDialogVisible = true"> <v-icon>mdi-calendar-plus</v-icon>
+    <v-btn v-if="canEdit" @click="openAddBooking()"> <v-icon>mdi-calendar-plus</v-icon>
       <span>新增</span>
     </v-btn>
 
@@ -2149,6 +2172,7 @@ const loadedWeeks = ref(new Set()); // 用來記錄哪些週的開始日期已�
 
 const isDialogVisible = ref(false);
 const isAdminAddDialogVisible = ref(false);
+const addBookingPreset = reactive({ date: '', time: '' }); // 新增預約帶入的日期（yyyy-MM-dd）、時段（HH:mm）
 const isLeaveManagerVisible = ref(false); // 驗屋人員排休管理
 const inspectorLeaveRecords = ref([]); // 目前日期範圍內的排休/備註
 const inspectorLeaveMap = computed(() => buildLeaveMap(inspectorLeaveRecords.value).leaveMap);
@@ -3941,6 +3965,31 @@ function handleCustomEventClick(event) {
   isDialogVisible.value = true;
 }
 
+// 開啟新增預約；由時間表的日期、時段點入時帶入
+function openAddBooking(date = '', time = '') {
+  if (!canEdit.value) return;
+  addBookingPreset.date = date;
+  addBookingPreset.time = /^\d{1,2}:\d{2}$/.test(time) ? time.padStart(5, '0') : '';
+  isAdminAddDialogVisible.value = true;
+}
+
+// 點時段格空白處新增（點到預約卡片、或正在選取文字時不處理）
+function handleCellClick(e, day, timeSlot) {
+  if (!canEdit.value || !day.isInRange) return;
+  if (e.target.closest('.event-item')) return;
+  if (window.getSelection()?.toString()) return;
+  openAddBooking(day.fullDate, timeSlot);
+}
+
+function addBookingFromQuota(time) {
+  const date = quotaDetailDate.value;
+  isQuotaDetailVisible.value = false;
+  openAddBooking(date, toSlotTime(time));
+}
+
+// 手機週檢視：一週內沒有預約的日期也列出，才能新增（自選較長區間時不列）
+const showEmptyWeekDays = computed(() => canEdit.value && mobileDates.value.length <= 7);
+
 // ✅ 11. 修改 handleRequestCalendarData
 async function handleRequestCalendarData(payload) {
   const { unitId } = payload;
@@ -5480,10 +5529,33 @@ function navigateToHouseholdGrid() {
   border-radius: 4px;
   max-height: 75vh; 
 }
+/* v-card、v-layout 的 overflow: hidden 會讓手機版日期標題與頂欄無法固定；clip 一樣裁切但不形成捲動框 */
+.ic-root-card {
+  overflow: visible;
+}
+@media (max-width: 599.98px) {
+  .v-layout:not(.v-application):has(.mobile-agenda) {
+    overflow: clip !important; /* Vuetify 對巢狀 v-layout 寫行內 overflow: hidden */
+  }
+}
+/* 捲動統一由 #custom-calendar-container 負責，凍結的日期列與時間欄才會相對同一個容器 */
+.table-chunk {
+  width: max-content;
+  min-width: 100%;
+}
+.custom-calendar-table > .v-table__wrapper {
+  overflow: visible;
+}
+/* 左右捲動時標題留在原位 */
+.ic-chunk-title {
+  position: sticky;
+  left: 0;
+  width: fit-content;
+}
 
 .custom-calendar-table {
   table-layout: fixed;
-  border-collapse: collapse;
+  border-collapse: separate; /* collapse 的框線不會跟著凍結列移動 */
   --v-table-header-height: 28px; /* 日期標題列更緊湊（Vuetify 預設 56px；內容較高的名額/備註列仍會自動撐開） */
 }
 
@@ -5516,8 +5588,12 @@ function navigateToHouseholdGrid() {
 /* 基礎儲存格 */
 .custom-calendar-table th, 
 .custom-calendar-table td {
-  border: 1px solid var(--border-color);
+  border: 0 solid var(--border-color);
+  border-width: 0 1px 1px 0;
   padding: 4px;
+}
+.custom-calendar-table thead tr:first-child th {
+  border-top-width: 1px;
 }
 .time-header, .time-cell, .day-header {
   vertical-align: middle;
@@ -5560,12 +5636,106 @@ function navigateToHouseholdGrid() {
   z-index: 4;
   box-shadow: 2px 2px 5px -2px rgba(0,0,0,0.15);
 }
+/* 日期列往下捲動時壓在名額、備註列與時間欄之上 */
+.custom-calendar-table thead tr:first-child th {
+  z-index: 5;
+}
+.custom-calendar-table thead tr:first-child th:first-child {
+  z-index: 6;
+}
 
 /* --- 視覺優化樣式 (維持不變) --- */
 .event-cell {
   height: 120px;
   vertical-align: top;
 }
+/* 點空白處新增預約 */
+.event-cell.ic-addable {
+  cursor: pointer;
+}
+.ic-addable .event-cell-content::after {
+  content: '＋ 新增';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  border: 1px dashed #90caf9;
+  border-radius: 6px;
+  background-color: rgba(25, 118, 210, 0.06);
+  color: #1976d2;
+  font-size: 0.8rem;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.ic-addable .event-cell-content:not(:has(.event-item))::after {
+  height: 108px;
+}
+@media (hover: hover) {
+  .ic-addable:hover:not(:has(.event-item:hover)) .event-cell-content::after {
+    opacity: 1;
+  }
+}
+/* 觸控裝置沒有 hover，改為淡淡顯示 */
+@media (hover: none) {
+  .ic-addable .event-cell-content::after {
+    content: '＋';
+    border-color: transparent;
+    background-color: transparent;
+    opacity: 0.4;
+  }
+}
+.ic-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 6px;
+  color: #1976d2;
+  background-color: rgba(25, 118, 210, 0.1);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ic-add-btn:hover {
+  background-color: rgba(25, 118, 210, 0.2);
+}
+.ic-add-btn:focus-visible {
+  outline: 2px solid #1976d2;
+  outline-offset: 1px;
+}
+.ic-add-btn--head {
+  width: 20px;
+  height: 20px;
+  font-size: 0.95rem;
+}
+.ic-add-btn--day {
+  margin-left: auto;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 0.875rem;
+}
+.ic-add-btn--slot {
+  margin-left: auto;
+  width: 40px;
+  height: 32px;
+  font-size: 1.1rem;
+}
+.ic-add-btn--quota {
+  margin-left: 8px;
+  width: 36px;
+  height: 30px;
+  font-size: 1.05rem;
+}
+.custom-calendar-table .day-header .ic-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 /* 日期標題列更緊湊：縮小上下留白與字級 */
 .custom-calendar-table thead tr:first-child th {
   padding-top: 1px;
@@ -5685,6 +5855,7 @@ function navigateToHouseholdGrid() {
 }
 .quota-detail-line {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 4px 8px;
@@ -6078,6 +6249,14 @@ function navigateToHouseholdGrid() {
   padding: 8px 4px;
   border-bottom: 2px solid #1976d2;
   font-size: 1rem;
+}
+/* 手機版往下滑時日期標題固定在上方；--page-sticky-top 為頁面固定頂欄高度 */
+.mobile-day-header,
+.mobile-week-day-header {
+  position: sticky;
+  top: calc(var(--v-layout-top, 0px) + var(--page-sticky-top, 0px));
+  z-index: 4;
+  background-color: #fff;
 }
 .mobile-agenda-list {
   padding-bottom: 96px; /* 預留底部浮動工具列空間 */

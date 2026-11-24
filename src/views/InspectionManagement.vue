@@ -350,6 +350,12 @@ onMounted(() => {
 .inspection-layout {
   position: relative;
 }
+/* 手機頂欄（.mobile-topbar）高度，供頁面內固定的標題避開 */
+@media (max-width: 959.98px) {
+  .inspection-layout {
+    --page-sticky-top: 44px;
+  }
+}
 
 .inspection-drawer :deep(.v-list-item--active) {
   font-weight: 600;
