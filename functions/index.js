@@ -32163,6 +32163,9 @@ const scheduledUpdates = require('./scheduledUpdates');
 exports.scheduledUpdateApi = scheduledUpdates.scheduledUpdateApi;
 exports.runScheduledUpdates = scheduledUpdates.runScheduledUpdates;
 
+// 驗屋預約戶別資料總表：手動同步銷控戶別資料（比對預覽後只寫入勾選的差異）。
+exports.syncInspectionFromSales = require('./inspectionSalesSync').syncInspectionFromSales;
+
 // 賞屋預約加入行事曆：Apple 裝置回傳 .ics，其他裝置轉到 Google 日曆。
 exports.viewingReservationCalendar = require('./viewingReservationCalendar').viewingReservationCalendar;
 exports.viewingReservationReminder = require('./viewingReservationReminder').viewingReservationReminder;

@@ -337,7 +337,7 @@
     </v-row>
     <div v-if="!isDateValid" class="text-caption text-error">請輸入正確的日期格式</div>
 </v-col>
-            <v-text-field label="EMAIL" v-model="editableData.buyerEmail" type="email" class="mb-4"></v-text-field>
+            <v-text-field label="買方EMAIL" v-model="editableData.buyerEmail" type="email" class="mb-4"></v-text-field>
             
             <div>
               <label class="form-label">通訊地址</label>

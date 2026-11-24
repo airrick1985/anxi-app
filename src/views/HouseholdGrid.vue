@@ -37,6 +37,9 @@
       <button type="button" class="mac-icon-btn" title="自訂欄位" aria-label="自訂欄位" @click="openFieldDefinitionDialog">
         <v-icon size="20">mdi-table-column-plus-after</v-icon>
       </button>
+      <button type="button" class="mac-icon-btn" title="同步銷控資料" aria-label="同步銷控資料" @click="openSalesSyncDialog()">
+        <v-icon size="20">mdi-database-sync-outline</v-icon>
+      </button>
       <button type="button" class="mac-icon-btn" title="下載戶別資料" aria-label="下載戶別資料" @click="exportDialog = true">
         <v-icon size="20">mdi-download</v-icon>
       </button>
@@ -205,6 +208,17 @@
    :reserved-names="reservedFieldInfo.names"
    :reserved-keys="reservedFieldInfo.keys"
    @notify="showCustomFieldNotice"
+ />
+
+ <!-- 同步銷控資料（手動比對後寫入勾選的差異） -->
+ <SalesSyncDialog
+   v-if="salesSyncMounted"
+   v-model="isSalesSyncOpen"
+   :project-id="projectId"
+   :user-key="userStore.user?.key || ''"
+   :unit-key="salesSyncUnit.key"
+   :unit-id="salesSyncUnit.unitId"
+   @notify="notify"
  />
 
 
@@ -388,6 +402,10 @@
             <v-progress-circular v-if="_isSavingModalEdits" indeterminate size="14" width="2"></v-progress-circular>
             <v-icon v-else size="16">{{ isModalEditMode ? 'mdi-content-save-outline' : 'mdi-pencil-outline' }}</v-icon>
             <span>{{ isModalEditMode ? '儲存並退出' : '進入編輯' }}</span>
+         </button>
+         <!-- 編輯中不提供：同步會更新資料並蓋掉還沒儲存的內容 -->
+         <button v-if="!isModalEditMode" type="button" class="mac-btn" title="將銷控資料同步到此戶別" @click.stop="openSalesSyncDialog(selectedHouseholdForDetail)">
+            <v-icon size="16">mdi-database-sync-outline</v-icon><span>同步銷控資料</span>
          </button>
          <button type="button" class="mac-btn" title="為此戶別新增預約（後台代填）" @click.stop="openAdminAddBookingForCurrentHousehold">
             <v-icon size="16">mdi-calendar-plus</v-icon><span>新增預約</span>
@@ -1042,6 +1060,7 @@ import { buildCustomFieldColDef, customFieldKey, isNumericFieldType, excelNumber
 const HandoverControlBoard = defineAsyncComponent(() => import('@/components/household/HandoverControlBoard.vue'));
 // 面積找補：切換到該分頁才載入
 const AreaSettlementBoard = defineAsyncComponent(() => import('@/components/household/AreaSettlementBoard.vue'));
+const SalesSyncDialog = defineAsyncComponent(() => import('@/components/household/SalesSyncDialog.vue'));
 
 
 // --- Store 和路由 ---
@@ -1226,6 +1245,16 @@ const hasFieldsLoaded = ref(false);
 // 自訂欄位管理視窗（第一次開啟才建立）
 const isCustomFieldManagerOpen = ref(false);
 const customFieldManagerMounted = ref(false);
+// 同步銷控資料：第一次開啟才載入元件
+const salesSyncMounted = ref(false);
+const isSalesSyncOpen = ref(false);
+const salesSyncUnit = reactive({ key: '', unitId: '' }); // 有值＝只同步這一戶（戶別整合資訊）
+const openSalesSyncDialog = (household = null) => {
+  salesSyncUnit.key = household?._docId || '';
+  salesSyncUnit.unitId = String(household?.unitId || '');
+  salesSyncMounted.value = true;
+  isSalesSyncOpen.value = true;
+};
 
 // --- 處理預約資料的函數 ---
 /**
@@ -3800,7 +3829,7 @@ onUnmounted(() => {
    }
    .hdm-header { flex-wrap: wrap; padding: 8px 8px 8px 14px; cursor: default; }
    .hdm-close { order: 2; }
-   .hdm-actions { order: 3; width: 100%; justify-content: flex-end; }
+   .hdm-actions { order: 3; width: 100%; flex-wrap: wrap; justify-content: flex-end; }
    .hdm-content { padding: 0 12px 28px; }
    .hdm-field { flex-wrap: wrap; gap: 2px 12px; }
    .hdm-field > .hdm-label { flex-basis: 100%; font-size: 12px; }

@@ -4659,6 +4659,17 @@ export const uploadInspectionHouseholds = async (projectId, householdsData) => {
 }
 
 /**
+ * 戶別資料總表：手動同步銷控戶別資料。
+ * action 'preview' 回傳差異清單；'apply' 只寫入勾選的差異（changes）與新增戶別（additions）。
+ * 失敗時直接丟出錯誤，由呼叫端顯示。
+ */
+export const syncInspectionFromSales = async (payload) => {
+  const fn = httpsCallable(functions, 'syncInspectionFromSales', { timeout: 300000 });
+  const result = await fn(payload);
+  return result.data;
+};
+
+/**
  * 【新增】停用/刪除驗屋報告，並重命名 Google Drive 資料夾作廢
  * @param {object} data - { projectId, unitId, fileUrl, operatorName }
  * @returns {Promise<object>}

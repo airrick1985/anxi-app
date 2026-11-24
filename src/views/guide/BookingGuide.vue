@@ -322,7 +322,7 @@
               <div class="mk-row mk-between mk-pad">
                 <span class="mk-strong">範例建案 <span class="mk-muted">戶別資料總表</span></span>
                 <span class="mk-seg sm"><span class="on">戶別資料總表</span><span>交屋控管表</span><span>面積找補</span></span>
-                <span class="mk-icons"><i class="mdi mdi-table-column-plus-after"></i><i class="mdi mdi-download"></i><i class="mdi mdi-upload"></i></span>
+                <span class="mk-icons"><i class="mdi mdi-table-column-plus-after"></i><i class="mdi mdi-database-sync-outline"></i><i class="mdi mdi-download"></i><i class="mdi mdi-upload"></i></span>
               </div>
               <div class="mk-table">
                 <div class="mk-tr mk-th"><span>預約系統開關<b class="pin">1</b></span><span>戶號<b class="pin">2</b></span><span>買方姓名</span><span>初驗批次<b class="pin">3</b></span><span>初驗報告上傳開關</span></div>
@@ -346,6 +346,25 @@
             </table>
           </div>
           <div class="g-warn">欄位標題上的「全選」開關會<b>立即套用到全建案所有戶別</b>，不只篩選出來的戶。</div>
+
+          <h3>同步銷控資料</h3>
+          <p>有使用銷控系統的建案，可以把銷控的買方資料帶進戶別資料總表。只在按下同步時更新，不會自動同步，也不會改到銷控。</p>
+          <ol class="g-steps">
+            <li>標題列點 <i class="mdi mdi-database-sync-outline"></i>「<b>同步銷控資料</b>」，系統列出兩邊不同的地方。</li>
+            <li>上方選要同步的欄位：買方姓名、買方電話、買方Email、買方身分證(驗證碼)、銷售人員、車位、門牌。</li>
+            <li>清單逐戶顯示「目前的值 → 銷控的值」，不要更新的取消勾選。</li>
+            <li>按「<b>同步 N 戶</b>」。</li>
+          </ol>
+          <div class="g-table-wrap">
+            <table class="g-table">
+              <tbody>
+                <tr><td class="g-nowrap"><b>新增戶別</b></td><td>銷控有、總表沒有的戶別，勾選後建立；預約系統開關預設關閉</td></tr>
+                <tr><td class="g-nowrap"><b>清空已無買方的戶別</b></td><td>銷控該戶已經沒有買方（退戶、未售）時，清掉總表上的買方資料與車位；預設不勾</td></tr>
+                <tr><td class="g-nowrap"><b>未對應</b></td><td>總表有、銷控找不到的戶別，不會被更動</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="g-tip">銷控欄位空白時不會覆蓋總表；戶號補零（A1-02／A1-2）、電話連字號這類寫法不同視為相同。「買方身分證(驗證碼)」預設不同步，要用時再點選。</div>
 
           <h3>交屋控管表</h3>
           <p>左側選單「<b>交屋控管表</b>」，或在戶別資料管理標題列切換，依樓層 × 棟別顯示每戶目前進度，資料來自戶別資料與預約，隨時自動更新。</p>
@@ -433,6 +452,7 @@
           <p>點藍色<b>戶號</b>（或交屋控管表的格子）開啟，可看這戶的預約、報告、授權書與客戶回傳。電腦版從左側選項目，手機版全螢幕顯示。</p>
           <ul class="g-list">
             <li>要修改：按「<b>進入編輯</b>」→ 改完按「<b>儲存並退出</b>」；直接按 <i class="mdi mdi-close"></i> 會捨棄變更</li>
+            <li>「<b>同步銷控資料</b>」：只比對這一戶，勾選要更新的項目後同步（編輯中不顯示）</li>
             <li>「<b>新增預約</b>」：直接替這戶預約</li>
             <li>取消預約、發送「未上傳報告」提醒也在這裡</li>
           </ul>
@@ -637,6 +657,7 @@
           <h3>查看預約</h3>
           <ul class="g-list">
             <li>日／週／月切換；日期區間可快選今天、本週、下週、本月、下月</li>
+            <li>往下滑時日期固定在上方；左右捲動時時間欄固定在左側</li>
             <li>關鍵字搜尋任何欄位，空白分隔可搜多組</li>
             <li>「篩選」依狀態、項目、方式、驗屋人員等條件；有條件作用時按鈕變橘色「篩選中」</li>
             <li>有預約被篩選隱藏時，時間表上方會提示，按「全部顯示」還原篩選並跳到該筆；目前範圍沒有預約時，可按「前往」跳到最近的預約</li>
@@ -665,11 +686,23 @@
           <div class="g-tip">改到日期、時段、預約人、方式等資料，系統會寄「<b>預約異動通知</b>」給預約人。</div>
 
           <h3>後台新增預約</h3>
+          <p>按工具列「<b>新增預約</b>」，或直接在時間表上點要新增的位置，日期、時段會自動帶入：</p>
+          <div class="g-table-wrap">
+            <table class="g-table">
+              <tbody>
+                <tr><td class="g-nowrap">時段格的空白處</td><td>帶入該格的日期與時段；點預約卡片仍是開啟詳細資訊</td></tr>
+                <tr><td class="g-nowrap">日期標題的「＋」</td><td>只帶入日期；沒列出的時段從這裡新增</td></tr>
+                <tr><td class="g-nowrap">名額明細的「＋」</td><td>帶入該日與該時段</td></tr>
+                <tr><td class="g-nowrap">手機版</td><td>日期旁「＋新增」帶入日期，時段旁「＋」帶入日期與時段</td></tr>
+              </tbody>
+            </table>
+          </div>
           <ol class="g-steps">
             <li><b>選擇戶別：</b>搜尋姓名、電話、身分證、戶號，或選棟別＋戶別。</li>
             <li><b>填寫預約資訊：</b>項目、方式、預約人、日期與時段（日曆 ○ 本戶批次、△ 其他批次）。</li>
             <li><b>確認送出。</b>名額已滿仍要排入時，勾「強制新增預約」。</li>
           </ol>
+          <div class="g-tip">帶入的時段若不在當日批次設定內，會填入「手動輸入時段」，送出時要勾「強制新增預約」。時間表上的新增需要修改權限。</div>
 
           <h3>驗屋人員排休</h3>
           <ol class="g-steps">
@@ -942,7 +975,7 @@ import { useRoute, useRouter } from 'vue-router';
 import GuideFigure from './GuideFigure.vue';
 import { bookingGuideShotSrc as shot } from './bookingGuideShots';
 
-const UPDATED_AT = '2026-11-12';
+const UPDATED_AT = '2026-11-24';
 
 const sections = [
   { id: 'start', no: '', title: '開始之前' },

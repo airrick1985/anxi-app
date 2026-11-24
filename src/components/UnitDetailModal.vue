@@ -1010,7 +1010,7 @@
                         </div>
 
                         <template v-else>
-                          <!-- 主買方：姓名＋可直接撥打 / 寄信 -->
+                          <!-- 主買方：姓名＋可直接撥打（EMAIL 在下方欄位，可直接寄信） -->
                           <div class="buyer-hero">
                             <div class="buyer-avatar">{{ buyerInitial }}</div>
                             <div class="buyer-hero-main">
@@ -1024,14 +1024,18 @@
                                 <span v-else class="buyer-contact-link muted">
                                   <v-icon size="15">mdi-phone-outline</v-icon>未填電話
                                 </span>
-                                <a v-if="unitData.buyerEmail" :href="`mailto:${unitData.buyerEmail}`" class="buyer-contact-link">
-                                  <v-icon size="15">mdi-email-outline</v-icon>{{ unitData.buyerEmail }}
-                                </a>
                               </div>
                             </div>
                           </div>
 
                           <div class="info-dl">
+                            <div class="info-dl-row">
+                              <div class="info-dl-label"><v-icon size="16">mdi-email-outline</v-icon>買方EMAIL</div>
+                              <div class="info-dl-value">
+                                <a v-if="unitData.buyerEmail" :href="`mailto:${unitData.buyerEmail}`" class="info-dl-link">{{ unitData.buyerEmail }}</a>
+                                <span v-else class="info-dl-empty">—</span>
+                              </div>
+                            </div>
                             <div class="info-dl-row">
                               <div class="info-dl-label"><v-icon size="16">mdi-card-account-details-outline</v-icon>身分證號</div>
                               <div class="info-dl-value mono" :class="{ 'info-dl-empty': !unitData.buyerIdNumber }">
@@ -4761,6 +4765,18 @@ onUnmounted(() => {
   font-size: 0.75rem;
   font-weight: 400;
   color: #90a4ae;
+}
+
+.info-dl-link {
+  min-width: 0;
+  color: #1565c0;
+  font-weight: 500;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.info-dl-link:hover {
+  text-decoration: underline;
 }
 
 .info-dl-empty {
