@@ -64,7 +64,6 @@
                 </v-menu>
                 <span v-else>{{ appointment?.appointmentTimeSlot }}</span>
 
-                <v-progress-circular v-if="isQuickSaving" indeterminate size="16" width="2" color="primary" class="ml-2"></v-progress-circular>
                 <v-chip v-if="isEditMode" size="x-small" color="info" variant="tonal" class="ml-2">
                   <v-icon start size="x-small">mdi-pencil</v-icon>可在下方面板修改
                 </v-chip>
@@ -483,33 +482,16 @@
     </v-card>
 </v-dialog>
 
-<v-dialog v-model="isForceConfirmVisible" max-width="500px" persistent>
-      <v-card>
-        <v-card-title class="text-h6 d-flex align-center bg-error">
-          <v-icon start>mdi-alert-outline</v-icon>
-          <span>確認強制儲存</span>
-        </v-card-title>
-        <v-card-text class="pt-4">
-          <p class="mb-2">請再次確認：</p>
-          <v-alert type="error" variant="tonal" density="compact" class="mb-4">
-            {{ forceErrorMessage }}
-          </v-alert>
-          <p>選擇日期或時段不在規則內，您確定要強制儲存變更嗎？</p>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="isForceConfirmVisible = false; payloadToForce = null;">取消</v-btn>
-          <v-btn
-            color="error"
-            variant="flat"
-            @click="handleForceSave"
-            :loading="isForcingSave"
-          >
-            是，強制儲存
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+<!-- 儲存修改：選擇是否寄修改通知；名額／日期規則擋下時在同一視窗確認強制儲存 -->
+  <BookingChangeNotifyDialog
+    v-model="notifyDialog.show"
+    :project-id="appointment?.projectId || ''"
+    :groups="notifyDialog.groups"
+    :saving="notifyDialog.saving"
+    :block-message="notifyDialog.blockMessage"
+    :error-message="notifyDialog.errorMessage"
+    @submit="onNotifySubmit"
+  />
 
 </template>
 
@@ -518,16 +500,14 @@ import { ref, watch, computed, nextTick, reactive } from 'vue';
 import { useDate } from 'vuetify';
 import { format } from 'date-fns';
 import { getSlotsForAdmin, fetchProjectConfig,updateAppointment } from '@/api';
+import { useUserStore } from '@/store/user';
+import BookingChangeNotifyDialog from '@/components/BookingChangeNotifyDialog.vue';
+import { buildBookingChanges, isForceableBookingError, bookingSaveMessage } from '@/utils/bookingChanges';
 import { vDraggableDialog } from '@/directives/vDraggableDialog';
 import { LEAVE_TYPE_LABELS, getLeaveTypeForSlot, extractStartTime } from '@/utils/inspectorLeaveUtils';
 import { formatSalespersons } from '@/utils/salespersonUtils';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
-
-const isForceConfirmVisible = ref(false); // 控制強制儲存確認對話框的顯示
-const payloadToForce = ref(null); // 用於儲存要強制儲存的 payload { appointmentId, householdDocId, bookingPayload, householdPayload }
-const forceErrorMessage = ref(''); // 顯示給使用者的錯誤訊息
-const isForcingSave = ref(false); // 強制儲存按鈕的 loading 狀態
 
 const props = defineProps({
   modelValue: { type: Boolean, required: true },
@@ -555,6 +535,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'save', 'inline-save', 'cancel-appointment', 'update-inspectors', 'request-calendar-data']);
 
 const dateAdapter = useDate();
+const userStore = useUserStore();
 const isEditMode = ref(false);
 const isEditing = ref(false);
 const editableEvent = ref(null);
@@ -755,10 +736,7 @@ async function enterEditMode() {
 
 
 async function saveChanges() {
-  // 1. 開始 loading (初次嘗試儲存)
-  isSaving.value = true;
-  payloadToForce.value = null; // 清除之前的強制儲存 payload
-  forceErrorMessage.value = '';
+  quickEditError.value = '';
 
   // --- 計算 bookingPayload 和 householdPayload (保留現有邏輯) ---
   const bookingPayload = {};
@@ -857,97 +835,69 @@ const allFieldKeys = fieldConfig.flatMap(panel => panel.fields.map(field => fiel
   if (Object.keys(bookingPayload).length === 0 && Object.keys(householdPayload).length === 0) {
     console.log('No changes detected.');
     isEditMode.value = false;
-    isSaving.value = false;
     return;
   }
 
-  // 3. 執行初次儲存嘗試
-  try {
-    const currentPayload = {
-      appointmentId: props.appointment.id,
-      householdDocId: props.appointment.householdDocId || `${props.appointment.projectId}_${props.appointment.unitId}`,
-      bookingPayload,
-      householdPayload,
-    };
-    console.log('Attempting initial save with payload:', currentPayload);
-    await updateAppointment(currentPayload.appointmentId, currentPayload.bookingPayload, currentPayload.householdDocId, currentPayload.householdPayload);
+  await requestSave({ bookingPayload, householdPayload });
+}
 
-    console.log('Initial save successful.');
-    emit('save', currentPayload);
-    isEditMode.value = false;
+// --- 儲存：有要通知客戶的異動先選擇是否寄修改通知，其餘（備註、戶別欄位）直接儲存不寄 ---
+const notifyDialog = reactive({ show: false, saving: false, groups: [], blockMessage: '', errorMessage: '' });
+let pendingSave = null;
 
-  } catch (error) {
-  console.error("Initial save failed:", error);
-  const errorMessage = error.message || '儲存失敗';
-
-  console.log('--- Debugging Force Dialog Condition ---');
-  console.log('Error Message:', errorMessage);
-
-  const isRuleError = errorMessage.includes('不在可預約範圍內') || errorMessage.includes('規則已被刪除');
-  const isSlotFullError = errorMessage.startsWith('SLOT_FULL:');
-  const isMethodError = errorMessage.includes('不適用於選擇方式');
-
-  // ✅【修改】放寬判斷條件，只要包含 "時段" 和 "不存在" 即可
-  const isSlotNotFoundError = errorMessage.includes('時段') && errorMessage.includes('不存在'); // <-- ✅ 修改這行
-  // 批次異常（找不到有效批次 / 未指派批次）也允許後台人員強制儲存
-  const isBatchError = errorMessage.includes('有效預約批次') || errorMessage.includes('未指派批次') || errorMessage.includes('對應的規則');
-
-  console.log('isRuleError:', isRuleError);
-  console.log('isSlotFullError:', isSlotFullError);
-  console.log('isMethodError:', isMethodError);
-  console.log('isSlotNotFoundError:', isSlotNotFoundError); // <-- 檢查這次是否變為 true
-  console.log('isBatchError:', isBatchError);
-  const combinedErrorCheck = (isRuleError || isSlotFullError || isMethodError || isSlotNotFoundError || isBatchError);
-  console.log('Combined Error Check:', combinedErrorCheck);
-  console.log('props.canEdit:', props.canEdit);
-  console.log('--- End Debugging ---');
-
-
-  if (combinedErrorCheck && props.canEdit) {
-    console.log('✅ Condition met, should show dialog now! Error:', errorMessage);
-    forceErrorMessage.value = errorMessage;
-    payloadToForce.value = {
-      appointmentId: props.appointment.id,
-      householdDocId: props.appointment.householdDocId || `${props.appointment.projectId}_${props.appointment.unitId}`,
-      bookingPayload,
-      householdPayload,
-    };
-    console.log('Setting isForceConfirmVisible to true');
-    isForceConfirmVisible.value = true;
-  } else {
-     console.log('Condition NOT met for showing dialog.');
-     console.error(`儲存預約失敗 (Dialog condition not met): ${errorMessage}`);
-     // 在此顯示 Snackbar 錯誤提示
+async function requestSave({ bookingPayload, householdPayload }) {
+  const appt = props.appointment;
+  if (!appt?.id) return;
+  pendingSave = {
+    appointmentId: appt.id,
+    householdDocId: appt.householdDocId || `${appt.projectId}_${appt.unitId}`,
+    bookingPayload,
+    householdPayload,
+  };
+  const changes = buildBookingChanges(appt, bookingPayload);
+  if (changes.length === 0) {
+    isSaving.value = true;
+    try { await performSave(null, false); } finally { isSaving.value = false; }
+    return;
   }
-} finally {
-  isSaving.value = false;
-}
+  Object.assign(notifyDialog, {
+    show: true, saving: false, blockMessage: '', errorMessage: '',
+    groups: [{
+      appointmentId: appt.id,
+      title: `${appt.unitId}・${bookingPayload.bookingType || appt.bookingType}`,
+      bookerName: bookingPayload.bookerName ?? appt.bookerName ?? '',
+      bookerEmail: bookingPayload.bookerEmail ?? appt.bookerEmail ?? '',
+      changes,
+    }],
+  });
 }
 
-// ✅ handleForceSave 函數保持不變 (它已經會傳遞 force: true)
-async function handleForceSave() {
-  if (!payloadToForce.value) return;
-  isForcingSave.value = true;
+async function onNotifySubmit({ notifyById, force }) {
+  if (notifyDialog.saving || !pendingSave) return;
+  notifyDialog.saving = true;
+  try { await performSave(notifyById?.[pendingSave.appointmentId] || null, force); } finally { notifyDialog.saving = false; }
+}
+
+async function performSave(notify, force) {
+  const job = pendingSave;
+  Object.assign(notifyDialog, { blockMessage: '', errorMessage: '' });
+  quickEditError.value = '';
   try {
-    const forcePayload = { ...payloadToForce.value };
-    console.log('Attempting force save with payload:', forcePayload);
-    // ✓ 呼叫 API 並明確傳遞 force: true
-    await updateAppointment(forcePayload.appointmentId, forcePayload.bookingPayload, forcePayload.householdDocId, forcePayload.householdPayload, true);
-
-    console.log('Force save successful.');
-    emit('save', forcePayload);
-    isForceConfirmVisible.value = false;
+    const modifier = userStore.user?.name;
+    const bookingPayload = { ...job.bookingPayload, ...(modifier ? { lastModifiedByName: modifier } : {}) };
+    const result = await updateAppointment(job.appointmentId, bookingPayload, job.householdDocId, job.householdPayload, force, !notify, notify);
+    notifyDialog.show = false;
     isEditMode.value = false;
+    pendingSave = null;
+    emit('save', { ...job, message: bookingSaveMessage(result, !!notify) }); // 已寫入，父層只需重新整理
   } catch (error) {
-    console.error("Force save failed:", error);
-    forceErrorMessage.value = `強制儲存失敗：${error.message || '未知錯誤'}`;
-    console.error(`強制儲存預約失敗: ${error.message}`);
-  } finally {
-    isForcingSave.value = false;
+    const msg = error.message || '儲存失敗';
+    console.error('儲存預約失敗:', msg);
+    if (notifyDialog.show && !force && isForceableBookingError(msg)) notifyDialog.blockMessage = msg.replace(/^SLOT_FULL:\s*/, '');
+    else if (notifyDialog.show) notifyDialog.errorMessage = `儲存失敗：${msg}`;
+    else quickEditError.value = `儲存失敗：${msg}`;
   }
 }
-
-
 
 async function handleInspectorsChange(newInspectors) {
   if (!props.appointment) return;
@@ -1098,7 +1048,6 @@ const isQuickDateMenuOpen = ref(false);
 const isQuickTimeMenuOpen = ref(false);
 const quickEditDate = ref(null);
 const quickEditTime = ref({ hours: 9, minutes: 0 });
-const isQuickSaving = ref(false);
 const quickEditError = ref('');
 
 // 開啟選單時，以目前預約值初始化選擇器
@@ -1126,8 +1075,7 @@ async function onQuickDatePicked(val) {
   const cur = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
   const curDateStr = (cur && !isNaN(cur.getTime())) ? format(cur, 'yyyy-MM-dd') : '';
   if (newDateStr === curDateStr) return; // 沒變更
-  // 以 UTC 正午送出，避免序列化跨時區時日期位移
-  await quickSaveDateTime({ appointmentDate: new Date(`${newDateStr}T12:00:00Z`) });
+  await requestSave({ bookingPayload: { appointmentDate: newDateStr }, householdPayload: {} });
 }
 
 async function confirmQuickTime() {
@@ -1136,40 +1084,7 @@ async function confirmQuickTime() {
   if (!t || t.hours == null || t.minutes == null) return;
   const slot = `${String(t.hours).padStart(2, '0')}:${String(t.minutes).padStart(2, '0')}`;
   if (slot === props.appointment?.appointmentTimeSlot) return; // 沒變更
-  await quickSaveDateTime({ appointmentTimeSlot: slot });
-}
-
-// 與 saveChanges 相同的可強制儲存錯誤判斷
-function isForceableSaveError(msg) {
-  return msg.includes('不在可預約範圍內') || msg.includes('規則已被刪除')
-    || msg.startsWith('SLOT_FULL:') || msg.includes('不適用於選擇方式')
-    || (msg.includes('時段') && msg.includes('不存在'))
-    || msg.includes('有效預約批次') || msg.includes('未指派批次') || msg.includes('對應的規則');
-}
-
-async function quickSaveDateTime(bookingPayload) {
-  if (!props.appointment?.id) return;
-  isQuickSaving.value = true;
-  quickEditError.value = '';
-  const householdDocId = props.appointment.householdDocId || `${props.appointment.projectId}_${props.appointment.unitId}`;
-  const payload = { appointmentId: props.appointment.id, householdDocId, bookingPayload, householdPayload: {} };
-  try {
-    await updateAppointment(payload.appointmentId, bookingPayload, householdDocId, {});
-    emit('save', payload); // 父層會重新整理資料並關閉對話框
-  } catch (error) {
-    const msg = error.message || '儲存失敗';
-    console.error('快速修改日期/時段失敗:', msg);
-    if (isForceableSaveError(msg) && props.canEdit) {
-      // 交給既有的「確認強制儲存」對話框處理
-      forceErrorMessage.value = msg;
-      payloadToForce.value = payload;
-      isForceConfirmVisible.value = true;
-    } else {
-      quickEditError.value = `修改失敗：${msg}`;
-    }
-  } finally {
-    isQuickSaving.value = false;
-  }
+  await requestSave({ bookingPayload: { appointmentTimeSlot: slot }, householdPayload: {} });
 }
 
 //  新增：當日期變更時，重新獲取可用時段
@@ -1270,6 +1185,8 @@ watch(() => props.modelValue, (isOpen) => {
   // 條件二：當對話框關閉時，執行「清理與重置」
   else {
     isSaving.value = false; // 關鍵：重置儲存狀態，確保下次 loading 效果正常
+    notifyDialog.show = false;
+    quickEditError.value = '';
     projectConfig.value = null;
     editableEvent.value = null;
     isOverbooking.value = false;

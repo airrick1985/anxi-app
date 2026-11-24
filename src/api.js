@@ -3024,7 +3024,7 @@ export async function addAppointmentAdmin(payload) {
  * [Firebase 版] 更新預約紀錄 (透過 Cloud Function 處理)
  * (V2: 呼叫 inspectionCalendarApi 路由)
  */
-export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false, silent = false) {
+export async function updateAppointment(appointmentId, bookingUpdatePayload, householdDocId, householdUpdatePayload, force = false, silent = false, notify = null) {
   try {
     // 修改：呼叫 inspectionCalendarApiRouter
     const result = await inspectionCalendarApiRouter({
@@ -3035,7 +3035,8 @@ export async function updateAppointment(appointmentId, bookingUpdatePayload, hou
         householdDocId,
         householdPayload: householdUpdatePayload,
         force: force,
-        silent: silent      // 為 true 時後端不寄「預約異動通知」email（戶別整合資訊 Modal 用）
+        silent: silent,     // 為 true 時後端不寄「預約異動通知」email
+        ...(notify ? { notify } : {}) // { toBooker, cc: [email] }：操作者勾選的收件對象
       }
     });
     return result.data;

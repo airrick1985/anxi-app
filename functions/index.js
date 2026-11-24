@@ -101,6 +101,9 @@ const client = new SecretManagerServiceClient();
 
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { DateTime } = require('luxon'); // ✅ 處理台灣時區
+const {
+  toTaipeiDateStr, taipeiMidnight, buildBookingChanges, resolveNotifyRecipients, escapeHtml,
+} = require('./bookingChangeNotify');
 
 const { HttpsError, onRequest } = require("firebase-functions/v2/https");
 // 帳號停用守衛：onCall 執行前先擋下已停用的操作者（人員管理一鍵停用）
@@ -237,7 +240,7 @@ function formatValueForEmail(key, value) {
     try {
       const date = (value.toDate) ? value.toDate() : new Date(value);
       if (!isNaN(date.getTime())) {
-        return date.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+        return date.toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
       }
     } catch { /* 忽略轉換錯誤 */ }
   }
@@ -18337,7 +18340,9 @@ async function _handleAddAppointmentAdmin(data) {
  * [內部函式] 更新一筆預約紀錄，並同步更新戶別摘要
  */
 async function _handleUpdateAppointmentByAdmin(data) {
-  const { appointmentId, bookingPayload, householdDocId, householdPayload, force = false, silent = false } = data;
+  // silent：不寄通知；notify（可選）：{ toBooker, cc: [email] } 操作者勾選的收件對象。
+  // 兩者都沒帶（舊版前端）時沿用自動寄送：預約人＋全部「驗屋系統信件副本」。
+  const { appointmentId, bookingPayload, householdDocId, householdPayload, force = false, silent = false, notify } = data;
   const functionName = `_handleUpdateAppointmentByAdmin (ID: ${appointmentId}, Force: ${force}, Silent: ${silent})`;
 
   if (!appointmentId) {
@@ -18395,13 +18400,16 @@ async function _handleUpdateAppointmentByAdmin(data) {
 
       if (bookingPayload && (bookingPayload.appointmentDate || bookingPayload.appointmentTimeSlot)) {
         if (bookingPayload.appointmentDate) {
-          try { newDateStr = new Date(bookingPayload.appointmentDate).toISOString().split('T')[0]; const currentDateStr = originalAppointmentData.appointmentDate?.toDate ? originalAppointmentData.appointmentDate.toDate().toISOString().split('T')[0] : null; if (newDateStr !== currentDateStr) dateOrTimeChanged = true; } catch (e) { throw new HttpsError("invalid-argument", "無效的新預約日期格式。"); }
-        } else { newDateStr = originalAppointmentData.appointmentDate?.toDate ? originalAppointmentData.appointmentDate.toDate().toISOString().split('T')[0] : null; }
+          // 一律以台灣日期判斷（以 UTC 取日期會差一天）
+          newDateStr = toTaipeiDateStr(bookingPayload.appointmentDate);
+          if (!newDateStr) throw new HttpsError("invalid-argument", "無效的新預約日期格式。");
+          if (newDateStr !== toTaipeiDateStr(originalAppointmentData.appointmentDate)) dateOrTimeChanged = true;
+        } else { newDateStr = toTaipeiDateStr(originalAppointmentData.appointmentDate); }
         if (bookingPayload.appointmentTimeSlot) {
           let rawTimeSlot = bookingPayload.appointmentTimeSlot; let extractedTime = ''; if (typeof rawTimeSlot === 'string') extractedTime = rawTimeSlot.match(/^(\d{2}:\d{2})/)?.[1]; else if (typeof rawTimeSlot === 'object' && rawTimeSlot?.value) extractedTime = String(rawTimeSlot.value).match(/^(\d{2}:\d{2})/)?.[1];
           if (extractedTime) { newTimeSlotKey = extractedTime; if (newTimeSlotKey !== originalAppointmentData.appointmentTimeSlot) dateOrTimeChanged = true; } else { throw new HttpsError("invalid-argument", "無效的新預約時段格式。"); }
         } else { newTimeSlotKey = originalAppointmentData.appointmentTimeSlot; }
-      } else { newDateStr = originalAppointmentData.appointmentDate?.toDate ? originalAppointmentData.appointmentDate.toDate().toISOString().split('T')[0] : null; newTimeSlotKey = originalAppointmentData.appointmentTimeSlot; }
+      } else { newDateStr = toTaipeiDateStr(originalAppointmentData.appointmentDate); newTimeSlotKey = originalAppointmentData.appointmentTimeSlot; }
       console.log(`[${functionName}] TX: Date/Time change check done. Changed: ${dateOrTimeChanged}`);
 
       if (dateOrTimeChanged) {
@@ -18462,10 +18470,12 @@ async function _handleUpdateAppointmentByAdmin(data) {
 
       if (bookingPayload && Object.keys(bookingPayload).length > 0) {
         const finalBookingPayload = { ...bookingPayload };
-        if (finalBookingPayload.appointmentDate) finalBookingPayload.appointmentDate = Timestamp.fromDate(new Date(newDateStr));
+        if (finalBookingPayload.appointmentDate) finalBookingPayload.appointmentDate = Timestamp.fromDate(taipeiMidnight(newDateStr)); // 與新增預約相同存台灣 00:00，名額查詢才算得到
         if (finalBookingPayload.appointmentTimeSlot) finalBookingPayload.appointmentTimeSlot = newTimeSlotKey;
         if (bookingPayload.bookingMethodDetails) finalBookingPayload.bookingMethodDetails = bookingPayload.bookingMethodDetails;
 
+        // 戶別摘要含驗屋方式，改項目／方式也要更新
+        if ('inspectionMethod' in finalBookingPayload || 'bookingType' in finalBookingPayload) needsSummaryUpdate = true;
         finalBookingPayload.updatedAt = FieldValue.serverTimestamp();
         batchForTx.update(appointmentRef, finalBookingPayload);
         Object.assign(combinedPayload, finalBookingPayload);
@@ -18505,18 +18515,34 @@ async function _handleUpdateAppointmentByAdmin(data) {
         } else { console.warn(`WARN: Cannot update summary, projectId/unitId missing.`); }
       }
 
-      const bookerEmail = bookingPayload?.bookerEmail || originalAppointmentData.bookerEmail;
+      const hasNotifyOption = !!notify && typeof notify === 'object';
+      const bookerEmail = (hasNotifyOption ? bookingPayload?.bookerEmail ?? originalAppointmentData.bookerEmail
+        : bookingPayload?.bookerEmail || originalAppointmentData.bookerEmail) || '';
       const bookerName = bookingPayload?.bookerName || originalAppointmentData.bookerName;
       const unitId = originalAppointmentData.unitId;
       const projectId = originalAppointmentData.projectId;
-      console.log(`[${functionName}] Checking if email should be sent... Email: ${bookerEmail}`);
+      const notifyResult = { sent: false };
+
+      // 收件人（未帶 notify 時：預約人＋全部副本，沒有預約人 Email 就不寄）
+      let recipients = { to: [], cc: [] };
+      if (!silent) {
+        if (hasNotifyOption) {
+          let ccDetails = [];
+          try { ccDetails = await getCancelCcRecipientDetails(db, projectId); } catch (ccError) { console.error(`[${functionName}] 查找副本收件人失敗:`, ccError); }
+          recipients = resolveNotifyRecipients(notify, bookerEmail, ccDetails);
+        } else if (bookerEmail) {
+          recipients = { to: [bookerEmail], cc: await getCcRecipients(projectId, "驗屋系統信件副本") };
+        }
+      }
 
       if (silent) {
         console.log(`[${functionName}] Silent mode enabled, skipping change notification email.`);
-      } else if (bookerEmail && finalPayload && Object.keys(finalPayload).length > 0) {
+      } else if (recipients.to.length > 0 && finalPayload && Object.keys(finalPayload).length > 0) {
         console.log(`[${functionName}] Preparing email content...`);
-        const changes = [];
-        for (const key in finalPayload) {
+        const changes = hasNotifyOption
+          ? buildBookingChanges(originalAppointmentData, finalPayload).map(c => ({ field: escapeHtml(c.field), before: escapeHtml(c.before), after: escapeHtml(c.after) }))
+          : [];
+        for (const key in (hasNotifyOption ? {} : finalPayload)) {
           if (!notificationTriggerFields.has(key)) continue;
           const originalValue = (key in originalAppointmentData) ? originalAppointmentData[key] : originalHouseholdData?.[key];
           const newValue = finalPayload[key];
@@ -18608,28 +18634,31 @@ async function _handleUpdateAppointmentByAdmin(data) {
   </div>
 </div>`;
 
-          console.log(`[${functionName}] Calling getCcRecipients...`);
-          const ccRecipients = await getCcRecipients(db, projectId, "驗屋系統信件副本");
-          console.log(`[${functionName}] getCcRecipients finished. CC:`, ccRecipients);
-          console.log(`[${functionName}] Calling mailTransport.sendMail...`);
-          await guardedSendMail(mailTransport, { // [TrialGuard]
-            from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
-            to: bookerEmail,
-            cc: ccRecipients.join(', '),
-            subject: subject,
-            html: htmlBody,
-            name: `${projectName} 預約系統`
-          }, { projectId: projectId });
-          console.log(`[${functionName}] Change notification email sent successfully.`);
+          // 資料已寫入，寄信失敗只回報、不視為儲存失敗
+          try {
+            const mailResult = await guardedSendMail(mailTransport, { // [TrialGuard]
+              from: `"${projectName} 預約系統" <${process.env.SENDER_EMAIL}>`,
+              to: recipients.to.join(', '),
+              ...(recipients.cc.length > 0 ? { cc: recipients.cc.join(', ') } : {}),
+              subject: subject,
+              html: htmlBody,
+              name: `${projectName} 預約系統`
+            }, { projectId: projectId });
+            notifyResult.sent = mailResult?.blocked !== true;
+            console.log(`[${functionName}] Change notification email sent successfully.`);
+          } catch (mailError) {
+            console.error(`[${functionName}] 異動通知寄送失敗:`, mailError);
+            notifyResult.error = mailError.message || '寄送失敗';
+          }
         } else {
           console.log(`[${functionName}] No significant changes in notification fields, skipping email.`);
         }
       } else {
-        console.log(`[${functionName}] No booker email found or no payload updated, skipping change notification email.`);
+        console.log(`[${functionName}] No recipients or no payload updated, skipping change notification email.`);
       }
       console.log(`[${functionName}] Returning success status.`);
       //  回傳：路由函數會自動包裝
-      return { status: "success" };
+      return { status: "success", notify: notifyResult };
 
     } else {
       console.log(`[${functionName}] No operations performed, returning no_changes.`);

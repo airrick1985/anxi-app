@@ -928,7 +928,7 @@
       </div>
     </v-card>
 
-    <v-snackbar v-model="snackbar" :timeout="2000" color="success">
+    <v-snackbar v-model="snackbar" :timeout="snackbarColor === 'success' ? 2000 : 6000" :color="snackbarColor">
       {{ snackbarText }}
     </v-snackbar>
 
@@ -2250,6 +2250,8 @@ const isCancelConfirmDialogVisible = ref(false);
 const eventToCancel = ref(null);
 const snackbar = ref(false);
 const snackbarText = ref('');
+const snackbarColor = ref('success');
+watch(snackbar, (show) => { if (!show) snackbarColor.value = 'success'; });
 const panels = ref([]);
 const addDateMenu = ref(false); 
 
@@ -3878,6 +3880,7 @@ function navigateToRuleManager() {
 
 function showSnackbar(text, color = 'success') {
   snackbarText.value = text;
+  snackbarColor.value = color;
   snackbar.value = true; 
 }
 
@@ -3894,37 +3897,11 @@ watch(isDialogVisible, (visible) => {
   }
 });
 
-// ✅ 9. 修改 handleSaveChangesFromDialog
+// 對話框已寫入並處理修改通知，這裡只重新整理（戶別由監聽器自動更新）
 async function handleSaveChangesFromDialog(payload) {
-  try {
-    const { appointmentId, bookingPayload, householdPayload } = payload;
-    
-    if (Object.keys(bookingPayload).length > 0 || Object.keys(householdPayload).length > 0) {
-        bookingPayload.lastModifiedByName = userStore.user?.name || '未知使用者';
-    }
-
-    // ✅ 呼叫 inspectionApi
-    const response = await inspectionApi('updateAppointment', {
-        appointmentId,
-        bookingPayload,
-        householdDocId: payload.householdDocId,
-        householdPayload,
-        force: payload.force || false
-    });
-
-    if (response.data.status === 'no_changes') {
-        showSnackbar('沒有偵測到任何變更。', 'info');
-    } else {
-        showSnackbar('儲存成功！', 'success');
-        // ✅ 保持 fetchData()，它會獲取最新的 appointments
-        // 監聽器會自動處理 households 的更新
-        await fetchData(); 
-    }
-  } catch (err) {
-      showSnackbar(`儲存失敗: ${err.message}`, 'error');
-  } finally {
-      isDialogVisible.value = false;
-  }
+  isDialogVisible.value = false;
+  showSnackbar(payload?.message?.text || '儲存成功！', payload?.message?.color || 'success');
+  await fetchData();
 }
 
 // ✅ 10. 修改 handleUpdateInspectorsFromDialog

@@ -601,78 +601,80 @@
                   @click.stop="openCancelApptDialog(type, bk)" @mousedown.stop
                ><v-icon size="15">mdi-calendar-remove</v-icon>取消</button>
             </div>
-            <div class="mac-form-row hdm-field">
-               <span class="hdm-label">預約日期</span>
-               <span class="hdm-value">
-                  {{ formatDetailDate(bk.date) || '—' }}
-                  <span v-if="detailBookingsForType(type).length === 1 && bk.status" class="mac-tag hdm-inline-tag" :class="bk.status === '已完成' ? 'mac-tag--green' : 'mac-tag--blue'">{{ bk.status }}</span>
-               </span>
-            </div>
-            <div class="mac-form-row hdm-field">
-               <span class="hdm-label">時段</span>
-               <span class="hdm-value">{{ bk.timeSlot || '—' }}</span>
-            </div>
-            <div class="mac-form-row hdm-field">
-               <span class="hdm-label">選擇方式</span>
-               <span class="hdm-value">{{ bk.method || '—' }}</span>
-            </div>
-            <div v-if="typesWithSubOptions.has(type)" class="mac-form-row hdm-field">
-               <span class="hdm-label">子項目</span>
-               <span class="hdm-value">{{ bk.subOption || '—' }}</span>
-            </div>
-            <div
-               v-for="f in (detailExtraFieldsByType[type] || [])"
-               :key="`mf-${bk.appointmentId || bkIdx}-${f.id}`"
-               class="mac-form-row hdm-field"
-            >
-               <span class="hdm-label">{{ f.label }}</span>
-               <input
-                  v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
-                  v-model="_bookingEditDrafts[bk.appointmentId].bookingMethodDetails[f.id]"
-                  class="hdm-input"
-                  placeholder="—"
+            <BookingEditFields
+               v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
+               :draft="_bookingEditDrafts[bk.appointmentId]"
+               :snapshot="_bookingEditSnapshot[bk.appointmentId]"
+               :project-id="projectId"
+               :booking-menu="projectConfig?.bookingMenu || []"
+               :staff="projectConfig?.inspectionStaff || []"
+               :calendar="unitBookingCalendar"
+            />
+            <template v-else>
+               <div class="mac-form-row hdm-field">
+                  <span class="hdm-label">預約日期</span>
+                  <span class="hdm-value">
+                     {{ formatDetailDate(bk.date) || '—' }}
+                     <span v-if="detailBookingsForType(type).length === 1 && bk.status" class="mac-tag hdm-inline-tag" :class="bk.status === '已完成' ? 'mac-tag--green' : 'mac-tag--blue'">{{ bk.status }}</span>
+                  </span>
+               </div>
+               <div class="mac-form-row hdm-field">
+                  <span class="hdm-label">時段</span>
+                  <span class="hdm-value">{{ bk.timeSlot || '—' }}</span>
+               </div>
+               <div class="mac-form-row hdm-field">
+                  <span class="hdm-label">選擇方式</span>
+                  <span class="hdm-value">{{ bk.method || '—' }}</span>
+               </div>
+               <div v-if="typesWithSubOptions.has(type)" class="mac-form-row hdm-field">
+                  <span class="hdm-label">子項目</span>
+                  <span class="hdm-value">{{ bk.subOption || '—' }}</span>
+               </div>
+               <div
+                  v-for="f in (detailExtraFieldsByType[type] || [])"
+                  :key="`mf-${bk.appointmentId || bkIdx}-${f.id}`"
+                  class="mac-form-row hdm-field"
                >
-               <span v-else class="hdm-value">{{ bk.bookingMethodDetails?.[f.id] || '—' }}</span>
-            </div>
-            <!-- 預約人聯絡資訊 -->
-            <div class="mac-form-row hdm-field hdm-row-sep">
-               <span class="hdm-label">預約人姓名</span>
-               <input
-                  v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
-                  v-model="_bookingEditDrafts[bk.appointmentId].bookerName"
-                  class="hdm-input"
-                  placeholder="—"
-               >
-               <span v-else class="hdm-value" :class="{ 'is-empty': !bk.bookerName }">{{ bk.bookerName || '—' }}</span>
-            </div>
-            <div class="mac-form-row hdm-field">
-               <span class="hdm-label">預約人電話</span>
-               <input
-                  v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
-                  v-model="_bookingEditDrafts[bk.appointmentId].bookerPhone"
-                  class="hdm-input"
-                  type="tel"
-                  placeholder="—"
-               >
-               <span v-else class="hdm-value" :class="{ 'is-empty': !bk.bookerPhone }">
-                  <a v-if="bk.bookerPhone" :href="`tel:${bk.bookerPhone}`">{{ bk.bookerPhone }}</a>
-                  <template v-else>—</template>
-               </span>
-            </div>
-            <div class="mac-form-row hdm-field">
-               <span class="hdm-label">預約人 Email</span>
-               <input
-                  v-if="isModalEditMode && _bookingEditDrafts[bk.appointmentId]"
-                  v-model="_bookingEditDrafts[bk.appointmentId].bookerEmail"
-                  class="hdm-input"
-                  type="email"
-                  placeholder="—"
-               >
-               <span v-else class="hdm-value" :class="{ 'is-empty': !bk.bookerEmail }">
-                  <a v-if="bk.bookerEmail" :href="`mailto:${bk.bookerEmail}`">{{ bk.bookerEmail }}</a>
-                  <template v-else>—</template>
-               </span>
-            </div>
+                  <span class="hdm-label">{{ f.label }}</span>
+                  <span class="hdm-value">{{ bookingExtraValue(type, bk, f) }}</span>
+               </div>
+               <!-- 預約人聯絡資訊 -->
+               <div class="mac-form-row hdm-field hdm-row-sep">
+                  <span class="hdm-label">預約人姓名</span>
+                  <span class="hdm-value" :class="{ 'is-empty': !bk.bookerName }">{{ bk.bookerName || '—' }}</span>
+               </div>
+               <div class="mac-form-row hdm-field">
+                  <span class="hdm-label">預約人電話</span>
+                  <span class="hdm-value" :class="{ 'is-empty': !bk.bookerPhone }">
+                     <a v-if="bk.bookerPhone" :href="`tel:${bk.bookerPhone}`">{{ bk.bookerPhone }}</a>
+                     <template v-else>—</template>
+                  </span>
+               </div>
+               <div class="mac-form-row hdm-field">
+                  <span class="hdm-label">預約人 Email</span>
+                  <span class="hdm-value" :class="{ 'is-empty': !bk.bookerEmail }">
+                     <a v-if="bk.bookerEmail" :href="`mailto:${bk.bookerEmail}`">{{ bk.bookerEmail }}</a>
+                     <template v-else>—</template>
+                  </span>
+               </div>
+               <template v-if="bk.agentName || bk.agentPhone">
+                  <div class="mac-form-row hdm-field hdm-row-sep">
+                     <span class="hdm-label">受託人</span>
+                     <span class="hdm-value">
+                        {{ bk.agentName || '—' }}<template v-if="bk.agentRelationship">（{{ bk.agentRelationship }}）</template>
+                        <a v-if="bk.agentPhone" :href="`tel:${bk.agentPhone}`">{{ bk.agentPhone }}</a>
+                     </span>
+                  </div>
+               </template>
+               <div v-if="bk.inspectors" class="mac-form-row hdm-field hdm-row-sep">
+                  <span class="hdm-label">驗屋人員</span>
+                  <span class="hdm-value">{{ splitInspectors(bk.inspectors).join('、') }}</span>
+               </div>
+               <div v-if="bk.bookingRemarks" class="mac-form-row hdm-field">
+                  <span class="hdm-label">預約備註</span>
+                  <span class="hdm-value hdm-remarks-text">{{ bk.bookingRemarks }}</span>
+               </div>
+            </template>
             <!-- 驗屋報告未上傳提醒通知：未上傳天數 + 發送 + 寄出紀錄（逐筆預約獨立） -->
             <div v-if="shouldShowReminderBlock(type, bk)" class="mac-form-pad hdm-reminder">
                <div class="hdm-reminder-title">
@@ -982,6 +984,17 @@
    </v-card>
 </v-dialog>
 
+<!-- 修改預約：選擇是否寄修改通知 -->
+<BookingChangeNotifyDialog
+   v-model="bookingNotify.show"
+   :project-id="projectId"
+   :groups="bookingNotify.groups"
+   :saving="_isSavingModalEdits"
+   :block-message="bookingNotify.blockMessage"
+   :error-message="bookingNotify.errorMessage"
+   @submit="onBookingNotifySubmit"
+/>
+
 <!-- 取消預約確認 -->
 <v-dialog v-model="cancelApptDialog.show" max-width="480px" persistent scrollable content-class="mac-dialog-fit">
    <v-card class="mac-sheet">
@@ -1023,8 +1036,12 @@ import { ref, onMounted, onUnmounted, computed, reactive, watch, defineAsyncComp
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '@/store/projectStore';
 import { useUserStore } from '@/store/user';
-import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments, cancelAppointment, updateAppointment } from '@/api';
+import { listenToAllHouseholds, updateHouseholdData, batchUpdateHouseholds, uploadInspectionHouseholds, listenToFieldDefinitions, deprecateInspectionReport, markInspectionReportDownloaded, listenToAppointments, cancelAppointment, updateAppointment, getAdminBookingCalendarData } from '@/api';
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
+import BookingChangeNotifyDialog from '@/components/BookingChangeNotifyDialog.vue';
+import BookingEditFields from '@/components/household/BookingEditFields.vue';
+import { buildBookingChanges, findBookingMethods, isForceableBookingError } from '@/utils/bookingChanges';
+import { buildBookingPayload, createBookingDraft, draftToAppointment, splitInspectors, validateBookingDraft } from '@/utils/bookingEditDraft';
 import BookingGuideButton from '@/components/BookingGuideButton.vue';
 import SwitchHeaderRenderer from '@/components/household/SwitchHeaderRenderer.vue';
 import SwitchRenderer from '@/components/household/SwitchRenderer.vue';
@@ -1272,10 +1289,18 @@ const buildAppointmentMap = (appointmentsList) => {
     method: appt.inspectionMethod || '',                       // 純方式（不再與 subOption 合併）
     subOption: appt.bookingSubOption || '',                    // 子項目獨立屬性
     bookingMethodDetails: appt.bookingMethodDetails || {},     // 方式額外資訊（依 method.customFields）
+    bookingMethodDetailsDisplay: appt.bookingMethodDetailsDisplay || [],
     // 預約人聯絡資訊
     bookerName: appt.bookerName || '',
     bookerPhone: appt.bookerPhone || '',
     bookerEmail: appt.bookerEmail || '',
+    // 受託人、驗屋人員、預約備註
+    agentName: appt.agentName || '',
+    agentPhone: appt.agentPhone || '',
+    agentIdNumber: appt.agentIdNumber || '',
+    agentRelationship: appt.agentRelationship || '',
+    inspectors: appt.inspectors || '',
+    bookingRemarks: appt.bookingRemarks || '',
     // 驗屋報告未上傳提醒通知：寄出紀錄（Firestore Timestamp 陣列）與目前上傳狀態
     reminderSentAt: Array.isArray(appt.reminderSentAt) ? appt.reminderSentAt : [],
     reportUploaded: appt.reportUploaded === true,
@@ -1422,10 +1447,11 @@ const hdmActiveSection = ref('basic');
 const isModalEditMode = ref(false); // 編輯模式總開關（預設關閉，避免誤觸修改）
 const _editModeSnapshot = ref(null); // 進入編輯時的原值快照（用於退出時 diff）
 const _isSavingModalEdits = ref(false);
-// 預約資訊 inline 編輯草稿（依 appointmentId，同一項目多筆重複預約可各自編輯；只含可編輯欄位：預約人聯絡資訊＋方式額外資訊）
+// 預約資訊 inline 編輯草稿（依 appointmentId，同一項目多筆重複預約可各自編輯；欄位見 utils/bookingEditDraft）
 // 不直接綁 detailBookingInfo（那是共用的 appointments map），避免污染原始資料
-const _bookingEditDrafts = ref({});   // { [appointmentId]: { appointmentId, type, bookerName, bookerPhone, bookerEmail, bookingMethodDetails:{...} } }
-const _bookingEditSnapshot = ref({}); // 進入編輯時的預約原值快照（退出時 diff，只寫有變更的 type）
+const _bookingEditDrafts = ref({});
+const _bookingEditSnapshot = ref({}); // 進入編輯時的預約原值快照（退出時 diff，只寫有變更的預約）
+const unitBookingCalendar = ref(null); // 該戶可預約日期分類（編輯日期時標示是否為本戶批次）
 let _detailDragStart = null;
 
 const openHouseholdDetail = (clickedRow) => {
@@ -1460,9 +1486,9 @@ const openHouseholdDetail = (clickedRow) => {
    }
 };
 
-// modal 開啟期間若 appointments / rowData 有更新，同步替換顯示的戶別資料
-watch([rowData, appointmentsByUnitAndType], () => {
-   if (!isHouseholdDetailVisible.value) return;
+// modal 開啟期間若 appointments / rowData 有更新，同步替換顯示的戶別資料（編輯中不替換，避免蓋掉未儲存的內容）
+const syncHouseholdDetail = () => {
+   if (!isHouseholdDetailVisible.value || isModalEditMode.value) return;
    const cur = selectedHouseholdForDetail.value;
    if (!cur) return;
    const docId = cur._docId;
@@ -1480,7 +1506,8 @@ watch([rowData, appointmentsByUnitAndType], () => {
    if (cur.unitId) {
       selectedHouseholdForDetail.value = { ...cur, _bookingInfo: appointmentsByUnitAndType.value[cur.unitId] || {} };
    }
-}, { deep: false });
+};
+watch([rowData, appointmentsByUnitAndType], syncHouseholdDetail, { deep: false });
 const closeHouseholdDetail = () => {
    // 點 X 關閉 = 捨棄所有未儲存變更（不寫入 Firestore；本地 shallow clone 物件會在關閉時被丟掉，rowData 不受影響）
    if (isModalEditMode.value) {
@@ -1488,10 +1515,7 @@ const closeHouseholdDetail = () => {
       snackbar.color = 'info';
       snackbar.show = true;
    }
-   isModalEditMode.value = false;
-   _editModeSnapshot.value = null;
-   _bookingEditDrafts.value = {};
-   _bookingEditSnapshot.value = {};
+   closeModalEditMode();
    isHouseholdDetailVisible.value = false;
    selectedHouseholdForDetail.value = null;
 };
@@ -1589,6 +1613,15 @@ const detailExtraFieldsByType = computed(() => {
    }
    return result;
 });
+
+// 額外欄位值：同名欄位在不同方式下 id 不同，取該筆預約所選方式的欄位
+const bookingExtraValue = (type, bk, f) => {
+   const details = bk.bookingMethodDetails || {};
+   const method = findBookingMethods(projectConfig.value?.bookingMenu, type).find(m => m.title === bk.method);
+   const own = (method?.customFields || []).find(cf => cf && !cf.deleted && cf.label === f.label);
+   const value = (own && details[own.id]) || details[f.id];
+   return (Array.isArray(value) ? value.join('、') : value) || '—';
+};
 
 // 各區塊圖示底色（macOS 系統設定風格的彩色圓角圖示）
 const HDM_SECTION_COLORS = {
@@ -1952,21 +1985,15 @@ const enterModalEditMode = () => {
    const drafts = {};
    for (const type of detailBookingTypes.value) {
       for (const bi of detailBookingsForType(type)) {
-         if (!bi || !bi.appointmentId) continue;
-         const bmd = { ...(bi.bookingMethodDetails || {}) };
-         // 預先補上此 type 所有方式額外資訊欄位的鍵，確保 v-model 有對應槽位
-         for (const f of (detailExtraFieldsByType.value[type] || [])) {
-            if (!(f.id in bmd)) bmd[f.id] = '';
-         }
-         drafts[bi.appointmentId] = {
-            appointmentId: bi.appointmentId,
-            type,
-            bookerName: bi.bookerName || '',
-            bookerPhone: bi.bookerPhone || '',
-            bookerEmail: bi.bookerEmail || '',
-            bookingMethodDetails: bmd
-         };
+         if (bi?.appointmentId) drafts[bi.appointmentId] = createBookingDraft(bi, type);
       }
+   }
+   unitBookingCalendar.value = null;
+   if (Object.keys(drafts).length > 0) {
+      const unitId = selectedHouseholdForDetail.value.unitId;
+      getAdminBookingCalendarData({ projectId: projectId.value, unitId })
+         .then(res => { if (res?.status === 'success' && selectedHouseholdForDetail.value?.unitId === unitId) unitBookingCalendar.value = res.data; })
+         .catch(err => console.warn('讀取可預約日期失敗:', err));
    }
    _bookingEditDrafts.value = drafts;
    _bookingEditSnapshot.value = JSON.parse(JSON.stringify(drafts));
@@ -2030,88 +2057,116 @@ const exitModalEditMode = async () => {
    }
 
    // 預約資訊 diff（寫回 appointments；以 appointmentId 逐筆處理，只寫實際有變更的預約）
+   const menu = projectConfig.value?.bookingMenu;
    const bookingUpdates = [];
-   const drafts = _bookingEditDrafts.value || {};
-   const bSnap = _bookingEditSnapshot.value || {};
-   for (const apptId of Object.keys(drafts)) {
-      const cur = drafts[apptId];
-      const old = bSnap[apptId];
-      if (!cur || !cur.appointmentId || !old) continue;
-      const type = cur.type;
-      const bp = {};
-      // 預約人聯絡資訊（純文字）
-      for (const f of ['bookerName', 'bookerPhone', 'bookerEmail']) {
-         if (String(old[f] ?? '') !== String(cur[f] ?? '')) bp[f] = cur[f] ?? '';
+   for (const [appointmentId, draft] of Object.entries(_bookingEditDrafts.value || {})) {
+      const old = _bookingEditSnapshot.value?.[appointmentId];
+      if (!old) continue;
+      const invalid = validateBookingDraft(draft, old, menu);
+      if (invalid) {
+         hdmActiveSection.value = `booking:${draft.type}`;
+         notify(`${draft.type}：${invalid}`, 'warning');
+         return;
       }
-      // 方式額外資訊（bookingMethodDetails）
-      const oldD = old.bookingMethodDetails || {};
-      const newD = cur.bookingMethodDetails || {};
-      const dKeys = new Set([...Object.keys(oldD), ...Object.keys(newD)]);
-      const detailChanged = [...dKeys].some(k => String(oldD[k] ?? '') !== String(newD[k] ?? ''));
-      if (detailChanged) {
-         bp.bookingMethodDetails = { ...newD };
-         // 同步 display 陣列（與 AppointmentDetailsDialog 一致，供日曆/查詢頁顯示）
-         const labelMap = {};
-         for (const f of (detailExtraFieldsByType.value[type] || [])) labelMap[f.id] = f.label;
-         bp.bookingMethodDetailsDisplay = Object.entries(newD).map(([id, val]) => ({
-            label: labelMap[id] || id,
-            value: val
-         }));
-      }
-      if (Object.keys(bp).length > 0) {
-         bookingUpdates.push({ type, appointmentId: cur.appointmentId, bookingPayload: bp });
-      }
+      const bookingPayload = buildBookingPayload(draft, old, menu);
+      if (Object.keys(bookingPayload).length === 0) continue;
+      bookingUpdates.push({
+         appointmentId, bookingPayload, draft,
+         title: `${h.unitId}・${draft.type}`,
+         changes: buildBookingChanges(draftToAppointment(old), bookingPayload)
+      });
    }
 
-   const hasHouseholdChanges = Object.keys(payload).length > 0;
-   const hasBookingChanges = bookingUpdates.length > 0;
-
-   if (!hasHouseholdChanges && !hasBookingChanges) {
-      snackbar.text = '無變更';
-      snackbar.color = 'info';
-      snackbar.show = true;
-      _editModeSnapshot.value = null;
-      _bookingEditDrafts.value = {};
-      _bookingEditSnapshot.value = {};
-      isModalEditMode.value = false;
+   if (Object.keys(payload).length === 0 && bookingUpdates.length === 0) {
+      notify('無變更', 'info');
+      closeModalEditMode();
       return;
    }
 
+   pendingModalSave = { docId: h._docId, payload, bookingUpdates, bookingCount: bookingUpdates.length, forcedIds: new Set() };
+   // 有要通知客戶的異動：先選擇是否寄修改通知
+   const groups = bookingUpdates.filter(u => u.changes.length > 0).map(u => ({
+      appointmentId: u.appointmentId, title: u.title, changes: u.changes,
+      bookerName: u.draft.bookerName, bookerEmail: u.draft.bookerEmail
+   }));
+   if (groups.length > 0) {
+      Object.assign(bookingNotify, { show: true, groups, blockMessage: '', errorMessage: '', blockedId: '' });
+      return;
+   }
+   await commitModalEdits(null);
+};
+
+const bookingNotify = reactive({ show: false, groups: [], blockMessage: '', errorMessage: '', blockedId: '' });
+let pendingModalSave = null;
+
+const closeModalEditMode = () => {
+   pendingModalSave = null;
+   bookingNotify.show = false;
+   _editModeSnapshot.value = null;
+   _bookingEditDrafts.value = {};
+   _bookingEditSnapshot.value = {};
+   isModalEditMode.value = false;
+};
+
+const onBookingNotifySubmit = ({ notifyById, force }) => {
+   if (!pendingModalSave) return;
+   if (force && bookingNotify.blockedId) pendingModalSave.forcedIds.add(bookingNotify.blockedId);
+   return commitModalEdits(notifyById);
+};
+
+// 先寫預約（可能被名額規則擋下）再寫戶別；失敗時留在編輯模式，已寫入的預約不會重送
+const commitModalEdits = async (notifyById) => {
+   const job = pendingModalSave;
+   if (!job || _isSavingModalEdits.value) return;
+   Object.assign(bookingNotify, { blockMessage: '', errorMessage: '', blockedId: '' });
    _isSavingModalEdits.value = true;
    try {
-      if (hasHouseholdChanges) {
-         await updateHouseholdData(h._docId, payload);
+      while (job.bookingUpdates.length > 0) {
+         const u = job.bookingUpdates[0];
+         const notifyOption = (u.changes.length > 0 && notifyById?.[u.appointmentId]) || null;
+         try {
+            const res = await updateAppointment(
+               u.appointmentId, { ...u.bookingPayload, lastModifiedByName: userStore.user?.name || '未知使用者' },
+               job.docId, {}, job.forcedIds.has(u.appointmentId), !notifyOption, notifyOption
+            );
+            if (res?.notify?.sent) job.sent = (job.sent || 0) + 1;
+            if (res?.notify?.error) job.notifyFailed = true;
+         } catch (err) {
+            if (isForceableBookingError(err.message) && bookingNotify.show) {
+               bookingNotify.blockedId = u.appointmentId;
+               bookingNotify.blockMessage = `${u.title}：${String(err.message).replace(/^SLOT_FULL:\s*/, '')}`;
+               return;
+            }
+            throw err;
+         }
+         // 這筆已寫入：更新快照與待存清單，之後再存不會重複
+         _bookingEditSnapshot.value[u.appointmentId] = JSON.parse(JSON.stringify(u.draft));
+         job.bookingUpdates.shift();
+         bookingNotify.groups = bookingNotify.groups.filter(g => g.appointmentId !== u.appointmentId);
+      }
+      const householdFields = Object.keys(job.payload).length;
+      if (householdFields > 0) {
+         await updateHouseholdData(job.docId, job.payload);
          // 銷售人員經獨立編輯文字解析，需手動同步回本地顯示（其餘欄位由 v-model 直接綁定）
-         if ('salesperson' in payload) {
-            selectedHouseholdForDetail.value = { ...selectedHouseholdForDetail.value, salesperson: payload.salesperson };
+         if ('salesperson' in job.payload) {
+            selectedHouseholdForDetail.value = { ...selectedHouseholdForDetail.value, salesperson: job.payload.salesperson };
          }
       }
-      // 逐筆寫回預約（僅聯絡資訊／方式額外資訊，不動日期時段，不會觸發排程衝突）
-      // silent=true：此 Modal 編輯一律不寄「預約異動通知」email 給預約人
-      for (const u of bookingUpdates) {
-         await updateAppointment(u.appointmentId, u.bookingPayload, h._docId, {}, false, true);
-      }
       const parts = [];
-      if (hasHouseholdChanges) parts.push(`${Object.keys(payload).length} 個戶別欄位`);
-      if (hasBookingChanges) parts.push(`${bookingUpdates.length} 筆預約`);
-      snackbar.text = `已儲存 ${parts.join('、')}變更`;
-      snackbar.color = 'success';
-      snackbar.show = true;
+      if (householdFields > 0) parts.push(`${householdFields} 個戶別欄位`);
+      if (job.bookingCount > 0) parts.push(`${job.bookingCount} 筆預約`);
+      let text = `已儲存 ${parts.join('、')}變更`;
+      if (job.notifyFailed) text += '，但修改通知寄送失敗';
+      else if (job.sent) text += '，已寄出修改通知';
+      notify(text, job.notifyFailed ? 'warning' : 'success');
+      closeModalEditMode();
+      syncHouseholdDetail();
    } catch (err) {
-      console.error('Modal 批次儲存失敗:', err);
-      snackbar.text = `儲存失敗: ${err.message}`;
-      snackbar.color = 'error';
-      snackbar.show = true;
-      // 回滾本地至快照值（戶別欄位；預約欄位由 listener 自動還原顯示）
-      try {
-         selectedHouseholdForDetail.value = { ...selectedHouseholdForDetail.value, ...snap };
-      } catch (_) { /* ignore */ }
+      console.error('Modal 儲存失敗:', err);
+      if (bookingNotify.show) bookingNotify.errorMessage = `儲存失敗：${err.message}`;
+      else notify(`儲存失敗: ${err.message}`, 'error');
    } finally {
       _isSavingModalEdits.value = false;
-      _editModeSnapshot.value = null;
-      _bookingEditDrafts.value = {};
-      _bookingEditSnapshot.value = {};
-      isModalEditMode.value = false;
    }
 };
 

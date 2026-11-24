@@ -646,7 +646,6 @@ import {
   addAppointmentAdmin,
   // fetchAllHouseholds, // <--- 由 Store 處理
   getAppointmentsForHousehold,
-  updateAppointment,
   cancelAppointment,
 } from '@/api'; // ✅ 簡化 api 引入
 import CancelNotifyPicker from '@/components/CancelNotifyPicker.vue';
@@ -824,22 +823,10 @@ const completedAppointmentDetails = ref(null); // 用來儲存已完成的預約
 
 const errorAlert = reactive({ show: false, type: 'error', text: '' });
 
-// ✓ START: 修改 - 新增處理儲存和取消的函式
-async function handleSaveChangesFromDialog(payload) {
-    const { appointmentId, bookingPayload, householdPayload } = payload;
-    try {
-        if (Object.keys(bookingPayload).length > 0 || Object.keys(householdPayload).length > 0) {
-            bookingPayload.lastModifiedByName = userStore.user?.name || '未知使用者';
-        }
-
-        const response = await updateAppointment(appointmentId, bookingPayload, payload.householdDocId, householdPayload);
-        
-        isDetailsDialogVisible.value = false; // 關閉對話框
-        await onUnitChange(formStep1.unitId); // ✓ 重新載入戶別詳細資料以更新畫面
-        
-    } catch (err) {
-        console.error(`儲存失敗: ${err.message}`);
-    }
+// 對話框已寫入並處理修改通知，這裡只重新載入戶別資料
+async function handleSaveChangesFromDialog() {
+    isDetailsDialogVisible.value = false;
+    await onUnitChange(formStep1.unitId);
 }
 
 function promptCancelBooking(event) {

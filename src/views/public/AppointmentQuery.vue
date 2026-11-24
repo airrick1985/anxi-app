@@ -152,7 +152,6 @@ import {
   getLiffUserData, 
   liffSearchAppointments, 
   fetchBookingOptions, 
-  updateAppointment, 
   cancelAppointment,
   updateAppointmentInspectors 
 } from '@/api';
@@ -330,17 +329,11 @@ watch(isDialogVisible, (visible) => {
   }
 });
 
+// 對話框已寫入並處理修改通知，這裡只重新查詢
 async function handleSaveAppointment(payload) {
-  try {
-    const { appointmentId, bookingPayload, householdPayload, householdDocId } = payload;
-    await updateAppointment(appointmentId, bookingPayload, householdDocId, householdPayload);
-    showSnackbar('儲存成功！', 'success');
-    isDialogVisible.value = false;
-    // 重新執行一次搜尋以更新列表
-    await handleSearch(); 
-  } catch (err) {
-    showSnackbar(`儲存失敗: ${err.message}`, 'error');
-  }
+  isDialogVisible.value = false;
+  showSnackbar(payload?.message?.text || '儲存成功！', payload?.message?.color || 'success');
+  await handleSearch();
 }
 
 // ✓ 新增：處理取消預約的函式
