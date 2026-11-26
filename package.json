@@ -35,7 +35,7 @@
     "@jamescoyle/vue-icon": "^0.1.2",
     "@liaogn/vue-drag-resize-rotate": "^1.1.0",
     "@line/bot-sdk": "^10.3.0",
-    "@line/liff": "^2.27.2",
+    "@line/liff": "^2.32.0",
     "@mdi/font": "^7.4.47",
     "@mdi/js": "^7.4.47",
     "@panzoom/panzoom": "^4.6.0",
